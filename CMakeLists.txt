@@ -6,7 +6,7 @@ project(sibir)
 list(APPEND CMAKE_MODULE_PATH
   "${PROJECT_SOURCE_DIR}/cmake")
 message(${CMAKE_MODULE_PATH})
-
+include(hip)
 
 
 # Add warning related flags
