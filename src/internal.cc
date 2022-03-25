@@ -4,6 +4,6 @@
 #include <vector>
 
 extern "C" std::vector<hipModule_t>* __hipRegisterFatBinary(const void* data) {
-  printf("Here\n");
+  printf("Here in __FUNCTION__\n");
   return nullptr;
 }

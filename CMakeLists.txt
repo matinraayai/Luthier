@@ -29,4 +29,10 @@ foreach (DIR ${SUB_DIRS})
   add_subdirectory(${DIR})
 endforeach (DIR)
 
+add_custom_target(sibir-cli ALL
+  COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/sibir.py ${CMAKE_BINARY_DIR}/sibir
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/sibir.py
+  COMMENT "Move sibir command to output folder")
+
+
 
