@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "src/util.h"
+#include "src/elf.h"
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(
     const void *data);
@@ -21,7 +22,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
   const __CudaFatBinaryWrapper *fbwrapper =
       reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
 
-  __builtin_dump_struct(fbwrapper, &printf);
+  // __builtin_dump_struct(fbwrapper, &printf);
 
   // if (fbwrapper->magic != __hipFatMAGIC2 || fbwrapper->version != 1) {
   //   return call_original_hip_register_fat_binary(data);
@@ -29,8 +30,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
 
   const __ClangOffloadBundleHeader *header = fbwrapper->binary;
 
-  printf("Printing header\n");
-  __builtin_dump_struct(header, &printf);
+  // printf("Printing header\n");
+  // __builtin_dump_struct(header, &printf);
 
   std::string magic(reinterpret_cast<const char *>(header),
                     sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
@@ -42,27 +43,32 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
 
   int device_count = 0;
   int err = hipGetDeviceCount(&device_count);
-  // if (err != hipSuccess) {
-  //   panic("cannot get device count.");
-  // }
+  if (err != hipSuccess) {
+    panic("cannot get device count.");
+  }
 
   const __ClangOffloadBundleDesc *desc = &header->desc[0];
-  printf("Printing desc\n");
-  __builtin_dump_struct(desc, &printf);
+  // printf("Printing desc\n");
+  // __builtin_dump_struct(desc, &printf);
 
   if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC))
   {
     return nullptr;
   }
 
+  //We want this one, not the "host-x86_64-unknown-linux" bc that one does not have vgpr count
+  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908", sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
+
   for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next())
   {
 
     std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
 
-    printf("%s", &desc->triple[0]);
+    printf("triple: %s ", &desc->triple[0]);
     // if (triple.compare(AMDGCN_AMDHSA_TRIPLE))
     //   continue;
+
+    if(triple.compare(curr_target)) continue;
 
     std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
                        desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
@@ -70,14 +76,22 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
     printf("Found hip-clang bundle for %s\n", target.c_str());
 
     // codeobject
-    auto *codeobj = reinterpret_cast<const char *>(
-        reinterpret_cast<uintptr_t>(header) + desc->offset);
+    auto *codeobj = reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
+    // auto *codeobj = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
 
     // inspect elf file
-    const char *p = codeobj;
+    // const char *p = codeobj;
+    char *p = const_cast<char*>(codeobj);
+    printf("Why isn't it possible \n");
+    elfio::File *elfFile;
+    
+    *elfFile = elfFile->FromMem(p); //calling any elfio::File function causes causes lookup table error
 
     Elf64_Ehdr *ehdr = (Elf64_Ehdr *)p;
+
+    // Elf64_Ehdr *ehdr = elfFile->GetHeader();
     Elf64_Shdr *shdr = (Elf64_Shdr *)(p + ehdr->e_shoff);
+    // printf("I'm scared \n");
 
     int shnum = ehdr->e_shnum;
 
@@ -87,7 +101,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
     // print sections in elf file (code is in .text)
     for (int i = 0; i < shnum; ++i)
     {
-      printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
+      // printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
+
+      if(shdr[i].sh_type == 7) 
+        printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
     }
   }
 
@@ -160,4 +177,30 @@ std::vector<hipModule_t> *call_original_hip_register_fat_binary(
   std::vector<hipModule_t> *ret = func(data);
 
   return ret;
+}
+
+//Shamelessly copied from RHIPO:
+//Have not called it anywhere yet, I was thinking of calling it inside parseFatBinary
+nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
+  printf("Here in %s\n", __FUNCTION__);
+
+  auto note_section = elf->GetSectionByType("NOTE");
+  if (!note_section) {
+    panic("note section is not found");
+  }
+
+  char* blog = note_section->Blob();
+  int offset = 0;
+  while (offset < note_section->size) {
+    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
+    offset += note->TotalSize();
+
+    if (note->name.rfind("AMDGPU") == 0) {
+      auto json = nlohmann::json::from_msgpack(note->desc);
+      return json;
+    }
+  }
+
+  panic("note not found");
+  return nlohmann::json();
 }
