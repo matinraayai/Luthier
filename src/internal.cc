@@ -3,36 +3,44 @@
 #include <hip/hip_runtime.h>
 #include <fstream>
 #include <elf.h>
-
+#include <string.h>
 #include <cstdio>
 #include <vector>
-
+#include <cstring>
 #include "src/util.h"
+#include <string.h>
+
+
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(
     const void *data);
 
-extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
+extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
 {
-  // hipError_t err;
-
+ 
   printf("Here in %s\n", __FUNCTION__);
+  // copy data into completely new location
 
-  const __CudaFatBinaryWrapper *fbwrapper =
-      reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
+  char data_copy[50000];
+  // need to figure out correct size of buffer
+  std::memcpy(data_copy, data, 10000);
 
-  __builtin_dump_struct(fbwrapper, &printf);
+  __CudaFatBinaryWrapper *fbwrapper =
+      reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
 
-  // if (fbwrapper->magic != __hipFatMAGIC2 || fbwrapper->version != 1) {
-  //   return call_original_hip_register_fat_binary(data);
-  // }
+  __CudaFatBinaryWrapper fbwrapper2(*fbwrapper);
 
-  const __ClangOffloadBundleHeader *header = fbwrapper->binary;
+  __CudaFatBinaryWrapper *pointer = &fbwrapper2;
 
-  printf("Printing header\n");
-  __builtin_dump_struct(header, &printf);
+  //__ClangOffloadBundleHeader *newbinary = new __ClangOffloadBundleHeader;
+  __ClangOffloadBundleHeader newbinary(*fbwrapper->binary);
 
-  std::string magic(reinterpret_cast<const char *>(header),
+  __ClangOffloadBundleHeader *header = fbwrapper->binary;
+
+  printf("data copy address %p\n", data_copy);
+  printf("header address %p\n", header);
+
+  std::string magic(reinterpret_cast<char *>(header),
                     sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
 
   if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC))
@@ -47,60 +55,84 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
   // }
 
   const __ClangOffloadBundleDesc *desc = &header->desc[0];
-  printf("Printing desc\n");
-  __builtin_dump_struct(desc, &printf);
-
-  if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC))
-  {
-    return nullptr;
-  }
 
   for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next())
   {
 
+    printf("Printing desc\n");
+    __builtin_dump_struct(&header->desc[i], &printf);
+
     std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
 
-    printf("%s", &desc->triple[0]);
-    // if (triple.compare(AMDGCN_AMDHSA_TRIPLE))
-    //   continue;
+    printf("Desc triptle: %s \n", &desc->triple[i]);
 
     std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
                        desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
-                       
-    printf("Found hip-clang bundle for %s\n", target.c_str());
 
-    // codeobject
     auto *codeobj = reinterpret_cast<const char *>(
         reinterpret_cast<uintptr_t>(header) + desc->offset);
 
+    
     // inspect elf file
-    const char *p = codeobj;
-
+    const char *p = (const char*) codeobj;
+   
+    //
     Elf64_Ehdr *ehdr = (Elf64_Ehdr *)p;
     Elf64_Shdr *shdr = (Elf64_Shdr *)(p + ehdr->e_shoff);
+    Elf64_Phdr *phdr = (Elf64_Phdr *)(p + ehdr->e_phnum);
 
     int shnum = ehdr->e_shnum;
 
     Elf64_Shdr *sh_strtab = &shdr[ehdr->e_shstrndx];
-
+    
     const char *const sh_strtab_p = p + sh_strtab->sh_offset;
     // print sections in elf file (code is in .text)
     for (int i = 0; i < shnum; ++i)
     {
-      printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
+      
+      const char *sec_name = sh_strtab_p + shdr[i].sh_name;
+
+      char str[15];
+      int ret;
+
+      strcpy(str, ".note");
+      //strcpy(str, ".rodata");
+
+      ret = strcmp(sec_name, str);
+
+      // print ret name
+
+      if (ret == 0) {
+        printf("%d\n", ret);
+        //printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
+        //Get section size of note section
+        printf("Size %lu\n", shdr[i].sh_size);
+ 
+
+      }
     }
   }
+   //make a copy of the binary
+   char header_buffer[50000];
+
+   //copy binary to new memory location
+   std::memcpy(header_buffer, fbwrapper->binary, 15000);
+
+   // small modification to the binary (probably break the program)
+   
+   //header_buffer[8096+128] = 'h';
+
+   //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
+
+   // set the pointer to the copy of the header buffer
+   fbwrapper2.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
 
   // print instructions in elf .text section
   // To get the contents of the section, dump .sh_size bytes located at (char *)p + shdr->sh_offset.
 
   // auto modules = new std::vector<hipModule_t>(device_count);
+  
 
-  for (uint64_t i = 0; i < header->numBundles; i++, desc = desc->next())
-  {
-    printf("%lu\n", i);
-    printf("%s\n", desc->triple);
-  }
   //   std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
   //   if (triple.compare(AMDGCN_AMDHSA_TRIPLE)) {
   //     continue;
@@ -132,7 +164,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
   //   }
   // }
 
-  auto modules = call_original_hip_register_fat_binary(data);
+  auto modules = call_original_hip_register_fat_binary(pointer);
 
   // printf("Number of modules: %zu\n", modules->size());
 
@@ -157,6 +189,8 @@ std::vector<hipModule_t> *call_original_hip_register_fat_binary(
 {
   std::vector<hipModule_t> *(*func)(const void *);
   func = (decltype(func))dlsym(RTLD_NEXT, "__hipRegisterFatBinary");
+
+
   std::vector<hipModule_t> *ret = func(data);
 
   return ret;
