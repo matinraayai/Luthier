@@ -30,10 +30,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
 
   __CudaFatBinaryWrapper fbwrapper2(*fbwrapper);
 
-  __CudaFatBinaryWrapper *pointer = &fbwrapper2;
+  __CudaFatBinaryWrapper *fbwrapper_copy = &fbwrapper2;
 
   //__ClangOffloadBundleHeader *newbinary = new __ClangOffloadBundleHeader;
-  __ClangOffloadBundleHeader newbinary(*fbwrapper->binary);
+  //__ClangOffloadBundleHeader newbinary(*fbwrapper->binary);
 
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
 
@@ -89,17 +89,13 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
     // print sections in elf file (code is in .text)
     for (int i = 0; i < shnum; ++i)
     {
-      
       const char *sec_name = sh_strtab_p + shdr[i].sh_name;
-
       char str[15];
       int ret;
-
       strcpy(str, ".note");
       //strcpy(str, ".rodata");
 
       ret = strcmp(sec_name, str);
-
       // print ret name
 
       if (ret == 0) {
@@ -114,13 +110,12 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   }
    //make a copy of the binary
    char header_buffer[50000];
-
-   //copy binary to new memory location
+   // not sure if size is correct
    std::memcpy(header_buffer, fbwrapper->binary, 15000);
 
    // small modification to the binary (probably break the program)
    
-   //header_buffer[8096+128] = 'h';
+   header_buffer[8096+128] = 'h';
 
    //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
 
@@ -164,7 +159,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   //   }
   // }
 
-  auto modules = call_original_hip_register_fat_binary(pointer);
+  auto modules = call_original_hip_register_fat_binary(fbwrapper_copy);
 
   // printf("Number of modules: %zu\n", modules->size());
 
