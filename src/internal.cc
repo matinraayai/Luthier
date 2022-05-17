@@ -7,17 +7,19 @@
 #include <cstdio>
 #include <vector>
 
+#include "nlohmann/json.hpp"
 #include "src/util.h"
 #include "src/elf.h"
 
-std::vector<hipModule_t> *call_original_hip_register_fat_binary(
-    const void *data);
+std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
+nlohmann::json getKernelArgumentMetaData(elfio::File* elf);
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
 {
   // hipError_t err;
 
   printf("Here in %s\n", __FUNCTION__);
+  printf("%s\n", getenv("LD_LIBRARY_PATH"));
 
   const __CudaFatBinaryWrapper *fbwrapper =
       reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
@@ -82,16 +84,34 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
     // inspect elf file
     // const char *p = codeobj;
     char *p = const_cast<char*>(codeobj);
-    printf("Why isn't it possible \n");
-    elfio::File *elfFile;
+
+    //create file object that contains our ELF binary info
+    elfio::File elfFile;
+
+    // the FromMem() function returns a File object, which makes it trickier to call
+    // If we end up no longer needing char *p from line 86, we can do 
+    // elfFile = elfFile.FromMem(const_cast<char*>(codeobj));
+    elfFile = elfFile.FromMem(p);  
+
+    nlohmann::json kernelArgMetaData = getKernelArgumentMetaData(&elfFile);
+
+    if(kernelArgMetaData.find("amdhsa.kernels") == kernelArgMetaData.end())
+      panic("Cannot find kernel data");
+    nlohmann::json kernels = kernelArgMetaData["amdhsa.kernels"];
     
-    *elfFile = elfFile->FromMem(p); //calling any elfio::File function causes causes lookup table error
+    for (int i = 0; i < kernels.size(); i++)
+    {
+      if(kernels[i].find(".name") == kernels[i].end() |kernels[i].find(".vgpr_count") == kernels[i].end())
+        panic("Cannot find kernel name or vgpr_count");
+      
+      printf("For kernel %s", kernels[i].value(".name", "please work").c_str());
+      printf("vgpr_count = %d\n", kernels[i].value(".vgpr_count", 0));
+    }
 
     Elf64_Ehdr *ehdr = (Elf64_Ehdr *)p;
 
     // Elf64_Ehdr *ehdr = elfFile->GetHeader();
     Elf64_Shdr *shdr = (Elf64_Shdr *)(p + ehdr->e_shoff);
-    // printf("I'm scared \n");
 
     int shnum = ehdr->e_shnum;
 
@@ -99,13 +119,13 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
 
     const char *const sh_strtab_p = p + sh_strtab->sh_offset;
     // print sections in elf file (code is in .text)
-    for (int i = 0; i < shnum; ++i)
-    {
-      // printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
+    // for (int i = 0; i < shnum; ++i)
+    // {
+    //   // printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
 
-      if(shdr[i].sh_type == 7) 
-        printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
-    }
+    //   // if(shdr[i].sh_type == 1 | shdr[i].sh_type == 7) 
+    //     printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
+    // }
   }
 
   // print instructions in elf .text section
@@ -179,12 +199,12 @@ std::vector<hipModule_t> *call_original_hip_register_fat_binary(
   return ret;
 }
 
-//Shamelessly copied from RHIPO:
-//Have not called it anywhere yet, I was thinking of calling it inside parseFatBinary
+// Shamelessly copied from RHIPO:
+// Returns the binary data of the .note section of an ELF file in JSON format 
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
   printf("Here in %s\n", __FUNCTION__);
 
-  auto note_section = elf->GetSectionByType("NOTE");
+  auto note_section = elf->GetSectionByType("SHT_NOTE");
   if (!note_section) {
     panic("note section is not found");
   }

@@ -396,6 +396,18 @@ vector
 string_view
 -
 
+/home/andrew/Sibir/src/elf.cc
+src/elf.h
+/home/andrew/Sibir/src/src/elf.h
+elf.h
+-
+memory
+-
+string
+-
+utility
+-
+
 /home/andrew/Sibir/src/internal.cc
 src/internal.h
 /home/andrew/Sibir/src/src/internal.h
@@ -411,6 +423,8 @@ cstdio
 -
 vector
 -
+nlohmann/json.hpp
+/home/andrew/Sibir/src/nlohmann/json.hpp
 src/util.h
 /home/andrew/Sibir/src/src/util.h
 src/elf.h

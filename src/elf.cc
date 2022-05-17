@@ -8,14 +8,12 @@
 namespace elfio {
 
 File File::FromMem(char *blob) {
-  // printf("hey\n");
   File f;
-  printf("It's just not\n");
-  // f.header = reinterpret_cast<Elf64_Ehdr *>(blob);
+
   f.header = (Elf64_Ehdr *)blob;
   f.ParseSections();
   f.ParseSymbols();
-   
+
   return f;
 }
 

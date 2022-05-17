@@ -125,6 +125,33 @@ sibir/fast:
 	cd /home/andrew/Sibir/builddir && $(MAKE) -f src/CMakeFiles/sibir.dir/build.make src/CMakeFiles/sibir.dir/build
 .PHONY : sibir/fast
 
+elf.o: elf.cc.o
+
+.PHONY : elf.o
+
+# target to build an object file
+elf.cc.o:
+	cd /home/andrew/Sibir/builddir && $(MAKE) -f src/CMakeFiles/sibir.dir/build.make src/CMakeFiles/sibir.dir/elf.cc.o
+.PHONY : elf.cc.o
+
+elf.i: elf.cc.i
+
+.PHONY : elf.i
+
+# target to preprocess a source file
+elf.cc.i:
+	cd /home/andrew/Sibir/builddir && $(MAKE) -f src/CMakeFiles/sibir.dir/build.make src/CMakeFiles/sibir.dir/elf.cc.i
+.PHONY : elf.cc.i
+
+elf.s: elf.cc.s
+
+.PHONY : elf.s
+
+# target to generate assembly for a file
+elf.cc.s:
+	cd /home/andrew/Sibir/builddir && $(MAKE) -f src/CMakeFiles/sibir.dir/build.make src/CMakeFiles/sibir.dir/elf.cc.s
+.PHONY : elf.cc.s
+
 internal.o: internal.cc.o
 
 .PHONY : internal.o
@@ -161,6 +188,9 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... sibir"
 	@echo "... edit_cache"
+	@echo "... elf.o"
+	@echo "... elf.i"
+	@echo "... elf.s"
 	@echo "... internal.o"
 	@echo "... internal.i"
 	@echo "... internal.s"

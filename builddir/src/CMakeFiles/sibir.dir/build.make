@@ -81,19 +81,45 @@ src/CMakeFiles/sibir.dir/internal.cc.o.provides: src/CMakeFiles/sibir.dir/intern
 src/CMakeFiles/sibir.dir/internal.cc.o.provides.build: src/CMakeFiles/sibir.dir/internal.cc.o
 
 
+src/CMakeFiles/sibir.dir/elf.cc.o: src/CMakeFiles/sibir.dir/flags.make
+src/CMakeFiles/sibir.dir/elf.cc.o: ../src/elf.cc
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/andrew/Sibir/builddir/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object src/CMakeFiles/sibir.dir/elf.cc.o"
+	cd /home/andrew/Sibir/builddir/src && /usr/bin/c++  $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/sibir.dir/elf.cc.o -c /home/andrew/Sibir/src/elf.cc
+
+src/CMakeFiles/sibir.dir/elf.cc.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/sibir.dir/elf.cc.i"
+	cd /home/andrew/Sibir/builddir/src && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/andrew/Sibir/src/elf.cc > CMakeFiles/sibir.dir/elf.cc.i
+
+src/CMakeFiles/sibir.dir/elf.cc.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/sibir.dir/elf.cc.s"
+	cd /home/andrew/Sibir/builddir/src && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/andrew/Sibir/src/elf.cc -o CMakeFiles/sibir.dir/elf.cc.s
+
+src/CMakeFiles/sibir.dir/elf.cc.o.requires:
+
+.PHONY : src/CMakeFiles/sibir.dir/elf.cc.o.requires
+
+src/CMakeFiles/sibir.dir/elf.cc.o.provides: src/CMakeFiles/sibir.dir/elf.cc.o.requires
+	$(MAKE) -f src/CMakeFiles/sibir.dir/build.make src/CMakeFiles/sibir.dir/elf.cc.o.provides.build
+.PHONY : src/CMakeFiles/sibir.dir/elf.cc.o.provides
+
+src/CMakeFiles/sibir.dir/elf.cc.o.provides.build: src/CMakeFiles/sibir.dir/elf.cc.o
+
+
 # Object files for target sibir
 sibir_OBJECTS = \
-"CMakeFiles/sibir.dir/internal.cc.o"
+"CMakeFiles/sibir.dir/internal.cc.o" \
+"CMakeFiles/sibir.dir/elf.cc.o"
 
 # External object files for target sibir
 sibir_EXTERNAL_OBJECTS =
 
 lib/libsibir.so.0.0.1: src/CMakeFiles/sibir.dir/internal.cc.o
+lib/libsibir.so.0.0.1: src/CMakeFiles/sibir.dir/elf.cc.o
 lib/libsibir.so.0.0.1: src/CMakeFiles/sibir.dir/build.make
 lib/libsibir.so.0.0.1: /opt/rocm-5.0.0/hip/lib/libamdhip64.so.5.0.50000
 lib/libsibir.so.0.0.1: /opt/rocm/llvm/lib/clang/14.0.0/lib/linux/libclang_rt.builtins-x86_64.a
 lib/libsibir.so.0.0.1: src/CMakeFiles/sibir.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/andrew/Sibir/builddir/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX shared library ../lib/libsibir.so"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/andrew/Sibir/builddir/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX shared library ../lib/libsibir.so"
 	cd /home/andrew/Sibir/builddir/src && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/sibir.dir/link.txt --verbose=$(VERBOSE)
 	cd /home/andrew/Sibir/builddir/src && $(CMAKE_COMMAND) -E cmake_symlink_library ../lib/libsibir.so.0.0.1 ../lib/libsibir.so.0.0.1 ../lib/libsibir.so
 
@@ -106,6 +132,7 @@ src/CMakeFiles/sibir.dir/build: lib/libsibir.so
 .PHONY : src/CMakeFiles/sibir.dir/build
 
 src/CMakeFiles/sibir.dir/requires: src/CMakeFiles/sibir.dir/internal.cc.o.requires
+src/CMakeFiles/sibir.dir/requires: src/CMakeFiles/sibir.dir/elf.cc.o.requires
 
 .PHONY : src/CMakeFiles/sibir.dir/requires
 

@@ -18,13 +18,13 @@ if __name__ == '__main__':
     path = os.path.dirname(os.path.realpath(__file__))
     current_wd = os.getcwd()
     
+    print("Path: ", path)
+
     env = os.environ.copy()
     if 'LD_LIBRARY_PATH' not in env:
         env['LD_LIBRARY_PATH'] = ''
     env['LD_LIBRARY_PATH'] = path + '/lib' + ':' + env['LD_LIBRARY_PATH']
     env['LD_PRELOAD'] = path + '/lib/libsibir.so'
-
-    print(env['LD_LIBRARY_PATH'])
 
     proc = subprocess.Popen(command, 
         shell=True, 

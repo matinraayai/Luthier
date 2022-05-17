@@ -4,6 +4,7 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
+  "/home/andrew/Sibir/src/elf.cc" "/home/andrew/Sibir/builddir/src/CMakeFiles/sibir.dir/elf.cc.o"
   "/home/andrew/Sibir/src/internal.cc" "/home/andrew/Sibir/builddir/src/CMakeFiles/sibir.dir/internal.cc.o"
   )
 set(CMAKE_CXX_COMPILER_ID "GNU")

@@ -10,7 +10,9 @@ endforeach (DIR)
 set(SRC
     internal.h
     internal.cc
-)
+    elf.h
+    elf.cc
+    )
 add_library(sibir SHARED ${SRC})
 set_target_properties(sibir
     PROPERTIES VERSION 0.0.1)
