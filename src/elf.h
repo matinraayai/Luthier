@@ -20,8 +20,6 @@ class File {
   Symbol* GetSymbolByName(const std::string& name);
   char* Blob();
 
-  Elf64_Ehdr* GetHeader(){return header;}
-
  private:
   Elf64_Ehdr* header;
   std::vector<std::unique_ptr<Section>> sections;

@@ -19,6 +19,8 @@
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf);
 
+void getNoteSectionData(nlohmann::json noteData, std::string kernelName, std::string valueName);
+
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
 {
  
@@ -30,8 +32,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   std::memcpy(data_copy, data, 10000);
 
   // __builtin_dump_struct(fbwrapper, &printf);
-  __CudaFatBinaryWrapper *fbwrapper =
-      reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
+  __CudaFatBinaryWrapper *fbwrapper = reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
 
   __CudaFatBinaryWrapper fbwrapper2(*fbwrapper);
 
@@ -47,11 +48,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   printf("data copy address %p\n", data_copy);
   printf("header address %p\n", header);
 
-  std::string magic(reinterpret_cast<char *>(header),
-                    sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
-
+  std::string magic(reinterpret_cast<char *>(header), sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
   if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC))
   {
+    printf("Invalid magic: %s\n Expected: %s\n", magic.c_str(), CLANG_OFFLOAD_BUNDLER_MAGIC);
     return nullptr;
   }
 
@@ -65,11 +65,6 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   // printf("Printing desc\n");
   // __builtin_dump_struct(desc, &printf);
 
-  if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC))
-  {
-    return nullptr;
-  }
-
   //We want this one, not the "host-x86_64-unknown-linux" bc that one does not have vgpr count
   std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908", sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
 
@@ -77,7 +72,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   {
 
     printf("Printing desc\n");
-    __builtin_dump_struct(&header->desc[i], &printf);
+    // __builtin_dump_struct(&header->desc[i], &printf);
 
     std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
 
@@ -88,49 +83,29 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
     std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
                        desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
 
-    // codeobject
+
     auto *codeobj = reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
-    // auto *codeobj = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
-
     
-    // inspect elf file
-    // const char *p = codeobj;
-    char *p = const_cast<char*>(codeobj);
-
-    //create file object that contains our ELF binary info
-    elfio::File elfFile;
-
-    // the FromMem() function returns a File object, which makes it trickier to call
-    // If we end up no longer needing char *p from line 86, we can do 
-    // elfFile = elfFile.FromMem(const_cast<char*>(codeobj));
-    elfFile = elfFile.FromMem(p);  
+    elfio::File elfFile; // file object that contains our ELF binary info
+    elfFile = elfFile.FromMem(const_cast<char*>(codeobj));
 
     nlohmann::json kernelArgMetaData = getKernelArgumentMetaData(&elfFile);
+    printf("Kernel name: %s\n", kernelArgMetaData[0]);
 
-    if(kernelArgMetaData.find("amdhsa.kernels") == kernelArgMetaData.end())
-      panic("Cannot find kernel data");
-    nlohmann::json kernels = kernelArgMetaData["amdhsa.kernels"];
-    
-    for (int i = 0; i < kernels.size(); i++)
-    {
-      if(kernels[i].find(".name") == kernels[i].end() |kernels[i].find(".vgpr_count") == kernels[i].end())
-        panic("Cannot find kernel name or vgpr_count");
-      
-      printf("For kernel %s", kernels[i].value(".name", "please work").c_str());
-      printf("vgpr_count = %d\n", kernels[i].value(".vgpr_count", 0));
-    }
+    getNoteSectionData(kernelArgMetaData, "amdhsa.kernels", ".vgpr_count");
+    // output kernelArgMetaData as JSON file:
+    // std::ofstream note_section_json("note_section.json");
+    // note_section_json << kernelArgMetaData;
 
-    Elf64_Ehdr *ehdr = (Elf64_Ehdr *)p;
-
-    // Elf64_Ehdr *ehdr = elfFile->GetHeader();
-    Elf64_Shdr *shdr = (Elf64_Shdr *)(p + ehdr->e_shoff);
-    Elf64_Phdr *phdr = (Elf64_Phdr *)(p + ehdr->e_phnum);
+    Elf64_Ehdr *ehdr = (Elf64_Ehdr *)elfFile.Blob();  //Blob() returns the ELF header as char *
+    Elf64_Shdr *shdr = (Elf64_Shdr *)(elfFile.Blob() + ehdr->e_shoff);
+    Elf64_Phdr *phdr = (Elf64_Phdr *)(elfFile.Blob() + ehdr->e_phnum);
 
     int shnum = ehdr->e_shnum;
 
     Elf64_Shdr *sh_strtab = &shdr[ehdr->e_shstrndx];
     
-    const char *const sh_strtab_p = p + sh_strtab->sh_offset;
+    const char *const sh_strtab_p = elfFile.Blob() + sh_strtab->sh_offset;
     // print sections in elf file (code is in .text)
     for (int i = 0; i < shnum; ++i)
     {
@@ -260,4 +235,22 @@ nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
 
   panic("note not found");
   return nlohmann::json();
+}
+
+void getNoteSectionData(nlohmann::json noteData, std::string kernelName, std::string valueName) {
+    if(noteData.find(kernelName) == noteData.end())
+      panic("Cannot find kernel data");
+    
+    for (int i = 0; i < noteData[kernelName].size(); i++)
+    {
+      if(noteData[kernelName][i].find(".name") == noteData[kernelName][i].end() 
+        | noteData[kernelName][i].find(valueName) == noteData[kernelName][i].end())
+        panic("Cannot find kernel name or vgpr_count");
+      
+      // for now, just hope that valueName refers to an integer value
+      printf("For kernel %s: Parameter %s = %d\n",
+              noteData[kernelName][i].value(".name", "kernel name").c_str(),
+              valueName.c_str(),
+              noteData[kernelName][i].value(valueName, 0));
+    }
 }
