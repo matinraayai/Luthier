@@ -12,41 +12,31 @@
 #include "src/elf.h"
 #include <cstring>
 #include "src/util.h"
-#include <string.h>
-
-
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf);
 
 void getNoteSectionData(nlohmann::json noteData, std::string kernelName, std::string valueName);
 
-extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
-{
- 
+extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) { 
   printf("Here in %s\n", __FUNCTION__);
-  // copy data into completely new location
 
-  char data_copy[50000];
-  // need to figure out correct size of buffer
-  std::memcpy(data_copy, data, 10000);
+  // copy data into new location:
+  char *data_copy = new char[strlen(data)*sizeof(char*)];
+  std::memcpy(data_copy, data, strlen(data)*sizeof(char*));
 
   // __builtin_dump_struct(fbwrapper, &printf);
   __CudaFatBinaryWrapper *fbwrapper = reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
-
-  __CudaFatBinaryWrapper fbwrapper2(*fbwrapper);
-
-  __CudaFatBinaryWrapper *fbwrapper_copy = &fbwrapper2;
-
-  // printf("Printing header\n");
-  // __builtin_dump_struct(header, &printf);
-  //__ClangOffloadBundleHeader *newbinary = new __ClangOffloadBundleHeader;
-  //__ClangOffloadBundleHeader newbinary(*fbwrapper->binary);
+  __CudaFatBinaryWrapper *newWrapper = new __CudaFatBinaryWrapper(*fbwrapper);
 
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
 
-  printf("data copy address %p\n", data_copy);
-  printf("header address %p\n", header);
+  //make a copy of the binary:
+  char *header_buffer = new char[sizeof(*header)*sizeof(__ClangOffloadBundleHeader*)];
+  std::memcpy(header_buffer, header, sizeof(*header)*sizeof(__ClangOffloadBundleHeader*));
+
+  printf("input data address: %p | data copy address: %p\n", data, data_copy);
+  printf("header address %p | header buffer address: %p \n", header, header_buffer);
 
   std::string magic(reinterpret_cast<char *>(header), sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
   if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC))
@@ -71,17 +61,17 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next())
   {
 
-    printf("Printing desc\n");
+    // printf("Printing desc\n");
     // __builtin_dump_struct(&header->desc[i], &printf);
 
     std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
 
-    printf("Desc triptle: %s \n", &desc->triple[i]);
+    printf("Desc triple: %s \n", &desc->triple[i]);
 
     if(triple.compare(curr_target)) continue;
 
     std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
-                       desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
+                        desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
 
 
     auto *codeobj = reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
@@ -89,58 +79,42 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
     elfio::File elfFile; // file object that contains our ELF binary info
     elfFile = elfFile.FromMem(const_cast<char*>(codeobj));
 
-    nlohmann::json kernelArgMetaData = getKernelArgumentMetaData(&elfFile);
-    printf("Kernel name: %s\n", kernelArgMetaData[0]);
+    nlohmann::json noteSectionData = getKernelArgumentMetaData(&elfFile);
 
-    getNoteSectionData(kernelArgMetaData, "amdhsa.kernels", ".vgpr_count");
+    // getNoteSectionData(kernelArgMetaData, "amdhsa.kernels", ".vgpr_count");
     // output kernelArgMetaData as JSON file:
     // std::ofstream note_section_json("note_section.json");
     // note_section_json << kernelArgMetaData;
 
-    Elf64_Ehdr *ehdr = (Elf64_Ehdr *)elfFile.Blob();  //Blob() returns the ELF header as char *
-    Elf64_Shdr *shdr = (Elf64_Shdr *)(elfFile.Blob() + ehdr->e_shoff);
-    Elf64_Phdr *phdr = (Elf64_Phdr *)(elfFile.Blob() + ehdr->e_phnum);
+    // Elf64_Ehdr *ehdr = (Elf64_Ehdr *)elfFile.Blob();  //Blob() returns the ELF header as char ptr
+    // Elf64_Shdr *shdr = (Elf64_Shdr *)(elfFile.Blob() + ehdr->e_shoff);
+    // Elf64_Phdr *phdr = (Elf64_Phdr *)(elfFile.Blob() + ehdr->e_phnum);
 
-    int shnum = ehdr->e_shnum;
-
-    Elf64_Shdr *sh_strtab = &shdr[ehdr->e_shstrndx];
+    // int shnum = ehdr->e_shnum;
+    // Elf64_Shdr *sh_strtab = &shdr[ehdr->e_shstrndx];
     
-    const char *const sh_strtab_p = elfFile.Blob() + sh_strtab->sh_offset;
-    // print sections in elf file (code is in .text)
-    for (int i = 0; i < shnum; ++i)
-    {
-      const char *sec_name = sh_strtab_p + shdr[i].sh_name;
-      char str[15];
-      int ret;
-      strcpy(str, ".note");
-      //strcpy(str, ".rodata");
+    // const char *const sh_strtab_p = elfFile.Blob() + sh_strtab->sh_offset;
+    // // print sections in elf file (code is in .text)
+    // for (int i = 0; i < shnum; ++i)
+    // {
+    //   const char *sec_name = sh_strtab_p + shdr[i].sh_name;
+    //   char str[15];
+    //   int ret;
+    //   strcpy(str, ".note");
+    //   //strcpy(str, ".rodata");
 
-      ret = strcmp(sec_name, str);
-      // print ret name
+    //   ret = strcmp(sec_name, str);
 
-      if (ret == 0) {
-        printf("%d\n", ret);
-        //printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
-        //Get section size of note section
-        printf("Size %lu\n", shdr[i].sh_size);
- 
-
-      }
-    }
+    //   // print ret name
+    //   if (ret == 0) {
+    //     printf("This section is the %s section! \n", sec_name);
+    //     printf("ret %d\n", ret);
+    //     //printf("%2d: %4d '%s'\n", i, shdr[i].sh_name, sh_strtab_p + shdr[i].sh_name);
+    //     //Get section size of note section
+    //     printf("Size %lu\n", shdr[i].sh_size);
+    //   }
+    // }
   }
-   //make a copy of the binary
-   char header_buffer[50000];
-   // not sure if size is correct
-   std::memcpy(header_buffer, fbwrapper->binary, 15000);
-
-   // small modification to the binary (probably break the program)
-   
-   header_buffer[8096+128] = 'h';
-
-   //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
-
-   // set the pointer to the copy of the header buffer
-   fbwrapper2.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
 
   // print instructions in elf .text section
   // To get the contents of the section, dump .sh_size bytes located at (char *)p + shdr->sh_offset.
@@ -179,7 +153,26 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   //   }
   // }
 
-  auto modules = call_original_hip_register_fat_binary(fbwrapper_copy);
+  
+  
+  // small modification to the binary (probably break the program)
+  header_buffer[8096+128] = 'h';
+
+  //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
+  elfio::File newelfFile;
+  newelfFile = newelfFile.FromMem(header_buffer);
+  // nlohmann::json newnoteSectionData = getKernelArgumentMetaData(&newelfFile);
+
+  // // output kernelArgMetaData as JSON file:
+  // std::ofstream new_note_section_json("modified_note_section.json");
+  // new_note_section_json << newnoteSectionData;
+
+  
+  // set the pointer to the copy of the header buffer
+  newWrapper->binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+
+  //pass new wrapper into original register fat binary func:
+  auto modules = call_original_hip_register_fat_binary(newWrapper); 
 
   // printf("Number of modules: %zu\n", modules->size());
 
@@ -199,9 +192,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   return modules;
 }
 
-std::vector<hipModule_t> *call_original_hip_register_fat_binary(
-    const void *data)
-{
+std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data) {
   std::vector<hipModule_t> *(*func)(const void *);
   func = (decltype(func))dlsym(RTLD_NEXT, "__hipRegisterFatBinary");
 
