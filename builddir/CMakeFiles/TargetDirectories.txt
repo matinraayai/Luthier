@@ -1,6 +1,0 @@
-/home/andrew/Sibir/builddir/CMakeFiles/rebuild_cache.dir
-/home/andrew/Sibir/builddir/CMakeFiles/sibir-cli.dir
-/home/andrew/Sibir/builddir/CMakeFiles/edit_cache.dir
-/home/andrew/Sibir/builddir/src/CMakeFiles/rebuild_cache.dir
-/home/andrew/Sibir/builddir/src/CMakeFiles/sibir.dir
-/home/andrew/Sibir/builddir/src/CMakeFiles/edit_cache.dir

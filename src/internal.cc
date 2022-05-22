@@ -1,17 +1,18 @@
 #include "src/internal.h"
-#include <dlfcn.h>
-#include <hip/hip_runtime.h>
-#include <fstream>
-#include <elf.h>
-#include <string.h>
-#include <cstdio>
-#include <vector>
-
-#include "nlohmann/json.hpp"
 #include "src/util.h"
 #include "src/elf.h"
+#include "nlohmann/json.hpp"
+
+#include <dlfcn.h>
+#include <hip/hip_runtime.h>
+#include <elf.h>
+#include <string.h>
+
+#include <cstdio>
 #include <cstring>
-#include "src/util.h"
+#include <fstream>
+#include <vector>
+
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf);
@@ -21,17 +22,21 @@ void getNoteSectionData(nlohmann::json noteData, std::string kernelName, std::st
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) { 
   printf("Here in %s\n", __FUNCTION__);
 
-  // copy data into new location:
+  // copy char* data into new location of size equal to 
+  // length of data times size of character pointer:
   char *data_copy = new char[strlen(data)*sizeof(char*)];
   std::memcpy(data_copy, data, strlen(data)*sizeof(char*));
 
   // __builtin_dump_struct(fbwrapper, &printf);
+
+  // create two wrappers for the copied data:
   __CudaFatBinaryWrapper *fbwrapper = reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
   __CudaFatBinaryWrapper *newWrapper = new __CudaFatBinaryWrapper(*fbwrapper);
 
+  // create the binary header
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
 
-  //make a copy of the binary:
+  //make a copy of the binary header:
   char *header_buffer = new char[sizeof(*header)*sizeof(__ClangOffloadBundleHeader*)];
   std::memcpy(header_buffer, header, sizeof(*header)*sizeof(__ClangOffloadBundleHeader*));
 
