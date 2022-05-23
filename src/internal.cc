@@ -16,8 +16,6 @@
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
 elfio::Note getNoteSection(elfio::File* elf);
-nlohmann::json getKernelArgumentMetaData(elfio::File* elf);
-
 void editNoteSectionData(elfio::Note &note);
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) { 
@@ -86,9 +84,26 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   }
 
   elfio::Note noteSec = getNoteSection(&elfFile);
-  editNoteSectionData(noteSec);
+  editNoteSectionData(noteSec); 
+  
+  //OK, now I have to take this note section, put it back into the elf file, and then get a new header from it...
+  auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
 
+  //memcopy the modified note desc into the memory space of the original note desc
+  // Elf64_Shdr *new_note_hdr = reinterpret_cast<Elf64_Shdr *>(noteSec.Blob());
+  // Elf64_Shdr *old_note_hdr = reinterpret_cast<Elf64_Shdr *>(origNoteSec->Blob());
+
+  // printf("%u | %u | %lu\n", new_note_hdr->sh_name, new_note_hdr->sh_type, new_note_hdr->sh_addr);
+  // printf("%u | %u | %lu\n", old_note_hdr->sh_name, old_note_hdr->sh_type, old_note_hdr->sh_addr);
+
+  // std::memcpy(old_note_hdr, new_note_hdr, noteSec.TotalSize()); //seg faults
+
+  //turns out, new_note_hdr and old_note_hdr have the same address. That's probs why this seg faults
+
+  //Right now, this doesn't do anything.
   modifiedHeader = reinterpret_cast<__ClangOffloadBundleHeader *>(reinterpret_cast<uintptr_t>(elfFile.Blob()) - desc->offset);
+
+
   // print instructions in elf .text section
   // To get the contents of the section, dump .sh_size bytes located at (char *)p + shdr->sh_offset.
 
@@ -170,7 +185,10 @@ std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data
   return ret;
 }
 
-
+// This function returns the note section of an elf file as an elfio::Note obj
+// Uses the same algorithm that getKernelArgumentMetaData in Rhipo uses.
+// By passing elfio::Note.desc into nlohmann::json::from_msgpack(), you can get
+// the note section as a JSON file. elfio::Note.desc is just a big string.
 elfio::Note getNoteSection(elfio::File* elf) {
   printf("Here in %s\n", __FUNCTION__);
 
@@ -190,31 +208,10 @@ elfio::Note getNoteSection(elfio::File* elf) {
   }
 }
 
-// Shamelessly copied from RHIPO:
-// Returns the binary data of the .note section of an ELF file in JSON format 
-nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
-  printf("Here in %s\n", __FUNCTION__);
-
-  auto note_section = elf->GetSectionByType("SHT_NOTE");
-  if (!note_section) {
-    panic("note section is not found");
-  }
-
-  char* blog = note_section->Blob();
-  int offset = 0;
-  while (offset < note_section->size) {
-    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
-    offset += note->TotalSize();
-    if (note->name.rfind("AMDGPU") == 0) {
-      auto json = nlohmann::json::from_msgpack(note->desc);
-      return json;
-    }
-  }
-
-  panic("note not found");
-  return nlohmann::json();
-}
-
+// This function changes things in the note section by taking an elfio::Note obj
+// and passes the desc param it into a nlohmann::json obj. Then this edits the
+// desc param, and passes that back into the elfio::Note obj, which is why we
+// pass the note obj by reference.
 void editNoteSectionData(elfio::Note &note) {
   printf("Here in %s\n", __FUNCTION__);
   auto json = nlohmann::json::from_msgpack(note.desc);
@@ -227,5 +224,5 @@ void editNoteSectionData(elfio::Note &note) {
   //to_msgpack() returns std::vector<std::uint8_t> which is "great"...
   auto blog = nlohmann::json::to_msgpack(json);
   std::string newDesc(blog.begin(), blog.end());
-  note.desc = newDesc;
+  note.desc = newDesc;       
 }
