@@ -15,9 +15,10 @@
 
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
+elfio::Note getNoteSection(elfio::File* elf);
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf);
 
-void editNoteSectionData(nlohmann::json noteData, elfio::File* elf);
+void editNoteSectionData(elfio::Note &note);
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) { 
   printf("Here in %s\n", __FUNCTION__);
@@ -33,11 +34,9 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   __CudaFatBinaryWrapper *fbwrapper = reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
   __CudaFatBinaryWrapper *newWrapper = new __CudaFatBinaryWrapper(*fbwrapper);
 
-  // create the binary header
-  // __ClangOffloadBundleHeader *header = fbwrapper->binary;
   __ClangOffloadBundleHeader *header = newWrapper->binary;
-
-  //make a copy of the binary header:
+  __ClangOffloadBundleHeader *modifiedHeader;
+  //make a copy of the wrapper header:
   char *header_buffer = new char[sizeof(*header)*sizeof(__ClangOffloadBundleHeader*)];
   std::memcpy(header_buffer, header, sizeof(*header)*sizeof(__ClangOffloadBundleHeader*));
 
@@ -63,7 +62,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   //We want this one, not the "host-x86_64-unknown-linux" bc that one does not have vgpr count
   std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908", sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
-
+  elfio::File elfFile; // file object that will contain our ELF binary info
 
   for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next())
   {
@@ -75,29 +74,21 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
     if(triple.compare(curr_target)) continue;
     printf("Desc triple: %s \n", &desc->triple[i]);
-    printf("Desc offset: %lu \n", desc->offset);
 
     // std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
     //                     desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
 
 
     //create code object:
-    auto *codeobj = reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
-    
-    elfio::File elfFile; // file object that will contain our ELF binary info
-    nlohmann::json noteSectionData; // JSON object that will store note data
-    
-    // load elf file from code object:
-    elfFile = elfFile.FromMem(const_cast<char*>(codeobj));
+    char *codeobj = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
 
-    // get note data from ELF binary:
-    noteSectionData = getKernelArgumentMetaData(&elfFile);
-
-
-    
-
+    elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
 
+  elfio::Note noteSec = getNoteSection(&elfFile);
+  editNoteSectionData(noteSec);
+
+  modifiedHeader = reinterpret_cast<__ClangOffloadBundleHeader *>(reinterpret_cast<uintptr_t>(elfFile.Blob()) - desc->offset);
   // print instructions in elf .text section
   // To get the contents of the section, dump .sh_size bytes located at (char *)p + shdr->sh_offset.
 
@@ -138,14 +129,15 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   
   
   // small modification to the binary (probably break the program)
-  header_buffer[8096+128] = 'h';
+  // header_buffer[8096+128] = 'h';
 
   //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
-  
-  // set the pointer to the copy of the header buffer
-  newWrapper->binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
 
-  // newWrapper->binary = moddedBinary;
+
+  // set the pointer to the copy of the header buffer
+  // newWrapper->binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+
+  newWrapper->binary = modifiedHeader;
 
   //pass new wrapper into original register fat binary func:
   auto modules = call_original_hip_register_fat_binary(newWrapper); 
@@ -178,6 +170,26 @@ std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data
   return ret;
 }
 
+
+elfio::Note getNoteSection(elfio::File* elf) {
+  printf("Here in %s\n", __FUNCTION__);
+
+  auto note_section = elf->GetSectionByType("SHT_NOTE");
+  if (!note_section) {
+    panic("note section is not found");
+  }
+
+  char* blog = note_section->Blob();
+  int offset = 0;
+  while (offset < note_section->size) {
+    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
+    offset += note->TotalSize();
+    if (note->name.rfind("AMDGPU") == 0) {
+      return elfio::Note(elf, note->Blob());
+    }
+  }
+}
+
 // Shamelessly copied from RHIPO:
 // Returns the binary data of the .note section of an ELF file in JSON format 
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
@@ -193,7 +205,6 @@ nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
   while (offset < note_section->size) {
     auto note = std::make_unique<elfio::Note>(elf, blog + offset);
     offset += note->TotalSize();
-
     if (note->name.rfind("AMDGPU") == 0) {
       auto json = nlohmann::json::from_msgpack(note->desc);
       return json;
@@ -204,18 +215,17 @@ nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
   return nlohmann::json();
 }
 
-void editNoteSectionData(nlohmann::json newNote, elfio::File* elf) {
+void editNoteSectionData(elfio::Note &note) {
   printf("Here in %s\n", __FUNCTION__);
+  auto json = nlohmann::json::from_msgpack(note.desc);
 
-  auto note_section = elf->GetSectionByType("SHT_NOTE");
-  if (!note_section) {
-    panic("note section is not found");
-  }
-  char* blog = note_section->Blob();
+  // I'm gonna make a change here for now. If/when this function is implemented,
+  // changes to the note section might be done elsewhere.
+  json["amdhsa.target"] = "gibberish";  
+  json["amdhsa.kernels"][0][".vgpr_count"] = 5000000;
 
-  int offset = note_section->offset;
-
-  //to_msgpack() returns std::vector<std::uint8_t>
-  //so we cast that vector as a char ptr 
-  auto newBinary = reinterpret_cast<char *>(nlohmann::json::to_msgpack(newNote)[0]);
+  //to_msgpack() returns std::vector<std::uint8_t> which is "great"...
+  auto blog = nlohmann::json::to_msgpack(json);
+  std::string newDesc(blog.begin(), blog.end());
+  note.desc = newDesc;
 }
