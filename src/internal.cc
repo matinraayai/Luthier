@@ -16,6 +16,7 @@
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
 elfio::Note getNoteSection(elfio::File* elf);
+char * getNoteSection2(elfio::File* elf);
 void editNoteSectionData(elfio::Note &note);
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) { 
@@ -30,9 +31,11 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // create two wrappers for the copied data:
   __CudaFatBinaryWrapper *fbwrapper = reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
-  __CudaFatBinaryWrapper *newWrapper = new __CudaFatBinaryWrapper(*fbwrapper);
+  __CudaFatBinaryWrapper newWrapper(*fbwrapper);
 
-  __ClangOffloadBundleHeader *header = newWrapper->binary;
+  __CudaFatBinaryWrapper *fbwrapper_copy = &newWrapper;
+
+  __ClangOffloadBundleHeader *header = fbwrapper->binary;
   __ClangOffloadBundleHeader *modifiedHeader;
   //make a copy of the wrapper header:
   char *header_buffer = new char[sizeof(*header)*sizeof(__ClangOffloadBundleHeader*)];
@@ -84,10 +87,39 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   }
 
   elfio::Note noteSec = getNoteSection(&elfFile);
+
+
+
   editNoteSectionData(noteSec); 
+
+  char *noteSec2 = reinterpret_cast<char*>(noteSec.Blob());
   
+    //char *noteSec2 = getNoteSection2(&elfFile);
+   //for (int i = 0; i < 1161; i ++) {
+   //  printf("%c\n",noteSec2[i]);
+   //}
+
+   //make a copy of the binary
+   
+   // not sure if size is correct
+   std::memcpy(header_buffer, fbwrapper->binary, 15000);
+
+   // small modification to the binary (probably break the program)
+  printf("header_bbuffer\n");
+  for (int i = 512 + 4000; i < 1680 + 4000; i ++) {
+     
+     printf("%c\n",header_buffer[i]);
+   }
+
+   //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
+
+   // set the pointer to the copy of the header buffer
+   newWrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+ 
   //OK, now I have to take this note section, put it back into the elf file, and then get a new header from it...
   auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
+
+  
 
   //memcopy the modified note desc into the memory space of the original note desc
   // Elf64_Shdr *new_note_hdr = reinterpret_cast<Elf64_Shdr *>(noteSec.Blob());
@@ -152,10 +184,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // set the pointer to the copy of the header buffer
   // newWrapper->binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
 
-  newWrapper->binary = modifiedHeader;
-
   //pass new wrapper into original register fat binary func:
-  auto modules = call_original_hip_register_fat_binary(newWrapper); 
+  auto modules = call_original_hip_register_fat_binary(fbwrapper_copy); 
 
   // printf("Number of modules: %zu\n", modules->size());
 
@@ -203,7 +233,28 @@ elfio::Note getNoteSection(elfio::File* elf) {
     auto note = std::make_unique<elfio::Note>(elf, blog + offset);
     offset += note->TotalSize();
     if (note->name.rfind("AMDGPU") == 0) {
+      printf("Offset %d\n", offset);
+      printf("Total Size %d\n", note->TotalSize());
       return elfio::Note(elf, note->Blob());
+    }
+  }
+}
+
+char * getNoteSection2(elfio::File* elf) {
+  printf("Here in %s\n", __FUNCTION__);
+
+  auto note_section = elf->GetSectionByType("SHT_NOTE");
+  if (!note_section) {
+    panic("note section is not found");
+  }
+
+  char* blog = note_section->Blob();
+  int offset = 0;
+  while (offset < note_section->size) {
+    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
+    offset += note->TotalSize();
+    if (note->name.rfind("AMDGPU") == 0) {
+      return note->Blob();
     }
   }
 }
