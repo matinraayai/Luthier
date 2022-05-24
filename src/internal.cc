@@ -88,17 +88,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   elfio::Note noteSec = getNoteSection(&elfFile);
 
-
-
   editNoteSectionData(noteSec); 
 
   char *noteSec2 = reinterpret_cast<char*>(noteSec.Blob());
   
-    //char *noteSec2 = getNoteSection2(&elfFile);
-   //for (int i = 0; i < 1161; i ++) {
-   //  printf("%c\n",noteSec2[i]);
-   //}
-
    //make a copy of the binary
    
    // not sure if size is correct
@@ -106,9 +99,12 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
    // small modification to the binary (probably break the program)
   printf("header_bbuffer\n");
-  for (int i = 512 + 4000; i < 1680 + 4000; i ++) {
-     
-     printf("%c\n",header_buffer[i]);
+  // this is the offset where the actual ELF starts in the fbwrapper->binary
+  int codeobjstart = 4096;
+  // copy edited note section back to object
+  for (int i = 512 + codeobjstart; i < 1610 + codeobjstart; i ++) {
+
+     header_buffer[i] = noteSec2[i-codeobjstart-512];
    }
 
    //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
@@ -116,73 +112,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
    // set the pointer to the copy of the header buffer
    newWrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
  
-  //OK, now I have to take this note section, put it back into the elf file, and then get a new header from it...
   auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
 
-  
-
-  //memcopy the modified note desc into the memory space of the original note desc
-  // Elf64_Shdr *new_note_hdr = reinterpret_cast<Elf64_Shdr *>(noteSec.Blob());
-  // Elf64_Shdr *old_note_hdr = reinterpret_cast<Elf64_Shdr *>(origNoteSec->Blob());
-
-  // printf("%u | %u | %lu\n", new_note_hdr->sh_name, new_note_hdr->sh_type, new_note_hdr->sh_addr);
-  // printf("%u | %u | %lu\n", old_note_hdr->sh_name, old_note_hdr->sh_type, old_note_hdr->sh_addr);
-
-  // std::memcpy(old_note_hdr, new_note_hdr, noteSec.TotalSize()); //seg faults
-
-  //turns out, new_note_hdr and old_note_hdr have the same address. That's probs why this seg faults
-
-  //Right now, this doesn't do anything.
-  modifiedHeader = reinterpret_cast<__ClangOffloadBundleHeader *>(reinterpret_cast<uintptr_t>(elfFile.Blob()) - desc->offset);
-
-
-  // print instructions in elf .text section
-  // To get the contents of the section, dump .sh_size bytes located at (char *)p + shdr->sh_offset.
-
-  // auto modules = new std::vector<hipModule_t>(device_count);
-  
-
-  //   std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
-  //   if (triple.compare(AMDGCN_AMDHSA_TRIPLE)) {
-  //     continue;
-  //   }
-
-  //   std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
-  //                      desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
-  //   printf("Found bundle for %s\n", target.c_str());
-
-  //   for (int device_id = 1; device_id <= device_count; device_id++) {
-  //     struct hipDeviceProp_t device_prop;
-  //     err = hipGetDeviceProperties(&device_prop, device_id);
-  //     if (err != hipSuccess) {
-  //       panic("cannot get device properties.");
-  //     }
-
-  //     ihipModule_t* module = new ihipModule_t;
-
-  //     auto image_ptr = reinterpret_cast<uintptr_t>(header) + desc->offset;
-
-  //     std::string image{reinterpret_cast<const char*>(image_ptr),
-  //     desc->size};
-  //     // __hipDumpCodeObject(image);
-
-  //     module->executable = hsa_executable_t();
-  //     module->executable.handle = reinterpret_cast<uint64_t>(image_ptr);
-
-  //     modules->at(device_id - 1) = module;
-  //   }
-  // }
-
-  
-  
-  // small modification to the binary (probably break the program)
-  // header_buffer[8096+128] = 'h';
-
-  //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
-
-
-  // set the pointer to the copy of the header buffer
-  // newWrapper->binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
 
   //pass new wrapper into original register fat binary func:
   auto modules = call_original_hip_register_fat_binary(fbwrapper_copy); 
@@ -240,25 +171,6 @@ elfio::Note getNoteSection(elfio::File* elf) {
   }
 }
 
-char * getNoteSection2(elfio::File* elf) {
-  printf("Here in %s\n", __FUNCTION__);
-
-  auto note_section = elf->GetSectionByType("SHT_NOTE");
-  if (!note_section) {
-    panic("note section is not found");
-  }
-
-  char* blog = note_section->Blob();
-  int offset = 0;
-  while (offset < note_section->size) {
-    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
-    offset += note->TotalSize();
-    if (note->name.rfind("AMDGPU") == 0) {
-      return note->Blob();
-    }
-  }
-}
-
 // This function changes things in the note section by taking an elfio::Note obj
 // and passes the desc param it into a nlohmann::json obj. Then this edits the
 // desc param, and passes that back into the elfio::Note obj, which is why we
@@ -270,7 +182,7 @@ void editNoteSectionData(elfio::Note &note) {
   // I'm gonna make a change here for now. If/when this function is implemented,
   // changes to the note section might be done elsewhere.
   json["amdhsa.target"] = "gibberish";  
-  json["amdhsa.kernels"][0][".vgpr_count"] = 5000000;
+  json["amdhsa.kernels"][0][".vgpr_count"] = 10;
 
   //to_msgpack() returns std::vector<std::uint8_t> which is "great"...
   auto blog = nlohmann::json::to_msgpack(json);
