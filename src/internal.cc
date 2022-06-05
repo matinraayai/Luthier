@@ -7,7 +7,7 @@
 #include <hip/hip_runtime.h>
 #include <elf.h>
 #include <string.h>
-
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -18,6 +18,9 @@ std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data
 elfio::Note getNoteSection(elfio::File* elf);
 char * getNoteSection2(elfio::File* elf);
 void editNoteSectionData(elfio::Note &note);
+void verifyNoteSectionData(std::string note);
+std::__cxx11::string editReturnNoteSectionData(elfio::Note &note);
+
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) { 
   printf("Here in %s\n", __FUNCTION__);
@@ -37,9 +40,6 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
   __ClangOffloadBundleHeader *modifiedHeader;
-  //make a copy of the wrapper header:
-  char *header_buffer = new char[sizeof(*header)*sizeof(__ClangOffloadBundleHeader*)];
-  std::memcpy(header_buffer, header, sizeof(*header)*sizeof(__ClangOffloadBundleHeader*));
 
   // printf("input data address: %p | data copy address: %p\n", data, data_copy);
   // printf("header address %p | header buffer address: %p \n", header, header_buffer);
@@ -64,13 +64,13 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   //We want this one, not the "host-x86_64-unknown-linux" bc that one does not have vgpr count
   std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908", sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
   elfio::File elfFile; // file object that will contain our ELF binary info
+  elfio::File elfFile2; // file object that will contain our ELF binary info
 
   for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next())
   {
 
     // printf("Printing desc\n");
     // __builtin_dump_struct(&header->desc[i], &printf);
-
     std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
 
     if(triple.compare(curr_target)) continue;
@@ -78,57 +78,95 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
     // std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
     //                     desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
-
-
     //create code object:
     char *codeobj = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
-
+    printf("Address of codeobj is %p\n", codeobj);
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
 
   elfio::Note noteSec = getNoteSection(&elfFile);
 
-  editNoteSectionData(noteSec); 
+  std::string newNote;
 
+  newNote = editReturnNoteSectionData(noteSec);
+
+  verifyNoteSectionData(newNote); 
+
+  elfio::Note noteSec4 = getNoteSection(&elfFile);
+ 
   char *noteSec2 = reinterpret_cast<char*>(noteSec.Blob());
+  //make a copy of the binary
   
-   //make a copy of the binary
-   
-   // not sure if size is correct
-   std::memcpy(header_buffer, fbwrapper->binary, 15000);
+  // not sure if size is correct
+  //make a copy of the wrapper header:
+  char header_buffer[500000];
+  
+  std::memcpy(header_buffer, fbwrapper->binary, 20000);
+
+  char temp[sizeof(newNote)*sizeof(std::string)];
+  std::strcpy(temp, newNote.c_str());
 
    // small modification to the binary (probably break the program)
-  printf("header_bbuffer\n");
+  printf("header_buffer\n");
   // this is the offset where the actual ELF starts in the fbwrapper->binary
   int codeobjstart = 4096;
+  int extraoffset = 532;
+
+  printf("size of nnew note %d", sizeof(newNote)*sizeof(char));
   // copy edited note section back to object
-  for (int i = 512 + codeobjstart; i < 1610 + codeobjstart; i ++) {
+  for (int i = extraoffset + codeobjstart; i < extraoffset + noteSec.desc_size + codeobjstart; i ++) {
+     
+     header_buffer[i] = newNote[i-codeobjstart-extraoffset];
 
-     header_buffer[i] = noteSec2[i-codeobjstart-512];
    }
-
    //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
 
    // set the pointer to the copy of the header buffer
-   newWrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+  newWrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
  
   auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
 
-
   //pass new wrapper into original register fat binary func:
-  auto modules = call_original_hip_register_fat_binary(fbwrapper_copy); 
+  auto modules = call_original_hip_register_fat_binary(&newWrapper); 
 
-  // printf("Number of modules: %zu\n", modules->size());
+  __ClangOffloadBundleHeader *header2 = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+  
+  const __ClangOffloadBundleDesc *desc2 = &header2->desc[0];
+  // printf("Printing desc\n");
+  // __builtin_dump_struct(desc, &printf);
+
+
+  for (uint64_t i = 0; i < header2->numBundles; ++i, desc2 = desc2->next())
+  {
+
+    // printf("Printing desc\n");
+    // __builtin_dump_struct(&header->desc[i], &printf);
+
+    std::string triple{&desc2->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
+
+    if(triple.compare(curr_target)) continue;
+    printf("Desc triple: %s \n", &desc2->triple[i]);
+
+    char *codeobj2 = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header2) + desc2->offset);
+
+    elfFile2 = elfFile.FromMem(codeobj2); // load elf file from code object
+  }
+
+  noteSec = getNoteSection(&elfFile2);
+
+  verifyNoteSectionData(noteSec.desc); 
+  
+  printf("Number of modules: %ul\n", modules->size());
 
   // __builtin_dump_struct(modules,&printf);
 
-  // for (auto module : *modules) {
-  //       count +=1;
+ // for (auto module : *modules) {
+         //count +=1;
 
-  //       if (count > 2) {
-  //          printf(module->fileName.c_str());
-  ///         __builtin_dump_struct(module,&printf);
-  //      };
+        //printf("here");
+        //printf(module->fileName.c_str());
+        //__builtin_dump_struct(module,&printf);
+      
   // printf("%d\n", count);
 
   //}
@@ -157,11 +195,13 @@ elfio::Note getNoteSection(elfio::File* elf) {
   if (!note_section) {
     panic("note section is not found");
   }
+  
+  char* blob = note_section->Blob();
 
-  char* blog = note_section->Blob();
+  printf("Address of note_section is %p\n", blob);
   int offset = 0;
   while (offset < note_section->size) {
-    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
+    auto note = std::make_unique<elfio::Note>(elf, blob + offset);
     offset += note->TotalSize();
     if (note->name.rfind("AMDGPU") == 0) {
       printf("Offset %d\n", offset);
@@ -171,21 +211,53 @@ elfio::Note getNoteSection(elfio::File* elf) {
   }
 }
 
-// This function changes things in the note section by taking an elfio::Note obj
+// This function changes the note section by taking an elfio::Note obj
 // and passes the desc param it into a nlohmann::json obj. Then this edits the
 // desc param, and passes that back into the elfio::Note obj, which is why we
 // pass the note obj by reference.
 void editNoteSectionData(elfio::Note &note) {
   printf("Here in %s\n", __FUNCTION__);
   auto json = nlohmann::json::from_msgpack(note.desc);
-
+  
+  std::string dump = json.dump();
+  printf("%s\n", dump);
   // I'm gonna make a change here for now. If/when this function is implemented,
   // changes to the note section might be done elsewhere.
-  json["amdhsa.target"] = "gibberish";  
-  json["amdhsa.kernels"][0][".vgpr_count"] = 10;
-
-  //to_msgpack() returns std::vector<std::uint8_t> which is "great"...
+  //json["amdhsa.target"] = "gibberish";  
+  printf("before %d\n", (int)json["amdhsa.kernels"][0][".vgpr_count"]);
+  json["amdhsa.kernels"][0][".vgpr_count"] = 8;
+  printf("after %d\n", (int)json["amdhsa.kernels"][0][".vgpr_count"]);
+  //to_msgpack() returns std::vector<std::uint8_t> 
   auto blog = nlohmann::json::to_msgpack(json);
   std::string newDesc(blog.begin(), blog.end());
   note.desc = newDesc;       
+}
+
+std::__cxx11::string editReturnNoteSectionData(elfio::Note &note) {
+  printf("Here in %s\n", __FUNCTION__);
+
+  auto json = nlohmann::json::from_msgpack(note.desc);
+  printf("size of old desc %d", note.desc_size);
+  std::string dump = json.dump();
+  printf("%s\n", dump);
+  // I'm gonna make a change here for now. If/when this function is implemented,
+  // changes to the note section might be done elsewhere.
+  //json["amdhsa.target"] = "gibberish";  
+  printf("before %d\n", (int)json["amdhsa.kernels"][0][".vgpr_count"]);
+  json["amdhsa.kernels"][0][".vgpr_count"] = 5;
+  printf("after %d\n", (int)json["amdhsa.kernels"][0][".vgpr_count"]);
+  //to_msgpack() returns std::vector<std::uint8_t> 
+  auto blog = nlohmann::json::to_msgpack(json);
+  std::string newDesc(blog.begin(), blog.end());
+
+  note.desc = newDesc; 
+
+  return newDesc;       
+}
+
+void verifyNoteSectionData(std::string note) {
+  auto json = nlohmann::json::from_msgpack(note);
+  printf("verify %d\n", (int)json["amdhsa.kernels"][0][".vgpr_count"]);
+
+
 }
