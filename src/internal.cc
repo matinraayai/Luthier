@@ -16,6 +16,9 @@
 
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
 elfio::Note getNoteSection(elfio::File* elf);
+
+elfio::Section *getTextSection(elfio::File* elf);
+
 char * getNoteSection2(elfio::File* elf);
 void editNoteSectionData(elfio::Note &note);
 void verifyNoteSectionData(std::string note);
@@ -210,6 +213,23 @@ elfio::Note getNoteSection(elfio::File* elf) {
     }
   }
 }
+
+// This function returns the .text section of an ELF file as an 
+// elfio::Section object.
+elfio::Section* getTextSection(elfio::File* elf) {
+  auto text = elf->GetSectionByName(".text");
+  if(!text) panic("can't find text section");
+  
+  //section name, type, offset, and size are all public members:
+  //printf("Hi! I'm the %s section!!!\n", text->name.c_str());
+  //printf("I'm a %s type section!", text->type.c_str());
+
+  //we can get the section header as a char* with this:
+  //auto textHdr = text->Blob();
+
+  return text;
+}
+
 
 // This function changes the note section by taking an elfio::Note obj
 // and passes the desc param it into a nlohmann::json obj. Then this edits the
