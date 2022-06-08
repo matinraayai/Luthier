@@ -22,15 +22,21 @@ void editNoteSectionData(elfio::Note &note);
 uint64_t getDataSize(__ClangOffloadBundleHeader *header) {
   char *blob = reinterpret_cast<char *>(header);
   auto offset = blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
-
-  __ClangOffloadBundleDesc desc_array[header->numBundles];
-  desc_array = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
-  totalCoSize = 0;
+  std::cout << "num of bundles: " << header->numBundles << "\n";
+  const __ClangOffloadBundleDesc *desc =
+      reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
+  uint64_t totalCoSize = 0;
   for (int i = 0; i < header->numBundles; i++) {
-    totalCoSize += desc_array[i].size;
-    uint64_t trippleSize = desc_array[i].tripleSize;
+    totalCoSize += desc->size;
+    uint64_t trippleSize = desc->tripleSize;
     offset += 8 + 8 + 8 + trippleSize;
+    std::string triple{desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
+    printf("bundle triple name is stored from %p\n", desc->triple);
+    printf("bundle %d offset is %p\n", i, (void *)desc->offset);
+    printf("address after %d th desc is %p\n", i, (void *)offset);
+    desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
   }
+  return 0;
 }
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
@@ -38,105 +44,109 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // copy char* data into new location of size equal to
   // length of data times size of character pointer:
-  char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
-  std::memcpy(data_copy, data, sizeof(__CudaFatBinaryWrapper));
+  // char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
+  // std::memcpy(data_copy, data, sizeof(__CudaFatBinaryWrapper));
 
   // __builtin_dump_struct(fbwrapper, &printf);
 
   // create two wrappers for the copied data:
   __CudaFatBinaryWrapper *fbwrapper =
-      reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy);
+      reinterpret_cast<__CudaFatBinaryWrapper *>(data);
   // __CudaFatBinaryWrapper newWrapper(*fbwrapper);
 
   // __CudaFatBinaryWrapper *fbwrapper_copy = &newWrapper;
 
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
+  printf("The address of header is %p\n", (void *)header);
   // make a copy of the wrapper header:
   uint64_t size = getDataSize(header);
-  char *header_buffer = new char[];
-  std::memcpy(header_buffer, header, sizeof(__ClangOffloadBundleHeader));
 
-  // printf("input data address: %p | data copy address: %p\n", data,
-  // data_copy); printf("header address %p | header buffer address: %p \n",
-  // header, header_buffer);
+  // char *header_buffer = new char[];
+  // std::memcpy(header_buffer, header, sizeof(__ClangOffloadBundleHeader));
 
-  std::string magic(reinterpret_cast<char *>(header),
-                    sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
-  if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC)) {
-    printf("Invalid magic: %s\n Expected: %s\n", magic.c_str(),
-           CLANG_OFFLOAD_BUNDLER_MAGIC);
-    return nullptr;
-  }
+  // // printf("input data address: %p | data copy address: %p\n", data,
+  // // data_copy); printf("header address %p | header buffer address: %p \n",
+  // // header, header_buffer);
 
-  int device_count = 0;
-  int err = hipGetDeviceCount(&device_count);
-  if (err != hipSuccess) {
-    panic("cannot get device count.");
-  }
+  // std::string magic(reinterpret_cast<char *>(header),
+  //                   sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
+  // if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC)) {
+  //   printf("Invalid magic: %s\n Expected: %s\n", magic.c_str(),
+  //          CLANG_OFFLOAD_BUNDLER_MAGIC);
+  //   return nullptr;
+  // }
 
-  const __ClangOffloadBundleDesc *desc = &header->desc[0];
-  // printf("Printing desc\n");
-  // __builtin_dump_struct(desc, &printf);
+  // int device_count = 0;
+  // int err = hipGetDeviceCount(&device_count);
+  // if (err != hipSuccess) {
+  //   panic("cannot get device count.");
+  // }
 
-  // We want this one, not the "host-x86_64-unknown-linux" bc that one does not
-  // have vgpr count
-  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908",
-                          sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
-  elfio::File elfFile; // file object that will contain our ELF binary info
+  // const __ClangOffloadBundleDesc *desc = &header->desc[0];
+  // // printf("Printing desc\n");
+  // // __builtin_dump_struct(desc, &printf);
 
-  for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next()) {
+  // // We want this one, not the "host-x86_64-unknown-linux" bc that one does
+  // not
+  // // have vgpr count
+  // std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908",
+  //                         sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
+  // elfio::File elfFile; // file object that will contain our ELF binary info
 
-    // printf("Printing desc\n");
-    // __builtin_dump_struct(&header->desc[i], &printf);
+  // for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next()) {
 
-    std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
+  //   // printf("Printing desc\n");
+  //   // __builtin_dump_struct(&header->desc[i], &printf);
 
-    if (triple.compare(curr_target))
-      continue;
-    printf("Desc triple: %s \n", &desc->triple[i]);
+  //   std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
 
-    // std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
-    //                     desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
+  //   if (triple.compare(curr_target))
+  //     continue;
+  //   printf("Desc triple: %s \n", &desc->triple[i]);
 
-    // create code object:
-    char *codeobj = reinterpret_cast<char *>(
-        reinterpret_cast<uintptr_t>(header) + desc->offset);
+  //   // std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
+  //   //                     desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
 
-    elfFile = elfFile.FromMem(codeobj); // load elf file from code object
-  }
+  //   // create code object:
+  //   char *codeobj = reinterpret_cast<char *>(
+  //       reinterpret_cast<uintptr_t>(header) + desc->offset);
 
-  elfio::Note noteSec = getNoteSection(&elfFile);
+  //   elfFile = elfFile.FromMem(codeobj); // load elf file from code object
+  // }
 
-  editNoteSectionData(noteSec);
+  // elfio::Note noteSec = getNoteSection(&elfFile);
 
-  char *noteSec2 = reinterpret_cast<char *>(noteSec.Blob());
+  // editNoteSectionData(noteSec);
 
-  // make a copy of the binary
+  // char *noteSec2 = reinterpret_cast<char *>(noteSec.Blob());
 
-  // not sure if size is correct
-  std::memcpy(header_buffer, fbwrapper->binary, 15000);
+  // // make a copy of the binary
 
-  // small modification to the binary (probably break the program)
-  printf("header_bbuffer\n");
-  // this is the offset where the actual ELF starts in the fbwrapper->binary
-  int codeobjstart = 4096;
-  // copy edited note section back to object
-  for (int i = 512 + codeobjstart; i < 1610 + codeobjstart; i++) {
+  // // not sure if size is correct
+  // std::memcpy(header_buffer, fbwrapper->binary, 15000);
 
-    header_buffer[i] = noteSec2[i - codeobjstart - 512];
-  }
+  // // small modification to the binary (probably break the program)
+  // printf("header_bbuffer\n");
+  // // this is the offset where the actual ELF starts in the fbwrapper->binary
+  // int codeobjstart = 4096;
+  // // copy edited note section back to object
+  // for (int i = 512 + codeobjstart; i < 1610 + codeobjstart; i++) {
 
-  // TODO: Copy the modified note section to header_buffer. If it's exactly the
-  // same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
+  //   header_buffer[i] = noteSec2[i - codeobjstart - 512];
+  // }
 
-  // set the pointer to the copy of the header buffer
-  newWrapper.binary =
-      reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+  // // TODO: Copy the modified note section to header_buffer. If it's exactly
+  // the
+  // // same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
 
-  auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
+  // // set the pointer to the copy of the header buffer
+  // newWrapper.binary =
+  //     reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+
+  // auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
 
   // pass new wrapper into original register fat binary func:
-  auto modules = call_original_hip_register_fat_binary(fbwrapper_copy);
+  auto modules = call_original_hip_register_fat_binary(data);
 
   // printf("Number of modules: %zu\n", modules->size());
 
