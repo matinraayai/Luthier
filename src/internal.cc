@@ -19,22 +19,25 @@ elfio::Note getNoteSection(elfio::File *elf);
 char *getNoteSection2(elfio::File *elf);
 void editNoteSectionData(elfio::Note &note);
 
-uint64_t getDataSize(__ClangOffloadBundleHeader *header) {
+uint64_t getHeaderSize(__ClangOffloadBundleHeader *header) {
   char *blob = reinterpret_cast<char *>(header);
   auto offset = blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
   std::cout << "num of bundles: " << header->numBundles << "\n";
   const __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
   uint64_t totalCoSize = 0;
-  for (int i = 0; i < header->numBundles; i++) {
+  for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
     totalCoSize += desc->size;
     uint64_t trippleSize = desc->tripleSize;
     offset += 8 + 8 + 8 + trippleSize;
-    std::string triple{desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
-    printf("bundle triple name is stored from %p\n", desc->triple);
+    std::string triple{desc->triple, desc->tripleSize};
+    std::cout << "triple name is " << triple << "\n";
+    std::cout << "desc size is " << desc->size << "\n";
+    printf("desc struct is stored from address%p\n", (void *)desc);
+    printf("bundle triple name is stored from address %p\n", desc->triple);
     printf("bundle %d offset is %p\n", i, (void *)desc->offset);
     printf("address after %d th desc is %p\n", i, (void *)offset);
-    desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
+    // desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
   }
   return 0;
 }
@@ -42,27 +45,40 @@ uint64_t getDataSize(__ClangOffloadBundleHeader *header) {
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   printf("Here in %s\n", __FUNCTION__);
 
-  // copy char* data into new location of size equal to
-  // length of data times size of character pointer:
-  // char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
-  // std::memcpy(data_copy, data, sizeof(__CudaFatBinaryWrapper));
+  char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
+  std::memcpy(data_copy, data, sizeof(__CudaFatBinaryWrapper));
 
-  // __builtin_dump_struct(fbwrapper, &printf);
-
-  // create two wrappers for the copied data:
   __CudaFatBinaryWrapper *fbwrapper =
       reinterpret_cast<__CudaFatBinaryWrapper *>(data);
-  // __CudaFatBinaryWrapper newWrapper(*fbwrapper);
-
-  // __CudaFatBinaryWrapper *fbwrapper_copy = &newWrapper;
 
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
   printf("The address of header is %p\n", (void *)header);
-  // make a copy of the wrapper header:
-  uint64_t size = getDataSize(header);
 
-  // char *header_buffer = new char[];
-  // std::memcpy(header_buffer, header, sizeof(__ClangOffloadBundleHeader));
+  uint64_t coSize;
+  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
+  char *blob = reinterpret_cast<char *>(header);
+  uint64_t offset = blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
+  std::cout << "num of bundles: " << header->numBundles << "\n";
+  const __ClangOffloadBundleDesc *desc =
+      reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
+
+  for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
+    printf("desc struct is stored from address%p\n", (void *)desc);
+    uint64_t trippleSize = desc->tripleSize;
+    offset += 8 + 8 + 8 + trippleSize;
+    printf("address after %d th desc is %p\n", i, (void *)offset);
+    std::string triple{desc->triple, desc->tripleSize};
+    std::cout << "triple " << triple << " 's offset is " << desc->offset
+              << "\n";
+    if (triple.compare(curr_target)) {
+      continue;
+    }
+    std::cout << "matching triple name is " << triple << "\n";
+    std::cout << "desc size is " << desc->size << "\n";
+    coSize = desc->size;
+  }
+  char *header_copy = new char[offset - (uint64_t)header];
+  std::memcpy(header_copy, header, sizeof(__ClangOffloadBundleHeader));
 
   // // printf("input data address: %p | data copy address: %p\n", data,
   // // data_copy); printf("header address %p | header buffer address: %p \n",
@@ -89,23 +105,18 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // // We want this one, not the "host-x86_64-unknown-linux" bc that one does
   // not
   // // have vgpr count
-  // std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908",
-  //                         sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
-  // elfio::File elfFile; // file object that will contain our ELF binary info
+  // std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
+  // std::cout << "curr_target is " << curr_target << "\n";
+  // elfio::File elfFile;  // file object that will contain our ELF binary info
+  // elfio::File elfFile2; // file object that will contain our ELF binary info
 
   // for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next()) {
 
-  //   // printf("Printing desc\n");
-  //   // __builtin_dump_struct(&header->desc[i], &printf);
-
-  //   std::string triple{&desc->triple[0], sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
-
+  //   std::string triple{desc->triple, desc->tripleSize};
+  //   std::cout << "triple is " << triple << "\n";
   //   if (triple.compare(curr_target))
   //     continue;
-  //   printf("Desc triple: %s \n", &desc->triple[i]);
-
-  //   // std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
-  //   //                     desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
+  //   std::cout << "matching triple is " << triple << "\n";
 
   //   // create code object:
   //   char *codeobj = reinterpret_cast<char *>(
@@ -127,8 +138,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // // small modification to the binary (probably break the program)
   // printf("header_bbuffer\n");
-  // // this is the offset where the actual ELF starts in the fbwrapper->binary
-  // int codeobjstart = 4096;
+  // // this is the offset where the actual ELF starts in the
+  // fbwrapper->binary int codeobjstart = 4096;
   // // copy edited note section back to object
   // for (int i = 512 + codeobjstart; i < 1610 + codeobjstart; i++) {
 
@@ -137,7 +148,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // // TODO: Copy the modified note section to header_buffer. If it's exactly
   // the
-  // // same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
+  // // same size, might be OK to ignore ELF offsets. Otherwise, adjust
+  // offsets.
 
   // // set the pointer to the copy of the header buffer
   // newWrapper.binary =
@@ -178,8 +190,8 @@ call_original_hip_register_fat_binary(const void *data) {
 
 // This function returns the note section of an elf file as an elfio::Note obj
 // Uses the same algorithm that getKernelArgumentMetaData in Rhipo uses.
-// By passing elfio::Note.desc into nlohmann::json::from_msgpack(), you can get
-// the note section as a JSON file. elfio::Note.desc is just a big string.
+// By passing elfio::Note.desc into nlohmann::json::from_msgpack(), you can
+// get the note section as a JSON file. elfio::Note.desc is just a big string.
 elfio::Note getNoteSection(elfio::File *elf) {
   printf("Here in %s\n", __FUNCTION__);
 
@@ -201,16 +213,16 @@ elfio::Note getNoteSection(elfio::File *elf) {
   }
 }
 
-// This function changes things in the note section by taking an elfio::Note obj
-// and passes the desc param it into a nlohmann::json obj. Then this edits the
-// desc param, and passes that back into the elfio::Note obj, which is why we
-// pass the note obj by reference.
+// This function changes things in the note section by taking an elfio::Note
+// obj and passes the desc param it into a nlohmann::json obj. Then this edits
+// the desc param, and passes that back into the elfio::Note obj, which is why
+// we pass the note obj by reference.
 void editNoteSectionData(elfio::Note &note) {
   printf("Here in %s\n", __FUNCTION__);
   auto json = nlohmann::json::from_msgpack(note.desc);
   std::cout << std::setw(4) << json << '\n';
-  // I'm gonna make a change here for now. If/when this function is implemented,
-  // changes to the note section might be done elsewhere.
+  // I'm gonna make a change here for now. If/when this function is
+  // implemented, changes to the note section might be done elsewhere.
   json["amdhsa.target"] = "gibberish";
   json["amdhsa.kernels"][0][".vgpr_count"] = 10;
 
