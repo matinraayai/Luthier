@@ -61,7 +61,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   std::cout << "num of bundles: " << header->numBundles << "\n";
   const __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
-
+elfio:
+  File elfFile;
   for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
     printf("desc struct is stored from address%p\n", (void *)desc);
     uint64_t trippleSize = desc->tripleSize;
@@ -76,47 +77,15 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     std::cout << "matching triple name is " << triple << "\n";
     std::cout << "desc size is " << desc->size << "\n";
     coSize = desc->size;
+    char *codeobj = reinterpret_cast<char *>(
+        reinterpret_cast<uintptr_t>(header) + desc->offset);
+
+    elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
   char *header_copy = new char[offset - (uint64_t)header];
   std::memcpy(header_copy, header, sizeof(__ClangOffloadBundleHeader));
 
-  // // printf("input data address: %p | data copy address: %p\n", data,
-  // // data_copy); printf("header address %p | header buffer address: %p \n",
-  // // header, header_buffer);
-
-  // std::string magic(reinterpret_cast<char *>(header),
-  //                   sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
-  // if (magic.compare(CLANG_OFFLOAD_BUNDLER_MAGIC)) {
-  //   printf("Invalid magic: %s\n Expected: %s\n", magic.c_str(),
-  //          CLANG_OFFLOAD_BUNDLER_MAGIC);
-  //   return nullptr;
-  // }
-
-  // int device_count = 0;
-  // int err = hipGetDeviceCount(&device_count);
-  // if (err != hipSuccess) {
-  //   panic("cannot get device count.");
-  // }
-
-  // const __ClangOffloadBundleDesc *desc = &header->desc[0];
-  // // printf("Printing desc\n");
-  // // __builtin_dump_struct(desc, &printf);
-
-  // // We want this one, not the "host-x86_64-unknown-linux" bc that one does
-  // not
-  // // have vgpr count
-  // std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
-  // std::cout << "curr_target is " << curr_target << "\n";
-  // elfio::File elfFile;  // file object that will contain our ELF binary info
-  // elfio::File elfFile2; // file object that will contain our ELF binary info
-
-  // for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next()) {
-
-  //   std::string triple{desc->triple, desc->tripleSize};
-  //   std::cout << "triple is " << triple << "\n";
-  //   if (triple.compare(curr_target))
-  //     continue;
-  //   std::cout << "matching triple is " << triple << "\n";
+  char *codeobj_copy = new char[coSize];
 
   //   // create code object:
   //   char *codeobj = reinterpret_cast<char *>(
