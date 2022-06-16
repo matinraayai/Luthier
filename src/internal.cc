@@ -57,12 +57,13 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   uint64_t coSize;
   std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
   char *blob = reinterpret_cast<char *>(header);
-  uint64_t offset = blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
+  uint64_t offset =
+      (uint64_t)blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
   std::cout << "num of bundles: " << header->numBundles << "\n";
   const __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
-elfio:
-  File elfFile;
+  elfio::File elfFile;
+  uint64_t endOfHeader;
   for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
     printf("desc struct is stored from address%p\n", (void *)desc);
     uint64_t trippleSize = desc->tripleSize;
@@ -71,21 +72,34 @@ elfio:
     std::string triple{desc->triple, desc->tripleSize};
     std::cout << "triple " << triple << " 's offset is " << desc->offset
               << "\n";
+
+    coSize = desc->size;
+    std::cout << "code object size is " << coSize << "\n";
+    char *codeobj = reinterpret_cast<char *>(
+        reinterpret_cast<uintptr_t>(header) + desc->offset);
+
+    if (i == header->numBundles - 1) {
+      endOfHeader = (uint64_t)codeobj + coSize;
+      printf("address at the end of the last codeobject is %p\n",
+             (void *)endOfHeader);
+    }
+  }
+  char *header_copy = new char[endOfHeader - (uint64_t)header];
+  std::memcpy(header_copy, header, endOfHeader - (uint64_t)header);
+  offset = (uint64_t)header_copy + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
+  desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
+  for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
+    uint64_t trippleSize = desc->tripleSize;
+    std::string triple{desc->triple, desc->tripleSize};
     if (triple.compare(curr_target)) {
       continue;
     }
     std::cout << "matching triple name is " << triple << "\n";
-    std::cout << "desc size is " << desc->size << "\n";
-    coSize = desc->size;
+    std::cout << "code object size is " << desc->size << "\n";
     char *codeobj = reinterpret_cast<char *>(
         reinterpret_cast<uintptr_t>(header) + desc->offset);
-
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
-  char *header_copy = new char[offset - (uint64_t)header];
-  std::memcpy(header_copy, header, sizeof(__ClangOffloadBundleHeader));
-
-  char *codeobj_copy = new char[coSize];
 
   //   // create code object:
   //   char *codeobj = reinterpret_cast<char *>(
@@ -145,6 +159,7 @@ elfio:
   //}
 
   return modules;
+  // return NULL;
 }
 
 std::vector<hipModule_t> *

@@ -8,7 +8,7 @@
 #include "nlohmann/json.hpp"
 
 // hip-clang fatbin format
-constexpr unsigned __hipFatMAGIC2 = 0x48495046;  // "HIPF"
+constexpr unsigned __hipFatMAGIC2 = 0x48495046; // "HIPF"
 
 #define CLANG_OFFLOAD_BUNDLER_MAGIC "__CLANG_OFFLOAD_BUNDLE__"
 #define AMDGCN_AMDHSA_TRIPLE "hip-amdgcn-amd-amdhsa"
@@ -19,9 +19,9 @@ struct __ClangOffloadBundleDesc {
   uint64_t tripleSize;
   const char triple[1];
 
-  const struct __ClangOffloadBundleDesc* next() const {
-    return reinterpret_cast<const struct __ClangOffloadBundleDesc*>(triple +
-                                                                    tripleSize);
+  const struct __ClangOffloadBundleDesc *next() const {
+    return reinterpret_cast<const struct __ClangOffloadBundleDesc *>(
+        triple + tripleSize);
   }
 };
 
@@ -34,8 +34,8 @@ struct __ClangOffloadBundleHeader {
 struct __CudaFatBinaryWrapper {
   unsigned int magic;
   unsigned int version;
-  __ClangOffloadBundleHeader* binary;
-  void* unused;
+  __ClangOffloadBundleHeader *binary;
+  void *unused;
 };
 
 typedef struct hsa_executable_s {
@@ -43,7 +43,7 @@ typedef struct hsa_executable_s {
 } hsa_executable_t;
 
 struct CodeObject {
-  void* ptr;
+  void *ptr;
   size_t size;
   nlohmann::json note;
 };
@@ -63,6 +63,6 @@ struct ihipModule_t {
   }
 };
 
-typedef struct ihipModule_t* hipModule_t;
+typedef struct ihipModule_t *hipModule_t;
 
-#endif  // SRC_INTERNAL_H
+#endif // SRC_INTERNAL_H
