@@ -97,51 +97,17 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     std::cout << "matching triple name is " << triple << "\n";
     std::cout << "code object size is " << desc->size << "\n";
     char *codeobj = reinterpret_cast<char *>(
-        reinterpret_cast<uintptr_t>(header) + desc->offset);
+        reinterpret_cast<uintptr_t>(header_copy) + desc->offset);
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
 
-  //   // create code object:
-  //   char *codeobj = reinterpret_cast<char *>(
-  //       reinterpret_cast<uintptr_t>(header) + desc->offset);
+  elfio::Note noteSec = getNoteSection(&elfFile);
 
-  //   elfFile = elfFile.FromMem(codeobj); // load elf file from code object
-  // }
-
-  // elfio::Note noteSec = getNoteSection(&elfFile);
-
-  // editNoteSectionData(noteSec);
-
-  // char *noteSec2 = reinterpret_cast<char *>(noteSec.Blob());
-
-  // // make a copy of the binary
-
-  // // not sure if size is correct
-  // std::memcpy(header_buffer, fbwrapper->binary, 15000);
-
-  // // small modification to the binary (probably break the program)
-  // printf("header_bbuffer\n");
-  // // this is the offset where the actual ELF starts in the
-  // fbwrapper->binary int codeobjstart = 4096;
-  // // copy edited note section back to object
-  // for (int i = 512 + codeobjstart; i < 1610 + codeobjstart; i++) {
-
-  //   header_buffer[i] = noteSec2[i - codeobjstart - 512];
-  // }
-
-  // // TODO: Copy the modified note section to header_buffer. If it's exactly
-  // the
-  // // same size, might be OK to ignore ELF offsets. Otherwise, adjust
-  // offsets.
-
-  // // set the pointer to the copy of the header buffer
-  // newWrapper.binary =
-  //     reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
-
-  // auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
-
+  editNoteSectionData(noteSec);
+  reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
+      reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
   // pass new wrapper into original register fat binary func:
-  auto modules = call_original_hip_register_fat_binary(data);
+  auto modules = call_original_hip_register_fat_binary(data_copy);
 
   // printf("Number of modules: %zu\n", modules->size());
 
@@ -208,7 +174,7 @@ void editNoteSectionData(elfio::Note &note) {
   // I'm gonna make a change here for now. If/when this function is
   // implemented, changes to the note section might be done elsewhere.
   json["amdhsa.target"] = "gibberish";
-  json["amdhsa.kernels"][0][".vgpr_count"] = 10;
+  json["amdhsa.kernels"][0][".vgpr_count"] = 256;
 
   // to_msgpack() returns std::vector<std::uint8_t> which is "great"...
   auto blog = nlohmann::json::to_msgpack(json);

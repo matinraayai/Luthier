@@ -8,7 +8,7 @@ list(APPEND CMAKE_MODULE_PATH
 message(${CMAKE_MODULE_PATH})
 include(hip)
 
-
+set(CMAKE_BUILD_TYPE Debug)
 # Add warning related flags
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
 

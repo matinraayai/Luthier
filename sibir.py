@@ -21,8 +21,8 @@ if __name__ == "__main__":
     env = os.environ.copy()
     if "LD_LIBRARY_PATH" not in env:
         env["LD_LIBRARY_PATH"] = ""
-    env["LD_LIBRARY_PATH"] = path + "/build/lib" + ":" + env["LD_LIBRARY_PATH"]
-    env["LD_PRELOAD"] = path + "/build/lib/libsibir.so"
+    env["LD_LIBRARY_PATH"] = path + "/lib" + ":" + env["LD_LIBRARY_PATH"]
+    env["LD_PRELOAD"] = path + "/lib/libsibir.so"
 
     proc = subprocess.Popen(
         command,
