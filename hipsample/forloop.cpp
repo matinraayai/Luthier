@@ -40,19 +40,6 @@ THE SOFTWARE.
 #define THREADS_PER_BLOCK_Z  1
 
 
-__device__ __declspec(noinline) float plusone(float pcounter)
-{
-
-
-     if (pcounter > 34) {
-     pcounter = pcounter +1.0;
-     }
- 
-     
-     return pcounter;
-}
-
-
 
 __global__ void 
 vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float* __restrict__ c, int width, int height) 
@@ -73,10 +60,6 @@ vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float*
      }
 
     a[0] = sum;
-
-    
-
-    a[1] = plusone((float)x);
 
   }
 
@@ -133,7 +116,7 @@ int main() {
                   deviceA ,deviceB ,deviceC ,WIDTH ,HEIGHT);
 
 
-  HIP_ASSERT(hipMemcpy(hostD, hostA, NUM*sizeof(float), hipMemcpyDeviceToHost));
+  HIP_ASSERT(hipMemcpy(hostA, hostA, NUM*sizeof(float), hipMemcpyDeviceToHost));
 
   // verify the results
 
@@ -152,7 +135,7 @@ int main() {
 
   */
 
-  printf("Value: %f\n", hostD[0]);
+  printf("Value: %f\n", hostC[0]);
 
 
   HIP_ASSERT(hipFree(deviceA));
