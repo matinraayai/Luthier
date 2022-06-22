@@ -68,7 +68,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908", sizeof(AMDGCN_AMDHSA_TRIPLE) - 1};
   elfio::File elfFile; // file object that will contain our ELF binary info
   elfio::File elfFile2; // file object that will contain our ELF binary info
-
+  char *codeobj;
+  
   for (uint64_t i = 0; i < header->numBundles; ++i, desc = desc->next())
   {
 
@@ -82,17 +83,27 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     // std::string target{&desc->triple[sizeof(AMDGCN_AMDHSA_TRIPLE)],
     //                     desc->tripleSize - sizeof(AMDGCN_AMDHSA_TRIPLE)};
     //create code object:
-    char *codeobj = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
+    codeobj = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
     printf("Address of codeobj is %p\n", codeobj);
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
+
+    std::cout << "Printing code obj" << std::endl;
+
+    elfio::Note noteSec5 = getNoteSection(&elfFile);
+  
+
   }
 
-  elfio::Note noteSec = getNoteSection(&elfFile);
 
+  //get the notesection
+ 
+   elfio::Note noteSec = getNoteSection(&elfFile);
+
+  //modify the notesection
   std::string newNote;
-
   newNote = editReturnNoteSectionData(noteSec);
 
+  //verify the ntoesection is changed
   verifyNoteSectionData(newNote); 
 
   elfio::Note noteSec4 = getNoteSection(&elfFile);
@@ -107,32 +118,68 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   std::memcpy(header_buffer, fbwrapper->binary, 20000);
 
   char temp[sizeof(newNote)*sizeof(std::string)];
+
   std::strcpy(temp, newNote.c_str());
 
-   // small modification to the binary (probably break the program)
+   // small modification to the binary:
   printf("header_buffer\n");
   // this is the offset where the actual ELF starts in the fbwrapper->binary
   int codeobjstart = 4096;
   int extraoffset = 532;
+  //+20 bytes to section offset
 
-  printf("size of nnew note %d", sizeof(newNote)*sizeof(char));
+  printf("size of nnew note %d\n", sizeof(newNote)*sizeof(char));
   // copy edited note section back to object
   for (int i = extraoffset + codeobjstart; i < extraoffset + noteSec.desc_size + codeobjstart; i ++) {
      
      header_buffer[i] = newNote[i-codeobjstart-extraoffset];
 
    }
-   //TODO: Copy the modified note section to header_buffer. If it's exactly the same size, might be OK to ignore ELF offsets. Otherwise, adjust offsets.
 
+  // edit .text instruction - different offset
+  extraoffset = 4096-5;
+  // copy edited note section back to object
+  for (int i = extraoffset + codeobjstart; i < extraoffset + 188 + codeobjstart; i ++) {
+     //header_buffer[i] = newNote[i-codeobjstart-extraoffset];
+     //0 here is only printed once, but actually 00
+     printf("%0X", header_buffer[i]);
+
+   }
+   std::cout << "\nPrinting individual location:" << std::endl;
+
+   //change just a single instrucion (I believe C0 is a load)
+
+   header_buffer[extraoffset + codeobjstart +21] = 0xFFFFFFF6;
+   //printf("%0X\n", header_buffer[extraoffset + codeobjstart +12]);
+   //printf("%0X\n", header_buffer[extraoffset + codeobjstart +14]);
+
+   //insert a whole instruction instruction
+
+   //1. find insert point
+   //2. cut first half and append
+   //3. append second half?
+   //4. update elf offsets (challenging but try without it first)
+
+
+  elfio::Section* sec = getTextSection(&elfFile);
+  char * textsec;
+  textsec = sec->Blob();
+  for (int k = 0; k< 188; k++) {
+    printf("%02X", textsec[k]);
+ 
+  }
+  printf("\n");
    // set the pointer to the copy of the header buffer
   newWrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
  
-  auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
+  //auto origNoteSec = elfFile.GetSectionByType("SHT_NOTE");
 
   //pass new wrapper into original register fat binary func:
   auto modules = call_original_hip_register_fat_binary(&newWrapper); 
+  //auto modules = call_original_hip_register_fat_binary(&newWrapper); 
 
-  __ClangOffloadBundleHeader *header2 = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
+  /*
+  __ClangOffloadBundleHeader *header2 = reinterpret_cast<__ClangOffloadBundleHeader *>(data);
   
   const __ClangOffloadBundleDesc *desc2 = &header2->desc[0];
   // printf("Printing desc\n");
@@ -158,6 +205,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   noteSec = getNoteSection(&elfFile2);
 
   verifyNoteSectionData(noteSec.desc); 
+
+  */
   
   printf("Number of modules: %ul\n", modules->size());
 
@@ -180,7 +229,6 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data) {
   std::vector<hipModule_t> *(*func)(const void *);
   func = (decltype(func))dlsym(RTLD_NEXT, "__hipRegisterFatBinary");
-
 
   std::vector<hipModule_t> *ret = func(data);
 
@@ -219,6 +267,7 @@ elfio::Note getNoteSection(elfio::File* elf) {
 elfio::Section* getTextSection(elfio::File* elf) {
   auto text = elf->GetSectionByName(".text");
   if(!text) panic("can't find text section");
+  // where is .hip_fatbin section?
   
   //section name, type, offset, and size are all public members:
   //printf("Hi! I'm the %s section!!!\n", text->name.c_str());
