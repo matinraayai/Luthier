@@ -153,12 +153,13 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
    //printf("%0X\n", header_buffer[extraoffset + codeobjstart +12]);
    //printf("%0X\n", header_buffer[extraoffset + codeobjstart +14]);
 
-   //insert a whole instruction instruction
+   //Anrew next TODO: Copy a whole instruction into the .text section
 
-   //1. find insert point
-   //2. cut first half and append
-   //3. append second half?
-   //4. update elf offsets (challenging but try without it first)
+
+   //1. find insert point (e.g instruction n)
+   //2. insert at end of instruction n, but before instruction n+1 
+   //3. update elf offsets (try without it first)
+   //** most of this will happen inside headerbuffer
 
 
   elfio::Section* sec = getTextSection(&elfFile);
@@ -166,8 +167,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   textsec = sec->Blob();
   for (int k = 0; k< 188; k++) {
     printf("%02X", textsec[k]);
- 
   }
+
   printf("\n");
    // set the pointer to the copy of the header buffer
   newWrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(header_buffer);
