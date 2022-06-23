@@ -46,20 +46,23 @@ vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float*
 
   {
  
-    int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
+    //int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
     //int y = hipBlockDim_y * hipBlockIdx_y + hipThreadIdx_y;
 
     //int i = y * width + x;
     
     float sum = 0.0;
     int num_loops = 1000;
-
-     for (int k = 0; k < num_loops; k ++) {
+    int k;
+     for (k = 0; k < num_loops; k ++) {
           sum = sum + 2.0;
+          
           
      }
 
-    a[0] = sum;
+   
+    a[0] = 2000.0;
+    
 
   }
 
@@ -116,7 +119,7 @@ int main() {
                   deviceA ,deviceB ,deviceC ,WIDTH ,HEIGHT);
 
 
-  HIP_ASSERT(hipMemcpy(hostA, hostA, NUM*sizeof(float), hipMemcpyDeviceToHost));
+  HIP_ASSERT(hipMemcpy(hostA, deviceA, NUM*sizeof(float), hipMemcpyDeviceToHost));
 
   // verify the results
 
@@ -135,7 +138,7 @@ int main() {
 
   */
 
-  printf("Value: %f\n", hostC[0]);
+  printf("Value: %f\n", hostA[0]);
 
 
   HIP_ASSERT(hipFree(deviceA));
