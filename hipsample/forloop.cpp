@@ -46,7 +46,7 @@ vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float*
 
   {
  
-    //int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
+    int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
     //int y = hipBlockDim_y * hipBlockIdx_y + hipThreadIdx_y;
 
     //int i = y * width + x;
@@ -61,7 +61,7 @@ vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float*
      }
 
    
-    a[0] = 2000.0;
+    a[0] = sum;
     
 
   }
