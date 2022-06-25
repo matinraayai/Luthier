@@ -142,7 +142,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   for (int i = extraoffset + codeobjstart; i < extraoffset + 188 + codeobjstart; i ++) {
      //header_buffer[i] = newNote[i-codeobjstart-extraoffset];
      //0 here is only printed once, but actually 00
-     printf("%0X", header_buffer[i]);
+     printf("%0X", (unsigned int)(unsigned char)header_buffer[i]);
+     //printf("%0X", header_buffer[i]);
 
    }
    std::cout << "\nPrinting individual location:" << std::endl;
@@ -166,7 +167,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   char * textsec;
   textsec = sec->Blob();
   for (int k = 0; k< 188; k++) {
-    printf("%02X", textsec[k]);
+
+    printf("%0X", (unsigned int)(unsigned char)textsec[k]);
+    //printf("%02X", textsec[k]);
+
   }
 
   printf("\n");
