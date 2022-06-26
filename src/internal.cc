@@ -128,59 +128,90 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   int extraoffset = 532;
   //+20 bytes to section offset
 
-  printf("size of nnew note %d\n", sizeof(newNote)*sizeof(char));
+  printf("size of new note %d\n", sizeof(newNote)*sizeof(char));
   // copy edited note section back to object
   for (int i = extraoffset + codeobjstart; i < extraoffset + noteSec.desc_size + codeobjstart; i ++) {
      
      header_buffer[i] = newNote[i-codeobjstart-extraoffset];
 
-   }
+  }
 
   // edit .text instruction - different offset
   extraoffset = 4096;
   // copy edited note section back to object
-  for (int i = extraoffset + codeobjstart; i < extraoffset + 188 + codeobjstart; i ++) {
-     //header_buffer[i] = newNote[i-codeobjstart-extraoffset];
-     //0 here is only printed once, but actually 00
-     printf("%02X", (unsigned int)(unsigned char)header_buffer[i]);
-     //printf("%0X", header_buffer[i]);
+  // for (int i = extraoffset + codeobjstart; i < extraoffset + 188 + codeobjstart; i ++) {
+  //    //header_buffer[i] = newNote[i-codeobjstart-extraoffset];
+  //    //0 here is only printed once, but actually 00
+  //    printf("%02X ", (unsigned int)(unsigned char)header_buffer[i]);
+  //    //printf("%0X", header_buffer[i]);
     
-     //printf("%02X", textsec[k]);
-     if ( (i+1) % 4 == 0) {
-      printf("\n");
-    }
-    
-
-   }
-   std::cout << "\nPrinting individual location:" << std::endl;
+  //    //printf("%02X", textsec[k]);
+  //    if ( (i+1) % 4 == 0) {
+  //     printf("\n");
+  //   }
+  //  }
+   
+  //  std::cout << "\nPrinting individual location:" << std::endl;
 
    //change just a single instrucion (I believe C0 is a load)
 
-   header_buffer[extraoffset + codeobjstart +21] = 0xFFFFFFF6;
+   //header_buffer[extraoffset + codeobjstart +21] = 0xFFFFFFF6;
    //printf("%0X\n", header_buffer[extraoffset + codeobjstart +12]);
    //printf("%0X\n", header_buffer[extraoffset + codeobjstart +14]);
 
    //Anrew next TODO: Copy a whole instruction into the .text section
+    
+   //Let's try putting in V_SUB_F32 v0, 2.0, v0 after the second VADD (at instruction 3):
+   //1. find insert point (e.g instruction n) --> header_buffer[extraoffset + codeobjstart + 24] ofr instruction 3
 
+   //2. insert at end of instruction n, but before instruction n+1 --> need to preserve future instructions
 
-   //1. find insert point (e.g instruction n)
-   //2. insert at end of instruction n, but before instruction n+1 
    //3. update elf offsets (try without it first)
-   //** most of this will happen inside headerbuffer
 
+  char headtemp[extraoffset + codeobjstart + 24];
+  char newinstr[4]; //new instruction, 4 bytes
+  char tailtemp[20000 - extraoffset + codeobjstart + 24];
+  // char newbuff[sizeof(headtemp) + sizeof(newinstr) + sizeof(tailtemp)]; //currently not used
 
-  elfio::Section* sec = getTextSection(&elfFile);
-  char * textsec;
-  textsec = sec->Blob();
-  for (int k = 0; k< 188; k++) {
-   
-    printf("%02X", (unsigned int)(unsigned char)textsec[k]);
-    //printf("%02X", textsec[k]);
-    if ( (k+1) % 4 == 0) {
-      printf("\n");
-    }
+  std::memcpy(headtemp, header_buffer, sizeof(headtemp)); //curerntly extracting top of header_buffer
+  std::memcpy(tailtemp, header_buffer + extraoffset + codeobjstart + 24, sizeof(tailtemp)); //extract tail of header_buffer (instruction 3 onwards)
+  
+  //New instruction: V_SUB_F32 v0, 2.0, v0 (040000F4) in little endian:
+  newinstr[0] = (unsigned char)0xF4;
+  newinstr[1] = (unsigned char)0x00;
+  newinstr[2] = (unsigned char)0x00;
+  newinstr[3] = (unsigned char)0x04;
 
+  // for (int i = extraoffset + codeobjstart; i < sizeof(headtemp); i++){
+  //   printf("%02X ", (unsigned int)(unsigned char)headtemp[i]);
+  //   if ( (i+1) % 4 == 0) printf("\n");
+  // }
+  // for (int i = 0; i < 212; i++){
+  //   printf("%02X ", (unsigned int)(unsigned char)tailtemp[i]);
+  //   if ( (i+1) % 4 == 0) printf("\n");
+  // }
+
+  std::memcpy(header_buffer, headtemp, sizeof(headtemp));
+  std::memcpy(header_buffer + sizeof(headtemp), newinstr, sizeof(newinstr));
+  std::memcpy(header_buffer + sizeof(headtemp) + sizeof(newinstr), tailtemp, sizeof(tailtemp));
+
+  for (int i = extraoffset + codeobjstart; i < extraoffset + 212 + codeobjstart; i ++) {
+     printf("%02X ", (unsigned int)(unsigned char)header_buffer[i]);
+     if ( (i+1) % 4 == 0) printf("\n");
   }
+
+  // elfio::Section* sec = getTextSection(&elfFile);
+  // char * textsec;
+  // textsec = sec->Blob();
+  // for (int k = 0; k< 188; k++) {
+   
+  //   printf("%02X ", (unsigned int)(unsigned char)textsec[k]);
+  //   //printf("%02X", textsec[k]);
+  //   if ( (k+1) % 4 == 0) {
+  //     printf("\n");
+  //   }
+
+  // }
 
   printf("\n");
    // set the pointer to the copy of the header buffer
