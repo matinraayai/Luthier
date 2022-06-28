@@ -8,9 +8,9 @@
 			"name": "sibir",
 			"type": "python",
 			"request": "launch",
-			"program": "${workspaceFolder}/sibir.py",
+			"program": "${workspaceFolder}/build/sibir",
 			"args": [
-				"./vectoradd_hip.exe"
+				"./vectoradd"
 			],
 			"console": "integratedTerminal",
 			"justMyCode": true

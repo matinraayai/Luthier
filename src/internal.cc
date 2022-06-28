@@ -18,6 +18,7 @@ call_original_hip_register_fat_binary(const void *data);
 elfio::Note getNoteSection(elfio::File *elf);
 char *getNoteSection2(elfio::File *elf);
 void editNoteSectionData(elfio::Note &note);
+void editTextSectionData(elfio::File *elf);
 
 uint64_t getHeaderSize(__ClangOffloadBundleHeader *header) {
   char *blob = reinterpret_cast<char *>(header);
@@ -101,9 +102,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
 
-  elfio::Note noteSec = getNoteSection(&elfFile);
+  // elfio::Note noteSec = getNoteSection(&elfFile);
 
-  editNoteSectionData(noteSec);
+  // editNoteSectionData(noteSec);
+  editTextSectionData(&elfFile);
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
   // pass new wrapper into original register fat binary func:
@@ -161,6 +163,14 @@ elfio::Note getNoteSection(elfio::File *elf) {
       return elfio::Note(elf, note->Blob());
     }
   }
+}
+void editTextSectionData(elfio::File *elf) {
+  auto text_section = elf->GetSectionByType("SHT_PROGBITS");
+  if (!text_section) {
+    panic("text section is not found");
+  }
+  auto text_header = reinterpret_cast<Elf64_Shdr *>(text_section->Blob());
+  std::cout << "text section size is " << text_section->size << "\n";
 }
 
 // This function changes things in the note section by taking an elfio::Note
