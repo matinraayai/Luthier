@@ -165,7 +165,7 @@ elfio::Note getNoteSection(elfio::File *elf) {
   }
 }
 void editTextSectionData(elfio::File *elf) {
-  auto text_section = elf->GetSectionByType("SHT_PROGBITS");
+  auto text_section = elf->GetSectionByName(".text");
   if (!text_section) {
     panic("text section is not found");
   }
