@@ -169,8 +169,20 @@ void editTextSectionData(elfio::File *elf) {
   if (!text_section) {
     panic("text section is not found");
   }
-  auto text_header = reinterpret_cast<Elf64_Shdr *>(text_section->Blob());
   std::cout << "text section size is " << text_section->size << "\n";
+  std::cout << "text section offset is " << text_section->offset << "\n";
+  char newInst[4];
+  newInst[0] = (unsigned char)0xf2;
+  newInst[1] = (unsigned char)0x02;
+  newInst[2] = (unsigned char)0x00;
+  newInst[3] = (unsigned char)0x7e;
+
+  char *oldInst = text_section->Blob() + text_section->size - 16;
+  printf("start address of text is %02X\n",
+         (unsigned int)(unsigned char)*oldInst);
+  std::memcpy(oldInst, newInst, 4);
+  printf("start address of text is %02X\n",
+         (unsigned int)(unsigned char)*(oldInst + 3));
 }
 
 // This function changes things in the note section by taking an elfio::Note
