@@ -64,31 +64,61 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
     elfFile = elfFile.FromMem(codeobj);
   }
 
+  /*
   printf("\n------------ELF Header------------ \n");
   for (int i = 0; i < 64; i++)
   {
     printf("%02X ", (unsigned int)(unsigned char)elfFile.Blob()[i]);
     if ( (i+1) % 16 == 0) printf("\n");  
   } printf("---------------------------------- \n\n");
-  
-  /*
-  auto textsec = elfFile.GetSectionByName(".text");
-  if(!textsec) panic("text section not found");
-  char* text = new char[textsec->size];
-  std::memcpy(text, textsec->Blob(), textsec->size);
-
-  printf("\n------------Text Section------------ \n");
-  for (int i = 0; i < textsec->size; i++)
-  {
-    printf("%02X ", (unsigned int)(unsigned char)text[i]);
-    if ( (i+1) % 4 == 0) printf("\n");  
-  } printf("---------------------------------- \n\n");
   */
 
-  char *headbuff = new char[elfFile.size];
+  auto textsec = elfFile.GetSectionByName(".text");
+  if(!textsec) panic("text section not found");
+
+  char* oldtext = new char[textsec->size];
+  char* newtext = new char[textsec->size + 4];
+
+  std::memcpy(oldtext, textsec->Blob(), textsec->size);
+
+  char prgmhead[24]; //first 5 instructions, 24 bytes
+  char newinstr[4];
+  char prgmtail[textsec->size - 24]; //rest of text sec
+
+  //New instruction: V_SUB_F32 v0, 2.0, v0 (040000F4) in little endian:
+  newinstr[0] = (unsigned char)0xF4;
+  newinstr[1] = (unsigned char)0x00;
+  newinstr[2] = (unsigned char)0x00;
+  newinstr[3] = (unsigned char)0x04;
+
+  //extract head and tail of original program:
+  std::memcpy(prgmhead, oldtext, 24);
+  std::memcpy(prgmtail, oldtext + 24, textsec->size - 24);
+
+  //insert new instruction:
+  std::memcpy(newtext, prgmhead, sizeof(prgmhead));
+  std::memcpy(newtext + sizeof(prgmhead), newinstr, sizeof(newinstr));
+  std::memcpy(newtext + sizeof(prgmhead) + sizeof(newinstr), prgmtail, sizeof(prgmtail));
+
+  char headbuff[elfFile.size];
+  char newbinary[elfFile.size + 4];
+
+  char binaryhead[elfFile.size - textsec->size];  //ELF File contents before text sec
+  char binarytail[elfFile.size - textsec->size];  //ELF File contents after text sec
+
   std::memcpy(headbuff, elfFile.Blob(), elfFile.size);
 
-  newwrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(headbuff);
+  //extract everything but the text section:
+  std::memcpy(binaryhead, headbuff, elfFile.size - textsec->size);
+  std::memcpy(binarytail, headbuff + textsec->offset + textsec->size, elfFile.size - textsec->size);
+
+  //insert new text section into newbinary:
+  std::memcpy(newbinary, binaryhead, sizeof(binaryhead));
+  std::memcpy(newbinary + textsec->offset, newtext, sizeof(newtext));
+  std::memcpy(newbinary + textsec->offset + sizeof(newtext), binarytail, sizeof(binarytail));
+
+  // newwrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(headbuff);
+  newwrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(newbinary);
 
   auto modules = call_original_hip_register_fat_binary(&newwrapper);
   return modules;
