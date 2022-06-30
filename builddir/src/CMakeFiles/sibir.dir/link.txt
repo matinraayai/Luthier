@@ -1,1 +1,0 @@
-/usr/bin/c++ -fPIC   -shared -Wl,-soname,libsibir.so.0.0.1 -o ../lib/libsibir.so.0.0.1 CMakeFiles/sibir.dir/internal.cc.o CMakeFiles/sibir.dir/elf.cc.o -Wl,-rpath,/opt/rocm-5.0.0/hip/lib /opt/rocm-5.0.0/hip/lib/libamdhip64.so.5.0.50000 /opt/rocm/llvm/lib/clang/14.0.0/lib/linux/libclang_rt.builtins-x86_64.a 
