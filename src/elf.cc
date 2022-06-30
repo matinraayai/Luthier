@@ -13,6 +13,7 @@ File File::FromMem(char *blob) {
   f.header = (Elf64_Ehdr *)blob;
   f.ParseSections();
   f.ParseSymbols();
+  f.size = f.header->e_shoff + (f.numsec() * sizeof(Elf64_Shdr));
 
   return f;
 }
@@ -91,6 +92,11 @@ Symbol *File::GetSymbolByName(const std::string &name) {
   }
   return nullptr;
 }
+
+int File::numsec(){
+  auto num = this->sections.size();
+  return (int)num;
+  }
 
 Section::Section(File *file, Elf64_Shdr *header) : file(file), header(header) {}
 

@@ -14,14 +14,15 @@
 std::vector<hipModule_t> *call_original_hip_register_fat_binary(const void *data);
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf);
 
-extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
+extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
 {
   printf("Here in %s\n", __FUNCTION__);
 
-  const __CudaFatBinaryWrapper *fbwrapper = reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
+  __CudaFatBinaryWrapper *fbwrapper = reinterpret_cast<__CudaFatBinaryWrapper *>(data);
+  __CudaFatBinaryWrapper newwrapper(*fbwrapper);
 
   const __ClangOffloadBundleHeader *header = fbwrapper->binary;
-
+  // char header_buffer[50000];
 
   std::string magic(reinterpret_cast<const char *>(header), sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1);
 
@@ -59,29 +60,37 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(const void *data)
                        
     printf("Found hip-clang bundle for %s\n", target.c_str());
 
-    auto *codeobj = reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
-
-    char *p = const_cast<char*>(codeobj);
-
-    elfFile = elfFile.FromMem(p);  
-
-    // nlohmann::json kernelArgMetaData = getKernelArgumentMetaData(&elfFile);
-
-    // if(kernelArgMetaData.find("amdhsa.kernels") == kernelArgMetaData.end())
-    //   panic("Cannot find kernel data");
-    // nlohmann::json kernels = kernelArgMetaData["amdhsa.kernels"];
-    
-    // for (int i = 0; i < kernels.size(); i++)
-    // {
-    //   if(kernels[i].find(".name") == kernels[i].end() |kernels[i].find(".vgpr_count") == kernels[i].end())
-    //     panic("Cannot find kernel name or vgpr_count");
-      
-    //   printf("For kernel %s", kernels[i].value(".name", "please work").c_str());
-    //   printf("vgpr_count = %d\n", kernels[i].value(".vgpr_count", 0));
-    // }
+    auto *codeobj = reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(header) + desc->offset);
+    elfFile = elfFile.FromMem(codeobj);
   }
 
-  auto modules = call_original_hip_register_fat_binary(fbwrapper);
+  printf("\n------------ELF Header------------ \n");
+  for (int i = 0; i < 64; i++)
+  {
+    printf("%02X ", (unsigned int)(unsigned char)elfFile.Blob()[i]);
+    if ( (i+1) % 16 == 0) printf("\n");  
+  } printf("---------------------------------- \n\n");
+  
+  /*
+  auto textsec = elfFile.GetSectionByName(".text");
+  if(!textsec) panic("text section not found");
+  char* text = new char[textsec->size];
+  std::memcpy(text, textsec->Blob(), textsec->size);
+
+  printf("\n------------Text Section------------ \n");
+  for (int i = 0; i < textsec->size; i++)
+  {
+    printf("%02X ", (unsigned int)(unsigned char)text[i]);
+    if ( (i+1) % 4 == 0) printf("\n");  
+  } printf("---------------------------------- \n\n");
+  */
+
+  char *headbuff = new char[elfFile.size];
+  std::memcpy(headbuff, elfFile.Blob(), elfFile.size);
+
+  newwrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(headbuff);
+
+  auto modules = call_original_hip_register_fat_binary(&newwrapper);
   return modules;
 }
 
@@ -95,7 +104,6 @@ std::vector<hipModule_t> *call_original_hip_register_fat_binary(
   return ret;
 }
 
-// Shamelessly copied from RHIPO:
 // Returns the binary data of the .note section of an ELF file in JSON format 
 nlohmann::json getKernelArgumentMetaData(elfio::File* elf) {
   printf("Here in %s\n", __FUNCTION__);

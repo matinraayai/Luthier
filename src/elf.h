@@ -20,7 +20,8 @@ class File {
   Symbol* GetSymbolByName(const std::string& name);
   char* Blob();
 
-  Elf64_Ehdr* GetHeader(){return header;}
+  int numsec();
+  uint64_t size;
 
  private:
   Elf64_Ehdr* header;
