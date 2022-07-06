@@ -33,4 +33,4 @@
 
 build
 hip_clang.cpp
-*.isa
+generatedAsm
