@@ -64,14 +64,12 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
     elfFile = elfFile.FromMem(codeobj);
   }
 
-  /*
   printf("\n------------ELF Header------------ \n");
   for (int i = 0; i < 64; i++)
   {
     printf("%02X ", (unsigned int)(unsigned char)elfFile.Blob()[i]);
     if ( (i+1) % 16 == 0) printf("\n");  
   } printf("---------------------------------- \n\n");
-  */
 
   auto textsec = elfFile.GetSectionByName(".text");
   if(!textsec) panic("text section not found");
@@ -117,9 +115,31 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   std::memcpy(newbinary + textsec->offset, newtext, sizeof(newtext));
   std::memcpy(newbinary + textsec->offset + sizeof(newtext), binarytail, sizeof(binarytail));
 
+  // 8-byte value starting at offset 0x28 of ELF header 
+  // points to start of the section header. trying to change this caused seg fault:
+  // newbinary[47] = newbinary[47] + 4; // increment the last byte of 0x28 field
+
+
+  // try getting e_shoff addr:
+  auto blob = elfFile.Blob();
+  Elf64_Ehdr* ehead = (Elf64_Ehdr *)blob;
+  
+  long unsigned int *new_e_shoff_addr = &(ehead->e_shoff); //address of e_shoff
+  printf("e_shoff = %d\n", *new_e_shoff_addr);
+
+
+  // printf("e_shoff_addr = %d\n", &(ehead->e_shoff));
+  *new_e_shoff_addr = 8760; //try changing offset value ... causes seg fault
+
+
   // newwrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(headbuff);
   newwrapper.binary = reinterpret_cast<__ClangOffloadBundleHeader *>(newbinary);
 
+  /*TODO: 
+   * Print out text section again to confirm changes
+   * 
+   * Put all the work to do the actual ELF editing into their own functions
+   */
   auto modules = call_original_hip_register_fat_binary(&newwrapper);
   return modules;
 }
