@@ -18,7 +18,7 @@ struct Operand
 	OperandType operandType;
 	Reg *reg;
 	int regCount;
-	float floatValue;
+	double floatValue;
 	long int intValue;
 	uint32_t literalConstant;
 	std::string regOperandToString()
