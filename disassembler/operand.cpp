@@ -10,37 +10,29 @@ Operand *newRegOperand(int code, RegType reg, int count)
 	o->regCount = count;
 	return o;
 }
-Operand *newSRegOperand(int code, int index, int count)
+void newSRegOperand(Operand *o, int code, int index, int count)
 {
-	Operand *o;
 	o->code = code;
 	o->operandType = RegOperand;
 	o->reg = SReg(index);
 	o->regCount = count;
-	return o;
 }
-Operand *newVRegOperand(int code, int index, int count)
+void newVRegOperand(Operand *o, int code, int index, int count)
 {
-	Operand *o;
 	o->code = code;
 	o->operandType = RegOperand;
 	o->reg = VReg(index);
 	o->regCount = count;
-	return o;
 }
-Operand *newIntOperand(int code, long int value)
+void newIntOperand(Operand *o, int code, long int value)
 {
-	Operand *o;
 	o->code = code;
 	o->operandType = IntOperand;
 	o->intValue = value;
-	return o;
 }
-Operand *newFloatOperand(int code, double value)
+void newFloatOperand(Operand *o, int code, double value)
 {
-	Operand *o;
 	o->code = code;
 	o->operandType = FloatOperand;
 	o->floatValue = value;
-	return o;
 }

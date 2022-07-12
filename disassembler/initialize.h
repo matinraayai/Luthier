@@ -3,8 +3,8 @@
 #include "reg.h"
 #include "format.h"
 #include <map>
-std::map<FormatType, Format *> FormatTable;
-std::map<RegType, Reg> Regs;
+extern std::map<FormatType, Format *> FormatTable;
+extern std::map<RegType, Reg> Regs;
 void initFormatTable();
 void initRegs();
 Reg *VReg(int index);

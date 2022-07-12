@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <sstream>
 #include "reg.h"
+
 enum OperandType
 {
 	InvalidOperantType,
@@ -63,5 +64,9 @@ struct Operand
 		}
 	}
 };
-
+void newRegOperand(Operand *o, int code, RegType reg, int count);
+void newSRegOperand(Operand *o, int code, int index, int count);
+void newVRegOperand(Operand *o, int code, int index, int count);
+void newIntOperand(Operand *o, int code, long int value);
+void newFloatOperand(Operand *o, int code, double value);
 #endif

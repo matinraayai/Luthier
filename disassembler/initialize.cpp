@@ -1,5 +1,9 @@
 #include "format.h"
 #include "initialize.h"
+#include <map>
+
+std::map<FormatType, Format *> FormatTable;
+std::map<RegType, Reg> Regs;
 
 void initFormatTable()
 {
