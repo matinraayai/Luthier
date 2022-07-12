@@ -1,7 +1,9 @@
 #include "format.h"
+#include "initialize.h"
 #include <map>
 
 std::map<FormatType, Format *> FormatTable;
+std::map<RegType, Reg> Regs;
 
 void initFormatTable()
 {
@@ -41,4 +43,19 @@ void initFormatTable()
 	FormatTable[SOP2] = &f;
 	f = {VOP2, "vop2", 0x00000000, 0x80000000, 4, 25, 30};
 	FormatTable[VOP2] = &f;
+}
+void initRegs()
+{
+	Regs.insert({InvalidRegType, {InvalidRegType, "invalidregtype", 0, false}});
+	Regs.insert({PC, {PC, "pc", 8, false}});
+	Regs.insert({V0, {V0, "v0", 4, false}});
+}
+
+Reg *VReg(int index)
+{
+	return &Regs[RegType(index + (int)V0)];
+}
+Reg *SReg(int index)
+{
+	return &Regs[RegType(index + (int)S0)];
 }

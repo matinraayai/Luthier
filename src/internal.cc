@@ -102,10 +102,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
 
-  // elfio::Note noteSec = getNoteSection(&elfFile);
+  elfio::Note noteSec = getNoteSection(&elfFile);
 
-  // editNoteSectionData(noteSec);
-  editTextSectionData(&elfFile);
+  editNoteSectionData(noteSec);
+  // editTextSectionData(&elfFile);
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
   // pass new wrapper into original register fat binary func:
