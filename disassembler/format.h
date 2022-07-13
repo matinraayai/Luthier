@@ -13,6 +13,7 @@ enum FormatType
 	VOP1,
 	VOP3a,
 	VOP3b,
+	VOP3P,
 	VOPC,
 	VINTRP,
 	DS,

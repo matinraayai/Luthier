@@ -43,6 +43,8 @@ void initFormatTable()
 	FormatTable[SOP2] = &f;
 	f = {VOP2, "vop2", 0x00000000, 0x80000000, 4, 25, 30};
 	FormatTable[VOP2] = &f;
+	f = {VOP2, "vop3p", 0xCC000000, 0xFC000000, 8, 16, 22};
+	FormatTable[VOP3P] = &f;
 }
 void initRegs()
 {
