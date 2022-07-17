@@ -62,4 +62,7 @@ struct Inst
 	int VSCNT;
 	int LKGMCNT;
 };
+class InstPrinter
+{
+};
 #endif

@@ -1,5 +1,5 @@
 #include "format.h"
-#include "initialize.h"
+#include "reg.h"
 #include <map>
 
 std::map<FormatType, Format *> FormatTable;
