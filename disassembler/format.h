@@ -20,7 +20,6 @@ enum FormatType
 	MUBUF,
 	MTBUF,
 	MIMG,
-	EXP,
 	FLAT
 };
 struct Format

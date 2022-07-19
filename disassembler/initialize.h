@@ -5,7 +5,7 @@
 #include "inst.h"
 #include <map>
 #include <memory>
-extern std::map<FormatType, std::unique_ptr<Format>> FormatTable;
+extern std::map<FormatType, Format *> FormatTable;
 extern std::map<RegType, Reg> Regs;
 void initFormatTable();
 void initRegs();

@@ -19,7 +19,7 @@ private:
 	void addInstType(std::unique_ptr<InstType> info);
 	Format matchFormat(uint32_t firstFourBytes);
 
-	std::vector<std::unique_ptr<Format>> formatList;
+	std::vector<Format *> formatList;
 	std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;
 	int nextInstID;
 	InstPrinter printer;
