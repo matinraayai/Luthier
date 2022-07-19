@@ -3,6 +3,7 @@
 #include <string>
 #include "format.h"
 #include "operand.h"
+#include "../src/elf.h"
 typedef uint16_t Opcode;
 enum ExeUnit
 {
@@ -64,7 +65,9 @@ struct Inst
 	int VSCNT;
 	int LKGMCNT;
 };
-class InstPrinter
+struct InstPrinter
 {
+	elfio::File *file;
+	std::string sop2String(Inst i);
 };
 #endif
