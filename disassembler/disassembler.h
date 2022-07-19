@@ -4,18 +4,23 @@
 #include "inst.h"
 #include <map>
 #include "initialize.h"
+#include <memory>
+#include <vector>
 class Disassembler
 {
 public:
 	void Disassemble();
 
+	Disassembler();
+
 private:
 	void initializeDecodeTable();
 	void initFormatList();
-	void addInstType(InstType *info);
+	void addInstType(std::unique_ptr<InstType> info);
 	Format matchFormat(uint32_t firstFourBytes);
-	Format **formatList;
-	std::map<FormatType, DecodeTable *> decodeTables;
+
+	std::vector<std::unique_ptr<Format>> formatList;
+	std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;
 	int nextInstID;
 	InstPrinter printer;
 };

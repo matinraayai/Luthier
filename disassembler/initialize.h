@@ -4,7 +4,8 @@
 #include "format.h"
 #include "inst.h"
 #include <map>
-extern std::map<FormatType, Format *> FormatTable;
+#include <memory>
+extern std::map<FormatType, std::unique_ptr<Format>> FormatTable;
 extern std::map<RegType, Reg> Regs;
 void initFormatTable();
 void initRegs();
@@ -12,7 +13,7 @@ Reg *VReg(int index);
 Reg *SReg(int index);
 struct DecodeTable
 {
-	std::map<Opcode, InstType *> insts;
+	std::map<Opcode, std::unique_ptr<InstType>> insts;
 };
 
 #endif
