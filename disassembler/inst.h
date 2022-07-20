@@ -19,7 +19,7 @@ struct InstType
 {
 	std::string instName;
 	Opcode opcode;
-	Format *format;
+	Format format;
 	int ID;
 	ExeUnit exeUnit;
 	int DSTWidth;
@@ -28,12 +28,12 @@ struct InstType
 	int SRC2Width;
 	int SDSTWidth;
 
-	InstType(std::string instName, Opcode opcode, Format *format, int ID, ExeUnit exeUnit, int DSTWidth, int SRC0Width, int SRC1Width, int SRC2Width, int SDSTWidth) : instName(instName), opcode(opcode), format(format), ID(ID), exeUnit(exeUnit), DSTWidth(DSTWidth), SRC0Width(SRC0Width), SRC1Width(SRC1Width), SRC2Width(SRC2Width), SDSTWidth(SDSTWidth) {}
+	InstType(std::string instName, Opcode opcode, Format format, int ID, ExeUnit exeUnit, int DSTWidth, int SRC0Width, int SRC1Width, int SRC2Width, int SDSTWidth) : instName(instName), opcode(opcode), format(format), ID(ID), exeUnit(exeUnit), DSTWidth(DSTWidth), SRC0Width(SRC0Width), SRC1Width(SRC1Width), SRC2Width(SRC2Width), SDSTWidth(SDSTWidth) {}
 };
 struct Inst
 {
-	Format *format;
-	InstType *instType;
+	Format format;
+	InstType instType;
 	int byteSize;
 	uint64_t PC;
 	Operand src0;

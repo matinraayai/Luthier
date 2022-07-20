@@ -10,14 +10,14 @@ Disassembler::Disassembler()
 	initializeDecodeTable();
 }
 
-void Disassembler::addInstType(InstType *info)
+void Disassembler::addInstType(InstType info)
 {
-	if (decodeTables.find(info->format->formatType) == decodeTables.end())
+	if (decodeTables.find(info.format.formatType) == decodeTables.end())
 	{
-		decodeTables[info->format->formatType] = std::unique_ptr<DecodeTable>(new DecodeTable);
+		decodeTables[info.format.formatType] = std::unique_ptr<DecodeTable>(new DecodeTable);
 	}
-	(decodeTables[info->format->formatType])->insts[info->opcode] = info;
-	info->ID = nextInstID;
+	(decodeTables[info.format.formatType])->insts[info.opcode] = info;
+	info.ID = nextInstID;
 	nextInstID++;
 }
 
@@ -33,19 +33,19 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
 	printer.file = file;
 }
 
-Format *Disassembler::matchFormat(uint32_t firstFourBytes)
+Format Disassembler::matchFormat(uint32_t firstFourBytes)
 {
 	for (auto &f : formatList)
 	{
-		if (f->formatType == VOP3b)
+		if (f.formatType == VOP3b)
 		{
 			continue;
 		}
-		if ((firstFourBytes ^ f->encoding) & f->mask == 0)
+		if ((firstFourBytes ^ f.encoding) & f.mask == 0)
 		{
-			if (f->formatType == VOP3a)
+			if (f.formatType == VOP3a)
 			{
-				auto opcode = f->retrieveOpcode(firstFourBytes);
+				auto opcode = f.retrieveOpcode(firstFourBytes);
 				if (isVOP3bOpcode(opcode))
 				{
 					return FormatTable[VOP3b];
@@ -80,35 +80,28 @@ bool Disassembler::isVOP3bOpcode(Opcode opcode)
 	}
 	return false;
 }
-InstType *Disassembler::lookUp(Format *format, Opcode opcode)
+InstType Disassembler::lookUp(Format format, Opcode opcode)
 {
-	if (decodeTables.find(format->formatType) != decodeTables.end() && decodeTables[format->formatType]->insts.find(opcode) != decodeTables[format->formatType]->insts.end())
+	if (decodeTables.find(format.formatType) != decodeTables.end() && decodeTables[format.formatType]->insts.find(opcode) != decodeTables[format.formatType]->insts.end())
 	{
-		return decodeTables[format->formatType]->insts[opcode];
+		return decodeTables[format.formatType]->insts[opcode];
 	}
-	std::cerr << "instruction format " << format->formatType << ", opcode " << opcode << " not found\n";
+	std::cerr << "instruction format " << format.formatType << ", opcode " << opcode << " not found\n";
 	return nullptr;
 }
 
 std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 {
 	int err = 0;
-	Format *format = matchFormat(convertLE(buf));
-	if (format == nullptr)
-	{
-		return nullptr;
-	}
-	Opcode opcode = format->retrieveOpcode(convertLE(buf));
-	InstType *instType = lookUp(format, opcode);
-	if (instType == nullptr)
-	{
-		return nullptr;
-	}
+	Format format = matchFormat(convertLE(buf));
+
+	Opcode opcode = format.retrieveOpcode(convertLE(buf));
+	InstType instType = lookUp(format, opcode);
 
 	auto inst = std::make_unique<Inst>();
 	inst->format = format;
 	inst->instType = instType;
-	inst->byteSize = format->byteSizeExLiteral;
+	inst->byteSize = format.byteSizeExLiteral;
 
 	if (inst->byteSize > buf.size())
 	{
@@ -116,7 +109,7 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 		return nullptr;
 	}
 
-	switch (format->formatType)
+	switch (format.formatType)
 	{
 	case SOP2:
 		err = decodeSOP2(std::move(inst), buf);
@@ -127,7 +120,7 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 	}
 	if (err != 0)
 	{
-		std::cerr << "unable to decode instruction type " << format->formatName;
+		std::cerr << "unable to decode instruction type " << format.formatName;
 		return nullptr;
 	}
 	return inst;

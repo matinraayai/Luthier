@@ -19,15 +19,15 @@ public:
 private:
 	void initializeDecodeTable();
 	void initFormatList();
-	void addInstType(InstType *info);
-	Format *matchFormat(uint32_t firstFourBytes);
+	void addInstType(InstType info);
+	Format matchFormat(uint32_t firstFourBytes);
 	std::unique_ptr<Inst> decode(std::vector<char> buf);
 	bool isVOP3bOpcode(Opcode opcode);
-	InstType *lookUp(Format *format, Opcode opcode);
+	InstType lookUp(Format format, Opcode opcode);
 	int decodeSOP2(std::unique_ptr<Inst> inst, std::vector<char> buf);
 	int decodeSOP1(std::unique_ptr<Inst> inst, std::vector<char> buf);
 
-	std::vector<Format *> formatList;
+	std::vector<Format> formatList;
 	std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;
 	int nextInstID;
 	InstPrinter printer;
