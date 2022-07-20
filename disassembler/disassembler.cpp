@@ -16,7 +16,7 @@ void Disassembler::addInstType(InstType *info)
 	{
 		decodeTables[info->format->formatType] = std::unique_ptr<DecodeTable>(new DecodeTable);
 	}
-	(decodeTables[info->format->formatType])->insts[info->opcode] = std::move(info);
+	(decodeTables[info->format->formatType])->insts[info->opcode] = info;
 	info->ID = nextInstID;
 	nextInstID++;
 }
@@ -55,6 +55,7 @@ Format *Disassembler::matchFormat(uint32_t firstFourBytes)
 		}
 	}
 	printf("cannot find the instruction format, first two bytes are %04x", firstFourBytes);
+	return nullptr;
 }
 bool Disassembler::isVOP3bOpcode(Opcode opcode)
 {
@@ -86,8 +87,53 @@ InstType *Disassembler::lookUp(Format *format, Opcode opcode)
 		return decodeTables[format->formatType]->insts[opcode];
 	}
 	std::cerr << "instruction format " << format->formatType << ", opcode " << opcode << " not found\n";
+	return nullptr;
 }
-Inst *Disassembler::decode(char *blob)
+
+std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 {
-	Format *format = matchFormat(convertLE(blob));
+	int err = 0;
+	Format *format = matchFormat(convertLE(buf));
+	if (format == nullptr)
+	{
+		return nullptr;
+	}
+	Opcode opcode = format->retrieveOpcode(convertLE(buf));
+	InstType *instType = lookUp(format, opcode);
+	if (instType == nullptr)
+	{
+		return nullptr;
+	}
+
+	auto inst = std::make_unique<Inst>();
+	inst->format = format;
+	inst->instType = instType;
+	inst->byteSize = format->byteSizeExLiteral;
+
+	if (inst->byteSize > buf.size())
+	{
+		std::cerr << "no enough buffer\n";
+		return nullptr;
+	}
+
+	switch (format->formatType)
+	{
+	case SOP2:
+		err = decodeSOP2(std::move(inst), buf);
+		break;
+	case SOP1:
+		err = decodeSOP1(std::move(inst), buf);
+		break;
+	}
+	if (err != 0)
+	{
+		std::cerr << "unable to decode instruction type " << format->formatName;
+		return nullptr;
+	}
+	return inst;
+}
+int Disassembler::decodeSOP2(std::unique_ptr<Inst> inst, std::vector<char> buf)
+{
+	uint32_t bytes = convertLE(buf);
+	uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
 }

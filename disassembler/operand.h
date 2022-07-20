@@ -17,7 +17,7 @@ struct Operand
 {
 	int code;
 	OperandType operandType;
-	Reg *reg;
+	Reg reg;
 	int regCount;
 	double floatValue;
 	long int intValue;
@@ -27,23 +27,23 @@ struct Operand
 		char buffer[50];
 		if (regCount > 1)
 		{
-			if (reg->IsSReg())
+			if (reg.IsSReg())
 			{
-				std::sprintf(buffer, "s[%d:%d]", reg->RegIndex(), reg->RegIndex() + regCount - 1);
+				std::sprintf(buffer, "s[%d:%d]", reg.RegIndex(), reg.RegIndex() + regCount - 1);
 				return buffer;
 			}
-			else if (reg->IsVReg())
+			else if (reg.IsVReg())
 			{
-				std::sprintf(buffer, "v[%d:%d]", reg->RegIndex(), reg->RegIndex() + regCount - 1);
+				std::sprintf(buffer, "v[%d:%d]", reg.RegIndex(), reg.RegIndex() + regCount - 1);
 				return buffer;
 			}
-			else if (reg->name.find("lo") != std::string::npos)
+			else if (reg.name.find("lo") != std::string::npos)
 			{
-				return reg->name.substr(0, reg->name.length() - 2);
+				return reg.name.substr(0, reg.name.length() - 2);
 			}
 			return "unknown register";
 		}
-		return reg->name;
+		return reg.name;
 	}
 	std::string String()
 	{
@@ -64,9 +64,9 @@ struct Operand
 		}
 	}
 };
-void newRegOperand(Operand *o, int code, RegType reg, int count);
-void newSRegOperand(Operand *o, int code, int index, int count);
+Operand newRegOperand(int code, RegType reg, int count);
+Operand newSRegOperand(int code, int index, int count);
 Operand newVRegOperand(int code, int index, int count);
-void newIntOperand(Operand *o, int code, long int value);
-void newFloatOperand(Operand *o, int code, double value);
+Operand newIntOperand(int code, long int value);
+Operand newFloatOperand(int code, double value);
 #endif

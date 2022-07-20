@@ -51,11 +51,11 @@ void initRegs()
 	Regs.insert({V0, {V0, "v0", 4, false}});
 }
 
-Reg *VReg(int index)
+Reg VReg(int index)
 {
-	return &Regs[RegType(index + (int)V0)];
+	return Regs[RegType(index + (int)V0)];
 }
-Reg *SReg(int index)
+Reg SReg(int index)
 {
-	return &Regs[RegType(index + (int)S0)];
+	return Regs[RegType(index + (int)S0)];
 }

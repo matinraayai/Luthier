@@ -10,7 +10,7 @@ Operand newRegOperand(int code, RegType reg, int count)
 	Operand o;
 	o.code = code;
 	o.operandType = RegOperand;
-	o.reg = &Regs[reg];
+	o.reg = Regs[reg];
 	o.regCount = count;
 	return o;
 }
@@ -49,7 +49,7 @@ Operand newFloatOperand(int code, double value)
 	return o;
 }
 
-Operand getOperand(uint16_t num)
+Operand getOperandByCode(uint16_t num)
 {
 	int code = (int)num;
 	if (num >= 0 && num <= 101)
@@ -201,6 +201,6 @@ Operand getOperand(uint16_t num)
 	else
 	{
 		std::cerr << "cannot find Operand\n";
-		return;
+		return {};
 	}
 }

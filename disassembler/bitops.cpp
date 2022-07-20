@@ -1,4 +1,5 @@
 #include <bitops.h>
+#include <vector>
 uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude)
 {
 	uint32_t mask, extracted;
@@ -6,7 +7,7 @@ uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude)
 	extracted = (mask & num) >> loInclude;
 	return extracted;
 }
-uint32_t convertLE(char b[])
+uint32_t convertLE(std::vector<char> b)
 {
 	return uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24;
 }
