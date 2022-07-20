@@ -1,5 +1,6 @@
 #include "disassembler.h"
 #include <memory>
+#include <iostream>
 #include "initialize.h"
 
 Disassembler::Disassembler()
@@ -9,15 +10,15 @@ Disassembler::Disassembler()
 	initializeDecodeTable();
 }
 
-void Disassembler::addInstType(std::unique_ptr<InstType> info)
+void Disassembler::addInstType(InstType *info)
 {
 	if (decodeTables.find(info->format->formatType) == decodeTables.end())
 	{
 		decodeTables[info->format->formatType] = std::unique_ptr<DecodeTable>(new DecodeTable);
 	}
 	(decodeTables[info->format->formatType])->insts[info->opcode] = std::move(info);
-	info->ID = this->nextInstID;
-	this->nextInstID++;
+	info->ID = nextInstID;
+	nextInstID++;
 }
 
 void Disassembler::initFormatList()
@@ -78,6 +79,15 @@ bool Disassembler::isVOP3bOpcode(Opcode opcode)
 	}
 	return false;
 }
-Inst *Disassembler::decode(byte buf[])
+InstType *Disassembler::lookUp(Format *format, Opcode opcode)
 {
+	if (decodeTables.find(format->formatType) != decodeTables.end() && decodeTables[format->formatType]->insts.find(opcode) != decodeTables[format->formatType]->insts.end())
+	{
+		return decodeTables[format->formatType]->insts[opcode];
+	}
+	std::cerr << "instruction format " << format->formatType << ", opcode " << opcode << " not found\n";
+}
+Inst *Disassembler::decode(char *blob)
+{
+	Format *format = matchFormat(convertLE(blob));
 }

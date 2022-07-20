@@ -8,7 +8,7 @@
 #include <vector>
 #include <string>
 #include "../src/elf.h"
-typedef uint8_t byte;
+
 class Disassembler
 {
 public:
@@ -19,10 +19,11 @@ public:
 private:
 	void initializeDecodeTable();
 	void initFormatList();
-	void addInstType(std::unique_ptr<InstType> info);
+	void addInstType(InstType *info);
 	Format *matchFormat(uint32_t firstFourBytes);
-	Inst *decode(byte buf[]);
+	Inst *decode(char *blob);
 	bool isVOP3bOpcode(Opcode opcode);
+	InstType *lookUp(Format *format, Opcode opcode);
 
 	std::vector<Format *> formatList;
 	std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;

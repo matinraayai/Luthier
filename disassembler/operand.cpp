@@ -3,6 +3,7 @@
 #include "reg.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <iostream>
 
 Operand newRegOperand(int code, RegType reg, int count)
 {
@@ -199,6 +200,7 @@ Operand getOperand(uint16_t num)
 	}
 	else
 	{
-		perror("cannot find Operand\n");
+		std::cerr << "cannot find Operand\n";
+		return;
 	}
 }

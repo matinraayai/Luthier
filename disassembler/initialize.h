@@ -13,7 +13,7 @@ Reg *VReg(int index);
 Reg *SReg(int index);
 struct DecodeTable
 {
-	std::map<Opcode, std::unique_ptr<InstType>> insts;
+	std::map<Opcode, InstType *> insts;
 };
 
 #endif
