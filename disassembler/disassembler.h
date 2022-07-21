@@ -1,6 +1,5 @@
 #ifndef DISASSEMBLER_H
 #define DISASSEMBLER_H
-#include "format.h"
 #include "inst.h"
 #include <map>
 #include "initialize.h"

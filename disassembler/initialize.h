@@ -1,7 +1,6 @@
 #ifndef INITIALIZE_H
 #define INTIIALIZE_H
 #include "reg.h"
-#include "format.h"
 #include "inst.h"
 #include <map>
 #include <memory>

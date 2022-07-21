@@ -1,10 +1,47 @@
 #ifndef INST_H
 #define INST_H
 #include <string>
-#include "format.h"
 #include "operand.h"
 #include "../src/elf.h"
+#include "bitops.h"
 typedef uint16_t Opcode;
+enum FormatType
+{
+	SOP2,
+	SOPK,
+	SOP1,
+	SOPC,
+	SOPP,
+	SMEM,
+	VOP2,
+	VOP1,
+	VOP3a,
+	VOP3b,
+	VOP3P,
+	VOPC,
+	VINTRP,
+	DS,
+	MUBUF,
+	MTBUF,
+	MIMG,
+	FLAT
+};
+struct Format
+{
+	FormatType formatType;
+	std::string formatName;
+	uint32_t encoding;
+	uint32_t mask;
+	int byteSizeExLiteral;
+	uint8_t opcodeLow;
+	uint8_t opcodeHigh;
+
+	Opcode retrieveOpcode(uint32_t firstFourBytes)
+	{
+		uint32_t opcode = extractBitsFromU32(firstFourBytes, int(opcodeLow), int(opcodeHigh));
+		return Opcode(opcode);
+	}
+};
 enum ExeUnit
 {
 	ExeUnitVALU,
