@@ -2,7 +2,6 @@
 #include <memory>
 #include <iostream>
 #include "initialize.h"
-#include "notFoundException.h"
 #include "operand.h"
 
 Disassembler::Disassembler()
@@ -58,7 +57,7 @@ Format Disassembler::matchFormat(uint32_t firstFourBytes)
 	}
 	char buffer[100];
 	sprintf(buffer, "cannot find the instruction format, first two bytes are %04x", firstFourBytes);
-	throw NotFoundException(buffer);
+	throw std::runtime_error(buffer);
 }
 bool Disassembler::isVOP3bOpcode(Opcode opcode)
 {
@@ -91,32 +90,20 @@ InstType Disassembler::lookUp(Format format, Opcode opcode)
 	}
 	char buffer[100];
 	sprintf(buffer, "instruction format %s, opcode %d not found\n", format.formatType, opcode);
-	throw NotFoundException(buffer);
+	throw std::runtime_error(buffer);
 }
 
 std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 {
 	Format format;
 	InstType instType;
-	try
-	{
-		format = matchFormat(convertLE(buf));
-	}
-	catch (NotFoundException &notFoundException)
-	{
-		std::cout << notFoundException.what() << std::endl;
-		throw;
-	}
+
+	format = matchFormat(convertLE(buf));
+
 	Opcode opcode = format.retrieveOpcode(convertLE(buf));
-	try
-	{
-		instType = lookUp(format, opcode);
-	}
-	catch (NotFoundException &notFoundException)
-	{
-		std::cout << notFoundException.what() << std::endl;
-		throw;
-	}
+
+	instType = lookUp(format, opcode);
+
 	auto inst = std::make_unique<Inst>();
 	inst->format = format;
 	inst->instType = instType;
@@ -137,11 +124,11 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 		decodeSOP1(std::move(inst), buf);
 		break;
 	}
-	if (err != 0)
-	{
-		std::cerr << "unable to decode instruction type " << format.formatName;
-		return nullptr;
-	}
+	// if (err != 0)
+	// {
+	// 	std::cerr << "unable to decode instruction type " << format.formatName;
+	// 	return nullptr;
+	// }
 	return inst;
 }
 int Disassembler::decodeSOP2(std::unique_ptr<Inst> inst, std::vector<char> buf)
