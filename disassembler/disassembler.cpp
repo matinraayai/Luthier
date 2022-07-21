@@ -2,6 +2,8 @@
 #include <memory>
 #include <iostream>
 #include "initialize.h"
+#include "notFoundException.h"
+#include "operand.h"
 
 Disassembler::Disassembler()
 {
@@ -54,8 +56,9 @@ Format Disassembler::matchFormat(uint32_t firstFourBytes)
 			return f;
 		}
 	}
-	printf("cannot find the instruction format, first two bytes are %04x", firstFourBytes);
-	return nullptr;
+	char buffer[100];
+	sprintf(buffer, "cannot find the instruction format, first two bytes are %04x", firstFourBytes);
+	throw NotFoundException(buffer);
 }
 bool Disassembler::isVOP3bOpcode(Opcode opcode)
 {
@@ -86,18 +89,34 @@ InstType Disassembler::lookUp(Format format, Opcode opcode)
 	{
 		return decodeTables[format.formatType]->insts[opcode];
 	}
-	std::cerr << "instruction format " << format.formatType << ", opcode " << opcode << " not found\n";
-	return nullptr;
+	char buffer[100];
+	sprintf(buffer, "instruction format %s, opcode %d not found\n", format.formatType, opcode);
+	throw NotFoundException(buffer);
 }
 
 std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 {
-	int err = 0;
-	Format format = matchFormat(convertLE(buf));
-
+	Format format;
+	InstType instType;
+	try
+	{
+		format = matchFormat(convertLE(buf));
+	}
+	catch (NotFoundException &notFoundException)
+	{
+		std::cout << notFoundException.what() << std::endl;
+		throw;
+	}
 	Opcode opcode = format.retrieveOpcode(convertLE(buf));
-	InstType instType = lookUp(format, opcode);
-
+	try
+	{
+		instType = lookUp(format, opcode);
+	}
+	catch (NotFoundException &notFoundException)
+	{
+		std::cout << notFoundException.what() << std::endl;
+		throw;
+	}
 	auto inst = std::make_unique<Inst>();
 	inst->format = format;
 	inst->instType = instType;
@@ -112,10 +131,10 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 	switch (format.formatType)
 	{
 	case SOP2:
-		err = decodeSOP2(std::move(inst), buf);
+		decodeSOP2(std::move(inst), buf);
 		break;
 	case SOP1:
-		err = decodeSOP1(std::move(inst), buf);
+		decodeSOP1(std::move(inst), buf);
 		break;
 	}
 	if (err != 0)
@@ -129,4 +148,27 @@ int Disassembler::decodeSOP2(std::unique_ptr<Inst> inst, std::vector<char> buf)
 {
 	uint32_t bytes = convertLE(buf);
 	uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
+	inst->src0 = getOperandByCode(uint16_t(src0Value));
+	if (inst->src0.operandType == LiteralConstant)
+	{
+		inst->byteSize += 4;
+		if (buf.size() < 8)
+		{
+			throw;
+		}
+		std::vector<char> sub(&buf[4], &buf[8]);
+		inst->src0.literalConstant = convertLE(sub);
+	}
+	uint32_t src1Value = extractBitsFromU32(bytes, 8, 15);
+	inst->src1 = getOperandByCode(uint16_t(src1Value));
+	if (inst->src1.operandType == LiteralConstant)
+	{
+		inst->byteSize += 4;
+		if (buf.size() < 8)
+		{
+			throw;
+		}
+		std::vector<char> sub(&buf[4], &buf[8]);
+		inst->src1.literalConstant = convertLE(sub);
+	}
 }

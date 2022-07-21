@@ -69,4 +69,5 @@ Operand newSRegOperand(int code, int index, int count);
 Operand newVRegOperand(int code, int index, int count);
 Operand newIntOperand(int code, long int value);
 Operand newFloatOperand(int code, double value);
+Operand getOperandByCode(uint16_t num)
 #endif
