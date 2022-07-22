@@ -64,8 +64,6 @@ struct InstType
 	int SRC1Width;
 	int SRC2Width;
 	int SDSTWidth;
-
-	InstType(std::string instName, Opcode opcode, Format format, int ID, ExeUnit exeUnit, int DSTWidth, int SRC0Width, int SRC1Width, int SRC2Width, int SDSTWidth) : instName(instName), opcode(opcode), format(format), ID(ID), exeUnit(exeUnit), DSTWidth(DSTWidth), SRC0Width(SRC0Width), SRC1Width(SRC1Width), SRC2Width(SRC2Width), SDSTWidth(SDSTWidth) {}
 };
 struct Inst
 {
