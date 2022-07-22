@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include "../src/elf.h"
+#include "instprinter.h"
 
 class Disassembler
 {

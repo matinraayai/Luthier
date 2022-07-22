@@ -1,7 +1,6 @@
 #include "disassembler.h"
 #include <memory>
 #include <iostream>
-#include "initialize.h"
 #include "operand.h"
 
 Disassembler::Disassembler()
@@ -32,6 +31,11 @@ void Disassembler::initFormatList()
 void Disassembler::Disassemble(elfio::File *file, std::string filename)
 {
 	printer.file = file;
+	auto text_section = file->GetSectionByName(".text");
+	if (!text_section)
+	{
+		throw std::runtime_error("text section is not found");
+	}
 }
 
 Format Disassembler::matchFormat(uint32_t firstFourBytes)
@@ -95,14 +99,11 @@ InstType Disassembler::lookUp(Format format, Opcode opcode)
 
 std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 {
-	Format format;
-	InstType instType;
-
-	format = matchFormat(convertLE(buf));
+	Format format = matchFormat(convertLE(buf));
 
 	Opcode opcode = format.retrieveOpcode(convertLE(buf));
 
-	instType = lookUp(format, opcode);
+	InstType instType = lookUp(format, opcode);
 
 	auto inst = std::make_unique<Inst>();
 	inst->format = format;
@@ -121,7 +122,7 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 		decodeSOP2(std::move(inst), buf);
 		break;
 	case SOP1:
-		decodeSOP1(std::move(inst), buf);
+		// decodeSOP1(std::move(inst), buf);
 		break;
 	}
 	// if (err != 0)

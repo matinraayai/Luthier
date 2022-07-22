@@ -1,9 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include "initialize.h"
-#include "operand.h"
 #include "../src/elf.h"
+#include "disassembler.h"
 int main(int argc, char *argv[])
 {
 	if (argc != 2)
@@ -31,13 +30,12 @@ int main(int argc, char *argv[])
 	elfio::File elfFile;
 	elfFile = elfFile.FromMem(blob);
 	elfFile.PrintSymbolsForSection(".text");
-	auto text_section = elfFile.GetSectionByName(".text");
-	if (!text_section)
-	{
-		printf("text section is not found");
-	}
+
 	initRegs();
 	initFormatTable();
+
+	Disassembler d;
+	d.Disassemble(&elfFile, filename);
 
 	return 0;
 }
