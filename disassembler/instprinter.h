@@ -52,7 +52,26 @@ struct InstPrinter
 		}
 		return reg.name;
 	}
-	// std::string sop2String(Inst i);
-	std::string Print(Inst *i);
+	std::string sop2String(Inst *i)
+	{
+	}
+	std::string smemString(Inst *i)
+	{
+		std::stringstream stream;
+		stream << i->instType.instName << " " << operandString(i->data) << ", " << operandString(i->base) << ", 0x" << std::hex << uint16_t(i->offset.intValue);
+		return stream.str();
+	}
+	std::string Print(Inst *i)
+	{
+		switch (i->format.formatType)
+		{
+		case SOP2:
+			return sop2String(i);
+		case SMEM:
+			return smemString(i);
+		default:
+			throw std::runtime_error("unknown instruction format type");
+		}
+	}
 };
 #endif

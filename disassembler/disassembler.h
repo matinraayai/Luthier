@@ -24,8 +24,9 @@ private:
 	std::unique_ptr<Inst> decode(std::vector<char> buf);
 	bool isVOP3bOpcode(Opcode opcode);
 	InstType lookUp(Format format, Opcode opcode);
-	int decodeSOP2(Inst *inst, std::vector<char> buf);
-	int decodeSOP1(std::unique_ptr<Inst> inst, std::vector<char> buf);
+	void decodeSOP2(Inst *inst, std::vector<char> buf);
+	void decodeSOP1(Inst *inst, std::vector<char> buf);
+	void decodeSMEM(Inst *inst, std::vector<char> buf);
 
 	std::vector<Format> formatList;
 	std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;
