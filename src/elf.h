@@ -39,7 +39,6 @@ namespace elfio
 
     Section(File *file, Elf64_Shdr *header);
     char *Blob();
-    void PrintAllSymbols();
 
     std::string name;
     std::string type;

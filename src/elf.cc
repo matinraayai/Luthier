@@ -1,4 +1,4 @@
-#include "src/elf.h"
+#include "elf.h"
 
 #include <elf.h>
 #include <memory>
@@ -164,10 +164,6 @@ namespace elfio
       return "UNKNOWN";
     }
     return "UNKNOWN";
-  }
-  void Section::PrintAllSymbols()
-  {
-    this->file->PrintSymbolsForSection(this->name);
   }
 
   Symbol::Symbol(File *file, Elf64_Sym *header) : file(file), header(header)

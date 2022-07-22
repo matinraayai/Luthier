@@ -9,7 +9,9 @@
 			"type": "cppdbg",
 			"request": "launch",
 			"program": "${workspaceFolder}/disassembler/regTest",
-			"args": [],
+			"args": [
+				"../generatedAsm/vectoradd_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx906"
+			],
 			"stopAtEntry": false,
 			"cwd": "${fileDirname}",
 			"environment": [],

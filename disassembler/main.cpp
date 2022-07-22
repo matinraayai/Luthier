@@ -3,6 +3,7 @@
 #include <string>
 #include "initialize.h"
 #include "operand.h"
+#include "../src/elf.h"
 int main(int argc, char *argv[])
 {
 	if (argc != 2)
@@ -26,6 +27,14 @@ int main(int argc, char *argv[])
 	{
 		printf("unable to open file\n");
 		return 1;
+	}
+	elfio::File elfFile;
+	elfFile = elfFile.FromMem(blob);
+	elfFile.PrintSymbolsForSection(".text");
+	auto text_section = elfFile.GetSectionByName(".text");
+	if (!text_section)
+	{
+		printf("text section is not found");
 	}
 	initRegs();
 	initFormatTable();
