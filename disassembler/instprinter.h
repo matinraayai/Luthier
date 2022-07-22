@@ -53,6 +53,6 @@ struct InstPrinter
 		return reg.name;
 	}
 	// std::string sop2String(Inst i);
-	// std::string print(Inst i);
+	std::string Print(Inst *i);
 };
 #endif

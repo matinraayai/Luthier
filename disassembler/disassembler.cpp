@@ -37,6 +37,14 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
 		throw std::runtime_error("text section is not found");
 	}
 	std::vector<char> buf(text_section->Blob(), text_section->Blob() + text_section->size);
+	uint64_t pc = 0x100;
+	if (!buf.empty())
+	{
+		std::unique_ptr<Inst> inst = decode(buf);
+		std::string instStr = printer.Print(inst.get());
+		buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+		pc += uint64_t(inst->byteSize);
+	}
 }
 
 Format Disassembler::matchFormat(uint32_t firstFourBytes)
@@ -98,41 +106,40 @@ InstType Disassembler::lookUp(Format format, Opcode opcode)
 	throw std::runtime_error(buffer);
 }
 
-// std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
-// {
-// 	Format format = matchFormat(convertLE(buf));
+std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
+{
+	Format format = matchFormat(convertLE(buf));
 
-// 	Opcode opcode = format.retrieveOpcode(convertLE(buf));
+	Opcode opcode = format.retrieveOpcode(convertLE(buf));
 
-// 	InstType instType = lookUp(format, opcode);
+	InstType instType = lookUp(format, opcode);
 
-// 	auto inst = std::make_unique<Inst>();
-// 	inst->format = format;
-// 	inst->instType = instType;
-// 	inst->byteSize = format.byteSizeExLiteral;
+	auto inst = std::make_unique<Inst>();
+	inst->format = format;
+	inst->instType = instType;
+	inst->byteSize = format.byteSizeExLiteral;
 
-// 	if (inst->byteSize > buf.size())
-// 	{
-// 		std::cerr << "no enough buffer\n";
-// 		return nullptr;
-// 	}
+	if (inst->byteSize > buf.size())
+	{
+		throw std::runtime_error("no enough buffer");
+	}
 
-// 	switch (format.formatType)
-// 	{
-// 	case SOP2:
-// 		decodeSOP2(inst.get(), buf);
-// 		break;
-// 	case SOP1:
-// 		// decodeSOP1(std::move(inst), buf);
-// 		break;
-// 	}
-// 	// if (err != 0)
-// 	// {
-// 	// 	std::cerr << "unable to decode instruction type " << format.formatName;
-// 	// 	return nullptr;
-// 	// }
-// 	return inst;
-// }
+	switch (format.formatType)
+	{
+	case SOP2:
+		decodeSOP2(inst.get(), buf);
+		break;
+	case SOP1:
+		// decodeSOP1(std::move(inst), buf);
+		break;
+	}
+	// if (err != 0)
+	// {
+	// 	std::cerr << "unable to decode instruction type " << format.formatName;
+	// 	return nullptr;
+	// }
+	return std::move(inst);
+}
 int Disassembler::decodeSOP2(Inst *inst, std::vector<char> buf)
 {
 	uint32_t bytes = convertLE(buf);
