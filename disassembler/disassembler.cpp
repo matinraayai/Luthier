@@ -44,6 +44,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
 		std::string instStr = printer.Print(inst.get());
 		buf.erase(buf.begin(), buf.begin() + inst->byteSize);
 		pc += uint64_t(inst->byteSize);
+		std::cout << instStr;
 	}
 }
 
@@ -55,7 +56,7 @@ Format Disassembler::matchFormat(uint32_t firstFourBytes)
 		{
 			continue;
 		}
-		if ((firstFourBytes ^ f.encoding) & f.mask == 0)
+		if (((firstFourBytes ^ f.encoding) & f.mask) == 0)
 		{
 			if (f.formatType == VOP3a)
 			{
