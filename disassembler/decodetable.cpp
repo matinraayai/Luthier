@@ -2,206 +2,206 @@
 #include <memory>
 void Disassembler::initializeDecodeTable()
 {
-	// isa.SOP2 instructions
-	addInstType({"s_add_u32", 			0,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_sub_u32", 			1,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_add_i32", 			2,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_sub_i32", 			3,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_addc_u32", 			4,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_subb_u32", 			5,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_min_i32", 			6,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_min_u32", 			7,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_max_i32", 			8,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_max_u32", 			9,  FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_cselect_b32", 		10, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_cselect_b64", 		11, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_and_b32", 			12, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_and_b64", 			13, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_or_b32", 			14, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_or_b64", 			15, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_xor_b32", 			16, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_xor_b64", 			17, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_andn2_b32", 		18, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_andn2_b64", 		19, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_orn2_b32", 			20, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_orn2_b64", 			21, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_nand_b32", 			22, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_nand_b64", 			23, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_nor_b32", 			24, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_nor_b64", 			25, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_xnor_b32", 			26, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_xnor_b64", 			27, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshl_b32", 			28, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshl_b64", 			29, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshr_b32", 			30, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshr_b64", 			31, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_ashr_i32", 			32, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_ashr_i64", 			33, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_bfm_b32", 			34, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_bfm_b64", 			35, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_mul_i32", 			36, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_bfe_u32", 			37, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_bfe_i32", 			38, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_bfe_u64", 			39, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_bfe_i64", 			40, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_cbranch_g_fork", 	41, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_absdiss_i32", 		42, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_rfe_restore_b64", 	43, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_mul_hi_u32", 		44, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_mul_hi_i32", 		45, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshl1_add_u32", 	46, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshl2_add_u32", 	47, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshl3_add_u32", 	48, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_lshl4_add_u32", 	49, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_pack_ll_b32_b16", 	50, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_pack_lh_b32_b16", 	51, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
-	addInstType({"s_pack_hh_b32_b16", 	52, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	//SOP2 instructions
+	addInstType({"s_add_u32", 0, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_sub_u32", 1, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_add_i32", 2, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_sub_i32", 3, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_addc_u32", 4, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_subb_u32", 5, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_min_i32", 6, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_min_u32", 7, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_max_i32", 8, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_max_u32", 9, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_cselect_b32", 10, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_cselect_b64", 11, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_and_b32", 12, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_and_b64", 13, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_or_b32", 14, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_or_b64", 15, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_xor_b32", 16, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_xor_b64", 17, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_andn2_b32", 18, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_andn2_b64", 19, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_orn2_b32", 20, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_orn2_b64", 21, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_nand_b32", 22, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_nand_b64", 23, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_nor_b32", 24, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_nor_b64", 25, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_xnor_b32", 26, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_xnor_b64", 27, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshl_b32", 28, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshl_b64", 29, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshr_b32", 30, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshr_b64", 31, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_ashr_i32", 32, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_ashr_i64", 33, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_bfm_b32", 34, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_bfm_b64", 35, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_mul_i32", 36, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_bfe_u32", 37, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_bfe_i32", 38, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_bfe_u64", 39, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_bfe_i64", 40, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_cbranch_g_fork", 41, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_absdiss_i32", 42, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_rfe_restore_b64", 43, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_mul_hi_u32", 44, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_mul_hi_i32", 45, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshl1_add_u32", 46, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshl2_add_u32", 47, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshl3_add_u32", 48, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_lshl4_add_u32", 49, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_pack_ll_b32_b16", 50, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_pack_lh_b32_b16", 51, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
+	addInstType({"s_pack_hh_b32_b16", 52, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 
-	// isa.VOP2 instructions
-	addInstType({"v_cndmask_b32", 		0,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_add_f32", 			1,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sub_f32", 			2,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_subrev_f32", 		3,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_legacy_f32", 	4,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_f32", 			5,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_i32_i24", 		6,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_hi_i32_i24", 	7,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_u32_u24", 		8,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_hi_u32_u24", 	9,  FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_min_f32", 			10, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_max_f32", 			11, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_min_i32", 			12, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_max_i32", 			13, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_min_u32", 			14, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_max_u32", 			15, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_lshrrev_b32", 		16, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ashrrev_i32", 		17, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_lshlrev_b32", 		18, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_and_b32", 			19, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_or_b32", 			20, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_xor_b32", 			21, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mac_f32", 			22, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_madmk_f32", 		23, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_madak_f32", 		24, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_add_co_u32", 		25, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sub_co_u32", 		26, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_subrev_co_u32", 	27, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_addc_co_u32", 		28, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_subb_co_u32", 		29, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_subbrev_co_u32", 	30, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_add_f16", 			31, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sub_f16", 			32, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_subrev_f16", 		33, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_f16", 			34, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mac_f16", 			35, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_madmk_f16", 		36, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_madak_f16", 		37, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_add_u16", 			38, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sub_u16", 			39, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_subrev_u16", 		40, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mul_lo_u16", 		41, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_lshlrev_b16", 		42, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_lshrrev_b16", 		43, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ashrrev_i16", 		44, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_max_f16", 			45, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_min_f16", 			46, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_max_u16", 			47, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_max_i16", 			48, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_min_u16", 			49, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_min_i16", 			50, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ldexp_f16", 		51, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_add_u32", 			52, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sub_u32", 			53, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_subrev_u32", 		54, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_dot2c_f32_f16", 	55, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_dot2c_i32_i16", 	56, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_dot4c_i32_i8", 		57, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_dot8c_i32_i4", 		58, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_fmac_f32", 			59, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_pk_fmac_f16", 		60, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_xnor_b32", 			61, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	// VOP2 instructions
+	addInstType({"v_cndmask_b32", 0, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_add_f32", 1, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sub_f32", 2, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_subrev_f32", 3, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_legacy_f32", 4, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_f32", 5, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_i32_i24", 6, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_hi_i32_i24", 7, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_u32_u24", 8, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_hi_u32_u24", 9, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_min_f32", 10, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_max_f32", 11, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_min_i32", 12, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_max_i32", 13, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_min_u32", 14, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_max_u32", 15, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_lshrrev_b32", 16, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ashrrev_i32", 17, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_lshlrev_b32", 18, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_and_b32", 19, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_or_b32", 20, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_xor_b32", 21, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mac_f32", 22, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_madmk_f32", 23, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_madak_f32", 24, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_add_co_u32", 25, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sub_co_u32", 26, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_subrev_co_u32", 27, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_addc_co_u32", 28, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_subb_co_u32", 29, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_subbrev_co_u32", 30, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_add_f16", 31, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sub_f16", 32, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_subrev_f16", 33, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_f16", 34, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mac_f16", 35, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_madmk_f16", 36, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_madak_f16", 37, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_add_u16", 38, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sub_u16", 39, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_subrev_u16", 40, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mul_lo_u16", 41, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_lshlrev_b16", 42, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_lshrrev_b16", 43, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ashrrev_i16", 44, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_max_f16", 45, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_min_f16", 46, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_max_u16", 47, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_max_i16", 48, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_min_u16", 49, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_min_i16", 50, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ldexp_f16", 51, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_add_u32", 52, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sub_u32", 53, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_subrev_u32", 54, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_dot2c_f32_f16", 55, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_dot2c_i32_i16", 56, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_dot4c_i32_i8", 57, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_dot8c_i32_i4", 58, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_fmac_f32", 59, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_pk_fmac_f16", 60, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_xnor_b32", 61, FormatTable[VOP2], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 
-	// isa.VOP1 instructions
-	addInstType({"v_nop", 						0,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mov_b32", 					1,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_readfirstlane_b32", 		2,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_i32_f64", 				3,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f64_i32", 				4,  FormatTable[VOP1], 0, ExeUnitVALU, 64, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_i32", 				5,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_u32", 				6,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_u32_f32", 				7,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_i32_f32", 				8,  FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f16_f32", 				10, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_f16", 				11, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_rpi_i32_f32", 			12, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_flr_i32_f32", 			13, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_off_f32_i4", 			14, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_f64", 				15, FormatTable[VOP1], 0, ExeUnitVALU, 32, 64, 32, 0, 0});
-	addInstType({"v_cvt_f64_f32", 				16, FormatTable[VOP1], 0, ExeUnitVALU, 64, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_ubyte0", 			17, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_ubyte1", 			18, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_ubyte2", 			19, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f32_ubyte3", 			20, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_u32_f64", 				21, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f64_u32", 				22, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_trunc_f64", 				23, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ceil_f64", 					24, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rndne_f64", 				25, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_floor_f64", 				26, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_fract_f32", 				27, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_trunc_f32", 				28, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ceil_f32", 					29, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rndne_f32", 				30, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_floor_f32", 				31, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_exp_f32", 					32, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_log_f32", 					33, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rcp_f32", 					34, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rcp_iflag_f32", 			35, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rsq_f32", 					36, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rcp_f64", 					37, FormatTable[VOP1], 0, ExeUnitVALU, 64, 64, 32, 0, 0});
-	addInstType({"v_rsq_f64", 					38, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sqrt_f32", 					39, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sqrt_f64", 					40, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sin_f32", 					41, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cos_f32", 					42, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_not_b32", 					43, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_bfrev_b32", 				44, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ffbh_u32", 					45, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ffbl_b32", 					46, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ffbh_i32", 					47, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_frexp_exp_i32_f64", 		48, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_frexp_mant_f64", 			49, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_fract_f64", 				50, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_frexp_exp_i32_f32", 		51, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_frexp_mant_f32", 			52, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_clrexcp", 					53, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_screen_partition_4se_b32", 	55, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f16_u16", 				57, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_f16_i16", 				58, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_u16_f16", 				59, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_i16_f16", 				60, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rcp_f16", 					61, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sqrt_f16", 					62, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rsq_f16", 					63, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_log_f16", 					64, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_exp_f16", 					65, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_frexp_mant_f16", 			66, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_frexp_exp_i16_f16", 		67, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_floor_f16", 				68, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_ceil_f16", 					69, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_trunc_f16", 				70, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_rndne_f16", 				71, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_fract_f16", 				72, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sin_f16", 					73, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cos_f16", 					74, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_exp_legacy_f32", 			75, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_log_legacy_f32", 			76, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_norm_i16_f16", 			77, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_cvt_norm_u16_f16", 			78, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_sat_pk_u8_i16", 			79, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_swap_b32", 					81, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	//VOP1 instructions
+	addInstType({"v_nop", 0, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mov_b32", 1, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_readfirstlane_b32", 2, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_i32_f64", 3, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f64_i32", 4, FormatTable[VOP1], 0, ExeUnitVALU, 64, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_i32", 5, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_u32", 6, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_u32_f32", 7, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_i32_f32", 8, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f16_f32", 10, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_f16", 11, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_rpi_i32_f32", 12, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_flr_i32_f32", 13, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_off_f32_i4", 14, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_f64", 15, FormatTable[VOP1], 0, ExeUnitVALU, 32, 64, 32, 0, 0});
+	addInstType({"v_cvt_f64_f32", 16, FormatTable[VOP1], 0, ExeUnitVALU, 64, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_ubyte0", 17, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_ubyte1", 18, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_ubyte2", 19, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f32_ubyte3", 20, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_u32_f64", 21, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f64_u32", 22, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_trunc_f64", 23, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ceil_f64", 24, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rndne_f64", 25, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_floor_f64", 26, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_fract_f32", 27, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_trunc_f32", 28, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ceil_f32", 29, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rndne_f32", 30, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_floor_f32", 31, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_exp_f32", 32, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_log_f32", 33, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rcp_f32", 34, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rcp_iflag_f32", 35, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rsq_f32", 36, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rcp_f64", 37, FormatTable[VOP1], 0, ExeUnitVALU, 64, 64, 32, 0, 0});
+	addInstType({"v_rsq_f64", 38, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sqrt_f32", 39, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sqrt_f64", 40, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sin_f32", 41, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cos_f32", 42, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_not_b32", 43, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_bfrev_b32", 44, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ffbh_u32", 45, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ffbl_b32", 46, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ffbh_i32", 47, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_frexp_exp_i32_f64", 48, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_frexp_mant_f64", 49, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_fract_f64", 50, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_frexp_exp_i32_f32", 51, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_frexp_mant_f32", 52, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_clrexcp", 53, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_screen_partition_4se_b32", 55, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f16_u16", 57, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_f16_i16", 58, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_u16_f16", 59, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_i16_f16", 60, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rcp_f16", 61, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sqrt_f16", 62, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rsq_f16", 63, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_log_f16", 64, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_exp_f16", 65, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_frexp_mant_f16", 66, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_frexp_exp_i16_f16", 67, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_floor_f16", 68, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_ceil_f16", 69, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_trunc_f16", 70, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_rndne_f16", 71, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_fract_f16", 72, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sin_f16", 73, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cos_f16", 74, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_exp_legacy_f32", 75, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_log_legacy_f32", 76, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_norm_i16_f16", 77, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_cvt_norm_u16_f16", 78, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_sat_pk_u8_i16", 79, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_swap_b32", 81, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 
-	// isa.FLAT Instructions
+	//FLAT Instructions
 	addInstType({"_load_ubyte", 16, FormatTable[FLAT], 0, ExeUnitVMem, 32, 32, 32, 0, 0});
 	addInstType({"_load_sbyte", 17, FormatTable[FLAT], 0, ExeUnitVMem, 32, 32, 32, 0, 0});
 	addInstType({"_load_ushort", 18, FormatTable[FLAT], 0, ExeUnitVMem, 32, 32, 32, 0, 0});
@@ -251,7 +251,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"_atomic_inc_x2", 107, FormatTable[FLAT], 0, ExeUnitVMem, 32, 32, 32, 0, 0});
 	addInstType({"_atomic_dec_x2", 108, FormatTable[FLAT], 0, ExeUnitVMem, 32, 32, 32, 0, 0});
 
-	// isa.SMEM instructions
+	//SMEM instructions
 	addInstType({"s_load_dword", 0, FormatTable[SMEM], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_load_dwordx2", 1, FormatTable[SMEM], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_load_dwordx4", 2, FormatTable[SMEM], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
@@ -337,7 +337,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"s_atomic_inc_x2", 171, FormatTable[SMEM], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_atomic_dec_x2", 172, FormatTable[SMEM], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 
-	// isa.SOPP instructions
+	// SOPP instructions
 	addInstType({"s_nop", 0, FormatTable[SOPP], 0, ExeUnitSpecial, 32, 32, 32, 0, 0});
 	addInstType({"s_endpgm", 1, FormatTable[SOPP], 0, ExeUnitSpecial, 32, 32, 32, 0, 0});
 	addInstType({"s_branch", 2, FormatTable[SOPP], 0, ExeUnitBranch, 32, 32, 32, 0, 0});
@@ -370,7 +370,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"s_set_gpr_idx_mode", 29, FormatTable[SOPP], 0, ExeUnitSpecial, 32, 32, 32, 0, 0});
 	addInstType({"s_endpgm_ordered_ps_done", 30, FormatTable[SOPP], 0, ExeUnitSpecial, 32, 32, 32, 0, 0});
 
-	// isa.SOPC instructions
+	// SOPC instructions
 	addInstType({"s_cmp_eq_i32", 0, FormatTable[SOPC], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_cmp_lg_i32", 1, FormatTable[SOPC], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_cmp_gt_i32", 2, FormatTable[SOPC], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
@@ -392,7 +392,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"s_cmp_eq_u64", 18, FormatTable[SOPC], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_cmp_ne_u64", 19, FormatTable[SOPC], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 
-	// isa.SOPK instructions
+	// SOPK instructions
 	addInstType({"s_movk_i32", 0, FormatTable[SOPK], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_cmovk_i32", 1, FormatTable[SOPK], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_cmpk_eq_i32", 2, FormatTable[SOPK], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
@@ -415,7 +415,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"s_setreg_imm32_b32", 20, FormatTable[SOPK], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 	addInstType({"s_call_b64", 21, FormatTable[SOPK], 0, ExeUnitScalar, 32, 32, 32, 0, 0});
 
-	// isa.VOPC instruction
+	// VOPC instruction
 	addInstType({"v_cmp_class_f32", 16, FormatTable[VOPC], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_cmpx_class_f32", 17, FormatTable[VOPC], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_cmp_class_f64", 18, FormatTable[VOPC], 0, ExeUnitVALU, 32, 64, 64, 0, 0});
@@ -615,7 +615,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_cmpx_ge_u64", 254, FormatTable[VOPC], 0, ExeUnitVALU, 32, 64, 64, 0, 0});
 	addInstType({"v_cmpx_t_u64", 255, FormatTable[VOPC], 0, ExeUnitVALU, 32, 64, 64, 0, 0});
 
-	// isa.VOP3a Instructions
+	// VOP3a Instructions
 	addInstType({"v_cmp_class_f32", 0x10, FormatTable[VOP3a], 0, ExeUnitVALU, 64, 32, 32, 0, 0});
 	addInstType({"v_cmpx_class_f32", 0x11, FormatTable[VOP3a], 0, ExeUnitVALU, 64, 32, 32, 0, 0});
 	addInstType({"v_cmp_class_f64", 0x12, FormatTable[VOP3a], 0, ExeUnitVALU, 64, 64, 64, 0, 0});
@@ -867,15 +867,6 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_min_i16", 50 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_ldexp_f16", 51 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 
-	// Add isa.VOP2 instructions into isa.VOP3a
-	/* GO code:
-	for _,  := range decodeTables[VOP2].insts {
-		addInstType({.InstName,
-			.Opcode + Opcode(256),
-			FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0})
-	}
-	*/
-
 	addInstType({"v_mad_legacy_F32", 448, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_f32", 449, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_i32_i24", 450, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
@@ -984,7 +975,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_sub_i16", 671, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_pack_b32_f16", 672, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 
-	// isa.VOP3b Instructions
+	//VOP3b Instructions
 	addInstType({"v_add_co_u32_e64", 281, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 64});
 	addInstType({"v_sub_co_u32", 282, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 64});
 	addInstType({"v_addc_co_u32_e64", 284, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 64, 64});
@@ -994,7 +985,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_mad_u64_u32", 482, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_i64_i32", 483, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 
-	// isa.SOP1 Instructions
+	//SOP1 Instructions
 	addInstType({"s_mov_b32", 0, FormatTable[SOP1], 0, ExeUnitScalar, 32, 32, 0, 0, 0});
 	addInstType({"s_mov_b64", 1, FormatTable[SOP1], 0, ExeUnitScalar, 64, 64, 0, 0, 0});
 	addInstType({"s_cmov_b32", 2, FormatTable[SOP1], 0, ExeUnitScalar, 32, 32, 0, 0, 0});
@@ -1050,7 +1041,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"s_and2_wrexec_b64", 54, FormatTable[SOP1], 0, ExeUnitScalar, 32, 32, 0, 0, 0});
 	addInstType({"s_bitreplicate_b64_b32", 55, FormatTable[SOP1], 0, ExeUnitScalar, 32, 32, 0, 0, 0});
 
-	// isa.DS Instructions
+	//DS Instructions
 	addInstType({"ds_add_u32", 0, FormatTable[DS], 0, ExeUnitLDS, 0, 0, 0, 0, 0});
 	addInstType({"ds_sub_u32", 1, FormatTable[DS], 0, ExeUnitLDS, 0, 0, 0, 0, 0});
 	addInstType({"ds_rsub_u32", 2, FormatTable[DS], 0, ExeUnitLDS, 0, 0, 0, 0, 0});
@@ -1206,7 +1197,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"ds_read_b96", 254, FormatTable[DS], 0, ExeUnitLDS, 0, 0, 0, 0, 0});
 	addInstType({"ds_read_b128", 255, FormatTable[DS], 0, ExeUnitLDS, 128, 0, 0, 0, 0});
 
-	// isa.VOP3P Instructions
+	// VOP3P Instructions
 	addInstType({"v_pk_mad_i16", 0, FormatTable[VOP3P], 0, ExeUnitVALU, 0, 0, 0, 0, 0});
 	addInstType({"v_pk_mul_lo_u16", 1, FormatTable[VOP3P], 0, ExeUnitVALU, 0, 0, 0, 0, 0});
 	addInstType({"v_pk_add_i16", 2, FormatTable[VOP3P], 0, ExeUnitVALU, 0, 0, 0, 0, 0});
