@@ -401,7 +401,6 @@ enum RegType
 	Timp10,
 	Timp11,
 	VMCNT,
-	VSCNT,
 	EXPCNT,
 	LGKMCNT
 };

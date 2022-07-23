@@ -36,16 +36,6 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
 	{
 		throw std::runtime_error("text section is not found");
 	}
-	std::vector<char> buf(text_section->Blob(), text_section->Blob() + text_section->size);
-	uint64_t pc = 0x100;
-	if (!buf.empty())
-	{
-		std::unique_ptr<Inst> inst = decode(buf);
-		std::string instStr = printer.Print(inst.get());
-		buf.erase(buf.begin(), buf.begin() + inst->byteSize);
-		pc += uint64_t(inst->byteSize);
-		std::cout << instStr;
-	}
 }
 
 Format Disassembler::matchFormat(uint32_t firstFourBytes)
@@ -56,7 +46,7 @@ Format Disassembler::matchFormat(uint32_t firstFourBytes)
 		{
 			continue;
 		}
-		if (((firstFourBytes ^ f.encoding) & f.mask) == 0)
+		if ((firstFourBytes ^ f.encoding) & f.mask == 0)
 		{
 			if (f.formatType == VOP3a)
 			{
@@ -103,7 +93,7 @@ InstType Disassembler::lookUp(Format format, Opcode opcode)
 		return decodeTables[format.formatType]->insts[opcode];
 	}
 	char buffer[100];
-	sprintf(buffer, "instruction format %s, opcode %d not found\n", format.formatName, opcode);
+	sprintf(buffer, "instruction format %s, opcode %d not found\n", format.formatType, opcode);
 	throw std::runtime_error(buffer);
 }
 
@@ -122,16 +112,17 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 
 	if (inst->byteSize > buf.size())
 	{
-		throw std::runtime_error("no enough buffer");
+		std::cerr << "no enough buffer\n";
+		return nullptr;
 	}
 
 	switch (format.formatType)
 	{
 	case SOP2:
-		decodeSOP2(inst.get(), buf);
+		decodeSOP2(std::move(inst), buf);
 		break;
-	case SMEM:
-		decodeSMEM(inst.get(), buf);
+	case SOP1:
+		// decodeSOP1(std::move(inst), buf);
 		break;
 	}
 	// if (err != 0)
@@ -139,9 +130,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 	// 	std::cerr << "unable to decode instruction type " << format.formatName;
 	// 	return nullptr;
 	// }
-	return std::move(inst);
+	return inst;
 }
-void Disassembler::decodeSOP2(Inst *inst, std::vector<char> buf)
+int Disassembler::decodeSOP2(std::unique_ptr<Inst> inst, std::vector<char> buf)
 {
 	uint32_t bytes = convertLE(buf);
 	uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
@@ -167,69 +158,5 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<char> buf)
 		}
 		std::vector<char> sub(&buf[4], &buf[8]);
 		inst->src1.literalConstant = convertLE(sub);
-	}
-}
-void Disassembler::decodeSMEM(Inst *inst, std::vector<char> buf)
-{
-	auto bytesLo = convertLE(buf);
-	std::vector<char> sfb(buf.begin() + 4, buf.end());
-	auto bytesHi = convertLE(sfb);
-
-	if (extractBitsFromU32(bytesLo, 16, 16) != 0)
-	{
-		inst->GlobalLevelCoherent = true;
-	}
-	if (extractBitsFromU32(bytesLo, 17, 17) != 0)
-	{
-		inst->Imm = true;
-	}
-
-	auto sbaseValue = extractBitsFromU32(bytesLo, 0, 5);
-	int bits = int(sbaseValue << 1);
-	inst->base = newSRegOperand(bits, bits, 2);
-
-	auto sdataValue = extractBitsFromU32(bytesLo, 6, 12);
-	inst->data = getOperandByCode(uint16_t(sdataValue));
-	if (inst->data.literalConstant = LiteralConstant)
-	{
-		inst->byteSize += 4;
-		if (buf.size() < 8)
-		{
-			throw std::runtime_error("no enough buffer");
-		}
-		std::vector<char> nfb(buf.begin() + 8, buf.begin() + 12);
-		inst->data.literalConstant = convertLE(nfb);
-	}
-
-	if (inst->instType.opcode == 0)
-	{
-		inst->data.regCount = 1;
-	}
-	else if (inst->instType.opcode == 1 || inst->instType.opcode == 9 || inst->instType.opcode == 17 || inst->instType.opcode == 25)
-	{
-		inst->data.regCount = 2;
-	}
-	else if (inst->instType.opcode == 2 || inst->instType.opcode == 10 || inst->instType.opcode == 18 || inst->instType.opcode == 26)
-	{
-		inst->data.regCount = 4;
-	}
-	else if (inst->instType.opcode == 3 || inst->instType.opcode == 11 || inst->instType.opcode == 19 || inst->instType.opcode == 27)
-	{
-		inst->data.regCount = 8;
-	}
-	else
-	{
-		inst->data.regCount = 16;
-	}
-
-	if (inst->Imm)
-	{
-		uint64_t bits64 = (uint64_t)extractBitsFromU32(bytesHi, 0, 19);
-		inst->offset = newIntOperand(0, bits64);
-	}
-	else
-	{
-		int bits = (int)extractBitsFromU32(bytesHi, 0, 19);
-		inst->offset = newSRegOperand(bits, bits, 1);
 	}
 }
