@@ -41,8 +41,20 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
 	if (!buf.empty())
 	{
 		std::unique_ptr<Inst> inst = decode(buf);
+		inst->PC = pc + text_section->offset;
 		std::string instStr = printer.print(inst.get());
-		std::cout << instStr;
+		std::cout << "\t" << instStr;
+		for (int i = instStr.size(); i < 59; i++)
+		{
+			std::cout << " ";
+		}
+		std::cout << "//" << std::setw(12) << std::setfill('0') << text_section->offset + pc << ": ";
+		std::cout << std::setw(8) << std::hex << convertLE(buf);
+		if (inst->byteSize == 8)
+		{
+			std::vector<char> sfb(buf.begin() + 4, buf.begin() + 8);
+			std::cout << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
+		}
 		buf.erase(buf.begin(), buf.begin() + inst->byteSize);
 		pc += uint64_t(inst->byteSize);
 	}
@@ -214,7 +226,7 @@ void Disassembler::decodeSMEM(Inst *inst, std::vector<char> buf)
 	{
 		inst->data.regCount = 4;
 	}
-	else if (inst->instType.opcode == 3 || inst->instType.opcode == 11 || inst->instType.opcode == 18 || inst->instType.opcode == 27)
+	else if (inst->instType.opcode == 3 || inst->instType.opcode == 11 || inst->instType.opcode == 19 || inst->instType.opcode == 27)
 	{
 		inst->data.regCount = 8;
 	}
