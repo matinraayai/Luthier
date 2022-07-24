@@ -29,26 +29,27 @@ struct InstPrinter
 	}
 	std::string regOperandToString(Operand o)
 	{
+		Reg reg = o.reg;
 		std::stringstream stream;
 		if (o.regCount > 1)
 		{
-			if (o.reg.IsSReg())
+			if (reg.IsSReg())
 			{
-				stream << "s[" << o.reg.RegIndex() << ":" << o.reg.RegIndex() + o.regCount - 1 << "]";
+				stream << "s[" << reg.RegIndex() << ":" << reg.RegIndex() + o.regCount - 1 << "]";
 				return stream.str();
 			}
-			else if (o.reg.IsVReg())
+			else if (reg.IsVReg())
 			{
-				stream << "v[" << o.reg.RegIndex() << ":" << o.reg.RegIndex() + o.regCount - 1 << "]";
+				stream << "v[" << reg.RegIndex() << ":" << reg.RegIndex() + o.regCount - 1 << "]";
 				return stream.str();
 			}
-			else if (o.reg.name.find("lo") != std::string::npos)
+			else if (reg.name.find("lo") != std::string::npos)
 			{
-				return o.reg.name.substr(0, o.reg.name.length() - 2);
+				return reg.name.substr(0, reg.name.length() - 2);
 			}
 			return "unknown register";
 		}
-		return o.reg.name;
+		return reg.name;
 	}
 	std::string sop2String(Inst *i)
 	{
@@ -56,7 +57,7 @@ struct InstPrinter
 	std::string smemString(Inst *i)
 	{
 		std::stringstream stream;
-		stream << i->instType.instName << " " << operandString(i->data) << ", " << operandString(i->base) << ", " << std::hex << uint16_t(i->offset.intValue);
+		stream << i->instType.instName << " " << operandString(i->data) << ", " << operandString(i->base) << ", 0x" << std::hex << uint16_t(i->offset.intValue);
 		return stream.str();
 	}
 	std::string print(Inst *i)
@@ -67,6 +68,8 @@ struct InstPrinter
 			return sop2String(i);
 		case SMEM:
 			return smemString(i);
+		default:
+			throw std::runtime_error("unknown instruction format type");
 		}
 	}
 };

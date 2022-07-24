@@ -122,8 +122,7 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<char> buf)
 
 	if (inst->byteSize > buf.size())
 	{
-		std::cerr << "no enough buffer\n";
-		return nullptr;
+		throw std::runtime_error("no enough buffer");
 	}
 
 	switch (format.formatType)
@@ -199,7 +198,7 @@ void Disassembler::decodeSMEM(Inst *inst, std::vector<char> buf)
 		{
 			throw std::runtime_error("no enough bytes");
 		}
-		std::vector<char> nfb(buf.begin() + 8, buf.end());
+		std::vector<char> nfb(buf.begin() + 8, buf.begin() + 12);
 		inst->data.literalConstant = convertLE(nfb);
 	}
 
@@ -226,12 +225,12 @@ void Disassembler::decodeSMEM(Inst *inst, std::vector<char> buf)
 
 	if (inst->Imm)
 	{
-		uint64_t bits64 = uint64_t(extractBitsFromU32(bytesHi, 0, 19));
+		uint64_t bits64 = (uint64_t)extractBitsFromU32(bytesHi, 0, 19);
 		inst->offset = newIntOperand(0, bits64);
 	}
 	else
 	{
-		int bits = int(extractBitsFromU32(bytesHi, 0, 19));
+		int bits = (int)extractBitsFromU32(bytesHi, 0, 19);
 		inst->offset = newSRegOperand(bits, bits, 1);
 	}
 }
