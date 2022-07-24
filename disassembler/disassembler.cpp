@@ -40,6 +40,11 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
 	auto pc = (uint64_t)0x100;
 	if (!buf.empty())
 	{
+		std::unique_ptr<Inst> inst = decode(buf);
+		std::string instStr = printer.print(inst.get());
+		std::cout << instStr;
+		buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+		pc += uint64_t(inst->byteSize);
 	}
 }
 

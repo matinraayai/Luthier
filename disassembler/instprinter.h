@@ -50,7 +50,9 @@ struct InstPrinter
 		}
 		return o.reg.name;
 	}
-	std::string sop2String(Inst *i);
+	std::string sop2String(Inst *i)
+	{
+	}
 	std::string smemString(Inst *i)
 	{
 		std::stringstream stream;
