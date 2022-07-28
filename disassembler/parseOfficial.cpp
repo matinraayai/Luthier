@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <iomanip>
+#include <vector>
 const std::string WHITESPACE = " \n\r\t\f\v";
 
 std::string ltrim(const std::string &s)
@@ -20,18 +22,38 @@ std::string trim(const std::string &s)
 	return rtrim(ltrim(s));
 }
 
-std::string reorderByteInWord(std::string bytes)
+std::vector<char> stringToByteArray(std::string str)
 {
 
-	const char *ptr = bytes.c_str();
-	char ptr2[5];
-	for (int i = 0; i < 4; i++)
+	const char *ptr = str.c_str();
+	std::vector<char> bytes;
+	for (int i = 0; i < 8; i += 2)
 	{
-		ptr2[i] = ptr[3 - i];
+		int j = 8 - 1 - i;
+		uint8_t h4, l4;
+		if (ptr[j - 1] < 65)
+		{
+			h4 = (uint8_t)(ptr[j - 1] - '0');
+		}
+		else
+		{
+			h4 = (uint8_t)(ptr[j - 1] - 'A' + 10);
+		}
+		if (ptr[j] < 65)
+		{
+			l4 = (uint8_t)(ptr[j] - '0');
+		}
+		else
+		{
+			l4 = (uint8_t)(ptr[j] - 'A' + 10);
+		}
+
+		uint32_t byte = (h4 << 4) + l4;
+		bytes.push_back((char)byte);
+		std::cout << std::hex << std::setw(2) << std::setfill('0') << byte;
 	}
-	ptr2[4] = '\0';
-	std::string mystring(ptr2);
-	return mystring;
+	std::cout << std::endl;
+	return bytes;
 }
 int main(int argc, char **argv)
 {
@@ -53,16 +75,16 @@ int main(int argc, char **argv)
 				location = line.find("//");
 				std::string code = line.substr(0, location - 1);
 				location = line.find(": ");
-				std::string bytes_lo = line.substr(location + 2, 8);
-
-				std::cout << "first 4 bytes:" << reorderByteInWord(bytes_lo);
+				std::string str_bytes_lo = line.substr(location + 2, 8);
+				outfile << trim(code) << ":" << str_bytes_lo;
+				stringToByteArray(str_bytes_lo);
 				if (line.size() > location + 10)
 				{
-					std::string bytes_hi = line.substr(location + 11, 8);
-					std::cout << "second 4 bytes:" << reorderByteInWord(bytes_hi) << "end\n";
+					std::string str_bytes_hi = line.substr(location + 11, 8);
+					outfile << str_bytes_hi;
+					stringToByteArray(str_bytes_hi);
 				}
-
-				//outfile << trim(code) << ":" << bytes << "\n";
+				outfile << std::endl;
 			}
 		}
 		myfile.close();
