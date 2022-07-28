@@ -1,6 +1,7 @@
 #include "disassembler.h"
 #include <memory>
 #include <iostream>
+#include <fstream>
 #include "operand.h"
 
 Disassembler::Disassembler()
@@ -86,9 +87,9 @@ void Disassembler::Disassemble(std::string filename)
 			else
 			{
 				std::string str_bytes_lo = line.substr(location1 + 1, 8);
-				lo = stringToByteArray(str_bytes_lo);
+				lo4 = stringToByteArray(str_bytes_lo);
 				std::string str_bytes_hi = line.substr(location2 + 1, 8);
-				hi = stringToByteArray(str_bytes_hi);
+				hi4 = stringToByteArray(str_bytes_hi);
 				buf.reserve(lo4.size() + hi4.size());
 				buf.insert(buf.end(), lo4.begin(), lo4.end());
 				buf.insert(buf.end(), hi4.begin(), hi4.end());
@@ -97,9 +98,11 @@ void Disassembler::Disassemble(std::string filename)
 		}
 		myfile.close();
 	}
-
 	else
-		cout << "Unable to open file";
+	{
+		std::cout << "Unable to open file\n";
+		return;
+	}
 }
 void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset, std::ostream &o)
 {

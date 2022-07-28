@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
 		else
 		{
 			printf("unable to open file\n");
-			return;
+			return 1;
 		}
 		elfio::File elfFile;
 		elfFile = elfFile.FromMem(blob);
