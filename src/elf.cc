@@ -124,6 +124,16 @@ namespace elfio
     }
   }
 
+  std::vector<Symbol *> File::GetSymbols()
+  {
+    std::vector<Symbol *> symbols_out;
+    for (auto &symbol : this->symbols)
+    {
+      symbols_out.push_back(symbol.get());
+    }
+    return symbols_out;
+  }
+
   Section::Section(File *file, Elf64_Shdr *header) : file(file), header(header) {}
 
   char *Section::Blob()

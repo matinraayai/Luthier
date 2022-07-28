@@ -28,38 +28,53 @@ void Disassembler::initFormatList()
 		formatList.push_back(item.second);
 	}
 }
-void Disassembler::Disassemble(elfio::File *file, std::string filename)
+void Disassembler::Disassemble(elfio::File *file, std::string filename, std::ostream &o)
 {
 	printer.file = file;
+	o << "\n"
+	  << filename << "\tfile format ELF64-amdgpu\n";
+	o << "\n\nDisassembly of section .text:\n";
 	auto text_section = file->GetSectionByName(".text");
 	if (!text_section)
 	{
 		throw std::runtime_error("text section is not found");
 	}
 	std::vector<char> buf(text_section->Blob(), text_section->Blob() + text_section->size);
-	auto pc = (uint64_t)0x100;
+	auto pc = text_section->offset;
 	if (!buf.empty())
 	{
+		tryPrintSymbol(file, pc, o);
 		std::unique_ptr<Inst> inst = decode(buf);
-		inst->PC = pc + text_section->offset;
+		inst->PC = pc;
 		std::string instStr = printer.print(inst.get());
-		std::cout << "\t" << instStr;
+		o << "\t" << instStr;
 		for (int i = instStr.size(); i < 59; i++)
 		{
-			std::cout << " ";
+			o << " ";
 		}
-		std::cout << "//" << std::setw(12) << std::setfill('0') << text_section->offset + pc << ": ";
-		std::cout << std::setw(8) << std::hex << convertLE(buf);
+		o << std::setbase(10) << "//" << std::setw(12) << std::setfill('0') << pc << ": ";
+		o << std::setw(8) << std::hex << convertLE(buf);
 		if (inst->byteSize == 8)
 		{
 			std::vector<char> sfb(buf.begin() + 4, buf.begin() + 8);
-			std::cout << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
+			o << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
 		}
 		buf.erase(buf.begin(), buf.begin() + inst->byteSize);
 		pc += uint64_t(inst->byteSize);
 	}
 }
-
+void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset, std::ostream &o)
+{
+	for (auto &symbol : file->GetSymbols())
+	{
+		if (symbol->value == offset)
+		{
+			o << "\n"
+			  << std::setw(16) << std::setfill('0') << std::hex << offset;
+			o << " " << symbol->name << ":\n";
+		}
+	}
+}
 Format Disassembler::matchFormat(uint32_t firstFourBytes)
 {
 	for (auto &f : formatList)

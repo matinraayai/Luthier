@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
 	initFormatTable();
 
 	Disassembler d;
-	d.Disassemble(&elfFile, filename);
+	d.Disassemble(&elfFile, filename, std::cout);
 
 	return 0;
 }

@@ -22,6 +22,7 @@ namespace elfio
     Symbol *GetSymbolByName(const std::string &name);
     char *Blob();
     void PrintSymbolsForSection(const std::string &name);
+    std::vector<Symbol *> GetSymbols();
 
   private:
     Elf64_Ehdr *header;
