@@ -66,10 +66,10 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename, std::ost
 }
 void Disassembler::Disassemble(std::string filename)
 {
+	std::cout << "second disassemble\n";
 	std::string line;
 	std::ifstream myfile(filename);
 	std::vector<char> buf, lo4, hi4;
-	Disassembler d;
 	if (myfile.is_open())
 	{
 		while (getline(myfile, line))
@@ -82,7 +82,7 @@ void Disassembler::Disassemble(std::string filename)
 			{
 				std::string str_bytes = line.substr(location1 + 1, 8);
 				buf = stringToByteArray(str_bytes);
-				decode(buf);
+				// decode(buf);
 			}
 			else
 			{
@@ -93,7 +93,7 @@ void Disassembler::Disassemble(std::string filename)
 				buf.reserve(lo4.size() + hi4.size());
 				buf.insert(buf.end(), lo4.begin(), lo4.end());
 				buf.insert(buf.end(), hi4.begin(), hi4.end());
-				decode(buf);
+				// decode(buf);
 			}
 		}
 		myfile.close();
