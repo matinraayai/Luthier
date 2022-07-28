@@ -63,6 +63,44 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename, std::ost
 		pc += uint64_t(inst->byteSize);
 	}
 }
+void Disassembler::Disassemble(std::string filename)
+{
+	std::string line;
+	std::ifstream myfile(filename);
+	std::vector<char> buf, lo4, hi4;
+	Disassembler d;
+	if (myfile.is_open())
+	{
+		while (getline(myfile, line))
+		{
+			int location1, location2;
+			location1 = line.find_first_of(":");
+			std::string inst_str = line.substr(0, location1 - 1);
+			location2 = line.find_last_of(":");
+			if (location1 == location2)
+			{
+				std::string str_bytes = line.substr(location1 + 1, 8);
+				buf = stringToByteArray(str_bytes);
+				decode(buf);
+			}
+			else
+			{
+				std::string str_bytes_lo = line.substr(location1 + 1, 8);
+				lo = stringToByteArray(str_bytes_lo);
+				std::string str_bytes_hi = line.substr(location2 + 1, 8);
+				hi = stringToByteArray(str_bytes_hi);
+				buf.reserve(lo4.size() + hi4.size());
+				buf.insert(buf.end(), lo4.begin(), lo4.end());
+				buf.insert(buf.end(), hi4.begin(), hi4.end());
+				decode(buf);
+			}
+		}
+		myfile.close();
+	}
+
+	else
+		cout << "Unable to open file";
+}
 void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset, std::ostream &o)
 {
 	for (auto &symbol : file->GetSymbols())

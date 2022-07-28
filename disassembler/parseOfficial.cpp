@@ -22,39 +22,6 @@ std::string trim(const std::string &s)
 	return rtrim(ltrim(s));
 }
 
-std::vector<char> stringToByteArray(std::string str)
-{
-
-	const char *ptr = str.c_str();
-	std::vector<char> bytes;
-	for (int i = 0; i < 8; i += 2)
-	{
-		int j = 8 - 1 - i;
-		uint8_t h4, l4;
-		if (ptr[j - 1] < 65)
-		{
-			h4 = (uint8_t)(ptr[j - 1] - '0');
-		}
-		else
-		{
-			h4 = (uint8_t)(ptr[j - 1] - 'A' + 10);
-		}
-		if (ptr[j] < 65)
-		{
-			l4 = (uint8_t)(ptr[j] - '0');
-		}
-		else
-		{
-			l4 = (uint8_t)(ptr[j] - 'A' + 10);
-		}
-
-		uint32_t byte = (h4 << 4) + l4;
-		bytes.push_back((char)byte);
-		std::cout << std::hex << std::setw(2) << std::setfill('0') << byte;
-	}
-	std::cout << std::endl;
-	return bytes;
-}
 int main(int argc, char **argv)
 {
 	if (argc != 2)
@@ -64,7 +31,7 @@ int main(int argc, char **argv)
 	std::string filename = argv[1];
 	std::string line;
 	std::ifstream myfile(filename);
-	std::ofstream outfile("official.csv");
+	std::ofstream outfile(filename + ".csv");
 	if (myfile.is_open() && outfile.is_open())
 	{
 		while (getline(myfile, line))
@@ -77,12 +44,12 @@ int main(int argc, char **argv)
 				location = line.find(": ");
 				std::string str_bytes_lo = line.substr(location + 2, 8);
 				outfile << trim(code) << ":" << str_bytes_lo;
-				stringToByteArray(str_bytes_lo);
+				// stringToByteArray(str_bytes_lo);
 				if (line.size() > location + 10)
 				{
 					std::string str_bytes_hi = line.substr(location + 11, 8);
-					outfile << str_bytes_hi;
-					stringToByteArray(str_bytes_hi);
+					outfile << ":" << str_bytes_hi;
+					// stringToByteArray(str_bytes_hi);
 				}
 				outfile << std::endl;
 			}
