@@ -70,7 +70,6 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
 }
 void Disassembler::Disassemble(std::string filename)
 {
-  std::cout << "second disassemble\n";
   std::string line;
   std::ifstream myfile(filename);
   std::vector<unsigned char> buf, lo4, hi4;

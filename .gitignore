@@ -35,3 +35,4 @@ build
 hip_clang.cpp
 *.s
 *hipv4-amdgcn-amd-amdhsa--gfx906
+*hipv4-amdgcn-amd-amdhsa--gfx908
