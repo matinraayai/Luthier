@@ -85,7 +85,14 @@ void Disassembler::Disassemble(std::string filename)
       {
         std::string str_bytes = line.substr(location1 + 1, 8);
         buf = stringToByteArray(str_bytes);
-        decode(buf);
+        try
+        {
+          decode(buf);
+        }
+        catch (std::runtime_error &error)
+        {
+          std::cout << "Exception occured: " << error.what() << "at inst: " << str_bytes << std::endl;
+        }
       }
       else
       {
@@ -96,7 +103,14 @@ void Disassembler::Disassemble(std::string filename)
         buf.reserve(lo4.size() + hi4.size());
         buf.insert(buf.end(), lo4.begin(), lo4.end());
         buf.insert(buf.end(), hi4.begin(), hi4.end());
-        decode(buf);
+        try
+        {
+          decode(buf);
+        }
+        catch (std::runtime_error &error)
+        {
+          std::cout << "Exception occured: " << error.what() << "at inst: " << str_bytes_lo << str_bytes_hi << std::endl;
+        }
       }
     }
     myfile.close();
