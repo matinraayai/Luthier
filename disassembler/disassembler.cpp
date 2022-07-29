@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <algorithm>
 
 Disassembler::Disassembler()
 {
@@ -29,6 +30,9 @@ void Disassembler::initFormatList()
   {
     formatList.push_back(item.second);
   }
+
+  std::sort(formatList.begin(), formatList.end(), [](Format const &f1, Format const &f2) -> bool
+            { return f1.mask > f2.mask; });
 }
 void Disassembler::Disassemble(elfio::File *file, std::string filename,
                                std::ostream &o)
