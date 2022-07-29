@@ -75,8 +75,9 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
 void Disassembler::Disassemble(std::string filename)
 {
   std::string line;
-  std::ifstream myfile(filename);
+  std::fstream myfile(filename);
   std::vector<unsigned char> buf, lo4, hi4;
+  std::stringstream stream;
   if (myfile.is_open())
   {
     while (getline(myfile, line))
@@ -91,11 +92,21 @@ void Disassembler::Disassemble(std::string filename)
         buf = stringToByteArray(str_bytes);
         try
         {
-          decode(buf);
+          std::unique_ptr<Inst> inst = decode(buf);
+          std::string instStr = printer.print(inst.get());
+          if (instStr == inst_str)
+          {
+            stream << line + "[PASS]\n";
+          }
+          else
+          {
+            stream << line + "[MISMATCH]\n";
+          }
         }
         catch (std::runtime_error &error)
         {
-          std::cout << "Exception occured: " << error.what() << "at inst: " << str_bytes << std::endl;
+          std::cout << "Exception occured: " << error.what() << " at inst: " << str_bytes << std::endl;
+          // stream << line + "[FAIL]\n";
         }
       }
       else
@@ -109,14 +120,25 @@ void Disassembler::Disassemble(std::string filename)
         buf.insert(buf.end(), hi4.begin(), hi4.end());
         try
         {
-          decode(buf);
+          std::unique_ptr<Inst> inst = decode(buf);
+          std::string instStr = printer.print(inst.get());
+          if (instStr == inst_str)
+          {
+            stream << line + "[PASS]\n";
+          }
+          else
+          {
+            stream << line + "[MISMATCH]\n";
+          }
         }
         catch (std::runtime_error &error)
         {
-          std::cout << "Exception occured: " << error.what() << "at inst: " << str_bytes_lo << str_bytes_hi << std::endl;
+          std::cout << "Exception occured: " << error.what() << " at inst: " << str_bytes_lo << str_bytes_hi << std::endl;
+          // stream << line + "[FAIL]\n";
         }
       }
     }
+    // myfile << stream.rdbuf();
     myfile.close();
   }
   else

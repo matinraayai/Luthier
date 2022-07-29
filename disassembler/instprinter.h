@@ -68,8 +68,8 @@ struct InstPrinter
 			return sop2String(i);
 		case SMEM:
 			return smemString(i);
-		default:
-			throw std::runtime_error("unknown instruction format type");
+			// default:
+			// 	throw std::runtime_error("unknown instruction format type");
 		}
 	}
 };
