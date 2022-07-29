@@ -141,11 +141,9 @@ Format Disassembler::matchFormat(uint32_t firstFourBytes)
       return f;
     }
   }
-  char buffer[100];
-  sprintf(buffer,
-          "cannot find the instruction format, first two bytes are %04x",
-          firstFourBytes);
-  throw std::runtime_error(buffer);
+  std::stringstream stream;
+  stream << "cannot find the instruction format, first four bytes are " << std::setw(8) << std::setfill('0') << std::hex << firstFourBytes;
+  throw std::runtime_error(stream.str());
 }
 bool Disassembler::isVOP3bOpcode(Opcode opcode)
 {
@@ -178,10 +176,9 @@ InstType Disassembler::lookUp(Format format, Opcode opcode)
   {
     return decodeTables[format.formatType]->insts[opcode];
   }
-  char buffer[100];
-  sprintf(buffer, "instruction format %s, opcode %d not found\n",
-          format.formatType, opcode);
-  throw std::runtime_error(buffer);
+  std::stringstream stream;
+  stream << "instruction format " << format.formatName << ", opcode " << opcode << " not found\n";
+  throw std::runtime_error(stream.str());
 }
 
 std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
@@ -211,11 +208,6 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
     decodeSMEM(inst.get(), buf);
     break;
   }
-  // if (err != 0)
-  // {
-  // 	std::cerr << "unable to decode instruction type " << format.formatName;
-  // 	return nullptr;
-  // }
   return std::move(inst);
 }
 void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
@@ -228,7 +220,7 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
     inst->byteSize += 4;
     if (buf.size() < 8)
     {
-      throw;
+      throw std::runtime_error("no enough bytes for literal");
     }
     std::vector<unsigned char> sub(&buf[4], &buf[8]);
     inst->src0.literalConstant = convertLE(sub);
@@ -240,7 +232,7 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
     inst->byteSize += 4;
     if (buf.size() < 8)
     {
-      throw;
+      throw std::runtime_error("no enough bytes for literal");
     }
     std::vector<unsigned char> sub(&buf[4], &buf[8]);
     inst->src1.literalConstant = convertLE(sub);
@@ -273,7 +265,7 @@ void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
     inst->byteSize += 4;
     if (buf.size() < 8)
     {
-      throw std::runtime_error("no enough bytes");
+      throw std::runtime_error("no enough bytes for literal");
     }
     std::vector<unsigned char> nfb(buf.begin() + 8, buf.begin() + 12);
     inst->data.literalConstant = convertLE(nfb);
