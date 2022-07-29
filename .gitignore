@@ -33,4 +33,5 @@
 
 build
 hip_clang.cpp
-generatedAsm
+*.s
+*hipv4-amdgcn-amd-amdhsa--gfx906
