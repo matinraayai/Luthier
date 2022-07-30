@@ -5,12 +5,33 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "parse",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/disassembler/parse",
+			"args": [
+				"../generatedAsm/vectoradd_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx906.s"
+			],
+			"stopAtEntry": false,
+			"cwd": "${fileDirname}",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "regTest",
 			"type": "cppdbg",
 			"request": "launch",
 			"program": "${workspaceFolder}/disassembler/regTest",
 			"args": [
-				"../generatedAsm/vectoradd_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx906"
+				"../generatedAsm/vectoradd_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx908.s.csv"
 			],
 			"stopAtEntry": false,
 			"cwd": "${fileDirname}",

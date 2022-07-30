@@ -1,11 +1,11 @@
 #ifndef INSTPRINTER_H
 #define INSTPRINTER_H
-#include "../src/elf.h"
-#include <string>
-#include <iomanip>
-#include <sstream>
+#include "elf.h"
 #include "inst.h"
 #include "operand.h"
+#include <iomanip>
+#include <sstream>
+#include <string>
 struct InstPrinter
 {
 	elfio::File *file;
@@ -35,12 +35,14 @@ struct InstPrinter
 		{
 			if (reg.IsSReg())
 			{
-				stream << "s[" << reg.RegIndex() << ":" << reg.RegIndex() + o.regCount - 1 << "]";
+				stream << "s[" << reg.RegIndex() << ":"
+					   << reg.RegIndex() + o.regCount - 1 << "]";
 				return stream.str();
 			}
 			else if (reg.IsVReg())
 			{
-				stream << "v[" << reg.RegIndex() << ":" << reg.RegIndex() + o.regCount - 1 << "]";
+				stream << "v[" << reg.RegIndex() << ":"
+					   << reg.RegIndex() + o.regCount - 1 << "]";
 				return stream.str();
 			}
 			else if (reg.name.find("lo") != std::string::npos)
@@ -51,13 +53,13 @@ struct InstPrinter
 		}
 		return reg.name;
 	}
-	std::string sop2String(Inst *i)
-	{
-	}
+	std::string sop2String(Inst *i) {}
 	std::string smemString(Inst *i)
 	{
 		std::stringstream stream;
-		stream << i->instType.instName << " " << operandString(i->data) << ", " << operandString(i->base) << ", 0x" << std::hex << uint16_t(i->offset.intValue);
+		stream << i->instType.instName << " " << operandString(i->data) << ", "
+			   << operandString(i->base) << ", 0x" << std::hex
+			   << uint16_t(i->offset.intValue);
 		return stream.str();
 	}
 	std::string print(Inst *i)
@@ -69,7 +71,8 @@ struct InstPrinter
 		case SMEM:
 			return smemString(i);
 		default:
-			throw std::runtime_error("unknown instruction format type");
+			return std::string("");
+			// throw std::runtime_error("unknown instruction format type");
 		}
 	}
 };

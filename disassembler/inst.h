@@ -2,7 +2,7 @@
 #define INST_H
 #include <string>
 #include "operand.h"
-#include "../src/elf.h"
+#include "elf.h"
 #include "bitops.h"
 typedef uint16_t Opcode;
 enum FormatType
