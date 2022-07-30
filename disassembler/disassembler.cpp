@@ -112,6 +112,7 @@ void Disassembler::Disassemble(std::string filename)
                     << " at inst: " << str_bytes << std::endl;
           std::cout << line + "[FAIL]\n";
         }
+        buf.clear();
       }
       else
       {
