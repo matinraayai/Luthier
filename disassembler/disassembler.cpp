@@ -260,6 +260,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case VOP1:
     decodeVOP1(inst.get(), buf);
     break;
+  case VOP2:
+    decodeVOP2(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -416,5 +419,39 @@ void Disassembler::decodeVOP1(Inst *inst, std::vector<unsigned char> buf)
   case 16: // v_cvt_f64_f32_e32
     inst->dst.regCount = 2;
     break;
+  }
+}
+
+void Disassembler::decodeVOP2(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 8);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  int bits = (int)extractBitsFromU32(bytes, 9, 16);
+  inst->src1 = newVRegOperand(bits, bits, 0);
+
+  bits = (int)extractBitsFromU32(bytes, 17, 24);
+  inst->dst = newVRegOperand(bits, bits, 0);
+
+  if (inst->instType.opcode == 24 || inst->instType.opcode == 37)
+  { //madak
+    inst->Imm = true;
+    inst->byteSize += 4;
+    Operand o;
+    o.operandType = LiteralConstant;
+    inst->src2 = o;
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src2.literalConstant = convertLE(sub);
   }
 }

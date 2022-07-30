@@ -80,6 +80,30 @@ struct InstPrinter
 			   << operandString(i->src0);
 		return stream.str();
 	}
+	std::string vop2String(Inst *i)
+	{
+		std::stringstream stream;
+		std::string suffix;
+		suffix = "_e32";
+		stream << i->instType.instName << suffix << " " << operandString(i->dst);
+		if (i->instType.opcode <= 30 && i->instType.opcode >= 15)
+		{
+			if (i->instType.opcode != 17)
+			{
+				stream << ", vcc";
+			}
+		}
+		stream << ", " << operandString(i->src0) << ", " << operandString(i->src1);
+		if (i->instType.opcode == 0 || i->instType.opcode == 28 || i->instType.opcode == 29)
+		{
+			stream << ", vcc";
+		}
+		else if (i->instType.opcode == 24 || i->instType.opcode == 37)
+		{
+			stream << ", " << operandString(i->src2);
+		}
+		return stream.str();
+	}
 
 	std::string print(Inst *i)
 	{
@@ -91,6 +115,8 @@ struct InstPrinter
 			return smemString(i);
 		case VOP1:
 			return vop1String(i);
+		case VOP2:
+			return vop2String(i);
 		default:
 			return std::string("");
 			// throw std::runtime_error("unknown instruction format type");

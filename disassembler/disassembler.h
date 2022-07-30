@@ -29,6 +29,7 @@ private:
 	void decodeSOP1(Inst *inst, std::vector<unsigned char> buf);
 	void decodeVOP1(Inst *inst, std::vector<unsigned char> buf);
 	void decodeSMEM(Inst *inst, std::vector<unsigned char> buf);
+	void decodeVOP2(Inst *inst, std::vector<unsigned char> buf);
 
 	std::vector<Format> formatList;
 	std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;
