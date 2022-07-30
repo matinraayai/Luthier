@@ -257,6 +257,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case SMEM:
     decodeSMEM(inst.get(), buf);
     break;
+  case VOP1:
+    decodeVOP1(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -363,5 +366,55 @@ void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
   {
     int bits = (int)extractBitsFromU32(bytesHi, 0, 19);
     inst->offset = newSRegOperand(bits, bits, 1);
+  }
+}
+
+void Disassembler::decodeVOP1(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 8);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  if (inst->instType.SRC0Width == 64)
+  {
+    inst->src0.regCount = 2;
+  }
+
+  uint32_t sdstValue = extractBitsFromU32(bytes, 17, 24);
+  switch (inst->instType.opcode)
+  {
+  case 2:
+    inst->dst = getOperandByCode(uint16_t(sdstValue));
+    break;
+  default:
+    inst->dst = getOperandByCode(uint16_t(sdstValue + 256));
+  }
+
+  if (inst->instType.DSTWidth == 64)
+  {
+    inst->dst.regCount = 2;
+  }
+
+  switch (inst->instType.opcode)
+  {
+  case 4: // v_cvt_f64_i32_e32
+    inst->dst.regCount = 2;
+    break;
+  case 15: // v_cvt_f32_f64_e32
+    inst->src0.regCount = 2;
+    break;
+  case 16: // v_cvt_f64_f32_e32
+    inst->dst.regCount = 2;
+    break;
   }
 }

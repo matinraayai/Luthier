@@ -71,6 +71,16 @@ struct InstPrinter
 		return stream.str();
 	}
 
+	std::string vop1String(Inst *i)
+	{
+		std::stringstream stream;
+		std::string suffix;
+		suffix = "_e32";
+		stream << i->instType.instName << suffix << " " << operandString(i->dst) << ", "
+			   << operandString(i->src0);
+		return stream.str();
+	}
+
 	std::string print(Inst *i)
 	{
 		switch (i->format.formatType)
@@ -79,6 +89,8 @@ struct InstPrinter
 			return sop2String(i);
 		case SMEM:
 			return smemString(i);
+		case VOP1:
+			return vop1String(i);
 		default:
 			return std::string("");
 			// throw std::runtime_error("unknown instruction format type");
