@@ -103,6 +103,7 @@ void Disassembler::Disassemble(std::string filename)
           else
           {
             std::cout << line + "[MISMATCH]\n";
+            std::cout << "output is " << instStr << std::endl;
           }
         }
         catch (std::runtime_error &error)
@@ -132,6 +133,7 @@ void Disassembler::Disassemble(std::string filename)
           else
           {
             std::cout << line + "[MISMATCH]\n";
+            std::cout << "output is " << instStr << std::endl;
           }
         }
         catch (std::runtime_error &error)
@@ -283,6 +285,15 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
     }
     std::vector<unsigned char> sub(&buf[4], &buf[8]);
     inst->src1.literalConstant = convertLE(sub);
+  }
+  uint32_t sdstValue = extractBitsFromU32(bytes, 16, 22);
+  inst->dst = getOperandByCode(uint16_t(sdstValue));
+
+  if (inst->instType.instName.find("64") != std::string::npos)
+  {
+    inst->src0.regCount = 2;
+    inst->src1.regCount = 2;
+    inst->dst.regCount = 2;
   }
 }
 void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)

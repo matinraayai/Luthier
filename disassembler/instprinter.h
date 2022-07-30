@@ -53,7 +53,15 @@ struct InstPrinter
 		}
 		return reg.name;
 	}
-	std::string sop2String(Inst *i) {}
+
+	std::string sop2String(Inst *i)
+	{
+		std::stringstream stream;
+		stream << i->instType.instName << " " << operandString(i->dst) << ", "
+			   << operandString(i->src0) << ", " << operandString(i->src1);
+		return stream.str();
+	}
+
 	std::string smemString(Inst *i)
 	{
 		std::stringstream stream;
@@ -62,6 +70,7 @@ struct InstPrinter
 			   << uint16_t(i->offset.intValue);
 		return stream.str();
 	}
+
 	std::string print(Inst *i)
 	{
 		switch (i->format.formatType)
