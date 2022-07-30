@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include "../src/elf.h"
+#include "elf.h"
 #include "instprinter.h"
 
 class Disassembler

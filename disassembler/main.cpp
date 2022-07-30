@@ -2,7 +2,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include "../src/elf.h"
+#include "elf.h"
 #include "disassembler.h"
 
 int main(int argc, char *argv[])
