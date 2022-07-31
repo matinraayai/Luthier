@@ -275,6 +275,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case FLAT:
     decodeFLAT(inst.get(), buf);
     break;
+  case DS:
+    decodeDS(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -685,4 +688,95 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
     inst->dst.regCount = 4;
     break;
   }
+}
+
+void Disassembler::decodeDS(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  inst->Offset0 = extractBitsFromU32(bytesLo, 0, 7);
+  inst->Offset1 = extractBitsFromU32(bytesLo, 8, 15);
+  combineDSOffsets(inst);
+
+  auto gdsBit = (int)extractBitsFromU32(bytesLo, 16, 16);
+  if (gdsBit != 0)
+  {
+    inst->GDS = true;
+  }
+
+  auto addrBits = (int)extractBitsFromU32(bytesHi, 0, 7);
+  inst->addr = newVRegOperand(addrBits, addrBits, 1);
+
+  if (inst->instType.SRC0Width > 0)
+  {
+    auto data0Bits = (int)extractBitsFromU32(bytesHi, 8, 15);
+    inst->data = newVRegOperand(data0Bits, data0Bits, 1);
+    inst->data = setRegCountFromWidth(inst->data, inst->instType.SRC0Width);
+  }
+
+  if (inst->instType.SRC1Width > 0)
+  {
+    auto data1Bits = (int)extractBitsFromU32(bytesHi, 16, 23);
+    inst->data1 = newVRegOperand(data1Bits, data1Bits, 1);
+    inst->data1 = setRegCountFromWidth(inst->data1, inst->instType.SRC1Width);
+  }
+
+  if (inst->instType.DSTWidth > 0)
+  {
+    auto dstBits = (int)extractBitsFromU32(bytesHi, 24, 31);
+    inst->dst = newVRegOperand(dstBits, dstBits, 1);
+    inst->dst = setRegCountFromWidth(inst->dst, inst->instType.DSTWidth);
+  }
+}
+
+void Disassembler::combineDSOffsets(Inst *inst)
+{
+  auto oc = inst->instType.opcode;
+  switch (oc)
+  {
+  case 14:
+    break;
+  case 15:
+    break;
+  case 46:
+    break;
+  case 47:
+    break;
+  case 55:
+    break;
+  case 56:
+    break;
+  case 78:
+    break;
+  case 79:
+    break;
+  case 110:
+    break;
+  case 111:
+    break;
+  case 119:
+    break;
+  case 120:
+    break;
+  default:
+    inst->Offset0 += inst->Offset1 << 8;
+  }
+}
+
+Operand Disassembler::setRegCountFromWidth(Operand o, int width)
+{
+  switch (width)
+  {
+  case 64:
+    o.regCount = 2;
+  case 96:
+    o.regCount = 3;
+  case 128:
+    o.regCount = 4;
+  default:
+    o.regCount = 1;
+  }
+  return o;
 }

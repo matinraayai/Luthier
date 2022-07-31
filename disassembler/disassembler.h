@@ -34,8 +34,11 @@ private:
 	void decodeVOP3a(Inst *inst, std::vector<unsigned char> buf);
 	void decodeVOP3b(Inst *inst, std::vector<unsigned char> buf);
 	void decodeFLAT(Inst *inst, std::vector<unsigned char> buf);
+	void decodeDS(Inst *inst, std::vector<unsigned char> buf);
 	void parseAbs(Inst *inst, int abs);
 	void parseNeg(Inst *inst, int abs);
+	void combineDSOffsets(Inst *inst);
+	Operand setRegCountFromWidth(Operand o, int width);
 
 	std::vector<Format> formatList;
 	std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;
