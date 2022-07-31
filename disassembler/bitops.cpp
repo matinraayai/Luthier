@@ -3,32 +3,42 @@
 #include <iostream>
 #include <string>
 #include <vector>
-uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude) {
+uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude)
+{
   uint32_t mask, extracted;
   mask = ((1 << (hiInclude - loInclude + 1)) - 1) << loInclude;
   extracted = (mask & num) >> loInclude;
   return extracted;
 }
-uint32_t convertLE(std::vector<unsigned char> b) {
+uint32_t convertLE(std::vector<unsigned char> b)
+{
   auto r = uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 |
            uint32_t(b[3]) << 24;
   return r;
 }
-std::vector<unsigned char> stringToByteArray(std::string str) {
+std::vector<unsigned char> stringToByteArray(std::string str)
+{
 
   const char *ptr = str.c_str();
   std::vector<unsigned char> bytes;
-  for (int i = 0; i < 8; i += 2) {
+  for (int i = 0; i < 8; i += 2)
+  {
     int j = 8 - 1 - i;
     uint8_t h4, l4;
-    if (ptr[j - 1] < 65) {
+    if (ptr[j - 1] < 65)
+    {
       h4 = (uint8_t)(ptr[j - 1] - '0');
-    } else {
+    }
+    else
+    {
       h4 = (uint8_t)(ptr[j - 1] - 'A' + 10);
     }
-    if (ptr[j] < 65) {
+    if (ptr[j] < 65)
+    {
       l4 = (uint8_t)(ptr[j] - '0');
-    } else {
+    }
+    else
+    {
       l4 = (uint8_t)(ptr[j] - 'A' + 10);
     }
 
@@ -38,4 +48,25 @@ std::vector<unsigned char> stringToByteArray(std::string str) {
   }
   std::cout << std::endl;
   return bytes;
+}
+
+uint64_t signExt(uint64_t in, int signBit)
+{
+  uint64_t out = in;
+
+  uint64_t mask;
+  mask = ~((1 << (signBit + 1)) - 1);
+
+  auto sign = (in >> signBit) & 1;
+
+  if (sign > 0)
+  {
+    out = out | mask;
+  }
+  else
+  {
+    mask = ~mask;
+    out = out & mask;
+  }
+  return out;
 }

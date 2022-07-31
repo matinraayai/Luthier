@@ -257,6 +257,27 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case SMEM:
     decodeSMEM(inst.get(), buf);
     break;
+  case VOP1:
+    decodeVOP1(inst.get(), buf);
+    break;
+  case VOP2:
+    decodeVOP2(inst.get(), buf);
+    break;
+  case VOPC:
+    decodeVOPC(inst.get(), buf);
+    break;
+  case VOP3a:
+    decodeVOP3a(inst.get(), buf);
+    break;
+  case VOP3b:
+    decodeVOP3b(inst.get(), buf);
+    break;
+  case FLAT:
+    decodeFLAT(inst.get(), buf);
+    break;
+  case DS:
+    decodeDS(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -364,4 +385,398 @@ void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
     int bits = (int)extractBitsFromU32(bytesHi, 0, 19);
     inst->offset = newSRegOperand(bits, bits, 1);
   }
+}
+
+void Disassembler::decodeVOP1(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 8);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  if (inst->instType.SRC0Width == 64)
+  {
+    inst->src0.regCount = 2;
+  }
+
+  uint32_t sdstValue = extractBitsFromU32(bytes, 17, 24);
+  switch (inst->instType.opcode)
+  {
+  case 2:
+    inst->dst = getOperandByCode(uint16_t(sdstValue));
+    break;
+  default:
+    inst->dst = getOperandByCode(uint16_t(sdstValue + 256));
+  }
+
+  if (inst->instType.DSTWidth == 64)
+  {
+    inst->dst.regCount = 2;
+  }
+
+  switch (inst->instType.opcode)
+  {
+  case 4: // v_cvt_f64_i32_e32
+    inst->dst.regCount = 2;
+    break;
+  case 15: // v_cvt_f32_f64_e32
+    inst->src0.regCount = 2;
+    break;
+  case 16: // v_cvt_f64_f32_e32
+    inst->dst.regCount = 2;
+    break;
+  }
+}
+
+void Disassembler::decodeVOP2(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 8);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  int bits = (int)extractBitsFromU32(bytes, 9, 16);
+  inst->src1 = newVRegOperand(bits, bits, 0);
+
+  bits = (int)extractBitsFromU32(bytes, 17, 24);
+  inst->dst = newVRegOperand(bits, bits, 0);
+
+  if (inst->instType.opcode == 24 || inst->instType.opcode == 37)
+  { //madak
+    inst->Imm = true;
+    inst->byteSize += 4;
+    Operand o;
+    o.operandType = LiteralConstant;
+    inst->src2 = o;
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src2.literalConstant = convertLE(sub);
+  }
+}
+
+void Disassembler::decodeVOPC(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 8);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  int bits = (int)extractBitsFromU32(bytes, 9, 16);
+  inst->src1 = newVRegOperand(bits, bits, 0);
+}
+
+void Disassembler::decodeVOP3a(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  int bits = (int)extractBitsFromU32(bytesLo, 0, 7);
+  if (inst->instType.opcode <= 255)
+  {
+    inst->dst = getOperandByCode(uint16_t(bits));
+  }
+  else
+  {
+    inst->dst = newVRegOperand(bits, bits, 0);
+  }
+  if (inst->instType.DSTWidth == 64)
+  {
+    inst->dst.regCount = 2;
+  }
+
+  inst->Abs = (int)extractBitsFromU32(bytesLo, 8, 10);
+  parseAbs(inst, inst->Abs);
+
+  if (extractBitsFromU32(bytesLo, 15, 15) != 0)
+  {
+    inst->Clamp = true;
+  }
+
+  inst->src0 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 0, 8)));
+  if (inst->instType.SRC0Width == 64)
+  {
+    inst->src0.regCount = 2;
+  }
+  inst->src1 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 9, 17)));
+  if (inst->instType.SRC1Width == 64)
+  {
+    inst->src1.regCount = 2;
+  }
+
+  if (inst->instType.SRC2Width != 0)
+  {
+    inst->src2 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
+    if (inst->instType.SRC2Width == 64)
+    {
+      inst->src2.regCount = 2;
+    }
+  }
+
+  inst->Omod = (int)extractBitsFromU32(bytesHi, 27, 28);
+  inst->Neg = (int)extractBitsFromU32(bytesHi, 29, 31);
+  parseNeg(inst, inst->Neg);
+}
+
+void Disassembler::parseAbs(Inst *inst, int abs)
+{
+  if ((abs & 0b001) > 0)
+  {
+    inst->Src0Abs = true;
+  }
+
+  if ((abs & 0b010) > 0)
+  {
+    inst->Src1Abs = true;
+  }
+  if ((abs & 0b100) > 0)
+  {
+    inst->Src2Abs = true;
+  }
+}
+
+void Disassembler::parseNeg(Inst *inst, int neg)
+{
+  if ((neg & 0b001) > 0)
+  {
+    inst->Src0Neg = true;
+  }
+
+  if ((neg & 0b010) > 0)
+  {
+    inst->Src1Neg = true;
+  }
+  if ((neg & 0b100) > 0)
+  {
+    inst->Src2Neg = true;
+  }
+}
+
+void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  if (inst->instType.opcode > 255)
+  {
+    int dstBits = (int)extractBitsFromU32(bytesLo, 0, 7);
+    inst->dst = newVRegOperand(dstBits, dstBits, 1);
+    if (inst->instType.DSTWidth == 64)
+    {
+      inst->dst.regCount = 2;
+    }
+  }
+  inst->sdst = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 8, 14)));
+  if (inst->instType.SDSTWidth == 64)
+  {
+    inst->sdst.regCount = 2;
+  }
+
+  if (extractBitsFromU32(bytesLo, 15, 15) != 0)
+  {
+    inst->Clamp = true;
+  }
+
+  inst->src0 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 0, 8)));
+  if (inst->instType.SRC0Width == 64)
+  {
+    inst->src0.regCount = 2;
+  }
+
+  inst->src1 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 9, 17)));
+  if (inst->instType.SRC1Width == 64)
+  {
+    inst->src1.regCount = 2;
+  }
+
+  if (inst->instType.opcode > 255 && inst->instType.SRC2Width > 0)
+  {
+    inst->src2 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
+    if (inst->instType.SRC2Width == 64)
+    {
+      inst->src2.regCount = 2;
+    }
+  }
+
+  inst->Omod = (int)extractBitsFromU32(bytesHi, 27, 28);
+  inst->Neg = (int)extractBitsFromU32(bytesHi, 29, 31);
+}
+
+void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  if (extractBitsFromU32(bytesLo, 17, 17) != 0)
+  {
+    inst->SystemLevelCoherent = true;
+  }
+  if (extractBitsFromU32(bytesLo, 16, 16) != 0)
+  {
+    inst->GlobalLevelCoherent = true;
+  }
+  if (extractBitsFromU32(bytesLo, 23, 23) != 0)
+  {
+    inst->TextureFailEnable = true;
+  }
+
+  int bits = (int)extractBitsFromU32(bytesLo, 14, 15);
+  inst->Seg = bits;
+
+  auto bitOffset = signExt(uint64_t(extractBitsFromU32(bytesLo, 0, 12)), 12);
+  long bits64 = static_cast<long>(bitOffset);
+  inst->offset = newIntOperand(int(bits64), bits64);
+
+  bits = (int)extractBitsFromU32(bytesHi, 0, 7);
+  inst->addr = newVRegOperand(bits, bits, 2);
+  bits = (int)extractBitsFromU32(bytesHi, 24, 31);
+  inst->dst = newVRegOperand(bits, bits, 0);
+  bits = (int)extractBitsFromU32(bytesHi, 8, 15);
+  inst->data = newVRegOperand(bits, bits, 0);
+  switch (inst->instType.opcode)
+  {
+  case 21:
+    inst->data.regCount = 2;
+    inst->dst.regCount = 2;
+    break;
+  case 23:
+    inst->data.regCount = 2;
+    inst->dst.regCount = 4;
+    break;
+  case 31:
+    inst->data.regCount = 4;
+    inst->dst.regCount = 2;
+    break;
+  case 15:
+    inst->data.regCount = 3;
+    inst->dst.regCount = 3;
+    break;
+  case 14:
+    inst->data.regCount = 4;
+    inst->dst.regCount = 4;
+    break;
+  case 30:
+    inst->data.regCount = 4;
+    inst->dst.regCount = 4;
+    break;
+  }
+}
+
+void Disassembler::decodeDS(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  inst->Offset0 = extractBitsFromU32(bytesLo, 0, 7);
+  inst->Offset1 = extractBitsFromU32(bytesLo, 8, 15);
+  combineDSOffsets(inst);
+
+  auto gdsBit = (int)extractBitsFromU32(bytesLo, 16, 16);
+  if (gdsBit != 0)
+  {
+    inst->GDS = true;
+  }
+
+  auto addrBits = (int)extractBitsFromU32(bytesHi, 0, 7);
+  inst->addr = newVRegOperand(addrBits, addrBits, 1);
+
+  if (inst->instType.SRC0Width > 0)
+  {
+    auto data0Bits = (int)extractBitsFromU32(bytesHi, 8, 15);
+    inst->data = newVRegOperand(data0Bits, data0Bits, 1);
+    inst->data = setRegCountFromWidth(inst->data, inst->instType.SRC0Width);
+  }
+
+  if (inst->instType.SRC1Width > 0)
+  {
+    auto data1Bits = (int)extractBitsFromU32(bytesHi, 16, 23);
+    inst->data1 = newVRegOperand(data1Bits, data1Bits, 1);
+    inst->data1 = setRegCountFromWidth(inst->data1, inst->instType.SRC1Width);
+  }
+
+  if (inst->instType.DSTWidth > 0)
+  {
+    auto dstBits = (int)extractBitsFromU32(bytesHi, 24, 31);
+    inst->dst = newVRegOperand(dstBits, dstBits, 1);
+    inst->dst = setRegCountFromWidth(inst->dst, inst->instType.DSTWidth);
+  }
+}
+
+void Disassembler::combineDSOffsets(Inst *inst)
+{
+  auto oc = inst->instType.opcode;
+  switch (oc)
+  {
+  case 14:
+    break;
+  case 15:
+    break;
+  case 46:
+    break;
+  case 47:
+    break;
+  case 55:
+    break;
+  case 56:
+    break;
+  case 78:
+    break;
+  case 79:
+    break;
+  case 110:
+    break;
+  case 111:
+    break;
+  case 119:
+    break;
+  case 120:
+    break;
+  default:
+    inst->Offset0 += inst->Offset1 << 8;
+  }
+}
+
+Operand Disassembler::setRegCountFromWidth(Operand o, int width)
+{
+  switch (width)
+  {
+  case 64:
+    o.regCount = 2;
+  case 96:
+    o.regCount = 3;
+  case 128:
+    o.regCount = 4;
+  default:
+    o.regCount = 1;
+  }
+  return o;
 }
