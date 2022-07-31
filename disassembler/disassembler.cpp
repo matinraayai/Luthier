@@ -272,6 +272,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case VOP3b:
     decodeVOP3b(inst.get(), buf);
     break;
+  case FLAT:
+    decodeFLAT(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -621,4 +624,65 @@ void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
 
   inst->Omod = (int)extractBitsFromU32(bytesHi, 27, 28);
   inst->Neg = (int)extractBitsFromU32(bytesHi, 29, 31);
+}
+
+void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  if (extractBitsFromU32(bytesLo, 17, 17) != 0)
+  {
+    inst->SystemLevelCoherent = true;
+  }
+  if (extractBitsFromU32(bytesLo, 16, 16) != 0)
+  {
+    inst->GlobalLevelCoherent = true;
+  }
+  if (extractBitsFromU32(bytesLo, 23, 23) != 0)
+  {
+    inst->TextureFailEnable = true;
+  }
+
+  int bits = (int)extractBitsFromU32(bytesLo, 14, 15);
+  inst->Seg = bits;
+
+  auto bitOffset = signExt(uint64_t(extractBitsFromU32(bytesLo, 0, 12)), 12);
+  long bits64 = static_cast<long>(bitOffset);
+  inst->offset = newIntOperand(int(bits64), bits64);
+
+  bits = (int)extractBitsFromU32(bytesLo, 0, 7);
+  inst->addr = newVRegOperand(bits, bits, 2);
+  bits = (int)extractBitsFromU32(bytesLo, 24, 31);
+  inst->dst = newVRegOperand(bits, bits, 0);
+  bits = (int)extractBitsFromU32(bytesLo, 8, 15);
+  inst->data = newVRegOperand(bits, bits, 0);
+  switch (inst->instType.opcode)
+  {
+  case 21:
+    inst->data.regCount = 2;
+    inst->dst.regCount = 2;
+    break;
+  case 23:
+    inst->data.regCount = 2;
+    inst->dst.regCount = 4;
+    break;
+  case 31:
+    inst->data.regCount = 4;
+    inst->dst.regCount = 2;
+    break;
+  case 15:
+    inst->data.regCount = 3;
+    inst->dst.regCount = 3;
+    break;
+  case 14:
+    inst->data.regCount = 4;
+    inst->dst.regCount = 4;
+    break;
+  case 30:
+    inst->data.regCount = 4;
+    inst->dst.regCount = 4;
+    break;
+  }
 }

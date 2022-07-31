@@ -186,7 +186,41 @@ struct InstPrinter
 		}
 		return stream.str();
 	}
+	std::string flatString(Inst *i)
+	{
+		std::stringstream stream;
 
+		switch (i->Seg)
+		{
+		case 0:
+			stream << "flat";
+		case 1:
+			stream << "scratch";
+		case 2:
+			stream << "global";
+		}
+		auto opcode = i->instType.opcode;
+		if (opcode >= 16 && opcode <= 23)
+		{
+			stream << i->instType.instName << " " << operandString(i->dst) << ", " << operandString(i->addr);
+		}
+		else if (opcode >= 24 && opcode <= 31)
+		{
+			stream << i->instType.instName << " " << operandString(i->addr) << ", " << operandString(i->data);
+		}
+
+		if (i->Seg == 2)
+		{
+			if (opcode >= 16 && opcode <= 18 || opcode == 20 || opcode == 21 || opcode == 23 || opcode == 28 || opcode == 31)
+			{
+				stream << ", off";
+				if (i->offset.intValue != 0)
+				{
+					stream << " offset:" << (int)i->offset.intValue;
+				}
+			}
+		}
+	}
 	std::string print(Inst *i)
 	{
 		switch (i->format.formatType)
@@ -205,6 +239,8 @@ struct InstPrinter
 			return vop3aString(i);
 		case VOP3b:
 			return vop3bString(i);
+		case FLAT:
+			return flatString(i);
 		default:
 			return std::string("");
 			// throw std::runtime_error("unknown instruction format type");
