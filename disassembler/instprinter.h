@@ -220,7 +220,9 @@ struct InstPrinter
 				}
 			}
 		}
+		return stream.str();
 	}
+
 	std::string print(Inst *i)
 	{
 		switch (i->format.formatType)

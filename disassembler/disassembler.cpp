@@ -652,11 +652,11 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
   long bits64 = static_cast<long>(bitOffset);
   inst->offset = newIntOperand(int(bits64), bits64);
 
-  bits = (int)extractBitsFromU32(bytesLo, 0, 7);
+  bits = (int)extractBitsFromU32(bytesHi, 0, 7);
   inst->addr = newVRegOperand(bits, bits, 2);
-  bits = (int)extractBitsFromU32(bytesLo, 24, 31);
+  bits = (int)extractBitsFromU32(bytesHi, 24, 31);
   inst->dst = newVRegOperand(bits, bits, 0);
-  bits = (int)extractBitsFromU32(bytesLo, 8, 15);
+  bits = (int)extractBitsFromU32(bytesHi, 8, 15);
   inst->data = newVRegOperand(bits, bits, 0);
   switch (inst->instType.opcode)
   {

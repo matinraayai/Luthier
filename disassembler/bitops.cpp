@@ -61,12 +61,12 @@ uint64_t signExt(uint64_t in, int signBit)
 
   if (sign > 0)
   {
-    mask = ~mask;
-    out = out & mask;
+    out = out | mask;
   }
   else
   {
-    out = out | mask;
+    mask = ~mask;
+    out = out & mask;
   }
   return out;
 }
