@@ -269,6 +269,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case VOP3a:
     decodeVOP3a(inst.get(), buf);
     break;
+  case VOP3b:
+    decodeVOP3b(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -567,4 +570,55 @@ void Disassembler::parseNeg(Inst *inst, int neg)
   {
     inst->Src2Neg = true;
   }
+}
+
+void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  if (inst->instType.opcode > 255)
+  {
+    int dstBits = (int)extractBitsFromU32(bytesLo, 0, 7);
+    inst->dst = newVRegOperand(dstBits, dstBits, 1);
+    if (inst->instType.DSTWidth == 64)
+    {
+      inst->dst.regCount = 2;
+    }
+  }
+  inst->sdst = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 8, 14)));
+  if (inst->instType.SDSTWidth == 64)
+  {
+    inst->sdst.regCount = 2;
+  }
+
+  if (extractBitsFromU32(bytesLo, 15, 15) != 0)
+  {
+    inst->Clamp = true;
+  }
+
+  inst->src0 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 0, 8)));
+  if (inst->instType.SRC0Width == 64)
+  {
+    inst->src0.regCount = 2;
+  }
+
+  inst->src1 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 9, 17)));
+  if (inst->instType.SRC1Width == 64)
+  {
+    inst->src1.regCount = 2;
+  }
+
+  if (inst->instType.opcode > 255 && inst->instType.SRC2Width > 0)
+  {
+    inst->src2 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
+    if (inst->instType.SRC2Width == 64)
+    {
+      inst->src2.regCount = 2;
+    }
+  }
+
+  inst->Omod = (int)extractBitsFromU32(bytesHi, 27, 28);
+  inst->Neg = (int)extractBitsFromU32(bytesHi, 29, 31);
 }

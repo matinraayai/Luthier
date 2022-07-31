@@ -27,6 +27,7 @@ struct InstPrinter
 			return "";
 		}
 	}
+
 	std::string regOperandToString(Operand o)
 	{
 		Reg reg = o.reg;
@@ -80,6 +81,7 @@ struct InstPrinter
 			   << operandString(i->src0);
 		return stream.str();
 	}
+
 	std::string vop2String(Inst *i)
 	{
 		std::stringstream stream;
@@ -166,6 +168,25 @@ struct InstPrinter
 		}
 		return s.str();
 	}
+
+	std::string vop3bString(Inst *i)
+	{
+		std::stringstream stream;
+		stream << i->instType.instName << " ";
+
+		if (i->instType.opcode > 255)
+		{
+			stream << operandString(i->dst) << ", ";
+		}
+		stream << operandString(i->sdst) << ", " << operandString(i->src0) << ", " << operandString(i->src1);
+
+		if (i->instType.opcode > 255 && i->instType.opcode != 281 && i->instType.SRC2Width > 0)
+		{
+			stream << ", " << operandString(i->src2);
+		}
+		return stream.str();
+	}
+
 	std::string print(Inst *i)
 	{
 		switch (i->format.formatType)
@@ -182,6 +203,8 @@ struct InstPrinter
 			return vopcString(i);
 		case VOP3a:
 			return vop3aString(i);
+		case VOP3b:
+			return vop3bString(i);
 		default:
 			return std::string("");
 			// throw std::runtime_error("unknown instruction format type");
