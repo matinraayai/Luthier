@@ -104,6 +104,7 @@ struct InstPrinter
 		}
 		return stream.str();
 	}
+
 	std::string vopcString(Inst *i)
 	{
 		std::stringstream stream;
@@ -114,6 +115,56 @@ struct InstPrinter
 		}
 		stream << i->instType.instName << "_e32 " << dst << ", " << operandString(i->src0) << ", " << operandString(i->src1);
 		return stream.str();
+	}
+
+	std::string vop3aString(Inst *i)
+	{
+		std::stringstream stream;
+		std::string suffix = "";
+		if (i->instType.opcode == 196 || i->instType.opcode == 256)
+		{
+			suffix += "_e64";
+		}
+		stream << i->instType.instName + suffix << " " << operandString(i->dst);
+		stream << ", " << vop3aInputoperandString(i, i->src0, i->Src0Neg, i->Src0Abs);
+		stream << ", " << vop3aInputoperandString(i, i->src1, i->Src1Neg, i->Src1Abs);
+
+		if (i->instType.opcode == 256)
+		{
+			stream << ", vcc";
+		}
+
+		// if (i->instType.opcode == 511)
+		// {
+		// 	stream << ", -1";
+		// }
+
+		if (i->instType.SRC2Width == 0)
+		{
+			return stream.str();
+		}
+
+		stream << ", " << vop3aInputoperandString(i, i->src2, i->Src2Neg, i->Src2Abs);
+		return stream.str();
+	}
+
+	std::string vop3aInputoperandString(Inst *i, Operand o, bool neg, bool abs)
+	{
+		std::stringstream s;
+		if (neg)
+		{
+			s << "-";
+		}
+		if (abs)
+		{
+			s << "|";
+		}
+		s << operandString(o);
+		if (abs)
+		{
+			s << "|";
+		}
+		return s.str();
 	}
 	std::string print(Inst *i)
 	{
@@ -129,6 +180,8 @@ struct InstPrinter
 			return vop2String(i);
 		case VOPC:
 			return vopcString(i);
+		case VOP3a:
+			return vop3aString(i);
 		default:
 			return std::string("");
 			// throw std::runtime_error("unknown instruction format type");

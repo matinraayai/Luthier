@@ -99,6 +99,16 @@ struct Inst
 	int VMCNT;
 	int VSCNT;
 	int LKGMCNT;
+
+	bool IsSdwa;
+	bool Src0Sext;
+	bool Src0Abs;
+	bool Src0Neg;
+	bool Src1Sext;
+	bool Src1Abs;
+	bool Src1Neg;
+	bool Src2Abs;
+	bool Src2Neg;
 };
 
 #endif

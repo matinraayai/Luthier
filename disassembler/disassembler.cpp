@@ -266,6 +266,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case VOPC:
     decodeVOPC(inst.get(), buf);
     break;
+  case VOP3a:
+    decodeVOP3a(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -477,4 +480,91 @@ void Disassembler::decodeVOPC(Inst *inst, std::vector<unsigned char> buf)
 
   int bits = (int)extractBitsFromU32(bytes, 9, 16);
   inst->src1 = newVRegOperand(bits, bits, 0);
+}
+
+void Disassembler::decodeVOP3a(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  int bits = (int)extractBitsFromU32(bytesLo, 0, 7);
+  if (inst->instType.opcode <= 255)
+  {
+    inst->dst = getOperandByCode(uint16_t(bits));
+  }
+  else
+  {
+    inst->dst = newVRegOperand(bits, bits, 0);
+  }
+  if (inst->instType.DSTWidth == 64)
+  {
+    inst->dst.regCount = 2;
+  }
+
+  inst->Abs = (int)extractBitsFromU32(bytesLo, 8, 10);
+  parseAbs(inst, inst->Abs);
+
+  if (extractBitsFromU32(bytesLo, 15, 15) != 0)
+  {
+    inst->Clamp = true;
+  }
+
+  inst->src0 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 0, 8)));
+  if (inst->instType.SRC0Width == 64)
+  {
+    inst->src0.regCount = 2;
+  }
+  inst->src1 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 9, 17)));
+  if (inst->instType.SRC1Width == 64)
+  {
+    inst->src1.regCount = 2;
+  }
+
+  if (inst->instType.SRC2Width != 0)
+  {
+    inst->src2 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
+    if (inst->instType.SRC2Width == 64)
+    {
+      inst->src2.regCount = 2;
+    }
+  }
+
+  inst->Omod = (int)extractBitsFromU32(bytesHi, 27, 28);
+  inst->Neg = (int)extractBitsFromU32(bytesHi, 29, 31);
+  parseNeg(inst, inst->Neg);
+}
+
+void Disassembler::parseAbs(Inst *inst, int abs)
+{
+  if ((abs & 0b001) > 0)
+  {
+    inst->Src0Abs = true;
+  }
+
+  if ((abs & 0b010) > 0)
+  {
+    inst->Src1Abs = true;
+  }
+  if ((abs & 0b100) > 0)
+  {
+    inst->Src2Abs = true;
+  }
+}
+
+void Disassembler::parseNeg(Inst *inst, int neg)
+{
+  if ((neg & 0b001) > 0)
+  {
+    inst->Src0Neg = true;
+  }
+
+  if ((neg & 0b010) > 0)
+  {
+    inst->Src1Neg = true;
+  }
+  if ((neg & 0b100) > 0)
+  {
+    inst->Src2Neg = true;
+  }
 }
