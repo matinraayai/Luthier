@@ -104,7 +104,17 @@ struct InstPrinter
 		}
 		return stream.str();
 	}
-
+	std::string vopcString(Inst *i)
+	{
+		std::stringstream stream;
+		std::string dst = "vcc";
+		if (i->instType.instName.find("cmpx") != std::string::npos)
+		{
+			dst = "exec";
+		}
+		stream << i->instType.instName << "_e32 " << dst << ", " << operandString(i->src0) << ", " << operandString(i->src1);
+		return stream.str();
+	}
 	std::string print(Inst *i)
 	{
 		switch (i->format.formatType)
@@ -117,6 +127,8 @@ struct InstPrinter
 			return vop1String(i);
 		case VOP2:
 			return vop2String(i);
+		case VOPC:
+			return vopcString(i);
 		default:
 			return std::string("");
 			// throw std::runtime_error("unknown instruction format type");

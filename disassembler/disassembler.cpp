@@ -263,6 +263,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case VOP2:
     decodeVOP2(inst.get(), buf);
     break;
+  case VOPC:
+    decodeVOPC(inst.get(), buf);
+    break;
   }
   return std::move(inst);
 }
@@ -454,4 +457,24 @@ void Disassembler::decodeVOP2(Inst *inst, std::vector<unsigned char> buf)
     std::vector<unsigned char> sub(&buf[4], &buf[8]);
     inst->src2.literalConstant = convertLE(sub);
   }
+}
+
+void Disassembler::decodeVOPC(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 8);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  int bits = (int)extractBitsFromU32(bytes, 9, 16);
+  inst->src1 = newVRegOperand(bits, bits, 0);
 }
