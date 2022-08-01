@@ -71,6 +71,37 @@ struct InstPrinter
 		return stream.str();
 	}
 
+	std::string soppString(Inst *i)
+	{
+		std::stringstream stream;
+		stream << i->instType.instName;
+
+		if(i->instType.opcode == 12) //WAIT_CNT
+		{
+			if(i->VMCNT != 63) stream << " vmcnt(" << i->VMCNT << ")";
+			if(i->LKGMCNT != 15) stream << " lkgmcnt(" << i->LKGMCNT << ")";
+		}
+		else
+		{
+			stream << "Instruction not yet supported...";
+		}
+		/*
+		else if(i->instType.opcode >= 2 && i->instType.opcode <= 9)
+		{
+
+		}
+		else if(i->instType.opcode == 1 || i->instType.opcode == 10)
+		{
+			//return empty string
+		}
+		else
+		{
+			stream << " " << operandString(i->simm16);
+		}
+		*/
+		return stream.str();
+	}
+
 	std::string smemString(Inst *i)
 	{
 		std::stringstream stream;
@@ -281,6 +312,8 @@ struct InstPrinter
 			return sop2String(i);
 		case SOP1:
 			return sop1String(i);
+		case SOPP:
+			return soppString(i);
 		case SMEM:
 			return smemString(i);
 		case VOP1:

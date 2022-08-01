@@ -257,6 +257,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case SOP1:
     decodeSOP1(inst.get(), buf);
     break;
+  case SOPP:
+    decodeSOPP(inst.get(), buf);
+    break;
   case SMEM:
     decodeSMEM(inst.get(), buf);
     break;
@@ -323,7 +326,6 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
 }
 void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
 {
-  printf("\nBuffer size: %lu\n", buf.size()); 
   uint32_t bytes = convertLE(buf);
   uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
   inst->src0 = getOperandByCode(uint16_t(src0Value));
@@ -342,6 +344,19 @@ void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
     }
     std::vector<unsigned char> sub(&buf[4], &buf[8]);
     inst->src0.literalConstant = convertLE(sub);
+  }
+}
+void Disassembler::decodeSOPP(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t simm16val = extractBitsFromU32(bytes, 0, 15);
+  inst->simm16 = getOperandByCode(uint16_t(simm16val));
+
+  if(inst->instType.opcode == 12) //WAIT_CNT
+  {
+    inst->VMCNT = extractBitsFromU32(uint32_t(inst->simm16.intValue), 0, 3);
+    inst->VMCNT += extractBitsFromU32(uint32_t(inst->simm16.intValue), 14, 15) << 4;
+    inst->LKGMCNT = extractBitsFromU32(uint32_t(inst->simm16.intValue), 8, 12);
   }
 }
 void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
