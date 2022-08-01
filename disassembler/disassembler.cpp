@@ -254,6 +254,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case SOP2:
     decodeSOP2(inst.get(), buf);
     break;
+  case SOP1:
+    decodeSOP1(inst.get(), buf);
+    break;
   case SMEM:
     decodeSMEM(inst.get(), buf);
     break;
@@ -316,6 +319,29 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
     inst->src0.regCount = 2;
     inst->src1.regCount = 2;
     inst->dst.regCount = 2;
+  }
+}
+void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
+{
+  printf("\nBuffer size: %lu\n", buf.size()); 
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if(inst->instType.SRC0Width == 64) inst->src0.regCount = 2;
+
+  uint32_t sdstValue = extractBitsFromU32(bytes, 16, 22);
+  inst->dst = getOperandByCode(uint16_t(sdstValue));
+  if(inst->instType.DSTWidth == 64) inst->dst.regCount = 2;
+
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
   }
 }
 void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
