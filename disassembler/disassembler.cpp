@@ -5,11 +5,13 @@
 #include <iostream>
 #include <memory>
 
-Disassembler::Disassembler()
+Disassembler::Disassembler(elfio::File *file)
 {
   nextInstID = 0;
   initFormatList();
   initializeDecodeTable();
+  auto printer = InstPrinter(file);
+  this->printer = printer;
 }
 
 void Disassembler::addInstType(InstType info)
@@ -37,10 +39,10 @@ void Disassembler::initFormatList()
               return f1.mask > f2.mask;
             });
 }
+
 void Disassembler::Disassemble(elfio::File *file, std::string filename,
                                std::ostream &o)
 {
-  printer.file = file;
   o << "\n"
     << filename << "\tfile format ELF64-amdgpu\n";
   o << "\n\nDisassembly of section .text:\n";
@@ -75,11 +77,12 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
     pc += uint64_t(inst->byteSize);
   }
 }
-void Disassembler::Disassemble(std::string filename)
+void Disassembler::Disassemble(elfio::File *file, std::string filename)
 {
   std::string line;
   std::fstream myfile(filename, std::ios::in | std::ios::out);
   std::vector<unsigned char> buf, lo4, hi4;
+  auto pc = file->GetSectionByName(".text")->offset;
   if (myfile.is_open())
   {
     while (getline(myfile, line))
@@ -95,7 +98,9 @@ void Disassembler::Disassemble(std::string filename)
         try
         {
           std::unique_ptr<Inst> inst = decode(buf);
+          inst->PC = pc;
           std::string instStr = printer.print(inst.get());
+
           if (instStr == inst_str)
           {
             std::cout << line + "[PASS]\n";
@@ -105,6 +110,7 @@ void Disassembler::Disassemble(std::string filename)
             std::cout << line + "[MISMATCH]\n";
             std::cout << "output is " << instStr << std::endl;
           }
+          pc += inst->byteSize;
         }
         catch (std::runtime_error &error)
         {
@@ -126,7 +132,9 @@ void Disassembler::Disassemble(std::string filename)
         try
         {
           std::unique_ptr<Inst> inst = decode(buf);
+          inst->PC = pc;
           std::string instStr = printer.print(inst.get());
+
           if (instStr == inst_str)
           {
             std::cout << line + "[PASS]\n";
@@ -136,6 +144,7 @@ void Disassembler::Disassemble(std::string filename)
             std::cout << line + "[MISMATCH]\n";
             std::cout << "output is " << instStr << std::endl;
           }
+          pc += inst->byteSize;
         }
         catch (std::runtime_error &error)
         {
@@ -254,6 +263,12 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case SOP2:
     decodeSOP2(inst.get(), buf);
     break;
+  case SOP1:
+    decodeSOP1(inst.get(), buf);
+    break;
+  case SOPP:
+    decodeSOPP(inst.get(), buf);
+    break;
   case SMEM:
     decodeSMEM(inst.get(), buf);
     break;
@@ -281,6 +296,7 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   }
   return std::move(inst);
 }
+
 void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
@@ -318,6 +334,49 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
     inst->dst.regCount = 2;
   }
 }
+
+void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->instType.SRC0Width == 64)
+    inst->src0.regCount = 2;
+
+  uint32_t sdstValue = extractBitsFromU32(bytes, 16, 22);
+  inst->dst = getOperandByCode(uint16_t(sdstValue));
+  if (inst->instType.DSTWidth == 64)
+    inst->dst.regCount = 2;
+
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+}
+
+void Disassembler::decodeSOPP(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+
+  if (inst->instType.opcode == 12) //s_waitcnt
+  {
+    inst->VMCNT = extractBitsFromU32(uint32_t(bytes), 0, 3);
+    inst->VMCNT += extractBitsFromU32(uint32_t(bytes), 14, 15) << 4;
+    inst->LKGMCNT = extractBitsFromU32(uint32_t(bytes), 8, 12);
+  }
+  else
+  {
+    uint32_t simm16val = extractBitsFromU32(bytes, 0, 15);
+    inst->simm16 = newIntOperand(0, long(simm16val));
+  }
+}
+
 void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
 {
   auto bytesLo = convertLE(buf);

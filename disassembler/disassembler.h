@@ -13,8 +13,8 @@ class Disassembler
 {
 public:
 	void Disassemble(elfio::File *file, std::string filename, std::ostream &o);
-	void Disassemble(std::string filename);
-	Disassembler();
+	void Disassemble(elfio::File *file, std::string filename);
+	Disassembler(elfio::File *file);
 
 private:
 	void initializeDecodeTable();
@@ -26,7 +26,10 @@ private:
 	InstType lookUp(Format format, Opcode opcode);
 	void tryPrintSymbol(elfio::File *file, uint64_t offset, std::ostream &o);
 	void decodeSOP2(Inst *inst, std::vector<unsigned char> buf);
+	void decodeSOPK(Inst *inst, std::vector<unsigned char> buf);
 	void decodeSOP1(Inst *inst, std::vector<unsigned char> buf);
+	void decodeSOPC(Inst *inst, std::vector<unsigned char> buf);
+	void decodeSOPP(Inst *inst, std::vector<unsigned char> buf);
 	void decodeVOP1(Inst *inst, std::vector<unsigned char> buf);
 	void decodeSMEM(Inst *inst, std::vector<unsigned char> buf);
 	void decodeVOP2(Inst *inst, std::vector<unsigned char> buf);
