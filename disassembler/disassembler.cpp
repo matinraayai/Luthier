@@ -39,6 +39,7 @@ void Disassembler::initFormatList()
               return f1.mask > f2.mask;
             });
 }
+
 void Disassembler::Disassemble(elfio::File *file, std::string filename,
                                std::ostream &o)
 {
@@ -289,6 +290,7 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   }
   return std::move(inst);
 }
+
 void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
@@ -365,7 +367,7 @@ void Disassembler::decodeSOPP(Inst *inst, std::vector<unsigned char> buf)
   else
   {
     uint32_t simm16val = extractBitsFromU32(bytes, 0, 15);
-    inst->simm16 = getOperandByCode(uint16_t(simm16val));
+    inst->simm16 = newIntOperand(0, long(simm16val));
   }
 }
 
