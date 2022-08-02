@@ -48,7 +48,8 @@ struct InstPrinter
 			}
 			else if (reg.name.find("lo") != std::string::npos)
 			{
-				return reg.name.substr(0, reg.name.length() - 2);
+				// return reg.name.substr(0, reg.name.length() - 2);
+				return reg.name.substr(0, reg.name.length() - 3);
 			}
 			return "unknown register";
 		}
@@ -76,29 +77,44 @@ struct InstPrinter
 		std::stringstream stream;
 		stream << i->instType.instName;
 
-		if(i->instType.opcode == 12) //WAIT_CNT
+		if(i->instType.opcode == 12) //s_waitcnt
 		{
 			if(i->VMCNT != 63) stream << " vmcnt(" << i->VMCNT << ")";
-			if(i->LKGMCNT != 15) stream << " lkgmcnt(" << i->LKGMCNT << ")";
+			if(i->LKGMCNT != 15) stream << " lgkmcnt(" << i->LKGMCNT << ")";
 		}
-		else
+		else if(i->instType.opcode >= 2 && i->instType.opcode <= 9) // Branch
 		{
-			stream << "Instruction not yet supported...";
-		}
-		/*
-		else if(i->instType.opcode >= 2 && i->instType.opcode <= 9)
-		{
+			bool symbolFound = false;
 
+			int16_t imm = int16_t(u_int16_t(i->simm16.intValue));
+			uint64_t target = i->PC + uint64_t(imm*4) + 4;
+
+			if(file)
+			{
+				auto symbols = file->GetSymbols();
+				for(int i = 0; i < symbols.size(); i++)
+					if(symbols.at(i)->value == target)
+					{
+						stream << " " << symbols.at(i)->name;
+						symbolFound = true;
+					}
+			}
+			else
+			{
+				printf(":(\n%lu\n", target);
+
+			}
+
+			if(!symbolFound) stream << " " << operandString(i->simm16);
 		}
 		else if(i->instType.opcode == 1 || i->instType.opcode == 10)
 		{
-			//return empty string
+			return stream.str(); //return empty string
 		}
 		else
 		{
 			stream << " " << operandString(i->simm16);
 		}
-		*/
 		return stream.str();
 	}
 

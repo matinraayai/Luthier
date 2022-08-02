@@ -349,14 +349,17 @@ void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
 void Disassembler::decodeSOPP(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
-  uint32_t simm16val = extractBitsFromU32(bytes, 0, 15);
-  inst->simm16 = getOperandByCode(uint16_t(simm16val));
-
-  if(inst->instType.opcode == 12) //WAIT_CNT
+  
+  if(inst->instType.opcode == 12) //s_waitcnt
   {
-    inst->VMCNT = extractBitsFromU32(uint32_t(inst->simm16.intValue), 0, 3);
-    inst->VMCNT += extractBitsFromU32(uint32_t(inst->simm16.intValue), 14, 15) << 4;
-    inst->LKGMCNT = extractBitsFromU32(uint32_t(inst->simm16.intValue), 8, 12);
+    inst->VMCNT = extractBitsFromU32(uint32_t(bytes), 0, 3);
+    inst->VMCNT += extractBitsFromU32(uint32_t(bytes), 14, 15) << 4;
+    inst->LKGMCNT = extractBitsFromU32(uint32_t(bytes), 8, 12);
+  }
+  else
+  {
+    uint32_t simm16val = extractBitsFromU32(bytes, 0, 15);
+    inst->simm16 = getOperandByCode(uint16_t(simm16val));
   }
 }
 void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
