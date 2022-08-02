@@ -13,7 +13,7 @@ class Disassembler
 {
 public:
 	void Disassemble(elfio::File *file, std::string filename, std::ostream &o);
-	void Disassemble(std::string filename);
+	void Disassemble(elfio::File *file, std::string filename);
 	Disassembler(elfio::File *file);
 
 private:

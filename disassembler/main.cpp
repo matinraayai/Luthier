@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
 	Disassembler d(&elfFile);
 	if (filename.find("csv") != std::string::npos)
 	{
-		d.Disassemble(filename);
+		d.Disassemble(&elfFile, filename);
 	}
 	else
 	{

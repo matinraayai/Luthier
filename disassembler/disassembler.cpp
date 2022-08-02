@@ -43,7 +43,6 @@ void Disassembler::initFormatList()
 void Disassembler::Disassemble(elfio::File *file, std::string filename,
                                std::ostream &o)
 {
-  printer.file = file;
   o << "\n"
     << filename << "\tfile format ELF64-amdgpu\n";
   o << "\n\nDisassembly of section .text:\n";
@@ -78,11 +77,12 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
     pc += uint64_t(inst->byteSize);
   }
 }
-void Disassembler::Disassemble(std::string filename)
+void Disassembler::Disassemble(elfio::File *file, std::string filename)
 {
   std::string line;
   std::fstream myfile(filename, std::ios::in | std::ios::out);
   std::vector<unsigned char> buf, lo4, hi4;
+  auto pc = file->GetSectionByName(".text")->offset;
   if (myfile.is_open())
   {
     while (getline(myfile, line))
@@ -98,7 +98,9 @@ void Disassembler::Disassemble(std::string filename)
         try
         {
           std::unique_ptr<Inst> inst = decode(buf);
+          inst->PC = pc;
           std::string instStr = printer.print(inst.get());
+
           if (instStr == inst_str)
           {
             std::cout << line + "[PASS]\n";
@@ -108,6 +110,7 @@ void Disassembler::Disassemble(std::string filename)
             std::cout << line + "[MISMATCH]\n";
             std::cout << "output is " << instStr << std::endl;
           }
+          pc += inst->byteSize;
         }
         catch (std::runtime_error &error)
         {
@@ -129,7 +132,9 @@ void Disassembler::Disassemble(std::string filename)
         try
         {
           std::unique_ptr<Inst> inst = decode(buf);
+          inst->PC = pc;
           std::string instStr = printer.print(inst.get());
+
           if (instStr == inst_str)
           {
             std::cout << line + "[PASS]\n";
@@ -139,6 +144,7 @@ void Disassembler::Disassemble(std::string filename)
             std::cout << line + "[MISMATCH]\n";
             std::cout << "output is " << instStr << std::endl;
           }
+          pc += inst->byteSize;
         }
         catch (std::runtime_error &error)
         {
