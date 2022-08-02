@@ -5,11 +5,12 @@
 #include <iostream>
 #include <memory>
 
-Disassembler::Disassembler()
+Disassembler::Disassembler(elfio::File *file)
 {
   nextInstID = 0;
   initFormatList();
   initializeDecodeTable();
+  auto printer = InstPrinter(file);
 }
 
 void Disassembler::addInstType(InstType info)
@@ -324,16 +325,19 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
     inst->dst.regCount = 2;
   }
 }
+
 void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
   uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
   inst->src0 = getOperandByCode(uint16_t(src0Value));
-  if(inst->instType.SRC0Width == 64) inst->src0.regCount = 2;
+  if (inst->instType.SRC0Width == 64)
+    inst->src0.regCount = 2;
 
   uint32_t sdstValue = extractBitsFromU32(bytes, 16, 22);
   inst->dst = getOperandByCode(uint16_t(sdstValue));
-  if(inst->instType.DSTWidth == 64) inst->dst.regCount = 2;
+  if (inst->instType.DSTWidth == 64)
+    inst->dst.regCount = 2;
 
   if (inst->src0.operandType == LiteralConstant)
   {
@@ -346,11 +350,12 @@ void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
     inst->src0.literalConstant = convertLE(sub);
   }
 }
+
 void Disassembler::decodeSOPP(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
-  
-  if(inst->instType.opcode == 12) //s_waitcnt
+
+  if (inst->instType.opcode == 12) //s_waitcnt
   {
     inst->VMCNT = extractBitsFromU32(uint32_t(bytes), 0, 3);
     inst->VMCNT += extractBitsFromU32(uint32_t(bytes), 14, 15) << 4;
@@ -362,6 +367,7 @@ void Disassembler::decodeSOPP(Inst *inst, std::vector<unsigned char> buf)
     inst->simm16 = getOperandByCode(uint16_t(simm16val));
   }
 }
+
 void Disassembler::decodeSMEM(Inst *inst, std::vector<unsigned char> buf)
 {
   auto bytesLo = convertLE(buf);

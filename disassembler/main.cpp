@@ -15,8 +15,9 @@ int main(int argc, char *argv[])
 	std::string filename = argv[1];
 	initRegs();
 	initFormatTable();
+	elfio::File file_em;
 
-	Disassembler d;
+	Disassembler d(&file_em);
 	if (filename.find("csv") != std::string::npos)
 	{
 		d.Disassemble(filename);
