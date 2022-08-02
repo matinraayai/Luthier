@@ -11,6 +11,7 @@ Disassembler::Disassembler(elfio::File *file)
   initFormatList();
   initializeDecodeTable();
   auto printer = InstPrinter(file);
+  this->printer = printer;
 }
 
 void Disassembler::addInstType(InstType info)
