@@ -263,8 +263,14 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case SOP2:
     decodeSOP2(inst.get(), buf);
     break;
+  case SOPK:
+    decodeSOPK(inst.get(), buf);
+    break;
   case SOP1:
     decodeSOP1(inst.get(), buf);
+    break;
+  case SOPC:
+    decodeSOPC(inst.get(), buf);
     break;
   case SOPP:
     decodeSOPP(inst.get(), buf);
@@ -335,9 +341,21 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
   }
 }
 
+void Disassembler::decodeSOPK(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+
+  uint32_t simm16val = extractBitsFromU32(bytes, 0, 15);
+  inst->simm16 = getOperandByCode(uint16_t(simm16val));
+  
+  uint32_t sdstVal = extractBitsFromU32(bytes, 16, 22);
+  inst->dst = getOperandByCode(uint16_t(sdstVal));
+}
+
 void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
+
   uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
   inst->src0 = getOperandByCode(uint16_t(src0Value));
   if (inst->instType.SRC0Width == 64)
@@ -357,6 +375,37 @@ void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
     }
     std::vector<unsigned char> sub(&buf[4], &buf[8]);
     inst->src0.literalConstant = convertLE(sub);
+  }
+}
+
+void Disassembler::decodeSOPC(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  uint32_t src1Value = extractBitsFromU32(bytes, 8, 15);
+  inst->src1 = getOperandByCode(uint16_t(src1Value));
+  if (inst->src1.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src1.literalConstant = convertLE(sub);
   }
 }
 

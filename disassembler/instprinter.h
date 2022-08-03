@@ -65,11 +65,27 @@ struct InstPrinter
 		return stream.str();
 	}
 
+	std::string sopkString(Inst *i)
+	{
+		std::stringstream stream;
+		stream << i->instType.instName << " " << operandString(i->dst) << ", "
+			   << operandString(i->simm16);
+		return stream.str();
+	}
+
 	std::string sop1String(Inst *i)
 	{
 		std::stringstream stream;
 		stream << i->instType.instName << " " << operandString(i->dst) << ", "
 			   << operandString(i->src0);
+		return stream.str();
+	}
+
+	std::string sopCString(Inst *i)
+	{
+		std::stringstream stream;
+		stream << i->instType.instName << " " << operandString(i->src0) << ", " 
+			   << operandString(i->src1);
 		return stream.str();
 	}
 
@@ -329,8 +345,12 @@ struct InstPrinter
 		{
 		case SOP2:
 			return sop2String(i);
+		case SOPK:
+			return sopkString(i);
 		case SOP1:
 			return sop1String(i);
+		case SOPC:
+			return sopCString(i);
 		case SOPP:
 			return soppString(i);
 		case SMEM:
