@@ -31,7 +31,7 @@
 			"request": "launch",
 			"program": "${workspaceFolder}/disassembler/build/disassembler",
 			"args": [
-				"../generatedAsm/vectoradd_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx908.s.csv"
+				"../generatedAsm/simple_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx908.s.csv"
 			],
 			"stopAtEntry": false,
 			"cwd": "${fileDirname}",

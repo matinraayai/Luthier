@@ -398,8 +398,8 @@ void initRegs()
 	Regs.insert({VCCZ, {VCCZ, "vccz", 1, true}});
 	Regs.insert({SCC, {SCC, "scc", 1, true}});
 	Regs.insert({FlatScratch, {FlatScratch, "flatscratch", 8, false}});
-	Regs.insert({FlatScratchLo, {FlatScratchLo, "flatscratchlo", 4, false}});
-	Regs.insert({FlatScratchHi, {FlatScratchHi, "flatscratchhi", 4, false}});
+	Regs.insert({FlatScratchLo, {FlatScratchLo, "flat_scratch_lo", 4, false}});
+	Regs.insert({FlatScratchHi, {FlatScratchHi, "flat_scratch_hi", 4, false}});
 	Regs.insert({XnackMask, {XnackMask, "xnackmask", 8, false}});
 	Regs.insert({XnackMaskLo, {XnackMaskLo, "xnackmasklo", 4, false}});
 	Regs.insert({XnackMaskHi, {XnackMaskHi, "xnackmaskhi", 4, false}});
