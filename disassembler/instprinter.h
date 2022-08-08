@@ -76,6 +76,16 @@ struct InstPrinter
 	std::string sop1String(Inst *i)
 	{
 		std::stringstream stream;
+		if (i->instType.opcode == 28) //s_getpc
+		{
+			stream << i->instType.instName << " " << operandString(i->dst);
+			return stream.str();
+		}
+		if (i->instType.opcode == 29) //s_setpc
+		{
+			stream << i->instType.instName << " " << operandString(i->src0);
+			return stream.str();
+		}
 		stream << i->instType.instName << " " << operandString(i->dst) << ", "
 			   << operandString(i->src0);
 		return stream.str();
@@ -100,6 +110,8 @@ struct InstPrinter
 				stream << " vmcnt(" << i->VMCNT << ")";
 			if (i->LKGMCNT != 15)
 				stream << " lgkmcnt(" << i->LKGMCNT << ")";
+			if (i->EXPCNT != 7)
+				stream << " expcnt(" << i->EXPCNT << ")";
 		}
 		else if (i->instType.opcode >= 2 && i->instType.opcode <= 9) // Branch
 		{
