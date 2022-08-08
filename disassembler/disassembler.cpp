@@ -225,6 +225,10 @@ bool Disassembler::isVOP3bOpcode(Opcode opcode)
     return true;
   case 481:
     return true;
+  case 488:
+    return true;
+  case 489:
+    return true;
   }
   return false;
 }

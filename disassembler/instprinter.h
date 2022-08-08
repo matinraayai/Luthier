@@ -108,10 +108,10 @@ struct InstPrinter
 		{
 			if (i->VMCNT != 63)
 				stream << " vmcnt(" << i->VMCNT << ")";
-			if (i->LKGMCNT != 15)
-				stream << " lgkmcnt(" << i->LKGMCNT << ")";
 			if (i->EXPCNT != 7)
 				stream << " expcnt(" << i->EXPCNT << ")";
+			if (i->LKGMCNT != 15)
+				stream << " lgkmcnt(" << i->LKGMCNT << ")";
 		}
 		else if (i->instType.opcode >= 2 && i->instType.opcode <= 9) // Branch
 		{
