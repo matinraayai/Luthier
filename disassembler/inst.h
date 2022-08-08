@@ -99,6 +99,7 @@ struct Inst
 	int VMCNT;
 	int VSCNT;
 	int LKGMCNT;
+	int EXPCNT;
 
 	bool IsSdwa;
 	bool Src0Sext;
