@@ -23,8 +23,13 @@ struct InstPrinter
 		case FloatOperand:
 			return std::to_string(o.floatValue);
 		case LiteralConstant:
+			if (o.literalConstant == 0xffffffff)
+			{
+				return "-1";
+			}
 			stream << "0x" << std::hex << o.literalConstant;
 			return stream.str();
+
 		default:
 			return "";
 		}

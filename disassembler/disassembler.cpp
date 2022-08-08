@@ -709,7 +709,7 @@ void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
       inst->dst.regCount = 2;
     }
   }
-  inst->sdst = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 8, 14)));
+  inst->sdst = getOperandByCode(uint16_t(extractBitsFromU32(bytesLo, 8, 14)));
   if (inst->instType.SDSTWidth == 64)
   {
     inst->sdst.regCount = 2;
