@@ -907,8 +907,8 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_qsad_pk_u16_u8", 485, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mqsad_pk_u16_u8", 486, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mqsad_u32_u8", 487, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mad_u64_u32", 488, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mad_i64_i32", 489, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mad_u64_u32", 488, FormatTable[VOP3a], 0, ExeUnitVALU, 64, 32, 32, 64, 0});
+	addInstType({"v_mad_i64_i32", 489, FormatTable[VOP3a], 0, ExeUnitVALU, 64, 32, 32, 64, 0});
 	addInstType({"v_mad_legacy_f16", 490, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_legacy_u16", 491, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_legacy_i16", 492, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
@@ -982,8 +982,8 @@ void Disassembler::initializeDecodeTable()
 
 	addInstType({"v_div_scale_f32", 480, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_div_scale_f64", 481, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mad_u64_u32", 482, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_mad_i64_i32", 483, FormatTable[VOP3b], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_mad_u64_u32", 488, FormatTable[VOP3b], 0, ExeUnitVALU, 64, 32, 32, 64, 64});
+	addInstType({"v_mad_i64_i32", 489, FormatTable[VOP3b], 0, ExeUnitVALU, 64, 32, 32, 64, 64});
 
 	//SOP1 Instructions
 	addInstType({"s_mov_b32", 0, FormatTable[SOP1], 0, ExeUnitScalar, 32, 32, 0, 0, 0});

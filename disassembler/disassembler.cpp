@@ -1,6 +1,7 @@
 #include "disassembler.h"
 #include "operand.h"
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -80,7 +81,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
 void Disassembler::Disassemble(elfio::File *file, std::string filename)
 {
   std::string line;
-  std::fstream myfile(filename, std::ios::in | std::ios::out);
+  std::fstream myfile(filename, std::ios::in);
   std::vector<unsigned char> buf, lo4, hi4;
   auto pc = file->GetSectionByName(".text")->offset;
   if (myfile.is_open())
@@ -160,6 +161,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
   }
   else
   {
+    std::cout << "Error: " << strerror(errno);
     std::cout << "Unable to open file\n";
     return;
   }
@@ -223,6 +225,10 @@ bool Disassembler::isVOP3bOpcode(Opcode opcode)
     return true;
   case 481:
     return true;
+  case 488:
+    return true;
+  case 489:
+    return true;
   }
   return false;
 }
@@ -263,8 +269,14 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
   case SOP2:
     decodeSOP2(inst.get(), buf);
     break;
+  case SOPK:
+    decodeSOPK(inst.get(), buf);
+    break;
   case SOP1:
     decodeSOP1(inst.get(), buf);
+    break;
+  case SOPC:
+    decodeSOPC(inst.get(), buf);
     break;
   case SOPP:
     decodeSOPP(inst.get(), buf);
@@ -335,9 +347,21 @@ void Disassembler::decodeSOP2(Inst *inst, std::vector<unsigned char> buf)
   }
 }
 
+void Disassembler::decodeSOPK(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+
+  uint32_t simm16val = extractBitsFromU32(bytes, 0, 15);
+  inst->simm16 = getOperandByCode(uint16_t(simm16val));
+
+  uint32_t sdstVal = extractBitsFromU32(bytes, 16, 22);
+  inst->dst = getOperandByCode(uint16_t(sdstVal));
+}
+
 void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
+
   uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
   inst->src0 = getOperandByCode(uint16_t(src0Value));
   if (inst->instType.SRC0Width == 64)
@@ -360,15 +384,47 @@ void Disassembler::decodeSOP1(Inst *inst, std::vector<unsigned char> buf)
   }
 }
 
+void Disassembler::decodeSOPC(Inst *inst, std::vector<unsigned char> buf)
+{
+  uint32_t bytes = convertLE(buf);
+
+  uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
+  inst->src0 = getOperandByCode(uint16_t(src0Value));
+  if (inst->src0.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src0.literalConstant = convertLE(sub);
+  }
+
+  uint32_t src1Value = extractBitsFromU32(bytes, 8, 15);
+  inst->src1 = getOperandByCode(uint16_t(src1Value));
+  if (inst->src1.operandType == LiteralConstant)
+  {
+    inst->byteSize += 4;
+    if (buf.size() < 8)
+    {
+      throw std::runtime_error("no enough bytes for literal");
+    }
+    std::vector<unsigned char> sub(&buf[4], &buf[8]);
+    inst->src1.literalConstant = convertLE(sub);
+  }
+}
+
 void Disassembler::decodeSOPP(Inst *inst, std::vector<unsigned char> buf)
 {
   uint32_t bytes = convertLE(buf);
 
-  if (inst->instType.opcode == 12) //s_waitcnt
+  if (inst->instType.opcode == 12) // s_waitcnt
   {
     inst->VMCNT = extractBitsFromU32(uint32_t(bytes), 0, 3);
     inst->VMCNT += extractBitsFromU32(uint32_t(bytes), 14, 15) << 4;
-    inst->LKGMCNT = extractBitsFromU32(uint32_t(bytes), 8, 12);
+    inst->LKGMCNT = extractBitsFromU32(uint32_t(bytes), 8, 11);
+    inst->EXPCNT = extractBitsFromU32(uint32_t(bytes), 4, 6);
   }
   else
   {
@@ -519,7 +575,7 @@ void Disassembler::decodeVOP2(Inst *inst, std::vector<unsigned char> buf)
   inst->dst = newVRegOperand(bits, bits, 0);
 
   if (inst->instType.opcode == 24 || inst->instType.opcode == 37)
-  { //madak
+  { // madak
     inst->Imm = true;
     inst->byteSize += 4;
     Operand o;
@@ -591,7 +647,8 @@ void Disassembler::decodeVOP3a(Inst *inst, std::vector<unsigned char> buf)
 
   if (inst->instType.SRC2Width != 0)
   {
-    inst->src2 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
+    inst->src2 =
+        getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
     if (inst->instType.SRC2Width == 64)
     {
       inst->src2.regCount = 2;
@@ -652,7 +709,7 @@ void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
       inst->dst.regCount = 2;
     }
   }
-  inst->sdst = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 8, 14)));
+  inst->sdst = getOperandByCode(uint16_t(extractBitsFromU32(bytesLo, 8, 14)));
   if (inst->instType.SDSTWidth == 64)
   {
     inst->sdst.regCount = 2;
@@ -677,7 +734,8 @@ void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
 
   if (inst->instType.opcode > 255 && inst->instType.SRC2Width > 0)
   {
-    inst->src2 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
+    inst->src2 =
+        getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
     if (inst->instType.SRC2Width == 64)
     {
       inst->src2.regCount = 2;

@@ -23,8 +23,13 @@ struct InstPrinter
 		case FloatOperand:
 			return std::to_string(o.floatValue);
 		case LiteralConstant:
+			if (o.literalConstant == 0xffffffff)
+			{
+				return "-1";
+			}
 			stream << "0x" << std::hex << o.literalConstant;
 			return stream.str();
+
 		default:
 			return "";
 		}
@@ -65,11 +70,37 @@ struct InstPrinter
 		return stream.str();
 	}
 
-	std::string sop1String(Inst *i)
+	std::string sopkString(Inst *i)
 	{
 		std::stringstream stream;
 		stream << i->instType.instName << " " << operandString(i->dst) << ", "
+			   << operandString(i->simm16);
+		return stream.str();
+	}
+
+	std::string sop1String(Inst *i)
+	{
+		std::stringstream stream;
+		if (i->instType.opcode == 28) //s_getpc
+		{
+			stream << i->instType.instName << " " << operandString(i->dst);
+			return stream.str();
+		}
+		if (i->instType.opcode == 29) //s_setpc
+		{
+			stream << i->instType.instName << " " << operandString(i->src0);
+			return stream.str();
+		}
+		stream << i->instType.instName << " " << operandString(i->dst) << ", "
 			   << operandString(i->src0);
+		return stream.str();
+	}
+
+	std::string sopcString(Inst *i)
+	{
+		std::stringstream stream;
+		stream << i->instType.instName << " " << operandString(i->src0) << ", "
+			   << operandString(i->src1);
 		return stream.str();
 	}
 
@@ -82,6 +113,8 @@ struct InstPrinter
 		{
 			if (i->VMCNT != 63)
 				stream << " vmcnt(" << i->VMCNT << ")";
+			if (i->EXPCNT != 7)
+				stream << " expcnt(" << i->EXPCNT << ")";
 			if (i->LKGMCNT != 15)
 				stream << " lgkmcnt(" << i->LKGMCNT << ")";
 		}
@@ -329,8 +362,12 @@ struct InstPrinter
 		{
 		case SOP2:
 			return sop2String(i);
+		case SOPK:
+			return sopkString(i);
 		case SOP1:
 			return sop1String(i);
+		case SOPC:
+			return sopcString(i);
 		case SOPP:
 			return soppString(i);
 		case SMEM:
