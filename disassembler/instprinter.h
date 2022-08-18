@@ -123,7 +123,7 @@ struct InstPrinter
 			bool symbolFound = false;
 
 			int16_t imm = int16_t(uint16_t(i->simm16.intValue));
-			uint64_t target = i->PC + uint64_t(imm * 4) + 4;
+			uint64_t target = i->PC + uint64_t(imm * 4) + 4; printf("\ntarget: %lu\n", target);
 
 			if (file)
 			{
@@ -134,14 +134,14 @@ struct InstPrinter
 						stream << " " << symbols.at(i)->name;
 						symbolFound = true;
 					}
+
+					if (!symbolFound)
+						stream << " couldn't find target";
 			}
 			else
 			{
-				printf(":(\n%lu\n", target);
+				printf("File not found\n");
 			}
-
-			if (!symbolFound)
-				stream << " " << operandString(i->simm16);
 		}
 		else if (i->instType.opcode == 1 || i->instType.opcode == 10)
 		{
