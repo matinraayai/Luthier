@@ -746,6 +746,13 @@ void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
   inst->Neg = (int)extractBitsFromU32(bytesHi, 29, 31);
 }
 
+void Disassembler::decodeVOP3p(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+}
+
 void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
 {
   auto bytesLo = convertLE(buf);
