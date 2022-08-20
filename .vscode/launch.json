@@ -5,6 +5,27 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "fatbin",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/instrumentation/main",
+			"args": [
+				"instCount.cpp-hip-amdgcn-amd-amdhsa.hipfb"
+			],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/instrumentation",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "parse",
 			"type": "cppdbg",
 			"request": "launch",
