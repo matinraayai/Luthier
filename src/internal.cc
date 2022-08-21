@@ -20,51 +20,21 @@ char *getNoteSection2(elfio::File *elf);
 void editNoteSectionData(elfio::Note &note);
 void editTextSectionData(elfio::File *elf);
 
-// uint64_t getHeaderSize(__ClangOffloadBundleHeader *header) {
-//   char *blob = reinterpret_cast<char *>(header);
-//   auto offset = blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
-//   std::cout << "num of bundles: " << header->numBundles << "\n";
-//   const __ClangOffloadBundleDesc *desc =
-//       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
-//   uint64_t totalCoSize = 0;
-//   for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
-//     totalCoSize += desc->size;
-//     uint64_t trippleSize = desc->tripleSize;
-//     offset += 8 + 8 + 8 + trippleSize;
-//     std::string triple{desc->triple, desc->tripleSize};
-//     std::cout << "triple name is " << triple << "\n";
-//     std::cout << "desc size is " << desc->size << "\n";
-//     printf("desc struct is stored from address%p\n", (void *)desc);
-//     printf("bundle triple name is stored from address %p\n", desc->triple);
-//     printf("bundle %d offset is %p\n", i, (void *)desc->offset);
-//     printf("address after %d th desc is %p\n", i, (void *)offset);
-//     // desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
-//   }
-//   return 0;
-// }
-
-extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
+uint64_t processBuddle(char *data)
 {
-  printf("Here in %s\n", __FUNCTION__);
+  __ClangOffloadBundleHeader *header = reinterpret_cast<__ClangOffloadBundleHeader *>(data);
 
-  char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
-  std::memcpy(data_copy, data, sizeof(__CudaFatBinaryWrapper));
-
-  __CudaFatBinaryWrapper *fbwrapper =
-      reinterpret_cast<__CudaFatBinaryWrapper *>(data);
-
-  __ClangOffloadBundleHeader *header = fbwrapper->binary;
+  std::string magic{data, 24};
+  std::cout << magic << "\n";
   printf("The address of header is %p\n", (void *)header);
 
   uint64_t coSize;
-  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
   char *blob = reinterpret_cast<char *>(header);
   uint64_t offset =
       (uint64_t)blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
   std::cout << "num of bundles: " << header->numBundles << "\n";
   const __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
-  elfio::File elfFile;
   uint64_t endOfHeader;
   for (int i = 0; i < header->numBundles; i++, desc = desc->next())
   {
@@ -88,10 +58,31 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
              (void *)endOfHeader);
     }
   }
+  return endOfHeader;
+}
+
+extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
+{
+  printf("Here in %s\n", __FUNCTION__);
+
+  char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
+  std::memcpy(data_copy, data, sizeof(__CudaFatBinaryWrapper));
+
+  __CudaFatBinaryWrapper *fbwrapper =
+      reinterpret_cast<__CudaFatBinaryWrapper *>(data);
+
+  __ClangOffloadBundleHeader *header = fbwrapper->binary;
+  uint64_t endOfHeader;
+  endOfHeader = processBuddle((char *)fbwrapper->binary);
+
+  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
+
+  elfio::File elfFile;
+
   char *header_copy = new char[endOfHeader - (uint64_t)header];
   std::memcpy(header_copy, header, endOfHeader - (uint64_t)header);
-  offset = (uint64_t)header_copy + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
-  desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
+  uint64_t offset = (uint64_t)header_copy + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
+  const __ClangOffloadBundleDesc *desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
   for (int i = 0; i < header->numBundles; i++, desc = desc->next())
   {
     uint64_t trippleSize = desc->tripleSize;
