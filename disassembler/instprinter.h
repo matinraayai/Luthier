@@ -45,12 +45,14 @@ struct InstPrinter
 			{
 				stream << "s[" << reg.RegIndex() << ":"
 					   << reg.RegIndex() + o.regCount - 1 << "]";
+				sRegNum.push_back(reg.RegIndex() + o.regCount - 1);
 				return stream.str();
 			}
 			else if (reg.IsVReg())
 			{
 				stream << "v[" << reg.RegIndex() << ":"
 					   << reg.RegIndex() + o.regCount - 1 << "]";
+				vRegNum.push_back(reg.RegIndex() + o.regCount - 1);
 				return stream.str();
 			}
 			else if (reg.name.find("lo") != std::string::npos)

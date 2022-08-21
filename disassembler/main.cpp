@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 	{
 		d.Disassemble(&elfFile, filename, std::cout);
 	}
-	std::cout << "The maximum number of sReg is " << d.maxNumSReg() << "\n";
+	std::cout << "The maximum number of sReg is " << std::setbase(10) << d.maxNumSReg() << "\n";
 	std::cout << "The maximum number of vReg is " << d.maxNumVReg() << "\n";
 
 	return 0;

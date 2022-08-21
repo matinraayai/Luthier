@@ -6,9 +6,6 @@
 #include <iostream>
 #include <memory>
 
-extern std::vector<int> sRegNum;
-extern std::vector<int> vRegNum;
-
 Disassembler::Disassembler(elfio::File *file)
 {
   nextInstID = 0;

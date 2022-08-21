@@ -52,7 +52,7 @@
 			"request": "launch",
 			"program": "${workspaceFolder}/disassembler/build/disassembler",
 			"args": [
-				"../generatedAsm/simple_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx908.s.csv"
+				"../generatedAsm/simple_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx908"
 			],
 			"stopAtEntry": false,
 			"cwd": "${fileDirname}",
