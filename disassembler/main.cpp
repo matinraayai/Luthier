@@ -21,6 +21,10 @@ int main(int argc, char *argv[])
 	{
 		filename_elf = filename.substr(0, filename.length() - 6);
 	}
+	else
+	{
+		filename_elf = filename;
+	}
 	std::streampos size;
 	char *blob;
 	std::ifstream file(filename_elf, std::ios::in | std::ios::binary | std::ios::ate);
