@@ -6,6 +6,9 @@
 #include <iostream>
 #include <memory>
 
+extern std::vector<int> sRegNum;
+extern std::vector<int> vRegNum;
+
 Disassembler::Disassembler(elfio::File *file)
 {
   nextInstID = 0;
@@ -900,4 +903,14 @@ Operand Disassembler::setRegCountFromWidth(Operand o, int width)
     o.regCount = 1;
   }
   return o;
+}
+
+int Disassembler::maxNumSReg()
+{
+  return *std::max_element(sRegNum.begin(), sRegNum.end());
+}
+
+int Disassembler::maxNumVReg()
+{
+  return *std::max_element(vRegNum.begin(), vRegNum.end());
 }
