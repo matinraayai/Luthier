@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include "../src/internal.h"
+#include "../src/elf.h"
+#include "../disassembler/disassembler.h"
 void processBuddle(char *data)
 {
 	__ClangOffloadBundleHeader *header = reinterpret_cast<__ClangOffloadBundleHeader *>(data);
@@ -40,6 +42,33 @@ void processBuddle(char *data)
 		}
 	}
 }
+void analyzeInstrumentFunc(char *data, std::string filename)
+{
+	__ClangOffloadBundleHeader *header = reinterpret_cast<__ClangOffloadBundleHeader *>(data);
+	uint64_t offset = (uint64_t)header + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
+	const __ClangOffloadBundleDesc *desc = reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
+	std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
+	elfio::File elfFile;
+	for (int i = 0; i < header->numBundles; i++, desc = desc->next())
+	{
+		uint64_t trippleSize = desc->tripleSize;
+		std::string triple{desc->triple, desc->tripleSize};
+		if (triple.compare(curr_target))
+		{
+			continue;
+		}
+		std::cout << "matching triple name is " << triple << "\n";
+		std::cout << "code object size is " << desc->size << "\n";
+		char *codeobj = reinterpret_cast<char *>(
+			reinterpret_cast<uintptr_t>(header) + desc->offset);
+		elfFile = elfFile.FromMem(codeobj); // load elf file from code object
+		break;
+	}
+	Disassembler d(&elfFile);
+	d.Disassemble(&elfFile, filename, std::cout);
+	std::cout << "The maximum number of sReg is " << std::setbase(10) << d.maxNumSReg() << "\n";
+	std::cout << "The maximum number of vReg is " << d.maxNumVReg() << "\n";
+}
 int main(int argc, char **argv)
 {
 	if (argc != 2)
@@ -64,5 +93,6 @@ int main(int argc, char **argv)
 		printf("unable to open file\n");
 		return 1;
 	}
-	processBuddle(blob);
+	// processBuddle(blob);
+	analyzeInstrumentFunc(blob, filename);
 }
