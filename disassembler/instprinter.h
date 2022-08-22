@@ -163,13 +163,88 @@ struct InstPrinter
 		return stream.str();
 	}
 
+	// sdwaSelectString stringify SDWA select types
+	std::string sdwaSelectString(int sdwaSel)
+	{
+		std::string s;
+		switch (sdwaSel)
+		{
+		case 0:
+			s = "BYTE_0";
+			break;
+		case 1:
+			s = "BYTE_1";
+			break;
+		case 2:
+			s = "BYTE_2";
+			break;
+		case 3:
+			s = "BYTE_3";
+			break;
+		case 4:
+			s = "WORD_0";
+			break;
+		case 5:
+			s = "WORD_1";
+			break;
+		case 6:
+			s = "DWORD";
+			break;
+		default:
+			s = "unknown SDWASelect type";
+			break;
+		}
+		return s;
+	}
+
+	std::string sdwaUnusedString(int sel)
+	{
+		std::string s;
+		switch (sel)
+		{
+		case 0:
+			s = "UNUSED_PAD";
+			break;
+		case 1:
+			s = "UNUSED_SEXT";
+			break;
+		case 2:
+			s = "UNUSED_PRESERVE";
+			break;
+		default:
+			s = "unknown SDWAUnused type";
+			break;
+		}
+		return s;
+	}
+	
+	std::string sdwaString(Inst *i)
+	{
+		std::stringstream stream;
+
+		stream << " dst_sel:" << sdwaSelectString(i->DstSel);
+
+		stream << " dst_unused:" << sdwaUnusedString(i->DstUnused);
+
+		stream << " src0_sel:" << sdwaSelectString(i->Src0Sel);
+
+		if(i->format.formatType == VOP2)
+			stream << " src1_sel:" << sdwaSelectString(i->Src1Sel);
+
+		return stream.str();
+	}
+
 	std::string vop1String(Inst *i)
 	{
 		std::stringstream stream;
 		std::string suffix;
-		suffix = "_e32";
+		i->IsSdwa ? suffix = "_sdwa" : suffix = "_e32";	
+		
 		stream << i->instType.instName << suffix << " " << operandString(i->dst) << ", "
 			   << operandString(i->src0);
+
+		if (i->IsSdwa) stream << sdwaString(i);
+
 		return stream.str();
 	}
 
@@ -177,16 +252,22 @@ struct InstPrinter
 	{
 		std::stringstream stream;
 		std::string suffix;
-		suffix = "_e32";
+
+		i->IsSdwa ? suffix = "_sdwa" : suffix = "_e32";	
 		stream << i->instType.instName << suffix << " " << operandString(i->dst);
+
 		if (i->instType.opcode <= 30 && i->instType.opcode >= 15)
 		{
-			if (i->instType.opcode != 17)
+			if (i->instType.opcode != 17 && i->instType.opcode != 20)
 			{
 				stream << ", vcc";
 			}
 		}
+		
 		stream << ", " << operandString(i->src0) << ", " << operandString(i->src1);
+
+		if (i->IsSdwa) stream << sdwaString(i);
+
 		if (i->instType.opcode == 0 || i->instType.opcode == 28 || i->instType.opcode == 29)
 		{
 			stream << ", vcc";
