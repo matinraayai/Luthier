@@ -116,9 +116,9 @@ v_fma_f32 v2, -v10, s19, v2;D1CB0002;2408270A
 v_fma_f32 v3, -v11, s19, v3;D1CB0003;240C270B
 v_fma_f32 v4, -v12, s19, v4;D1CB0004;2410270C
 v_cvt_i32_f32_e32 v24, v1;7E301101
-v_cvt_i32_f32_sdwa v25, v2 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWOR;7E3210F9;00060102
+v_cvt_i32_f32_sdwa v25, v2 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD;7E3210F9;00060102
 v_cvt_i32_f32_e32 v26, v3;7E341103
-v_cvt_i32_f32_sdwa v27, v4 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWOR;7E3610F9;00060104
+v_cvt_i32_f32_sdwa v27, v4 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD;7E3610F9;00060104
 v_mov_b32_e32 v5, s3;7E0A0203
 v_addc_co_u32_e32 v23, vcc, v5, v23, vcc;382E2F05
 v_mov_b32_e32 v5, v14;7E0A030E
@@ -127,11 +127,11 @@ v_mov_b32_e32 v7, v16;7E0E0310
 v_mov_b32_e32 v8, v17;7E100311
 v_mov_b32_e32 v9, v18;7E120312
 v_or_b32_e32 v14, v24, v25;281C3318
-v_or_b32_sdwa v15, v26, v27 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWOR;281E36F9;0606051A
+v_or_b32_sdwa v15, v26, v27 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD;281E36F9;0606051A
 v_mov_b32_e32 v10, v19;7E140313
 v_mov_b32_e32 v11, v20;7E160314
 v_mov_b32_e32 v12, v21;7E180315
-v_or_b32_sdwa v14, v14, v15 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWOR;281C1EF9;0604060E
+v_or_b32_sdwa v14, v14, v15 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD;281C1EF9;0604060E
 global_store_dword v[22:23], v14, off;DC708000;007F0E16
 s_cbranch_scc0 BB1_3;BF84FFBA
 s_andn2_b64 vcc, exec, s[8:9];89EA087E
@@ -207,7 +207,7 @@ v_cvt_f32_ubyte1_e32 v1, v17;7E022511
 v_add_f32_e32 v0, v18, v0;02000112
 v_add_f32_e32 v1, v19, v1;02020313
 v_cvt_i32_f32_e32 v0, v0;7E001100
-v_cvt_i32_f32_sdwa v1, v1 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWOR;7E0210F9;00060101
+v_cvt_i32_f32_sdwa v1, v1 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD;7E0210F9;00060101
 s_waitcnt vmcnt(0);BF8C0F70
 v_cvt_f32_ubyte3_e32 v7, v24;7E0E2918
 v_or_b32_e32 v4, v0, v1;28080300
@@ -216,12 +216,12 @@ v_cvt_f32_ubyte3_e32 v1, v17;7E022911
 v_add_f32_e32 v5, v20, v0;020A0114
 v_add_f32_e32 v6, v21, v1;020C0315
 v_cvt_i32_f32_e32 v5, v5;7E0A1105
-v_cvt_i32_f32_sdwa v6, v6 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWOR;7E0C10F9;00060106
+v_cvt_i32_f32_sdwa v6, v6 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD;7E0C10F9;00060106
 v_mov_b32_e32 v0, v18;7E000312
 v_mov_b32_e32 v1, v19;7E020313
 v_mov_b32_e32 v2, v20;7E040314
-v_or_b32_sdwa v5, v5, v6 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWOR;280A0CF9;06060505
-v_or_b32_sdwa v4, v4, v5 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWOR;28080AF9;06040604
+v_or_b32_sdwa v5, v5, v6 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD;280A0CF9;06060505
+v_or_b32_sdwa v4, v4, v5 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD;28080AF9;06040604
 v_mov_b32_e32 v3, v21;7E060315
 global_store_dword v[22:23], v4, off;DC708000;007F0416
 v_cvt_f32_ubyte0_e32 v4, v24;7E082318
