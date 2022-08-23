@@ -55,7 +55,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
   std::vector<unsigned char> buf(text_section->Blob(),
                                  text_section->Blob() + text_section->size);
   auto pc = text_section->offset;
-  if (!buf.empty())
+  while (!buf.empty())
   {
     tryPrintSymbol(file, pc, o);
     std::unique_ptr<Inst> inst = decode(buf);
@@ -73,6 +73,10 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
     {
       std::vector<unsigned char> sfb(buf.begin() + 4, buf.begin() + 8);
       o << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
+    }
+    else
+    {
+      o << std::endl;
     }
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);
@@ -950,4 +954,14 @@ Operand Disassembler::setRegCountFromWidth(Operand o, int width)
     o.regCount = 1;
   }
   return o;
+}
+
+int Disassembler::maxNumSReg()
+{
+  return *std::max_element(sRegNum.begin(), sRegNum.end());
+}
+
+int Disassembler::maxNumVReg()
+{
+  return *std::max_element(vRegNum.begin(), vRegNum.end());
 }

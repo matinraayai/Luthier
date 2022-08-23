@@ -15,6 +15,8 @@ public:
 	void Disassemble(elfio::File *file, std::string filename, std::ostream &o);
 	void Disassemble(elfio::File *file, std::string filename);
 	Disassembler(elfio::File *file);
+	int maxNumSReg();
+	int maxNumVReg();
 
 private:
 	void initializeDecodeTable();

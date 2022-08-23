@@ -21,6 +21,10 @@ int main(int argc, char *argv[])
 	{
 		filename_elf = filename.substr(0, filename.length() - 6);
 	}
+	else
+	{
+		filename_elf = filename;
+	}
 	std::streampos size;
 	char *blob;
 	std::ifstream file(filename_elf, std::ios::in | std::ios::binary | std::ios::ate);
@@ -50,6 +54,8 @@ int main(int argc, char *argv[])
 	{
 		d.Disassemble(&elfFile, filename, std::cout);
 	}
+	std::cout << "The maximum number of sReg is " << std::setbase(10) << d.maxNumSReg() << "\n";
+	std::cout << "The maximum number of vReg is " << d.maxNumVReg() << "\n";
 
 	return 0;
 }
