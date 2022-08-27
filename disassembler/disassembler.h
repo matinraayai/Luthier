@@ -15,6 +15,8 @@ public:
 	void Disassemble(elfio::File *file, std::string filename, std::ostream &o);
 	void Disassemble(elfio::File *file, std::string filename);
 	Disassembler(elfio::File *file);
+	int maxNumSReg();
+	int maxNumVReg();
 
 private:
 	void initializeDecodeTable();
@@ -39,6 +41,7 @@ private:
 	void decodeVOP3p(Inst *inst, std::vector<unsigned char> buf);
 	void decodeFLAT(Inst *inst, std::vector<unsigned char> buf);
 	void decodeDS(Inst *inst, std::vector<unsigned char> buf);
+	void decodeSDWA(Inst *inst, std::vector<unsigned char> buf);
 	void parseAbs(Inst *inst, int abs);
 	void parseNeg(Inst *inst, int abs);
 	void combineDSOffsets(Inst *inst);

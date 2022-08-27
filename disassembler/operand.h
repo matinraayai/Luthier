@@ -1,9 +1,10 @@
 #ifndef OPERAND_H
 #define OPERAND_H
 #include <string>
-
+#include <vector>
 #include "reg.h"
-
+extern std::vector<int> sRegNum;
+extern std::vector<int> vRegNum;
 enum OperandType
 {
 	InvalidOperantType,
