@@ -101,6 +101,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
           std::unique_ptr<Inst> inst = decode(buf);
           inst->PC = pc;
           std::string instStr = printer.print(inst.get());
+          printf("PC:0x%x\n", inst->PC);
 
           if (instStr == inst_str)
           {
@@ -135,7 +136,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
           std::unique_ptr<Inst> inst = decode(buf);
           inst->PC = pc;
           std::string instStr = printer.print(inst.get());
-
+          printf("PC:0x%x\n", inst->PC);
           if (instStr == inst_str)
           {
             std::cout << line + "[PASS]\n";
@@ -513,7 +514,7 @@ void Disassembler::decodeVOP1(Inst *inst, std::vector<unsigned char> buf)
   {
     uint32_t src0Value = extractBitsFromU32(bytes, 0, 8);
     inst->src0 = getOperandByCode(uint16_t(src0Value));
-  }  
+  }
   if (inst->src0.operandType == LiteralConstant)
   {
     inst->byteSize += 4;
@@ -677,41 +678,37 @@ void Disassembler::decodeVOP3a(Inst *inst, std::vector<unsigned char> buf)
 
 void Disassembler::decodeSDWA(Inst *inst, std::vector<unsigned char> buf)
 {
-  if (buf.size() < 8) throw std::runtime_error("no enough bytes");
-  
+  if (buf.size() < 8)
+    throw std::runtime_error("no enough bytes");
+
   inst->IsSdwa = true;
 
   std::vector<unsigned char> sdwabuf;
-  for (int i = 4; i < 8; i++) sdwabuf.push_back(buf.at(i));
+  for (int i = 4; i < 8; i++)
+    sdwabuf.push_back(buf.at(i));
   uint32_t sdwaBytes = convertLE(sdwabuf);
-  
+
   uint32_t src0Value = extractBitsFromU32(sdwaBytes, 0, 7);
   inst->src0 = newVRegOperand(int(src0Value), int(src0Value), 0);
 
-  inst->DstSel  = int(extractBitsFromU32(sdwaBytes, 8, 10));
+  inst->DstSel = int(extractBitsFromU32(sdwaBytes, 8, 10));
   inst->DstUnused = int(extractBitsFromU32(sdwaBytes, 11, 12));
-  
+
   inst->Src0Sel = int(extractBitsFromU32(sdwaBytes, 16, 18));
 
-  extractBitsFromU32(sdwaBytes, 19, 19) == 1 ? 
-    inst->Src0Sext = true : inst->Src0Sext = false;
+  extractBitsFromU32(sdwaBytes, 19, 19) == 1 ? inst->Src0Sext = true : inst->Src0Sext = false;
 
-  extractBitsFromU32(sdwaBytes, 20,20) == 1 ?
-    inst->Src0Neg = true : inst->Src0Neg = false;
+  extractBitsFromU32(sdwaBytes, 20, 20) == 1 ? inst->Src0Neg = true : inst->Src0Neg = false;
 
-  extractBitsFromU32(sdwaBytes, 21,21) == 1 ?
-    inst->Src0Abs = true : inst->Src0Abs = false;
+  extractBitsFromU32(sdwaBytes, 21, 21) == 1 ? inst->Src0Abs = true : inst->Src0Abs = false;
 
   inst->Src1Sel = int(extractBitsFromU32(sdwaBytes, 24, 26));
 
-  extractBitsFromU32(sdwaBytes, 27, 27) == 1 ? 
-    inst->Src1Sext = true : inst->Src1Sext = false;
+  extractBitsFromU32(sdwaBytes, 27, 27) == 1 ? inst->Src1Sext = true : inst->Src1Sext = false;
 
-  extractBitsFromU32(sdwaBytes, 28,28) == 1 ?
-    inst->Src1Neg = true : inst->Src1Neg = false;
+  extractBitsFromU32(sdwaBytes, 28, 28) == 1 ? inst->Src1Neg = true : inst->Src1Neg = false;
 
-  extractBitsFromU32(sdwaBytes, 29,29) == 1 ?
-    inst->Src1Abs = true : inst->Src1Abs = false;
+  extractBitsFromU32(sdwaBytes, 29, 29) == 1 ? inst->Src1Abs = true : inst->Src1Abs = false;
 }
 
 void Disassembler::parseAbs(Inst *inst, int abs)
