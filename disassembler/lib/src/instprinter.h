@@ -1,6 +1,6 @@
 #ifndef INSTPRINTER_H
 #define INSTPRINTER_H
-#include "elf.h"
+#include "elf.hpp"
 #include "inst.h"
 #include "operand.h"
 #include <iomanip>
