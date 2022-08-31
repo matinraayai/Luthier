@@ -125,20 +125,23 @@ struct InstPrinter
 			bool symbolFound = false;
 
 			int16_t imm = int16_t(uint16_t(i->simm16.intValue));
-			uint64_t target = i->PC + uint64_t(imm * 4) + 4; printf("\ntarget: %lu\n", target);
+			uint64_t target = i->PC + uint64_t(imm * 4) + 4;
 
 			if (file)
 			{
 				auto symbols = file->GetSymbols();
 				for (int i = 0; i < symbols.size(); i++)
+				{
 					if (symbols.at(i)->value == target)
 					{
 						stream << " " << symbols.at(i)->name;
 						symbolFound = true;
 					}
-
-					if (!symbolFound)
-						stream << " couldn't find target";
+				}
+				if (!symbolFound)
+				{
+					stream << " couldn't find target";
+				}
 			}
 			else
 			{

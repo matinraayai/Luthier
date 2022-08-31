@@ -105,7 +105,6 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
           std::unique_ptr<Inst> inst = decode(buf);
           inst->PC = pc;
           std::string instStr = printer.print(inst.get());
-          printf("PC:0x%x\n", inst->PC);
 
           if (instStr == inst_str)
           {
@@ -140,7 +139,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename)
           std::unique_ptr<Inst> inst = decode(buf);
           inst->PC = pc;
           std::string instStr = printer.print(inst.get());
-          printf("PC:0x%x\n", inst->PC);
+
           if (instStr == inst_str)
           {
             std::cout << line + "[PASS]\n";
@@ -684,7 +683,7 @@ void Disassembler::decodeSDWA(Inst *inst, std::vector<unsigned char> buf)
 {
   if (buf.size() < 8)
     throw std::runtime_error("no enough bytes");
-
+  inst->byteSize = buf.size();
   inst->IsSdwa = true;
 
   std::vector<unsigned char> sdwabuf;
