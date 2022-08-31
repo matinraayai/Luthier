@@ -13,21 +13,13 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	std::string filename = argv[1];
-	std::string filename_elf;
 
+	initRegs();
 	initFormatTable();
 
-	if (filename.find("csv") != std::string::npos)
-	{
-		filename_elf = filename.substr(0, filename.length() - 6);
-	}
-	else
-	{
-		filename_elf = filename;
-	}
 	std::streampos size;
 	char *blob;
-	std::ifstream file(filename_elf, std::ios::in | std::ios::binary | std::ios::ate);
+	std::ifstream file(filename, std::ios::in | std::ios::binary | std::ios::ate);
 	if (file.is_open())
 	{
 		size = file.tellg();
@@ -43,17 +35,14 @@ int main(int argc, char *argv[])
 	}
 	elfio::File elfFile;
 	elfFile = elfFile.FromMem(blob);
-	elfFile.PrintSymbolsForSection(".text");
+	// elfFile.PrintSymbolsForSection(".text");
 
 	Disassembler d(&elfFile);
-	if (filename.find("csv") != std::string::npos)
-	{
-		d.Disassemble(&elfFile, filename);
-	}
-	else
-	{
-		d.Disassemble(&elfFile, filename, std::cout);
-	}
+	std::cout.setstate(std::ios_base::badbit);
+	d.Disassemble(&elfFile, filename, std::cout);
+	std::cout.clear();
+	std::cout << "The maximum number of sReg is " << std::setbase(10) << d.maxNumSReg() << "\n";
+	std::cout << "The maximum number of vReg is " << d.maxNumVReg() << "\n";
 
 	return 0;
 }
