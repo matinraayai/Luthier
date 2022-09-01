@@ -8,8 +8,8 @@ int main(int argc, char **argv) {
     std::cout << "File name is required.\n";
   }
   std::string filename = argv[1];
-
-  elfio::File elfFile = processBuddle(filename);
+  // processBundle(filename);
+  elfio::File elfFile = extractFromBundle(filename);
   Disassembler d(&elfFile);
   d.Disassemble(&elfFile, filename, std::cout);
   std::cout << "The maximum number of sReg is " << std::setbase(10)

@@ -1,5 +1,6 @@
 #ifndef PARSER_H
 #define PARSER_H
 #include "elf.hpp"
-elfio::File processBuddle(std::string filename);
+void processBundle(std::string filename);
+elfio::File extractFromBundle(std::string filename);
 #endif

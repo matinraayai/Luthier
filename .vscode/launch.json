@@ -8,12 +8,12 @@
 			"name": "fatbin",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/instrumentation/main",
+			"program": "${workspaceFolder}/src_/build/instrumentation/instru",
 			"args": [
 				"instCount.cpp-hip-amdgcn-amd-amdhsa.hipfb"
 			],
 			"stopAtEntry": false,
-			"cwd": "${workspaceFolder}/instrumentation",
+			"cwd": "${workspaceFolder}/src_/instrumentation",
 			"environment": [],
 			"externalConsole": false,
 			"MIMode": "gdb",
