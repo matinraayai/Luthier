@@ -67,7 +67,7 @@ elfio::File extractFromBundle(std::string filename) {
       (uint64_t)header + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
   const __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
-  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
+  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908"};
   elfio::File elfFile;
   for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
     uint64_t trippleSize = desc->tripleSize;
