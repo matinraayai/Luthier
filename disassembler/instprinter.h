@@ -363,6 +363,55 @@ struct InstPrinter
 		}
 		return stream.str();
 	}
+
+	std::string vop3pString(Inst *i)
+	{
+		std::stringstream stream;
+	
+		//Here, I'm hard coding cases where the instruction uses archVgpr
+		//This is BADm because there are A LOT if instructions that use these registers
+		//So, in the future we need to update reg.h with the archVgpr.
+		if (i->instType.opcode == 88) //V_ACCVGPR_READ
+		{
+			auto src0String = operandString(i->src0);
+			src0String.replace(0, 1, "a");
+		
+			stream << i->instType.instName << "_b32 ";
+			stream << operandString(i->dst) << ", ";
+			stream << src0String;
+		}
+		else if (i->instType.opcode == 89) //V_ACCVGPR_WRITE
+		{
+			auto dstString = operandString(i->dst);
+			dstString.replace(0, 1, "a");
+
+			stream << i->instType.instName << "_b32 ";
+			stream << dstString << ", ";
+			stream << operandString(i->src0);
+		}
+		else
+		{
+			stream << i->instType.instName << " ";
+			stream << operandString(i->dst) << ", ";
+			stream << operandString(i->src0) << ", ";
+		}
+
+		if (i->instType.opcode < 64)
+		{
+			stream << operandString(i->src1);
+		}
+
+		if ((i->instType.opcode > 31 && i->instType.opcode < 44) 
+      		|| (i->instType.opcode == 0) 
+      		|| (i->instType.opcode == 9) 
+      		|| (i->instType.opcode == 14))
+		{
+			stream << ", " << operandString(i->src2);
+		}
+
+		return stream.str();
+	}
+
 	std::string flatString(Inst *i)
 	{
 		std::stringstream stream;
@@ -468,6 +517,8 @@ struct InstPrinter
 			return vop3aString(i);
 		case VOP3b:
 			return vop3bString(i);
+		case VOP3P:
+			return vop3pString(i);
 		case FLAT:
 			return flatString(i);
 		case DS:

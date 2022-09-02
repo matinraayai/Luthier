@@ -1198,6 +1198,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"ds_read_b128", 255, FormatTable[DS], 0, ExeUnitLDS, 128, 0, 0, 0, 0});
 
 	// VOP3P Instructions
+	//Need to edit SRC and DST widths for these instructions
 	addInstType({"v_pk_mad_i16", 0, FormatTable[VOP3P], 0, ExeUnitVALU, 0, 0, 0, 0, 0});
 	addInstType({"v_pk_mul_lo_u16", 1, FormatTable[VOP3P], 0, ExeUnitVALU, 0, 0, 0, 0, 0});
 	addInstType({"v_pk_add_i16", 2, FormatTable[VOP3P], 0, ExeUnitVALU, 0, 0, 0, 0, 0});
