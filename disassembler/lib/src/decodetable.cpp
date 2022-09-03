@@ -929,7 +929,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_med3_i16", 507, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_med3_u16", 508, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_lshl_add_u32", 509, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
-	addInstType({"v_add_lshl_u32", 510, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_add_lshl_u32", 510, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
 	addInstType({"v_add3_u32", 511, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
 	addInstType({"v_lshl_or_b32", 512, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_and_or_b32", 513, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
