@@ -200,6 +200,12 @@ Format Disassembler::matchFormat(uint32_t firstFourBytes)
         {
           return FormatTable[VOP3b];
         }
+        
+        uint32_t vop3pFormatCheck = extractBitsFromU32(firstFourBytes, 22, 25);
+        if (vop3pFormatCheck == 14 || vop3pFormatCheck == 15)
+        {
+          return FormatTable[VOP3P];
+        }
       }
       return f;
     }
@@ -302,6 +308,9 @@ std::unique_ptr<Inst> Disassembler::decode(std::vector<unsigned char> buf)
     break;
   case VOP3b:
     decodeVOP3b(inst.get(), buf);
+    break;
+  case VOP3P:
+    decodeVOP3p(inst.get(), buf);
     break;
   case FLAT:
     decodeFLAT(inst.get(), buf);
@@ -698,19 +707,13 @@ void Disassembler::decodeSDWA(Inst *inst, std::vector<unsigned char> buf)
   inst->DstUnused = int(extractBitsFromU32(sdwaBytes, 11, 12));
 
   inst->Src0Sel = int(extractBitsFromU32(sdwaBytes, 16, 18));
-
   extractBitsFromU32(sdwaBytes, 19, 19) == 1 ? inst->Src0Sext = true : inst->Src0Sext = false;
-
   extractBitsFromU32(sdwaBytes, 20, 20) == 1 ? inst->Src0Neg = true : inst->Src0Neg = false;
-
   extractBitsFromU32(sdwaBytes, 21, 21) == 1 ? inst->Src0Abs = true : inst->Src0Abs = false;
 
   inst->Src1Sel = int(extractBitsFromU32(sdwaBytes, 24, 26));
-
   extractBitsFromU32(sdwaBytes, 27, 27) == 1 ? inst->Src1Sext = true : inst->Src1Sext = false;
-
   extractBitsFromU32(sdwaBytes, 28, 28) == 1 ? inst->Src1Neg = true : inst->Src1Neg = false;
-
   extractBitsFromU32(sdwaBytes, 29, 29) == 1 ? inst->Src1Abs = true : inst->Src1Abs = false;
 }
 
@@ -798,6 +801,43 @@ void Disassembler::decodeVOP3b(Inst *inst, std::vector<unsigned char> buf)
 
   inst->Omod = (int)extractBitsFromU32(bytesHi, 27, 28);
   inst->Neg = (int)extractBitsFromU32(bytesHi, 29, 31);
+}
+
+void Disassembler::decodeVOP3p(Inst *inst, std::vector<unsigned char> buf)
+{
+  auto bytesLo = convertLE(buf);
+  std::vector<unsigned char> sfb(buf.begin() + 4, buf.end());
+  auto bytesHi = convertLE(sfb);
+
+  int dstBits = (int)extractBitsFromU32(bytesLo, 0, 7);
+  inst->dst = newVRegOperand(dstBits, dstBits, 1);
+  if (inst->instType.DSTWidth == 64)
+  {
+    inst->dst.regCount = 2;
+  }
+  
+  inst->src0 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 0, 8)));
+  if (inst->instType.SRC0Width == 64)
+  {
+    inst->src0.regCount = 2;
+  }
+
+  inst->src1 = getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 9, 17)));
+  if (inst->instType.SRC1Width == 64)
+  {
+    inst->src1.regCount = 2;
+  }
+
+  if ((inst->instType.opcode > 31 && inst->instType.opcode < 44) 
+      || (inst->instType.opcode == 0) 
+      || (inst->instType.opcode == 9) 
+      || (inst->instType.opcode == 14))
+    {
+      inst->src2 =
+        getOperandByCode(uint16_t(extractBitsFromU32(bytesHi, 18, 26)));
+    }
+
+  printf("Finished\n");
 }
 
 void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
