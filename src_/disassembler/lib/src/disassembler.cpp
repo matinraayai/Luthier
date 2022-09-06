@@ -645,12 +645,18 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf) {
   long bits64 = static_cast<long>(bitOffset);
   inst->offset = newIntOperand(int(bits64), bits64);
 
-  bits = (int)extractBitsFromU32(bytesHi, 0, 7);
-  inst->addr = newVRegOperand(bits, bits, 2);
+  int addrbits = (int)extractBitsFromU32(bytesHi, 0, 7);
+  inst->addr = newVRegOperand(addrbits, addrbits, 2);
   bits = (int)extractBitsFromU32(bytesHi, 24, 31);
   inst->dst = newVRegOperand(bits, bits, 0);
   bits = (int)extractBitsFromU32(bytesHi, 8, 15);
   inst->data = newVRegOperand(bits, bits, 0);
+  bits = (int)extractBitsFromU32(bytesHi, 16, 22);
+  if (bits != 0x7f) {
+    inst->sAddr = newSRegOperand(bits, bits, 2);
+    inst->addr = newVRegOperand(addrbits, addrbits, 1);
+  }
+
   switch (inst->instType.opcode) {
   case 21: //"_load_dwordx2"
     inst->dst.regCount = 2;

@@ -253,19 +253,32 @@ struct InstPrinter {
     }
     auto opcode = i->instType.opcode;
     if (opcode >= 16 && opcode <= 23) {
-      stream << i->instType.instName << " " << operandString(i->dst) << ", "
-             << operandString(i->addr);
+      if (i->sAddr.operandType != RegOperand) {
+        stream << i->instType.instName << " " << operandString(i->dst) << ", "
+               << operandString(i->addr);
+      } else {
+        stream << i->instType.instName << " " << operandString(i->dst) << ", "
+               << operandString(i->addr) << ", " << operandString(i->sAddr);
+      }
+
     } else if (opcode >= 24 && opcode <= 31 || opcode >= 66 && opcode <= 108) {
-      stream << i->instType.instName << " " << operandString(i->addr) << ", "
-             << operandString(i->data);
+      if (i->sAddr.operandType != RegOperand) {
+        stream << i->instType.instName << " " << operandString(i->addr) << ", "
+               << operandString(i->data);
+      } else {
+        stream << i->instType.instName << " " << operandString(i->addr) << ", "
+               << operandString(i->data) << ", " << operandString(i->sAddr);
+      }
     }
 
     if (i->Seg == 2) {
       if (opcode >= 16 && opcode <= 18 || opcode == 20 || opcode == 21 ||
           opcode == 23 || opcode == 28 || opcode == 31 || opcode == 98) {
-        stream << ", off";
-        if (i->offset.intValue != 0) {
-          stream << " offset:" << (int)i->offset.intValue;
+        if (i->sAddr.operandType != RegOperand) {
+          stream << ", off";
+          if (i->offset.intValue != 0) {
+            stream << " offset:" << (int)i->offset.intValue;
+          }
         }
       }
     }
