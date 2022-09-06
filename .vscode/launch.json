@@ -50,9 +50,9 @@
 			"name": "disassembler",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/disassembler/build/disassembler",
+			"program": "${workspaceFolder}/src_/disassembler/build/test_main/disasm",
 			"args": [
-				"../generatedAsm/simple_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx908"
+				"${workspaceFolder}/generatedAsm/vectoradd_hip.exe:1.hipv4-amdgcn-amd-amdhsa--gfx908"
 			],
 			"stopAtEntry": false,
 			"cwd": "${fileDirname}",
