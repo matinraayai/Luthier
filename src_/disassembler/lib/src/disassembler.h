@@ -38,8 +38,10 @@ private:
 	void decodeVOPC(Inst *inst, std::vector<unsigned char> buf);
 	void decodeVOP3a(Inst *inst, std::vector<unsigned char> buf);
 	void decodeVOP3b(Inst *inst, std::vector<unsigned char> buf);
+	void decodeVOP3p(Inst *inst, std::vector<unsigned char> buf);
 	void decodeFLAT(Inst *inst, std::vector<unsigned char> buf);
 	void decodeDS(Inst *inst, std::vector<unsigned char> buf);
+	void decodeSDWA(Inst *inst, std::vector<unsigned char> buf);
 	void parseAbs(Inst *inst, int abs);
 	void parseNeg(Inst *inst, int abs);
 	void combineDSOffsets(Inst *inst);

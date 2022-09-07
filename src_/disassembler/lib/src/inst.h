@@ -102,9 +102,13 @@ struct Inst
 	int EXPCNT;
 
 	bool IsSdwa;
+	int DstSel;
+	int DstUnused;
+	int Src0Sel;
 	bool Src0Sext;
 	bool Src0Abs;
 	bool Src0Neg;
+	int Src1Sel;
 	bool Src1Sext;
 	bool Src1Abs;
 	bool Src1Neg;
