@@ -261,12 +261,9 @@ struct InstPrinter
 		i->IsSdwa ? suffix = "_sdwa" : suffix = "_e32";	
 		stream << i->instType.instName << suffix << " " << operandString(i->dst);
 
-		if (i->instType.opcode <= 30 && i->instType.opcode >= 15)
+		if (i->instType.opcode <= 30 && i->instType.opcode >= 25)
 		{
-			if (i->instType.opcode != 17 && i->instType.opcode != 20)
-			{
-				stream << ", vcc";
-			}
+			stream << ", vcc";
 		}
 		
 		stream << ", " << operandString(i->src0) << ", " << operandString(i->src1);
@@ -313,6 +310,11 @@ struct InstPrinter
 			stream << ", vcc";
 		}
 
+		if (i->instType.opcode == 456)
+		{
+			stream << ", 1";
+		}
+
 		// if (i->instType.opcode == 511)
 		// {
 		// 	stream << ", -1";
@@ -324,6 +326,7 @@ struct InstPrinter
 		}
 
 		stream << ", " << vop3aInputoperandString(i, i->src2, i->Src2Neg, i->Src2Abs);
+
 		return stream.str();
 	}
 
