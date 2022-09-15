@@ -31,8 +31,8 @@
 *.out
 *.app
 
-generatedAsm
-build-*
+
+build*
 hip_clang.cpp
 *.s
 *.swp

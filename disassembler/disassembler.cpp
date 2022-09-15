@@ -937,7 +937,7 @@ void Disassembler::decodeDS(Inst *inst, std::vector<unsigned char> buf)
   if (inst->instType.DSTWidth > 0)
   {
     auto dstBits = (int)extractBitsFromU32(bytesHi, 24, 31);
-    inst->dst = newVRegOperand(dstBits, dstBits, 1);
+    inst->dst = newVRegOperand(dstBits, dstBits, 1);      
     inst->dst = setRegCountFromWidth(inst->dst, inst->instType.DSTWidth);
   }
 }
@@ -978,18 +978,22 @@ void Disassembler::combineDSOffsets(Inst *inst)
 
 Operand Disassembler::setRegCountFromWidth(Operand o, int width)
 {
+  // printf("WIDTH: val - %d\n", width);
   switch (width)
   {
   case 64:
     o.regCount = 2;
+    return o;
   case 96:
     o.regCount = 3;
+    return o;
   case 128:
     o.regCount = 4;
+    return o;
   default:
     o.regCount = 1;
+    return o;
   }
-  return o;
 }
 
 int Disassembler::maxNumSReg()

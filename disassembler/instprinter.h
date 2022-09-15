@@ -132,6 +132,7 @@ struct InstPrinter
 				auto symbols = file->GetSymbols();
 				for (int i = 0; i < symbols.size(); i++)
 				{
+					// printf("SYMBOL TABLE:\t %lu \t %s \n", symbols.at(i)->value, symbols.at(i)->name.c_str());
 					if (symbols.at(i)->value == target)
 					{
 						stream << " " << symbols.at(i)->name;
@@ -140,7 +141,8 @@ struct InstPrinter
 				}
 				if (!symbolFound)
 				{
-					stream << " couldn't find target";
+					// stream << " couldn't find target";
+					stream << " " << operandString(i->simm16);					
 				}
 			}
 			else
@@ -297,7 +299,7 @@ struct InstPrinter
 	{
 		std::stringstream stream;
 		std::string suffix = "";
-		if (i->instType.opcode == 196 || i->instType.opcode == 256)
+		if (i->instType.opcode == 196) // || i->instType.opcode == 256)
 		{
 			suffix += "_e64";
 		}
@@ -305,7 +307,7 @@ struct InstPrinter
 		stream << ", " << vop3aInputoperandString(i, i->src0, i->Src0Neg, i->Src0Abs);
 		stream << ", " << vop3aInputoperandString(i, i->src1, i->Src1Neg, i->Src1Abs);
 
-		if (i->instType.opcode == 256)
+		if (i->instType.opcode == 256 && i->instType.SRC2Width == 0)
 		{
 			stream << ", vcc";
 		}
@@ -440,7 +442,7 @@ struct InstPrinter
 
 		if (i->Seg == 2)
 		{
-			if (opcode >= 16 && opcode <= 18 || opcode == 20 || opcode == 21 || opcode == 23 || opcode == 28 || opcode == 31)
+			if (opcode >= 16 && opcode <= 18 || opcode == 20 || opcode == 21 || opcode == 23 || opcode == 24 || opcode == 28 || opcode == 31)
 			{
 				stream << ", off";
 				if (i->offset.intValue != 0)
