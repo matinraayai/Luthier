@@ -832,7 +832,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_max_u32_e32", 15 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_lshrrev_b32_e32", 16 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_ashrrev_i32_e32", 17 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_lshlrev_b32_e32", 18 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_lshlrev_b32", 18 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_and_b32_e32", 19 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_or_b32_e32", 20 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_xor_b32_e32", 21 + 256, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
@@ -918,7 +918,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_cvt_pkaccum_u8_f32", 496, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_u32_u16", 497, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_i32_i16", 498, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
-	addInstType({"v_xad_u32", 499, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_xad_u32", 499, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
 	addInstType({"v_min3_f16", 500, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_min3_i16", 501, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_min3_u16", 502, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
@@ -931,7 +931,7 @@ void Disassembler::initializeDecodeTable()
 	addInstType({"v_lshl_add_u32", 509, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
 	addInstType({"v_add_lshl_u32", 510, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
 	addInstType({"v_add3_u32", 511, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
-	addInstType({"v_lshl_or_b32", 512, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
+	addInstType({"v_lshl_or_b32", 512, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 32, 0});
 	addInstType({"v_and_or_b32", 513, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_or3_b32", 514, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});
 	addInstType({"v_mad_f16", 515, FormatTable[VOP3a], 0, ExeUnitVALU, 32, 32, 32, 0, 0});

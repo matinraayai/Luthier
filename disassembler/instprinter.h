@@ -299,7 +299,7 @@ struct InstPrinter
 	{
 		std::stringstream stream;
 		std::string suffix = "";
-		if (i->instType.opcode == 196) // || i->instType.opcode == 256)
+		if (i->instType.opcode == 196 || i->instType.opcode == 18 + 256) //18 + 256 || i->instType.opcode == 256)
 		{
 			suffix += "_e64";
 		}
@@ -479,7 +479,14 @@ struct InstPrinter
 		{
 			if (i->Offset0 > 0)
 			{
-				stream << " offset0:" << i->Offset0;
+				if (i->GDS)
+				{
+					stream << " offset0:" << i->Offset0;
+				}
+				else
+				{
+					stream << " offset:" << i->Offset0;
+				}
 			}
 		}
 		else
