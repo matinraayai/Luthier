@@ -21,7 +21,7 @@ struct InstPrinter
 		case IntOperand:
 			return std::to_string(o.intValue);
 		case FloatOperand:
-			return std::to_string(o.floatValue);
+			return std::to_string(o.floatValue).substr(0,3);
 		case LiteralConstant:
 			if (o.literalConstant == 0xffffffff)
 			{
