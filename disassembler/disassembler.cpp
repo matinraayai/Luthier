@@ -868,10 +868,16 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
 
   bits = (int)extractBitsFromU32(bytesHi, 0, 7);
   inst->addr = newVRegOperand(bits, bits, 2);
+  
   bits = (int)extractBitsFromU32(bytesHi, 24, 31);
   inst->dst = newVRegOperand(bits, bits, 0);
+  
   bits = (int)extractBitsFromU32(bytesHi, 8, 15);
   inst->data = newVRegOperand(bits, bits, 0);
+
+  bits = (int)extractBitsFromU32(bytesHi, 16, 23);
+  inst->sAddr = newSRegOperand(bits, bits, 2);
+
   switch (inst->instType.opcode)
   {
   case 21:
@@ -894,7 +900,15 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf)
     inst->data.regCount = 4;
     inst->dst.regCount = 4;
     break;
+  case 28:
+    if (inst->sAddr.code != 0x7F)
+    {
+      inst->addr.regCount = 1;
+    }
+    inst->dst.regCount = 4;
+    break;
   case 30:
+    inst->sAddr.regCount = 4;
     inst->data.regCount = 4;
     inst->dst.regCount = 4;
     break;

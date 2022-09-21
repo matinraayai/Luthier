@@ -442,12 +442,23 @@ struct InstPrinter
 
 		if (i->Seg == 2)
 		{
-			if (opcode >= 16 && opcode <= 18 || opcode == 20 || opcode == 21 || opcode == 23 || opcode == 24 || opcode == 28 || opcode == 31)
+			if (opcode >= 16 && opcode <= 18 || opcode == 20 || opcode == 21 || opcode == 23 || opcode == 24)
 			{
 				stream << ", off";
 				if (i->offset.intValue != 0)
 				{
 					stream << " offset:" << (int)i->offset.intValue;
+				}
+			}
+			else if (opcode >= 28 && opcode <= 31)
+			{
+				if (i->sAddr.code == 0x7F)
+				{
+					stream << ", off";
+				}
+				else if (i->sAddr.code == 0)
+				{
+					stream << ", " << operandString(i->sAddr);
 				}
 			}
 		}
