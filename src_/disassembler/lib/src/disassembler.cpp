@@ -731,6 +731,7 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf) {
   inst->addr = newVRegOperand(addrbits, addrbits, 2);
   bits = (int)extractBitsFromU32(bytesHi, 24, 31);
   inst->dst = newVRegOperand(bits, bits, 0);
+  
   bits = (int)extractBitsFromU32(bytesHi, 8, 15);
   inst->data = newVRegOperand(bits, bits, 0);
   bits = (int)extractBitsFromU32(bytesHi, 16, 22);
@@ -752,12 +753,17 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf) {
   case 98:
     inst->data.regCount = 2;
     break;
-  // case 14:
-  //   inst->data.regCount = 4;
-  //   inst->dst.regCount = 4;
-  //   break;
-  case 30: //"_store_dwordx3"
-    inst->data.regCount = 3;
+  case 28:
+    if (inst->sAddr.code != 0x7F)
+    {
+      inst->addr.regCount = 1;
+    }
+    inst->dst.regCount = 4;
+    break;
+  case 30:
+    inst->sAddr.regCount = 4;
+    inst->data.regCount = 4;
+    inst->dst.regCount = 4;
     break;
   }
 }
@@ -793,7 +799,7 @@ void Disassembler::decodeDS(Inst *inst, std::vector<unsigned char> buf) {
 
   if (inst->instType.DSTWidth > 0) {
     auto dstBits = (int)extractBitsFromU32(bytesHi, 24, 31);
-    inst->dst = newVRegOperand(dstBits, dstBits, 1);
+    inst->dst = newVRegOperand(dstBits, dstBits, 1);      
     inst->dst = setRegCountFromWidth(inst->dst, inst->instType.DSTWidth);
   }
 }
@@ -830,18 +836,24 @@ void Disassembler::combineDSOffsets(Inst *inst) {
   }
 }
 
-Operand Disassembler::setRegCountFromWidth(Operand o, int width) {
-  switch (width) {
+Operand Disassembler::setRegCountFromWidth(Operand o, int width)
+{
+  // printf("WIDTH: val - %d\n", width);
+  switch (width)
+  {
   case 64:
     o.regCount = 2;
+    return o;
   case 96:
     o.regCount = 3;
+    return o;
   case 128:
     o.regCount = 4;
+    return o;
   default:
     o.regCount = 1;
+    return o;
   }
-  return o;
 }
 
 int Disassembler::maxNumSReg() {

@@ -31,8 +31,10 @@
 *.out
 *.app
 
-build
+
+build*
 hip_clang.cpp
 *.s
+*.swp
 *hipv4-amdgcn-amd-amdhsa--gfx906
 *hipv4-amdgcn-amd-amdhsa--gfx908
