@@ -754,8 +754,7 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf) {
     inst->data.regCount = 2;
     break;
   case 28:
-    if (inst->sAddr.code != 0x7F)
-    {
+    if (inst->sAddr.code != 0x7F) {
       inst->addr.regCount = 1;
     }
     inst->dst.regCount = 4;
