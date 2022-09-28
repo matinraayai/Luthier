@@ -73,7 +73,7 @@
 			"request": "launch",
 			"program": "${workspaceFolder}/build/sibir",
 			"args": [
-				"./vectoradd"
+				"../vectoradd_hip.exe"
 			],
 			"console": "integratedTerminal",
 			"justMyCode": true

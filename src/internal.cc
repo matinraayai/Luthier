@@ -19,7 +19,7 @@ std::vector<hipModule_t> *
 call_original_hip_register_fat_binary(const void *data);
 elfio::Note getNoteSection(elfio::File *elf);
 char *getNoteSection2(elfio::File *elf);
-void editNoteSectionData(elfio::Note &note);
+void editNoteSectionData(elfio::File *elf);
 void editTextSectionData();
 void editShr(elfio::File *elf);
 
@@ -102,7 +102,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   editNoteSectionData(&elfFile);
   // editTextSectionData(&elfFile);
-  editShr(&elfFile);
+  // editShr(&elfFile);
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
   // pass new wrapper into original register fat binary func:
@@ -187,6 +187,7 @@ void editTextSectionData(elfio::File *elf) {
 // the desc param, and passes that back into the elfio::Note obj, which is why
 // we pass the note obj by reference.
 void editNoteSectionData(elfio::File *elf) {
+  printf("Here in %s\n", __FUNCTION__);
   auto note_section = elf->GetSectionByType("SHT_NOTE");
   if (!note_section) {
     panic("note section is not found");
@@ -209,7 +210,7 @@ void editNoteSectionData(elfio::File *elf) {
   std::cout << std::setw(4) << json << '\n';
   // I'm gonna make a change here for now. If/when this function is
   // implemented, changes to the note section might be done elsewhere.
-  json["amdhsa.target"] = "gibberish";
+  // json["amdhsa.target"] = "gibberish";
   json["amdhsa.kernels"][0][".vgpr_count"] = 256;
 
   // to_msgpack() returns std::vector<std::uint8_t> which is "great"...
@@ -222,9 +223,9 @@ void editNoteSectionData(elfio::File *elf) {
               newDesc, newStr.size());
 }
 
-void editShr(elfio::File *elf) {
-  Elf64_Ehdr *header = elf->GetHeader();
-  auto *shdr = reinterpret_cast<Elf64_Shdr *>(elf->Blob() + header->e_shoff);
-  char *shrEInstru = extractShrE();
-  std::memcpy((char *)(shdr + 64 * header->e_shnum), shrEInstru, 64);
-}
+// void editShr(elfio::File *elf) {
+//   Elf64_Ehdr *header = elf->GetHeader();
+//   auto *shdr = reinterpret_cast<Elf64_Shdr *>(elf->Blob() + header->e_shoff);
+//   char *shrEInstru = extractShrE();
+//   std::memcpy((char *)(shdr + 64 * header->e_shnum), shrEInstru, 64);
+// }
