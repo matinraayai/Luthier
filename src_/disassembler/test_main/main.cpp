@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
     file.read(blob, size);
     file.close();
   } else {
-    printf("unable to open input file\n");
+    printf("unable to open executable file in main\n");
     return 1;
   }
   elfio::File elfFile;
