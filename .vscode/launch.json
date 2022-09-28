@@ -5,6 +5,39 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "sibir",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/vectoradd_hip.exe",
+			"args": [],
+			"stopAtEntry": false,
+			"cwd": "${fileDirname}",
+			"environment": [
+				{
+					"name": "LD_LIBRARY_PATH",
+					"value": "${workspaceFolder}/build/lib",
+				},
+				{
+					"name": "LD_PRELOAD",
+					"value": "${workspaceFolder}/build/lib/libsibir.so",
+				}
+			],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "fatbin",
 			"type": "cppdbg",
 			"request": "launch",

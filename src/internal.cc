@@ -13,7 +13,7 @@
 #include <fstream>
 #include <vector>
 #define ALIGN_UP(offset, align)                                                \
-  (offset % align == 0 ? offset : offset += align - offset % align)
+  (offset % align == 0 ? offset : (offset + align - offset % align))
 
 std::vector<hipModule_t> *
 call_original_hip_register_fat_binary(const void *data);
@@ -192,7 +192,7 @@ void editNoteSectionData(elfio::File *elf) {
   if (!note_section) {
     panic("note section is not found");
   }
-  elfio::Note AMDGPU_note(elf, NULL);
+
   char *blog = note_section->Blob();
   int offset = 0, size;
   while (offset < note_section->size) {
@@ -200,27 +200,24 @@ void editNoteSectionData(elfio::File *elf) {
 
     if (note->name.rfind("AMDGPU") == 0) {
       printf("Offset %d\n", offset);
-      AMDGPU_note = elfio::Note(elf, note->Blob());
+      elfio::Note AMDGPU_note = elfio::Note(elf, note->Blob());
+      auto json = nlohmann::json::from_msgpack(AMDGPU_note.desc);
+      std::cout << std::setw(4) << json << '\n';
+      json["amdhsa.target"] = "gibberish";
+      json["amdhsa.kernels"][0][".vgpr_count"] = 256;
+      // to_msgpack() returns std::vector<std::uint8_t> which is "great"...
+      auto newStr = nlohmann::json::to_msgpack(json);
+      auto newStr_size = newStr.size();
+      char *newDesc = reinterpret_cast<char *>(newStr.data());
+      std::memcpy(blog + offset + 4, &newStr_size, 4);
+      std::memcpy(blog + offset + sizeof(Elf64_Nhdr) +
+                      ALIGN_UP(AMDGPU_note.name_size, 4),
+                  newDesc, newStr.size());
       break;
     }
     offset += sizeof(Elf64_Nhdr) + ALIGN_UP(note->name_size, 4) +
               ALIGN_UP(note->desc_size, 4);
   }
-  auto json = nlohmann::json::from_msgpack(AMDGPU_note.desc);
-  std::cout << std::setw(4) << json << '\n';
-  // I'm gonna make a change here for now. If/when this function is
-  // implemented, changes to the note section might be done elsewhere.
-  // json["amdhsa.target"] = "gibberish";
-  json["amdhsa.kernels"][0][".vgpr_count"] = 256;
-
-  // to_msgpack() returns std::vector<std::uint8_t> which is "great"...
-  auto newStr = nlohmann::json::to_msgpack(json);
-  auto newStr_size = newStr.size();
-  char *newDesc = reinterpret_cast<char *>(newStr.data());
-  std::memcpy(blog + offset + 4, &newStr_size, 4);
-  std::memcpy(blog + offset + sizeof(Elf64_Nhdr) +
-                  ALIGN_UP(AMDGPU_note.name_size, 4),
-              newDesc, newStr.size());
 }
 
 // void editShr(elfio::File *elf) {
