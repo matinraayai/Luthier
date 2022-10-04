@@ -10,59 +10,70 @@
 // Eventually, the assembler will mirror the disasembler - it'll
 // be a standalone class, with its own header file, etc.
 
-
-/*
-Operand getOperandCode(std::string op)
+unsigned int getCodeByOperand(Operand op)
 {
-    Operand newOp;
-
-    //casting "v" and "s" to char bc they're const char by default
-    if(op[0] == char("v"))
+    if(op.operandType == RegOperand)
     {
-        newOp.operandType = RegOperand;
-        newOp.reg.name = op;
-        newOp.code = atoi(reinterpret_cast<const char*>(op[1]));
-    } else if(op[0] == char("s"))
-    {
-        newOp.operandType = RegOperand;
-        newOp.reg.name = op;
-        newOp.code = atoi(reinterpret_cast<const char*>(op[1]));
+        return uint32_t(op.code);
     }
-}
-*/
-
-unsigned int getCodeByOperand(char* op)
-{
-    std::string opStr(op);
-    
-    for (int i = 0; i < opStr.length(); i++)
+    else if(op.operandType == IntOperand)
     {
-        if(int(op[i]) >= 0x30 && int(op[i]) <= 0x39)
-        {
-            // printf("%c | %X \n", op[i], int(op[i]));
-            return int(op[i]) - 0x30;
-        }
-        else if(int(op[i]) == 0x2D)
-        {
-            int immval = int(op[i+1]) - 0x30;
-            int immSigned = immval * -1;
-            // printf("%X \n", uint32_t(immSigned));
-
-            return uint32_t(immSigned) & 0x000000FF;
-        }
+        int immval = op.code;
+        // int immsignext = immval * -1;
+        // printf("%X \n", uint32_t(immSigned));
+        return uint32_t(immval);
     }
 }
 
+
+Operand getOperandInfo(std::string opstring){
+	Operand op;
+    std::stringstream opstream;
+    int operandcode;
+
+	if(opstring.find("v") != std::string::npos) {
+        opstring.erase(0,1);
+        if(opstring.find("[") != std::string::npos) {
+            opstring.erase(0,1);
+            opstring.erase(1,3);
+        }
+        opstream << opstring;
+        opstream >> operandcode;
+
+		op.operandType = RegOperand;
+        op.code = operandcode;
+	}
+	else if(opstring.find("s") != std::string::npos) {
+        opstring.erase(0,1);
+        if(opstring.find("[") != std::string::npos) {
+            opstring.erase(0,1);
+            opstring.erase(1,3);
+        }
+        opstream << opstring;
+        opstream >> operandcode;
+
+		op.operandType = RegOperand;
+        op.code = operandcode;
+	}
+	else {
+        opstream << opstring;
+        opstream >> operandcode;
+
+		op.operandType = IntOperand;
+        op.code = operandcode;
+	}
+	return op;
+}
 
 int main(int argc, char **argv)
 {
-    if(argc < 3 || argc > 5) 
-    {    
-        printf("Expect 2-4 args:\n a single asssembly instruction and its operands\n");
-        return -1;
-    }
+     if(argc < 3 || argc > 5) 
+     {    
+         printf("Expect 2-4 args:\n a single asssembly instruction and its operands\n");
+         return -1;
+     }
 
-    // // initFormatTable(); // causes undefinded referance error
+    // initFormatTable(); // causes undefinded referance error
 
     Inst inst;
 
