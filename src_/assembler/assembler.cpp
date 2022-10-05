@@ -1,5 +1,4 @@
 #include "inst.h"
-#include "initialize.h"
 #include "operand.h"
 #include <cstring>
 #include <iostream>
@@ -10,7 +9,7 @@
 // Eventually, the assembler will mirror the disasembler - it'll
 // be a standalone class, with its own header file, etc.
 
-unsigned int getCodeByOperand(Operand op)
+uint32_t getCodeByOperand(Operand op)
 {
     if(op.operandType == RegOperand)
     {
@@ -18,45 +17,55 @@ unsigned int getCodeByOperand(Operand op)
     }
     else if(op.operandType == IntOperand)
     {
-        int immval = op.code;
-        // int immsignext = immval * -1;
-        // printf("%X \n", uint32_t(immSigned));
-        return uint32_t(immval);
+        return uint32_t(op.code);
     }
 }
 
+std::string extractreg(std::string reg)
+{
+    if(reg.find("v") != std::string::npos) 
+    {
+        reg.erase(reg.find("v"), 1);
+    }
+    else if(reg.find("s") != std::string::npos) 
+    {
+        reg.erase(reg.find("s"), 1);
+    }
+
+    if(reg.find("[") != std::string::npos) 
+    {
+        reg.erase(reg.find("["),1);
+        reg.erase(reg.find(":"),reg.length());
+        return reg;
+    }
+    else
+    {
+        return reg;
+    }
+}
 
 Operand getOperandInfo(std::string opstring){
 	Operand op;
     std::stringstream opstream;
-    int operandcode;
+    uint32_t operandcode;
 
-	if(opstring.find("v") != std::string::npos) {
-        opstring.erase(0,1);
-        if(opstring.find("[") != std::string::npos) {
-            opstring.erase(0,1);
-            opstring.erase(1,3);
-        }
+	if(opstring.find("v") != std::string::npos ||
+        opstring.find("s") != std::string::npos) 
+    {
+        opstring = extractreg(opstring);
         opstream << opstring;
         opstream >> operandcode;
 
 		op.operandType = RegOperand;
         op.code = operandcode;
-	}
-	else if(opstring.find("s") != std::string::npos) {
-        opstring.erase(0,1);
-        if(opstring.find("[") != std::string::npos) {
-            opstring.erase(0,1);
-            opstring.erase(1,3);
+    }
+    else 
+    {
+        if(opstring.find("0x") != std::string::npos)
+        {
+            opstring.erase(0,2);
         }
-        opstream << opstring;
-        opstream >> operandcode;
-
-		op.operandType = RegOperand;
-        op.code = operandcode;
-	}
-	else {
-        opstream << opstring;
+        opstream << std::hex << opstring;
         opstream >> operandcode;
 
 		op.operandType = IntOperand;
@@ -64,6 +73,7 @@ Operand getOperandInfo(std::string opstring){
 	}
 	return op;
 }
+
 
 int main(int argc, char **argv)
 {
@@ -73,73 +83,73 @@ int main(int argc, char **argv)
          return -1;
      }
 
-    // initFormatTable(); // causes undefinded referance error
-
     Inst inst;
-
-    std::string namestr(argv[1]);
-    inst.instType.instName = namestr;
-    // std::string dststr(argv[2]);
-    // std::string src0str(argv[3]);
-    // std::string src1str(argv[4]);
+    inst.instType.instName = std::string(argv[1]);
 
 
     if(inst.instType.instName == "s_swappc_b64")
     {
         inst.format.formatType = SOP1;
         inst.instType.opcode = 30;
+        inst.dst  = getOperandInfo(std::string(argv[2]));
+        inst.src0 = getOperandInfo(std::string(argv[3]));
     }
     else if(inst.instType.instName == "s_getpc_b64")
     {
         inst.format.formatType = SOP1;
         inst.instType.opcode = 28;
+        inst.dst = getOperandInfo(std::string(argv[2]));
     }
     else if(inst.instType.instName == "s_add_u32")
     {
         inst.format.formatType = SOP2;
         inst.instType.opcode = 0;
+        inst.dst  = getOperandInfo(std::string(argv[2]));
+        inst.src0 = getOperandInfo(std::string(argv[3]));
+        inst.src1 = getOperandInfo(std::string(argv[4]));
     }
     else if(inst.instType.instName == "s_addc_u32")
     {
         inst.format.formatType = SOP2;
         inst.instType.opcode = 4;
+        inst.dst  = getOperandInfo(std::string(argv[2]));
+        inst.src0 = getOperandInfo(std::string(argv[3]));
+        inst.src1 = getOperandInfo(std::string(argv[4]));
     }
 
-    unsigned int instCode;
+    uint32_t instCode;
     if(inst.format.formatType == SOP2)
     {
-        unsigned int imm;
+        uint32_t imm;
         instCode = 0x80000000;
 
         //take decimal values, cast them to 32-bit unsigned values,
         //then and shift them to line up with the instruction format 
-        unsigned int opcode  = uint32_t(inst.instType.opcode);
+        uint32_t opcode = uint32_t(inst.instType.opcode);
         opcode = opcode << 23;
         instCode = instCode | opcode;
 
-        unsigned int dst = getCodeByOperand(argv[2]);
+        uint32_t dst = getCodeByOperand(inst.dst);
         dst = dst << 16;
         instCode = instCode | dst;
 
         if(argc >= 4) 
         {   // don't shift this one
-            unsigned int src0 = getCodeByOperand(argv[3]);
+            uint32_t src0 = getCodeByOperand(inst.src0);
             instCode = instCode | src0;
         }
         if(argc >= 5)
         { 
-            unsigned int src1 = getCodeByOperand(argv[4]);
-
+            uint32_t src1;
             //Sign extending immediate
-            for (int i = 0; i < 32; i++)
-            {            
-                if((0x80000000 & (src1 << i)) == 0x80000000)
-                {
-                    unsigned int mask = 0xFFFFFFFF;
-                    mask = mask << i*4;
-                    imm = src1 | mask;
-                    break;
-                }
+            if (inst.src1.operandType == IntOperand)
+            {
+                imm = getCodeByOperand(inst.src1);
+                src1 = imm >> 24; // want last byte of imm
+            }
+            else
+            {
+                src1 = getCodeByOperand(inst.src1);
             }
             src1 = src1 << 8;
             instCode = instCode | src1;
@@ -152,17 +162,20 @@ int main(int argc, char **argv)
 
         //take decimal values, cast them to 32-bit unsigned values,
         //then and shift them to line up with the instruction format 
-        unsigned int opcode  = uint32_t(inst.instType.opcode);
+        uint32_t opcode  = uint32_t(inst.instType.opcode);
         opcode = opcode << 8;
         instCode = instCode | opcode;
 
-        unsigned int dst = getCodeByOperand(argv[2]);
+        uint32_t dst = getCodeByOperand(inst.dst);
+        std::cout <<"dst"<< dst << std::endl;
         dst = dst << 16;
         instCode = instCode | dst;
 
         if(argc >= 4) 
         {   // don't shift this one
-            unsigned int src0 = getCodeByOperand(argv[3]);
+            uint32_t src0 = getCodeByOperand(inst.src0);
+            std::cout <<"src0"<< src0 << std::endl;
+
             instCode = instCode | src0;
         }
         std::cout << std::hex << instCode << std::endl;
