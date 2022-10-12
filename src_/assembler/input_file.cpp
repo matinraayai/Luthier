@@ -3,6 +3,12 @@
 #include <string>
 #include <vector>
 
+std::string getInstName(std::string inst)
+{
+    int i = inst.find(" ");
+    return inst.substr(0, i+1);
+}
+
 int main(int argc, char *argv[]) {
 	if (argc !=2) {
 		printf("An input assembly file is required\n");
@@ -12,27 +18,18 @@ int main(int argc, char *argv[]) {
 	std::string filename = argv[1];
 	std::string line;
 
-	std::vector<std::string> instStr;
-	//std::vector<const char*> instChar;
-	std::vector<char*> instChar;
-	
+	std::vector<std::string> instvec;	
 
 	std::ifstream file(filename, std::ios::in);
 	if (file.is_open()){
 		while(getline(file, line)) {
-			//instStr.push_back(line);
-			//instChar.push_back(reinterpret_cast<char*>(line.c_str()));
-			instChar.push_back(line.c_str());
-			std::cout << line.c_str() << std::endl;
+			instvec.push_back(line);
 		}
 		file.close();
 	} 
-	/*
-	for (int i = 0; i < instChar.size(); i++){
-		std::cout << "String Vector:" << instStr.at(i) << std::endl;
-		printf("Char Vector: %s\n", instChar.at(i));
+	for (int i = 0; i < instvec.size(); i++){
+		std::cout << "Inst name:" << getInstName(instvec.at(i)) << std::endl;
 	}
-	*/
 
 	return 0;
 }
