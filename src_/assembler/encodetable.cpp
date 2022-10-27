@@ -42,7 +42,7 @@ void initEncodeTable()
 
     // SOP1 instrucions
     EncodeTable["s_getpc_b64"] = {
-        "s_getpc_b64", 28, FormatTable[SOP1], 0, ExeUnitScalar, 64, 64, 0, 0, 0
+        "s_getpc_b64", 28, FormatTable[SOP1], 0, ExeUnitScalar, 64, 0, 0, 0, 0
         };
     EncodeTable["s_setpc_b64"] = {
         "s_setpc_b64", 29, FormatTable[SOP1], 0, ExeUnitScalar, 64, 64, 0, 0, 0

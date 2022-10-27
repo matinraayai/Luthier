@@ -12,10 +12,12 @@ void Assembler::Assemble(std::string instruction)
 {
     initEncodeTable();
 
-    Inst *inst;
+    Inst *inst = new Inst;
     uint32_t assembly;
 
     getInstData(inst, instruction);
+    std::cout << inst->instType.format.formatType << std::endl;
+
     switch (inst->instType.format.formatType)
     {
     case SOP2:
@@ -28,15 +30,15 @@ void Assembler::Assemble(std::string instruction)
         break;
     }
     std::cout << std::hex << assembly << std::endl;
+
+    delete inst;
 }
 
 void Assembler::getInstData(Inst* inst, std::string inststr)
 {
     std::vector<std::string> params = getInstParams(inststr);
-    std::cout << params.at(0) << std::endl;
 
     inst->instType = EncodeTable[params.at(0)];
-
     inst->dst = getOperandInfo(params.at(1));
 
     if(inst->instType.SRC0Width != 0)
@@ -171,7 +173,7 @@ uint32_t Assembler::assembleSOP2(Inst *inst)
 
 uint32_t Assembler::assembleSOP1(Inst *inst)
 {
-    uint32_t    instCode = 0xBE800000;
+    uint32_t instCode = 0xBE800000;
 
     //take decimal values, cast them to 32-bit unsigned values,
     //then and shift them to line up with the instruction format 
@@ -188,4 +190,5 @@ uint32_t Assembler::assembleSOP1(Inst *inst)
         uint32_t src0 = getCodeByOperand(inst->src0);
         instCode = instCode | src0;
     }
+    return instCode;
 }
