@@ -21,8 +21,8 @@ private:
     std::string extractreg(std::string reg);
     Operand getOperandInfo(std::string opstring);
 
-    uint32_t assembleSOP2(Inst *inst);
-    uint32_t assembleSOP1(Inst *inst);
+    uint32_t* assembleSOP2(Inst *inst);
+    uint32_t* assembleSOP1(Inst *inst);
 };
 
 

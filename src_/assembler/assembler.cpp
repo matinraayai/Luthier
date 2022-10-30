@@ -13,24 +13,23 @@ void Assembler::Assemble(std::string instruction)
     initEncodeTable();
 
     Inst *inst = new Inst;
-    uint32_t assembly;
+    uint32_t *assembly = new uint32_t[2];
 
     getInstData(inst, instruction);
-    std::cout << inst->instType.format.formatType << std::endl;
 
     switch (inst->instType.format.formatType)
     {
     case SOP2:
         assembly = assembleSOP2(inst);
+        printf("%X %X\n", assembly[0], assembly[1]);
         break;
     case SOP1:
         assembly = assembleSOP1(inst);
+        printf("%X\n", assembly[0]);
         break;
     default:
         break;
     }
-    std::cout << std::hex << assembly << std::endl;
-
     delete inst;
 }
 
@@ -130,8 +129,9 @@ Operand Assembler::getOperandInfo(std::string opstring){
 	return op;
 }
 
-uint32_t Assembler::assembleSOP2(Inst *inst)
+uint32_t* Assembler::assembleSOP2(Inst *inst)
 {
+    uint32_t *newasm = new uint32_t[2];
     uint32_t instCode = 0x80000000;
     uint32_t imm;
 
@@ -168,11 +168,16 @@ uint32_t Assembler::assembleSOP2(Inst *inst)
     }
     // if(inst->instType.SRC2Width != 0)
     //     inst->src2 = getOperandInfo(params.at(4));
-    return instCode;
+
+    newasm[0] = instCode;
+    newasm[1] = imm;
+
+    return newasm;
 }
 
-uint32_t Assembler::assembleSOP1(Inst *inst)
+uint32_t* Assembler::assembleSOP1(Inst *inst)
 {
+    uint32_t *newasm = new uint32_t[2];
     uint32_t instCode = 0xBE800000;
 
     //take decimal values, cast them to 32-bit unsigned values,
@@ -190,5 +195,8 @@ uint32_t Assembler::assembleSOP1(Inst *inst)
         uint32_t src0 = getCodeByOperand(inst->src0);
         instCode = instCode | src0;
     }
-    return instCode;
+
+    newasm[0] = instCode;
+
+    return newasm;
 }
