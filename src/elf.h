@@ -22,6 +22,7 @@ public:
   void PrintSymbolsForSection(const std::string &name);
   std::vector<Symbol *> GetSymbols();
   Elf64_Ehdr *GetHeader();
+  Elf64_Shdr *File::ExtractShr(int i);
 
 private:
   Elf64_Ehdr *header;

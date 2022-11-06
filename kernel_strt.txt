@@ -1,0 +1,7 @@
+
+String dump of section '.strtab':
+  [     1]  BB0_2
+  [     7]  _Z15vectoradd_floatPfPKfS1_ii
+  [    25]  _Z15vectoradd_floatPfPKfS1_ii.kd
+  [    46]  _DYNAMIC
+

@@ -1,0 +1,14 @@
+
+Symbol table '.dynsym' contains 3 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 0000000000001000   188 FUNC    GLOBAL PROTECTED    7 _Z15vectoradd_floatPfPKfS
+     2: 0000000000000780    64 OBJECT  GLOBAL PROTECTED    6 _Z15vectoradd_floatPfPKfS
+
+Symbol table '.symtab' contains 5 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 00000000000010b8     0 NOTYPE  LOCAL  DEFAULT    7 BB0_2
+     2: 0000000000002000     0 NOTYPE  LOCAL  HIDDEN     8 _DYNAMIC
+     3: 0000000000001000   188 FUNC    GLOBAL PROTECTED    7 _Z15vectoradd_floatPfPKfS
+     4: 0000000000000780    64 OBJECT  GLOBAL PROTECTED    6 _Z15vectoradd_floatPfPKfS
