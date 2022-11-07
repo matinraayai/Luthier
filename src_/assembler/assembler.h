@@ -22,6 +22,7 @@ private:
     Operand getOperandInfo(std::string opstring);
 
     uint32_t* assembleSOP1(Inst *inst);
+    uint32_t* assembleVOP1(Inst *inst);
     uint32_t* assembleSMEM(Inst *inst);
     uint32_t* assembleSOP2(Inst *inst);
 };

@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
                 instr = line.substr(0, i);
                 newasm = assembler.Assemble(instr);
 
-                printf("\n%s:\n", instr.c_str());
+                printf("\n%s\n", instr.c_str());
                 if(newasm[1] != NULL)
                 {                        
                     printf("Output:   %08X %08X\n", newasm[0], newasm[1]);

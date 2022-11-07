@@ -22,7 +22,7 @@ uint32_t* Assembler::Assemble(std::string instruction)
     case SOP1:
         return assembleSOP1(inst);
     case VOP1:
-        break;
+        return assembleVOP1(inst);
     case SMEM:
         return assembleSMEM(inst);
     case SOP2:
@@ -36,7 +36,14 @@ void Assembler::getInstData(Inst* inst, std::string inststr)
 {
     std::vector<std::string> params = getInstParams(inststr);
 
-    inst->instType = EncodeTable[params.at(0)];
+    std::string iname = params.at(0);
+    auto index = iname.find("_e32");
+    if(index != std::string::npos)
+    {
+        iname.erase(index, index+3);
+    }
+
+    inst->instType = EncodeTable[iname];
     inst->dst = getOperandInfo(params.at(1));
 
     if(inst->instType.SRC0Width != 0)
@@ -134,23 +141,42 @@ Operand Assembler::getOperandInfo(std::string opstring){
 uint32_t* Assembler::assembleSOP1(Inst *inst)
 {
     uint32_t *newasm  = new uint32_t[2];
-    uint32_t instCode = 0xBE800000;
+    uint32_t instcode = 0xBE800000;
 
     uint32_t opcode  = uint32_t(inst->instType.opcode);
     opcode = opcode << 8;
-    instCode = instCode | opcode;
+    instcode = instcode | opcode;
 
     uint32_t dst = getCodeByOperand(inst->dst);
     dst = dst << 16;
-    instCode = instCode | dst;
+    instcode = instcode | dst;
 
-    if(inst->instType.SRC0Width != 0)
-    {   // don't shift this one
-        uint32_t src0 = getCodeByOperand(inst->src0);
-        instCode = instCode | src0;
-    }
+    uint32_t src0 = getCodeByOperand(inst->src0);
+    instcode = instcode | src0;
 
-    newasm[0] = instCode;
+    newasm[0] = instcode;
+    newasm[1] = NULL;
+
+    return newasm;
+}
+
+uint32_t* Assembler::assembleVOP1(Inst *inst)
+{
+    uint32_t *newasm  = new uint32_t[2];
+    uint32_t instcode = 0x7E000000;
+
+    uint32_t opcode = uint32_t(inst->instType.opcode);
+    opcode = opcode << 9;
+    instcode = instcode | opcode;
+
+    uint32_t dst = getCodeByOperand(inst->dst);
+    dst = dst << 17;
+    instcode = instcode | dst;
+
+    uint32_t src0 = getCodeByOperand(inst->src0);
+    instcode = instcode | src0;
+
+    newasm[0] = instcode;
     newasm[1] = NULL;
 
     return newasm;
@@ -181,21 +207,21 @@ uint32_t* Assembler::assembleSMEM(Inst *inst)
 uint32_t* Assembler::assembleSOP2(Inst *inst)
 {
     uint32_t *newasm  = new uint32_t[2];
-    uint32_t instCode = 0x80000000;
+    uint32_t instcode = 0x80000000;
     uint32_t imm      = 0x00000000;
 
     uint32_t opcode = uint32_t(inst->instType.opcode);
     opcode = opcode << 23;
-    instCode = instCode | opcode;
+    instcode = instcode | opcode;
 
     uint32_t dst = getCodeByOperand(inst->dst);
     dst = dst << 16;
-    instCode = instCode | dst;
+    instcode = instcode | dst;
 
     if(inst->instType.SRC0Width != 0)
     {   // don't shift this one
         uint32_t src0 = getCodeByOperand(inst->src0);
-        instCode = instCode | src0;
+        instcode = instcode | src0;
     }
     if(inst->instType.SRC1Width != 0)
     { 
@@ -212,12 +238,12 @@ uint32_t* Assembler::assembleSOP2(Inst *inst)
             src1 = getCodeByOperand(inst->src1);
         }
         src1 = src1 << 8;
-        instCode = instCode | src1;
+        instcode = instcode | src1;
     }
     // if(inst->instType.SRC2Width != 0)
     //     inst->src2 = getOperandInfo(params.at(4));
 
-    newasm[0] = instCode;
+    newasm[0] = instcode;
     newasm[1] = imm;
 
     return newasm;
