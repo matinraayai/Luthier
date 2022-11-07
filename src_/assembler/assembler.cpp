@@ -19,24 +19,17 @@ uint32_t* Assembler::Assemble(std::string instruction)
 
     switch (inst->instType.format.formatType)
     {
-    case SOP2:
-        // assembly = assembleSOP2(inst);
-        return assembleSOP2(inst);
-        // printf("%X %X\n", assembly[0], assembly[1]);
-        // break;
     case SOP1:
-        // assembly = assembleSOP1(inst);
         return assembleSOP1(inst);
-        // printf("%X\n", assembly[0]);
-        // break;
+    case VOP1:
+        break;
+    case SMEM:
+        return assembleSMEM(inst);
+    case SOP2:
+        return assembleSOP2(inst);
     default:
-        // assembly[0] = 0;
-        // assembly[1] = 1;
         return NULL;
-        // break;
     }
-    // delete inst;
-    // return assembly;
 }
 
 void Assembler::getInstData(Inst* inst, std::string inststr)
@@ -135,14 +128,62 @@ Operand Assembler::getOperandInfo(std::string opstring){
 	return op;
 }
 
+/* take decimal values, cast them to 32-bit unsigned values,  *
+ * then and shift them to line up with the instruction format */
+
+uint32_t* Assembler::assembleSOP1(Inst *inst)
+{
+    uint32_t *newasm  = new uint32_t[2];
+    uint32_t instCode = 0xBE800000;
+
+    uint32_t opcode  = uint32_t(inst->instType.opcode);
+    opcode = opcode << 8;
+    instCode = instCode | opcode;
+
+    uint32_t dst = getCodeByOperand(inst->dst);
+    dst = dst << 16;
+    instCode = instCode | dst;
+
+    if(inst->instType.SRC0Width != 0)
+    {   // don't shift this one
+        uint32_t src0 = getCodeByOperand(inst->src0);
+        instCode = instCode | src0;
+    }
+
+    newasm[0] = instCode;
+    newasm[1] = NULL;
+
+    return newasm;
+}
+
+uint32_t* Assembler::assembleSMEM(Inst *inst)
+{
+    uint32_t *newasm  = new uint32_t[2];
+    uint32_t insthigh = 0xC0000000;
+    uint32_t instlow  = 0x00000000;
+
+    uint32_t opcode = uint32_t(inst->instType.opcode);
+    opcode = opcode << 17;
+    insthigh = insthigh | opcode;
+
+    if(inst->instType.SRC2Width != 0)
+    {
+        insthigh = insthigh | 0x00040000;
+    }
+
+    newasm[0] = insthigh;
+    newasm[1] = instlow;
+
+    return newasm;
+}
+
+
 uint32_t* Assembler::assembleSOP2(Inst *inst)
 {
-    uint32_t *newasm = new uint32_t[2];
+    uint32_t *newasm  = new uint32_t[2];
     uint32_t instCode = 0x80000000;
-    uint32_t imm;
+    uint32_t imm      = 0x00000000;
 
-    //take decimal values, cast them to 32-bit unsigned values,
-    //then and shift them to line up with the instruction format 
     uint32_t opcode = uint32_t(inst->instType.opcode);
     opcode = opcode << 23;
     instCode = instCode | opcode;
@@ -163,7 +204,8 @@ uint32_t* Assembler::assembleSOP2(Inst *inst)
         if (inst->src1.operandType == IntOperand)
         {
             imm = getCodeByOperand(inst->src1);
-            src1 = imm >> 24; // want last byte of imm
+            src1 = 0x000000FF;
+            // src1 = imm >> 24; // want last byte of imm
         }
         else
         {
@@ -181,29 +223,3 @@ uint32_t* Assembler::assembleSOP2(Inst *inst)
     return newasm;
 }
 
-uint32_t* Assembler::assembleSOP1(Inst *inst)
-{
-    uint32_t *newasm = new uint32_t[2];
-    uint32_t instCode = 0xBE800000;
-
-    //take decimal values, cast them to 32-bit unsigned values,
-    //then and shift them to line up with the instruction format 
-    uint32_t opcode  = uint32_t(inst->instType.opcode);
-    opcode = opcode << 8;
-    instCode = instCode | opcode;
-
-    uint32_t dst = getCodeByOperand(inst->dst);
-    dst = dst << 16;
-    instCode = instCode | dst;
-
-    if(inst->instType.SRC0Width != 0)
-    {   // don't shift this one
-        uint32_t src0 = getCodeByOperand(inst->src0);
-        instCode = instCode | src0;
-    }
-
-    newasm[0] = instCode;
-    newasm[1] = 0;
-
-    return newasm;
-}

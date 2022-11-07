@@ -1,4 +1,4 @@
-build-asm: main.cpp encodetable.cpp assembler.cpp
+asm-test: main.cpp encodetable.cpp assembler.cpp
 	g++ main.cpp encodetable.cpp assembler.cpp -o $@
 
 clean:

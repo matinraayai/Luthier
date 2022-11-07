@@ -49,14 +49,14 @@ int main(int argc, char *argv[])
                 newasm = assembler.Assemble(instr);
 
                 printf("\n%s:\n", instr.c_str());
-                if(newasm[1] != 0)
+                if(newasm[1] != NULL)
                 {                        
-                    printf("Output:   %X %X\n", newasm[0], newasm[1]);
+                    printf("Output:   %08X %08X\n", newasm[0], newasm[1]);
                     printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
                 }                    
                 else
                 {                        
-                    printf("Output:   %X\n", newasm[0]);
+                    printf("Output:   %08X\n", newasm[0]);
                     printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
                 }
             }
