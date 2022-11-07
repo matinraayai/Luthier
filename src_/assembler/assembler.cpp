@@ -8,29 +8,35 @@
 #include "encodetable.h"
 #include "assembler.h"
 
-void Assembler::Assemble(std::string instruction)
+uint32_t* Assembler::Assemble(std::string instruction)
 {
     initEncodeTable();
 
     Inst *inst = new Inst;
-    uint32_t *assembly = new uint32_t[2];
+    // uint32_t *assembly = new uint32_t[2];
 
     getInstData(inst, instruction);
 
     switch (inst->instType.format.formatType)
     {
     case SOP2:
-        assembly = assembleSOP2(inst);
-        printf("%X %X\n", assembly[0], assembly[1]);
-        break;
+        // assembly = assembleSOP2(inst);
+        return assembleSOP2(inst);
+        // printf("%X %X\n", assembly[0], assembly[1]);
+        // break;
     case SOP1:
-        assembly = assembleSOP1(inst);
-        printf("%X\n", assembly[0]);
-        break;
+        // assembly = assembleSOP1(inst);
+        return assembleSOP1(inst);
+        // printf("%X\n", assembly[0]);
+        // break;
     default:
-        break;
+        // assembly[0] = 0;
+        // assembly[1] = 1;
+        return NULL;
+        // break;
     }
-    delete inst;
+    // delete inst;
+    // return assembly;
 }
 
 void Assembler::getInstData(Inst* inst, std::string inststr)
@@ -197,6 +203,7 @@ uint32_t* Assembler::assembleSOP1(Inst *inst)
     }
 
     newasm[0] = instCode;
+    newasm[1] = 0;
 
     return newasm;
 }

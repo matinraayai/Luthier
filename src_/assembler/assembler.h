@@ -11,7 +11,7 @@
 class Assembler
 {
 public:
-    void Assemble(std::string instruction);
+    uint32_t* Assemble(std::string instruction);
 
 private:
     void getInstData(Inst* inst, std::string inststr);

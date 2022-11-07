@@ -21,37 +21,45 @@ int main(int argc, char *argv[])
     if(file.is_open())
     {
         Assembler assembler;
-        if(fname.find(".s") != std::string::npos)
+        uint32_t *newasm = new uint32_t[2];
+
+        while (file)
         {
-            while (file)
+            std::getline(file, line);
+            std::size_t i;
+
+            if(fname.find(".s") != std::string::npos)
+            { 
+                i = line.find("/");
+            }
+            else if(fname.find(".csv") != std::string::npos)
             {
-                std::getline(file, line);
-                auto i = line.find("/");
-                if(i != std::string::npos)
-                {
-                    instr = line.substr(0, i);
-                    printf("\n%s\n", instr.c_str());
-                    assembler.Assemble(instr);
+                i = line.find(";");
+            }
+            else
+            {
+                printf("Invalid file type\n");
+                file.close();
+                return 2;
+            }
+
+            if(i != std::string::npos)
+            {
+                instr = line.substr(0, i);
+                newasm = assembler.Assemble(instr);
+
+                printf("\n%s:\n", instr.c_str());
+                if(newasm[1] != 0)
+                {                        
+                    printf("Output:   %X %X\n", newasm[0], newasm[1]);
+                    printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
+                }                    
+                else
+                {                        
+                    printf("Output:   %X\n", newasm[0]);
+                    printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
                 }
             }
-        }
-        else if(fname.find(".csv") != std::string::npos)
-        {
-            while (file)
-            {
-                std::getline(file, line);
-                auto i = line.find(";");
-                if(i != std::string::npos)
-                {
-                    instr = line.substr(0, i);
-                    printf("\n%s\n", instr.c_str());
-                    assembler.Assemble(instr);
-                }
-            }
-        }
-        else
-        {
-            printf("Invalid file type\n");
         }
     }
     file.close();
