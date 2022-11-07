@@ -1,6 +1,8 @@
 #include "../../src/elf.h"
+#include <cstring>
 #include <fstream>
 #include <iostream>
+#include <string.h>
 #include <string>
 
 int main(int argc, char **argv) {
@@ -47,6 +49,7 @@ int main(int argc, char **argv) {
       reinterpret_cast<Elf64_Shdr *>(elfFile_d.Blob() + header->e_shoff);
   int bssidx = 9;
   Elf64_Shdr *bssshr = elfFile_s.ExtractShr(bssidx);
+
   bssshr->sh_offset = reinterpret_cast<Elf64_Off>(
       shr[header->e_shoff - 1].sh_offset + shr[header->e_shoff - 1].sh_size);
 
@@ -55,4 +58,6 @@ int main(int argc, char **argv) {
     bssshr->sh_offset +=
         bss_section_align - bssshr->sh_offset % bss_section_align;
   }
+
+  std::memcpy(&shr[header->e_shnum], bssshr, sizeof(Elf64_Shdr));
 }
