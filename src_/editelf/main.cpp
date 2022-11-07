@@ -60,4 +60,10 @@ int main(int argc, char **argv) {
   }
 
   std::memcpy(&shr[header->e_shnum], bssshr, sizeof(Elf64_Shdr));
+
+  elfio::Section *str_table_section = elfFile_s.GetSectionByName(".strtab");
+  const char *const strtab_p = str_table_section->Blob();
+  std::string str1 = std::string(strtab_p + 1);
+  std::string str2 = std::string(strtab_p + 14);
+  std::string str3 = std::string(strtab_p + 27);
 }
