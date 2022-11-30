@@ -75,4 +75,7 @@ int main(int argc, char **argv) {
               str2.size() + 1);
   std::memcpy(strtab_p_d + 55 + str1.size() + 1 + str2.size() + 1,
               strtab_p_s + 27, str3.size() + 1);
+
+  elfio::Section *shstr_table_section = elfFile_d.GetSectionByName(".strtab");
+  char *const shstrtab_p = shstr_table_section->Blob();
 }
