@@ -117,12 +117,11 @@ struct InstPrinter {
             stream << " " << symbols.at(i)->name;
             symbolFound = true;
           }
+        if (!symbolFound)
+          stream << " " << operandString(i->simm16);
       } else {
-        printf(":(\n%lu\n", target);
+        printf("File not found\n");
       }
-
-      if (!symbolFound)
-        stream << " " << operandString(i->simm16);
     } else if (i->instType.opcode == 1 || i->instType.opcode == 10) {
       return stream.str(); // return empty string
     } else {
@@ -139,26 +138,96 @@ struct InstPrinter {
     return stream.str();
   }
 
+  std::string sdwaSelectString(int sdwaSel) {
+    std::string s;
+    switch (sdwaSel){
+		case 0:
+			s = "BYTE_0";
+			break;
+		case 1:
+			s = "BYTE_1";
+			break;
+		case 2:
+			s = "BYTE_2";
+			break;
+		case 3:
+			s = "BYTE_3";
+			break;
+		case 4:
+			s = "WORD_0";
+			break;
+		case 5:
+			s = "WORD_1";
+			break;
+		case 6:
+			s = "DWORD";
+			break;
+		default:
+			s = "unknown SDWASelect type";
+			break;
+    }
+    return s;
+  }
+
+	std::string sdwaUnusedString(int sel){
+		std::string s;
+		switch (sel){
+		case 0:
+			s = "UNUSED_PAD";
+			break;
+		case 1:
+			s = "UNUSED_SEXT";
+			break;
+		case 2:
+			s = "UNUSED_PRESERVE";
+			break;
+		default:
+			s = "unknown SDWAUnused type";
+			break;
+		}
+		return s;
+	}
+
+	std::string sdwaString(Inst *i){
+		std::stringstream stream;
+
+		stream << " dst_sel:" << sdwaSelectString(i->DstSel);
+
+		stream << " dst_unused:" << sdwaUnusedString(i->DstUnused);
+
+		stream << " src0_sel:" << sdwaSelectString(i->Src0Sel);
+
+		if(i->format.formatType == VOP2)
+			stream << " src1_sel:" << sdwaSelectString(i->Src1Sel);
+
+		return stream.str();
+	}
+
   std::string vop1String(Inst *i) {
     std::stringstream stream;
     std::string suffix;
-    suffix = "_e32";
+		i->IsSdwa ? suffix = "_sdwa" : suffix = "_e32";	
     stream << i->instType.instName << suffix << " " << operandString(i->dst)
            << ", " << operandString(i->src0);
+    if (i->IsSdwa) {
+      stream << sdwaString(i);
+    }
     return stream.str();
   }
 
   std::string vop2String(Inst *i) {
     std::stringstream stream;
     std::string suffix;
-    suffix = "_e32";
+		i->IsSdwa ? suffix = "_sdwa" : suffix = "_e32";	
     stream << i->instType.instName << suffix << " " << operandString(i->dst);
-    if (i->instType.opcode <= 30 && i->instType.opcode >= 15) {
-      if (i->instType.opcode != 17) {
-        stream << ", vcc";
-      }
+		if (i->instType.opcode <= 30 && i->instType.opcode >= 25) { 
+			stream << ", vcc";
+    }  
+    stream << ", " << operandString(i->src0) 
+           << ", " << operandString(i->src1);
+		if (i->IsSdwa) {
+      stream << sdwaString(i);
     }
-    stream << ", " << operandString(i->src0) << ", " << operandString(i->src1);
     if (i->instType.opcode == 0 || i->instType.opcode == 28 ||
         i->instType.opcode == 29) {
       stream << ", vcc";
@@ -182,7 +251,7 @@ struct InstPrinter {
   std::string vop3aString(Inst *i) {
     std::stringstream stream;
     std::string suffix = "";
-    if (i->instType.opcode == 196 || i->instType.opcode == 256) {
+    if (i->instType.opcode == 196 || i->instType.opcode == 18 + 256) {
       suffix += "_e64";
     }
     stream << i->instType.instName + suffix << " " << operandString(i->dst);
@@ -191,12 +260,14 @@ struct InstPrinter {
     stream << ", "
            << vop3aInputoperandString(i, i->src1, i->Src1Neg, i->Src1Abs);
 
-    if (i->instType.opcode == 256) {
+    if (i->instType.opcode == 256 && i->instType.SRC2Width == 0) {
       stream << ", vcc";
     }
+		if (i->instType.opcode == 456) {
+			stream << ", 1";
+		}
 
-    // if (i->instType.opcode == 511)
-    // {
+    // if (i->instType.opcode == 511) {
     // 	stream << ", -1";
     // }
 
@@ -240,6 +311,43 @@ struct InstPrinter {
     }
     return stream.str();
   }
+
+	std::string vop3pString(Inst *i) {
+		std::stringstream stream;
+		//Currently hard-coding cases where the instruction uses archVgpr
+		//in the future we need to update reg.h with the archVgpr
+		if (i->instType.opcode == 88) { //V_ACCVGPR_READ
+			auto src0String = operandString(i->src0);
+			src0String.replace(0, 1, "a");
+		
+			stream << i->instType.instName << "_b32 ";
+			stream << operandString(i->dst) << ", ";
+			stream << src0String;
+		} else if (i->instType.opcode == 89) { //V_ACCVGPR_WRITE
+			auto dstString = operandString(i->dst);
+			dstString.replace(0, 1, "a");
+
+			stream << i->instType.instName << "_b32 ";
+			stream << dstString << ", ";
+			stream << operandString(i->src0);
+		}
+		else { 
+			stream << i->instType.instName << " ";
+			stream << operandString(i->dst) << ", ";
+			stream << operandString(i->src0) << ", ";
+		}
+		if (i->instType.opcode < 64) { 
+			stream << operandString(i->src1);
+		}
+		if ((i->instType.opcode > 31 && i->instType.opcode < 44) ||
+      	(i->instType.opcode == 0) ||
+      	(i->instType.opcode == 9) ||
+      	(i->instType.opcode == 14)) {
+			stream << ", " << operandString(i->src2);
+		}
+		return stream.str();
+	}
+
   std::string flatString(Inst *i) {
     std::stringstream stream;
 
@@ -267,19 +375,26 @@ struct InstPrinter {
                << operandString(i->data);
       } else {
         stream << i->instType.instName << " " << operandString(i->addr) << ", "
-               << operandString(i->data) << ", " << operandString(i->sAddr);
+               << operandString(i->data); // << ", " << operandString(i->sAddr);
       }
     }
 
     if (i->Seg == 2) {
       if (opcode >= 16 && opcode <= 18 || opcode == 20 || opcode == 21 ||
-          opcode == 23 || opcode == 28 || opcode == 31 || opcode == 98) {
+          opcode == 23 || opcode == 24 || opcode == 98) {
         if (i->sAddr.operandType != RegOperand) {
           stream << ", off";
           if (i->offset.intValue != 0) {
             stream << " offset:" << (int)i->offset.intValue;
           }
-        }
+        } 
+      } else if (opcode >= 28 && opcode <= 31 || 
+	  			 opcode >= 66 && opcode <= 10) {
+        if (i->sAddr.operandType != RegOperand) {
+		  stream << ", off";
+		  } else {
+		    stream << ", " << operandString(i->sAddr);
+		}
       }
     }
     return stream.str();
@@ -305,7 +420,11 @@ struct InstPrinter {
 
     if (oc == 13 || oc == 54 || oc == 254 || oc == 155) {
       if (i->Offset0 > 0) {
-        stream << " offset0:" << i->Offset0;
+				if (i->GDS) {
+					stream << " offset0:" << i->Offset0;
+				} else {
+					stream << " offset:" << i->Offset0;
+				}
       }
     } else {
       if (i->Offset0 > 0) {
@@ -342,6 +461,8 @@ struct InstPrinter {
       return vop3aString(i);
     case VOP3b:
       return vop3bString(i);
+	case VOP3P:
+		return vop3pString(i);
     case FLAT:
       return flatString(i);
     case DS:
