@@ -21,37 +21,40 @@ int main(int argc, char *argv[])
     if(file.is_open())
     {
         Assembler assembler;
-        if(fname.find(".s") != std::string::npos)
+        // uint32_t *newasm = new uint32_t[2];
+
+        while (file)
         {
-            while (file)
-            {
-                std::getline(file, line);
-                auto i = line.find("/");
-                if(i != std::string::npos)
-                {
-                    instr = line.substr(0, i);
-                    printf("\n%s\n", instr.c_str());
-                    assembler.Assemble(instr);
-                }
+            std::getline(file, line);
+            std::size_t i;
+
+            if(fname.find(".s") != std::string::npos)
+            { 
+                i = line.find("/");
             }
-        }
-        else if(fname.find(".csv") != std::string::npos)
-        {
-            while (file)
+            else if(fname.find(".csv") != std::string::npos)
             {
-                std::getline(file, line);
-                auto i = line.find(";");
-                if(i != std::string::npos)
-                {
-                    instr = line.substr(0, i);
-                    printf("\n%s\n", instr.c_str());
-                    assembler.Assemble(instr);
-                }
+                i = line.find(";");
             }
-        }
-        else
-        {
-            printf("Invalid file type\n");
+            else
+            {
+                printf("Invalid file type\n");
+                file.close();
+                return 2;
+            }
+
+            if(i != std::string::npos)
+            {
+                instr = line.substr(0, i);
+                auto instbytes = assembler.Assemble(instr);
+                
+                std::cout<<"Output: ";
+                for (int i = instbytes.size()-1; i >= 0; i--)
+                    std::cout<<std::hex<<int(instbytes.at(i))<<" ";
+                std::cout<<std::endl;
+
+                printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
+            }
         }
     }
     file.close();
