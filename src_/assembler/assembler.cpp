@@ -6,30 +6,40 @@
 #include "inst.h"
 #include "operand.h"
 #include "encodetable.h"
+#include "bitops.h"
 #include "assembler.h"
 
-uint32_t* Assembler::Assemble(std::string instruction)
+Assembler::Assembler()
 {
     initEncodeTable();
+}
 
+std::vector<unsigned char> Assembler::Assemble(std::string instruction)
+{
     Inst *inst = new Inst;
-    // uint32_t *assembly = new uint32_t[2];
+    std::vector<uint32_t> assembly;
 
     getInstData(inst, instruction);
 
     switch (inst->instType.format.formatType)
     {
     case SOP1:
-        return assembleSOP1(inst);
+        assembly = assembleSOP1(inst);
+        break;
     case VOP1:
-        return assembleVOP1(inst);
+        assembly = assembleVOP1(inst);
+        break;
     case SMEM:
-        return assembleSMEM(inst);
+        assembly = assembleSMEM(inst);
+        break;
     case SOP2:
-        return assembleSOP2(inst);
+        assembly = assembleSOP2(inst);
+        break;
     default:
-        return NULL;
+        break;
     }
+
+    return instcodeToByteArray(assembly);
 }
 
 void Assembler::getInstData(Inst* inst, std::string inststr)
@@ -138,9 +148,9 @@ Operand Assembler::getOperandInfo(std::string opstring){
 /* take decimal values, cast them to 32-bit unsigned values,  *
  * then and shift them to line up with the instruction format */
 
-uint32_t* Assembler::assembleSOP1(Inst *inst)
+std::vector<uint32_t> Assembler::assembleSOP1(Inst *inst)
 {
-    uint32_t *newasm  = new uint32_t[2];
+    std::vector<uint32_t> newasm;
     uint32_t instcode = 0xBE800000;
 
     uint32_t opcode  = uint32_t(inst->instType.opcode);
@@ -154,15 +164,14 @@ uint32_t* Assembler::assembleSOP1(Inst *inst)
     uint32_t src0 = getCodeByOperand(inst->src0);
     instcode = instcode | src0;
 
-    newasm[0] = instcode;
-    newasm[1] = NULL;
+    newasm.push_back(instcode);
 
     return newasm;
 }
 
-uint32_t* Assembler::assembleVOP1(Inst *inst)
+std::vector<uint32_t>  Assembler::assembleVOP1(Inst *inst)
 {
-    uint32_t *newasm  = new uint32_t[2];
+    std::vector<uint32_t> newasm;
     uint32_t instcode = 0x7E000000;
 
     uint32_t opcode = uint32_t(inst->instType.opcode);
@@ -176,15 +185,14 @@ uint32_t* Assembler::assembleVOP1(Inst *inst)
     uint32_t src0 = getCodeByOperand(inst->src0);
     instcode = instcode | src0;
 
-    newasm[0] = instcode;
-    newasm[1] = NULL;
+    newasm.push_back(instcode);
 
     return newasm;
 }
 
-uint32_t* Assembler::assembleSMEM(Inst *inst)
+std::vector<uint32_t>  Assembler::assembleSMEM(Inst *inst)
 {
-    uint32_t *newasm  = new uint32_t[2];
+    std::vector<uint32_t> newasm;
     uint32_t insthigh = 0xC0000000;
     uint32_t instlow  = 0x00000000;
 
@@ -197,16 +205,16 @@ uint32_t* Assembler::assembleSMEM(Inst *inst)
         insthigh = insthigh | 0x00040000;
     }
 
-    newasm[0] = insthigh;
-    newasm[1] = instlow;
+    newasm.push_back(insthigh);
+    newasm.push_back(instlow);
 
     return newasm;
 }
 
 
-uint32_t* Assembler::assembleSOP2(Inst *inst)
+std::vector<uint32_t>  Assembler::assembleSOP2(Inst *inst)
 {
-    uint32_t *newasm  = new uint32_t[2];
+    std::vector<uint32_t> newasm;
     uint32_t instcode = 0x80000000;
     uint32_t imm      = 0x00000000;
 
@@ -243,8 +251,8 @@ uint32_t* Assembler::assembleSOP2(Inst *inst)
     // if(inst->instType.SRC2Width != 0)
     //     inst->src2 = getOperandInfo(params.at(4));
 
-    newasm[0] = instcode;
-    newasm[1] = imm;
+    newasm.push_back(instcode);
+    newasm.push_back(imm);
 
     return newasm;
 }

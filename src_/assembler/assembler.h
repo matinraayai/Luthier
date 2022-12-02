@@ -11,7 +11,8 @@
 class Assembler
 {
 public:
-    uint32_t* Assemble(std::string instruction);
+    Assembler();
+    std::vector<unsigned char> Assemble(std::string instruction);
 
 private:
     void getInstData(Inst* inst, std::string inststr);
@@ -21,10 +22,10 @@ private:
     std::string extractreg(std::string reg);
     Operand getOperandInfo(std::string opstring);
 
-    uint32_t* assembleSOP1(Inst *inst);
-    uint32_t* assembleVOP1(Inst *inst);
-    uint32_t* assembleSMEM(Inst *inst);
-    uint32_t* assembleSOP2(Inst *inst);
+    std::vector<uint32_t> assembleSOP1(Inst *inst);
+    std::vector<uint32_t> assembleVOP1(Inst *inst);
+    std::vector<uint32_t> assembleSMEM(Inst *inst);
+    std::vector<uint32_t> assembleSOP2(Inst *inst);
 };
 
 

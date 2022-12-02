@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
     if(file.is_open())
     {
         Assembler assembler;
-        uint32_t *newasm = new uint32_t[2];
+        // uint32_t *newasm = new uint32_t[2];
 
         while (file)
         {
@@ -46,19 +46,14 @@ int main(int argc, char *argv[])
             if(i != std::string::npos)
             {
                 instr = line.substr(0, i);
-                newasm = assembler.Assemble(instr);
+                auto instbytes = assembler.Assemble(instr);
+                
+                std::cout<<"Output: ";
+                for (int i = instbytes.size()-1; i >= 0; i--)
+                    std::cout<<std::hex<<int(instbytes.at(i))<<" ";
+                std::cout<<std::endl;
 
-                printf("\n%s\n", instr.c_str());
-                if(newasm[1] != NULL)
-                {                        
-                    printf("Output:   %08X %08X\n", newasm[0], newasm[1]);
-                    printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
-                }                    
-                else
-                {                        
-                    printf("Output:   %08X\n", newasm[0]);
-                    printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
-                }
+                printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
             }
         }
     }
