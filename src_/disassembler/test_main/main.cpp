@@ -1,3 +1,4 @@
+#include "bitops.h"
 #include "disassembler.h"
 #include "elf.hpp"
 #include <fstream>
@@ -11,19 +12,20 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   std::string filename = argv[1];
-  std::string filename_elf;
+  // std::string filename_elf;
 
   initRegs();
   initFormatTable();
 
-  if (filename.find("csv") != std::string::npos) {
-    filename_elf = filename.substr(0, filename.length() - 6);
-  } else {
-    filename_elf = filename;
-  }
+  // if (filename.find("csv") != std::string::npos) {
+  //   filename_elf = filename.substr(0, filename.length() - 6);
+  // } else {
+  //   filename_elf = filename;
+  // }
   std::streampos size;
   char *blob;
-  std::ifstream file(filename_elf,
+  // std::ifstream file(filename_elf,
+  std::ifstream file(filename,
                      std::ios::in | std::ios::binary | std::ios::ate);
   if (file.is_open()) {
     size = file.tellg();
@@ -35,16 +37,20 @@ int main(int argc, char *argv[]) {
     printf("unable to open executable file in main\n");
     return 1;
   }
-  elfio::File elfFile;
-  elfFile = elfFile.FromMem(blob);
-  elfFile.PrintSymbolsForSection(".text");
 
-  Disassembler d(&elfFile);
-  if (filename.find("csv") != std::string::npos) {
-    d.Disassemble(&elfFile, filename);
-  } else {
-    d.Disassemble(&elfFile, filename, std::cout);
-  }
 
+  // elfio::File elfFile;
+  // elfFile = elfFile.FromMem(blob);
+  // elfFile.PrintSymbolsForSection(".text");
+
+  // Disassembler d(&elfFile);
+  // if (filename.find("csv") != std::string::npos) {
+  //   d.Disassemble(&elfFile, filename);
+  // } else {
+  //   d.Disassemble(&elfFile, filename, std::cout);
+  // }
+
+  Disassembler d;
+  d.Disassemble(charToByteArray(blob));
   return 0;
 }
