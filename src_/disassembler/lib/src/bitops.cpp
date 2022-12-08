@@ -1,4 +1,5 @@
 #include "bitops.h"
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -18,7 +19,6 @@ uint32_t convertLE(std::vector<unsigned char> b)
 }
 std::vector<unsigned char> stringToByteArray(std::string str)
 {
-
   const char *ptr = str.c_str();
   std::vector<unsigned char> bytes;
   for (int i = 0; i < 8; i += 2)
@@ -49,37 +49,19 @@ std::vector<unsigned char> stringToByteArray(std::string str)
   std::cout << std::endl;
   return bytes;
 }
-std::vector<unsigned char> charToByteArray(char *blob)
+std::vector<unsigned char> charToByteArray(char *blob, size_t size)
 {
-
-  // const char *blob = str.c_str();
   std::vector<unsigned char> bytes;
-  for (int i = 0; i < 8; i += 2)
+  char *word = new char[4];
+  
+  for (int i = 0; i < size; i += 4)
   {
-    int j = 8 - 1 - i;
-    uint8_t h4, l4;
-    if (blob[j - 1] < 65)
+    std::memcpy(word, blob + i, 4);
+    for (int j = 0; j < 4; j++)
     {
-      h4 = (uint8_t)(blob[j - 1] - '0');
+      bytes.push_back(uint8_t(word[j]));
     }
-    else
-    {
-      h4 = (uint8_t)(blob[j - 1] - 'A' + 10);
-    }
-    if (blob[j] < 65)
-    {
-      l4 = (uint8_t)(blob[j] - '0');
-    }
-    else
-    {
-      l4 = (uint8_t)(blob[j] - 'A' + 10);
-    }
-
-    uint32_t byte = (h4 << 4) + l4;
-    bytes.push_back((char)byte);
-    // std::cout << std::hex << std::setw(2) << std::setfill('0') << byte;
   }
-  std::cout << std::endl;
   return bytes;
 }
 

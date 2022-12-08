@@ -16,7 +16,7 @@ public:
 	void Disassemble(elfio::File *file, std::string filename);
 	void Disassemble(std::vector<unsigned char> buf);
 
-	// Disassembler(elfio::File *file);
+	Disassembler(elfio::File *file);
 	Disassembler();
 	int maxNumSReg();
 	int maxNumVReg();

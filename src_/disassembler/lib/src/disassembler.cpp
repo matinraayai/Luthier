@@ -6,12 +6,19 @@
 #include <iostream>
 #include <memory>
 
-// Disassembler::Disassembler(elfio::File *file) {
+Disassembler::Disassembler(elfio::File *file) {
+  nextInstID = 0;
+  initFormatList();
+  initRegs();
+  initializeDecodeTable();
+  auto printer = InstPrinter(file);
+  this->printer = printer;
+}
 Disassembler::Disassembler() {
   nextInstID = 0;
   initFormatList();
+  initRegs();
   initializeDecodeTable();
-  // auto printer = InstPrinter(file);
   auto printer = InstPrinter();
   this->printer = printer;
 }
@@ -27,6 +34,7 @@ void Disassembler::addInstType(InstType info) {
 }
 
 void Disassembler::initFormatList() {
+  initFormatTable();
   for (auto &item : FormatTable) {
     formatList.push_back(item.second);
   }
@@ -139,33 +147,15 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename) {
   }
 }
 void Disassembler::Disassemble(std::vector<unsigned char> buf) {
-  // o << "\n" << filename << "\tfile format ELF64-amdgpu\n";
-  // o << "\n\nDisassembly of section .text:\n";
-  // auto text_section = file->GetSectionByName(".text");
-  // if (!text_section) {
-  //   throw std::runtime_error("text section is not found");
-  // }
-  // std::vector<unsigned char> buf(text_section->Blob(),
-  //                                text_section->Blob() + text_section->size);
   uint64_t pc = 0;
   while (!buf.empty()) {
     std::unique_ptr<Inst> inst = decode(buf);
     inst->PC = pc;
     std::string instStr = printer.print(inst.get());
     std::cout << instStr << std::endl;
-    // for (int i = instStr.size(); i < 59; i++) {
-    //   o << " ";
-    // }
-    // o << std::setbase(10) << "//" << std::setw(12) << std::setfill('0') << pc
-    //   << ": ";
-    // o << std::setw(8) << std::hex << convertLE(buf);
-    // if (inst->byteSize == 8) {
-    //   std::vector<unsigned char> sfb(buf.begin() + 4, buf.begin() + 8);
-    //   o << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
-    // } else {
-    //   o << std::endl;
-    // }
+
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+
     pc += uint64_t(inst->byteSize);
   }
 }
