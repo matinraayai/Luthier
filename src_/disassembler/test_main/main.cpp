@@ -21,14 +21,8 @@ elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize) {
   return elf->FromMem(blob);
 }
 
-int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cout << "Expected 2 inputs: Program File; Instrumentation Function\n";
-    return 1;
-  }
-  std::string prgmfile   = argv[1];
-  std::string instrufile = argv[2];
-
+void disassembleInstruKernel(
+  Disassembler *d, std::string prgmfile, std::string instrufile) {
   elfio::File *prgmelf   = new elfio::File;
   elfio::File *instruelf = new elfio::File;
 
@@ -39,15 +33,24 @@ int main(int argc, char **argv) {
   auto instrutexsec  = instruelf->GetSectionByName(".text");
 
   char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
-  // std::memcpy(newkernel, 
-  //               prgmtexsec->Blob(), prgmtexsec->size);
-  // std::memcpy(newkernel + prgmtexsec->size, 
-  //               instrutexsec->Blob(), instrutexsec->size);
   std::memcpy(newkernel, 
+                prgmtexsec->Blob(), prgmtexsec->size);
+  std::memcpy(newkernel + prgmtexsec->size, 
                 instrutexsec->Blob(), instrutexsec->size);
-  
+
+  d->Disassemble(charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size));
+}
+
+int main(int argc, char **argv) {
+  if (argc != 3) {
+    std::cout << "Expected 2 inputs: Program File; Instrumentation Function\n";
+    return 1;
+  }
+  std::string prgmfile   = argv[1];
+  std::string instrufile = argv[2];
+
   Disassembler d;
-  d.Disassemble(charToByteArray(newkernel, instrutexsec->size));
+  disassembleInstruKernel(&d, argv[1], argv[2]);
 
   return 0;
 }
