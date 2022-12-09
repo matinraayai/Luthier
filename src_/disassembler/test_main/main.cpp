@@ -22,7 +22,10 @@ elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize) {
 }
 
 void disassembleInstruKernel(
-  Disassembler *d, std::string prgmfile, std::string instrufile) {
+  Disassembler *d, std::string program, std::string instru) {
+  std::string prgmfile  = program;
+  std::string instrufile = instru;
+
   elfio::File *prgmelf   = new elfio::File;
   elfio::File *instruelf = new elfio::File;
 
@@ -34,20 +37,19 @@ void disassembleInstruKernel(
 
   char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
   std::memcpy(newkernel, 
-                prgmtexsec->Blob(), prgmtexsec->size);
+              prgmtexsec->Blob(), prgmtexsec->size);
   std::memcpy(newkernel + prgmtexsec->size, 
-                instrutexsec->Blob(), instrutexsec->size);
+              instrutexsec->Blob(), instrutexsec->size);
 
-  d->Disassemble(charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size));
+  d->Disassemble(
+    charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size), std::cout);
 }
 
 int main(int argc, char **argv) {
   if (argc != 3) {
-    std::cout << "Expected 2 inputs: Program File; Instrumentation Function\n";
+    std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
     return 1;
   }
-  std::string prgmfile   = argv[1];
-  std::string instrufile = argv[2];
 
   elfio::File *prgmelf   = new elfio::File;
   elfio::File *instruelf = new elfio::File;
@@ -91,8 +93,6 @@ int main(int argc, char *argv[]) {
   //   filename_elf = filename;
   // }
   // std::streampos size;
-
-  size_t size = 8780; // !!!!copied from elfio stuf!!!!
 
   char *blob;
   // std::ifstream file(filename_elf,
