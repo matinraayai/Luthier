@@ -32,25 +32,55 @@ void disassembleInstruKernel(
   auto prgmtexsec    = prgmelf->GetSectionByName(".text");
   auto instrutexsec  = instruelf->GetSectionByName(".text");
 
+  printf("Program size:\t%X\nInstru size:\t%X\n\n", 
+          prgmtexsec->size, instrutexsec->size);
+
   char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
   std::memcpy(newkernel, 
-                prgmtexsec->Blob(), prgmtexsec->size);
+              prgmtexsec->Blob(), prgmtexsec->size);
   std::memcpy(newkernel + prgmtexsec->size, 
-                instrutexsec->Blob(), instrutexsec->size);
+              instrutexsec->Blob(), instrutexsec->size);
 
-  d->Disassemble(charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size));
+  d->Disassemble(
+    charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size), std::cout);
 }
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cout << "Expected 2 inputs: Program File; Instrumentation Function\n";
-    return 1;
-  }
-  std::string prgmfile   = argv[1];
-  std::string instrufile = argv[2];
+  // if (argc != 3) {
+  //   std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
+  //   return 1;
+  // }
+  elfio::File *prgmelf   = new elfio::File;
+  // elfio::File *instruelf = new elfio::File;
+
+  *prgmelf   = getELF(prgmelf, argv[1], 50000);
+  // *instruelf = getELF(instruelf, argv[2], 50000);
+
+  auto prgmtexsec    = prgmelf->GetSectionByName(".text");
+  // auto instrutexsec  = instruelf->GetSectionByName(".text");
+
+  // printf("Program size:\t%X\nInstru size:\t%X\n\n", 
+  //         prgmtexsec->size, instrutexsec->size);
+
+  // char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
+  char *newkernel = new char[prgmtexsec->size];
+  std::memcpy(newkernel, 
+              prgmtexsec->Blob(), prgmtexsec->size);
+  // std::memcpy(newkernel + prgmtexsec->size, 
+  //             instrutexsec->Blob(), instrutexsec->size);
 
   Disassembler d;
-  disassembleInstruKernel(&d, argv[1], argv[2]);
+  // disassembleInstruKernel(&d, argv[1], argv[2]);
+  // d.Disassemble(
+  //   charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size));
+
+  auto prgmbytes = charToByteArray(newkernel, prgmtexsec->size);
+  
+  printf("Program size:\t%X\nByte Array size:\t%X\n\n", 
+          prgmtexsec->size, prgmbytes.size());
+
+  d.Disassemble(
+    charToByteArray(newkernel, prgmtexsec->size), std::cout);
 
   return 0;
 }
@@ -75,8 +105,6 @@ int main(int argc, char *argv[]) {
   //   filename_elf = filename;
   // }
   // std::streampos size;
-
-  size_t size = 8780; // !!!!copied from elfio stuf!!!!
 
   char *blob;
   // std::ifstream file(filename_elf,

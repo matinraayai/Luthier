@@ -14,7 +14,7 @@ class Disassembler
 public:
 	void Disassemble(elfio::File *file, std::string filename, std::ostream &o);
 	void Disassemble(elfio::File *file, std::string filename);
-	void Disassemble(std::vector<unsigned char> buf);
+	void Disassemble(std::vector<unsigned char> buf, std::ostream &o);
 
 	Disassembler(elfio::File *file);
 	Disassembler();
