@@ -116,4 +116,15 @@ struct Inst
 	bool Src2Neg;
 };
 
+struct instwrapper{
+  instwrapper *prev;
+  instwrapper *next;
+
+  std::string instStr;
+  std::vector<unsigned char> bytes;
+
+  int byteSize;
+  uint64_t pc;
+};
+
 #endif

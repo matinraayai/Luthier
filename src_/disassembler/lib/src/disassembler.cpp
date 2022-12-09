@@ -157,7 +157,7 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
     for (int i = instStr.size(); i < 59; i++) {
       o << " ";
     }
-    o << std::setbase(10) << "//" << std::setw(12) << std::setfill('0') << pc
+    o << std::hex << "//" << std::setw(12) << std::setfill('0') << pc
       << ": ";
     o << std::setw(8) << std::hex << convertLE(buf);
     if (inst->byteSize == 8) {
@@ -172,6 +172,36 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
     pc += uint64_t(inst->byteSize);
   }
 }
+void Disassembler::Disassemble(std::vector<unsigned char> buf,
+                               instwrapper *head, uint64_t off) {
+  instwrapper *prevInst = head;
+  instwrapper *currInst = head;
+  uint64_t pc = off;
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+
+    currInst->next = new instwrapper;
+    currInst->instStr = printer.print(inst.get());
+
+    std::vector<unsigned char> currBytes(
+      buf.begin(), buf.begin() + inst->byteSize);
+    currInst->bytes = currBytes;
+    
+    currInst->byteSize = inst->byteSize;
+    currInst->pc = pc;
+
+    if(currInst->prev != NULL)
+      currInst->prev = prevInst;
+    
+    prevInst = currInst;
+    currInst = currInst->next;
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+  }
+}
+
 void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset,
                                   std::ostream &o) {
   for (auto &symbol : file->GetSymbols()) {
