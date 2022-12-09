@@ -49,12 +49,12 @@ std::vector<unsigned char> stringToByteArray(std::string str)
   std::cout << std::endl;
   return bytes;
 }
-std::vector<unsigned char> charToByteArray(char *blob, size_t size)
+std::vector<unsigned char> charToByteArray(char *blob, uint64_t size)
 {
   std::vector<unsigned char> bytes;
   char *word = new char[4];
   
-  for (int i = 0; i < size; i += 4)
+  for (uint64_t i = 0; i < size; i += 4)
   {
     std::memcpy(word, blob + i, 4);
     for (int j = 0; j < 4; j++)

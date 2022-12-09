@@ -116,9 +116,9 @@ struct Inst
 	bool Src2Neg;
 };
 
-struct instwrapper{
-  instwrapper *prev;
-  instwrapper *next;
+struct instnode{
+  instnode *prev;
+  instnode *next;
 
   std::string instStr;
   std::vector<unsigned char> bytes;

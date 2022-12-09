@@ -10,9 +10,11 @@
 
 elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize);
 
-void initInstruKernel(instwrapper *head, Disassembler *d, 
+void initInstruKernel(instnode *head, Disassembler *d, 
                       std::string program, std::string instru);
-void printInstList(instwrapper *head);
+void printInstList(instnode *head);
+
+instnode* getInstFromPC(instnode *head, uint64_t pc);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
@@ -22,8 +24,11 @@ int main(int argc, char **argv) {
 
   Disassembler d;
 
-  instwrapper *instrukernel = new instwrapper;
+  instnode *instrukernel = new instnode;
   initInstruKernel(instrukernel, &d, argv[1], argv[2]);
+
+  // instnode *v_add = getInstFromPC(instrukernel, 0x101c);
+  // std::cout << v_add->instStr << std::endl;
   printInstList(instrukernel);
 
   return 0;
@@ -42,8 +47,8 @@ elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize) {
   return elf->FromMem(blob);
 }
 
-void initInstruKernel(instwrapper *head, Disassembler *d, 
-                      std::string program, std::string instru) {
+void initInstruKernel(instnode *head, Disassembler *d, 
+                      std::string program, std::string instru) {                          
   std::string prgmfile  = program;
   std::string instrufile = instru;
 
@@ -64,13 +69,13 @@ void initInstruKernel(instwrapper *head, Disassembler *d,
 
   auto kernelbytes = charToByteArray(newkernel, 
                         prgmtexsec->size + instrutexsec->size);
-  head->prev = NULL;
+
   d->Disassemble(kernelbytes, head, prgmtexsec->offset);
 }
 
-void printInstList(instwrapper *head) {
+void printInstList(instnode *head) {
   std::string instStr;
-  instwrapper *curr = head;
+  instnode *curr = head;
 
   while(curr->next != NULL) {
     instStr = curr->instStr;
@@ -89,10 +94,16 @@ void printInstList(instwrapper *head) {
     } else {
       std::cout << std::endl;
     }
-
     curr = curr->next;
   }
-  std::cout << curr->instStr << std::endl;
+}
+
+instnode* getInstFromPC(instnode *head, uint64_t pc) {
+  instnode *curr = head;
+  while (curr->pc != pc) {
+    curr = curr->next;
+  }
+  return curr;
 }
 
 /*

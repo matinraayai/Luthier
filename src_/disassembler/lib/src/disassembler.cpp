@@ -172,27 +172,27 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
     pc += uint64_t(inst->byteSize);
   }
 }
+// overloaded Disassemble edits a linked list
 void Disassembler::Disassemble(std::vector<unsigned char> buf,
-                               instwrapper *head, uint64_t off) {
-  instwrapper *prevInst = head;
-  instwrapper *currInst = head;
+                               instnode *head, uint64_t off) {
+  instnode *prevInst = NULL;
+  instnode *currInst = head;
   uint64_t pc = off;
+
   while (!buf.empty()) {
     std::unique_ptr<Inst> inst = decode(buf);
+
     inst->PC = pc;
 
-    currInst->next = new instwrapper;
+    currInst->prev = prevInst;
+    currInst->next = new instnode;
     currInst->instStr = printer.print(inst.get());
 
     std::vector<unsigned char> currBytes(
       buf.begin(), buf.begin() + inst->byteSize);
-    currInst->bytes = currBytes;
-    
+    currInst->bytes = currBytes;    
     currInst->byteSize = inst->byteSize;
     currInst->pc = pc;
-
-    if(currInst->prev != NULL)
-      currInst->prev = prevInst;
     
     prevInst = currInst;
     currInst = currInst->next;
@@ -200,6 +200,7 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);
   }
+  currInst->next = NULL;
 }
 
 void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset,
