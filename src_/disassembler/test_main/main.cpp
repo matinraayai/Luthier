@@ -49,9 +49,25 @@ int main(int argc, char **argv) {
   std::string prgmfile   = argv[1];
   std::string instrufile = argv[2];
 
-  Disassembler d;
-  disassembleInstruKernel(&d, argv[1], argv[2]);
+  elfio::File *prgmelf   = new elfio::File;
+  elfio::File *instruelf = new elfio::File;
 
+  *prgmelf   = getELF(prgmelf, prgmfile, 50000);
+  *instruelf = getELF(instruelf, instrufile, 50000);
+
+  auto prgmtexsec    = prgmelf->GetSectionByName(".text");
+  auto instrutexsec  = instruelf->GetSectionByName(".text");
+
+  char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
+  std::memcpy(newkernel, 
+                prgmtexsec->Blob(), prgmtexsec->size);
+  std::memcpy(newkernel + prgmtexsec->size, 
+                instrutexsec->Blob(), instrutexsec->size);
+
+  Disassembler d;
+  // disassembleInstruKernel(&d, argv[1], argv[2]);
+ d.Disassemble(charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size));
+ 
   return 0;
 }
 
