@@ -22,7 +22,10 @@ elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize) {
 }
 
 void disassembleInstruKernel(
-  Disassembler *d, std::string prgmfile, std::string instrufile) {
+  Disassembler *d, std::string program, std::string instru) {
+  std::string prgmfile  = program;
+  std::string instrufile = instru;
+
   elfio::File *prgmelf   = new elfio::File;
   elfio::File *instruelf = new elfio::File;
 
@@ -31,9 +34,6 @@ void disassembleInstruKernel(
 
   auto prgmtexsec    = prgmelf->GetSectionByName(".text");
   auto instrutexsec  = instruelf->GetSectionByName(".text");
-
-  printf("Program size:\t%X\nInstru size:\t%X\n\n", 
-          prgmtexsec->size, instrutexsec->size);
 
   char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
   std::memcpy(newkernel, 
@@ -46,41 +46,13 @@ void disassembleInstruKernel(
 }
 
 int main(int argc, char **argv) {
-  // if (argc != 3) {
-  //   std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
-  //   return 1;
-  // }
-  elfio::File *prgmelf   = new elfio::File;
-  // elfio::File *instruelf = new elfio::File;
-
-  *prgmelf   = getELF(prgmelf, argv[1], 50000);
-  // *instruelf = getELF(instruelf, argv[2], 50000);
-
-  auto prgmtexsec    = prgmelf->GetSectionByName(".text");
-  // auto instrutexsec  = instruelf->GetSectionByName(".text");
-
-  // printf("Program size:\t%X\nInstru size:\t%X\n\n", 
-  //         prgmtexsec->size, instrutexsec->size);
-
-  // char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
-  char *newkernel = new char[prgmtexsec->size];
-  std::memcpy(newkernel, 
-              prgmtexsec->Blob(), prgmtexsec->size);
-  // std::memcpy(newkernel + prgmtexsec->size, 
-  //             instrutexsec->Blob(), instrutexsec->size);
+  if (argc != 3) {
+    std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
+    return 1;
+  }
 
   Disassembler d;
-  // disassembleInstruKernel(&d, argv[1], argv[2]);
-  // d.Disassemble(
-  //   charToByteArray(newkernel, prgmtexsec->size + instrutexsec->size));
-
-  auto prgmbytes = charToByteArray(newkernel, prgmtexsec->size);
-  
-  printf("Program size:\t%X\nByte Array size:\t%X\n\n", 
-          prgmtexsec->size, prgmbytes.size());
-
-  d.Disassemble(
-    charToByteArray(newkernel, prgmtexsec->size), std::cout);
+  disassembleInstruKernel(&d, argv[1], argv[2]);
 
   return 0;
 }

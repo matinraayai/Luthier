@@ -167,12 +167,9 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
       o << std::endl;
     }
 
-    o << std::hex << "inst size: " << inst->byteSize << std::endl;
-
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
 
     pc += uint64_t(inst->byteSize);
-    o << std::hex << "next pc: " << pc << std::endl << std::endl;
   }
 }
 void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset,
