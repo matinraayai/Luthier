@@ -1,12 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 project(Assembler VERSION 1.0)
 
-set(SRC
-assembler.cpp
-bitops.cpp
-encodetable.cpp
-main.cpp
-operand.cpp
-)
+add_subdirectory(lib)
 
-set(CMAKE_BUILD_TYPE Debug)
+add_subdirectory(test_main)
