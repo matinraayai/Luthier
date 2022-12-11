@@ -1,10 +1,13 @@
+#include "assembler.h"
+#include "bitops.h"
+#include "disassembler.h"
+#include "elf.hpp"
+
 #include <cstring>
 #include <fstream>
 #include <iostream>
-#include <stdio.h>
+#include <string>
 #include <vector>
-
-#include "../../src/elf.h"
 
 int main(int argc, char **argv) {
   if (argc != 3) {
