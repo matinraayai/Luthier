@@ -8,28 +8,38 @@
 #include <string>
 #include <vector>
 
+struct prgminfo{
+  uint64_t offset;
+  uint64_t size;
+};
+
 elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize);
 
-void initInstruKernel(instnode *head, Disassembler *d, 
+prgminfo initInstruKernel(instnode *head, Disassembler *d, 
                       std::string program, std::string instru);
 void printInstList(instnode *head);
 
 instnode* getInstFromPC(instnode *head, uint64_t pc);
+
+void getRegMax(instnode *head, prgminfo info);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
     std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
     return 1;
   }
-
   Disassembler d;
 
   instnode *instrukernel = new instnode;
-  initInstruKernel(instrukernel, &d, argv[1], argv[2]);
+  prgminfo prgm = initInstruKernel(instrukernel, &d, argv[1], argv[2]);
 
+  std::cout << std::hex << prgm.offset << std::endl 
+            << prgm.size << std::endl;
+  
   // instnode *v_add = getInstFromPC(instrukernel, 0x101c);
   // std::cout << v_add->instStr << std::endl;
-  printInstList(instrukernel);
+  // printInstList(instrukernel);
+  getRegMax(instrukernel, prgm);
 
   return 0;
 }
@@ -47,8 +57,11 @@ elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize) {
   return elf->FromMem(blob);
 }
 
-void initInstruKernel(instnode *head, Disassembler *d, 
+prgminfo initInstruKernel(instnode *head, Disassembler *d, 
                       std::string program, std::string instru) {                          
+  // WOULD LOVE TO COPY THE CODE TO GET TEXT SECTIONS INTO A STANDALONE FUNCTION!
+  // BUT! Whenever I try to do that, I break everything ;-;
+
   std::string prgmfile  = program;
   std::string instrufile = instru;
 
@@ -71,6 +84,7 @@ void initInstruKernel(instnode *head, Disassembler *d,
                         prgmtexsec->size + instrutexsec->size);
 
   d->Disassemble(kernelbytes, head, prgmtexsec->offset);
+  return {prgmtexsec->offset, prgmtexsec->size};
 }
 
 void printInstList(instnode *head) {
@@ -105,6 +119,42 @@ instnode* getInstFromPC(instnode *head, uint64_t pc) {
   }
   return curr;
 }
+
+// Get the largest sreg and vreg used by the kernel 
+void getRegMax(instnode *head, prgminfo info) {
+    instnode *curr = head;
+    std::string currInstStr;
+    std::string reg;
+
+  int sregmax;
+  int vregmax;
+
+  while(curr->pc != info.offset + info.size){
+    currInstStr = curr->instStr;
+    std::cout << currInstStr << "\t" << curr->pc << std::endl;
+
+    currInstStr.erase(0, currInstStr.find(" ") + 1);
+
+    //NEXT STEP: Seperate the inst into a list of operands and check each operand!!!!
+    //In other words...
+    //Use the functions I already wrote in Assembler!
+    //Wait
+    //NEED TO INCORPORATE ASSEMBLER INTO THIS EVENTUALLY ANYWAYS!!!!
+    //TIME TO FINALLY LEARN CMAKE!!!
+
+    // while(currInstStr.find(" ") != std::string::npos) {
+      // if(currInstStr.at(0) == 's'){
+      //   printf("You have an S reg!\n");
+      // } else if (currInstStr.at(0) == 'v') {
+      //   printf("You have a V reg!\n");
+      // } else {
+      //   printf("Not a reg\n");
+      // }
+      currInstStr.erase(0, currInstStr.find(" ") + 1);
+    }
+    curr = curr->next;
+  }
+
 
 /*
 int main(int argc, char *argv[]) {
