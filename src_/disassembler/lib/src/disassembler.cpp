@@ -9,8 +9,17 @@
 Disassembler::Disassembler(elfio::File *file) {
   nextInstID = 0;
   initFormatList();
+  initRegs();
   initializeDecodeTable();
   auto printer = InstPrinter(file);
+  this->printer = printer;
+}
+Disassembler::Disassembler() {
+  nextInstID = 0;
+  initFormatList();
+  initRegs();
+  initializeDecodeTable();
+  auto printer = InstPrinter();
   this->printer = printer;
 }
 
@@ -25,6 +34,7 @@ void Disassembler::addInstType(InstType info) {
 }
 
 void Disassembler::initFormatList() {
+  initFormatTable();
   for (auto &item : FormatTable) {
     formatList.push_back(item.second);
   }
@@ -136,6 +146,63 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename) {
     return;
   }
 }
+void Disassembler::Disassemble(std::vector<unsigned char> buf,
+                               std::ostream &o) {
+  uint64_t pc = 0;
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+    std::string instStr = printer.print(inst.get());
+    o << "\t" << instStr;
+    for (int i = instStr.size(); i < 59; i++) {
+      o << " ";
+    }
+    o << std::hex << "//" << std::setw(12) << std::setfill('0') << pc
+      << ": ";
+    o << std::setw(8) << std::hex << convertLE(buf);
+    if (inst->byteSize == 8) {
+      std::vector<unsigned char> sfb(buf.begin() + 4, buf.begin() + 8);
+      o << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
+    } else {
+      o << std::endl;
+    }
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+
+    pc += uint64_t(inst->byteSize);
+  }
+}
+// overloaded Disassemble edits a linked list
+void Disassembler::Disassemble(std::vector<unsigned char> buf,
+                               instnode *head, uint64_t off) {
+  instnode *prevInst = NULL;
+  instnode *currInst = head;
+  uint64_t pc = off;
+
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+
+    inst->PC = pc;
+
+    currInst->prev = prevInst;
+    currInst->next = new instnode;
+    currInst->instStr = printer.print(inst.get());
+
+    std::vector<unsigned char> currBytes(
+      buf.begin(), buf.begin() + inst->byteSize);
+    currInst->bytes = currBytes;    
+    currInst->byteSize = inst->byteSize;
+    currInst->pc = pc;
+    
+    prevInst = currInst;
+    currInst = currInst->next;
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+  }
+  currInst->next = NULL;
+}
+
 void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset,
                                   std::ostream &o) {
   for (auto &symbol : file->GetSymbols()) {

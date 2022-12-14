@@ -1,3 +1,5 @@
+add_subdirectory(copy_text)
+
 add_executable(instru main.cpp)
 
 target_link_libraries(instru PRIVATE bundleParser)

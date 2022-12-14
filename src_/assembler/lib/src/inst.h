@@ -116,4 +116,15 @@ struct Inst
 	bool Src2Neg;
 };
 
+struct instnode{
+  instnode *prev;
+  instnode *next;
+
+  std::string instStr;
+  std::vector<unsigned char> bytes;
+
+  int byteSize;
+  uint64_t pc;
+};
+
 #endif

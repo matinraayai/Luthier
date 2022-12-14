@@ -1,8 +1,10 @@
 #include "bitops.h"
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
+
 uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude)
 {
   uint32_t mask, extracted;
@@ -10,12 +12,14 @@ uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude)
   extracted = (mask & num) >> loInclude;
   return extracted;
 }
+
 uint32_t convertLE(std::vector<unsigned char> b)
 {
   auto r = uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 |
            uint32_t(b[3]) << 24;
   return r;
 }
+
 std::vector<unsigned char> instcodeToByteArray(std::vector<uint32_t> inst)
 {
   std::vector<unsigned char> bytes;
@@ -34,6 +38,7 @@ std::vector<unsigned char> instcodeToByteArray(std::vector<uint32_t> inst)
 
   return bytes;
 }
+
 std::vector<unsigned char> stringToByteArray(std::string str)
 {
   const char *ptr = str.c_str();
@@ -67,6 +72,22 @@ std::vector<unsigned char> stringToByteArray(std::string str)
     std::cout << std::hex << std::setw(2) << std::setfill('0') << byte << std::endl;
   }
   std::cout << std::endl;
+  return bytes;
+}
+
+std::vector<unsigned char> charToByteArray(char *blob, uint64_t size)
+{
+  std::vector<unsigned char> bytes;
+  char *word = new char[4];
+  
+  for (uint64_t i = 0; i < size; i += 4)
+  {
+    std::memcpy(word, blob + i, 4);
+    for (int j = 0; j < 4; j++)
+    {
+      bytes.push_back(uint8_t(word[j]));
+    }
+  }
   return bytes;
 }
 
