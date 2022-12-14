@@ -20,6 +20,7 @@ call_original_hip_register_fat_binary(const void *data);
 void editNoteSectionData(elfio::File *elf);
 void editTextSectionData();
 void editShr(elfio::File *elf);
+void printSymbolTable(elfio::File *elf);
 
 uint64_t processBuddle(char *data) {
   __ClangOffloadBundleHeader *header =
@@ -98,9 +99,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // elfio::Note noteSec = getNoteSection();
 
-  editNoteSectionData(&elfFile);
+  // editNoteSectionData(&elfFile);
   // editTextSectionData(&elfFile);
   // editShr(&elfFile);
+  printSymbolTable(&elfFile);
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
   // pass new wrapper into original register fat binary func:
@@ -200,3 +202,8 @@ void editNoteSectionData(elfio::File *elf) {
 //   char *shrEInstru = extractShrE();
 //   std::memcpy((char *)(shdr + 64 * header->e_shnum), shrEInstru, 64);
 // }
+
+void printSymbolTable(elfio::File *elf) {
+  elf->PrintSymbolsForSection(".text");
+  elf->PrintSymbolsForSection(".rodata");
+}
