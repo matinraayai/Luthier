@@ -22,8 +22,6 @@ void printInstList(instnode *head);
 
 instnode* getInstFromPC(instnode *head, uint64_t pc);
 
-// void getRegMax(instnode *head, uint64_t off, uint64_t size);
-
 int main(int argc, char **argv) {
   if (argc != 3) {
     std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
@@ -44,59 +42,45 @@ int main(int argc, char **argv) {
 
   std::cout << "---------------------------------------" << std::endl;
 
-  uint64_t prgmoff  = prgmtexsec->offset;
-  uint64_t prgmsize = prgmtexsec->size;
-  std::cout << "Program Offset:\t" << prgmoff  << std::endl
-            << "Program Size:\t"   << prgmsize << std::endl;
-  std::cout << "Instru Offset:\t" << instrutexsec->offset << std::endl
-            << "Instru Size:\t"   << instrutexsec->size   << std::endl;
+  uint64_t prgmoff    = prgmtexsec->offset;
+  uint64_t prgmsize   = prgmtexsec->size;
+  uint64_t instruoff  = instrutexsec->offset;
+  uint64_t instrusize = instrutexsec->size;  
+
+  std::cout << "Program Offset:\t" << prgmoff    << std::endl
+            << "Program Size:\t"   << prgmsize   << std::endl;
+  std::cout << "Instru Offset:\t"  << instruoff  << std::endl
+            << "Instru Size:\t"    << instrusize << std::endl;
 
 
-  char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
-  std::memcpy(newkernel, 
-              prgmtexsec->Blob(), prgmtexsec->size);
-  std::memcpy(newkernel + prgmtexsec->size, 
-              instrutexsec->Blob(), instrutexsec->size);
+  char *newkernel = new char[prgmsize + instrusize];
+  std::memcpy(newkernel, prgmtexsec->Blob(), prgmsize);
+  std::memcpy(newkernel + prgmsize, instrutexsec->Blob(), instrusize);
 
 
-  auto kernelbytes = charToByteArray(newkernel, 
-                        prgmtexsec->size + instrutexsec->size);
+  std::cout << "---------------------------------------" << std::endl;
 
-  std::cout << kernelbytes.size() << std::endl;
+  auto oldkernelbytes = charToByteArray(prgmtexsec->Blob(), prgmsize);
+  auto newkernelbytes = charToByteArray(newkernel, prgmsize + instrusize);
 
   instnode *instrukernel = new instnode;
-
-  std::cout << "---------------------------------------" << std::endl;
-
   Disassembler d(prgmelf);
-  d.Disassemble(kernelbytes, instrukernel, prgmtexsec->offset);
+  d.Disassemble(oldkernelbytes);
+  printf(
+    "Max S reg:\t%d\nMax V reg:\t%d\n",
+    d.maxNumSReg(),
+    d.maxNumVReg()
+  );
+  d.Disassemble(newkernelbytes, instrukernel, prgmtexsec->offset);
 
   std::cout << "---------------------------------------" << std::endl;
 
   printInstList(instrukernel);
 
   std::cout << "---------------------------------------" << std::endl;
-  // getRegMax(instrukernel, prgm);
-
-  // prgmtexsec->offset, prgmtexsec->size
-
-  /*
-  prgminfo prgm = initInstruKernel(instrukernel, &d, argv[1], argv[2]);
-
-  std::cout << std::hex  << prgm.offset << std::endl 
-            << prgm.size << std::endl;
   
-  std::cout << "---------------------------------------" << std::endl;
 
-  // instnode *v_add = getInstFromPC(instrukernel, 0x101c);
-  // std::cout << v_add->instStr << std::endl;
-  printInstList(instrukernel);
-
-  std::cout << "---------------------------------------" << std::endl;
-  getRegMax(instrukernel, prgm);
-  */
   return 0;
-
 }
 
 elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize) {
@@ -171,32 +155,3 @@ instnode* getInstFromPC(instnode *head, uint64_t pc) {
   }
   return curr;
 }
-
-// Get the largest sreg and vreg used by the kernel 
-// void getRegMax(instnode *head, prgminfo info) {
-//     instnode *curr = head;
-//     std::string currInstStr;
-//     std::string reg;
-
-//   int sregmax;
-//   int vregmax;
-
-//   while(curr->pc != info.offset + info.size){
-//     currInstStr = curr->instStr;
-//     std::cout << currInstStr << "\t" << curr->pc << std::endl;
-
-//     currInstStr.erase(0, currInstStr.find(" ") + 1);
-
-//     while(currInstStr.find(" ") != std::string::npos) {
-//       if(currInstStr.at(0) == 's'){
-//         printf("You have an S reg!\n");
-//       } else if (currInstStr.at(0) == 'v') {
-//         printf("You have a V reg!\n");
-//       } else {
-//         printf("Not a reg\n");
-//       }
-//       currInstStr.erase(0, currInstStr.find(" ") + 1);
-//     }
-//     curr = curr->next;
-//   }
-// }
