@@ -16,22 +16,71 @@ struct prgminfo{
 
 elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize);
 
-prgminfo initInstruKernel(instnode *head, Disassembler *d, 
-                      std::string program, std::string instru);
+// prgminfo initInstruKernel(instnode *head, Disassembler *d, 
+//                       std::string program, std::string instru);
 void printInstList(instnode *head);
 
 instnode* getInstFromPC(instnode *head, uint64_t pc);
 
-void getRegMax(instnode *head, prgminfo info);
+// void getRegMax(instnode *head, uint64_t off, uint64_t size);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
     std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
     return 1;
   }
-  Disassembler d;
+
+  std::string prgmfile   = argv[1];
+  std::string instrufile = argv[2];
+
+  elfio::File *prgmelf   = new elfio::File;
+  elfio::File *instruelf = new elfio::File;
+
+  *prgmelf   = getELF(prgmelf, prgmfile, 50000);
+  *instruelf = getELF(instruelf, instrufile, 50000);
+
+  auto prgmtexsec   = prgmelf->GetSectionByName(".text");
+  auto instrutexsec = instruelf->GetSectionByName(".text");
+
+  std::cout << "---------------------------------------" << std::endl;
+
+  uint64_t prgmoff  = prgmtexsec->offset;
+  uint64_t prgmsize = prgmtexsec->size;
+  std::cout << "Program Offset:\t" << prgmoff  << std::endl
+            << "Program Size:\t"   << prgmsize << std::endl;
+  std::cout << "Instru Offset:\t" << instrutexsec->offset << std::endl
+            << "Instru Size:\t"   << instrutexsec->size   << std::endl;
+
+
+  char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
+  std::memcpy(newkernel, 
+              prgmtexsec->Blob(), prgmtexsec->size);
+  std::memcpy(newkernel + prgmtexsec->size, 
+              instrutexsec->Blob(), instrutexsec->size);
+
+
+  auto kernelbytes = charToByteArray(newkernel, 
+                        prgmtexsec->size + instrutexsec->size);
+
+  std::cout << kernelbytes.size() << std::endl;
 
   instnode *instrukernel = new instnode;
+
+  std::cout << "---------------------------------------" << std::endl;
+
+  Disassembler d(prgmelf);
+  d.Disassemble(kernelbytes, instrukernel, prgmtexsec->offset);
+
+  std::cout << "---------------------------------------" << std::endl;
+
+  printInstList(instrukernel);
+
+  std::cout << "---------------------------------------" << std::endl;
+  // getRegMax(instrukernel, prgm);
+
+  // prgmtexsec->offset, prgmtexsec->size
+
+  /*
   prgminfo prgm = initInstruKernel(instrukernel, &d, argv[1], argv[2]);
 
   std::cout << std::hex  << prgm.offset << std::endl 
@@ -45,7 +94,7 @@ int main(int argc, char **argv) {
 
   std::cout << "---------------------------------------" << std::endl;
   getRegMax(instrukernel, prgm);
-
+  */
   return 0;
 
 }
@@ -63,35 +112,32 @@ elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize) {
   return elf->FromMem(blob);
 }
 
-prgminfo initInstruKernel(instnode *head, Disassembler *d, 
-                      std::string program, std::string instru) {                          
-  // WOULD LOVE TO COPY THE CODE TO GET TEXT SECTIONS INTO A STANDALONE FUNCTION!
-  // BUT! Whenever I try to do that, I break everything ;-;
+// prgminfo initInstruKernel(instnode *head, Disassembler *d, 
+//                       std::string program, std::string instru) {                          
+//   std::string prgmfile  = program;
+//   std::string instrufile = instru;
 
-  std::string prgmfile  = program;
-  std::string instrufile = instru;
+//   elfio::File *prgmelf   = new elfio::File;
+//   elfio::File *instruelf = new elfio::File;
 
-  elfio::File *prgmelf   = new elfio::File;
-  elfio::File *instruelf = new elfio::File;
+//   *prgmelf   = getELF(prgmelf, prgmfile, 50000);
+//   *instruelf = getELF(instruelf, instrufile, 50000);
 
-  *prgmelf   = getELF(prgmelf, prgmfile, 50000);
-  *instruelf = getELF(instruelf, instrufile, 50000);
+//   auto prgmtexsec    = prgmelf->GetSectionByName(".text");
+//   auto instrutexsec  = instruelf->GetSectionByName(".text");
 
-  auto prgmtexsec    = prgmelf->GetSectionByName(".text");
-  auto instrutexsec  = instruelf->GetSectionByName(".text");
+//   char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
+//   std::memcpy(newkernel, 
+//               prgmtexsec->Blob(), prgmtexsec->size);
+//   std::memcpy(newkernel + prgmtexsec->size, 
+//               instrutexsec->Blob(), instrutexsec->size);
 
-  char *newkernel = new char[prgmtexsec->size + instrutexsec->size];
-  std::memcpy(newkernel, 
-              prgmtexsec->Blob(), prgmtexsec->size);
-  std::memcpy(newkernel + prgmtexsec->size, 
-              instrutexsec->Blob(), instrutexsec->size);
+//   auto kernelbytes = charToByteArray(newkernel, 
+//                         prgmtexsec->size + instrutexsec->size);
 
-  auto kernelbytes = charToByteArray(newkernel, 
-                        prgmtexsec->size + instrutexsec->size);
-
-  d->Disassemble(kernelbytes, head, prgmtexsec->offset);
-  return {prgmtexsec->offset, prgmtexsec->size};
-}
+//   d->Disassemble(kernelbytes, head, prgmtexsec->offset);
+//   return {prgmtexsec->offset, prgmtexsec->size};
+// }
 
 void printInstList(instnode *head) {
   std::string instStr;
@@ -127,120 +173,30 @@ instnode* getInstFromPC(instnode *head, uint64_t pc) {
 }
 
 // Get the largest sreg and vreg used by the kernel 
-void getRegMax(instnode *head, prgminfo info) {
-    instnode *curr = head;
-    std::string currInstStr;
-    std::string reg;
+// void getRegMax(instnode *head, prgminfo info) {
+//     instnode *curr = head;
+//     std::string currInstStr;
+//     std::string reg;
 
-  int sregmax;
-  int vregmax;
+//   int sregmax;
+//   int vregmax;
 
-  while(curr->pc != info.offset + info.size){
-    currInstStr = curr->instStr;
-    std::cout << currInstStr << "\t" << curr->pc << std::endl;
+//   while(curr->pc != info.offset + info.size){
+//     currInstStr = curr->instStr;
+//     std::cout << currInstStr << "\t" << curr->pc << std::endl;
 
-    currInstStr.erase(0, currInstStr.find(" ") + 1);
+//     currInstStr.erase(0, currInstStr.find(" ") + 1);
 
-    //NEXT STEP: Seperate the inst into a list of operands and check each operand!!!!
-    //In other words...
-    //Use the functions I already wrote in Assembler!
-    //Wait
-    //NEED TO INCORPORATE ASSEMBLER INTO THIS EVENTUALLY ANYWAYS!!!!
-    //TIME TO FINALLY LEARN CMAKE!!!
-
-    while(currInstStr.find(" ") != std::string::npos) {
-      if(currInstStr.at(0) == 's'){
-        printf("You have an S reg!\n");
-      } else if (currInstStr.at(0) == 'v') {
-        printf("You have a V reg!\n");
-      } else {
-        printf("Not a reg\n");
-      }
-      currInstStr.erase(0, currInstStr.find(" ") + 1);
-    }
-    curr = curr->next;
-  }
-}
-
-/*
-int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cout << "Expected 2 inputs: Program File; Instrumentation Function\n";
-    return 1;
-  }
-  std::string prgmfile = argv[1];
-  std::string instfile = argv[2];
-  std::string outname = "output.text";
-
-  std::fstream file1;
-  std::fstream file2;
-  std::fstream texout;
-
-  char *blob = new char[50000];	// implement smarter mem allocation later
-  elfio::File *elfFile1 = new elfio::File;
-  elfio::File *elfFile2 = new elfio::File;
-
-  file1.open(prgmfile, std::ios_base::in | std::ios_base::binary);
-  if(file1.is_open()){
-    file1.read(blob, 50000);
-    *elfFile1 = elfFile1->FromMem(blob);
-    file1.close();
-  } else{	
-    printf("Could not create elfio::File for %s\n", prgmfile.c_str());
-    return 1;
-  }
-  
-  file2.open(instfile, std::ios_base::in | std::ios_base::binary);
-  if(file2.is_open()){
-    delete blob;
-    blob = new char[50000];
-
-    file2.read(blob, 50000);
-    *elfFile2 = elfFile2->FromMem(blob);
-    file2.close();
-  } else{	
-    printf("Could not create elfio::File for %s\n", instfile.c_str());
-    return 1;
-  }
-
-  auto prgmtexsec  = elfFile1->GetSectionByName(".text");
-  auto prgmtexsize = uint32_t(prgmtexsec->size);
-
-  auto insttexsec  = elfFile2->GetSectionByName(".text");
-  auto insttexsize = uint32_t(insttexsec->size);
-
-  std::cout << std::hex << prgmtexsize << std::endl;
-  std::cout << std::hex << insttexsize << std::endl;
-
-  char *outtexhead = new char[prgmtexsize];
-  char *prgmtexblob = new char[prgmtexsize];
-  char *insttexblob = new char[insttexsize];
-
-  prgmtexblob = prgmtexsec->Blob();
-  insttexblob = insttexsec->Blob();
-
-  // std::memcpy(outtexhead, prgmtexblob, prgmtexsize);
-  std::memcpy(outtexhead, insttexblob, insttexsize);
-
-  texout.open(outname, std::ios_base::out | std::ios_base::binary);
-  if(texout.is_open()){
-    texout.write(outtexhead, prgmtexsize);
-    // texout.write(insttexsec->Blob(), insttexsize);
-
-    texout.close();
-  } else{
-    for(int i = 0; i < 64; i++){
-      std::cout << std::hex << prgmtexsec->Blob();
-      std::cout << " | ";
-      std::cout << std::hex << insttexsec->Blob();
-      std::cout << std::endl;
-    }    
-  }
-
-
-
-
-
-  return 0;
-}
-*/
+//     while(currInstStr.find(" ") != std::string::npos) {
+//       if(currInstStr.at(0) == 's'){
+//         printf("You have an S reg!\n");
+//       } else if (currInstStr.at(0) == 'v') {
+//         printf("You have a V reg!\n");
+//       } else {
+//         printf("Not a reg\n");
+//       }
+//       currInstStr.erase(0, currInstStr.find(" ") + 1);
+//     }
+//     curr = curr->next;
+//   }
+// }
