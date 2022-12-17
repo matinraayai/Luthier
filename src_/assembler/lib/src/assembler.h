@@ -13,13 +13,14 @@ class Assembler
 public:
     Assembler();
     std::vector<unsigned char> Assemble(std::string instruction);
+    
+    std::vector<std::string> getInstParams(std::string inststr);
+    std::string extractreg(std::string reg);
 
 private:
     void getInstData(Inst* inst, std::string inststr);
-    std::vector<std::string> getInstParams(std::string inststr);
 
     uint32_t getCodeByOperand(Operand op);
-    std::string extractreg(std::string reg);
     Operand getOperandInfo(std::string opstring);
 
     std::vector<uint32_t> assembleSOP1(Inst *inst);
