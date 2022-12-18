@@ -29,6 +29,7 @@ private:
     std::vector<uint32_t> assembleVOP1(Inst *inst);
     std::vector<uint32_t> assembleSMEM(Inst *inst);
     std::vector<uint32_t> assembleSOP2(Inst *inst);
+    std::vector<uint32_t> assembleSOPP(Inst *inst);
 };
 
 

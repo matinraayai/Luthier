@@ -203,7 +203,15 @@ void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax, in
   while (curr->next != NULL) {
     if(curr->pc > offset) {
       inststr = curr->instStr;
+
       params  = a.getInstParams(inststr);
+      if (params.at(0) == "s_waitcnt" || 
+          params.at(0) == "s_nop"     ||
+          params.at(0) == "s_endpgm") {
+        curr = curr->next;
+        continue;
+      }
+
       curr->instStr = params.at(0);
       curr->instStr.append(" ");
 
@@ -219,7 +227,8 @@ void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax, in
             regval += vmax;
           } 
           params.at(i) = insertReg(params.at(i), regval);
-        } else if (params.at(i).find("s") != std::string::npos) {
+        } else 
+        if (params.at(i).find("s") != std::string::npos) {
           regstr = a.extractreg(params.at(i));
           try {
             regval = stoi(regstr);
@@ -234,6 +243,7 @@ void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax, in
         curr->instStr.append(params.at(i));
         curr->instStr.append(" ");
       }
+      curr->bytes = a.Assemble(curr->instStr);
     }
     curr = curr->next;
   }
