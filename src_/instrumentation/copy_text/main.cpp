@@ -1,5 +1,5 @@
-#include "assembler.h" // !!!! Cannot use Assembler bc of multiple definitions of 'FormatTable' !!!!
-#include "bitops.h"    // !!!! We may need to move the shared libraries of the asm and disasm sooner rather than later
+#include "assembler.h"
+#include "bitops.h"
 #include "disassembler.h"
 #include "elf.hpp"
 
@@ -12,52 +12,9 @@
 elfio::File getELF(elfio::File* elf, std::string fname, size_t blobsize);
 instnode* getInstFromPC(instnode *head, uint64_t pc);
 void printInstList(instnode *head);
-// void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax, int vmax);
-void offsetInstruRegs(instnode *head, uint64_t offset, int smax, int vmax);
+void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax, int vmax);
 
 std::string insertReg(std::string reg, int regval);
-
-// These are functions copy-pasted from the Assembler:
-std::vector<std::string> getInstParams(std::string inststr)
-{
-  std::vector<std::string> params;
-  std::string delim = " ";
-  
-  size_t i;
-  while(i != std::string::npos)
-  {
-    i = inststr.find(delim);
-    params.push_back(inststr.substr(0, i));
-    inststr.erase(0, i+1);
-  }
-
-  return params;
-}
-std::string extractreg(std::string reg)
-{
-  if(reg.find("v") != std::string::npos) 
-  {
-    reg.erase(reg.find("v"), 1);
-  }
-  else if(reg.find("s") != std::string::npos) 
-  {
-    reg.erase(reg.find("s"), 1);
-  }
-
-  if(reg.find("[") != std::string::npos) 
-  {
-    reg.erase(reg.find("["),1);
-    reg.erase(reg.find(":"),reg.length());
-    return reg;
-  }
-  else
-  {
-    reg.erase(1, reg.length());
-    return reg;
-  }
-}
-// Delete these after using the assembler with this works!
-
 
 int main(int argc, char **argv) {
   if (argc != 3) {
@@ -74,10 +31,12 @@ int main(int argc, char **argv) {
   *prgmelf   = getELF(prgmelf, prgmfile, 50000);    // come up with a smart and/or clever way of 
   *instruelf = getELF(instruelf, instrufile, 50000);// getting blob size for elfio::File obj later
 
+  Assembler a;
+  Disassembler d(prgmelf);
+
   auto prgmtexsec   = prgmelf->GetSectionByName(".text");
   auto instrutexsec = instruelf->GetSectionByName(".text");
 
-  std::cout << "---------------------------------------" << std::endl;
 
   uint64_t prgmoff    = prgmtexsec->offset;
   uint64_t prgmsize   = prgmtexsec->size;
@@ -89,6 +48,7 @@ int main(int argc, char **argv) {
   std::cout << "Instru Offset:\t"  << instruoff  << std::endl
             << "Instru Size:\t"    << instrusize << std::endl;
 
+  std::cout << "---------------------------------------" << std::endl;
 
   char *newkernel = new char[prgmsize + instrusize];
   std::memcpy(newkernel, prgmtexsec->Blob(), prgmsize);
@@ -102,14 +62,11 @@ int main(int argc, char **argv) {
   
   instnode *instrukernel = new instnode;
   
-  Assembler a;
-  Disassembler d(prgmelf);
-
-  d.Disassemble(oldkernelbytes);
+  d.Disassemble(prgmtexsec->Blob(), prgmsize);
 
   int sregmax = d.maxNumSReg();
   int vregmax = d.maxNumVReg();
-  
+
   d.Disassemble(newkernelbytes, instrukernel, prgmtexsec->offset);
 
   std::cout << "---------------------------------------" << std::endl;
@@ -118,7 +75,7 @@ int main(int argc, char **argv) {
 
   std::cout << "---------------------------------------" << std::endl;
   
-  offsetInstruRegs(instrukernel, prgmsize + prgmoff, sregmax, vregmax);
+  offsetInstruRegs(a, instrukernel, prgmsize + prgmoff, sregmax, vregmax);
   printInstList(instrukernel);
 
   return 0;
@@ -233,8 +190,7 @@ std::string insertReg(std::string reg, int regval) {
   return reg;
 }
 
-// void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax, int vmax) {
-void offsetInstruRegs(instnode *head, uint64_t offset, int smax, int vmax) {
+void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax, int vmax) {
   printf("Max S reg:\t%d\nMax V reg:\t%d\n", smax, vmax);
   instnode *curr = head;
 
@@ -247,13 +203,13 @@ void offsetInstruRegs(instnode *head, uint64_t offset, int smax, int vmax) {
   while (curr->next != NULL) {
     if(curr->pc > offset) {
       inststr = curr->instStr;
-      params  = getInstParams(inststr);
+      params  = a.getInstParams(inststr);
       curr->instStr = params.at(0);
       curr->instStr.append(" ");
 
       for (int i = 1; i < params.size(); i++) {
         if (params.at(i).find("v") != std::string::npos) {
-          regstr = extractreg(params.at(i));
+          regstr = a.extractreg(params.at(i));
           try {
             regval = stoi(regstr);
           } catch(const std::exception& e) {
@@ -264,7 +220,7 @@ void offsetInstruRegs(instnode *head, uint64_t offset, int smax, int vmax) {
           } 
           params.at(i) = insertReg(params.at(i), regval);
         } else if (params.at(i).find("s") != std::string::npos) {
-          regstr = extractreg(params.at(i));
+          regstr = a.extractreg(params.at(i));
           try {
             regval = stoi(regstr);
           } catch(const std::exception& e) {

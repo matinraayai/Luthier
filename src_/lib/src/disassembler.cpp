@@ -146,7 +146,9 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename) {
     return;
   }
 }
-void Disassembler::Disassemble(std::vector<unsigned char> buf) {
+void Disassembler::Disassemble(char *kernel, uint64_t kernelsize) {
+  auto buf = charToByteArray(kernel, kernelsize);
+
   uint64_t pc = 0;
   while (!buf.empty()) {
     std::unique_ptr<Inst> inst = decode(buf);
