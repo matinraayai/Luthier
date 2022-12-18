@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iostream>
 #include <sstream>
+#include "initialize.h"
 #include "inst.h"
 #include "operand.h"
 #include "encodetable.h"
@@ -18,6 +19,7 @@ public:
     std::string extractreg(std::string reg);
 
 private:
+    void initEncodeTable();
     void getInstData(Inst* inst, std::string inststr);
 
     uint32_t getCodeByOperand(Operand op);

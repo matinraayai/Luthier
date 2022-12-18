@@ -9,6 +9,11 @@
 #include "elf.hpp"
 #include "instprinter.h"
 
+struct DecodeTable
+{
+	std::map<Opcode, InstType> insts;
+};
+
 class Disassembler
 {
 public:

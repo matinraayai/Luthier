@@ -5,10 +5,8 @@
 #include <memory>
 #include <string>
 
-extern std::map<FormatType, Format> FormatTable;
 extern std::map<std::string, InstType> EncodeTable;
 
-void initFormatTable();
 void initEncodeTable();
 
 #endif

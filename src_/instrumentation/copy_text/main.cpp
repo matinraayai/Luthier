@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
   
   instnode *instrukernel = new instnode;
   
-  // Assembler a;
+  Assembler a;
   Disassembler d(prgmelf);
 
   d.Disassemble(oldkernelbytes);

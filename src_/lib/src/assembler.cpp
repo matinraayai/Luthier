@@ -3,14 +3,13 @@
 #include <cstring>
 #include <string>
 #include <vector>
-#include "inst.h"
-#include "operand.h"
-#include "encodetable.h"
 #include "bitops.h"
 #include "assembler.h"
 
 Assembler::Assembler()
 {
+    initFormatTable();
+    initRegs();
     initEncodeTable();
 }
 

@@ -10,9 +10,5 @@ void initFormatTable();
 void initRegs();
 Reg VReg(int index);
 Reg SReg(int index);
-struct DecodeTable
-{
-	std::map<Opcode, InstType> insts;
-};
 
 #endif
