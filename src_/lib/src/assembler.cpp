@@ -31,6 +31,8 @@ std::vector<unsigned char> Assembler::Assemble(std::string instruction) {
   case SOP2:
     assembly = assembleSOP2(inst);
     break;
+  case SOPP:
+    break;
   default:
     break;
   }
@@ -72,12 +74,25 @@ std::vector<std::string> Assembler::getInstParams(std::string inststr) {
   return params;
 }
 
-uint32_t Assembler::getCodeByOperand(Operand op) {
-  if (op.operandType == RegOperand) {
-    return uint32_t(op.code);
-  } else if (op.operandType == IntOperand) {
-    return uint32_t(op.code);
+std::string Assembler::extractreg(std::string reg) {
+  if (reg.find("v") != std::string::npos) {
+    reg.erase(reg.find("v"), 1);
+  } else if (reg.find("s") != std::string::npos) {
+    reg.erase(reg.find("s"), 1);
   }
+
+  if (reg.find("[") != std::string::npos) {
+    reg.erase(reg.find("["), 1);
+    reg.erase(reg.find(":"), reg.length());
+  }
+
+  if (reg.find(",") != std::string::npos) {
+    reg.erase(reg.find(","), 1);
+  }
+  if (reg.find(" ") != std::string::npos) {
+    reg.erase(reg.find(" "), 1);
+  }
+  return reg;
 }
 
 std::string Assembler::extractreg(std::string reg) {
@@ -221,5 +236,17 @@ std::vector<uint32_t> Assembler::assembleSOP2(Inst *inst) {
   newasm.push_back(instcode);
   newasm.push_back(imm);
 
+  return newasm;
+}
+
+std::vector<uint32_t> Assembler::assembleSOPP(Inst *inst) {
+  std::vector<uint32_t> newasm;
+  std::string iname = inst->instType.instName;
+
+  if (iname == "s_nop") {
+    newasm.push_back(0xbf800000);
+  } else if (iname == "s_endpgm") {
+    newasm.push_back(0xbf810000);
+  }
   return newasm;
 }
