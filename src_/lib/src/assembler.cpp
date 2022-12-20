@@ -95,20 +95,11 @@ std::string Assembler::extractreg(std::string reg) {
   return reg;
 }
 
-std::string Assembler::extractreg(std::string reg) {
-  if (reg.find("v") != std::string::npos) {
-    reg.erase(reg.find("v"), 1);
-  } else if (reg.find("s") != std::string::npos) {
-    reg.erase(reg.find("s"), 1);
-  }
-
-  if (reg.find("[") != std::string::npos) {
-    reg.erase(reg.find("["), 1);
-    reg.erase(reg.find(":"), reg.length());
-    return reg;
-  } else {
-    reg.erase(1, reg.length());
-    return reg;
+uint32_t Assembler::getCodeByOperand(Operand op) {
+  if (op.operandType == RegOperand) {
+    return uint32_t(op.code);
+  } else if (op.operandType == IntOperand) {
+    return uint32_t(op.code);
   }
 }
 
