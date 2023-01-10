@@ -116,15 +116,22 @@ struct Inst
 	bool Src2Neg;
 };
 
-struct instnode{
-  instnode *prev;
-  instnode *next;
+struct instnode
+{
+	instnode *prev;
+	instnode *next;
 
-  std::string instStr;
-  std::vector<unsigned char> bytes;
-
-  int byteSize;
-  uint64_t pc;
+	// std::string instStr;
+	std::vector<unsigned char> bytes;
+	
+	Format format;
+	InstType instType;
+	int byteSize;
+	uint64_t pc;
+	Operand src0;
+	Operand src1;
+	Operand src2;
+	Operand dst;
 };
 
 #endif

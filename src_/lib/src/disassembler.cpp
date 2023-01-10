@@ -201,13 +201,19 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf, instnode *head,
 
     currInst->prev = prevInst;
     currInst->next = new instnode;
-    currInst->instStr = printer.print(inst.get());
+    // currInst->instStr = printer.print(inst.get());
 
     std::vector<unsigned char> currBytes(buf.begin(),
                                          buf.begin() + inst->byteSize);
-    currInst->bytes = currBytes;
+    currInst->bytes    = currBytes;
+    currInst->format   = inst->format;
+    currInst->instType = inst->instType;
     currInst->byteSize = inst->byteSize;
-    currInst->pc = pc;
+    currInst->pc   = pc;
+    currInst->src0 = inst->src0;
+    currInst->src1 = inst->src1;
+    currInst->src2 = inst->src2;
+    currInst->dst  = inst->dst;
 
     prevInst = currInst;
     currInst = currInst->next;
