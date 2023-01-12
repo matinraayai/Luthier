@@ -1,4 +1,5 @@
 add_subdirectory(copy_text)
+add_subdirectory(mod_regidx)
 
 add_executable(instru main.cpp)
 
