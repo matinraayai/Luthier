@@ -16,7 +16,7 @@ std::vector<unsigned char> Assembler::Assemble(std::string instruction) {
   Inst *inst = new Inst;
   std::vector<uint32_t> assembly;
 
-  getInstData(inst, instruction);
+  getInstData(instruction, inst);
 
   switch (inst->instType.format.formatType) {
   case SOP1:
@@ -40,7 +40,35 @@ std::vector<unsigned char> Assembler::Assemble(std::string instruction) {
   return instcodeToByteArray(assembly);
 }
 
-void Assembler::getInstData(Inst *inst, std::string inststr) {
+void Assembler::Assemble(std::string inststr, std::ostream &o) {
+  std::vector<std::string> params = getInstParams(inststr);
+  Inst *i = new Inst;
+
+  std::string iname = params.at(0);
+  auto index = iname.find("_e32");
+  if (index != std::string::npos) {
+    iname.erase(index, index + 3);
+  }
+
+  i->instType = EncodeTable[iname];
+  switch (i->instType.format.formatType)
+  {
+  // case SOP1:
+    // break;
+  // case VOP1:
+    // break;
+  // case SMEM:
+    // break;
+  case SOP2:
+    break;
+  default:
+    o << "Cannot assemble instruction of type "
+      << i->instType.format.formatName << std::endl;
+    break;
+  }
+}
+
+void Assembler::getInstData(std::string inststr, Inst *inst) {
   std::vector<std::string> params = getInstParams(inststr);
 
   std::string iname = params.at(0);
@@ -74,7 +102,7 @@ std::vector<std::string> Assembler::getInstParams(std::string inststr) {
   return params;
 }
 
-std::string Assembler::extractreg(std::string reg) {
+std::string Assembler::extractGPRstr(std::string reg) {
   if (reg.find("v") != std::string::npos) {
     reg.erase(reg.find("v"), 1);
   } else if (reg.find("s") != std::string::npos) {
@@ -95,6 +123,32 @@ std::string Assembler::extractreg(std::string reg) {
   return reg;
 }
 
+int Assembler::extractGPRbyte(std::string reg) {
+  int regval;
+
+  if (reg.find("v") != std::string::npos) {
+    reg.erase(reg.find("v"), 1);
+  } else if (reg.find("s") != std::string::npos) {
+    reg.erase(reg.find("s"), 1);
+  }
+
+  if (reg.find("[") != std::string::npos) {
+    reg.erase(reg.find("["), 1);
+    reg.erase(reg.find(":"), reg.length());
+  }
+
+  if (reg.find(",") != std::string::npos) {
+    reg.erase(reg.find(","), 1);
+  }
+  if (reg.find(" ") != std::string::npos) {
+    reg.erase(reg.find(" "), 1);
+  }
+  
+  regval = stoi(reg);
+
+  return regval;
+}
+
 uint32_t Assembler::getCodeByOperand(Operand op) {
   if (op.operandType == RegOperand) {
     return uint32_t(op.code);
@@ -110,7 +164,7 @@ Operand Assembler::getOperandInfo(std::string opstring) {
 
   if (opstring.find("v") != std::string::npos ||
       opstring.find("s") != std::string::npos) {
-    opstring = extractreg(opstring);
+    opstring = extractGPRstr(opstring);
     opstream << opstring;
     opstream >> operandcode;
 
@@ -240,4 +294,31 @@ std::vector<uint32_t> Assembler::assembleSOPP(Inst *inst) {
     newasm.push_back(0xbf810000);
   }
   return newasm;
+}
+
+uint32_t Assembler::assembleDST(Operand op, FormatType type) {
+  switch (type) {
+  case SOP2:
+    return op.code << 16;
+  default:
+    return 0;
+  }
+}
+
+uint32_t Assembler::assembleSRC0(Operand op, FormatType type) {
+  switch (type)
+  {
+  case VOP1:
+    switch (op.operandType) {
+      case RegOperand:
+        
+      default:
+        return 0;
+    }
+    break;
+  case SOP2:
+    return op.code;
+  default:
+    return 0;
+  }
 }

@@ -14,13 +14,15 @@ class Assembler
 public:
     Assembler();
     std::vector<unsigned char> Assemble(std::string instruction);
-    
+    void Assemble(std::string inststr, std::ostream &o);
+
     std::vector<std::string> getInstParams(std::string inststr);
-    std::string extractreg(std::string reg);
+    std::string extractGPRstr(std::string reg);
+    int extractGPRbyte(std::string reg);
 
 private:
     void initEncodeTable();
-    void getInstData(Inst* inst, std::string inststr);
+    void  getInstData(std::string inststr, Inst* inst);
 
     uint32_t getCodeByOperand(Operand op);
     Operand getOperandInfo(std::string opstring);
@@ -30,6 +32,11 @@ private:
     std::vector<uint32_t> assembleSMEM(Inst *inst);
     std::vector<uint32_t> assembleSOP2(Inst *inst);
     std::vector<uint32_t> assembleSOPP(Inst *inst);
+
+    uint32_t assembleDST(Operand op, FormatType type);
+    uint32_t assembleSRC0(Operand op, FormatType type);
+    uint32_t assembleSRC1(Operand op, FormatType type);
+    uint32_t assembleSRC2(Operand op, FormatType type);
 };
 
 

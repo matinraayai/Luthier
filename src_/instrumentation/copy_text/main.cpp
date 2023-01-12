@@ -52,21 +52,21 @@ int main(int argc, char **argv) {
 
   std::cout << "---------------------------------------" << std::endl;
 
-  char *newkernel = new char[prgmsize + instrusize];
-  std::memcpy(newkernel, prgmtexsec->Blob(), prgmsize);
-  std::memcpy(newkernel + prgmsize, instrutexsec->Blob(), instrusize);
+  // char *newkernel = new char[prgmsize + instrusize];
+  // std::memcpy(newkernel, prgmtexsec->Blob(), prgmsize);
+  // std::memcpy(newkernel + prgmsize, instrutexsec->Blob(), instrusize);
 
-  std::cout << "---------------------------------------" << std::endl;
+  // std::cout << "---------------------------------------" << std::endl;
 
   auto oldkernelbytes = charToByteArray(prgmtexsec->Blob(), prgmsize);
-  auto newkernelbytes = charToByteArray(newkernel, prgmsize + instrusize);
+  // auto newkernelbytes = charToByteArray(newkernel, prgmsize + instrusize);
 
   instnode *instrukernel = new instnode;
-  int sregmax, vregmax;
+  // int sregmax, vregmax;
 
-  d.getMaxRegIdx(prgmtexsec->Blob(), prgmsize, &sregmax, &vregmax);
+  // d.getMaxRegIdx(prgmtexsec->Blob(), prgmsize, &sregmax, &vregmax);
 
-  d.Disassemble(newkernelbytes, instrukernel, prgmtexsec->offset);
+  // d.Disassemble(newkernelbytes, instrukernel, prgmtexsec->offset);
 
   std::cout << "---------------------------------------" << std::endl;
 
@@ -74,7 +74,9 @@ int main(int argc, char **argv) {
 
   std::cout << "---------------------------------------" << std::endl;
 
-  offsetInstruRegs(a, instrukernel, prgmsize + prgmoff, sregmax, vregmax);
+  // offsetInstruRegs(a, instrukernel, prgmsize + prgmoff, sregmax, vregmax);
+  
+  d.Disassemble(oldkernelbytes, instrukernel, prgmtexsec->offset);
   printInstList(instrukernel);
 
   return 0;
@@ -109,7 +111,7 @@ void printInstList(instnode *head) {
   instnode *curr = head;
 
   while (curr->next != NULL) {
-    instStr = curr->instStr;
+    instStr = curr->instType.instName;
     std::cout << "\t" << instStr;
     for (int i = instStr.size(); i < 59; i++) {
       std::cout << " ";
@@ -128,7 +130,7 @@ void printInstList(instnode *head) {
     curr = curr->next;
   }
 }
-
+/*
 std::string insertReg(std::string reg, int regval) {
   std::string newval;
   std::stringstream stream;
@@ -246,3 +248,4 @@ void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax,
     curr = curr->next;
   }
 }
+*/
