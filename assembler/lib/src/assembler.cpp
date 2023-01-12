@@ -111,6 +111,7 @@ std::string Assembler::extractreg(std::string reg)
     }
     else
     {
+        reg.erase(1, reg.length());
         return reg;
     }
 }

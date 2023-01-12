@@ -146,6 +146,22 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename) {
     return;
   }
 }
+void Disassembler::getMaxRegIdx(char *kernel, uint64_t kernelsize, int *sRegMax,
+                                int *vRegMax) {
+  auto buf = charToByteArray(kernel, kernelsize);
+
+  uint64_t pc = 0;
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+
+    pc += uint64_t(inst->byteSize);
+  }
+  *sRegMax = maxNumSReg();
+  *vRegMax = maxNumVReg();
+}
 void Disassembler::Disassemble(std::vector<unsigned char> buf,
                                std::ostream &o) {
   uint64_t pc = 0;
@@ -157,8 +173,7 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
     for (int i = instStr.size(); i < 59; i++) {
       o << " ";
     }
-    o << std::hex << "//" << std::setw(12) << std::setfill('0') << pc
-      << ": ";
+    o << std::hex << "//" << std::setw(12) << std::setfill('0') << pc << ": ";
     o << std::setw(8) << std::hex << convertLE(buf);
     if (inst->byteSize == 8) {
       std::vector<unsigned char> sfb(buf.begin() + 4, buf.begin() + 8);
@@ -173,8 +188,8 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
   }
 }
 // overloaded Disassemble edits a linked list
-void Disassembler::Disassemble(std::vector<unsigned char> buf,
-                               instnode *head, uint64_t off) {
+void Disassembler::Disassemble(std::vector<unsigned char> buf, instnode *head,
+                               uint64_t off) {
   instnode *prevInst = NULL;
   instnode *currInst = head;
   uint64_t pc = off;
@@ -188,12 +203,12 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
     currInst->next = new instnode;
     currInst->instStr = printer.print(inst.get());
 
-    std::vector<unsigned char> currBytes(
-      buf.begin(), buf.begin() + inst->byteSize);
-    currInst->bytes = currBytes;    
+    std::vector<unsigned char> currBytes(buf.begin(),
+                                         buf.begin() + inst->byteSize);
+    currInst->bytes = currBytes;
     currInst->byteSize = inst->byteSize;
     currInst->pc = pc;
-    
+
     prevInst = currInst;
     currInst = currInst->next;
 
@@ -798,7 +813,7 @@ void Disassembler::decodeFLAT(Inst *inst, std::vector<unsigned char> buf) {
   inst->addr = newVRegOperand(addrbits, addrbits, 2);
   bits = (int)extractBitsFromU32(bytesHi, 24, 31);
   inst->dst = newVRegOperand(bits, bits, 0);
-  
+
   bits = (int)extractBitsFromU32(bytesHi, 8, 15);
   inst->data = newVRegOperand(bits, bits, 0);
   bits = (int)extractBitsFromU32(bytesHi, 16, 22);
@@ -865,7 +880,7 @@ void Disassembler::decodeDS(Inst *inst, std::vector<unsigned char> buf) {
 
   if (inst->instType.DSTWidth > 0) {
     auto dstBits = (int)extractBitsFromU32(bytesHi, 24, 31);
-    inst->dst = newVRegOperand(dstBits, dstBits, 1);      
+    inst->dst = newVRegOperand(dstBits, dstBits, 1);
     inst->dst = setRegCountFromWidth(inst->dst, inst->instType.DSTWidth);
   }
 }
@@ -902,11 +917,9 @@ void Disassembler::combineDSOffsets(Inst *inst) {
   }
 }
 
-Operand Disassembler::setRegCountFromWidth(Operand o, int width)
-{
+Operand Disassembler::setRegCountFromWidth(Operand o, int width) {
   // printf("WIDTH: val - %d\n", width);
-  switch (width)
-  {
+  switch (width) {
   case 64:
     o.regCount = 2;
     return o;
