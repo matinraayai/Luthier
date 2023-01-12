@@ -5,6 +5,32 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "assembler",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/src_/build/test/test_assembler/asm_test",
+			"args": [
+				"test_input.s"
+			],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/src_/test/test_assembler/",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "sibir",
 			"type": "cppdbg",
 			"request": "launch",
