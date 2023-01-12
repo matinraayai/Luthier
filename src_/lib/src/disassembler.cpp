@@ -78,6 +78,29 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
     pc += uint64_t(inst->byteSize);
   }
 }
+
+std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
+  std::vector<std::unique_ptr<Inst>> instList;
+  auto text_section = file->GetSectionByName(".text");
+  if (!text_section) {
+    throw std::runtime_error("text section is not found");
+  }
+  std::vector<unsigned char> buf(text_section->Blob(),
+                                 text_section->Blob() + text_section->size);
+  auto pc = text_section->offset;
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+    instList.push_back(std::move(inst));
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+
+    if (inst->instType.instName == "s_setpc_b64") {
+      break;
+    }
+  }
+}
+
 void Disassembler::Disassemble(elfio::File *file, std::string filename) {
   std::string line;
   std::fstream myfile(filename, std::ios::in);
