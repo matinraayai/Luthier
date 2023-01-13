@@ -169,11 +169,15 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename) {
     return;
   }
 }
-void Disassembler::getMaxRegIdx(char *kernel, uint64_t kernelsize, int *sRegMax,
-                                int *vRegMax) {
-  auto buf = charToByteArray(kernel, kernelsize);
+void Disassembler::getMaxRegIdx(elfio::File *file, int *sRegMax, int *vRegMax) {
+  auto text_section = file->GetSectionByName(".text");
+  if (!text_section) {
+    throw std::runtime_error("text section is not found");
+  }
+  std::vector<unsigned char> buf(text_section->Blob(),
+                                 text_section->Blob() + text_section->size);
+  auto pc = text_section->offset;
 
-  uint64_t pc = 0;
   while (!buf.empty()) {
     std::unique_ptr<Inst> inst = decode(buf);
     inst->PC = pc;
@@ -184,6 +188,8 @@ void Disassembler::getMaxRegIdx(char *kernel, uint64_t kernelsize, int *sRegMax,
   }
   *sRegMax = maxNumSReg();
   *vRegMax = maxNumVReg();
+  sRegNum.clear();
+  vRegNum.clear();
 }
 void Disassembler::Disassemble(std::vector<unsigned char> buf,
                                std::ostream &o) {

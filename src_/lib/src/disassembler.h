@@ -25,8 +25,7 @@ public:
   Disassembler();
   int maxNumSReg();
   int maxNumVReg();
-  void getMaxRegIdx(char *kernel, uint64_t kernelsize, int *sRegMax,
-                    int *vRegMax);
+  void getMaxRegIdx(elfio::File *file, int *sRegMax, int *vRegMax);
   std::vector<std::unique_ptr<Inst>> GetInsts(elfio::File *file);
 
 private:
