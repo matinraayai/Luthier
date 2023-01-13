@@ -27,6 +27,14 @@ int main(int argc, char **argv) {
   std::cout << "The maximum number of sReg is " << sRegMax << "\n";
   std::cout << "The maximum number of vReg is " << vRegMax << "\n";
 
+  elfio::File elfFileI;
+  char *blob1 = getELF(iFilename);
+  elfFileI = elfFileI.FromMem(blob1);
+
+  Disassembler d1(&elfFileI);
+  std::vector<std::unique_ptr<Inst>> insts = d1.GetInsts(&elfFileI);
+  std::cout << insts.size() << "\n";
+
   return 0;
 }
 char *getELF(std::string filename) {

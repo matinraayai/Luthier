@@ -5,16 +5,16 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "cpytex",
+			"name": "modidx",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/src_/build/instrumentation/copy_text/cpytex",
+			"program": "${workspaceFolder}/src_/build/instrumentation/mod_regidx/modidx",
 			"args": [
-				"../../../../vectoradd_kernel.exe",
-				"../../../instrumentation/instCount_device/out"
+				"vectoradd_kernel.exe",
+				"out"
 			],
 			"stopAtEntry": false,
-			"cwd": "${workspaceFolder}/src_/build/instrumentation/copy_text",
+			"cwd": "${workspaceFolder}/src_/build/instrumentation/mod_regidx",
 			"environment": [],
 			"externalConsole": false,
 			"MIMode": "gdb",
