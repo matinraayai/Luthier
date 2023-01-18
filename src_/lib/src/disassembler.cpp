@@ -92,6 +92,11 @@ std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
   while (!buf.empty() && !isLast) {
     std::unique_ptr<Inst> inst = decode(buf);
     inst->PC = pc;
+    for (int i = 0; i < inst->byteSize; i++) {
+      inst->bytes.push_back(buf.at(i));
+    }
+    std::cout << std::setw(16) << std::setbase(16) << std::setfill('0')
+              << convertLE64(inst->bytes) << "\n";
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);
 
