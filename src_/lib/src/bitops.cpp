@@ -12,20 +12,23 @@ uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude) {
   return extracted;
 }
 
+uint32_t zerooutBitsFromU32(uint32_t num, int loInclude, int hiInclude) {
+  uint32_t mask, r;
+  mask = ((1 << (hiInclude - loInclude + 1)) - 1) << loInclude;
+  r = num & ~mask;
+  return r;
+}
+
 uint32_t convertLE(std::vector<unsigned char> b) {
   auto r = uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 |
            uint32_t(b[3]) << 24;
   return r;
 }
 
-uint64_t convertLE64(std::vector<unsigned char> b) {
-  uint64_t low = (uint64_t)convertLE(b);
-  if (b.size() == 4) {
-    return low;
-  }
-  uint64_t high = uint32_t(b[4]) | uint32_t(b[5]) << 8 | uint32_t(b[6]) << 16 |
-                  uint32_t(b[7]) << 24;
-  uint64_t r = low << 32 | high;
+uint32_t convertLEsec(std::vector<unsigned char> b) {
+  auto r = uint32_t(b[4]) | uint32_t(b[5]) << 8 | uint32_t(b[6]) << 16 |
+           uint32_t(b[7]) << 24;
+  return r;
 }
 
 std::vector<unsigned char> instcodeToByteArray(std::vector<uint32_t> inst) {

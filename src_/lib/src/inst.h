@@ -111,6 +111,8 @@ struct Inst {
   bool Src2Neg;
 
   std::vector<unsigned char> bytes;
+  uint32_t first;
+  uint32_t second;
 };
 
 struct instnode {

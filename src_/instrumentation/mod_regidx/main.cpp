@@ -32,6 +32,7 @@ int main(int argc, char **argv) {
   elfFileI = elfFileI.FromMem(blob1);
 
   Disassembler d1(&elfFileI);
+  d1.SetModVal(vRegMax, sRegMax);
   std::vector<std::unique_ptr<Inst>> insts = d1.GetInsts(&elfFileI);
   std::cout << insts.size() << "\n";
 

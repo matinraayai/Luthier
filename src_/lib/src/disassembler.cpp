@@ -23,6 +23,10 @@ Disassembler::Disassembler() {
   this->printer = printer;
 }
 
+void Disassembler::SetModVal(int v_offset, int s_offset) {
+  modifier.setOffset(v_offset, s_offset);
+}
+
 void Disassembler::addInstType(InstType info) {
   if (decodeTables.find(info.format.formatType) == decodeTables.end()) {
     decodeTables[info.format.formatType] =
@@ -95,8 +99,16 @@ std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
     for (int i = 0; i < inst->byteSize; i++) {
       inst->bytes.push_back(buf.at(i));
     }
+    inst->first = convertLE(inst->bytes);
+    if (inst->byteSize == 8) {
+      inst->second = convertLEsec(inst->bytes);
+    }
     std::cout << std::setw(16) << std::setbase(16) << std::setfill('0')
-              << convertLE64(inst->bytes) << "\n";
+              << inst->first << "\n";
+    modifier.vop1Mod(inst.get());
+    std::cout << std::setw(16) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\n";
+
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);
 
