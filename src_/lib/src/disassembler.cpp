@@ -105,7 +105,7 @@ std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
     }
     std::cout << std::setw(16) << std::setbase(16) << std::setfill('0')
               << inst->first << "\n";
-    modifier.vop1Mod(inst.get());
+    modifier.modify(inst.get());
     std::cout << std::setw(16) << std::setbase(16) << std::setfill('0')
               << inst->first << "\n";
 
