@@ -46,22 +46,10 @@ int main(int argc, char *argv[])
             if(i != std::string::npos)
             {
                 instr = line.substr(0, i);
-                std::cout << line << std::endl;
-
-                // auto instbytes = assembler.Assemble(instr);
-                
-                // std::cout<<"Assembler Output:\n";
-                // for (int i = instbytes.size()-1; i >= 0; i--)
-                //     std::cout << std::hex << int(instbytes.at(i))<<" ";
-                // std::cout << std::endl;
-
-                std::cout << "Extract Reg Output:\n";
-                auto instparams = assembler.getInstParams(instr);
-                for (int i = 1; i < instparams.size(); i++) {
-                    std::cout << std::hex << uint32_t(assembler.extractGPRbyte(instparams.at(i))) << " ";
-                }
-                std::cout << std::endl << std::endl;
-                // printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
+                std::cout << "From input file:\t" << line << std::endl
+			                    << "Output from asm:\t";
+		            assembler.Assemble(instr, std::cout);
+                std::cout << std::endl;
             }
         }
     }

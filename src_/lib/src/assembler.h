@@ -13,17 +13,21 @@ class Assembler
 {
 public:
     Assembler();
-    std::vector<unsigned char> Assemble(std::string instruction);
     void Assemble(std::string inststr, std::ostream &o);
+    // void Assemble(std::vector<std::string> params, std::ostream &o);
 
-    std::vector<std::string> getInstParams(std::string inststr);
-    std::string extractGPRstr(std::string reg);
-    int extractGPRbyte(std::string reg);
+    void editDSTreg(instnode *inst, std::string reg);
+    void editSRC0reg(instnode *inst, std::string reg);
+    void editSRC1reg(instnode *inst, std::string reg);
+    void editSIMM(instnode *inst, short simm);
 
 private:
     void initEncodeTable();
     void  getInstData(std::string inststr, Inst* inst);
 
+    std::vector<std::string> getInstParams(std::string inststr);
+    std::string extractGPRstr(std::string reg);
+    uint32_t extractGPRbyte(std::string reg);
     uint32_t getCodeByOperand(Operand op);
     Operand getOperandInfo(std::string opstring);
 
@@ -32,11 +36,6 @@ private:
     std::vector<uint32_t> assembleSMEM(Inst *inst);
     std::vector<uint32_t> assembleSOP2(Inst *inst);
     std::vector<uint32_t> assembleSOPP(Inst *inst);
-
-    uint32_t assembleDST(Operand op, FormatType type);
-    uint32_t assembleSRC0(Operand op, FormatType type);
-    uint32_t assembleSRC1(Operand op, FormatType type);
-    uint32_t assembleSRC2(Operand op, FormatType type);
 };
 
 

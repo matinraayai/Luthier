@@ -24,7 +24,7 @@ void Assembler::initEncodeTable()
 
     // VOP1 instructions
     EncodeTable["v_mov_b32"] = {
-        "v_mov_b32", 1, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 32, 0, 0
+        "v_mov_b32", 1, FormatTable[VOP1], 0, ExeUnitVALU, 32, 32, 0, 0, 0
         };
         
     // SMEM instructions

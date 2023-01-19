@@ -1,5 +1,6 @@
 #include "assembler.h"
 #include "bitops.h"
+#include "operand.h"
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -12,36 +13,41 @@ Assembler::Assembler() {
   initEncodeTable();
 }
 
-std::vector<unsigned char> Assembler::Assemble(std::string instruction) {
+//std::vector<unsigned char> Assembler::Assemble(std::string instruction) {
+void Assembler::Assemble(std::string inststr, std::ostream &o) {
   Inst *inst = new Inst;
   std::vector<uint32_t> assembly;
 
-  getInstData(instruction, inst);
+  getInstData(inststr, inst);
 
   switch (inst->instType.format.formatType) {
-  case SOP1:
-    assembly = assembleSOP1(inst);
-    break;
-  case VOP1:
-    assembly = assembleVOP1(inst);
-    break;
-  case SMEM:
-    assembly = assembleSMEM(inst);
-    break;
-  case SOP2:
-    assembly = assembleSOP2(inst);
-    break;
-  case SOPP:
-    break;
-  default:
-    break;
+    case SOP1:
+      assembly = assembleSOP1(inst);
+      break;
+    case SMEM:
+      assembly = assembleSMEM(inst);
+      break;
+    case SOP2:
+      assembly = assembleSOP2(inst);
+      break;
+    case SOPP:
+      break;
+    case VOP1:
+      assembly = assembleVOP1(inst);
+      break;
+    default:
+      break;
   }
 
-  return instcodeToByteArray(assembly);
+  for (int i = 0; i < assembly.size(); i++) {
+    o << std::hex << assembly.at(i) << " ";
+  } o << std::endl;
+  // return instcodeToByteArray(assembly);
 }
 
-void Assembler::Assemble(std::string inststr, std::ostream &o) {
-  std::vector<std::string> params = getInstParams(inststr);
+/*
+void Assembler::Assemble(std::vector<std::string> params, std::ostream &o) {
+  std::vector<uint32_t> assembly;
   Inst *i = new Inst;
 
   std::string iname = params.at(0);
@@ -51,21 +57,134 @@ void Assembler::Assemble(std::string inststr, std::ostream &o) {
   }
 
   i->instType = EncodeTable[iname];
-  switch (i->instType.format.formatType)
-  {
-  // case SOP1:
-    // break;
-  // case VOP1:
-    // break;
-  // case SMEM:
-    // break;
-  case SOP2:
-    break;
-  default:
-    o << "Cannot assemble instruction of type "
-      << i->instType.format.formatName << std::endl;
-    break;
+  // switch (i->instType.format.formatType) {
+  //   case SOP1:
+  //     o << "SOP1" << std::endl;
+  //     assembly = assembleSOP1(inst);
+  //     break;
+
+  //   case VOP1:
+  //     o << "VOP1" << std::endl;
+  //     assembly = assembleVOP1(inst);
+  //     break;
+
+  //   case SMEM:
+  //     o << "SMEM" << std::endl;
+  //     assembly = assembleSMEM(inst);
+  //     break;
+
+  //   case SOP2:
+  //     o << "SOP2" << std::endl;
+  //     assembly = assembleSOP2(inst);
+  //     break;
+
+  //   default:
+  //     o << "Cannot assemble instruction of type "
+  //       << i->instType.format.formatName << std::endl;
+  //     break;
+  // }
+}
+*/
+
+
+void Assembler::editDSTreg(instnode *inst, std::string reg) {
+  uint32_t code;
+  uint32_t mask;
+  uint32_t newReg;
+  std::vector<uint32_t> assembly;
+  
+  assembly.push_back(convertLE(inst->bytes));
+  code = extractGPRbyte(reg);
+  inst->dst.code = int(code);
+
+  if (inst->format.formatType <= SOP1) {
+    mask = 0xFF80FFFF;
+    newReg = code<<16; }
+  else if (inst->format.formatType >= VOP2 ||
+           inst->format.formatType <= VOP1) {
+    if (reg.at(0) == 'v') {
+      code += 256;
+    }
+    mask = 0xFE01FFFF;
+    newReg = code<<17;
   }
+
+  assembly.at(0) = assembly.at(0) & mask;
+  assembly.at(0) = assembly.at(0) | newReg;
+  inst->bytes = instcodeToByteArray(assembly);
+}
+
+void Assembler::editSRC0reg(instnode *inst, std::string reg) {
+  uint32_t code;
+  uint32_t mask;
+  uint32_t newReg;
+  std::vector<uint32_t> assembly;
+  
+  assembly.push_back(convertLE(inst->bytes));
+  code = extractGPRbyte(reg);
+  inst->src0.code = int(code);
+
+  if (inst->format.formatType <= SOP1) {
+    mask = 0xFFFFFF00;
+  }
+  else if (inst->format.formatType >= VOP2 ||
+           inst->format.formatType <= VOP1) {
+    mask = 0xFFFFFE00;
+  }
+
+  if (reg.at(0) == 'v') {
+    code += 256;
+  }
+  newReg = code;
+
+  assembly.at(0) = assembly.at(0) & mask;
+  assembly.at(0) = assembly.at(0) | newReg;
+  inst->bytes = instcodeToByteArray(assembly);
+}
+
+void Assembler::editSRC1reg(instnode *inst, std::string reg) {
+  uint32_t code;
+  uint32_t mask;
+  uint32_t newReg;
+  std::vector<uint32_t> assembly;
+  
+  assembly.push_back(convertLE(inst->bytes));
+  code = extractGPRbyte(reg);
+  inst->src1.code = int(code);
+
+  if (inst->format.formatType <= SOP1) {
+    mask = 0xFFFF00FF;
+    newReg = code<<8;
+  }
+  else if (inst->format.formatType >= VOP2 ||
+           inst->format.formatType <= VOP1) {
+    mask = 0xFFFE01FF;
+    newReg = code<<9;
+  }
+
+  assembly.at(0) = assembly.at(0) & mask;
+  assembly.at(0) = assembly.at(0) | newReg;
+  inst->bytes = instcodeToByteArray(assembly);
+}
+
+
+void Assembler::editSIMM(instnode *inst, short simm) {
+  uint32_t code;
+  uint32_t mask = 0xFFFF0000;
+  std::vector<uint32_t> assembly;
+  
+  assembly.push_back(convertLE(inst->bytes));
+
+  code = uint32_t(simm);
+  inst->simm16.code = int(code);
+
+  assembly.at(0) = assembly.at(0) & mask;
+
+  mask = 0x0000FFFF;
+  code = code & mask;
+
+  assembly.at(0) = assembly.at(0) | code;
+  inst->bytes = instcodeToByteArray(assembly);
 }
 
 void Assembler::getInstData(std::string inststr, Inst *inst) {
@@ -78,14 +197,20 @@ void Assembler::getInstData(std::string inststr, Inst *inst) {
   }
 
   inst->instType = EncodeTable[iname];
-  inst->dst = getOperandInfo(params.at(1));
+  uint16_t op_val;
+
+  if (inst->instType.DSTWidth != 0)
+    inst->dst = getOperandInfo(params.at(1));
 
   if (inst->instType.SRC0Width != 0)
     inst->src0 = getOperandInfo(params.at(2));
+
   if (inst->instType.SRC1Width != 0)
     inst->src1 = getOperandInfo(params.at(3));
+
   if (inst->instType.SRC2Width != 0)
     inst->src2 = getOperandInfo(params.at(4));
+
 }
 
 std::vector<std::string> Assembler::getInstParams(std::string inststr) {
@@ -123,11 +248,15 @@ std::string Assembler::extractGPRstr(std::string reg) {
   return reg;
 }
 
-int Assembler::extractGPRbyte(std::string reg) {
+uint32_t Assembler::extractGPRbyte(std::string reg) {
   int regval;
 
   if (reg.find("v") != std::string::npos) {
+    if (reg == "vmnct") {
+      return 0;
+    } else {
     reg.erase(reg.find("v"), 1);
+    }
   } else if (reg.find("s") != std::string::npos) {
     reg.erase(reg.find("s"), 1);
   }
@@ -146,7 +275,7 @@ int Assembler::extractGPRbyte(std::string reg) {
   
   regval = stoi(reg);
 
-  return regval;
+  return uint32_t(regval);
 }
 
 uint32_t Assembler::getCodeByOperand(Operand op) {
@@ -296,29 +425,4 @@ std::vector<uint32_t> Assembler::assembleSOPP(Inst *inst) {
   return newasm;
 }
 
-uint32_t Assembler::assembleDST(Operand op, FormatType type) {
-  switch (type) {
-  case SOP2:
-    return op.code << 16;
-  default:
-    return 0;
-  }
-}
 
-uint32_t Assembler::assembleSRC0(Operand op, FormatType type) {
-  switch (type)
-  {
-  case VOP1:
-    switch (op.operandType) {
-      case RegOperand:
-        
-      default:
-        return 0;
-    }
-    break;
-  case SOP2:
-    return op.code;
-  default:
-    return 0;
-  }
-}

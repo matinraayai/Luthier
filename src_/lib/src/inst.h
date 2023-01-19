@@ -132,6 +132,7 @@ struct instnode
 	Operand src1;
 	Operand src2;
 	Operand dst;
+	Operand simm16;
 };
 
 #endif
