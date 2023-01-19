@@ -1,0 +1,9 @@
+
+String dump of section '.strtab':
+  [     1]  incr_counter
+  [     e]  counter
+  [    16]  kernel
+  [    1d]  kernel.kd
+  [    27]  counter.managed
+  [    37]  _DYNAMIC
+

@@ -17,11 +17,10 @@
 
 std::vector<hipModule_t> *
 call_original_hip_register_fat_binary(const void *data);
-elfio::Note getNoteSection(elfio::File *elf);
-char *getNoteSection2(elfio::File *elf);
 void editNoteSectionData(elfio::File *elf);
 void editTextSectionData();
 void editShr(elfio::File *elf);
+void printSymbolTable(elfio::File *elf);
 
 uint64_t processBuddle(char *data) {
   __ClangOffloadBundleHeader *header =
@@ -100,9 +99,10 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // elfio::Note noteSec = getNoteSection();
 
-  editNoteSectionData(&elfFile);
+  // editNoteSectionData(&elfFile);
   // editTextSectionData(&elfFile);
   // editShr(&elfFile);
+  printSymbolTable(&elfFile);
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
   // pass new wrapper into original register fat binary func:
@@ -137,30 +137,6 @@ call_original_hip_register_fat_binary(const void *data) {
   return ret;
 }
 
-// This function returns the note section of an elf file as an elfio::Note obj
-// Uses the same algorithm that getKernelArgumentMetaData in Rhipo uses.
-// By passing elfio::Note.desc into nlohmann::json::from_msgpack(), you can
-// get the note section as a JSON file. elfio::Note.desc is just a big string.
-elfio::Note getNoteSection(elfio::File *elf) {
-  printf("Here in %s\n", __FUNCTION__);
-
-  auto note_section = elf->GetSectionByType("SHT_NOTE");
-  if (!note_section) {
-    panic("note section is not found");
-  }
-
-  char *blog = note_section->Blob();
-  int offset = 0;
-  while (offset < note_section->size) {
-    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
-    offset += note->TotalSize();
-    if (note->name.rfind("AMDGPU") == 0) {
-      printf("Offset %d\n", offset);
-      printf("Total Size %d\n", note->TotalSize());
-      return elfio::Note(elf, note->Blob());
-    }
-  }
-}
 void editTextSectionData(elfio::File *elf) {
   auto text_section = elf->GetSectionByName(".text");
   if (!text_section) {
@@ -226,3 +202,8 @@ void editNoteSectionData(elfio::File *elf) {
 //   char *shrEInstru = extractShrE();
 //   std::memcpy((char *)(shdr + 64 * header->e_shnum), shrEInstru, 64);
 // }
+
+void printSymbolTable(elfio::File *elf) {
+  elf->PrintSymbolsForSection(".text");
+  elf->PrintSymbolsForSection(".rodata");
+}

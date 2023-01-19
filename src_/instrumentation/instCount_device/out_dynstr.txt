@@ -1,0 +1,7 @@
+
+String dump of section '.dynstr':
+  [     1]  counter
+  [     9]  kernel
+  [    10]  kernel.kd
+  [    1a]  counter.managed
+

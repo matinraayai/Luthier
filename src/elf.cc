@@ -114,6 +114,14 @@ std::vector<Symbol *> File::GetSymbols() {
 }
 
 Elf64_Ehdr *File::GetHeader() { return header; }
+
+Elf64_Shdr *File::ExtractShr(int i) {
+  auto *shdr =
+      reinterpret_cast<Elf64_Shdr *>(this->Blob() + this->header->e_shoff);
+
+  Elf64_Shdr *shre = &shdr[i];
+  return shre;
+}
 Section::Section(File *file, Elf64_Shdr *header) : file(file), header(header) {}
 
 char *Section::Blob() {

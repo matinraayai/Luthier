@@ -23,6 +23,10 @@ Disassembler::Disassembler() {
   this->printer = printer;
 }
 
+void Disassembler::SetModVal(int v_offset, int s_offset) {
+  modifier.setOffset(v_offset, s_offset);
+}
+
 void Disassembler::addInstType(InstType info) {
   if (decodeTables.find(info.format.formatType) == decodeTables.end()) {
     decodeTables[info.format.formatType] =
@@ -78,6 +82,56 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
     pc += uint64_t(inst->byteSize);
   }
 }
+
+std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
+  std::vector<std::unique_ptr<Inst>> instList;
+  bool isLast = 0;
+  auto text_section = file->GetSectionByName(".text");
+  if (!text_section) {
+    throw std::runtime_error("text section is not found");
+  }
+  std::vector<unsigned char> buf(text_section->Blob(),
+                                 text_section->Blob() + text_section->size);
+  auto pc = text_section->offset;
+  while (!buf.empty() && !isLast) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+    for (int i = 0; i < inst->byteSize; i++) {
+      inst->bytes.push_back(buf.at(i));
+    }
+    inst->first = convertLE(inst->bytes);
+    if (inst->byteSize == 8) {
+      inst->second = convertLEsec(inst->bytes);
+    }
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\t";
+    if (inst->second != 0) {
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second << "\n";
+    } else {
+      std::cout << "\n";
+    }
+    modifier.modify(inst.get());
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\t";
+    if (inst->second != 0) {
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second << "\n";
+    } else {
+      std::cout << "\n";
+    }
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+
+    if (inst->instType.instName == "s_setpc_b64") {
+      isLast = 1;
+    }
+    instList.push_back(std::move(inst));
+  }
+  return instList;
+}
+
 void Disassembler::Disassemble(elfio::File *file, std::string filename) {
   std::string line;
   std::fstream myfile(filename, std::ios::in);
@@ -146,11 +200,15 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename) {
     return;
   }
 }
-void Disassembler::getMaxRegIdx(char *kernel, uint64_t kernelsize, int *sRegMax,
-                                int *vRegMax) {
-  auto buf = charToByteArray(kernel, kernelsize);
+void Disassembler::getMaxRegIdx(elfio::File *file, int *sRegMax, int *vRegMax) {
+  auto text_section = file->GetSectionByName(".text");
+  if (!text_section) {
+    throw std::runtime_error("text section is not found");
+  }
+  std::vector<unsigned char> buf(text_section->Blob(),
+                                 text_section->Blob() + text_section->size);
+  auto pc = text_section->offset;
 
-  uint64_t pc = 0;
   while (!buf.empty()) {
     std::unique_ptr<Inst> inst = decode(buf);
     inst->PC = pc;
@@ -161,6 +219,8 @@ void Disassembler::getMaxRegIdx(char *kernel, uint64_t kernelsize, int *sRegMax,
   }
   *sRegMax = maxNumSReg();
   *vRegMax = maxNumVReg();
+  sRegNum.clear();
+  vRegNum.clear();
 }
 void Disassembler::Disassemble(std::vector<unsigned char> buf,
                                std::ostream &o) {

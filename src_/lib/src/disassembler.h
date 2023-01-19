@@ -3,6 +3,7 @@
 #include "elf.hpp"
 #include "initialize.h"
 #include "inst.h"
+#include "instmodifier.h"
 #include "instprinter.h"
 #include <map>
 #include <memory>
@@ -25,8 +26,9 @@ public:
   Disassembler();
   int maxNumSReg();
   int maxNumVReg();
-  void getMaxRegIdx(char *kernel, uint64_t kernelsize, int *sRegMax,
-                    int *vRegMax);
+  void getMaxRegIdx(elfio::File *file, int *sRegMax, int *vRegMax);
+  std::vector<std::unique_ptr<Inst>> GetInsts(elfio::File *file);
+  void SetModVal(int v_offset, int s_offset);
 
 private:
   void initializeDecodeTable();
@@ -61,5 +63,6 @@ private:
   std::map<FormatType, std::unique_ptr<DecodeTable>> decodeTables;
   int nextInstID;
   InstPrinter printer;
+  InstModifier modifier;
 };
 #endif
