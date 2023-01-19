@@ -50,6 +50,8 @@ int main(int argc, char **argv) {
   std::vector<unsigned char> codeBytes = instcodeToByteArray(hwEncoding);
 
   std::cout << codeBytes.size() << "\n";
+  Disassembler d;
+  std::vector<std::unique_ptr<Inst>> instsT = d.GetTrampInsts(codeBytes);
   return 0;
 }
 char *getELF(std::string filename) {

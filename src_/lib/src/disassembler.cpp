@@ -167,6 +167,33 @@ Disassembler::GetInstruInsts(elfio::File *file) {
   return instList;
 }
 
+std::vector<std::unique_ptr<Inst>>
+Disassembler::GetTrampInsts(std::vector<unsigned char> buf) {
+  uint64_t pc = 0;
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+    for (int i = 0; i < inst->byteSize; i++) {
+      inst->bytes.push_back(buf.at(i));
+    }
+    inst->first = convertLE(inst->bytes);
+    if (inst->byteSize == 8) {
+      inst->second = convertLEsec(inst->bytes);
+    }
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\t";
+    if (inst->second != 0) {
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second << "\n";
+    } else {
+      std::cout << "\n";
+    }
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+  }
+}
+
 void Disassembler::Disassemble(elfio::File *file, std::string filename) {
   std::string line;
   std::fstream myfile(filename, std::ios::in);
