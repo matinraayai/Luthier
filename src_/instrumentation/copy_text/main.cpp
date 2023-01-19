@@ -45,39 +45,33 @@ int main(int argc, char **argv) {
   uint64_t instruoff = instrutexsec->offset;
   uint64_t instrusize = instrutexsec->size;
 
-  std::cout << "Program Offset:\t" << prgmoff << std::endl
-            << "Program Size:\t" << prgmsize << std::endl;
-  std::cout << "Instru Offset:\t" << instruoff << std::endl
-            << "Instru Size:\t" << instrusize << std::endl;
+  int sregmax, vregmax;
+  d.getMaxRegIdx(prgmtexsec->Blob(), prgmsize, &sregmax, &vregmax);
 
+  std::cout << "Program Offset:\t" << prgmoff    << std::endl
+            << "Program Size:\t"   << prgmsize   << std::endl;
+  std::cout << "Instru Offset:\t"  << instruoff  << std::endl
+            << "Instru Size:\t"    << instrusize << std::endl << std::endl;
+
+  std::cout << "Max S reg:\t" << sregmax << std::endl
+            << "Max V reg:\t" << vregmax << std::endl << std::endl;
   std::cout << "---------------------------------------" << std::endl;
 
-  // char *newkernel = new char[prgmsize + instrusize];
-  // std::memcpy(newkernel, prgmtexsec->Blob(), prgmsize);
-  // std::memcpy(newkernel + prgmsize, instrutexsec->Blob(), instrusize);
+  char *newkernel = new char[prgmsize + instrusize];
+  std::memcpy(newkernel, prgmtexsec->Blob(), prgmsize);
+  std::memcpy(newkernel + prgmsize, instrutexsec->Blob(), instrusize);
 
-  // std::cout << "---------------------------------------" << std::endl;
+  auto kernelbytes = charToByteArray(newkernel, prgmsize + instrusize);
 
-  auto oldkernelbytes = charToByteArray(prgmtexsec->Blob(), prgmsize);
-  // auto newkernelbytes = charToByteArray(newkernel, prgmsize + instrusize);
+  instnode *kernel = new instnode;
 
-  instnode *instrukernel = new instnode;
-  // int sregmax, vregmax;
-
-  // d.getMaxRegIdx(prgmtexsec->Blob(), prgmsize, &sregmax, &vregmax);
-
-  // d.Disassemble(newkernelbytes, instrukernel, prgmtexsec->offset);
-
-  std::cout << "---------------------------------------" << std::endl;
-
-  // printInstList(instrukernel);
+  d.Disassemble(kernelbytes, kernel, prgmoff);
+  // printInstList(kernel);
 
   std::cout << "---------------------------------------" << std::endl;
 
   // offsetInstruRegs(a, instrukernel, prgmsize + prgmoff, sregmax, vregmax);
-  
-  d.Disassemble(oldkernelbytes, instrukernel, prgmtexsec->offset);
-  printInstList(instrukernel);
+  // printInstList(kernel);
 
   return 0;
 }
@@ -193,7 +187,6 @@ std::string insertReg(std::string reg, int regval) {
 
 void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax,
                       int vmax) {
-  printf("Max S reg:\t%d\nMax V reg:\t%d\n", smax, vmax);
   instnode *curr = head;
 
   std::vector<std::string> params;

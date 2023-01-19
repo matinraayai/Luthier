@@ -45,48 +45,6 @@ void Assembler::Assemble(std::string inststr, std::ostream &o) {
   // return instcodeToByteArray(assembly);
 }
 
-/*
-void Assembler::Assemble(std::vector<std::string> params, std::ostream &o) {
-  std::vector<uint32_t> assembly;
-  Inst *i = new Inst;
-
-  std::string iname = params.at(0);
-  auto index = iname.find("_e32");
-  if (index != std::string::npos) {
-    iname.erase(index, index + 3);
-  }
-
-  i->instType = EncodeTable[iname];
-  // switch (i->instType.format.formatType) {
-  //   case SOP1:
-  //     o << "SOP1" << std::endl;
-  //     assembly = assembleSOP1(inst);
-  //     break;
-
-  //   case VOP1:
-  //     o << "VOP1" << std::endl;
-  //     assembly = assembleVOP1(inst);
-  //     break;
-
-  //   case SMEM:
-  //     o << "SMEM" << std::endl;
-  //     assembly = assembleSMEM(inst);
-  //     break;
-
-  //   case SOP2:
-  //     o << "SOP2" << std::endl;
-  //     assembly = assembleSOP2(inst);
-  //     break;
-
-  //   default:
-  //     o << "Cannot assemble instruction of type "
-  //       << i->instType.format.formatName << std::endl;
-  //     break;
-  // }
-}
-*/
-
-
 void Assembler::editDSTreg(instnode *inst, std::string reg) {
   uint32_t code;
   uint32_t mask;
@@ -95,7 +53,7 @@ void Assembler::editDSTreg(instnode *inst, std::string reg) {
   
   assembly.push_back(convertLE(inst->bytes));
   code = extractGPRbyte(reg);
-  inst->dst.code = int(code);
+  inst->dst.code = (int)code;
 
   if (inst->format.formatType <= SOP1) {
     mask = 0xFF80FFFF;
@@ -122,7 +80,7 @@ void Assembler::editSRC0reg(instnode *inst, std::string reg) {
   
   assembly.push_back(convertLE(inst->bytes));
   code = extractGPRbyte(reg);
-  inst->src0.code = int(code);
+  inst->src0.code = (int)code;
 
   if (inst->format.formatType <= SOP1) {
     mask = 0xFFFFFF00;
@@ -150,7 +108,7 @@ void Assembler::editSRC1reg(instnode *inst, std::string reg) {
   
   assembly.push_back(convertLE(inst->bytes));
   code = extractGPRbyte(reg);
-  inst->src1.code = int(code);
+  inst->src1.code = (int)code;
 
   if (inst->format.formatType <= SOP1) {
     mask = 0xFFFF00FF;
@@ -176,7 +134,7 @@ void Assembler::editSIMM(instnode *inst, short simm) {
   assembly.push_back(convertLE(inst->bytes));
 
   code = uint32_t(simm);
-  inst->simm16.code = int(code);
+  inst->simm16.code = (int)code;
 
   assembly.at(0) = assembly.at(0) & mask;
 

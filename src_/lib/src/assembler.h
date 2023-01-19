@@ -14,7 +14,6 @@ class Assembler
 public:
     Assembler();
     void Assemble(std::string inststr, std::ostream &o);
-    // void Assemble(std::vector<std::string> params, std::ostream &o);
 
     void editDSTreg(instnode *inst, std::string reg);
     void editSRC0reg(instnode *inst, std::string reg);
