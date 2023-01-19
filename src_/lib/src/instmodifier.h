@@ -37,14 +37,17 @@ struct InstModifier {
   void sop1Mod(Inst *i) {
     uint32_t bytes = i->first;
     if (i->src0.operandType == RegOperand &&
-        i->instType.opcode != 28) { // s_getpc
+        i->instType.opcode != 28) { // s_setpc
       uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
-      src0Value += s_offset;
-      bytes = zerooutBitsFromU32(bytes, 0, 7);
-      bytes = bytes | src0Value;
+      if (i->instType.opcode != 29 &&
+          src0Value != 30) { // rule out s_setpc_b64 s[30:31]
+        src0Value += s_offset;
+        bytes = zerooutBitsFromU32(bytes, 0, 7);
+        bytes = bytes | src0Value;
+      }
     }
     if (i->dst.operandType == RegOperand &&
-        i->instType.opcode != 29) { // s_setpc
+        i->instType.opcode != 29) { // s_getpc
       uint32_t dstValue = extractBitsFromU32(bytes, 16, 22);
       dstValue = dstValue + s_offset;
       bytes = zerooutBitsFromU32(bytes, 16, 22);
