@@ -103,11 +103,23 @@ std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
     if (inst->byteSize == 8) {
       inst->second = convertLEsec(inst->bytes);
     }
-    std::cout << std::setw(16) << std::setbase(16) << std::setfill('0')
-              << inst->first << "\n";
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\t";
+    if (inst->second != 0) {
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second << "\n";
+    } else {
+      std::cout << "\n";
+    }
     modifier.modify(inst.get());
-    std::cout << std::setw(16) << std::setbase(16) << std::setfill('0')
-              << inst->first << "\n";
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\t";
+    if (inst->second != 0) {
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second << "\n";
+    } else {
+      std::cout << "\n";
+    }
 
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);

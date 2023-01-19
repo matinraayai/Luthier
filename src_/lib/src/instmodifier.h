@@ -52,10 +52,66 @@ struct InstModifier {
     }
     i->first = bytes;
   }
+
+  void sop2Mod(Inst *i) {
+    uint32_t bytes = i->first;
+    if (i->src0.operandType == RegOperand) {
+      uint32_t src0Value = extractBitsFromU32(bytes, 0, 7);
+      src0Value += s_offset;
+      bytes = zerooutBitsFromU32(bytes, 0, 7);
+      bytes = bytes | src0Value;
+    }
+    if (i->src1.operandType == RegOperand) {
+      uint32_t src1Value = extractBitsFromU32(bytes, 8, 15);
+      src1Value += s_offset;
+      bytes = zerooutBitsFromU32(bytes, 8, 15);
+      bytes = bytes | src1Value << 8;
+    }
+    if (i->dst.operandType == RegOperand) {
+      uint32_t dstValue = extractBitsFromU32(bytes, 16, 22);
+      dstValue += s_offset;
+      bytes = zerooutBitsFromU32(bytes, 16, 22);
+      bytes = bytes | dstValue << 16;
+    }
+    i->first = bytes;
+  }
+
+  void flatMod(Inst *i) {
+    uint32_t bytes = i->second;
+    auto opcode = i->instType.opcode;
+    uint32_t addrbits = extractBitsFromU32(bytes, 0, 7);
+    addrbits += v_offset;
+    bytes = zerooutBitsFromU32(bytes, 0, 7);
+    bytes = bytes | addrbits;
+
+    if (opcode >= 16 && opcode <= 23) { // flat_load
+      uint32_t dstbits = extractBitsFromU32(bytes, 24, 31);
+      dstbits += v_offset;
+      bytes = zerooutBitsFromU32(bytes, 24, 31);
+      bytes = bytes | dstbits << 24;
+    }
+    if (opcode >= 24 && opcode <= 31 ||
+        opcode >= 66 && opcode <= 108) { // flat_store
+      uint32_t databits = extractBitsFromU32(bytes, 8, 15);
+      databits += v_offset;
+      bytes = zerooutBitsFromU32(bytes, 8, 15);
+      bytes = bytes | databits << 8;
+    }
+
+    uint32_t bits = extractBitsFromU32(bytes, 16, 22);
+    if (bits != 0x7f) {
+      bits += s_offset;
+      bytes = zerooutBitsFromU32(bytes, 16, 22);
+      bytes = bytes | bits << 16;
+    }
+    i->second = bytes;
+  }
+
   void modify(Inst *i) {
     switch (i->format.formatType) {
-    // case SOP2:
-    //   return sop2String(i);
+    case SOP2:
+      sop2Mod(i);
+      break;
     // case SOPK:
     //   return sopkString(i);
     case SOP1:
@@ -80,8 +136,9 @@ struct InstModifier {
       //   return vop3bString(i);
       // case VOP3P:
       // 	return vop3pString(i);
-      // case FLAT:
-      //   return flatString(i);
+    case FLAT:
+      flatMod(i);
+      break;
       // case DS:
       //   return dsString(i);
     default:
