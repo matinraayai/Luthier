@@ -26,15 +26,16 @@ int main(int argc, char **argv) {
   d.getMaxRegIdx(&elfFileP, &sRegMax, &vRegMax);
   std::cout << "The maximum number of sReg is " << sRegMax << "\n";
   std::cout << "The maximum number of vReg is " << vRegMax << "\n";
+  std::vector<std::unique_ptr<Inst>> instsP = d.GetOrigInsts(&elfFileP);
 
   elfio::File elfFileI;
   char *blob1 = getELF(iFilename);
   elfFileI = elfFileI.FromMem(blob1);
 
   Disassembler d1(&elfFileI);
-  d1.SetModVal(vRegMax, sRegMax);
-  std::vector<std::unique_ptr<Inst>> insts = d1.GetInsts(&elfFileI);
-  std::cout << insts.size() << "\n";
+  d1.SetModVal(vRegMax, sRegMax + 2);
+  std::vector<std::unique_ptr<Inst>> instsI = d1.GetInstruInsts(&elfFileI);
+  std::cout << instsI.size() << "\n";
 
   return 0;
 }
