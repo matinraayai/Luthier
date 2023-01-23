@@ -1,5 +1,6 @@
 s_getpc_b64 s[6:7];BE861C00
 s_add_u32 s6, s6, 0xfffffeb4;8006FF06 FFFFFEB4
-s_addc_u32 s7, s7, -1;8207FF07 FFFFFFFF
 s_swappc_b64 s[30:31], s[6:7];BE9E1E06
-v_mov_b32_e32 v4, 0x41f00000;7E0802FF 41F00000
+s_mul_i32 s9, s9, s3;
+s_branch 0x3fb1;BF823FB1
+s_branch 0x49;BF820049
