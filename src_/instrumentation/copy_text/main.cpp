@@ -68,8 +68,8 @@ int main(int argc, char **argv) {
   printInstruFn(instList);
   offsetInstruRegs(instList, a, sRegMax, vRegMax);
 
-  printInstruFn(instList);
-  // d.Disassemble(extractIlistBuf(instList), std::cout);
+  // printInstruFn(instList);
+  d.Disassemble(extractIlistBuf(instList), std::cout);
 
   return 0;
 }

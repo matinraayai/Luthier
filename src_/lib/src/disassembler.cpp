@@ -83,7 +83,42 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
   }
 }
 
-std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
+std::vector<std::unique_ptr<Inst>>
+Disassembler::GetOrigInsts(elfio::File *file) {
+  std::vector<std::unique_ptr<Inst>> instList;
+  auto text_section = file->GetSectionByName(".text");
+  if (!text_section) {
+    throw std::runtime_error("text section is not found");
+  }
+  std::vector<unsigned char> buf(text_section->Blob(),
+                                 text_section->Blob() + text_section->size);
+  auto pc = text_section->offset;
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+    for (int i = 0; i < inst->byteSize; i++) {
+      inst->bytes.push_back(buf.at(i));
+    }
+    inst->first = convertLE(inst->bytes);
+    if (inst->byteSize == 8) {
+      inst->second = convertLEsec(inst->bytes);
+    }
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\t";
+    if (inst->second != 0) {
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second << "\n";
+    } else {
+      std::cout << "\n";
+    }
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+  }
+}
+
+std::vector<std::unique_ptr<Inst>>
+Disassembler::GetInstruInsts(elfio::File *file) {
   std::vector<std::unique_ptr<Inst>> instList;
   bool isLast = 0;
   auto text_section = file->GetSectionByName(".text");
@@ -159,6 +194,33 @@ std::vector<std::shared_ptr<Inst>> Disassembler::GetInsts(
     instList.push_back(std::move(inst));
   }
   return instList;
+}
+
+std::vector<std::unique_ptr<Inst>>
+Disassembler::GetTrampInsts(std::vector<unsigned char> buf) {
+  uint64_t pc = 0;
+  while (!buf.empty()) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+    for (int i = 0; i < inst->byteSize; i++) {
+      inst->bytes.push_back(buf.at(i));
+    }
+    inst->first = convertLE(inst->bytes);
+    if (inst->byteSize == 8) {
+      inst->second = convertLEsec(inst->bytes);
+    }
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << "\t";
+    if (inst->second != 0) {
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second << "\n";
+    } else {
+      std::cout << "\n";
+    }
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+  }
 }
 
 void Disassembler::Disassemble(elfio::File *file, std::string filename) {
@@ -263,7 +325,7 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
       o << " ";
     }
     o << std::hex << "//" << std::setw(12) << std::setfill('0') << pc << ": ";
-    o << std::setw(8) << std::hex << convertLE(buf);
+    o << std::setw(8) << std::hex << convertLE(buf) << " ";
     if (inst->byteSize == 8) {
       std::vector<unsigned char> sfb(buf.begin() + 4, buf.begin() + 8);
       o << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
