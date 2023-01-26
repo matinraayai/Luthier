@@ -15,9 +15,9 @@ public:
     Assembler();
     void Assemble(std::string inststr, std::ostream &o);
 
-    void editDSTreg(Inst *inst, std::string reg);
-    void editSRC0reg(Inst *inst, std::string reg);
-    void editSRC1reg(Inst *inst, std::string reg);
+    void editSRC0reg(std::shared_ptr<Inst> inst, int code);
+    void editSRC1reg(std::shared_ptr<Inst> inst, int code);
+    void editDSTreg(std::shared_ptr<Inst> inst, int code);
     void editSIMM(Inst *inst, short simm);
 
 private:

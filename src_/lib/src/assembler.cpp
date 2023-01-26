@@ -38,86 +38,114 @@ void Assembler::Assemble(std::string inststr, std::ostream &o) {
   o << std::hex << assembly << std::endl;
 }
 
-void Assembler::editDSTreg(Inst *inst, std::string reg) {
-  uint32_t code;
+void Assembler::editSRC0reg(std::shared_ptr<Inst> inst, int code) {
+  uint32_t mask;
+  std::vector<uint32_t> assembly;
+  
+  if (inst->format.formatType <= SOP1) {
+    inst->src0.code = code;
+    mask = 0xFFFFFF00;
+
+    inst->first = inst->first & mask;
+    inst->first = inst->first | code;
+  }
+  else if (inst->format.formatType == VOP2 ||
+           inst->format.formatType == VOP1) {
+    inst->src0.code = code;
+    mask = 0xFFFFFE00;
+
+    inst->first = inst->first & mask;
+    inst->first = inst->first | code;
+  }
+  else if (inst->format.formatType == FLAT) {
+    inst->addr.code = code;
+    mask = 0xFFFFFF00;
+
+    inst->second = inst->second & mask;
+    inst->second = inst->second | code;
+  }
+
+  assembly.push_back(inst->first);
+  if (inst->byteSize == 8) {
+    assembly.push_back(inst->second);
+  }
+  inst->bytes = instcodeToByteArray(assembly);
+}
+
+void Assembler::editSRC1reg(std::shared_ptr<Inst> inst, int code) {
   uint32_t mask;
   uint32_t newReg;
   std::vector<uint32_t> assembly;
   
-  assembly.push_back(convertLE(inst->bytes));
-  code = extractGPRbyte(reg);
-  inst->dst.code = (int)code;
+  if (inst->format.formatType <= SOP1) {
+    inst->src1.code = code;
+    mask = 0xFFFF00FF;
+    newReg = code<<8;
+
+    inst->first = inst->first & mask;
+    inst->first = inst->first | newReg;
+  }
+  else if (inst->format.formatType == VOP2 ||
+           inst->format.formatType == VOP1) {
+    inst->src1.code = code;
+    mask = 0xFFFE01FF;
+    newReg = code<<9;
+
+    inst->first = inst->first & mask;
+    inst->first = inst->first | newReg;
+  }
+  else if (inst->format.formatType == FLAT) {
+    inst->sAddr.code = code;
+    mask = 0xFF80FFFF;
+    newReg = code<<16;
+
+    inst->second = inst->second & mask;
+    inst->second = inst->second | newReg;
+  }
+
+  assembly.push_back(inst->first);
+  if (inst->byteSize == 8) {
+    assembly.push_back(inst->second);
+  }
+  inst->bytes = instcodeToByteArray(assembly);
+}
+
+void Assembler::editDSTreg(std::shared_ptr<Inst> inst, int code) {
+  uint32_t mask;
+  uint32_t newReg;
+  std::vector<uint32_t> assembly;
+  
+  inst->dst.code = code;
 
   if (inst->format.formatType <= SOP1) {
     mask = 0xFF80FFFF;
-    newReg = code<<16; }
-  else if (inst->format.formatType >= VOP2 ||
-           inst->format.formatType <= VOP1) {
-    if (reg.at(0) == 'v') {
-      code += 256;
-    }
+    newReg = code<<16; 
+
+    inst->first = inst->first & mask;
+    inst->first = inst->first | newReg;
+  }
+  else if (inst->format.formatType == VOP2 ||
+           inst->format.formatType == VOP1) {
     mask = 0xFE01FFFF;
     newReg = code<<17;
+
+    inst->first = inst->first & mask;
+    inst->first = inst->first | newReg;
+  }
+  else if (inst->format.formatType == FLAT) {
+    mask = 0x00FFFFFF;
+    newReg = code<<24;
+
+    inst->second = inst->second & mask;
+    inst->second = inst->second | newReg;
   }
 
-  assembly.at(0) = assembly.at(0) & mask;
-  assembly.at(0) = assembly.at(0) | newReg;
+  assembly.push_back(inst->first);
+  if (inst->byteSize == 8) {
+    assembly.push_back(inst->second);
+  }
   inst->bytes = instcodeToByteArray(assembly);
 }
-
-void Assembler::editSRC0reg(Inst *inst, std::string reg) {
-  uint32_t code;
-  uint32_t mask;
-  uint32_t newReg;
-  std::vector<uint32_t> assembly;
-  
-  assembly.push_back(convertLE(inst->bytes));
-  code = extractGPRbyte(reg);
-  inst->src0.code = (int)code;
-
-  if (inst->format.formatType <= SOP1) {
-    mask = 0xFFFFFF00;
-  }
-  else if (inst->format.formatType >= VOP2 ||
-           inst->format.formatType <= VOP1) {
-    mask = 0xFFFFFE00;
-  }
-
-  if (reg.at(0) == 'v') {
-    code += 256;
-  }
-  newReg = code;
-
-  assembly.at(0) = assembly.at(0) & mask;
-  assembly.at(0) = assembly.at(0) | newReg;
-  inst->bytes = instcodeToByteArray(assembly);
-}
-
-void Assembler::editSRC1reg(Inst *inst, std::string reg) {
-  uint32_t code;
-  uint32_t mask;
-  uint32_t newReg;
-  std::vector<uint32_t> assembly;
-  
-  assembly.push_back(convertLE(inst->bytes));
-  code = extractGPRbyte(reg);
-  inst->src1.code = (int)code;
-
-  if (inst->format.formatType <= SOP1) {
-    mask = 0xFFFF00FF;
-    newReg = code<<8;
-  }
-  else if (inst->format.formatType >= VOP2 ||
-           inst->format.formatType <= VOP1) {
-    mask = 0xFFFE01FF;
-    newReg = code<<9;
-  }
-
-  assembly.at(0) = assembly.at(0) & mask;
-  assembly.at(0) = assembly.at(0) | newReg;
-  inst->bytes = instcodeToByteArray(assembly);
-}
-
 
 void Assembler::editSIMM(Inst *inst, short simm) {
   uint32_t code;

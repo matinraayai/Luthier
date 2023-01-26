@@ -132,6 +132,35 @@ std::vector<std::unique_ptr<Inst>> Disassembler::GetInsts(elfio::File *file) {
   return instList;
 }
 
+std::vector<std::shared_ptr<Inst>> Disassembler::GetInsts(
+  std::vector<unsigned char> buf, uint64_t off) {
+  bool isLast = 0;
+  uint64_t pc = off;
+  std::vector<std::shared_ptr<Inst>> instList;
+
+  while (!buf.empty() && !isLast) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+
+    for (int i = 0; i < inst->byteSize; i++) {
+      inst->bytes.push_back(buf.at(i));
+    }
+    inst->first = convertLE(inst->bytes);
+    if (inst->byteSize == 8) {
+      inst->second = convertLEsec(inst->bytes);
+    }
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+
+    if (inst->instType.instName == "s_setpc_b64") {
+      isLast = 1;
+    }
+    instList.push_back(std::move(inst));
+  }
+  return instList;
+}
+
 void Disassembler::Disassemble(elfio::File *file, std::string filename) {
   std::string line;
   std::fstream myfile(filename, std::ios::in);
@@ -246,42 +275,6 @@ void Disassembler::Disassemble(std::vector<unsigned char> buf,
 
     pc += uint64_t(inst->byteSize);
   }
-}
-// overloaded Disassemble edits a linked list
-void Disassembler::Disassemble(std::vector<unsigned char> buf, instnode *head,
-                               uint64_t off) {
-  instnode *prevInst = NULL;
-  instnode *currInst = head;
-  uint64_t pc = off;
-
-  while (!buf.empty()) {
-    std::unique_ptr<Inst> inst = decode(buf);
-
-    inst->PC = pc;
-
-    currInst->prev = prevInst;
-    currInst->next = new instnode;
-    // currInst->instStr = printer.print(inst.get());
-
-    std::vector<unsigned char> currBytes(buf.begin(),
-                                         buf.begin() + inst->byteSize);
-    currInst->bytes    = currBytes;
-    currInst->format   = inst->format;
-    currInst->instType = inst->instType;
-    currInst->byteSize = inst->byteSize;
-    currInst->pc   = pc;
-    currInst->src0 = inst->src0;
-    currInst->src1 = inst->src1;
-    currInst->src2 = inst->src2;
-    currInst->dst  = inst->dst;
-
-    prevInst = currInst;
-    currInst = currInst->next;
-
-    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
-    pc += uint64_t(inst->byteSize);
-  }
-  currInst->next = NULL;
 }
 
 void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset,

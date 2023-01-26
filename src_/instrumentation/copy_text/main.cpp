@@ -2,6 +2,7 @@
 #include "bitops.h"
 #include "disassembler.h"
 #include "elf.hpp"
+#include "instprinter.h"
 
 #include <cstring>
 #include <fstream>
@@ -9,236 +10,235 @@
 #include <string>
 #include <vector>
 
-elfio::File getELF(elfio::File *elf, std::string fname, size_t blobsize);
-instnode *getInstFromPC(instnode *head, uint64_t pc);
-void printInstList(instnode *head);
-void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax,
-                      int vmax);
-
-std::string insertReg(std::string reg, int regval);
+char *getELF(std::string filename);
+void printInstList(std::vector<std::shared_ptr<Inst>> instList);
+void printInstruFn(std::vector<std::shared_ptr<Inst>> instList);
+void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
+                      Assembler a, int smax, int vmax);
+std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
     std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
     return 1;
   }
+  std::string pFilename = argv[1];
+  std::string iFilename = argv[2];
 
-  std::string prgmfile = argv[1];
-  std::string instrufile = argv[2];
+  elfio::File elfFileP;
+  char *blob = getELF(pFilename);
+  elfFileP = elfFileP.FromMem(blob);
 
-  elfio::File *prgmelf = new elfio::File;
-  elfio::File *instruelf = new elfio::File;
-
-  *prgmelf = getELF(prgmelf, prgmfile,
-                    50000); // come up with a smart and/or clever way of
-  *instruelf = getELF(instruelf, instrufile,
-                      50000); // getting blob size for elfio::File obj later
+  elfio::File elfFileI;
+  char *blob1 = getELF(iFilename);
+  elfFileI = elfFileI.FromMem(blob1);
 
   Assembler a;
-  Disassembler d(prgmelf);
+  Disassembler d(&elfFileP);
 
-  auto prgmtexsec = prgmelf->GetSectionByName(".text");
-  auto instrutexsec = instruelf->GetSectionByName(".text");
+  auto ptexsec = elfFileP.GetSectionByName(".text");
+  uint64_t poff = ptexsec->offset;
+  uint64_t psize = ptexsec->size;
 
-  uint64_t prgmoff = prgmtexsec->offset;
-  uint64_t prgmsize = prgmtexsec->size;
-  uint64_t instruoff = instrutexsec->offset;
-  uint64_t instrusize = instrutexsec->size;
+  auto itexsec = elfFileI.GetSectionByName(".text");
+  uint64_t ioff = itexsec->offset;
+  uint64_t isize = itexsec->size;
 
-  int sregmax, vregmax;
-  d.getMaxRegIdx(prgmtexsec->Blob(), prgmsize, &sregmax, &vregmax);
+  int sRegMax, vRegMax;
+  d.getMaxRegIdx(&elfFileP, &sRegMax, &vRegMax);
 
-  std::cout << "Program Offset:\t" << prgmoff    << std::endl
-            << "Program Size:\t"   << prgmsize   << std::endl;
-  std::cout << "Instru Offset:\t"  << instruoff  << std::endl
-            << "Instru Size:\t"    << instrusize << std::endl << std::endl;
+  std::cout << "Program Offset:\t" << poff    << std::endl
+            << "Program Size:\t"   << psize   << std::endl;
+  std::cout << "Instru Offset:\t"  << ioff    << std::endl
+            << "Instru Size:\t"    << isize   << std::endl << std::endl;
 
-  std::cout << "Max S reg:\t" << sregmax << std::endl
-            << "Max V reg:\t" << vregmax << std::endl << std::endl;
+  std::cout << "Max S reg:\t" << sRegMax << std::endl
+            << "Max V reg:\t" << vRegMax << std::endl    << std::endl;
   std::cout << "---------------------------------------" << std::endl;
 
-  char *newkernel = new char[prgmsize + instrusize];
-  std::memcpy(newkernel, prgmtexsec->Blob(), prgmsize);
-  std::memcpy(newkernel + prgmsize, instrutexsec->Blob(), instrusize);
+  char *newkernel = new char[psize + isize];
 
-  auto kernelbytes = charToByteArray(newkernel, prgmsize + instrusize);
+  std::memcpy(newkernel, ptexsec->Blob(), psize);
+  std::memcpy(newkernel + psize, itexsec->Blob(), isize);
 
-  instnode *kernel = new instnode;
+  auto kernelbytes = charToByteArray(newkernel, psize + isize);
+  std::vector<std::shared_ptr<Inst>> instList = d.GetInsts(kernelbytes, poff);
+  // printInstList(instList);
 
-  d.Disassemble(kernelbytes, kernel, prgmoff);
-  // printInstList(kernel);
+  printInstruFn(instList);
+  offsetInstruRegs(instList, a, sRegMax, vRegMax);
 
-  std::cout << "---------------------------------------" << std::endl;
-
-  // offsetInstruRegs(a, instrukernel, prgmsize + prgmoff, sregmax, vregmax);
-  // printInstList(kernel);
+  printInstruFn(instList);
+  // d.Disassemble(extractIlistBuf(instList), std::cout);
 
   return 0;
 }
 
-elfio::File getELF(elfio::File *elf, std::string fname, size_t blobsize) {
-  std::fstream file;
+char *getELF(std::string filename) {
+  std::streampos size;
   char *blob;
 
-  file.open(fname, std::ios_base::in | std::ios_base::binary);
+  std::ifstream file(filename, std::ios::in | std::ios::binary | std::ios::ate);
   if (file.is_open()) {
-    blob = new char[blobsize];
-    file.read(blob, blobsize);
+    size = file.tellg();
+    blob = new char[size];
+    file.seekg(0, std::ios::beg);
+    file.read(blob, size);
     file.close();
+  } else {
+    throw std::runtime_error("can't open file");
   }
-  return elf->FromMem(blob);
+
+  return blob;
 }
 
-instnode *getInstFromPC(instnode *head, uint64_t pc) {
-  instnode *curr = head;
-  while (curr->next != NULL) {
-    if (curr->pc == pc) {
-      return curr;
+
+void printInstList(std::vector<std::shared_ptr<Inst>> instList) {
+  for (int i = 0; i < instList.size(); i++) {
+    std::cout << i << "\t\t" << instList.at(i)->instType.instName << "\t\t"
+              << instList.at(i)->PC << std::endl;
+  }
+
+  /* This code causes seg fault */
+  // InstPrinter printer;
+  // std::string istr;
+  // for (int i = 0; i < instList.size(); i++) {
+  //   istr = printer.print(instList.at(i).get());
+  //   std::cout << istr << std::endl;
+  // }
+}
+
+void printInstruFn(std::vector<std::shared_ptr<Inst>> instList) {
+  InstPrinter printer;
+  std::string istr;
+
+  uint64_t i, j;
+  Inst *inst;
+
+  for (i = 0; i < instList.size(); i++) {
+    if (instList.at(i)->instType.instName == "s_endpgm") {
+      j = i++;
+      break;
     }
-    curr = curr->next;
   }
-  return NULL;
-}
-
-void printInstList(instnode *head) {
-  std::string instStr;
-  instnode *curr = head;
-
-  while (curr->next != NULL) {
-    instStr = curr->instType.instName;
-    std::cout << "\t" << instStr;
-    for (int i = instStr.size(); i < 59; i++) {
+  for (j = i; j < instList.size(); j++) {
+    inst = instList.at(j).get();
+    istr = printer.print(inst);
+    std::cout << istr;
+    
+    for (int k = istr.size(); k < 59; k++) {
       std::cout << " ";
     }
-
-    std::cout << std::hex << "//" << std::setw(12) << std::setfill('0')
-              << curr->pc << ": ";
-    std::cout << std::setw(8) << std::hex << convertLE(curr->bytes);
-    if (curr->byteSize == 8) {
-      std::vector<unsigned char> sfb(curr->bytes.begin() + 4,
-                                     curr->bytes.begin() + 8);
-      std::cout << std::setw(8) << std::hex << convertLE(sfb) << std::endl;
-    } else {
-      std::cout << std::endl;
-    }
-    curr = curr->next;
+    std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+              << inst->first << " ";
+    if (inst->byteSize == 8)
+      std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+                << inst->second;
+    std::cout << std::endl;
+    std::cout << "SRC0: " << inst->src0.code << std::endl
+              << "SRC1: " << inst->src1.code << std::endl
+              << "DST:  " << inst->dst.code  << std::endl;
   }
-}
-/*
-std::string insertReg(std::string reg, int regval) {
-  std::string newval;
-  std::stringstream stream;
-  bool comma;
-
-  int charlen = 1;
-  if (regval > 9) {
-    charlen++;
-  }
-  if (reg.at(reg.length() - 1) == ',') {
-    comma = true;
-  } else {
-    comma = false;
-  }
-
-  if (reg.find("[") != std::string::npos) {
-    int i = reg.find("[");
-    int j = reg.find(":");
-    std::string reglow = reg.substr(i + 1, j - i - 1);
-    std::string reghigh = reg.substr(j + 1, reg.find("]") - j - 1);
-
-    int diff = stoi(reghigh) - stoi(reglow);
-
-    stream << regval;
-    stream >> newval;
-    reg.replace(i + 1, charlen, newval);
-    reg.replace(i + 1 + charlen, 1, ":");
-    j = reg.find(":");
-
-    stream.clear();
-    regval += diff;
-    if (regval > 9) {
-      charlen++;
-    }
-
-    stream << regval;
-    stream >> newval;
-    reg.replace(j + 1, charlen, newval);
-    if (reg.find("]") == std::string::npos) {
-      if (reg.at(reg.length() - 1) == ',') {
-        reg.replace(reg.length() - 1, 1, "]");
-        reg.append(",");
-      } else {
-        reg.append("]");
-      }
-    }
-    return reg;
-  }
-
-  stream << regval;
-  stream >> newval;
-  reg.replace(1, charlen, newval);
-
-  if (comma && reg.at(reg.length() - 1) != ',') {
-    reg.append(",");
-  }
-
-  return reg;
+  std::cout << "---------------------------------------" << std::endl;
 }
 
-void offsetInstruRegs(Assembler a, instnode *head, uint64_t offset, int smax,
-                      int vmax) {
-  instnode *curr = head;
+void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
+                      Assembler a, int smax, int vmax) {
+  uint64_t i, j;
+  int newcode;
 
-  std::vector<std::string> params;
-  std::string inststr;
-  std::string regstr;
-  std::stringstream regstream;
-  uint32_t regval;
+  std::string istr; // delete this later
 
-  while (curr->next != NULL) {
-    if (curr->pc > offset) {
-      inststr = curr->instStr;
+  for (i = 0; i < instList.size(); i++) {
+    if (instList.at(i)->instType.instName == "s_endpgm") {
+      j = i++;
+      break;
+    }
+  }
+  for (j = i; j < instList.size(); j++) {
+    if (instList.at(j)->format.formatType == SOPP)
+      continue;
+    
+    
+    /***debugging***/
+    // istr = instList.at(j)->instType.instName;
+    // std::cout << istr << "\t\t";
+    // std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+    //           << instList.at(j)->first << " ";
+    // if (instList.at(j)->byteSize == 8)
+    //   std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+    //             << instList.at(j)->second;
+    // std::cout << std::endl;
+    /**************/
 
-      params = a.getInstParams(inststr);
-      if (params.at(0) == "s_waitcnt" || params.at(0) == "s_nop" ||
-          params.at(0) == "s_endpgm") {
-        curr = curr->next;
-        continue;
-      }
 
-      curr->instStr = params.at(0);
-      curr->instStr.append(" ");
-
-      for (int i = 1; i < params.size(); i++) {
-        if (params.at(i).find("v") != std::string::npos) {
-          regstr = a.extractreg(params.at(i));
-          try {
-            regval = stoi(regstr);
-          } catch (const std::exception &e) {
-            continue;
-          }
-          if (regval < vmax) {
-            regval += vmax;
-          }
-          params.at(i) = insertReg(params.at(i), regval);
-        } else if (params.at(i).find("s") != std::string::npos) {
-          regstr = a.extractreg(params.at(i));
-          try {
-            regval = stoi(regstr);
-          } catch (const std::exception &e) {
-            continue;
-          }
-          if (regval < smax) {
-            regval += smax;
-          }
-          params.at(i) = insertReg(params.at(i), regval);
+    if (instList.at(j)->instType.DSTWidth != 0) {
+      if (instList.at(j)->dst.operandType == RegOperand) {
+        if (instList.at(j)->dst.code >= 256) {
+          newcode = instList.at(j)->dst.code + vmax;
+        } else {
+          newcode = instList.at(j)->dst.code + smax;
         }
-        curr->instStr.append(params.at(i));
-        curr->instStr.append(" ");
+        a.editDSTreg(instList.at(j), newcode);
       }
-      curr->bytes = a.Assemble(curr->instStr);
     }
-    curr = curr->next;
+
+    if (instList.at(j)->instType.SRC0Width != 0) {
+      if (instList.at(j)->src0.operandType == RegOperand) {
+        if (instList.at(j)->src0.code >= 256) {
+          newcode = instList.at(j)->src0.code + vmax;
+        } else {
+          newcode = instList.at(j)->src0.code + smax;
+        }
+        a.editSRC0reg(instList.at(j), newcode);
+      }
+    }
+
+    if (instList.at(j)->instType.SRC1Width != 0) {
+      if (instList.at(j)->src1.operandType == RegOperand) {
+        if (instList.at(j)->src1.code >= 256) {
+          newcode = instList.at(j)->src1.code + vmax;
+        } else {
+          newcode = instList.at(j)->src1.code + smax;
+        }
+        a.editSRC1reg(instList.at(j), newcode);
+      }
+    }
+
+    /***debugging***/
+    // for (int k = 0; k < istr.size(); k++) 
+    //   std::cout << " ";
+    // std::cout << "\t\t";
+    // std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+    //           << instList.at(j)->first << " ";
+    // if (instList.at(j)->byteSize == 8)
+    //   std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
+    //             << instList.at(j)->second;
+    // std::cout << std::endl;
+    /**************/
+
+    // if (inst->instType.SRC2Width != 0)
   }
+  std::cout << "---------------------------------------" << std::endl;
 }
-*/
+
+
+std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList) {
+  std::vector<unsigned char> buf;
+  Inst *inst;
+  for (int i = 0; i < instList.size(); i++) {
+    inst = instList.at(i).get();
+    
+    for (int j = 0; j < inst->byteSize; j++) {
+      buf.push_back(inst->bytes.at(j));
+    }
+  }   
+  std::cout << "---------------------------------------" << std::endl;
+  return buf;
+}
+
+
+
+
+
+
