@@ -72,6 +72,30 @@ void Assembler::editSRC0reg(std::shared_ptr<Inst> inst, int code) {
   inst->bytes = instcodeToByteArray(assembly);
 }
 
+void Assembler::editSRC0flat(std::shared_ptr<Inst> inst, int code, bool data) {
+  uint32_t mask;
+  uint32_t newReg;
+  std::vector<uint32_t> assembly;
+  
+  if (data) {
+    inst->data.code = code;
+    mask = 0xFFFF00FF;
+    newReg = code<<8;
+  } else {
+    inst->addr.code = code;
+    mask = 0xFFFFFF00;
+    newReg = code;
+  }
+
+  inst->second = inst->second & mask;
+  inst->second = inst->second | newReg;
+
+  assembly.push_back(inst->first);
+  assembly.push_back(inst->second);
+
+  inst->bytes = instcodeToByteArray(assembly);
+}
+
 void Assembler::editSRC1reg(std::shared_ptr<Inst> inst, int code) {
   uint32_t mask;
   uint32_t newReg;

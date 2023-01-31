@@ -16,6 +16,7 @@ public:
     void Assemble(std::string inststr, std::ostream &o);
 
     void editSRC0reg(std::shared_ptr<Inst> inst, int code);
+    void editSRC0flat(std::shared_ptr<Inst> inst, int code, bool data);
     void editSRC1reg(std::shared_ptr<Inst> inst, int code);
     void editDSTreg(std::shared_ptr<Inst> inst, int code);
     void editSIMM(Inst *inst, short simm);
