@@ -158,27 +158,6 @@ void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
     }
   }
   for (j = i; j < instList.size(); j++) {
-    // if (instList.at(j)->format.formatType == SOPP)
-    //   continue;
-    
-    
-    /***debugging***/
-    // istr = instList.at(j)->instType.instName;
-    // std::cout << istr << "\t\t";
-    // std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
-    //           << instList.at(j)->first << " ";
-    // if (instList.at(j)->byteSize == 8)
-    //   std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
-    //             << instList.at(j)->second;
-    // std::cout << std::endl;
-    /**************/
-
-    // void editSALUinst(std::shared_ptr<Inst> i, Assembler a, int smax);
-    // void editVALUinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
-    // void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
-
-    // Unload most of this logic into functions --
-    // editSALU, editVALU, editFLAT
     switch(instList.at(j)->format.formatType) {
       case SOP2:
         editSALUinst(instList.at(j), a, smax);
@@ -195,55 +174,6 @@ void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
       default:
         break;
     }
-
-    /*
-    if (instList.at(j)->instType.DSTWidth != 0) {
-      if (instList.at(j)->dst.operandType == RegOperand) {
-        if (instList.at(j)->dst.code >= 256) {
-          newcode = instList.at(j)->dst.code + vmax;
-        } else {
-          newcode = instList.at(j)->dst.code + smax;
-        }
-        a.editDSTreg(instList.at(j), newcode);
-      }
-    }
-
-    if (instList.at(j)->instType.SRC0Width != 0) {
-      if (instList.at(j)->src0.operandType == RegOperand) {
-        if (instList.at(j)->src0.code >= 256) {
-          newcode = instList.at(j)->src0.code + vmax;
-        } else {
-          newcode = instList.at(j)->src0.code + smax;
-        }
-        a.editSRC0reg(instList.at(j), newcode);
-      }
-    }
-
-    if (instList.at(j)->instType.SRC1Width != 0) {
-      if (instList.at(j)->src1.operandType == RegOperand) {
-        if (instList.at(j)->src1.code >= 256) {
-          newcode = instList.at(j)->src1.code + vmax;
-        } else {
-          newcode = instList.at(j)->src1.code + smax;
-        }
-        a.editSRC1reg(instList.at(j), newcode);
-      }
-    }
-    */
-
-    /***debugging***/
-    // for (int k = 0; k < istr.size(); k++) 
-    //   std::cout << " ";
-    // std::cout << "\t\t";
-    // std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
-    //           << instList.at(j)->first << " ";
-    // if (instList.at(j)->byteSize == 8)
-    //   std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
-    //             << instList.at(j)->second;
-    // std::cout << std::endl;
-    /**************/
-
-    // if (inst->instType.SRC2Width != 0)
   }
   std::cout << "---------------------------------------" << std::endl;
 }
@@ -329,22 +259,9 @@ void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax) {
   int newcode;
 
   if (i->instType.DSTWidth != 0) {
-    // if (i->dst.operandType == RegOperand) {
-    //   newcode = i->dst.code + vmax;
-    // }
     newcode = i->dst.code + vmax;
     a.editDSTreg(i, newcode);
   }
-
-  /*
-  if (i->instType.SRC0Width != 0) {
-    // if (i->src0.operandType == RegOperand) {
-    //   newcode = i->src0.code + vmax;
-    // }
-    newcode = i->addr.code + vmax;
-    a.editSRC0reg(i, newcode);
-  }
-  */
 
   if ((i->second & 0x007F0000)>>16 != 0x7F) {
     newcode = i->addr.code + vmax;
@@ -356,19 +273,6 @@ void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax) {
     newcode = i->data.code + vmax;
     a.editSRC0flat(i, newcode, 1);
   }
-  // if (i->instType.SRC1Width != 0) {
-    // if (i->src1.operandType == RegOperand) {
-    //   newcode = i->src1.code + smax;
-    // }
-    // std::cout << "FLAT SADDR: " << i->sAddr.code << std::endl;
-    // std::cout << "FLAT SRC1: " << i->src1.code << std::endl;
-
-    // if (i->sAddr.code != 0x7F) {
-    // if ((i->second & 0x007F0000)>>16 != 0x7F) {
-    //   newcode = i->sAddr.code + smax;
-    //   a.editSRC1reg(i, newcode);
-    // }
-  // }
 }
 
 
