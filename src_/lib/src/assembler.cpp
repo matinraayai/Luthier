@@ -76,34 +76,106 @@ void Assembler::Assemble(std::string inststr, std::shared_ptr<Inst> &inst) {
   inst = std::move(new_inst);
 }
 
-/*
-std::shared_ptr<Inst> Assembler::Assemble(std::string inststr) {
-  std::shared_ptr<Inst> inst = std::make_shared<Inst>();
-  std::vector<uint32_t> assembly;
-
-  getInstData(inststr, inst.get());
-
-  switch (inst->instType.format.formatType) {
+void Assembler::offsetRegs(std::shared_ptr<Inst> i, int smax, int vmax) {
+  switch(i->format.formatType) {
     case SOP2:
-      assembly.push_back(assembleSOP2(inst.get()));
+      editSALUinst(i, smax);
       break;
     case SOP1:
-      assembly.push_back(assembleSOP1(inst.get()));
+      editSALUinst(i, smax);
       break;
-    case SOPP:
-      assembly.push_back(assembleSOPP(inst.get()));
+    case VOP1:
+      editVALUinst(i, smax, vmax);
+      break;
+    case FLAT:
+      editFLATinst(i, smax, vmax);
       break;
     default:
-      // maybe throw an exception here
-      std::cout << "Format for instruction " << inststr
-                << " not supported"          << std::endl;
+      break;
   }
-  inst->first = assembly.at(0);
-  inst->bytes = instcodeToByteArray(assembly);
-
-  return inst;
 }
-*/
+
+void Assembler::editSALUinst(std::shared_ptr<Inst> i, int smax) {
+  int newcode;
+
+  if (i->instType.DSTWidth != 0) {
+    if (i->dst.operandType == RegOperand) {
+      newcode = i->dst.code + smax;
+      editDSTreg(i, newcode);
+    }
+  }
+
+  if (i->instType.SRC0Width != 0) {
+    if (i->src0.operandType == RegOperand) {
+      newcode = i->src0.code + smax;
+      editSRC0reg(i, newcode);
+    }
+  }
+
+  if (i->instType.SRC1Width != 0) {
+    if (i->src1.operandType == RegOperand) {
+      newcode = i->src1.code + smax;
+      editSRC1reg(i, newcode);
+    }
+  }
+}
+
+void Assembler::editVALUinst(std::shared_ptr<Inst> i, int smax, int vmax) {
+  int newcode;
+
+  if (i->instType.DSTWidth != 0) {
+    if (i->dst.operandType == RegOperand) {
+      if (i->dst.code >= 256) {
+        newcode = i->dst.code + vmax;
+      } else {
+        newcode = i->dst.code + smax;
+      }
+      editDSTreg(i, newcode);
+    }
+  }
+
+  if (i->instType.SRC0Width != 0) {
+    if (i->src0.operandType == RegOperand) {
+      if (i->src0.code >= 256) {
+        newcode = i->src0.code + vmax;
+      } else {
+        newcode = i->src0.code + smax;
+      }
+      editSRC0reg(i, newcode);
+    }
+  }
+
+  if (i->instType.SRC1Width != 0) {
+    if (i->src1.operandType == RegOperand) {
+      if (i->src1.code >= 256) {
+        newcode = i->src1.code + vmax;
+      } else {
+        newcode = i->src1.code + smax;
+      }
+      editSRC1reg(i, newcode);
+    }
+  }
+}
+
+void Assembler::editFLATinst(std::shared_ptr<Inst> i, int smax, int vmax) {
+  int newcode;
+
+  if (i->instType.DSTWidth != 0) {
+    newcode = i->dst.code + vmax;
+    editDSTreg(i, newcode);
+  }
+
+  if ((i->second & 0x007F0000)>>16 != 0x7F) {
+    newcode = i->addr.code + vmax;
+    editSRC0flat(i, newcode, 0);
+
+    newcode = i->sAddr.code + smax;
+    editSRC1reg(i, newcode);
+  } else {
+    newcode = i->data.code + vmax;
+    editSRC0flat(i, newcode, 1);
+  }
+}
 
 void Assembler::editSRC0reg(std::shared_ptr<Inst> inst, int code) {
   uint32_t mask;
@@ -255,6 +327,19 @@ void Assembler::editSIMM(Inst *inst, short simm) {
 
   assembly.at(0) = assembly.at(0) | code;
   inst->bytes = instcodeToByteArray(assembly);
+}
+
+std::vector<unsigned char> 
+Assembler::ilstbuf(std::vector<std::shared_ptr<Inst>> ilst) {
+  std::vector<unsigned char> buf;
+  Inst *inst;
+  for (int i = 0; i < ilst.size(); i++) {
+    inst = ilst.at(i).get();
+    for (int j = 0; j < inst->bytes.size(); j++) {
+      buf.push_back(inst->bytes.at(j));
+    }
+  }   
+  return buf;
 }
 
 void Assembler::getInstData(std::string inststr, Inst *inst) {

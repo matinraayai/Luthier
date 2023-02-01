@@ -11,17 +11,7 @@
 #include <vector>
 
 char *getELF(std::string filename);
-
 void printInstruFn(std::vector<std::shared_ptr<Inst>> instList);
-void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
-                      Assembler a, int smax, int vmax);
-
-void editSALUinst(std::shared_ptr<Inst> i, Assembler a, int smax);
-void editVALUinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
-void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
-
-std::vector<unsigned char> extractIlistBuf(
-                               std::vector<std::shared_ptr<Inst>> instList);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
@@ -70,19 +60,24 @@ int main(int argc, char **argv) {
   auto kernelbytes = charToByteArray(newkernel, psize + isize);
   std::vector<std::shared_ptr<Inst>> instList = d.GetInsts(kernelbytes, poff);
 
-  // printInstruFn(instList);
-  // offsetInstruRegs(instList, a, sRegMax, vRegMax);
-  // printInstruFn(instList);
+  int i, j;
+  for (i = 0; i < instList.size(); i++) {
+    if (instList.at(i)->instType.instName == "s_endpgm") {
+      j = i++;
+      break;
+    }
+  }
+  for (j = i; j < instList.size(); j++) {
+    a.offsetRegs(instList.at(j),  sRegMax, vRegMax);
+  }
 
-  for (int i = 0; i < instList.size(); i++) {
-    a.Assemble("s_branch 0x3fb1", instList.at(i));
-  } std::cout << "Assembling done\n";
+  a.Assemble("s_branch 0x3fb1", instList.at(1));
 
-  // auto bufFromiList = extractIlistBuf(instList);
-  d.Disassemble(extractIlistBuf(instList), std::cout);
+  d.Disassemble(a.ilstbuf(instList), std::cout);
 
   return 0;
 }
+
 
 char *getELF(std::string filename) {
   std::streampos size;
@@ -131,136 +126,5 @@ void printInstruFn(std::vector<std::shared_ptr<Inst>> instList) {
                 << inst->second;
     std::cout << std::endl;
   }
-  std::cout << "---------------------------------------" << std::endl;
 }
-
-void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
-                      Assembler a, int smax, int vmax) {
-  uint64_t i, j;
-  int newcode;
-
-  for (i = 0; i < instList.size(); i++) {
-    if (instList.at(i)->instType.instName == "s_endpgm") {
-      j = i++;
-      break;
-    }
-  }
-  for (j = i; j < instList.size(); j++) {
-    switch(instList.at(j)->format.formatType) {
-      case SOP2:
-        editSALUinst(instList.at(j), a, smax);
-        break;
-      case SOP1:
-        editSALUinst(instList.at(j), a, smax);
-        break;
-      case VOP1:
-        editVALUinst(instList.at(j), a, smax, vmax);
-        break;
-      case FLAT:
-        editFLATinst(instList.at(j), a, smax, vmax);
-        break;
-      default:
-        break;
-    }
-  }
-  std::cout << "---------------------------------------" << std::endl;
-}
-
-void editSALUinst(std::shared_ptr<Inst> i, Assembler a, int smax) {
-  int newcode;
-
-  if (i->instType.DSTWidth != 0) {
-    if (i->dst.operandType == RegOperand) {
-      newcode = i->dst.code + smax;
-      a.editDSTreg(i, newcode);
-    }
-  }
-
-  if (i->instType.SRC0Width != 0) {
-    if (i->src0.operandType == RegOperand) {
-      newcode = i->src0.code + smax;
-      a.editSRC0reg(i, newcode);
-    }
-  }
-
-  if (i->instType.SRC1Width != 0) {
-    if (i->src1.operandType == RegOperand) {
-      newcode = i->src1.code + smax;
-      a.editSRC1reg(i, newcode);
-    }
-  }
-}
-
-void editVALUinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax) {
-  int newcode;
-
-  if (i->instType.DSTWidth != 0) {
-    if (i->dst.operandType == RegOperand) {
-      if (i->dst.code >= 256) {
-        newcode = i->dst.code + vmax;
-      } else {
-        newcode = i->dst.code + smax;
-      }
-      a.editDSTreg(i, newcode);
-    }
-  }
-
-  if (i->instType.SRC0Width != 0) {
-    if (i->src0.operandType == RegOperand) {
-      if (i->src0.code >= 256) {
-        newcode = i->src0.code + vmax;
-      } else {
-        newcode = i->src0.code + smax;
-      }
-      a.editSRC0reg(i, newcode);
-    }
-  }
-
-  if (i->instType.SRC1Width != 0) {
-    if (i->src1.operandType == RegOperand) {
-      if (i->src1.code >= 256) {
-        newcode = i->src1.code + vmax;
-      } else {
-        newcode = i->src1.code + smax;
-      }
-      a.editSRC1reg(i, newcode);
-    }
-  }
-}
-
-void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax) {
-  int newcode;
-
-  if (i->instType.DSTWidth != 0) {
-    newcode = i->dst.code + vmax;
-    a.editDSTreg(i, newcode);
-  }
-
-  if ((i->second & 0x007F0000)>>16 != 0x7F) {
-    newcode = i->addr.code + vmax;
-    a.editSRC0flat(i, newcode, 0);
-
-    newcode = i->sAddr.code + smax;
-    a.editSRC1reg(i, newcode);
-  } else {
-    newcode = i->data.code + vmax;
-    a.editSRC0flat(i, newcode, 1);
-  }
-}
-
-std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList) {
-  std::vector<unsigned char> buf;
-  Inst *inst;
-  for (int i = 0; i < instList.size(); i++) {
-    inst = instList.at(i).get();
-    
-    for (int j = 0; j < inst->bytes.size(); j++) {
-      buf.push_back(inst->bytes.at(j));
-    }
-  }   
-  std::cout << "---------------------------------------" << std::endl;
-  return buf;
-}
-
-
 
