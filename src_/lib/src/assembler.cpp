@@ -32,10 +32,36 @@ void Assembler::Assemble(std::string inststr, std::ostream &o) {
     default:
       o << "Format for instruction " << inststr
         << " not supported"          << std::endl;
-      return;
   }
 
   o << std::hex << assembly << std::endl;
+}
+
+std::shared_ptr<Inst> Assembler::Assemble(std::string inststr) {
+  Inst *inst = new Inst;
+  std::vector<uint32_t> assembly;
+
+  getInstData(inststr, inst);
+
+  switch (inst->instType.format.formatType) {
+    case SOP2:
+      assembly.push_back(assembleSOP2(inst));
+      break;
+    case SOP1:
+      assembly.push_back(assembleSOP1(inst));
+      break;
+    case SOPP:
+      assembly.push_back(assembleSOPP(inst));
+      break;
+    default:
+      // maybe throw an exception here
+      std::cout << "Format for instruction " << inststr
+                << " not supported"          << std::endl;
+  }
+  inst->first = assembly.at(0);
+  inst->bytes = instcodeToByteArray(assembly);
+
+  return std::shared_ptr<Inst>(inst);
 }
 
 void Assembler::editSRC0reg(std::shared_ptr<Inst> inst, int code) {

@@ -15,10 +15,11 @@ void printInstList(std::vector<std::shared_ptr<Inst>> instList);
 void printInstruFn(std::vector<std::shared_ptr<Inst>> instList);
 void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
                       Assembler a, int smax, int vmax);
-std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList);
 void editSALUinst(std::shared_ptr<Inst> i, Assembler a, int smax);
 void editVALUinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
 void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
+
+std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
@@ -67,13 +68,17 @@ int main(int argc, char **argv) {
   auto kernelbytes = charToByteArray(newkernel, psize + isize);
   std::vector<std::shared_ptr<Inst>> instList = d.GetInsts(kernelbytes, poff);
 
+  // printInstruFn(instList);
+  // offsetInstruRegs(instList, a, sRegMax, vRegMax);
+  // printInstruFn(instList);
+
+  for (int i = 0; i < instList.size(); i++) {
+    instList.at(i) = a.Assemble("s_branch 0x3fb1");
+  } std::cout << "Assembling done\n";
+
   // printInstList(instList);
-
-  printInstruFn(instList);
-  offsetInstruRegs(instList, a, sRegMax, vRegMax);
-
-  printInstruFn(instList);
-  // d.Disassemble(extractIlistBuf(instList), std::cout);
+  // auto bufFromiList = extractIlistBuf(instList);
+  d.Disassemble(extractIlistBuf(instList), std::cout);
 
   return 0;
 }
@@ -149,8 +154,6 @@ void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
   uint64_t i, j;
   int newcode;
 
-  std::string istr; // delete this later
-
   for (i = 0; i < instList.size(); i++) {
     if (instList.at(i)->instType.instName == "s_endpgm") {
       j = i++;
@@ -176,21 +179,6 @@ void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
     }
   }
   std::cout << "---------------------------------------" << std::endl;
-}
-
-
-std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList) {
-  std::vector<unsigned char> buf;
-  Inst *inst;
-  for (int i = 0; i < instList.size(); i++) {
-    inst = instList.at(i).get();
-    
-    for (int j = 0; j < inst->byteSize; j++) {
-      buf.push_back(inst->bytes.at(j));
-    }
-  }   
-  std::cout << "---------------------------------------" << std::endl;
-  return buf;
 }
 
 void editSALUinst(std::shared_ptr<Inst> i, Assembler a, int smax) {
@@ -275,6 +263,19 @@ void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax) {
   }
 }
 
+std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList) {
+  std::vector<unsigned char> buf;
+  Inst *inst;
+  for (int i = 0; i < instList.size(); i++) {
+    inst = instList.at(i).get();
+    
+    for (int j = 0; j < inst->bytes.size(); j++) {
+      buf.push_back(inst->bytes.at(j));
+    }
+  }   
+  std::cout << "---------------------------------------" << std::endl;
+  return buf;
+}
 
 
 

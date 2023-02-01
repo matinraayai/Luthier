@@ -115,22 +115,4 @@ struct Inst {
   uint32_t second;
 };
 
-struct instnode {
-  instnode *prev;
-  instnode *next;
-
-  std::string instStr;
-  std::vector<unsigned char> bytes;
-	
-	Format format;
-	InstType instType;
-	int byteSize;
-	uint64_t pc;
-	Operand src0;
-	Operand src1;
-	Operand src2;
-	Operand dst;
-	Operand simm16;
-};
-
 #endif
