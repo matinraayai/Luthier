@@ -14,8 +14,8 @@ class Assembler
 public:
     Assembler();
     void Assemble(std::string inststr, std::ostream &o);
-    // std::vector<unsigned char> Assemble(std::string inststr);
-    std::shared_ptr<Inst> Assemble(std::string inststr);
+    void Assemble(std::string inststr, std::shared_ptr<Inst> &inst);
+    // std::shared_ptr<Inst> Assemble(std::string inststr);
 
     void editSRC0reg(std::shared_ptr<Inst> inst, int code);
     void editSRC0flat(std::shared_ptr<Inst> inst, int code, bool data);

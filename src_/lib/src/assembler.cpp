@@ -15,30 +15,6 @@ Assembler::Assembler() {
 
 void Assembler::Assemble(std::string inststr, std::ostream &o) {
   Inst *inst = new Inst;
-  uint32_t assembly;
-
-  getInstData(inststr, inst);
-
-  switch (inst->instType.format.formatType) {
-    case SOP2:
-      assembly = assembleSOP2(inst);
-      break;
-    case SOP1:
-      assembly = assembleSOP1(inst);
-      break;
-    case SOPP:
-      assembly = assembleSOPP(inst);
-      break;
-    default:
-      o << "Format for instruction " << inststr
-        << " not supported"          << std::endl;
-  }
-
-  o << std::hex << assembly << std::endl;
-}
-
-std::shared_ptr<Inst> Assembler::Assemble(std::string inststr) {
-  Inst *inst = new Inst;
   std::vector<uint32_t> assembly;
 
   getInstData(inststr, inst);
@@ -55,14 +31,79 @@ std::shared_ptr<Inst> Assembler::Assemble(std::string inststr) {
       break;
     default:
       // maybe throw an exception here
+      o << "Format for instruction "     << inststr
+        << " not supported by assembler" << std::endl;
+  }
+
+  o << "\t" << inststr;
+  for (int i = inststr.size(); i < 59; i++) {
+    o << " ";
+  } 
+  o << std::hex << "//" << inst->PC << ": ";
+  for (int i = 0; i < assembly.size(); i++) {
+    o << std::hex << assembly.at(i) << " ";
+  }
+  o << std::endl;
+
+  delete inst;
+}
+
+void Assembler::Assemble(std::string inststr, std::shared_ptr<Inst> &inst) {
+  std::unique_ptr<Inst> new_inst = std::make_unique<Inst>();
+  std::vector<uint32_t> assembly;
+
+  getInstData(inststr, new_inst.get());
+
+  switch (new_inst->instType.format.formatType) {
+    case SOP2:
+      assembly.push_back(assembleSOP2(new_inst.get()));
+      break;
+    case SOP1:
+      assembly.push_back(assembleSOP1(new_inst.get()));
+      break;
+    case SOPP:
+      assembly.push_back(assembleSOPP(new_inst.get()));
+      break;
+    default:
+      // maybe throw an exception here
+      std::cout << "Format for instruction "     << inststr
+                << " not supported by assembler" << std::endl;
+  }
+  new_inst->first = assembly.at(0);
+  new_inst->bytes = instcodeToByteArray(assembly);
+  new_inst->PC = inst->PC;
+
+  inst = std::move(new_inst);
+}
+
+/*
+std::shared_ptr<Inst> Assembler::Assemble(std::string inststr) {
+  std::shared_ptr<Inst> inst = std::make_shared<Inst>();
+  std::vector<uint32_t> assembly;
+
+  getInstData(inststr, inst.get());
+
+  switch (inst->instType.format.formatType) {
+    case SOP2:
+      assembly.push_back(assembleSOP2(inst.get()));
+      break;
+    case SOP1:
+      assembly.push_back(assembleSOP1(inst.get()));
+      break;
+    case SOPP:
+      assembly.push_back(assembleSOPP(inst.get()));
+      break;
+    default:
+      // maybe throw an exception here
       std::cout << "Format for instruction " << inststr
                 << " not supported"          << std::endl;
   }
   inst->first = assembly.at(0);
   inst->bytes = instcodeToByteArray(assembly);
 
-  return std::shared_ptr<Inst>(inst);
+  return inst;
 }
+*/
 
 void Assembler::editSRC0reg(std::shared_ptr<Inst> inst, int code) {
   uint32_t mask;

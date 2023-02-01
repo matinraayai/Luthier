@@ -11,15 +11,17 @@
 #include <vector>
 
 char *getELF(std::string filename);
-void printInstList(std::vector<std::shared_ptr<Inst>> instList);
+
 void printInstruFn(std::vector<std::shared_ptr<Inst>> instList);
 void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
                       Assembler a, int smax, int vmax);
+
 void editSALUinst(std::shared_ptr<Inst> i, Assembler a, int smax);
 void editVALUinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
 void editFLATinst(std::shared_ptr<Inst> i, Assembler a, int smax, int vmax);
 
-std::vector<unsigned char> extractIlistBuf(std::vector<std::shared_ptr<Inst>> instList);
+std::vector<unsigned char> extractIlistBuf(
+                               std::vector<std::shared_ptr<Inst>> instList);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
@@ -73,10 +75,9 @@ int main(int argc, char **argv) {
   // printInstruFn(instList);
 
   for (int i = 0; i < instList.size(); i++) {
-    instList.at(i) = a.Assemble("s_branch 0x3fb1");
+    a.Assemble("s_branch 0x3fb1", instList.at(i));
   } std::cout << "Assembling done\n";
 
-  // printInstList(instList);
   // auto bufFromiList = extractIlistBuf(instList);
   d.Disassemble(extractIlistBuf(instList), std::cout);
 
@@ -99,22 +100,6 @@ char *getELF(std::string filename) {
   }
 
   return blob;
-}
-
-
-void printInstList(std::vector<std::shared_ptr<Inst>> instList) {
-  for (int i = 0; i < instList.size(); i++) {
-    std::cout << i << "\t\t" << instList.at(i)->instType.instName << "\t\t"
-              << instList.at(i)->PC << std::endl;
-  }
-
-  /* This code causes seg fault */
-  // InstPrinter printer;
-  // std::string istr;
-  // for (int i = 0; i < instList.size(); i++) {
-  //   istr = printer.print(instList.at(i).get());
-  //   std::cout << istr << std::endl;
-  // }
 }
 
 void printInstruFn(std::vector<std::shared_ptr<Inst>> instList) {
