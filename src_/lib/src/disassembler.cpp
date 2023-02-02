@@ -170,7 +170,7 @@ Disassembler::GetInstruInsts(elfio::File *file) {
 }
 
 std::vector<std::unique_ptr<Inst>>
-Disassembler::GetTrampInsts(std::vector<unsigned char> buf) {
+Disassembler::GetManualWrInsts(std::vector<unsigned char> buf) {
   std::vector<std::unique_ptr<Inst>> instList;
   uint64_t pc = 0;
   while (!buf.empty()) {

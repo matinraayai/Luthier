@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
   std::vector<std::unique_ptr<Inst>> instsI = d1.GetInstruInsts(&elfFileI);
   std::cout << instsI.size() << "\n";
 
-  // handwritten instructions
+  // manually written instructions
   std::string hwInsts[6] = {"s_branch 0x39",
                             "s_getpc_b64 s[10:11]",
                             "s_add_u32 s10, s10, 0xffffffbc",
@@ -55,11 +55,18 @@ int main(int argc, char **argv) {
 
   std::cout << codeBytes.size() << "\n";
   Disassembler d2;
-  std::vector<std::unique_ptr<Inst>> instsT = d2.GetTrampInsts(codeBytes);
+  std::vector<std::unique_ptr<Inst>> instsMW = d2.GetManualWrInsts(codeBytes);
 
   std::unique_ptr<Inst> fromOrigInst =
-      replaceTargetInst(instsP, 4, std::move(instsT.at(0)));
+      replaceTargetInst(instsP, 4, std::move(instsMW.at(0)));
   modifyInstruInst(instsI, 3);
+  std::vector<std::unique_ptr<Inst>> instsT;
+  for (int i = 1; i < 5; i++) {
+    instsT.push_back(std::move(instsMW.at(i)));
+  }
+  instsT.push_back(std::move(fromOrigInst));
+  instsT.push_back(std::move(instsMW.at(5)));
+
   return 0;
 }
 char *getELF(std::string filename) {
