@@ -114,7 +114,9 @@ Disassembler::GetOrigInsts(elfio::File *file) {
 
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);
+    instList.push_back(std::move(inst));
   }
+  return instList;
 }
 
 std::vector<std::unique_ptr<Inst>>
