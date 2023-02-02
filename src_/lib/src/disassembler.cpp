@@ -169,6 +169,7 @@ Disassembler::GetInstruInsts(elfio::File *file) {
 
 std::vector<std::unique_ptr<Inst>>
 Disassembler::GetTrampInsts(std::vector<unsigned char> buf) {
+  std::vector<std::unique_ptr<Inst>> instList;
   uint64_t pc = 0;
   while (!buf.empty()) {
     std::unique_ptr<Inst> inst = decode(buf);
@@ -191,7 +192,9 @@ Disassembler::GetTrampInsts(std::vector<unsigned char> buf) {
 
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);
+    instList.push_back(std::move(inst));
   }
+  return instList;
 }
 
 void Disassembler::Disassemble(elfio::File *file, std::string filename) {
