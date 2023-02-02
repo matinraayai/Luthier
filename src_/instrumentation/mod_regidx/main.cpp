@@ -11,6 +11,7 @@ char *getELF(std::string filename);
 std::unique_ptr<Inst>
 replaceTargetInst(std::vector<std::unique_ptr<Inst>> &insts, int idx,
                   std::unique_ptr<Inst> replace);
+void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx);
 int main(int argc, char **argv) {
   if (argc != 3) {
     std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
@@ -58,6 +59,7 @@ int main(int argc, char **argv) {
 
   std::unique_ptr<Inst> fromOrigInst =
       replaceTargetInst(instsP, 4, std::move(instsT.at(0)));
+  modifyInstruInst(instsI, 3);
   return 0;
 }
 char *getELF(std::string filename) {
@@ -83,4 +85,15 @@ replaceTargetInst(std::vector<std::unique_ptr<Inst>> &insts, int idx,
   std::unique_ptr<Inst> target = std::move(insts.at(idx));
   insts.at(idx) = std::move(replace);
   return std::move(target);
+}
+
+void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx) {
+  std::vector<unsigned char> low4(insts.at(idx)->bytes.begin(),
+                                  insts.at(idx)->bytes.begin() + 4);
+  uint32_t num = 0x00001f3c;
+  std::vector<unsigned char> high4 = u32ToByteArray(num);
+  low4.insert(low4.end(), high4.begin(), high4.end());
+  insts.at(idx)->bytes = low4;
+  insts.at(idx)->second = num;
+  insts.at(idx)->src1.literalConstant = num;
 }
