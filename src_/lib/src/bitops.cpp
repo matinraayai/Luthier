@@ -72,6 +72,19 @@ std::vector<unsigned char> stringToByteArray(std::string str) {
   return bytes;
 }
 
+std::vector<unsigned char> u32ToByteArray(uint32_t i) {
+  std::vector<unsigned char> bytes;
+  uint8_t buf;
+  uint32_t byteVal;
+
+  for (int j = 0; j <= 24; j += 8) {
+    byteVal = extractBitsFromU32(i, j, j + 7);
+    buf = uint8_t(byteVal);
+    bytes.push_back(buf);
+  }
+  return bytes;
+}
+
 std::vector<unsigned char> charToByteArray(char *blob, uint64_t size) {
   std::vector<unsigned char> bytes;
   char *word = new char[4];

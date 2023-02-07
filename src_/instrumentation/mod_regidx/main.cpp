@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 char *getELF(std::string filename);
+std::unique_ptr<Inst>
+replaceTargetInst(std::vector<std::unique_ptr<Inst>> &insts, int idx,
+                  std::unique_ptr<Inst> replace);
+void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx);
 int main(int argc, char **argv) {
   if (argc != 3) {
     std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
@@ -15,29 +19,29 @@ int main(int argc, char **argv) {
   }
   std::string pFilename = argv[1];
   std::string iFilename = argv[2];
-  /*
-    elfio::File elfFileP;
-    char *blob = getELF(pFilename);
-    elfFileP = elfFileP.FromMem(blob);
-    elfFileP.PrintSymbolsForSection(".text");
 
-    Disassembler d(&elfFileP);
-    int sRegMax, vRegMax;
-    d.getMaxRegIdx(&elfFileP, &sRegMax, &vRegMax);
-    std::cout << "The maximum number of sReg is " << sRegMax << "\n";
-    std::cout << "The maximum number of vReg is " << vRegMax << "\n";
-    std::vector<std::unique_ptr<Inst>> instsP = d.GetOrigInsts(&elfFileP);
+  elfio::File elfFileP;
+  char *blob = getELF(pFilename);
+  elfFileP = elfFileP.FromMem(blob);
+  elfFileP.PrintSymbolsForSection(".text");
 
-    elfio::File elfFileI;
-    char *blob1 = getELF(iFilename);
-    elfFileI = elfFileI.FromMem(blob1);
+  Disassembler d(&elfFileP);
+  int sRegMax, vRegMax;
+  d.getMaxRegIdx(&elfFileP, &sRegMax, &vRegMax);
+  std::cout << "The maximum number of sReg is " << sRegMax << "\n";
+  std::cout << "The maximum number of vReg is " << vRegMax << "\n";
+  std::vector<std::unique_ptr<Inst>> instsP = d.GetOrigInsts(&elfFileP);
 
-    Disassembler d1(&elfFileI);
-    d1.SetModVal(vRegMax, sRegMax + 2);
-    std::vector<std::unique_ptr<Inst>> instsI = d1.GetInstruInsts(&elfFileI);
-    std::cout << instsI.size() << "\n";
-  */
-  // handwritten instructions
+  elfio::File elfFileI;
+  char *blob1 = getELF(iFilename);
+  elfFileI = elfFileI.FromMem(blob1);
+
+  Disassembler d1(&elfFileI);
+  d1.SetModVal(vRegMax, sRegMax + 2);
+  std::vector<std::unique_ptr<Inst>> instsI = d1.GetInstruInsts(&elfFileI);
+  std::cout << instsI.size() << "\n";
+
+  // manually written instructions
   std::string hwInsts[6] = {"s_branch 0x39",
                             "s_getpc_b64 s[10:11]",
                             "s_add_u32 s10, s10, 0xffffffbc",
@@ -50,8 +54,19 @@ int main(int argc, char **argv) {
   std::vector<unsigned char> codeBytes = instcodeToByteArray(hwEncoding);
 
   std::cout << codeBytes.size() << "\n";
-  Disassembler d;
-  std::vector<std::unique_ptr<Inst>> instsT = d.GetTrampInsts(codeBytes);
+  Disassembler d2;
+  std::vector<std::unique_ptr<Inst>> instsMW = d2.GetManualWrInsts(codeBytes);
+
+  std::unique_ptr<Inst> fromOrigInst =
+      replaceTargetInst(instsP, 4, std::move(instsMW.at(0)));
+  modifyInstruInst(instsI, 3);
+  std::vector<std::unique_ptr<Inst>> instsT;
+  for (int i = 1; i < 5; i++) {
+    instsT.push_back(std::move(instsMW.at(i)));
+  }
+  instsT.push_back(std::move(fromOrigInst));
+  instsT.push_back(std::move(instsMW.at(5)));
+
   return 0;
 }
 char *getELF(std::string filename) {
@@ -70,4 +85,22 @@ char *getELF(std::string filename) {
   }
 
   return blob;
+}
+std::unique_ptr<Inst>
+replaceTargetInst(std::vector<std::unique_ptr<Inst>> &insts, int idx,
+                  std::unique_ptr<Inst> replace) {
+  std::unique_ptr<Inst> target = std::move(insts.at(idx));
+  insts.at(idx) = std::move(replace);
+  return std::move(target);
+}
+
+void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx) {
+  std::vector<unsigned char> low4(insts.at(idx)->bytes.begin(),
+                                  insts.at(idx)->bytes.begin() + 4);
+  uint32_t num = 0x00001f3c;
+  std::vector<unsigned char> high4 = u32ToByteArray(num);
+  low4.insert(low4.end(), high4.begin(), high4.end());
+  insts.at(idx)->bytes = low4;
+  insts.at(idx)->second = num;
+  insts.at(idx)->src1.literalConstant = num;
 }

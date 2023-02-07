@@ -30,7 +30,7 @@ public:
   std::vector<std::unique_ptr<Inst>> GetInstruInsts(elfio::File *file);
   std::vector<std::unique_ptr<Inst>> GetOrigInsts(elfio::File *file);
   std::vector<std::unique_ptr<Inst>>
-  GetTrampInsts(std::vector<unsigned char> buf);
+  GetManualWrInsts(std::vector<unsigned char> buf);
   void SetModVal(int v_offset, int s_offset);
 
 private:
