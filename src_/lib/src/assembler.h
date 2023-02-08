@@ -15,6 +15,7 @@ public:
     Assembler();
     void Assemble(std::string inststr, std::ostream &o);
     void Assemble(std::string inststr, std::shared_ptr<Inst> &inst);
+    std::shared_ptr<Inst> Assemble(std::string inststr, uint64_t pc);
 
     void offsetRegs(std::shared_ptr<Inst> i, int smax, int vmax);
 

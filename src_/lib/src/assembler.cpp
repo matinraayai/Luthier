@@ -76,6 +76,34 @@ void Assembler::Assemble(std::string inststr, std::shared_ptr<Inst> &inst) {
   inst = std::move(new_inst);
 }
 
+std::shared_ptr<Inst> Assembler::Assemble(std::string inststr, uint64_t pc) {
+  std::unique_ptr<Inst> inst = std::make_unique<Inst>();
+  std::vector<uint32_t> assembly;
+
+  getInstData(inststr, inst.get());
+
+  switch (inst->instType.format.formatType) {
+    case SOP2:
+      assembly.push_back(assembleSOP2(inst.get()));
+      break;
+    case SOP1:
+      assembly.push_back(assembleSOP1(inst.get()));
+      break;
+    case SOPP:
+      assembly.push_back(assembleSOPP(inst.get()));
+      break;
+    default:
+      // maybe throw an exception here
+      std::cout << "Format for instruction "     << inststr
+                << " not supported by assembler" << std::endl;
+  }
+  inst->first = assembly.at(0);
+  inst->bytes = instcodeToByteArray(assembly);
+  inst->PC = PC;
+
+  return inst;
+}
+
 void Assembler::offsetRegs(std::shared_ptr<Inst> i, int smax, int vmax) {
   switch(i->format.formatType) {
     case SOP2:

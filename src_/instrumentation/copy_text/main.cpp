@@ -168,31 +168,26 @@ void makeTrampoline(std::vector<std::shared_ptr<Inst>> &instList,
    * I feel like we don't need this
    */
   for (uint64_t i = 0; i < 8; i++) {
-    auto new_nop = std::make_shared<Inst>();
+    uint64_t new_nop;
     if (instList.at(instList.size() - 1)->byteSize == 8) {
-      new_nop->PC = instList.at(instList.size() - 1)->PC + 8;
+      new_nop = instList.at(instList.size() - 1)->PC + 8;
     } else {
-      new_nop->PC = instList.at(instList.size() - 1)->PC + 4;
+      new_nop = instList.at(instList.size() - 1)->PC + 4;
     }
-    a.Assemble("s_nop", new_nop);
-    instList.push_back(new_nop);
+    instList.push_back(a.Assemble("s_nop", new_nop));
   }
 
-  std::vector<std::shared_ptr<Inst>> trampoline;
+  uint64_t newpc;
   for (int i = 1; i < 7; i++) {
     if (i == 5) {
-      trampoline.push_back(originalInst);
-      trampoline.at(i-1)->PC = trmpPC + i*4;
+      originalInst->PC = trmpPC + i*4;
+      instList.push_back(originalInst);
     } else {
-      trampoline.push_back(std::make_shared<Inst>());
-      trampoline.at(i-1)->PC = trmpPC + i*4;
-      a.Assemble(hwInsts[i], trampoline.at(i-1));
+      instList.push_back(a.Assemble(hwInsts[i], trmpPC + i*4));
     }
     // For some reason the s_addc_u32 is not being printed by the disassembler
     // However, you can see that the instruction is still assembled
     // std::cout << trampoline.at(i)->instType.instName << std::endl;
-
-    instList.push_back(trampoline.at(i-1));
   }
   a.Assemble(hwInsts[0], instList.at(inum));
 }
