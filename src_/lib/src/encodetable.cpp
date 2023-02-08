@@ -10,6 +10,9 @@ void Assembler::initEncodeTable()
   EncodeTable["s_add_u32"] = {
     "s_add_u32", 0, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0
     };
+  EncodeTable["s_addc_u32"] = {
+    "s_addc_u32", 4, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0
+    };
   EncodeTable["s_mul_i32"] = {
     "s_mul_i32", 36, FormatTable[SOP2], 0, ExeUnitScalar, 32, 32, 32, 0, 0
     };

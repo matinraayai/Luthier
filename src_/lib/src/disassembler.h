@@ -26,11 +26,12 @@ public:
   int maxNumVReg();
   void getMaxRegIdx(elfio::File *file, int *sRegMax, int *vRegMax);
   std::vector<std::unique_ptr<Inst>> GetInsts(elfio::File *file);
-  std::vector<std::shared_ptr<Inst>> GetInsts(std::vector<unsigned char> buf, uint64_t off);
   std::vector<std::unique_ptr<Inst>> GetInstruInsts(elfio::File *file);
   std::vector<std::unique_ptr<Inst>> GetOrigInsts(elfio::File *file);
   std::vector<std::unique_ptr<Inst>>
   GetManualWrInsts(std::vector<unsigned char> buf);
+  std::vector<std::shared_ptr<Inst>> 
+  GetInsts(std::vector<unsigned char> buf, uint64_t off);
   void SetModVal(int v_offset, int s_offset);
 
 private:

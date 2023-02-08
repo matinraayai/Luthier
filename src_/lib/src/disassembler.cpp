@@ -169,35 +169,6 @@ Disassembler::GetInstruInsts(elfio::File *file) {
   return instList;
 }
 
-std::vector<std::shared_ptr<Inst>> Disassembler::GetInsts(
-  std::vector<unsigned char> buf, uint64_t off) {
-  bool isLast = 0;
-  uint64_t pc = off;
-  std::vector<std::shared_ptr<Inst>> instList;
-
-  while (!buf.empty() && !isLast) {
-    std::unique_ptr<Inst> inst = decode(buf);
-    inst->PC = pc;
-
-    for (int i = 0; i < inst->byteSize; i++) {
-      inst->bytes.push_back(buf.at(i));
-    }
-    inst->first = convertLE(inst->bytes);
-    if (inst->byteSize == 8) {
-      inst->second = convertLEsec(inst->bytes);
-    }
-
-    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
-    pc += uint64_t(inst->byteSize);
-
-    if (inst->instType.instName == "s_setpc_b64") {
-      isLast = 1;
-    }
-    instList.push_back(std::move(inst));
-  }
-  return instList;
-}
-
 std::vector<std::unique_ptr<Inst>>
 Disassembler::GetManualWrInsts(std::vector<unsigned char> buf) {
   std::vector<std::unique_ptr<Inst>> instList;
@@ -223,6 +194,35 @@ Disassembler::GetManualWrInsts(std::vector<unsigned char> buf) {
 
     buf.erase(buf.begin(), buf.begin() + inst->byteSize);
     pc += uint64_t(inst->byteSize);
+    instList.push_back(std::move(inst));
+  }
+  return instList;
+}
+
+std::vector<std::shared_ptr<Inst>> 
+Disassembler::GetInsts(std::vector<unsigned char> buf, uint64_t off) {
+  bool isLast = 0;
+  uint64_t pc = off;
+  std::vector<std::shared_ptr<Inst>> instList;
+
+  while (!buf.empty() && !isLast) {
+    std::unique_ptr<Inst> inst = decode(buf);
+    inst->PC = pc;
+
+    for (int i = 0; i < inst->byteSize; i++) {
+      inst->bytes.push_back(buf.at(i));
+    }
+    inst->first = convertLE(inst->bytes);
+    if (inst->byteSize == 8) {
+      inst->second = convertLEsec(inst->bytes);
+    }
+
+    buf.erase(buf.begin(), buf.begin() + inst->byteSize);
+    pc += uint64_t(inst->byteSize);
+
+    if (inst->instType.instName == "s_setpc_b64") {
+      isLast = 1;
+    }
     instList.push_back(std::move(inst));
   }
   return instList;

@@ -12,6 +12,8 @@
 
 char *getELF(std::string filename);
 void printInstruFn(std::vector<std::shared_ptr<Inst>> instList);
+void makeTrampoline(std::vector<std::shared_ptr<Inst>> &instList, 
+                    Assembler a, uint64_t inum);
 
 int main(int argc, char **argv) {
   if (argc != 3) {
@@ -68,10 +70,16 @@ int main(int argc, char **argv) {
     }
   }
   for (j = i; j < instList.size(); j++) {
+    if (instList.at(j)->instType.instName == "s_nop") {
+      break;
+    }
     a.offsetRegs(instList.at(j),  sRegMax, vRegMax);
   }
 
-  a.Assemble("s_branch 0x3fb1", instList.at(1));
+  makeTrampoline(instList, a, 0);
+
+  // a.Assemble("s_branch 0x3fb1", instList.at(0));
+  
 
   d.Disassemble(a.ilstbuf(instList), std::cout);
 
@@ -126,5 +134,66 @@ void printInstruFn(std::vector<std::shared_ptr<Inst>> instList) {
                 << inst->second;
     std::cout << std::endl;
   }
+}
+
+void makeTrampoline(std::vector<std::shared_ptr<Inst>> &instList, 
+                    Assembler a, uint64_t inum) {
+  // manually written instructions -- trampoline
+  std::string hwInsts[7] = {"s_branch ",
+                            "s_getpc_b64 s[10:11]",
+                            "s_add_u32 s10, s10, 0xffffffbc",
+                            "s_addc_u32 s11, s11, -1",
+                            "s_swappc_b64 s[30:31], s[10:11]",
+                            "s_nop", // replace this with the original instruction
+                            "s_branch "};
+
+  std::shared_ptr<Inst> originalInst = instList.at(inum);
+  uint64_t trmpPC = instList.at(instList.size() - 1)->PC + 4;
+
+  //SIGNED immediate values for jump!
+  short trmpBranchAddr = (trmpPC - (originalInst->PC + 4))/4; 
+  short origBranchAddr = ((originalInst->PC + 4) - (trmpPC + 0x14));
+
+  std::stringstream t_branch;
+  std::stringstream o_branch;
+
+  t_branch << "0x" << std::hex << trmpBranchAddr;
+  o_branch << "0x" << std::hex << origBranchAddr;
+
+  hwInsts[0].append(t_branch.str());
+  hwInsts[6].append(o_branch.str());
+
+  /* 
+   * Pad end of intrumentation function with NOP
+   * I feel like we don't need this
+   */
+  for (uint64_t i = 0; i < 8; i++) {
+    auto new_nop = std::make_shared<Inst>();
+    if (instList.at(instList.size() - 1)->byteSize == 8) {
+      new_nop->PC = instList.at(instList.size() - 1)->PC + 8;
+    } else {
+      new_nop->PC = instList.at(instList.size() - 1)->PC + 4;
+    }
+    a.Assemble("s_nop", new_nop);
+    instList.push_back(new_nop);
+  }
+
+  std::vector<std::shared_ptr<Inst>> trampoline;
+  for (int i = 1; i < 7; i++) {
+    if (i == 5) {
+      trampoline.push_back(originalInst);
+      trampoline.at(i-1)->PC = trmpPC + i*4;
+    } else {
+      trampoline.push_back(std::make_shared<Inst>());
+      trampoline.at(i-1)->PC = trmpPC + i*4;
+      a.Assemble(hwInsts[i], trampoline.at(i-1));
+    }
+    // For some reason the s_addc_u32 is not being printed by the disassembler
+    // However, you can see that the instruction is still assembled
+    // std::cout << trampoline.at(i)->instType.instName << std::endl;
+
+    instList.push_back(trampoline.at(i-1));
+  }
+  a.Assemble(hwInsts[0], instList.at(inum));
 }
 
