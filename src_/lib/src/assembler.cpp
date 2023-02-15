@@ -99,7 +99,7 @@ std::shared_ptr<Inst> Assembler::Assemble(std::string inststr, uint64_t pc) {
   }
   inst->first = assembly.at(0);
   inst->bytes = instcodeToByteArray(assembly);
-  inst->PC = PC;
+  inst->PC = pc;
 
   return inst;
 }
