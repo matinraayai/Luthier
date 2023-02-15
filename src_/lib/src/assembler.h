@@ -30,6 +30,7 @@ public:
     void editSIMM(Inst *inst, short simm);
 
     std::vector<unsigned char> ilstbuf(std::vector<std::shared_ptr<Inst>> ilst);
+    char *blob(std::vector<std::shared_ptr<Inst>> instList);
 
 private:
     void initEncodeTable();

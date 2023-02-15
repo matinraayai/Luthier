@@ -70,14 +70,15 @@ int main(int argc, char **argv) {
     }
   }
   for (j = i; j < instList.size(); j++) {
-    if (instList.at(j)->instType.instName == "s_nop") {
-      break;
+    if (instList.at(j)->instType.instName == "s_getpc_b64" ||
+        instList.at(j)->instType.instName == "s_setpc_b64" ||
+        instList.at(j)->instType.instName == "s_swappc_b64") {
+      continue;
     }
     a.offsetRegs(instList.at(j),  sRegMax, vRegMax);
   }
 
   makeTrampoline(instList, a, 0);
-
   d.Disassemble(a.ilstbuf(instList), std::cout);
 
   return 0;
@@ -145,37 +146,18 @@ void makeTrampoline(std::vector<std::shared_ptr<Inst>> &instList,
                             "s_branch "};
 
   std::shared_ptr<Inst> originalInst = instList.at(inum);
-  uint64_t trmpPC = instList.at(instList.size() - 1)->PC + 4;
-
-  //SIGNED immediate values for jump!
-  short trmpBranchAddr = (trmpPC - (originalInst->PC + 4))/4; 
-  short origBranchAddr = ((originalInst->PC + 4) - (trmpPC + 0x14));
-
-  std::stringstream t_branch;
   std::stringstream o_branch;
 
-  t_branch << "0x" << std::hex << trmpBranchAddr;
-  o_branch << "0x" << std::hex << origBranchAddr;
+  uint64_t trmpPC = instList.back()->PC;
+  short origBranchImm = (trmpPC - originalInst->PC - 4)/4; 
 
-  hwInsts[0].append(t_branch.str());
-  hwInsts[6].append(o_branch.str());
+  o_branch << "0x" << std::hex << origBranchImm;
+  hwInsts[0].append(o_branch.str());
 
-  /* 
-   * Pad end of intrumentation function with NOP
-   * I feel like we don't need this
-   */
-  for (uint64_t i = 0; i < 8; i++) {
-    uint64_t new_nop;
-    if (instList.at(instList.size() - 1)->byteSize == 8) {
-      new_nop = instList.at(instList.size() - 1)->PC + 8;
-    } else {
-      new_nop = instList.at(instList.size() - 1)->PC + 4;
-    }
-    instList.push_back(a.Assemble("s_nop", new_nop));
-  }
+  a.Assemble(hwInsts[0], instList.at(inum));
 
   uint64_t newpc;
-  for (int i = 1; i < 7; i++) {
+  for (int i = 1; i < 6; i++) {
     if (i == 5) {
       originalInst->PC = trmpPC + i*4;
       instList.push_back(originalInst);
@@ -186,6 +168,14 @@ void makeTrampoline(std::vector<std::shared_ptr<Inst>> &instList,
     // However, you can see that the instruction is still assembled
     // std::cout << trampoline.at(i)->instType.instName << std::endl;
   }
-  a.Assemble(hwInsts[0], instList.at(inum));
+
+  std::stringstream t_branch;
+
+  trmpPC = instList.back()->PC + 4;
+  short trmpBranchImm = (instList.at(inum)->PC - trmpPC - 4)/4;
+
+  t_branch << "0x" << std::hex << trmpBranchImm;
+  hwInsts[6].append(t_branch.str());
+  instList.push_back(a.Assemble(hwInsts[6], instList.back()->PC + 4));
 }
 

@@ -370,6 +370,21 @@ Assembler::ilstbuf(std::vector<std::shared_ptr<Inst>> ilst) {
   return buf;
 }
 
+char *Assembler::blob(std::vector<std::shared_ptr<Inst>> instList) {
+  std::vector<unsigned char> buf = ilstbuf(instList);
+  char *blob = new char[buf.size()];
+
+  for (uint64_t i = 0; i < buf.size(); i++) {
+    // std::memcpy(buf.at(i), blob + i, 1);
+
+    blob[i] = buf.at(i);
+
+    // std::cout << std::hex << blob[i];
+    // if ((i+1) % 4 == 0) std::cout << std::endl;
+  }
+  return blob;
+}
+
 void Assembler::getInstData(std::string inststr, Inst *inst) {
   std::vector<std::string> params = getInstParams(inststr);
 

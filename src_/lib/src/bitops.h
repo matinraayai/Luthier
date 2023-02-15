@@ -9,7 +9,6 @@ uint32_t convertLE(std::vector<unsigned char> b);
 uint32_t convertLEsec(std::vector<unsigned char> b);
 std::vector<unsigned char> instcodeToByteArray(std::vector<uint32_t> inst);
 std::vector<unsigned char> charToByteArray(char *blob, uint64_t size);
-char* byteArrayToBlob(std::vector<unsigned char> bytes);
 std::vector<unsigned char> stringToByteArray(std::string str);
 uint64_t signExt(uint64_t in, int signBit);
 std::vector<unsigned char> u32ToByteArray(uint32_t i);
