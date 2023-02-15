@@ -78,9 +78,6 @@ int main(int argc, char **argv) {
 
   makeTrampoline(instList, a, 0);
 
-  // a.Assemble("s_branch 0x3fb1", instList.at(0));
-  
-
   d.Disassemble(a.ilstbuf(instList), std::cout);
 
   return 0;

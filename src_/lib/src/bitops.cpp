@@ -95,7 +95,18 @@ std::vector<unsigned char> charToByteArray(char *blob, uint64_t size) {
       bytes.push_back(uint8_t(word[j]));
     }
   }
+
+  delete word;
   return bytes;
+}
+
+char* byteArrayToBlob( std::vector<unsigned char> bytes) {
+  char *blob = new char[bytes.size()];
+
+  for (uint64_t i = 0; i < bytes.size(); i++) {
+    std::memcpy(bytes.at(i), blob + i, 1);
+  }
+  return blob;
 }
 
 uint64_t signExt(uint64_t in, int signBit) {
