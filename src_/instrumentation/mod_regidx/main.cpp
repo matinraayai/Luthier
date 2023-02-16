@@ -44,6 +44,8 @@ int main(int argc, char **argv) {
   elfFileI = elfFileI.FromMem(blob1);
 
   Disassembler d1(&elfFileI);
+  // 2 more scalar registers used in trampoline to store
+  // the address of the instrumentation function
   d1.SetModVal(vRegMax, sRegMax + 2);
   std::vector<std::unique_ptr<Inst>> instsI = d1.GetInstruInsts(&elfFileI);
   std::cout << instsI.size() << "\n";
@@ -158,8 +160,15 @@ void getNewTextBinary(unsigned char *blob,
     printf("address: %x\n", offset);
     std::unique_ptr<Inst> inst = std::move(instsI.at(i));
     int size = inst->bytes.size();
-    for (int i = 0; i < size; i++) {
-      blob[offset + i] = inst->bytes[i];
+    std::vector<unsigned char> low4 = u32ToByteArray(inst->first);
+    for (int i = 0; i < 4; i++) {
+      blob[offset + i] = low4[i];
+    }
+    if (inst->second) {
+      std::vector<unsigned char> high4 = u32ToByteArray(inst->second);
+      for (int i = 0; i < 4; i++) {
+        blob[offset + 4 + i] = high4[i];
+      }
     }
     offset += size;
   }

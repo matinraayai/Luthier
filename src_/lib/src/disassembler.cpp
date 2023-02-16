@@ -69,7 +69,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename,
     for (int i = instStr.size(); i < 59; i++) {
       o << " ";
     }
-    o << std::setbase(10) << "//" << std::setw(12) << std::setfill('0') << pc
+    o << std::setbase(16) << "//" << std::setw(12) << std::setfill('0') << pc
       << ": ";
     o << std::setw(8) << std::hex << convertLE(buf);
     if (inst->byteSize == 8) {
