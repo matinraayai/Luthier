@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
                             "s_swappc_b64 s[30:31], s[10:11]",
                             "s_branch 0x3fbf"};
   std::vector<uint32_t> mwEncoding = {0xbf820039, 0xbe8a1c00, 0x800aff0a,
-                                      0XFFFFFEB4, 0x820bff0b, 0XFFFFFFFF,
+                                      0XFFFFFFBC, 0x820bff0b, 0XFFFFFFFF,
                                       0XBE9E1E0A, 0xbf823fbf};
   std::vector<unsigned char> codeBytes = instcodeToByteArray(mwEncoding);
 
