@@ -12,6 +12,13 @@ std::unique_ptr<Inst>
 replaceTargetInst(std::vector<std::unique_ptr<Inst>> &insts, int idx,
                   std::unique_ptr<Inst> replace);
 void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx);
+int getNewTextSize(std::vector<std::unique_ptr<Inst>> &instsP,
+                   std::vector<std::unique_ptr<Inst>> &instsI,
+                   std::vector<std::unique_ptr<Inst>> &instsT);
+void getNewTextBinary(unsigned char *blob,
+                      std::vector<std::unique_ptr<Inst>> &instsP,
+                      std::vector<std::unique_ptr<Inst>> &instsI,
+                      std::vector<std::unique_ptr<Inst>> &instsT);
 int main(int argc, char **argv) {
   if (argc != 3) {
     std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
@@ -42,16 +49,16 @@ int main(int argc, char **argv) {
   std::cout << instsI.size() << "\n";
 
   // manually written instructions
-  std::string hwInsts[6] = {"s_branch 0x39",
+  std::string mwInsts[6] = {"s_branch 0x39",
                             "s_getpc_b64 s[10:11]",
                             "s_add_u32 s10, s10, 0xffffffbc",
                             "s_addc_u32 s11, s11, -1",
                             "s_swappc_b64 s[30:31], s[10:11]",
                             "s_branch 0x3fbf"};
-  std::vector<uint32_t> hwEncoding = {0xbf820039, 0xbe8a1c00, 0x800aff0a,
+  std::vector<uint32_t> mwEncoding = {0xbf820039, 0xbe8a1c00, 0x800aff0a,
                                       0XFFFFFEB4, 0x820bff0b, 0XFFFFFFFF,
                                       0XBE9E1E0A, 0xbf823fbf};
-  std::vector<unsigned char> codeBytes = instcodeToByteArray(hwEncoding);
+  std::vector<unsigned char> codeBytes = instcodeToByteArray(mwEncoding);
 
   std::cout << codeBytes.size() << "\n";
   Disassembler d2;
@@ -66,6 +73,17 @@ int main(int argc, char **argv) {
   }
   instsT.push_back(std::move(fromOrigInst));
   instsT.push_back(std::move(instsMW.at(5)));
+
+  int size = getNewTextSize(instsP, instsI, instsT);
+  printf("new text size is %d\n", size);
+  unsigned char *blobText = new unsigned char[size];
+  getNewTextBinary(blobText, instsP, instsI, instsT);
+  elfio::Section *text = elfFileP.GetSectionByName(".text");
+  char *blobTextold = text->Blob();
+  text->size = size;
+  std::memcpy(blobTextold, (char *)blobText, size);
+
+  d.Disassemble(&elfFileP, "new elf", std::cout);
 
   return 0;
 }
@@ -103,4 +121,56 @@ void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx) {
   insts.at(idx)->bytes = low4;
   insts.at(idx)->second = num;
   insts.at(idx)->src1.literalConstant = num;
+}
+
+int getNewTextSize(std::vector<std::unique_ptr<Inst>> &instsP,
+                   std::vector<std::unique_ptr<Inst>> &instsI,
+                   std::vector<std::unique_ptr<Inst>> &instsT) {
+  int bytes = 0;
+  for (int i = 0; i < instsP.size(); i++) {
+    bytes += instsP.at(i)->byteSize;
+  }
+  for (int i = 0; i < instsI.size(); i++) {
+    bytes += instsI.at(i)->byteSize;
+  }
+  for (int i = 0; i < instsT.size(); i++) {
+    bytes += instsT.at(i)->byteSize;
+  }
+
+  return bytes;
+}
+
+void getNewTextBinary(unsigned char *blob,
+                      std::vector<std::unique_ptr<Inst>> &instsP,
+                      std::vector<std::unique_ptr<Inst>> &instsI,
+                      std::vector<std::unique_ptr<Inst>> &instsT) {
+  int offset = 0;
+  for (int i = 0; i < instsP.size(); i++) {
+    printf("address: %x\n", offset);
+    std::unique_ptr<Inst> inst = std::move(instsP.at(i));
+    int size = inst->bytes.size();
+    for (int i = 0; i < size; i++) {
+      blob[offset + i] = inst->bytes[i];
+    }
+    offset += size;
+  }
+  for (int i = 0; i < instsI.size(); i++) {
+    printf("address: %x\n", offset);
+    std::unique_ptr<Inst> inst = std::move(instsI.at(i));
+    int size = inst->bytes.size();
+    for (int i = 0; i < size; i++) {
+      blob[offset + i] = inst->bytes[i];
+    }
+    offset += size;
+  }
+  for (int i = 0; i < instsT.size(); i++) {
+    printf("address: %x\n", offset);
+    std::unique_ptr<Inst> inst = std::move(instsT.at(i));
+    int size = inst->bytes.size();
+    for (int i = 0; i < size; i++) {
+      blob[offset + i] = inst->bytes[i];
+    }
+    offset += size;
+  }
+  return;
 }
