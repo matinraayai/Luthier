@@ -4,3 +4,4 @@ s_swappc_b64 s[30:31], s[6:7];BE9E1E06
 s_mul_i32 s9, s9, s3;
 s_branch 0x3fb1;BF823FB1
 s_branch 0x49;BF820049
+s_nop;BF800000

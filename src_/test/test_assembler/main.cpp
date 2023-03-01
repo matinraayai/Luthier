@@ -47,8 +47,9 @@ int main(int argc, char *argv[])
             {
                 instr = line.substr(0, i);
                 std::cout << "From input file:\t" << line << std::endl
-			                    << "Output from asm:\t";
-		            assembler.Assemble(instr, std::cout);
+			                    << "Output from asm:\t" << std::endl;
+		            //assembler.Assemble(instr, std::cout);
+		            assembler.Assemble(instr);
                 std::cout << std::endl;
             }
         }

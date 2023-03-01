@@ -3,6 +3,10 @@
 #include "src/internal.h"
 #include "src/util.h"
 
+#include "assembler.h"
+#include "disassembler.h"
+#include "bitops.h"
+
 #include <dlfcn.h>
 #include <elf.h>
 #include <hip/hip_runtime.h>
@@ -18,16 +22,16 @@
 std::vector<hipModule_t> *
 call_original_hip_register_fat_binary(const void *data);
 void editNoteSectionData(elfio::File *elf);
-void editTextSectionData();
+void editTextSectionData(elfio::File *elf);
 void editShr(elfio::File *elf);
 void printSymbolTable(elfio::File *elf);
 
-uint64_t processBuddle(char *data) {
+uint64_t processBundle(char *data) {
   __ClangOffloadBundleHeader *header =
       reinterpret_cast<__ClangOffloadBundleHeader *>(data);
 
   std::string magic{data, 24};
-  std::cout << magic << "\n";
+  std::cout << magic << "\n\n";
   printf("The address of header is %p\n", (void *)header);
 
   uint64_t coSize;
@@ -72,7 +76,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
   uint64_t endOfHeader;
-  endOfHeader = processBuddle((char *)fbwrapper->binary);
+  endOfHeader = processBundle((char *)fbwrapper->binary);
 
   std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
 
@@ -91,24 +95,33 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
       continue;
     }
     std::cout << "matching triple name is " << triple << "\n";
-    std::cout << "code object size is " << desc->size << "\n";
+    std::cout << "code object size is " << desc->size << "\n\n";
     char *codeobj = reinterpret_cast<char *>(
         reinterpret_cast<uintptr_t>(header_copy) + desc->offset);
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
 
+  // int smax, vmax;
+  // d.getMaxRegIdx(&elfFile, &smax, &vmax);
+  // printf("\nSRegMax: %d\nVRegMax: %d\n\n", smax, vmax);
+
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
-  // editTextSectionData(&elfFile);
+  editTextSectionData(&elfFile);
   // editShr(&elfFile);
-  printSymbolTable(&elfFile);
+  // printSymbolTable(&elfFile);
+
+  // Disassembler d(&elfFile);
+  // d.Disassemble(&elfFile, "vectoradd_hip.exe -- in __hipRegisterFatBinary", std::cout);
+
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
+
   // pass new wrapper into original register fat binary func:
   auto modules = call_original_hip_register_fat_binary(data_copy);
 
-  // printf("Number of modules: %zu\n", modules->size());
+  printf("Number of modules: %zu\n", modules->size());
 
   // __builtin_dump_struct(modules,&printf);
 
@@ -138,24 +151,37 @@ call_original_hip_register_fat_binary(const void *data) {
 }
 
 void editTextSectionData(elfio::File *elf) {
-  auto text_section = elf->GetSectionByName(".text");
-  if (!text_section) {
+  auto tex = elf->GetSectionByName(".text");
+  if (!tex) {
     panic("text section is not found");
   }
-  std::cout << "text section size is " << text_section->size << "\n";
-  std::cout << "text section offset is " << text_section->offset << "\n";
-  char newInst[4];
-  newInst[0] = (unsigned char)0xf2;
-  newInst[1] = (unsigned char)0x02;
-  newInst[2] = (unsigned char)0x00;
-  newInst[3] = (unsigned char)0x7e;
+  Assembler a;
+  Disassembler d(elf);
 
-  char *oldInst = text_section->Blob() + text_section->size - 16;
-  printf("start address of text is %02X\n",
-         (unsigned int)(unsigned char)*oldInst);
-  std::memcpy(oldInst, newInst, 4);
-  printf("start address of text is %02X\n",
-         (unsigned int)(unsigned char)*(oldInst + 3));
+  d.Disassemble(elf, "vectoradd_hip.exe -- before edit", std::cout);
+  std::vector<unsigned char> 
+     prgmByteArray = charToByteArray(tex->Blob(), tex->size);
+  std::vector<std::shared_ptr<Inst>> 
+    instList = d.GetInsts(prgmByteArray, tex->offset);
+
+  char *newInst = a.Assemble("s_nop");
+  for(uint64_t i = 0; i < instList.size(); i++) {
+  // for(uint64_t i = 0; i < tex->size; i += 4) {
+
+    if (instList.at(i)->instType.instName == "s_endpgm") break;
+
+    char *oldInst = tex->Blob() + (instList.at(i)->PC - tex->offset);
+    // char *newInst = byteArrayToChar(instList.at(i)->bytes);
+
+    std::memcpy(oldInst, newInst, 4);
+  }
+
+  // char *oldInst = tex->Blob();
+  // char *newInst = a.Assemble("s_nop");
+  // std::memcpy(oldInst, newInst, 4);
+  // std::memcpy(oldInst + 4, newInst, 4);
+
+  d.Disassemble(elf, "vectoradd_hip.exe -- after edit", std::cout);
 }
 
 // This function changes things in the note section by taking an elfio::Note

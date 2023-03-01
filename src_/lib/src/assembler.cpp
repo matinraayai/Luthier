@@ -76,6 +76,32 @@ void Assembler::Assemble(std::string inststr, std::shared_ptr<Inst> &inst) {
   inst = std::move(new_inst);
 }
 
+char* Assembler::Assemble(std::string inststr) {
+  std::unique_ptr<Inst> new_inst = std::make_unique<Inst>();
+  std::vector<unsigned char> bytes;
+  std::vector<uint32_t> assembly;
+
+  getInstData(inststr, new_inst.get());
+
+  switch (new_inst->instType.format.formatType) {
+    case SOP2:
+      assembly.push_back(assembleSOP2(new_inst.get()));
+      break;
+    case SOP1:
+      assembly.push_back(assembleSOP1(new_inst.get()));
+      break;
+    case SOPP:
+      assembly.push_back(assembleSOPP(new_inst.get()));
+      break;
+    default:
+      // maybe throw an exception here
+      std::cout << "Format for instruction "     << inststr
+                << " not supported by assembler" << std::endl;
+  }
+  bytes = instcodeToByteArray(assembly);
+  return byteArrayToChar(bytes);
+}
+
 std::shared_ptr<Inst> Assembler::Assemble(std::string inststr, uint64_t pc) {
   std::unique_ptr<Inst> inst = std::make_unique<Inst>();
   std::vector<uint32_t> assembly;
@@ -370,21 +396,6 @@ Assembler::ilstbuf(std::vector<std::shared_ptr<Inst>> ilst) {
   return buf;
 }
 
-char *Assembler::blob(std::vector<std::shared_ptr<Inst>> instList) {
-  std::vector<unsigned char> buf = ilstbuf(instList);
-  char *blob = new char[buf.size()];
-
-  for (uint64_t i = 0; i < buf.size(); i++) {
-    // std::memcpy(buf.at(i), blob + i, 1);
-
-    blob[i] = buf.at(i);
-
-    // std::cout << std::hex << blob[i];
-    // if ((i+1) % 4 == 0) std::cout << std::endl;
-  }
-  return blob;
-}
-
 void Assembler::getInstData(std::string inststr, Inst *inst) {
   std::vector<std::string> params = getInstParams(inststr);
 
@@ -568,10 +579,10 @@ uint32_t Assembler::assembleSOPP(Inst *inst) {
   uint32_t instcode = 0xBF800000;
 
   uint32_t opcode = uint32_t(inst->instType.opcode);
-  opcode = opcode << 16;
-  instcode = instcode | opcode;
+  instcode = instcode | (opcode << 16);
 
-  instcode = instcode | uint16_t(inst->simm16.code);
+  if (opcode != 0 && opcode != 1)
+    instcode = instcode | uint16_t(inst->simm16.code);
 
   return instcode;
 }

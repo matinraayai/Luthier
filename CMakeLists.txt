@@ -9,6 +9,7 @@ message(${CMAKE_MODULE_PATH})
 include(hip)
 
 set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_FLAGS "-fPIC")
 # Add warning related flags
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
 
@@ -24,7 +25,7 @@ add_definitions(-D__HIP_PLATFORM_HCC__)
 add_definitions(-D_GLIBCXX_DEBUG)
 
 # Include sub directories
-set(SUB_DIRS src)
+set(SUB_DIRS src src_/lib)
 foreach (DIR ${SUB_DIRS})
   add_subdirectory(${DIR})
 endforeach (DIR)

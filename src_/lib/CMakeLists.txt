@@ -13,10 +13,15 @@ src/elf.cc
 src/bitops.cpp 
 src/decodetable.cpp)
 
+set(BITOPS_SRC
+src/bitops.cpp)
+
 add_library(assembler ${ASM_SRC})
 add_library(disassembler ${DISASM_SRC})
+add_library(bitops ${BITOPS_SRC})
 
 set(CMAKE_BUILD_TYPE Debug)
 
 target_include_directories(assembler PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_include_directories(disassembler PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_include_directories(bitops PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")

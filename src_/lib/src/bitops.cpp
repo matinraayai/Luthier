@@ -39,11 +39,14 @@ std::vector<unsigned char> instcodeToByteArray(std::vector<uint32_t> inst) {
   for (int i = 0; i < inst.size(); i++) {
     for (int j = 0; j <= 24; j += 8) {
       byteVal = extractBitsFromU32(inst.at(i), j, j + 7);
+
+
       buf = uint8_t(byteVal);
+
+
       bytes.push_back(buf);
     }
   }
-
   return bytes;
 }
 
@@ -87,17 +90,18 @@ std::vector<unsigned char> u32ToByteArray(uint32_t i) {
 
 std::vector<unsigned char> charToByteArray(char *blob, uint64_t size) {
   std::vector<unsigned char> bytes;
-  char *word = new char[4];
-
-  for (uint64_t i = 0; i < size; i += 4) {
-    std::memcpy(word, blob + i, 4);
-    for (int j = 0; j < 4; j++) {
-      bytes.push_back(uint8_t(word[j]));
-    }
+  for (uint64_t i = 0; i < size; i++) {
+    bytes.push_back(uint8_t(blob[i]));
   }
-
-  delete word;
   return bytes;
+}
+
+char* byteArrayToChar(std::vector<unsigned char> bytes) {
+  char *blob = new char[bytes.size()];
+  for (uint64_t i = 0; i < bytes.size(); i++) {
+    blob[i] = bytes.at(i);
+  }
+  return blob;
 }
 
 uint64_t signExt(uint64_t in, int signBit) {

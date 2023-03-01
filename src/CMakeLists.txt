@@ -19,6 +19,9 @@ set_target_properties(sibir
 set_property(TARGET sibir
     PROPERTY COMPILE_FLAGS "-fPIC")
 target_link_libraries(sibir hip::host)
+target_link_libraries(sibir assembler)
+target_link_libraries(sibir disassembler)
+target_link_libraries(sibir bitops)
 
 # Enable C++ 17
 target_compile_features(sibir PRIVATE cxx_std_17)
