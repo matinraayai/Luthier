@@ -11,14 +11,16 @@ parser.add_argument(
     "commands", metavar="commands", nargs="+", help="Commands to execute"
 )
 parser.add_argument(
-    "-t", "--target", help="Target device for instrumentation function"
+    "-i", "--instrumentator", help="Path to instrumentation function"
 )
 
 if __name__ == "__main__":
     args = parser.parse_args()
     command = " ".join(args.commands)
 
+
     path = os.path.dirname(os.path.realpath(__file__))
+    instrupath = os.path.abspath(args.instrumentator)
     current_wd = os.getcwd()
 
     env = os.environ.copy()
@@ -26,6 +28,7 @@ if __name__ == "__main__":
         env["LD_LIBRARY_PATH"] = ""
     env["LD_LIBRARY_PATH"] = path + "/lib" + ":" + env["LD_LIBRARY_PATH"]
     env["LD_PRELOAD"] = path + "/lib/libsibir.so"
+    env["INSTRU_FUNC"] = instrupath
 
     proc = subprocess.Popen(
         command,

@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -66,6 +67,8 @@ uint64_t processBundle(char *data) {
 }
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
+  std::cout << std::getenv("INSTRU_FUNC") << std::endl << std::endl;
+
   printf("Here in %s\n", __FUNCTION__);
 
   char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
@@ -108,7 +111,9 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
-  editTextSectionData(&elfFile);
+
+  // editTextSectionData(&elfFile);
+
   // editShr(&elfFile);
   // printSymbolTable(&elfFile);
 
