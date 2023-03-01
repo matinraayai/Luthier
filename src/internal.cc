@@ -6,6 +6,7 @@
 #include "assembler.h"
 #include "disassembler.h"
 #include "bitops.h"
+#include "trampoline.h"
 
 #include <dlfcn.h>
 #include <elf.h>

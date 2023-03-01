@@ -22,6 +22,7 @@ target_link_libraries(sibir hip::host)
 target_link_libraries(sibir assembler)
 target_link_libraries(sibir disassembler)
 target_link_libraries(sibir bitops)
+target_link_libraries(sibir trampoline)
 
 # Enable C++ 17
 target_compile_features(sibir PRIVATE cxx_std_17)
