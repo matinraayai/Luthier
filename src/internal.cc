@@ -281,7 +281,17 @@ void trampoline(elfio::File *elfp, char *ipath) {
   offsetInstruRegs(instList, a, sRegMax, vRegMax);
 
   makeTrampoline(instList, a, 0);
-  d.Disassemble(a.ilstbuf(instList), std::cout);
+  a.Assemble("s_branch 0x2E", instList.at(0));
+  a.Assemble("s_nop", instList.at(1));
+
+
+  // std::memcpy(byteArrayToChar(newkernel), 
+  //             byteArrayToChar(a.ilstbuf(instList)), psize+isize);
+  std::memcpy(ptex->Blob(), 
+              // byteArrayToChar(a.ilstbuf(instList)), psize+isize);
+              byteArrayToChar(a.ilstbuf(instList)), 8);
+
+  d.Disassemble(elfp, "vectoradd_hip.exe -- after edit", std::cout);
   std::cout << "-----------------------------------------" << std::endl;
 }
 
