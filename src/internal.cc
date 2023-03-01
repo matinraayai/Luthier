@@ -27,6 +27,7 @@ void editNoteSectionData(elfio::File *elf);
 void editTextSectionData(elfio::File *elf);
 void editShr(elfio::File *elf);
 void printSymbolTable(elfio::File *elf);
+void trampoline(elfio::File *elfp, char *ipath);
 
 uint64_t processBundle(char *data) {
   __ClangOffloadBundleHeader *header =
@@ -68,8 +69,6 @@ uint64_t processBundle(char *data) {
 }
 
 extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
-  std::cout << std::getenv("INSTRU_FUNC") << std::endl << std::endl;
-
   printf("Here in %s\n", __FUNCTION__);
 
   char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
@@ -105,13 +104,14 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     elfFile = elfFile.FromMem(codeobj); // load elf file from code object
   }
 
-  // int smax, vmax;
-  // d.getMaxRegIdx(&elfFile, &smax, &vmax);
-  // printf("\nSRegMax: %d\nVRegMax: %d\n\n", smax, vmax);
-
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
+
+  char *ipath = std::getenv("INSTRU_FUNC");
+  if (ipath != NULL) {
+    trampoline(&elfFile, ipath);
+  }
 
   // editTextSectionData(&elfFile);
 
@@ -239,3 +239,53 @@ void printSymbolTable(elfio::File *elf) {
   elf->PrintSymbolsForSection(".text");
   elf->PrintSymbolsForSection(".rodata");
 }
+
+void trampoline(elfio::File *elfp, char *ipath) {
+  char *iblob = getELF(std::string(ipath));
+  elfio::File elfi;
+  elfi = elfi.FromMem(iblob);
+
+  auto ptex = elfp->GetSectionByName(".text");
+  auto itex = elfi.GetSectionByName(".text");
+
+  if (!ptex) {
+    panic("text section is not found for program");
+  }
+  if (!ptex) {
+    panic("text section is not found for instrumentation function");
+  }
+
+  Assembler a;
+  Disassembler d(elfp);
+
+  uint64_t poff  = ptex->offset;
+  uint64_t psize = ptex->size;
+  uint64_t ioff  = itex->offset;
+  uint64_t isize = itex->size;
+
+  std::cout << "-----------------------------------------" << std::endl;
+  std::cout << "Program Offset:\t" << poff    << std::endl
+            << "Program Size:\t"   << psize   << std::endl
+            << "Instru Offset:\t"  << ioff    << std::endl
+            << "Instru Size:\t"    << isize   << std::endl << std::endl;
+
+  int sRegMax, vRegMax;
+  d.getMaxRegIdx(elfp, &sRegMax, &vRegMax);
+  std::cout << "Max S reg:\t" << sRegMax << std::endl
+            << "Max V reg:\t" << vRegMax << std::endl;
+  std::cout << "-----------------------------------------" << std::endl;
+
+  auto newkernel = newKernel(ptex, itex);
+  std::vector<std::shared_ptr<Inst>> instList = d.GetInsts(newkernel, poff);
+
+  offsetInstruRegs(instList, a, sRegMax, vRegMax);
+
+  makeTrampoline(instList, a, 0);
+  d.Disassemble(a.ilstbuf(instList), std::cout);
+  std::cout << "-----------------------------------------" << std::endl;
+}
+
+
+
+
+

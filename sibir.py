@@ -20,7 +20,6 @@ if __name__ == "__main__":
 
 
     path = os.path.dirname(os.path.realpath(__file__))
-    instrupath = os.path.abspath(args.instrumentator)
     current_wd = os.getcwd()
 
     env = os.environ.copy()
@@ -28,7 +27,12 @@ if __name__ == "__main__":
         env["LD_LIBRARY_PATH"] = ""
     env["LD_LIBRARY_PATH"] = path + "/lib" + ":" + env["LD_LIBRARY_PATH"]
     env["LD_PRELOAD"] = path + "/lib/libsibir.so"
-    env["INSTRU_FUNC"] = instrupath
+
+    if args.instrumentator != None:
+        instrupath = os.path.abspath(args.instrumentator)
+        env["INSTRU_FUNC"] = instrupath
+    else:
+        print("no instru func specified")
 
     proc = subprocess.Popen(
         command,
