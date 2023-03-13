@@ -28,7 +28,8 @@ struct __ClangOffloadBundleDesc {
 struct __ClangOffloadBundleHeader {
   const char magic[sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1];
   uint64_t numBundles;
-  __ClangOffloadBundleDesc desc[1];
+  // __ClangOffloadBundleDesc desc[1]
+    __ClangOffloadBundleDesc *desc;
 };
 
 struct __CudaFatBinaryWrapper {
