@@ -46,14 +46,11 @@ int main(int argc, char *argv[])
             if(i != std::string::npos)
             {
                 instr = line.substr(0, i);
-                auto instbytes = assembler.Assemble(instr);
-                
-                std::cout<<"Output: ";
-                for (int i = instbytes.size()-1; i >= 0; i--)
-                    std::cout<<std::hex<<int(instbytes.at(i))<<" ";
-                std::cout<<std::endl;
-
-                printf("Expected: %s\n", line.substr(i+1, line.length()).c_str());
+                std::cout << "From input file:\t" << line << std::endl
+			                    << "Output from asm:\t" << std::endl;
+		            //assembler.Assemble(instr, std::cout);
+		            assembler.Assemble(instr);
+                std::cout << std::endl;
             }
         }
     }

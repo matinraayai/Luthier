@@ -115,15 +115,4 @@ struct Inst {
   uint32_t second;
 };
 
-struct instnode {
-  instnode *prev;
-  instnode *next;
-
-  std::string instStr;
-  std::vector<unsigned char> bytes;
-
-  int byteSize;
-  uint64_t pc;
-};
-
 #endif

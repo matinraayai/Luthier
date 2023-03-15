@@ -2000,9 +2000,9 @@ void Disassembler::initializeDecodeTable() {
                0, 0, 0});
   addInstType({"s_bitset1_b64", 27, FormatTable[SOP1], 0, ExeUnitScalar, 64, 64,
                0, 0, 0});
-  addInstType({"s_getpc_b64", 28, FormatTable[SOP1], 0, ExeUnitScalar, 64, 64,
+  addInstType({"s_getpc_b64", 28, FormatTable[SOP1], 0, ExeUnitScalar, 64, 0,
                0, 0, 0});
-  addInstType({"s_setpc_b64", 29, FormatTable[SOP1], 0, ExeUnitScalar, 64, 64,
+  addInstType({"s_setpc_b64", 29, FormatTable[SOP1], 0, ExeUnitScalar, 0, 64,
                0, 0, 0});
   addInstType({"s_swappc_b64", 30, FormatTable[SOP1], 0, ExeUnitScalar, 64, 64,
                0, 0, 0});
