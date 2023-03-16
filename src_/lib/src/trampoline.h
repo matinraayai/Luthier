@@ -12,8 +12,10 @@
 
 char *getELF(std::string filename);
 
+void getNewTextBinary(char *newtextbinary, char *codeobj, char *ipath);
+
 std::vector<unsigned char> 
-  newKernel(elfio::Section *pgrm, elfio::Section *instru);
+  combinePgrmInstruTextSection(elfio::Section *pgrm, elfio::Section *instru);
 
 void printInstruFn(std::vector<std::shared_ptr<Inst>> instList);
 void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,

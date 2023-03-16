@@ -18,24 +18,57 @@ char *getELF(std::string filename) {
   return blob;
 }
 
+void getNewTextBinary(char *newtextbinary, char *codeobj, char *ipath) {
+  char *iblob = getELF(std::string(ipath));
+  elfio::File elfp, elfi;
+  elfp = elfp.FromMem(codeobj);
+  elfi = elfi.FromMem(iblob);
+
+  auto ptex = elfp.GetSectionByName(".text");
+  auto itex = elfi.GetSectionByName(".text");
+
+  if (!ptex) {
+    throw std::runtime_error("code object text section not found");
+  }
+  if (!ptex) {
+    throw std::runtime_error("instrumentation function text section not found");
+  }
+
+  Assembler a;
+  Disassembler d(&elfp);
+
+  uint64_t poff  = ptex->offset;
+  uint64_t psize = ptex->size;
+  uint64_t isize = itex->size;
+
+  int sRegMax, vRegMax;
+  d.getMaxRegIdx(&elfp, &sRegMax, &vRegMax);
+
+  auto newtextsec = combinePgrmInstruTextSection(ptex, itex);
+  std::vector<std::shared_ptr<Inst>> instList = d.GetInsts(newtextsec, poff);
+  offsetInstruRegs(instList, a, sRegMax, vRegMax);
+  makeTrampoline(instList, a, 0);
+
+  auto instlistbuf = a.ilstbuf(instList);
+  std::memcpy(newtextbinary, byteArrayToChar(instlistbuf), instlistbuf.size());
+}
+
 std::vector<unsigned char> 
-  newKernel(elfio::Section *pgrm, elfio::Section *instru) {
+  combinePgrmInstruTextSection(elfio::Section *pgrm, elfio::Section *instru) {
   uint64_t poff = pgrm->offset;
   uint64_t psize = pgrm->size;
 
   uint64_t ioff = instru->offset;
   uint64_t isize = instru->size;
 
-  char *newkernel = new char[psize + isize];
+  char *newtextsec = new char[psize + isize];
 
-  std::memcpy(newkernel, pgrm->Blob(), psize);
-  std::memcpy(newkernel + psize, instru->Blob(), isize);
+  std::memcpy(newtextsec, pgrm->Blob(), psize);
+  std::memcpy(newtextsec + psize, instru->Blob(), isize);
 
-  auto kernelbytes = charToByteArray(newkernel, psize + isize);
-  //std::vector<std::shared_ptr<Inst>> instList = d.GetInsts(kernelbytes, poff);
+  auto textsecbytes = charToByteArray(newtextsec, psize + isize);
 
-  //return instList;
-  return kernelbytes;
+  return textsecbytes;
 }
 
 void printInstruFn(std::vector<std::shared_ptr<Inst>> instList) {
@@ -69,8 +102,6 @@ void printInstruFn(std::vector<std::shared_ptr<Inst>> instList) {
   }
 }
 
-//void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
-                      // Assembler a, Disassembler d, elfio::File *elf) {
 void offsetInstruRegs(std::vector<std::shared_ptr<Inst>> instList,
                       Assembler a, int sRegMax, int vRegMax) {
   int i, j;
