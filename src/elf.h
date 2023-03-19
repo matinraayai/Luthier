@@ -44,6 +44,7 @@ public:
   std::string type;
   uint64_t offset;
   uint64_t size;
+  uint64_t entsize;
 
 private:
   File *file;

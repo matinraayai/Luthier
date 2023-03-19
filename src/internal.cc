@@ -4,8 +4,8 @@
 #include "src/util.h"
 
 #include "assembler.h"
-#include "disassembler.h"
 #include "bitops.h"
+#include "disassembler.h"
 #include "trampoline.h"
 
 #include <dlfcn.h>
@@ -92,8 +92,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   const __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
 
-  char *desc_copy;
-  char *codeobj;
+  char *elfBinary;
 
   for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
     uint64_t trippleSize = desc->tripleSize;
@@ -104,23 +103,24 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     std::cout << "matching triple name is " << triple << "\n";
     std::cout << "code object size is " << desc->size << "\n\n";
 
-    desc_copy = new char[desc->size];
-    std::memcpy(desc_copy, (void *)desc, desc->size);
-
-    // char *codeobj = reinterpret_cast<char *>(
-    //     reinterpret_cast<uintptr_t>(header_copy) + desc->offset);
-    codeobj = reinterpret_cast<char *>(
+    elfBinary = reinterpret_cast<char *>(
         reinterpret_cast<uintptr_t>(header_copy) + desc->offset);
   }
   elfio::File elfFile;
-  elfFile = elfFile.FromMem(codeobj); // load elf file from code object
+  elfFile = elfFile.FromMem(elfBinary); // load elf file from code object
   Disassembler d(&elfFile);
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
-  
+  int newSize = 0x25f6;
+  char *newELFBinary = new char[newSize];
+
+  // copy NULL and .note section
+  std::memcpy(newELFBinary, elfBinary,
+              elfFile.GetSectionByName(".dynsym")->offset);
+
   char *ipath = std::getenv("INSTRU_FUNC");
-  char *newcodeobj;
+
   if (ipath != NULL) {
     auto buf = trampoline(codeobj, ipath);
 
@@ -131,18 +131,25 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
     std::memcpy(newcodeobj, byteArrayToChar(buf), buf.size());
 
-    reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->offset = (uint64_t)newcodeobj - (uint64_t)header_copy;
-  
-    std::cout << "New code object offset: " << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->offset << std::endl;
-    std::cout << "New code object size: " << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->size << std::endl;
-    std::cout << "matching triple name is " << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->triple << "\n";
+    reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->offset =
+        (uint64_t)newcodeobj - (uint64_t)header_copy;
+
+    std::cout << "New code object offset: "
+              << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->offset
+              << std::endl;
+    std::cout << "New code object size: "
+              << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->size
+              << std::endl;
+    std::cout << "matching triple name is "
+              << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->triple
+              << "\n";
   }
   // editTextSectionData(&elfFile);
 
   // editShr(&elfFile);
   // printSymbolTable(&elfFile);
 
-  reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->desc = 
+  reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy);
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
@@ -188,16 +195,17 @@ void editTextSectionData(elfio::File *elf) {
   Disassembler d(elf);
 
   d.Disassemble(elf, "vectoradd_hip.exe -- before edit", std::cout);
-  std::vector<unsigned char> 
-     prgmByteArray = charToByteArray(tex->Blob(), tex->size);
-  std::vector<std::shared_ptr<Inst>> 
-    instList = d.GetInsts(prgmByteArray, tex->offset);
+  std::vector<unsigned char> prgmByteArray =
+      charToByteArray(tex->Blob(), tex->size);
+  std::vector<std::shared_ptr<Inst>> instList =
+      d.GetInsts(prgmByteArray, tex->offset);
 
   char *newInst = a.Assemble("s_nop");
-  for(uint64_t i = 0; i < instList.size(); i++) {
-  // for(uint64_t i = 0; i < tex->size; i += 4) {
+  for (uint64_t i = 0; i < instList.size(); i++) {
+    // for(uint64_t i = 0; i < tex->size; i += 4) {
 
-    if (instList.at(i)->instType.instName == "s_endpgm") break;
+    if (instList.at(i)->instType.instName == "s_endpgm")
+      break;
 
     char *oldInst = tex->Blob() + (instList.at(i)->PC - tex->offset);
     // char *newInst = byteArrayToChar(instList.at(i)->bytes);
@@ -282,16 +290,17 @@ std::vector<unsigned char> trampoline(char *codeobj, char *ipath) {
   Assembler a;
   Disassembler d(&elfp);
 
-  uint64_t poff  = ptex->offset;
+  uint64_t poff = ptex->offset;
   uint64_t psize = ptex->size;
-  uint64_t ioff  = itex->offset;
+  uint64_t ioff = itex->offset;
   uint64_t isize = itex->size;
 
   std::cout << "---------------------------------------" << std::endl;
-  std::cout << "Program Offset:\t" << poff  << std::endl
-            << "Program Size:\t"   << psize << std::endl
-            << "Instru Offset:\t"  << ioff  << std::endl
-            << "Instru Size:\t"    << isize << std::endl << std::endl;
+  std::cout << "Program Offset:\t" << poff << std::endl
+            << "Program Size:\t" << psize << std::endl
+            << "Instru Offset:\t" << ioff << std::endl
+            << "Instru Size:\t" << isize << std::endl
+            << std::endl;
 
   int sRegMax, vRegMax;
   d.getMaxRegIdx(&elfp, &sRegMax, &vRegMax);
@@ -308,8 +317,3 @@ std::vector<unsigned char> trampoline(char *codeobj, char *ipath) {
 
   return a.ilstbuf(instList);
 }
-
-
-
-
-

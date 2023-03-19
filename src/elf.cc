@@ -32,6 +32,7 @@ void File::ParseSections() {
     section->type = Section::SectionTypeStr(shdr[i].sh_type);
     section->offset = shdr[i].sh_offset;
     section->size = shdr[i].sh_size;
+    section->entsize = shdr[i].sh_entsize;
 
     this->sections.push_back(std::move(section));
   }
