@@ -43,6 +43,7 @@ public:
   uint64_t offset;
   uint64_t size;
   uint64_t entsize;
+  uint64_t align;
 
 private:
   File *file;

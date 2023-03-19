@@ -121,69 +121,72 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   char *iBinary = getELF(std::string(ipath));
   elfFilei = elfFilei.FromMem(iBinary);
 
-  // copy NULL and .note section
-  std::memcpy(newELFBinary, elfBinary,
-              elfFilep.GetSectionByName(".dynsym")->offset);
+  int offset = 0x200; // .note's offset
+
+  // copy .note section
+  int copySize = elfFilep.GetSectionByName(".note")->size;
+  std::memcpy(newELFBinary + offset, elfFilep.GetSectionByName(".note")->Blob(),
+              copySize);
+  offset += copySize;
+
   // generate new .dynsym section
   int newSecSize = elfFilep.GetSectionByName(".dynsym")->size +
                    elfFilep.GetSectionByName(".dynsym")->entsize * 2;
   char *newSecBinary = new char[newSecSize];
   getDynsymSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynsym"),
                      elfFilei.GetSectionByName(".dynsym"));
+  // copy new .dynsym section
+  std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
+  offset += newSecSize;
 
-  if (ipath != NULL) {
-    auto buf = trampoline(codeobj, ipath);
+  // copy .gnu.hash, .hash, .dynstr sections
+  copySize = elfFilep.GetSectionByName(".gnu.hash")->size +
+             elfFilep.GetSectionByName(".hash")->size +
+             elfFilep.GetSectionByName(".dynstr")->size;
+  std::memcpy(newSecBinary + offset,
+              elfFilep.GetSectionByName(".gnu.hash")->Blob(), copySize);
+  offset += copySize;
 
-    d.Disassemble(buf, std::cout);
-
-    reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->size += buf.size();
-    newcodeobj = new char[buf.size()];
-
-    std::memcpy(newcodeobj, byteArrayToChar(buf), buf.size());
-
-    reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->offset =
-        (uint64_t)newcodeobj - (uint64_t)header_copy;
-
-    std::cout << "New code object offset: "
-              << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->offset
-              << std::endl;
-    std::cout << "New code object size: "
-              << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->size
-              << std::endl;
-    std::cout << "matching triple name is "
-              << reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy)->triple
-              << "\n";
+  // copy .rodata
+  int align_req = elfFilep.GetSectionByName(".rodata")->align;
+  if (offset % align_req != 0) {
+    offset += align_req - offset % align_req;
   }
-  // editTextSectionData(&elfFile);
+  copySize = elfFilep.GetSectionByName(".rodata")->size;
+  std::memcpy(newSecBinary + offset,
+              elfFilep.GetSectionByName(".rodata")->Blob(), copySize);
+  offset += copySize;
+}
+// editTextSectionData(&elfFile);
 
-  // editShr(&elfFile);
-  // printSymbolTable(&elfFile);
+// editShr(&elfFile);
+// printSymbolTable(&elfFile);
 
-  reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->desc =
-      reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy);
-  reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
-      reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
+reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->desc =
+    reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy);
+reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
+    reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
 
-  // pass new wrapper into original register fat binary func:
-  auto modules = call_original_hip_register_fat_binary(data_copy);
+// pass new wrapper into original register fat binary func:
+auto modules = call_original_hip_register_fat_binary(data_copy);
 
-  printf("Number of modules: %zu\n", modules->size());
+printf("Number of modules: %zu\n", modules->size());
 
-  // __builtin_dump_struct(modules,&printf);
+// __builtin_dump_struct(modules,&printf);
 
-  // for (auto module : *modules) {
-  //       count +=1;
+// for (auto module : *modules) {
+//       count +=1;
 
-  //       if (count > 2) {
-  //          printf(module->fileName.c_str());
-  // /         __builtin_dump_struct(module,&printf);
-  //      };
-  // printf("%d\n", count);
+//       if (count > 2) {
+//          printf(module->fileName.c_str());
+// /         __builtin_dump_struct(module,&printf);
+//      };
+// printf("%d\n", count);
 
-  // }
+// }
 
-  return modules;
-  // return NULL;
+return modules;
+// return NULL;
 }
 
 std::vector<hipModule_t> *
