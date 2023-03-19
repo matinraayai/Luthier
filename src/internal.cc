@@ -6,6 +6,7 @@
 #include "assembler.h"
 #include "bitops.h"
 #include "disassembler.h"
+#include "sectiongenerator.h"
 #include "trampoline.h"
 
 #include <dlfcn.h>
@@ -106,20 +107,29 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     elfBinary = reinterpret_cast<char *>(
         reinterpret_cast<uintptr_t>(header_copy) + desc->offset);
   }
-  elfio::File elfFile;
-  elfFile = elfFile.FromMem(elfBinary); // load elf file from code object
-  Disassembler d(&elfFile);
+  elfio::File elfFilep, elfFilei;
+  elfFilep = elfFilep.FromMem(elfBinary); // load elf file from code object
+  Disassembler d(&elfFilep);
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
   int newSize = 0x25f6;
   char *newELFBinary = new char[newSize];
 
+  // load instrumentation code
+  char *ipath = std::getenv("INSTRU_FUNC");
+  char *iBinary = getELF(std::string(ipath));
+  elfFilei = elfFilei.FromMem(iBinary);
+
   // copy NULL and .note section
   std::memcpy(newELFBinary, elfBinary,
-              elfFile.GetSectionByName(".dynsym")->offset);
-
-  char *ipath = std::getenv("INSTRU_FUNC");
+              elfFilep.GetSectionByName(".dynsym")->offset);
+  // generate new .dynsym section
+  int newSecSize = elfFilep.GetSectionByName(".dynsym")->size +
+                   elfFilep.GetSectionByName(".dynsym")->entsize * 2;
+  char *newSecBinary = new char[newSecSize];
+  getDynsymSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynsym"),
+                     elfFilei.GetSectionByName(".dynsym"));
 
   if (ipath != NULL) {
     auto buf = trampoline(codeobj, ipath);

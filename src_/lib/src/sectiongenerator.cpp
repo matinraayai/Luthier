@@ -10,4 +10,6 @@ void getDynsymSecBinary(char *newBinary, elfio::Section *pSec,
   symTable[4].st_shndx = 13;
 
   std::memcpy(newBinary + pSec->size, &symTable[1], iSec->entsize);
+  std::memcpy(newBinary + pSec->size + iSec->entsize, &symTable[4],
+              iSec->entsize);
 }
