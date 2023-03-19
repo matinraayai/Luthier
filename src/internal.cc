@@ -137,6 +137,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
                      elfFilei.GetSectionByName(".dynsym"));
   // copy new .dynsym section
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
+  free(newSecBinary);
   offset += newSecSize;
 
   // copy .gnu.hash, .hash, .dynstr sections
@@ -156,6 +157,18 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   std::memcpy(newSecBinary + offset,
               elfFilep.GetSectionByName(".rodata")->Blob(), copySize);
   offset += copySize;
+
+  // generate new .text section
+  int newTextSize = elfFilep.GetSectionByName(".text")->size +
+                    elfFilei.GetSectionByName(".text")->size +
+                    32; // trampoline size :32 bytes;
+  char *newTextBinary = new char[newTexeSize];
+  getNewTextBinary(newTextBinary, elfBinary, ipath);
+
+  // copy new .text section
+  std::memcpy(newELFBinary + 0x1000, newTextBinary, newTextSize);
+  free(newTextBinary);
+  offset += newTextSize;
 }
 // editTextSectionData(&elfFile);
 
