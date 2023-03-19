@@ -3,4 +3,6 @@
 #include "elf.hpp"
 void getDynsymSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec);
+void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
+                        elfio::Section *iSec);
 #endif

@@ -169,6 +169,20 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   std::memcpy(newELFBinary + 0x1000, newTextBinary, newTextSize);
   free(newTextBinary);
   offset += newTextSize;
+
+  // copy .dynamic and .comment sections
+  copySize = elfFilep.GetSectionByName(".dynamic")->size +
+             elfFilep.GetSectionByName(".comment")->size;
+  std::memcpy(newSecBinary + 0x2000,
+              elfFilep.GetSectionByName(".dynamic")->Blob(), copySize);
+  offset = 0x2000 + copySize;
+
+  // generate new .symtab section
+  int newSecSize = elfFilep.GetSectionByName(".symtab")->size +
+                   elfFilep.GetSectionByName(".symtab")->entsize * 4;
+  char *newSecBinary = new char[newSecSize];
+  getSymtabSecBinary(newSecBinary, elfFilep.GetSectionByName(".symtab"),
+                     elfFilei.GetSectionByName(".symtab"));
 }
 // editTextSectionData(&elfFile);
 
