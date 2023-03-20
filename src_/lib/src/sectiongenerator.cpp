@@ -41,3 +41,10 @@ void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
   tSym->st_size = 32;
   std::memcpy(newBinary + offset, tSym, iSec->entsize);
 }
+
+void getShstrtabSecBinary(char *newBinary, elfio::Section *pSec) {
+  std::memcpy(newBinary, pSec->Blob(), pSec->size);
+  int offset = pSec->size;
+  char *p = ".bss";
+  std::memcpy(newBinary + offset, p, strlen(".bss"));
+}

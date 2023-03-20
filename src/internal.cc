@@ -178,11 +178,29 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   offset = 0x2000 + copySize;
 
   // generate new .symtab section
-  int newSecSize = elfFilep.GetSectionByName(".symtab")->size +
-                   elfFilep.GetSectionByName(".symtab")->entsize * 4;
-  char *newSecBinary = new char[newSecSize];
+  newSecSize = elfFilep.GetSectionByName(".symtab")->size +
+               elfFilep.GetSectionByName(".symtab")->entsize * 4;
+  newSecBinary = new char[newSecSize];
   getSymtabSecBinary(newSecBinary, elfFilep.GetSectionByName(".symtab"),
                      elfFilei.GetSectionByName(".symtab"));
+
+  // copy new .symtab
+  int align_req = elfFilep.GetSectionByName(".symtab")->align;
+  if (offset % align_req != 0) {
+    offset += align_req - offset % align_req;
+  }
+  std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  free(newSecBinary);
+  offset += newSecSize;
+
+  // generate new .shstrtab section
+  newSecSize = elfFilep.GetSectionByName(".shstrtab")->size + strlen(".bss");
+  newSecBinary = new char[newSecSize];
+  getShstrtabSecBinary(newSecBinary, elfFilep.GetSectionByName(".shstrtab"));
+
+  // copy new .shstrtab
+  std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  free(newSecBinary);
 }
 // editTextSectionData(&elfFile);
 
