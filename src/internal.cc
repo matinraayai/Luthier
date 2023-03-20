@@ -113,7 +113,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
-  int newSize = 0x25f6;
+  int newSize = 0x2640;
   char *newELFBinary = new char[newSize];
 
   // load instrumentation code
@@ -194,13 +194,29 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   offset += newSecSize;
 
   // generate new .shstrtab section
-  newSecSize = elfFilep.GetSectionByName(".shstrtab")->size + strlen(".bss");
+  newSecSize = elfFilep.GetSectionByName(".shstrtab")->size + strlen(".bss") +
+               1; //\0 null character problem
   newSecBinary = new char[newSecSize];
   getShstrtabSecBinary(newSecBinary, elfFilep.GetSectionByName(".shstrtab"));
 
   // copy new .shstrtab
   std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
   free(newSecBinary);
+  offset += newSecSize;
+
+  // generate new .strtab section
+  newSecSize = elfFilep.GetSectionByName(".strtab")->size +
+               strlen("incr_counter") + strlen("counter") +
+               strlen("counter.managed") + strlen("trampoline") +
+               4; //\0 null character problem
+  newSecBinary = new char[newSecSize];
+  getStrtabSecBinary(newSecBinary, elfFilep.GetSectionByName(".strtab"),
+                     elfFilei.GetSectionByName(".strtab"));
+
+  // copy new .strtab
+  std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  free(newSecBinary);
+  offset += newSecSize;
 }
 // editTextSectionData(&elfFile);
 

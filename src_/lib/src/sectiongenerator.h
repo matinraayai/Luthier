@@ -6,4 +6,6 @@ void getDynsymSecBinary(char *newBinary, elfio::Section *pSec,
 void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec);
 void getShstrtabSecBinary(char *newBinary, elfio::Section *pSec);
+void getStrtabSecBinary(char *newBinary, elfio::Section *pSec,
+                        elfio::Section *iSec);
 #endif

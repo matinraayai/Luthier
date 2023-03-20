@@ -48,3 +48,21 @@ void getShstrtabSecBinary(char *newBinary, elfio::Section *pSec) {
   char *p = ".bss";
   std::memcpy(newBinary + offset, p, strlen(".bss"));
 }
+
+void getStrtabSecBinary(char *newBinary, elfio::Section *pSec,
+                        elfio::Section *iSec) {
+  std::memcpy(newBinary, pSec->Blob(), pSec->size);
+  int offset = pSec->size;
+  std::string str1 = std::string(iSec->Blob() + 1);
+  std::string str2 = std::string(iSec->Blob() + 14);
+  std::string str3 = std::string(iSec->Blob() + 27);
+  std::string str4 = "trampoline";
+
+  std::memcpy(newBinary + offset, iSec->Blob() + 1, str1.size() + 1);
+  offset += str1.size() + 1;
+  std::memcpy(newBinary + offset, iSec->Blob() + 14, str2.size() + 1);
+  offset += str2.size() + 1;
+  std::memcpy(newBinary + offset, iSec->Blob() + 27, str3.size() + 1);
+  offset += str3.size() + 1;
+  std::memcpy(newBinary + offset, str4.c_str(), str4.size() + 1);
+}
