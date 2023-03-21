@@ -21,6 +21,8 @@ public:
   char *Blob();
   void PrintSymbolsForSection(const std::string &name);
   std::vector<Symbol *> GetSymbols();
+  Elf64_Ehdr *GetHeader();
+  Elf64_Shdr *ExtractShr(int i);
 
 private:
   Elf64_Ehdr *header;

@@ -12,5 +12,6 @@ void getDynstrSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec);
 void getHashSecBinary(char *newBinary, char *dynstr);
 unsigned int elf_Hash(const char *name);
+void getShdrBinary(char *newBinary, Elf64_Shdr *pShdr, Elf64_Shdr *iShdr);
 
 #endif

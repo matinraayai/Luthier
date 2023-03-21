@@ -121,12 +121,16 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   char *iBinary = getELF(std::string(ipath));
   elfFilei = elfFilei.FromMem(iBinary);
 
+  std::vector<int> offsets, sizes;
+
   int offset = 0x200; // .note's offset
 
   // copy .note section
   int copySize = elfFilep.GetSectionByName(".note")->size;
   std::memcpy(newELFBinary + offset, elfFilep.GetSectionByName(".note")->Blob(),
               copySize);
+  offsets.push_back(offset);
+  sizes.push_back(copySize);
   offset += copySize;
 
   // generate new .dynsym section
@@ -137,14 +141,26 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   getDynsymSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynsym"),
                      elfFilei.GetSectionByName(".dynsym"));
   // copy new .dynsym section
+  int align_req = elfFilep.GetSectionByName(".dynsym")->align;
+  if (offset % align_req != 0) {
+    offset += align_req - offset % align_req;
+  }
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
+  offsets.push_back(offset);
+  sizes.push_back(newSecSize);
   free(newSecBinary);
   offset += newSecSize;
 
   // copy .gnu.hash sections
   copySize = elfFilep.GetSectionByName(".gnu.hash")->size;
+  int align_req = elfFilep.GetSectionByName(".gnu.hash")->align;
+  if (offset % align_req != 0) {
+    offset += align_req - offset % align_req;
+  }
   std::memcpy(newSecBinary + offset,
               elfFilep.GetSectionByName(".gnu.hash")->Blob(), copySize);
+  offsets.push_back(offset);
+  sizes.push_back(copySize);
   offset += copySize;
 
   // find size for new .hash section
@@ -157,18 +173,26 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   newSecSize = elfFilep.GetSectionByName(".dynstr")->size + strlen("counter") +
                strlen("counter.managed") + 2; //\0 null character problem
   newSecBinary = new char[newSecSize];
-  int *newHashBinary = new char[newHashBinary];
+  char *newHashBinary = new char[newHashBinary];
   getDynstrSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynstr"),
                      elfFilei.GetSectionByName(".dynstr"));
   // generate new .hash section
   getHashSecBinary(newHashBinary, newSecBinary, numEntry);
   // copy new .hash section
+  int align_req = elfFilep.GetSectionByName(".hash")->align;
+  if (offset % align_req != 0) {
+    offset += align_req - offset % align_req;
+  }
   std::memcpy(newELFBinary + offset, newHashBinary, newHashSize);
+  offsets.push_back(offset);
+  sizes.push_back(newHashSize);
   free(newHashBinary);
   offset += newHashSize; // find the begining of .dynstr section
 
   // copy new .dynstr section
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
+  offsets.push_back(offset);
+  sizes.push_back(newSecSize);
   free(newSecBinary);
   offset += newSecSize;
 
@@ -180,6 +204,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   copySize = elfFilep.GetSectionByName(".rodata")->size;
   std::memcpy(newSecBinary + offset,
               elfFilep.GetSectionByName(".rodata")->Blob(), copySize);
+  offsets.push_back(offset);
+  sizes.push_back(copySize);
   offset += copySize;
 
   // generate new .text section
@@ -190,16 +216,28 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   getNewTextBinary(newTextBinary, elfBinary, ipath);
 
   // copy new .text section
-  std::memcpy(newELFBinary + 0x1000, newTextBinary, newTextSize);
+  offset = 0x1000;
+  std::memcpy(newELFBinary + offset, newTextBinary, newTextSize);
+  offsets.push_back(offset);
+  sizes.push_back(newTextSize);
   free(newTextBinary);
-  offset += newTextSize;
 
   // copy .dynamic and .comment sections
-  copySize = elfFilep.GetSectionByName(".dynamic")->size +
-             elfFilep.GetSectionByName(".comment")->size;
-  std::memcpy(newSecBinary + 0x2000,
+  copySize = elfFilep.GetSectionByName(".dynamic")->size;
+
+  offset = 0x2000;
+  std::memcpy(newSecBinary + offset,
               elfFilep.GetSectionByName(".dynamic")->Blob(), copySize);
-  offset = 0x2000 + copySize;
+  offsets.push_back(offset);
+  sizes.push_back(copySize);
+  offset += copySize;
+
+  copySize = elfFilep.GetSectionByName(".comment")->size;
+  std::memcpy(newSecBinary + offset,
+              elfFilep.GetSectionByName(".comment")->Blob(), copySize);
+  offsets.push_back(offset);
+  sizes.push_back(copySize);
+  offset += copySize;
 
   // generate new .symtab section
   newSecSize = elfFilep.GetSectionByName(".symtab")->size +
@@ -214,6 +252,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  offsets.push_back(offset);
+  sizes.push_back(newSecSize);
   free(newSecBinary);
   offset += newSecSize;
 
@@ -225,6 +265,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // copy new .shstrtab
   std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  offsets.push_back(offset);
+  sizes.push_back(newSecSize);
   free(newSecBinary);
   offset += newSecSize;
 
@@ -239,39 +281,47 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // copy new .strtab
   std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  offsets.push_back(offset);
+  sizes.push_back(newSecSize);
   free(newSecBinary);
   offset += newSecSize;
-}
-// editTextSectionData(&elfFile);
 
-// editShr(&elfFile);
-// printSymbolTable(&elfFile);
+  // generate new section header table
+  Elf64_Ehdr *Eheader = elfFilep.GetHeader();
+  // add .bss section header into section header table
+  int newShdrSize = (Eheader->e_shnum + 1) * Eheader->e_shentsize;
+  char *newShdrBinary = new char[newShdrSize];
 
-reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->desc =
-    reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy);
-reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
-    reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
+  // editTextSectionData(&elfFile);
 
-// pass new wrapper into original register fat binary func:
-auto modules = call_original_hip_register_fat_binary(data_copy);
+  // editShr(&elfFile);
+  // printSymbolTable(&elfFile);
 
-printf("Number of modules: %zu\n", modules->size());
+  reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->desc =
+      reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy);
+  reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
+      reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
 
-// __builtin_dump_struct(modules,&printf);
+  // pass new wrapper into original register fat binary func:
+  auto modules = call_original_hip_register_fat_binary(data_copy);
 
-// for (auto module : *modules) {
-//       count +=1;
+  printf("Number of modules: %zu\n", modules->size());
 
-//       if (count > 2) {
-//          printf(module->fileName.c_str());
-// /         __builtin_dump_struct(module,&printf);
-//      };
-// printf("%d\n", count);
+  // __builtin_dump_struct(modules,&printf);
 
-// }
+  // for (auto module : *modules) {
+  //       count +=1;
 
-return modules;
-// return NULL;
+  //       if (count > 2) {
+  //          printf(module->fileName.c_str());
+  // /         __builtin_dump_struct(module,&printf);
+  //      };
+  // printf("%d\n", count);
+
+  // }
+
+  return modules;
+  // return NULL;
 }
 
 std::vector<hipModule_t> *
