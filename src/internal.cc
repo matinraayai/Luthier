@@ -140,13 +140,24 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   free(newSecBinary);
   offset += newSecSize;
 
-  // copy .gnu.hash, .hash, .dynstr sections
+  // copy .gnu.hash, .hash sections
   copySize = elfFilep.GetSectionByName(".gnu.hash")->size +
-             elfFilep.GetSectionByName(".hash")->size +
-             elfFilep.GetSectionByName(".dynstr")->size;
+             elfFilep.GetSectionByName(".hash")->size;
   std::memcpy(newSecBinary + offset,
               elfFilep.GetSectionByName(".gnu.hash")->Blob(), copySize);
   offset += copySize;
+
+  // generate new .dynstr section
+  newSecSize = elfFilep.GetSectionByName(".dynstr")->size + strlen("counter") +
+               strlen("counter.managed") + 2; //\0 null character problem
+  newSecBinary = new char[newSecSize];
+  getDynstrSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynstr"),
+                     elfFilei.GetSectionByName(".dynstr"));
+
+  // copy new .dynstr section
+  std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
+  free(newSecBinary);
+  offset += newSecSize;
 
   // copy .rodata
   int align_req = elfFilep.GetSectionByName(".rodata")->align;
