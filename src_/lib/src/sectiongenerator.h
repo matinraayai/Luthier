@@ -10,4 +10,7 @@ void getStrtabSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec);
 void getDynstrSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec);
+void getHashSecBinary(char *newBinary, char *dynstr);
+unsigned int elf_Hash(const char *name);
+
 #endif

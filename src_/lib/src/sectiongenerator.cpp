@@ -78,3 +78,43 @@ void getDynstrSecBinary(char *newBinary, elfio::Section *pSec,
   offset += str1.size() + 1;
   std::memcpy(newBinary + offset, iSec->Blob() + 0x1a, str2.size() + 1);
 }
+
+void getHashSecBinary(char *newBinary, char *dynstr, int num) {
+  int entrySize = sizeof(Elf64_Word);
+  std::memcpy(newBinary, &num, entrySize);
+  int offset = entrySize;
+  std::memcpy(newBinary + offset, &num, entrySize);
+  offset += entrySize;
+  std::string str0 = "";
+  std::string str1 = std::string(dynstr + 1); //"_Z15vectoradd_floatPfPKfS1_ii"
+  std::string str2 =
+      std::string(dynstr + 0x1f); //"_Z15vectoradd_floatPfPKfS1_ii.kd"
+  std::string str3 = std::string(dynstr + 0x40); //"counter"
+  std::string str4 = std::string(dynstr + 0x48); //"counter.managed"
+  std::string strArr[num] = {str0, str1, str2, str3, str4};
+  // fill bucket
+  for (int i = 0; i < num; i++) {
+    unsigned int idx = elf_Hash(strArr[i].c_str());
+    idx = idx % num;
+    std::memcpy(newBinary + offset, &idx, entrySize);
+    offset += entrySize;
+  }
+  // fill chain
+  for (int i = 0; i < num; i++) {
+    unsigned int idx = 0;
+    std::memcpy(newBinary + offset, &idx, entrySize);
+    offset += entrySize;
+  }
+}
+
+unsigned int elf_Hash(const char *name) {
+  unsigned int h = 0, g;
+
+  while (*name) {
+    h = (h << 4) + *name++;
+    if (g = h & 0xf0000000)
+      h ^= g >> 24;
+    h &= ~g;
+  }
+  return h;
+}

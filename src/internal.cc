@@ -130,8 +130,9 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   offset += copySize;
 
   // generate new .dynsym section
-  int newSecSize = elfFilep.GetSectionByName(".dynsym")->size +
-                   elfFilep.GetSectionByName(".dynsym")->entsize * 2;
+  int newSecSize =
+      elfFilep.GetSectionByName(".dynsym")->size +
+      elfFilep.GetSectionByName(".dynsym")->entsize * 2; // hex num * dec num
   char *newSecBinary = new char[newSecSize];
   getDynsymSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynsym"),
                      elfFilei.GetSectionByName(".dynsym"));
@@ -140,19 +141,31 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   free(newSecBinary);
   offset += newSecSize;
 
-  // copy .gnu.hash, .hash sections
-  copySize = elfFilep.GetSectionByName(".gnu.hash")->size +
-             elfFilep.GetSectionByName(".hash")->size;
+  // copy .gnu.hash sections
+  copySize = elfFilep.GetSectionByName(".gnu.hash")->size;
   std::memcpy(newSecBinary + offset,
               elfFilep.GetSectionByName(".gnu.hash")->Blob(), copySize);
   offset += copySize;
+
+  // find size for new .hash section
+  int numEntry = elfFilep.GetSectionByName(".dynsym")->size /
+                 elfFilep.GetSectionByName(".dynsym")->entsize;
+  int newHashSize =
+      elfFilep.GetSectionByName(".hash")->entsize * (1 + 1 + 2 * numEntry);
 
   // generate new .dynstr section
   newSecSize = elfFilep.GetSectionByName(".dynstr")->size + strlen("counter") +
                strlen("counter.managed") + 2; //\0 null character problem
   newSecBinary = new char[newSecSize];
+  int *newHashBinary = new char[newHashBinary];
   getDynstrSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynstr"),
                      elfFilei.GetSectionByName(".dynstr"));
+  // generate new .hash section
+  getHashSecBinary(newHashBinary, newSecBinary, numEntry);
+  // copy new .hash section
+  std::memcpy(newELFBinary + offset, newHashBinary, newHashSize);
+  free(newHashBinary);
+  offset += newHashSize; // find the begining of .dynstr section
 
   // copy new .dynstr section
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
