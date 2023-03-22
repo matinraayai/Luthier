@@ -119,12 +119,22 @@ unsigned int elf_Hash(const char *name) {
   return h;
 }
 
-void getShdrBinary(char *newBinary, elfio::File elfFilep,
-                   elfio::File elfFilei) {
+void getShdrBinary(char *newBinary, elfio::File elfFilep, elfio::File elfFilei,
+                   std::vector<int> offsets, std::vector<int> sizes) {
   Elf64_Ehdr *header = elfFilep.GetHeader();
   Elf64_Shdr *shr =
       reinterpret_cast<Elf64_Shdr *>(elfFilep.Blob() + header->e_shoff);
-  // .dynsym section header
-  shr[2].sh_offset = shr[2].sh_size = int bssidx = 9;
+  // modify current section header table: offset, size and addr
+  for (int i = 1; i < header->e_shnum; i++) {
+    shr[i].sh_offset = offsets[i - 1];
+    shr[i].sh_size = sizes[i - 1];
+  }
+  for (int i = 1; i < 9; i++) {
+    shr[i].sh_addr = shr[i].sh_offset;
+  }
+  std::memcpy(newBinary, shr, header->e_shnum * header->e_shentsize);
+  int offset = header->e_shnum * header->e_shentsize;
+  int bssidx = 9;
   Elf64_Shdr *bssshr = elfFilei.ExtractShr(bssidx);
+  std::memcpy(newBinary + offset, bssshr, header->e_shentsize);
 }

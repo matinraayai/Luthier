@@ -113,7 +113,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
-  int newSize = 0x2640;
+  int newSize = 0x3680;
   char *newELFBinary = new char[newSize];
 
   // load instrumentation code
@@ -173,7 +173,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   newSecSize = elfFilep.GetSectionByName(".dynstr")->size + strlen("counter") +
                strlen("counter.managed") + 2; //\0 null character problem
   newSecBinary = new char[newSecSize];
-  char *newHashBinary = new char[newHashBinary];
+  char *newHashBinary = new char[newHashSize];
   getDynstrSecBinary(newSecBinary, elfFilep.GetSectionByName(".dynstr"),
                      elfFilei.GetSectionByName(".dynstr"));
   // generate new .hash section
@@ -202,7 +202,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
     offset += align_req - offset % align_req;
   }
   copySize = elfFilep.GetSectionByName(".rodata")->size;
-  std::memcpy(newSecBinary + offset,
+  std::memcpy(newELFBinary + offset,
               elfFilep.GetSectionByName(".rodata")->Blob(), copySize);
   offsets.push_back(offset);
   sizes.push_back(copySize);
@@ -212,7 +212,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   int newTextSize = elfFilep.GetSectionByName(".text")->size +
                     elfFilei.GetSectionByName(".text")->size +
                     32; // trampoline size :32 bytes;
-  char *newTextBinary = new char[newTexeSize];
+  char *newTextBinary = new char[newTextSize];
   getNewTextBinary(newTextBinary, elfBinary, ipath);
 
   // copy new .text section
@@ -226,14 +226,14 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   copySize = elfFilep.GetSectionByName(".dynamic")->size;
 
   offset = 0x2000;
-  std::memcpy(newSecBinary + offset,
+  std::memcpy(newELFBinary + offset,
               elfFilep.GetSectionByName(".dynamic")->Blob(), copySize);
   offsets.push_back(offset);
   sizes.push_back(copySize);
   offset += copySize;
 
   copySize = elfFilep.GetSectionByName(".comment")->size;
-  std::memcpy(newSecBinary + offset,
+  std::memcpy(newELFBinary + offset,
               elfFilep.GetSectionByName(".comment")->Blob(), copySize);
   offsets.push_back(offset);
   sizes.push_back(copySize);
@@ -251,7 +251,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   if (offset % align_req != 0) {
     offset += align_req - offset % align_req;
   }
-  std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
   offsets.push_back(offset);
   sizes.push_back(newSecSize);
   free(newSecBinary);
@@ -264,7 +264,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   getShstrtabSecBinary(newSecBinary, elfFilep.GetSectionByName(".shstrtab"));
 
   // copy new .shstrtab
-  std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
   offsets.push_back(offset);
   sizes.push_back(newSecSize);
   free(newSecBinary);
@@ -280,7 +280,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
                      elfFilei.GetSectionByName(".strtab"));
 
   // copy new .strtab
-  std::memcpy(newSecBinary + offset, newSecBinary, newSecSize);
+  std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
   offsets.push_back(offset);
   sizes.push_back(newSecSize);
   free(newSecBinary);
@@ -291,14 +291,16 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // add .bss section header into section header table
   int newShdrSize = (Eheader->e_shnum + 1) * Eheader->e_shentsize;
   char *newShdrBinary = new char[newShdrSize];
+  getShdrBinary(newShdrBinary, elfFilep, elfFilei, offsets, sizes);
+  offset = 0x3000;
+  std::memcpy(newELFBinary + offset, newShdrBinary, newShdrSize);
+  free(newShdrBinary);
 
   // editTextSectionData(&elfFile);
 
   // editShr(&elfFile);
   // printSymbolTable(&elfFile);
 
-  reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->desc =
-      reinterpret_cast<__ClangOffloadBundleDesc *>(desc_copy);
   reinterpret_cast<__CudaFatBinaryWrapper *>(data_copy)->binary =
       reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy);
 
@@ -417,51 +419,4 @@ void editNoteSectionData(elfio::File *elf) {
 void printSymbolTable(elfio::File *elf) {
   elf->PrintSymbolsForSection(".text");
   elf->PrintSymbolsForSection(".rodata");
-}
-
-std::vector<unsigned char> trampoline(char *codeobj, char *ipath) {
-  char *iblob = getELF(std::string(ipath));
-  elfio::File elfp, elfi;
-  elfp = elfp.FromMem(codeobj);
-  elfi = elfi.FromMem(iblob);
-
-  auto ptex = elfp.GetSectionByName(".text");
-  auto itex = elfi.GetSectionByName(".text");
-
-  if (!ptex) {
-    panic("text section is not found for program");
-  }
-  if (!ptex) {
-    panic("text section is not found for instrumentation function");
-  }
-
-  Assembler a;
-  Disassembler d(&elfp);
-
-  uint64_t poff = ptex->offset;
-  uint64_t psize = ptex->size;
-  uint64_t ioff = itex->offset;
-  uint64_t isize = itex->size;
-
-  std::cout << "---------------------------------------" << std::endl;
-  std::cout << "Program Offset:\t" << poff << std::endl
-            << "Program Size:\t" << psize << std::endl
-            << "Instru Offset:\t" << ioff << std::endl
-            << "Instru Size:\t" << isize << std::endl
-            << std::endl;
-
-  int sRegMax, vRegMax;
-  d.getMaxRegIdx(&elfp, &sRegMax, &vRegMax);
-  std::cout << "Max S reg:\t" << sRegMax << std::endl
-            << "Max V reg:\t" << vRegMax << std::endl;
-  std::cout << "---------------------------------------" << std::endl;
-
-  auto newkernel = newKernel(ptex, itex);
-  std::vector<std::shared_ptr<Inst>> instList = d.GetInsts(newkernel, poff);
-
-  offsetInstruRegs(instList, a, sRegMax, vRegMax);
-
-  makeTrampoline(instList, a, 0);
-
-  return a.ilstbuf(instList);
 }
