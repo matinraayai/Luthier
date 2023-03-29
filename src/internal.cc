@@ -87,6 +87,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   __ClangOffloadBundleHeader *header = fbwrapper->binary;
   uint64_t endOfHeader;
   endOfHeader = processBundle((char *)header);
+  endOfHeader = 0x209680;
 
   std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
 
@@ -328,7 +329,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
 
   std::memcpy((void *)(desc->offset), newELFBinary, 0x3680);
   desc->size = 0x3680;
-  reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->numBundles = 2;
+  //reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->numBundles = 2;
 
   // editTextSectionData(&elfFile);
 
