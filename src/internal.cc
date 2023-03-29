@@ -1,4 +1,4 @@
-#include "nlohmann/json.hpp"
+
 #include "src/elf.h"
 #include "src/internal.h"
 #include "src/util.h"
@@ -19,7 +19,7 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
-#define ALIGN_UP(offset, align)                                                \
+#define ALIGN_UP(offset, align) \
   (offset % align == 0 ? offset : (offset + align - offset % align))
 
 std::vector<hipModule_t> *
@@ -30,7 +30,8 @@ void editShr(elfio::File *elf);
 void printSymbolTable(elfio::File *elf);
 std::vector<unsigned char> trampoline(char *codeobj, char *ipath);
 
-uint64_t processBundle(char *data) {
+uint64_t processBundle(char *data)
+{
   printf("Here in %s\n", __FUNCTION__);
 
   __ClangOffloadBundleHeader *header =
@@ -45,10 +46,11 @@ uint64_t processBundle(char *data) {
   uint64_t offset =
       (uint64_t)blob + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
   std::cout << "num of bundles: " << header->numBundles << "\n\n";
-  const __ClangOffloadBundleDesc *desc =
+  __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
   uint64_t endOfHeader;
-  for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
+  for (int i = 0; i < header->numBundles; i++, desc = desc->next())
+  {
     printf("desc struct is stored from address%p\n", (void *)desc);
     uint64_t trippleSize = desc->tripleSize;
     offset += 8 + 8 + 8 + trippleSize;
@@ -62,7 +64,8 @@ uint64_t processBundle(char *data) {
     char *codeobj = reinterpret_cast<char *>(
         reinterpret_cast<uintptr_t>(header) + desc->offset);
 
-    if (i == header->numBundles - 1) {
+    if (i == header->numBundles - 1)
+    {
       endOfHeader = (uint64_t)codeobj + coSize;
       printf("address at the end of the last codeobject is %p\n",
              (void *)endOfHeader);
@@ -71,7 +74,8 @@ uint64_t processBundle(char *data) {
   return endOfHeader;
 }
 
-extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
+extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
+{
   printf("Here in %s\n\n", __FUNCTION__);
 
   char *data_copy = new char[sizeof(__CudaFatBinaryWrapper)];
@@ -90,15 +94,17 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   std::memcpy(header_copy, header, endOfHeader - (uint64_t)header);
   uint64_t offset =
       (uint64_t)header_copy + sizeof(CLANG_OFFLOAD_BUNDLER_MAGIC) - 1 + 8;
-  const __ClangOffloadBundleDesc *desc =
+  __ClangOffloadBundleDesc *desc =
       reinterpret_cast<__ClangOffloadBundleDesc *>(offset);
 
   char *elfBinary;
 
-  for (int i = 0; i < header->numBundles; i++, desc = desc->next()) {
+  for (int i = 0; i < header->numBundles; i++, desc = desc->next())
+  {
     uint64_t trippleSize = desc->tripleSize;
     std::string triple{desc->triple, desc->tripleSize};
-    if (triple.compare(curr_target)) {
+    if (triple.compare(curr_target))
+    {
       continue;
     }
     std::cout << "matching triple name is " << triple << "\n";
@@ -106,13 +112,15 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
     elfBinary = reinterpret_cast<char *>(
         reinterpret_cast<uintptr_t>(header_copy) + desc->offset);
+    break;
   }
   elfio::File elfFilep, elfFilei;
   elfFilep = elfFilep.FromMem(elfBinary); // load elf file from code object
-  Disassembler d(&elfFilep);
+  // Disassembler d(&elfFilep);
   // elfio::Note noteSec = getNoteSection();
 
   // editNoteSectionData(&elfFile);
+
   int newSize = 0x3680;
   char *newELFBinary = new char[newSize];
 
@@ -123,7 +131,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   std::vector<int> offsets, sizes;
 
-  int offset = 0x200; // .note's offset
+  offset = 0x200; // .note's offset
 
   // copy .note section
   int copySize = elfFilep.GetSectionByName(".note")->size;
@@ -142,7 +150,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
                      elfFilei.GetSectionByName(".dynsym"));
   // copy new .dynsym section
   int align_req = elfFilep.GetSectionByName(".dynsym")->align;
-  if (offset % align_req != 0) {
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
@@ -153,8 +162,9 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 
   // copy .gnu.hash sections
   copySize = elfFilep.GetSectionByName(".gnu.hash")->size;
-  int align_req = elfFilep.GetSectionByName(".gnu.hash")->align;
-  if (offset % align_req != 0) {
+  align_req = elfFilep.GetSectionByName(".gnu.hash")->align;
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newSecBinary + offset,
@@ -179,8 +189,9 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // generate new .hash section
   getHashSecBinary(newHashBinary, newSecBinary, numEntry);
   // copy new .hash section
-  int align_req = elfFilep.GetSectionByName(".hash")->align;
-  if (offset % align_req != 0) {
+  align_req = elfFilep.GetSectionByName(".hash")->align;
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newELFBinary + offset, newHashBinary, newHashSize);
@@ -197,8 +208,9 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   offset += newSecSize;
 
   // copy .rodata
-  int align_req = elfFilep.GetSectionByName(".rodata")->align;
-  if (offset % align_req != 0) {
+  align_req = elfFilep.GetSectionByName(".rodata")->align;
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   copySize = elfFilep.GetSectionByName(".rodata")->size;
@@ -247,8 +259,9 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
                      elfFilei.GetSectionByName(".symtab"));
 
   // copy new .symtab
-  int align_req = elfFilep.GetSectionByName(".symtab")->align;
-  if (offset % align_req != 0) {
+  align_req = elfFilep.GetSectionByName(".symtab")->align;
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
@@ -291,10 +304,31 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
   // add .bss section header into section header table
   int newShdrSize = (Eheader->e_shnum + 1) * Eheader->e_shentsize;
   char *newShdrBinary = new char[newShdrSize];
-  getShdrBinary(newShdrBinary, elfFilep, elfFilei, offsets, sizes);
+  Elf64_Shdr *shr =
+      reinterpret_cast<Elf64_Shdr *>(elfFilep.Blob() + Eheader->e_shoff);
+  //modify current section header table: offset, size and addr
+  for (int i = 1; i < Eheader->e_shnum; i++)
+  {
+    shr[i].sh_offset = offsets[i - 1];
+    shr[i].sh_size = sizes[i - 1];
+  }
+  for (int i = 1; i < 9; i++)
+  {
+    shr[i].sh_addr = shr[i].sh_offset;
+  }
+  std::memcpy(newShdrBinary, shr, Eheader->e_shnum * Eheader->e_shentsize);
+  int endOld = Eheader->e_shnum * Eheader->e_shentsize;
+  int bssidx = 9;
+  Elf64_Shdr *bssshr = elfFilei.ExtractShr(bssidx);
+  std::memcpy(newShdrBinary + endOld, bssshr, Eheader->e_shentsize);
+
   offset = 0x3000;
   std::memcpy(newELFBinary + offset, newShdrBinary, newShdrSize);
   free(newShdrBinary);
+
+  std::memcpy((void *)(desc->offset), newELFBinary, 0x3680);
+  desc->size = 0x3680;
+  reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->numBundles = 2;
 
   // editTextSectionData(&elfFile);
 
@@ -327,7 +361,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data) {
 }
 
 std::vector<hipModule_t> *
-call_original_hip_register_fat_binary(const void *data) {
+call_original_hip_register_fat_binary(const void *data)
+{
   std::vector<hipModule_t> *(*func)(const void *);
   func = (decltype(func))dlsym(RTLD_NEXT, "__hipRegisterFatBinary");
 
@@ -336,9 +371,11 @@ call_original_hip_register_fat_binary(const void *data) {
   return ret;
 }
 
-void editTextSectionData(elfio::File *elf) {
+void editTextSectionData(elfio::File *elf)
+{
   auto tex = elf->GetSectionByName(".text");
-  if (!tex) {
+  if (!tex)
+  {
     panic("text section is not found");
   }
   Assembler a;
@@ -351,7 +388,8 @@ void editTextSectionData(elfio::File *elf) {
       d.GetInsts(prgmByteArray, tex->offset);
 
   char *newInst = a.Assemble("s_nop");
-  for (uint64_t i = 0; i < instList.size(); i++) {
+  for (uint64_t i = 0; i < instList.size(); i++)
+  {
     // for(uint64_t i = 0; i < tex->size; i += 4) {
 
     if (instList.at(i)->instType.instName == "s_endpgm")
@@ -375,19 +413,23 @@ void editTextSectionData(elfio::File *elf) {
 // obj and passes the desc param it into a nlohmann::json obj. Then this edits
 // the desc param, and passes that back into the elfio::Note obj, which is why
 // we pass the note obj by reference.
-void editNoteSectionData(elfio::File *elf) {
+void editNoteSectionData(elfio::File *elf)
+{
   printf("Here in %s\n", __FUNCTION__);
   auto note_section = elf->GetSectionByType("SHT_NOTE");
-  if (!note_section) {
+  if (!note_section)
+  {
     panic("note section is not found");
   }
 
   char *blog = note_section->Blob();
   int offset = 0, size;
-  while (offset < note_section->size) {
+  while (offset < note_section->size)
+  {
     auto note = std::make_unique<elfio::Note>(elf, blog + offset);
 
-    if (note->name.rfind("AMDGPU") == 0) {
+    if (note->name.rfind("AMDGPU") == 0)
+    {
       printf("Offset %d\n", offset);
       elfio::Note AMDGPU_note = elfio::Note(elf, note->Blob());
       auto json = nlohmann::json::from_msgpack(AMDGPU_note.desc);
@@ -416,7 +458,8 @@ void editNoteSectionData(elfio::File *elf) {
 //   std::memcpy((char *)(shdr + 64 * header->e_shnum), shrEInstru, 64);
 // }
 
-void printSymbolTable(elfio::File *elf) {
+void printSymbolTable(elfio::File *elf)
+{
   elf->PrintSymbolsForSection(".text");
   elf->PrintSymbolsForSection(".rodata");
 }

@@ -12,7 +12,4 @@ void getDynstrSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec);
 void getHashSecBinary(char *newBinary, char *dynstr, int num);
 unsigned int elf_Hash(const char *name);
-void getShdrBinary(char *newBinary, elfio::File elfFilep, elfio::File elfFilei,
-                   std::vector<int> offsets, std::vector<int> sizes);
-
 #endif
