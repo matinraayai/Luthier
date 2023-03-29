@@ -4,6 +4,8 @@ import os
 import argparse
 import subprocess
 
+###
+
 parser = argparse.ArgumentParser(
     description="""Sibir is a binary instrumentation tool for AMD GPUs."""
 )
