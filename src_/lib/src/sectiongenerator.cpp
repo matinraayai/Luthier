@@ -8,7 +8,9 @@ void getDynsymSecBinary(char *newBinary, elfio::Section *pSec,
   Elf64_Sym *symTable = reinterpret_cast<Elf64_Sym *>(blob);
   // modify section idx new .bss is at 13
   symTable[1].st_shndx = 13;
+  symTable[1].st_name = 64;
   symTable[4].st_shndx = 13;
+  symTable[4].st_name = 72;
   printf("symTable[1]'s section idx is %d\n", symTable[1].st_shndx);
 
   std::memcpy(newBinary + offset, &symTable[1], iSec->entsize);
@@ -76,13 +78,14 @@ void getStrtabSecBinary(char *newBinary, elfio::Section *pSec,
 void getDynstrSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec) {
   std::memcpy(newBinary, pSec->Blob(), pSec->size);
-  int offset = pSec->size;
+  int offset = pSec->size;                             // offset = 64
   std::string str1 = std::string(iSec->Blob() + 1);    //"counter"
   std::string str2 = std::string(iSec->Blob() + 0x1a); //"counter.managed"
 
   std::memcpy(newBinary + offset, iSec->Blob() + 1, str1.size() + 1);
-  offset += str1.size() + 1;
-  std::memcpy(newBinary + offset, iSec->Blob() + 0x1a, str2.size() + 1);
+  offset += str1.size() + 1; // offset = 72
+  std::memcpy(newBinary + offset, iSec->Blob() + 0x1a,
+              str2.size() + 1); // new size 88
 }
 
 void getHashSecBinary(char *newBinary, char *dynstr, int num) {

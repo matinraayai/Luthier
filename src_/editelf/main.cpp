@@ -94,7 +94,8 @@ int main(int argc, char **argv) {
 
   // find size for new .hash section
   int numEntry = elfFilep.GetSectionByName(".dynsym")->size /
-                 elfFilep.GetSectionByName(".dynsym")->entsize;
+                     elfFilep.GetSectionByName(".dynsym")->entsize +
+                 2;
   int newHashSize =
       elfFilep.GetSectionByName(".hash")->entsize * (1 + 1 + 2 * numEntry);
 
@@ -250,4 +251,7 @@ int main(int argc, char **argv) {
 
   elfio::File newELF;
   newELF = newELF.FromMem(newELFBinary);
+
+  std::ofstream outfile("newfile.exe", std::ios::out | std::ios::binary);
+  outfile.write(newELFBinary, newSize);
 }
