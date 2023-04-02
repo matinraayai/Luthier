@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
 
   // generate new .text section
   int newTextSize = elfFilep.GetSectionByName(".text")->size +
-                    elfFilei.GetSectionByName(".text")->size +
+                    elfFilei.GetSymbolByName("incr_counter")->size +
                     32; // trampoline size :32 bytes;
   char *newTextBinary = new char[newTextSize];
   getNewTextBinary(newTextBinary, blobp, (char *)(filenamei.c_str()));
