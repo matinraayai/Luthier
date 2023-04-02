@@ -5,6 +5,33 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "editelf",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/src_/build/editelf/editelf",
+			"args": [
+				"vectoradd_kernel.exe",
+				"out"
+			],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/src_/build/editelf",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "modidx",
 			"type": "cppdbg",
 			"request": "launch",
@@ -61,8 +88,12 @@
 			"name": "sibir",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/vectoradd_hip.exe",
-			"args": [],
+			"program": "${workspaceFolder}/build/sibir",
+			"args": [
+				"${workspaceFolder}/vectoradd_hip.exe",
+				"-i",
+				"out"
+			],
 			"stopAtEntry": false,
 			"cwd": "${fileDirname}",
 			"environment": [

@@ -27,15 +27,17 @@ int main(int argc, char **argv) {
   uint64_t ioff = itexsec->offset;
   uint64_t isize = itexsec->size;
 
-  std::cout << "Program Offset:\t" << poff    << std::endl
-            << "Program Size:\t"   << psize   << std::endl;
-  std::cout << "Instru Offset:\t"  << ioff    << std::endl
-            << "Instru Size:\t"    << isize   << std::endl << std::endl;
+  std::cout << "Program Offset:\t" << poff << std::endl
+            << "Program Size:\t" << psize << std::endl;
+  std::cout << "Instru Offset:\t" << ioff << std::endl
+            << "Instru Size:\t" << isize << std::endl
+            << std::endl;
 
   int sRegMax, vRegMax;
   d.getMaxRegIdx(&elfFileP, &sRegMax, &vRegMax);
   std::cout << "Max S reg:\t" << sRegMax << std::endl
-            << "Max V reg:\t" << vRegMax << std::endl    << std::endl;
+            << "Max V reg:\t" << vRegMax << std::endl
+            << std::endl;
   std::cout << "---------------------------------------" << std::endl;
 
   auto newkernel = newKernel(ptexsec, itexsec);
@@ -48,5 +50,3 @@ int main(int argc, char **argv) {
 
   return 0;
 }
-
-
