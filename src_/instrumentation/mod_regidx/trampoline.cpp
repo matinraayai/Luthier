@@ -1,36 +1,17 @@
-#include "assembler.h"
 #include "disassembler.h"
 #include "elf.hpp"
+#include "trampoline.h"
 
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
-char *getELF(std::string filename);
-std::unique_ptr<Inst>
-replaceTargetInst(std::vector<std::unique_ptr<Inst>> &insts, int idx,
-                  std::unique_ptr<Inst> replace);
-void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx);
-int getNewTextSize(std::vector<std::unique_ptr<Inst>> &instsP,
-                   std::vector<std::unique_ptr<Inst>> &instsI,
-                   std::vector<std::unique_ptr<Inst>> &instsT);
-void getNewTextBinary(unsigned char *blob,
-                      std::vector<std::unique_ptr<Inst>> &instsP,
-                      std::vector<std::unique_ptr<Inst>> &instsI,
-                      std::vector<std::unique_ptr<Inst>> &instsT);
-int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cout << "Expected 2 inputs: Program File, Instrumentation Function\n";
-    return 1;
-  }
-  std::string pFilename = argv[1];
-  std::string iFilename = argv[2];
-
-  elfio::File elfFileP;
-  char *blob = getELF(pFilename);
-  elfFileP = elfFileP.FromMem(blob);
-  elfFileP.PrintSymbolsForSection(".text");
+void getNewTextBinary(char *newtextbinary, char *codeobj, char *ipath) {
+  char *iblob = getELF(std::string(ipath));
+  elfio::File elfFileP, elfFileI;
+  elfFileP = elfFileP.FromMem(codeobj);
+  elfFileI = elfFileI.FromMem(iblob);
 
   Disassembler d(&elfFileP);
   int sRegMax, vRegMax;
@@ -39,11 +20,6 @@ int main(int argc, char **argv) {
   std::cout << "The maximum number of vReg is " << vRegMax << "\n";
   std::vector<std::unique_ptr<Inst>> instsP = d.GetOrigInsts(&elfFileP);
 
-  elfio::File elfFileI;
-  char *blob1 = getELF(iFilename);
-  elfFileI = elfFileI.FromMem(blob1);
-
-  Disassembler d1(&elfFileI);
   // 2 more scalar registers used in trampoline to store
   // the address of the instrumentation function
   d1.SetModVal(vRegMax, sRegMax + 2);
@@ -87,8 +63,12 @@ int main(int argc, char **argv) {
 
   d.Disassemble(&elfFileP, "new elf", std::cout);
 
+  // copy new text binary back
+  // std::memcpy(newtextbinary, (char *)blobText, size);
+
   return 0;
 }
+
 char *getELF(std::string filename) {
   std::streampos size;
   char *blob;

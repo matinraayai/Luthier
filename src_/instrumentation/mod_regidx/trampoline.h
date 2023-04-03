@@ -10,8 +10,7 @@ void modifyInstruInst(std::vector<std::unique_ptr<Inst>> &insts, int idx);
 int getNewTextSize(std::vector<std::unique_ptr<Inst>> &instsP,
                    std::vector<std::unique_ptr<Inst>> &instsI,
                    std::vector<std::unique_ptr<Inst>> &instsT);
-void collectTextBinary(unsigned char *blob,
-                       std::vector<std::unique_ptr<Inst>> &instsP,
-                       std::vector<std::unique_ptr<Inst>> &instsI,
-                       std::vector<std::unique_ptr<Inst>> &instsT);
-void getNewTextBinary(char *newtextbinary, char *codeobj, char *ipath);
+void getNewTextBinary(unsigned char *blob,
+                      std::vector<std::unique_ptr<Inst>> &instsP,
+                      std::vector<std::unique_ptr<Inst>> &instsI,
+                      std::vector<std::unique_ptr<Inst>> &instsT);

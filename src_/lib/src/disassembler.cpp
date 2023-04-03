@@ -105,7 +105,7 @@ Disassembler::GetOrigInsts(elfio::File *file) {
     }
     std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
               << inst->first << "\t";
-    if (inst->second != 0) {
+    if (inst->byteSize == 8) {
       std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
                 << inst->second << "\n";
     } else {
@@ -142,7 +142,7 @@ Disassembler::GetInstruInsts(elfio::File *file) {
     }
     std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
               << inst->first << "\t";
-    if (inst->second != 0) {
+    if (inst->byteSize == 8) {
       std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
                 << inst->second << "\n";
     } else {
@@ -151,7 +151,7 @@ Disassembler::GetInstruInsts(elfio::File *file) {
     modifier.modify(inst.get());
     std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
               << inst->first << "\t";
-    if (inst->second != 0) {
+    if (inst->byteSize == 8) {
       std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
                 << inst->second << "\n";
     } else {
@@ -185,7 +185,7 @@ Disassembler::GetManualWrInsts(std::vector<unsigned char> buf) {
     }
     std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
               << inst->first << "\t";
-    if (inst->second != 0) {
+    if (inst->byteSize == 8) {
       std::cout << std::setw(8) << std::setbase(16) << std::setfill('0')
                 << inst->second << "\n";
     } else {
@@ -199,7 +199,7 @@ Disassembler::GetManualWrInsts(std::vector<unsigned char> buf) {
   return instList;
 }
 
-std::vector<std::shared_ptr<Inst>> 
+std::vector<std::shared_ptr<Inst>>
 Disassembler::GetInsts(std::vector<unsigned char> buf, uint64_t off) {
   bool isLast = 0;
   uint64_t pc = off;
@@ -296,6 +296,7 @@ void Disassembler::Disassemble(elfio::File *file, std::string filename) {
     return;
   }
 }
+
 void Disassembler::getMaxRegIdx(elfio::File *file, int *sRegMax, int *vRegMax) {
   auto text_section = file->GetSectionByName(".text");
   if (!text_section) {
@@ -318,6 +319,7 @@ void Disassembler::getMaxRegIdx(elfio::File *file, int *sRegMax, int *vRegMax) {
   sRegNum.clear();
   vRegNum.clear();
 }
+
 void Disassembler::Disassemble(std::vector<unsigned char> buf,
                                std::ostream &o) {
   uint64_t pc = 0;
@@ -353,6 +355,7 @@ void Disassembler::tryPrintSymbol(elfio::File *file, uint64_t offset,
     }
   }
 }
+
 Format Disassembler::matchFormat(uint32_t firstFourBytes) {
   for (auto &f : formatList) {
     if (f.formatType == VOP3b) {
@@ -378,6 +381,7 @@ Format Disassembler::matchFormat(uint32_t firstFourBytes) {
          << std::setw(8) << std::setfill('0') << std::hex << firstFourBytes;
   throw std::runtime_error(stream.str());
 }
+
 bool Disassembler::isVOP3bOpcode(Opcode opcode) {
   switch (opcode) {
   case 281:
@@ -403,6 +407,7 @@ bool Disassembler::isVOP3bOpcode(Opcode opcode) {
   }
   return false;
 }
+
 InstType Disassembler::lookUp(Format format, Opcode opcode) {
   if (decodeTables.find(format.formatType) != decodeTables.end() &&
       decodeTables[format.formatType]->insts.find(opcode) !=

@@ -252,6 +252,9 @@ int main(int argc, char **argv) {
   elfio::File newELF;
   newELF = newELF.FromMem(newELFBinary);
 
-  std::ofstream outfile("newfile.exe", std::ios::out | std::ios::binary);
-  outfile.write(newELFBinary, newSize);
+  Disassembler d(&newELF);
+  d.Disassemble(&newELF, "newfile.exe", std::cout);
+
+  // std::ofstream outfile("newfile.exe", std::ios::out | std::ios::binary);
+  // outfile.write(newELFBinary, newSize);
 }
