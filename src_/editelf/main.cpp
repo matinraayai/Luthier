@@ -7,8 +7,10 @@
 #include <string.h>
 #include <string>
 
-int main(int argc, char **argv) {
-  if (argc != 3) {
+int main(int argc, char **argv)
+{
+  if (argc != 3)
+  {
     printf(
         "vectoradd_kernel and instrumentation input elf files are required\n");
     return 1;
@@ -20,25 +22,31 @@ int main(int argc, char **argv) {
   char *blobp, *blobi;
   std::ifstream filep(filenamep,
                       std::ios::in | std::ios::binary | std::ios::ate);
-  if (filep.is_open()) {
+  if (filep.is_open())
+  {
     size = filep.tellg();
     blobp = new char[size];
     filep.seekg(0, std::ios::beg);
     filep.read(blobp, size);
     filep.close();
-  } else {
+  }
+  else
+  {
     printf("unable to open vectoradd_kernel elf in main\n");
     return 1;
   }
   std::ifstream filei(filenamei,
                       std::ios::in | std::ios::binary | std::ios::ate);
-  if (filei.is_open()) {
+  if (filei.is_open())
+  {
     size = filei.tellg();
     blobi = new char[size];
     filei.seekg(0, std::ios::beg);
     filei.read(blobi, size);
     filei.close();
-  } else {
+  }
+  else
+  {
     printf("unable to open instrumentation elf in main\n");
     return 1;
   }
@@ -71,7 +79,8 @@ int main(int argc, char **argv) {
                      elfFilei.GetSectionByName(".dynsym"));
   // copy new .dynsym section
   int align_req = elfFilep.GetSectionByName(".dynsym")->align;
-  if (offset % align_req != 0) {
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
@@ -83,7 +92,8 @@ int main(int argc, char **argv) {
   // copy .gnu.hash sections
   copySize = elfFilep.GetSectionByName(".gnu.hash")->size;
   align_req = elfFilep.GetSectionByName(".gnu.hash")->align;
-  if (offset % align_req != 0) {
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newSecBinary + offset,
@@ -110,7 +120,8 @@ int main(int argc, char **argv) {
   getHashSecBinary(newHashBinary, newSecBinary, numEntry);
   // copy new .hash section
   align_req = elfFilep.GetSectionByName(".hash")->align;
-  if (offset % align_req != 0) {
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newELFBinary + offset, newHashBinary, newHashSize);
@@ -128,7 +139,8 @@ int main(int argc, char **argv) {
 
   // copy .rodata
   align_req = elfFilep.GetSectionByName(".rodata")->align;
-  if (offset % align_req != 0) {
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   copySize = elfFilep.GetSectionByName(".rodata")->size;
@@ -178,7 +190,8 @@ int main(int argc, char **argv) {
 
   // copy new .symtab
   align_req = elfFilep.GetSectionByName(".symtab")->align;
-  if (offset % align_req != 0) {
+  if (offset % align_req != 0)
+  {
     offset += align_req - offset % align_req;
   }
   std::memcpy(newELFBinary + offset, newSecBinary, newSecSize);
@@ -224,11 +237,13 @@ int main(int argc, char **argv) {
   Elf64_Shdr *shr =
       reinterpret_cast<Elf64_Shdr *>(elfFilep.Blob() + Eheader->e_shoff);
   // modify current section header table: offset, size and addr
-  for (int i = 1; i < Eheader->e_shnum; i++) {
+  for (int i = 1; i < Eheader->e_shnum; i++)
+  {
     shr[i].sh_offset = offsets[i - 1];
     shr[i].sh_size = sizes[i - 1];
   }
-  for (int i = 1; i < 9; i++) {
+  for (int i = 1; i < 9; i++)
+  {
     shr[i].sh_addr = shr[i].sh_offset;
   }
   std::memcpy(newShdrBinary, shr, Eheader->e_shnum * Eheader->e_shentsize);
@@ -242,11 +257,47 @@ int main(int argc, char **argv) {
   std::memcpy(newELFBinary + offset, newShdrBinary, newShdrSize);
   free(newShdrBinary);
 
+  // add .bss as a segment into program header table
+  int newPhdrSize = (Eheader->e_phnum + 1) * Eheader->e_phentsize;
+  char *newPhdrBinary = new char[newPhdrSize];
+  Elf64_Phdr *phr =
+      reinterpret_cast<Elf64_Phdr *>(elfFilep.Blob() + Eheader->e_phoff);
+  // modify current program header table
+  //PHDR
+  phr[0].p_filesz = newPhdrSize;
+  phr[0].p_memsz = newPhdrSize;
+  //LOAD .note->.rodata
+  phr[1].p_filesz = offsets.at(5) + sizes.at(5); // idx 5 is .rodata
+  phr[1].p_memsz = offsets.at(5) + sizes.at(5);
+  //LOAD .text
+  phr[2].p_filesz = sizes.at(6); // idx 6 is .text
+  phr[2].p_memsz = sizes.at(6);
+  //NOTE .note
+  phr[7].p_filesz = sizes.at(0); // idx 0 is .note
+  phr[7].p_memsz = sizes.at(0);
+  //copy first four segments
+  std::memcpy(newPhdrBinary, phr, 4 * Eheader->e_phentsize);
+  int end = 4 * Eheader->e_phentsize;
+  int bsssegidx = 4;
+  Elf64_Phdr *bssphr = elfFilei.ExtractPhr(bsssegidx);
+  //copy LOAD .bss segment
+  std::memcpy(newPhdrBinary + end, bssphr, Eheader->e_phentsize);
+  end += Eheader->e_phentsize;
+  //copy DYNAMIC GNU_RELRO GNU_STACK
+  std::memcpy(newPhdrBinary + end, phr + 4 * Eheader->e_phentsize, 3 * Eheader->e_phentsize);
+  end += 3 * Eheader->e_phentsize;
+  //copy NOTE
+  std::memcpy(newPhdrBinary + end, phr + 7 * Eheader->e_phentsize, Eheader->e_phentsize);
+
+  std::memcpy(newELFBinary + Eheader->e_phoff, newPhdrBinary, newPhdrSize);
+  free(newPhdrBinary);
+
   // copy ELF header
   copySize = Eheader->e_ehsize;
   // modify ELF header before copy
   Eheader->e_shoff = offset;
   Eheader->e_shnum += 1;
+  Eheader->e_phnum += 1;
   std::memcpy(newELFBinary, Eheader, copySize);
 
   elfio::File newELF;
@@ -255,6 +306,6 @@ int main(int argc, char **argv) {
   Disassembler d(&newELF);
   d.Disassemble(&newELF, "newfile.exe", std::cout);
 
-  // std::ofstream outfile("newfile.exe", std::ios::out | std::ios::binary);
-  // outfile.write(newELFBinary, newSize);
+  std::ofstream outfile("newfile.exe", std::ios::out | std::ios::binary);
+  outfile.write(newELFBinary, newSize);
 }
