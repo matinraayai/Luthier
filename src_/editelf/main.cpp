@@ -272,9 +272,7 @@ int main(int argc, char **argv)
   //LOAD .text
   phr[2].p_filesz = sizes.at(6); // idx 6 is .text
   phr[2].p_memsz = sizes.at(6);
-  //NOTE .note
-  phr[7].p_filesz = sizes.at(0); // idx 0 is .note
-  phr[7].p_memsz = sizes.at(0);
+
   //copy first four segments
   std::memcpy(newPhdrBinary, phr, 4 * Eheader->e_phentsize);
   int end = 4 * Eheader->e_phentsize;
@@ -284,10 +282,10 @@ int main(int argc, char **argv)
   std::memcpy(newPhdrBinary + end, bssphr, Eheader->e_phentsize);
   end += Eheader->e_phentsize;
   //copy DYNAMIC GNU_RELRO GNU_STACK
-  std::memcpy(newPhdrBinary + end, phr + 4 * Eheader->e_phentsize, 3 * Eheader->e_phentsize);
+  std::memcpy(newPhdrBinary + end, &phr[4], 3 * Eheader->e_phentsize);
   end += 3 * Eheader->e_phentsize;
   //copy NOTE
-  std::memcpy(newPhdrBinary + end, phr + 7 * Eheader->e_phentsize, Eheader->e_phentsize);
+  std::memcpy(newPhdrBinary + end, &phr[7], Eheader->e_phentsize);
 
   std::memcpy(newELFBinary + Eheader->e_phoff, newPhdrBinary, newPhdrSize);
   free(newPhdrBinary);
