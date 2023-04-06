@@ -19,8 +19,9 @@ void getDynsymSecBinary(char *newBinary, elfio::Section *pSec,
 }
 void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec) {
-  std::memcpy(newBinary, pSec->Blob(), pSec->size);
-  int offset = pSec->size;
+  std::memcpy(newBinary, pSec->Blob(),
+              pSec->info); // first copy symbols with LOCAL bind
+  int offset = pSec->info;
   char *blob = iSec->Blob();
   Elf64_Sym *symTable = reinterpret_cast<Elf64_Sym *>(blob);
 
@@ -32,11 +33,8 @@ void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
   // modify symbol incr_counter's value
   symTable[1].st_value = 0x10c0;
   symTable[1].st_name = 73;
-  std::memcpy(newBinary + offset, &symTable[1], iSec->entsize);
-  offset += iSec->entsize;
-  std::memcpy(newBinary + offset, &symTable[3], iSec->entsize);
-  offset += iSec->entsize;
-  std::memcpy(newBinary + offset, &symTable[6], iSec->entsize);
+  std::memcpy(newBinary + offset, &symTable[1],
+              iSec->entsize); // sec copy local symbol incr_counter
   offset += iSec->entsize;
 
   // create a symbol entry for trampoline
@@ -46,7 +44,17 @@ void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
   tSym->st_other = symTable[1].st_other;
   tSym->st_value = 0x1100;
   tSym->st_size = 32;
-  std::memcpy(newBinary + offset, tSym, iSec->entsize);
+  tSym->st_shndx = symTable[1].st_shndx; // in .text section as incr_counter
+  std::memcpy(newBinary + offset, tSym,
+              iSec->entsize); // thrid copy local symbol trampoline
+  // fourth copy global symbols "counter", "counter.managed"
+  std::memcpy(newBinary + offset, &symTable[3], iSec->entsize);
+  offset += iSec->entsize;
+  std::memcpy(newBinary + offset, &symTable[6], iSec->entsize);
+  offset += iSec->entsize;
+  // last copy old symbols left
+  std::memcpy(newBinary + offset, pSec->Blob() + sizeof(Elf64_Sym) * pSec->info,
+              (pSec->size - sizeof(Elf64_Sym) * pSec->info));
 }
 
 void getShstrtabSecBinary(char *newBinary, elfio::Section *pSec) {
