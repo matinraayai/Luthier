@@ -6,89 +6,85 @@
 #include <string>
 #include <vector>
 
-namespace elfio
-{
+namespace elfio {
 
-  class Section;
-  class Symbol;
+class Section;
+class Symbol;
 
-  class File
-  {
-  public:
-    static File FromMem(char *blob);
+class File {
+public:
+  static File FromMem(char *blob);
 
-    Section *GetSectionByName(const std::string &name);
-    Section *GetSectionByType(const std::string &type);
-    Symbol *GetSymbolByName(const std::string &name);
-    char *Blob();
-    void PrintSymbolsForSection(const std::string &name);
-    std::vector<Symbol *> GetSymbols();
-    Elf64_Ehdr *GetHeader();
-    Elf64_Shdr *ExtractShr(int i);
-    Elf64_Phdr *ExtractPhr(int i);
+  Section *GetSectionByName(const std::string &name);
+  Section *GetSectionByType(const std::string &type);
+  Symbol *GetSymbolByName(const std::string &name);
+  char *Blob();
+  void PrintSymbolsForSection(const std::string &name);
+  std::vector<Symbol *> GetSymbols();
+  Elf64_Ehdr *GetHeader();
+  Elf64_Shdr *ExtractShr(int i);
+  Elf64_Phdr *ExtractPhr(int i);
 
-  private:
-    Elf64_Ehdr *header;
-    std::vector<std::unique_ptr<Section>> sections;
-    std::vector<std::unique_ptr<Symbol>> symbols;
+private:
+  Elf64_Ehdr *header;
+  std::vector<std::unique_ptr<Section>> sections;
+  std::vector<std::unique_ptr<Symbol>> symbols;
 
-    void ParseSections();
-    void ParseSymbols();
-  };
+  void ParseSections();
+  void ParseSymbols();
+};
 
-  class Section
-  {
-  public:
-    static std::string SectionTypeStr(int type);
+class Section {
+public:
+  static std::string SectionTypeStr(int type);
 
-    Section(File *file, Elf64_Shdr *header);
-    char *Blob();
+  Section(File *file, Elf64_Shdr *header);
+  char *Blob();
 
-    std::string name;
-    std::string type;
-    uint64_t offset;
-    uint64_t size;
-    uint64_t entsize;
-    uint64_t align;
+  std::string name;
+  std::string type;
+  uint64_t offset;
+  uint64_t size;
+  uint64_t entsize;
+  uint64_t align;
+  uint32_t info;
 
-  private:
-    File *file;
-    Elf64_Shdr *header;
-  };
+private:
+  File *file;
+  Elf64_Shdr *header;
+};
 
-  class Symbol
-  {
-  public:
-    Symbol(File *file, Elf64_Sym *header);
+class Symbol {
+public:
+  Symbol(File *file, Elf64_Sym *header);
 
-    char *Blob();
+  char *Blob();
 
-    std::string name;
-    uint64_t value;
-    uint64_t size;
+  std::string name;
+  uint64_t value;
+  uint64_t size;
 
-  private:
-    File *file;
-    Elf64_Sym *header;
-  };
+private:
+  File *file;
+  Elf64_Sym *header;
+};
 
-  class Note
-  {
-  public:
-    Note(File *file, char *header);
+class Note {
+public:
+  Note(File *file, char *header);
 
-    uint64_t TotalSize();
-    char *Blob();
+  uint64_t TotalSize();
+  char *Blob();
 
-    std::string name;
-    std::string desc;
-    uint32_t desc_size;
-    uint32_t type;
+  std::string name;
+  std::string desc;
+  uint32_t desc_size;
+  uint32_t type;
 
-  private:
-    File *file;
-    Elf64_Nhdr *header;
-  };
+private:
+  File *file;
+  Elf64_Nhdr *header;
+};
 
 } // namespace elfio
 

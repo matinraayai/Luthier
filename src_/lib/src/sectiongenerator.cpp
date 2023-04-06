@@ -20,8 +20,9 @@ void getDynsymSecBinary(char *newBinary, elfio::Section *pSec,
 void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
                         elfio::Section *iSec) {
   std::memcpy(newBinary, pSec->Blob(),
-              pSec->info); // first copy symbols with LOCAL bind
-  int offset = pSec->info;
+              sizeof(Elf64_Sym) *
+                  pSec->info); // first copy symbols with LOCAL bind
+  int offset = sizeof(Elf64_Sym) * pSec->info;
   char *blob = iSec->Blob();
   Elf64_Sym *symTable = reinterpret_cast<Elf64_Sym *>(blob);
 
@@ -47,6 +48,7 @@ void getSymtabSecBinary(char *newBinary, elfio::Section *pSec,
   tSym->st_shndx = symTable[1].st_shndx; // in .text section as incr_counter
   std::memcpy(newBinary + offset, tSym,
               iSec->entsize); // thrid copy local symbol trampoline
+  offset += iSec->entsize;
   // fourth copy global symbols "counter", "counter.managed"
   std::memcpy(newBinary + offset, &symTable[3], iSec->entsize);
   offset += iSec->entsize;
