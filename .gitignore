@@ -31,7 +31,7 @@
 *.out
 *.app
 
-
+.vscode/
 build*
 hip_clang.cpp
 *.s
