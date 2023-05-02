@@ -8,11 +8,13 @@ list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 # Find hip
 find_package(hip)
 # Create the library
-add_library(sibir STATIC sibir_callback.hpp sibir_callback.cpp sibir.h)
+add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h sibir_meta.hpp sibir_meta.cpp)
 
-set_property(TARGET sibir
-        PROPERTY COMPILE_FLAGS "-fPIC")
+#set_property(TARGET sibir
+#        PROPERTY COMPILE_FLAGS "-fPIC -g")
+
+#set_property(TARGET sibir PROPERTY LINK_FLAGS "-fPIC")
 # Link with HIP
 target_link_libraries(sibir hip::host hip::device)
 
-target_include_directories(sibir PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(sibir PUBLIC .)

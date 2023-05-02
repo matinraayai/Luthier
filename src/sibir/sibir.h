@@ -204,7 +204,7 @@ extern "C" {
  *
  **********************************************************************/
 /* This function is called as soon as the program starts, no GPU calls
- * should be made a this moment */
+ * should be made at this moment */
 void sibir_at_init();
 
 /* This function is called just before the program terminates, no GPU calls
