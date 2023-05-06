@@ -1,24 +1,11 @@
-#include <hip/hip_runtime.h>
-#include <hip/hip_runtime_api.h>
-#include <string>
-#include <unordered_map>
+#ifndef SIBIR_IMPL
+#define SIBIR_IMPL
 
-class Sibir {
- public:
-    Sibir() {};
-    ~Sibir() {};
-    static Sibir& getInstance();
-    void *getOriginalHipSymbol(const std::string& sym) {return originalHipSymbols_[sym];}
-
-    void intercept() {puts("intercepted");};
-
+namespace Sibir {
     static void init();
     static void destroy();
- private:
-    static Sibir* sibir_;
-    void recordAllOriginalHipSymbols();
-
-    void recordOriginalHipSymbol(const char* sym);
-
-    std::unordered_map<std::string, void*> originalHipSymbols_;
+    static void hip_api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
 };
+
+
+#endif

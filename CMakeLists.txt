@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 
-project(sibir)
+project(src/sibir)
 
 # Include other files
 list(APPEND CMAKE_MODULE_PATH
@@ -21,11 +21,10 @@ include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
-add_definitions(-D__HIP_PLATFORM_HCC__)
 add_definitions(-D_GLIBCXX_DEBUG)
 
 # Include sub directories
-set(SUB_DIRS src src_/lib)
+set(SUB_DIRS src/sibir/ example/)
 foreach (DIR ${SUB_DIRS})
   add_subdirectory(${DIR})
 endforeach (DIR)
