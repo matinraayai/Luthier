@@ -16,6 +16,7 @@
 void __attribute__((constructor)) Sibir::init() {
     std::cout << "Initializing Sibir...." << std::endl << std::flush;
     CHECK_ROCTRACER_CALL(roctracer_enable_domain_callback(ACTIVITY_DOMAIN_HIP_API, Sibir::hip_api_callback, nullptr));
+    CHECK_ROCTRACER_CALL(roctracer_enable_domain_callback(ACTIVITY_DOMAIN_HSA_API, Sibir::hsa_api_callback, nullptr));
     sibir_at_init();
 }
 
@@ -27,6 +28,12 @@ __attribute__((destructor)) void Sibir::destroy() {
 
 void Sibir::hip_api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg) {
     (void)arg;
-    const auto* data = reinterpret_cast<const hip_api_data_t*>(callback_data);
+    auto* data = reinterpret_cast<const hip_api_data_t*>(callback_data);
     sibir_at_hip_event(cid, data);
+}
+
+void Sibir::hsa_api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg) {
+    (void)arg;
+    auto* data = reinterpret_cast<const hsa_api_data_t*>(callback_data);
+    sibir_at_hsa_event(cid, data);
 }

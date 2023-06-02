@@ -189,6 +189,7 @@
 #ifndef SIBIR_H
 #define SIBIR_H
 #include <roctracer/roctracer_hip.h>
+#include <roctracer/roctracer_hsa.h>
 extern "C" {
 //
 ///*********************************************************************
@@ -229,6 +230,9 @@ void sibir_at_term();
 //// * (cuMemcpyDtoH_v2_params *)
 //// * */
 void sibir_at_hip_event(uint32_t cid, const hip_api_data_t* callback_data);
+
+
+void sibir_at_hsa_event(uint32_t cid, const hsa_api_data_t* callback_data);
 ////
 /////*********************************************************************
 //// *
