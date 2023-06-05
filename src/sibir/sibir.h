@@ -188,6 +188,7 @@
 //
 #ifndef SIBIR_H
 #define SIBIR_H
+#include "sibir_types.h"
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
 extern "C" {
@@ -229,7 +230,7 @@ void sibir_at_term();
 //// * For instance if cbid = cuMemcpyDtoH_v2 then params must be casted to
 //// * (cuMemcpyDtoH_v2_params *)
 //// * */
-void sibir_at_hip_event(uint32_t cid, const hip_api_data_t* callback_data);
+void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_id_t api_id);
 
 
 void sibir_at_hsa_event(uint32_t cid, const hsa_api_data_t* callback_data);
