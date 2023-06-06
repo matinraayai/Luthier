@@ -31,15 +31,6 @@ inline void check_error(hsa_status_t err, const char* call_name) {
 
 #define CHECK_HSA_CALL(call) check_error(call, #call)
 
-
-hsa_status_t allocation_callback(size_t size,
-                              hsa_callback_data_t data,
-                              void **address) {
-    //        std::cout << "Size: " << size << std::endl;
-    *address = malloc(size);
-    return HSA_STATUS_SUCCESS;
-};
-
 hsa_status_t iteration_callback(hsa_executable_t executable, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data) {
     std::cout << "HSA Executable address: " << reinterpret_cast<void*>(executable.handle) << std::endl;
     size_t symbol_name_size = 0;
@@ -109,10 +100,10 @@ hsa_status_t get_agent(hsa_agent_t& agent) {
     return err;
 }
 
-void sibir_at_hsa_event(uint32_t cid, const hsa_api_data_t* callback_data) {
-    if (callback_data->phase == ACTIVITY_API_PHASE_EXIT) {
-        if (cid == HSA_API_ID_hsa_executable_freeze) {
-            auto executable = callback_data->args.hsa_executable_freeze.executable;
+void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_id_t api_id) {
+    if (phase == SIBIR_API_PHASE_EXIT) {
+        if (api_id == HSA_API_ID_hsa_executable_freeze) {
+            auto executable = args->hsa_executable_freeze.executable;
             std::cout << "HSA Freeze callback" << std::endl;
             hsa_executable_state_t e_state;
             CHECK_HSA_CALL(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE, &e_state));
@@ -125,11 +116,11 @@ void sibir_at_hsa_event(uint32_t cid, const hsa_api_data_t* callback_data) {
             fprintf(stdout, "");
         }
     }
-    else if (callback_data->phase == ACTIVITY_API_PHASE_ENTER) {
-        if (cid == HSA_API_ID_hsa_code_object_reader_create_from_memory) {
-            auto binary = reinterpret_cast<const char*>(callback_data->args.hsa_code_object_reader_create_from_memory.code_object);
-            size_t size = callback_data->args.hsa_code_object_reader_create_from_memory.size;
-            std::cout << "Dumping binary at " << callback_data->args.hsa_code_object_reader_create_from_memory.code_object << std::endl;
+    else if (phase == SIBIR_API_PHASE_ENTER) {
+        if (api_id == HSA_API_ID_hsa_code_object_reader_create_from_memory) {
+            auto binary = reinterpret_cast<const char*>(args->hsa_code_object_reader_create_from_memory.code_object);
+            size_t size = args->hsa_code_object_reader_create_from_memory.size;
+            std::cout << "Dumping binary at " << args->hsa_code_object_reader_create_from_memory.code_object << std::endl;
             std::string content = std::string(binary, size);
             auto f = std::fstream("./" + std::to_string(number_of_dumped_elfs) + ".elf",
                                   std::ios_base::out);
