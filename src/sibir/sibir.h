@@ -1,17 +1,11 @@
-//#pragma once
-//#include <stdint.h>
-//#include <stdio.h>
-//#include <cassert>
-//#include <string>
-//#include <vector>
-//#include <iostream>
-//#include <iomanip>  // std::setw
-//
-////#include "tools_cuda_api_meta.h"
-////#define __CUDA_API_VERSION_INTERNAL
-////#include "cuda.h"
-////#include "generated_cuda_meta.h"
-//
+#ifndef SIBIR_H
+#define SIBIR_H
+#include "sibir_types.h"
+#include <roctracer/roctracer_hip.h>
+#include <roctracer/roctracer_hsa.h>
+
+extern "C" {
+
 /////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
 ////class Instr {
 //// public:
@@ -186,12 +180,8 @@
 ////  std::vector<basic_block_t*> bbs;
 ////} CFG_t;
 //
-#ifndef SIBIR_H
-#define SIBIR_H
-#include "sibir_types.h"
-#include <roctracer/roctracer_hip.h>
-#include <roctracer/roctracer_hsa.h>
-extern "C" {
+
+
 //
 ///*********************************************************************
 // *
@@ -207,17 +197,6 @@ void sibir_at_init();
 // * should be made at this moment */
 void sibir_at_term();
 //
-//
-//
-//}
-//
-/////* This function is called as soon as a GPU context is started and it should
-//// * contain any code that we would like to execute at that moment. */
-////void sibir_at_ctx_init(CUcontext ctx);
-////
-/////* This function is called as soon as the GPU context is terminated and it
-//// * should contain any code that we would like to execute at that moment. */
-////void sibir_at_ctx_term(CUcontext ctx);
 ////
 /////* This is the function called every beginning (is_exit = 0) and
 //// * end (is_exit = 1) of a CUDA driver call.
@@ -233,7 +212,7 @@ void sibir_at_term();
 void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_id_t api_id);
 
 
-void sibir_at_hsa_event(uint32_t cid, const hsa_api_data_t* callback_data);
+void sibir_at_hsa_event(hsa_api_args_t* cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id);
 ////
 /////*********************************************************************
 //// *
