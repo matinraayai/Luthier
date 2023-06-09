@@ -17,6 +17,10 @@ __attribute__((destructor)) void Sibir::finalize() {
     std::cout << "Sibir Terminated." << std::endl << std::flush;
 }
 
+const HsaApiTable* sibir_get_hsa_table() {
+    return &SibirHsaInterceptor::Instance().getSavedHsaTables().root;
+}
+
 void Sibir::hip_api_callback(hip_api_args_t* cb_data, sibir_api_phase_t phase, hip_api_id_t api_id) {
     sibir_at_hip_event(cb_data, phase, api_id);
 }

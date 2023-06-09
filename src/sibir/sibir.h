@@ -3,6 +3,7 @@
 #include "sibir_types.h"
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
+#include <hsa/hsa_api_trace.h>
 
 extern "C" {
 
@@ -213,6 +214,12 @@ void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_i
 
 
 void sibir_at_hsa_event(hsa_api_args_t* cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id);
+
+/**
+ * Returns the original HSA API table to avoid re-instrumentation of HSA functions.
+ * @return saved HSA API Table
+ */
+const HsaApiTable* sibir_get_hsa_table();
 ////
 /////*********************************************************************
 //// *
