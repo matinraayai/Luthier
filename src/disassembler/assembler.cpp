@@ -14,7 +14,12 @@ Assembler::Assembler()
     initEncodeTable();
 }
 
-std::vector<unsigned char> Assembler::Assemble(std::string instruction)
+std::vector<unsigned char> Assembler::Assemble(const std::vector<Inst>& instructions) {
+
+    return {};
+}
+
+std::vector<unsigned char> Assembler::Assemble(const std::string& instruction)
 {
     Inst *inst = new Inst;
     std::vector<uint32_t> assembly;
@@ -64,7 +69,7 @@ void Assembler::getInstData(Inst* inst, std::string inststr)
         inst->src2 = getOperandInfo(params.at(4));
 }
 
-std::vector<std::string> Assembler::getInstParams(std::string inststr)
+std::vector<std::string> Assembler::getInstParams( std::string& instStr)
 {
     std::vector<std::string> params;
     std::string delim = " ";
@@ -72,9 +77,9 @@ std::vector<std::string> Assembler::getInstParams(std::string inststr)
     size_t i;
     while(i != std::string::npos)
     {
-        i = inststr.find(delim);
-        params.push_back(inststr.substr(0, i));
-        inststr.erase(0, i+1);
+        i = instStr.find(delim);
+        params.push_back(instStr.substr(0, i));
+        instStr.erase(0, i+1);
     }
 
     return params;

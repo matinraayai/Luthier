@@ -1,10 +1,13 @@
 #ifndef INST_H
 #define INST_H
+
 #include <string>
 #include "operand.h"
 #include "elf.h"
 #include "bitops.h"
+
 typedef uint16_t Opcode;
+
 enum FormatType
 {
 	SOP2,
@@ -28,7 +31,6 @@ enum FormatType
 };
 struct Format
 {
-	FormatType formatType;
 	std::string formatName;
 	uint32_t encoding;
 	uint32_t mask;
@@ -69,8 +71,8 @@ struct Inst
 {
 	Format format;
 	InstType instType;
-	int byteSize;
-	uint64_t PC;
+	int byteSize{};
+	uint64_t PC{};
 	Operand src0;
 	Operand src1;
 	Operand src2;
@@ -84,39 +86,42 @@ struct Inst
 	Operand offset;
 	Operand simm16;
 
-	int Abs;
-	int Omod;
-	int Neg;
-	int Offset0;
-	int Offset1;
-	bool SystemLevelCoherent;
-	bool GlobalLevelCoherent;
-	bool TextureFailEnable;
-	bool Imm;
-	bool Clamp;
-	bool GDS;
-	int Seg;
-	int VMCNT;
-	int VSCNT;
-	int LKGMCNT;
-	int EXPCNT;
+	int Abs{};
+	int Omod{};
+	int Neg{};
+	int Offset0{};
+	int Offset1{};
+	bool SystemLevelCoherent{};
+	bool GlobalLevelCoherent{};
+	bool TextureFailEnable{};
+	bool Imm{};
+	bool Clamp{};
+	bool GDS{};
+	int Seg{};
+	int VMCNT{};
+	int VSCNT{};
+	int LKGMCNT{};
+	int EXPCNT{};
 
-	bool IsSdwa;
-	int DstSel;
-	int DstUnused;
-	int Src0Sel;
-	bool Src0Sext;
-	bool Src0Abs;
-	bool Src0Neg;
-	int Src1Sel;
-	bool Src1Sext;
-	bool Src1Abs;
-	bool Src1Neg;
-	bool Src2Abs;
-	bool Src2Neg;
+	bool IsSdwa{};
+	int DstSel{};
+	int DstUnused{};
+	int Src0Sel{};
+	bool Src0Sext{};
+	bool Src0Abs{};
+	bool Src0Neg{};
+	int Src1Sel{};
+	bool Src1Sext{};
+	bool Src1Abs{};
+	bool Src1Neg{};
+	bool Src2Abs{};
+	bool Src2Neg{};
 };
 
-struct instnode{
+
+
+
+struct instnode {
   instnode *prev;
   instnode *next;
 

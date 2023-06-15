@@ -1,11 +1,13 @@
 #ifndef SIBIR_H
 #define SIBIR_H
 #include "sibir_types.h"
+//#include "src/disassembler/inst.h"
+#include <amd-dbgapi/amd-dbgapi.h>
+#include <hsa/hsa_api_trace.h>
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
-#include <hsa/hsa_api_trace.h>
 
-extern "C" {
+//extern "C" {
 
 /////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
 ////class Instr {
@@ -220,6 +222,25 @@ void sibir_at_hsa_event(hsa_api_args_t* cb_data, sibir_api_phase_t phase, hsa_ap
  * @return saved HSA API Table
  */
 const HsaApiTable* sibir_get_hsa_table();
+
+
+void* sibir_get_hip_function(const char* funcName);
+
+struct kernel_descriptor_t {
+    uint8_t reserved0[16];
+    int64_t kernel_code_entry_byte_offset;
+    uint8_t reserved1[20];
+    uint32_t compute_pgm_rsrc3;
+    uint32_t compute_pgm_rsrc1;
+    uint32_t compute_pgm_rsrc2;
+    uint16_t kernel_code_properties;
+    uint8_t reserved2[6];
+};
+
+
+std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kd(amd_dbgapi_global_address_t address);
+
+//void print_instructions(const std::vector<Inst>& isa);
 ////
 /////*********************************************************************
 //// *
@@ -386,7 +407,7 @@ const HsaApiTable* sibir_get_hsa_table();
 ////
 /////* Set nvdisasm */
 ////void nvbit_set_nvdisasm(const char* nvdisasm);
-}
+//}
 
 #endif
 ////

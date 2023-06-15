@@ -54,11 +54,19 @@ class SibirHipInterceptor {
         callback_ = callback;
     }
 
+    void* GetHipFunction(const char* symbol) const {
+        assert(IsEnabled());
+
+        void* function_ptr = ::dlsym(handle_, symbol);
+        if (function_ptr == nullptr)
+            throw std::runtime_error("symbol lookup'" + std::string(symbol) + "' failed: " + std::string(::dlerror()));
+        return function_ptr;
+    }
 
     template <typename FunctionPtr> FunctionPtr GetHipFunction(const char* symbol) const {
         assert(IsEnabled());
 
-        auto function_ptr = reinterpret_cast<FunctionPtr>(::dlsym(handle_, symbol));
+        auto function_ptr = reinterpret_cast<FunctionPtr>(GetHipFunction(symbol));
         if (function_ptr == nullptr)
             throw std::runtime_error("symbol lookup'" + std::string(symbol) + "' failed: " + std::string(::dlerror()));
         return function_ptr;

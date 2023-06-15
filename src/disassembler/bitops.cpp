@@ -13,14 +13,13 @@ uint32_t extractBitsFromU32(uint32_t num, int loInclude, int hiInclude)
   return extracted;
 }
 
-uint32_t convertLE(std::vector<unsigned char> b)
+uint32_t convertLE(const unsigned char *b)
 {
-  auto r = uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 |
+  return uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 |
            uint32_t(b[3]) << 24;
-  return r;
 }
 
-std::vector<unsigned char> instcodeToByteArray(std::vector<uint32_t> inst)
+std::vector<unsigned char> instcodeToByteArray(const std::vector<uint32_t>& inst)
 {
   std::vector<unsigned char> bytes;
   uint8_t buf;
@@ -39,7 +38,7 @@ std::vector<unsigned char> instcodeToByteArray(std::vector<uint32_t> inst)
   return bytes;
 }
 
-std::vector<unsigned char> stringToByteArray(std::string str)
+std::vector<unsigned char> stringToByteArray(std::string& str)
 {
   const char *ptr = str.c_str();
   std::vector<unsigned char> bytes;

@@ -12,9 +12,11 @@ class Assembler
 {
 public:
     Assembler();
-    std::vector<unsigned char> Assemble(std::string instruction);
+
+    std::vector<unsigned char> Assemble(const std::vector<Inst>& instructions);
+    std::vector<unsigned char> Assemble(const std::string& instruction);
     
-    std::vector<std::string> getInstParams(std::string inststr);
+    std::vector<std::string> getInstParams(std::string& inststr);
     std::string extractreg(std::string reg);
 
 private:
