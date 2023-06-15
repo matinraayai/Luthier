@@ -10,6 +10,7 @@
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
 #include <string>
+//#include <amd-dbgapi/amd-dbgapi.h>
 
 // Since the kernel launch doesn't give us access to the queue the signal is associated with, we need to save the relationship in a map
 static std::map<decltype(hsa_signal_t::handle), hsa_queue_t*> queue_map;
@@ -17,20 +18,66 @@ static std::map<decltype(hsa_signal_t::handle), hsa_queue_t*> queue_map;
 // Might use the HSA variants that locks a mutex when reading the queue index.
 std::mutex mutex;
 // Holds the AMD Vendor function pointer table.
-static hsa_ven_amd_loader_1_01_pfn_t amdTable{};
+static hsa_ven_amd_loader_1_03_pfn_t amdTable{};
 static bool amdTableInitialized{false};
+static bool initializeGlobalVar{false};
+
+static bool instrumnted{true};
+
+//__attribute__((used)) __device__ __host__ __noinline__ void hello_world_printf() {printf("hello world!\n");};
+
+//__global__ void dummy() {
+// hello_world_printf();
+//}
+
+//static std::map<std::string, void*> hostFuncMap{std::make_pair("hello_world_printf", reinterpret_cast<void*>(hello_world_printf))};
+
+int* counter;
+
+/**
+ * Returns the list of GPU HSA agents (devices) on the system
+ * @param [out] agentList a vector of GPU agents
+ * @return HSA_STATUS_SUCCESS
+ */
+hsa_status_t getGpuAgents(std::vector<hsa_agent_t>& agentList) {
+    int i = 0;
+    auto iterateAgentCallback = [](hsa_agent_t agent, void* data) {
+        auto agent_list = reinterpret_cast<std::vector<hsa_agent_t>*>(data);
+        hsa_status_t stat = HSA_STATUS_ERROR;
+        hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
+
+        stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
+
+        if (stat != HSA_STATUS_SUCCESS) {
+            return stat;
+        }
+        if (dev_type == HSA_DEVICE_TYPE_GPU) {
+            agent_list->push_back(agent);
+        }
+        return stat;
+    };
+    return hsa_iterate_agents(iterateAgentCallback, &agentList);
+}
 
 
-struct kernel_descriptor_t {
-    uint8_t reserved0[16];
-    int64_t kernel_code_entry_byte_offset;
-    uint8_t reserved1[20];
-    uint32_t compute_pgm_rsrc3;
-    uint32_t compute_pgm_rsrc1;
-    uint32_t compute_pgm_rsrc2;
-    uint16_t kernel_code_properties;
-    uint8_t reserved2[6];
-};
+hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
+                                     const std::vector<hsa_agent_t>& agentList,
+                                     std::vector<hsa_executable_symbol_t>& symbols) {
+    hsa_status_t out = HSA_STATUS_ERROR;
+    for (auto agent : agentList) {
+        auto iterCallback = [](hsa_executable_t executable, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data) {
+            auto symbolVec = reinterpret_cast<std::vector<hsa_executable_symbol_t>*>(data);
+            symbolVec->push_back(symbol);
+            return HSA_STATUS_SUCCESS;
+        };
+        out = hsa_executable_iterate_agent_symbols(executable,
+                                                   agent,
+                                                   iterCallback, &symbols);
+        if (out != HSA_STATUS_SUCCESS)
+            return HSA_STATUS_ERROR;
+    }
+    return HSA_STATUS_SUCCESS;
+}
 
 std::ostream& operator<<(std::ostream& os, const kernel_descriptor_t& kd) {
     os << "Kernel Descriptor Content" << std::endl;
@@ -94,6 +141,67 @@ static unsigned extractAqlBits(unsigned v, unsigned pos, unsigned width) {
     return (v >> pos) & ((1 << width) - 1);
 };
 
+void instrumentKernel(const amd_dbgapi_global_address_t entrypoint) {
+
+    // For now assume gfx908
+    // TODO: add the architecture code from the dbgapi headers
+    amd_dbgapi_architecture_id_t arch;
+    amd_dbgapi_get_architecture(0x030, &arch);
+
+
+    amd_dbgapi_size_t maxInstrLen;
+    amd_dbgapi_architecture_get_info(arch, AMD_DBGAPI_ARCHITECTURE_INFO_LARGEST_INSTRUCTION_SIZE,
+                                     sizeof(amd_dbgapi_size_t),
+                                     &maxInstrLen);
+
+    bool is_end = false;
+    // The decoded instruction will be malloced by ::amd_dbgapi_disassemble_instruction
+    // It has to be copied and freed
+    char*instChar{};
+    auto curr_address = entrypoint;
+    amd_dbgapi_size_t instrSize;
+
+    while(!is_end) {
+        instrSize = maxInstrLen;
+
+        amd_dbgapi_disassemble_instruction(arch, curr_address, &instrSize,
+                                           reinterpret_cast<void*>(curr_address),
+                                           &instChar, nullptr, {});
+
+        std::vector<std::byte> instBytes(instrSize);
+        // Copy the instruction bytes
+        for (amd_dbgapi_size_t i = 0; i < instrSize; i++) {
+            instBytes[i] = reinterpret_cast<std::byte*>(curr_address)[i];
+        }
+        // Copy the decoded instruction string
+        std::string instStr(instChar);
+//        std::cout << instStr << ": ";
+        if (instStr.find("s_add_i32") != std::string::npos) {
+            auto overwrite_address = reinterpret_cast<uint8_t*>(curr_address);
+//            auto out =
+//            reinterpret_cast<hipError_t (*)(void* dst, int value, size_t sizeBytes)>(sibir_get_hip_function("hipMemset"))(overwrite_address + 1,
+//                                                                                                                          0xc5, 1);
+//            assert(out == HIP_SUCCESS);
+//            reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
+//                overwrite_address + 1,
+//                )
+            overwrite_address[1] = 0x85;
+//            curr_address
+        }
+        free(instChar);
+
+        curr_address += instrSize;
+        is_end = instStr.find("s_endpgm") != std::string::npos;
+    }
+//    return instList;
+
+//    disassemble_kd(kd);
+//    auto kernel_entry = reinterpret_cast<const unsigned char*>(kd) + kd->kernel_code_entry_byte_offset;
+//    return {};
+    // 02 c5 02 81
+    //02 85 02 81
+}
+
 void interceptKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value) {
     auto it = queue_map.find(signal.handle);
     if (it != queue_map.end()) {
@@ -116,6 +224,7 @@ void interceptKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value
                 std::cout << "Dispatch Packet Content:" << *dispatchPacket << std::endl;
 
                 // Print the Kernel Descriptor Content
+                std::cout << "KD Location: " << dispatchPacket << std::endl;
                 const kernel_descriptor_t *kernelDescriptor = nullptr;
 
                 CHECK_HSA_CALL(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(dispatchPacket->kernel_object),
@@ -123,8 +232,69 @@ void interceptKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value
                 std::cout << *kernelDescriptor << std::endl;
                 // Print the address of the kernel Object
                 std::cout << "Kernel Descriptor Location: " << reinterpret_cast<void *>(dispatchPacket->kernel_object) << std::endl;
-                std::cout << "Kernel Entry: " << reinterpret_cast<const void*>(reinterpret_cast<const unsigned char*>(kernelDescriptor) +
-                                                  kernelDescriptor->kernel_code_entry_byte_offset) << std::endl;
+                std::cout << "Kernel Entry: " << reinterpret_cast<const void *>(reinterpret_cast<const std::byte *>(kernelDescriptor) + kernelDescriptor->kernel_code_entry_byte_offset) << std::endl;
+                std::cout << "Kernel content: " << std::endl;
+                auto kernelEntryPoint =
+                    reinterpret_cast<amd_dbgapi_global_address_t>(dispatchPacket->kernel_object) + kernelDescriptor->kernel_code_entry_byte_offset;
+                instrumentKernel(kernelEntryPoint);
+//                auto instructions = sibir_disassemble_kd(kernelEntryPoint);
+//                hipPointerAttribute_t counterAttributes;
+//                reinterpret_cast<hipError_t (*)(hipPointerAttribute_t *, const void *)>(sibir_get_hip_function("hipPointerGetAttributes"))(
+//                    &counterAttributes, counter);
+////                std::cout << "Counter address on host: " << counterAttributes.hostPointer << std::endl;
+////                std::cout << "Counter address on device:" << (reinterpret_cast<uint64_t>(counterAttributes.devicePointer) & 0xFFFFFFFF) << std::endl;
+//                uint8_t counterDeviceAddress = (reinterpret_cast<uint64_t>(counterAttributes.devicePointer) & 0xFFFFFFFF);
+//                uint8_t firstByte = 0x00FF0000 & counterDeviceAddress;
+//                uint8_t secondByte = 0x0000FF0000 & counterDeviceAddress;
+//                uint8_t thirdByte = 0x0000FF00 & counterDeviceAddress;
+//                uint8_t fourthByte = 0x000000FF & counterDeviceAddress;
+//                std::vector<std::vector<uint8_t>> counterCode{
+//                    {0x00, 0xFF, 0x00, 0x80, fourthByte, thirdByte, secondByte, firstByte},
+//                                                              {0x01, 0xFF, 0x01, 0x82, 0x00, 0x00, 0x00, 0x00},
+//                                                              {0x80, 0x02, 0x00, 0x7E},
+//                                                              {0x81, 0x02, 0x02, 0x7E},
+//                                                              {0x00, 0x80, 0x08, 0xDD, 0x00, 0x01, 0x00, 0x00},
+//                                                              {0x00, 0x00, 0x81, 0xbf}};
+//
+////                    Decoded by rocdbg-api: s_add_u32 s0, s0, 0x1ffc Instruction Size: 8 Address: 7fe86616d004 Bytes: 0 ff 0 80 fc 1f 0 0
+////                    Decoded by rocdbg-api: s_addc_u32 s1, s1, 0 Instruction Size: 8 Address: 7fe86616d00c Bytes: 1 ff 1 82 0 0 0 0
+////                    Decoded by rocdbg-api: v_mov_b32_e32 v0, 0 Instruction Size: 4 Address: 7fe86616d014 Bytes: 80 2 0 7e
+////                    Decoded by rocdbg-api: v_mov_b32_e32 v1, 1 Instruction Size: 4 Address: 7fe86616d018 Bytes: 81 2 2 7e
+////                    Decoded by rocdbg-api: global_store_dword v0, v1, s[0:1] Instruction Size: 8 Address: 7fe86616d01c Bytes: 0 80 70 dc 0 1 0 0
+//
+////                hipPointerGetAttribute(&counterAttributes, )
+////                std::vector<
+////
+//                for (auto& instr: instructions) {
+//                    std::cout << instr.first << ": ";
+//                    for (std::byte &el: instr.second) {
+//                        std::cout << std::hex << std::setfill('0') << std::setw(2) << uint16_t(el) << " ";
+//                    }
+//                    std::cout << std::dec << std::endl;
+//                }
+//                if (!instrumnted) {
+//
+//
+//                    auto overwriteAddress = reinterpret_cast<uint8_t*>(dispatchPacket->kernel_object) + kernelDescriptor->kernel_code_entry_byte_offset;
+//                    std::cout << "overwrite Address:" << reinterpret_cast<void*>(overwriteAddress) << std::endl;
+//                    // instrument the kernel lol
+//
+//                    for (const auto &i: counterCode)
+//                        for (const auto &b: i) {
+//                            reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
+//                                overwriteAddress, (void *) &b, 1, hipMemcpyHostToDevice);
+////                            *overwriteAddress = b;
+//                            overwriteAddress++;
+//                        }
+////                    for (const auto &i: instructions)
+////                        for (const auto &b: i.second) {
+////                            *overwriteAddress = static_cast<uint8_t>(b);
+////                            overwriteAddress++;
+////                        }
+//                    //                std::cout << isa.size() << std::endl;
+//                    //                print_instructions(isa);
+//                    instrumnted = true;
+//                }
             }
         }
     } else {
@@ -133,13 +303,78 @@ void interceptKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value
 }
 
 
+void iterateLoadedCodeObjects(hsa_executable_t executable) {
+    // Get a list of loaded code objects inside the executable
+    std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
+    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
+        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
+        out->push_back(lco);
+        return HSA_STATUS_SUCCESS;
+    };
+    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+
+    // Dump all the code objects into files
+    for (int i = 0; i < loadedCodeObjects.size(); i++) {
+        // Query the base address of the loaded code object on host
+        uint64_t lcoBaseAddrHost;
+        amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+                                                                HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
+                                                                &lcoBaseAddrHost);
+        // Query the size of the loaded code object on host
+        uint64_t lcoSizeHost;
+        amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+                                                                HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
+                                                                &lcoSizeHost);
+
+
+
+        uint64_t lcoBaseAddrDevice;
+        amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+                                                                HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
+                                                                &lcoBaseAddrDevice);
+        // Query the size of the loaded code object
+        uint64_t lcoSizeDevice;
+        amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+                                                                HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
+                                                                &lcoSizeDevice);
+
+
+        std::cout << "Base address of the executable on the host: " << reinterpret_cast<void*>(lcoBaseAddrHost) << std::endl;
+        std::cout << "Size of the executable on the host: " << lcoSizeHost << std::endl;
+        std::cout << "Base address of the executable on the device: " << reinterpret_cast<void*>(lcoBaseAddrDevice) << std::endl;
+        std::cout << "Size of the executable on the device: " << lcoSizeDevice << std::endl;
+
+
+        std::string coContentHost(reinterpret_cast<char*>(lcoBaseAddrHost), lcoSizeHost);
+        std::string coContentDevice(reinterpret_cast<char*>(lcoBaseAddrDevice), lcoSizeDevice);
+        auto h = std::fstream("./" + std::to_string(executable.handle) + "_host_" + std::to_string(i) + ".elf",
+                              std::ios_base::out);
+        h << coContentHost << std::endl;
+        h.close();
+        auto d = std::fstream("./" + std::to_string(executable.handle) + "_device_" + std::to_string(i) + ".elf",
+                              std::ios_base::out);
+        d << coContentDevice << std::endl;
+        d.close();
+        std::cout << "=============================================================================================" << std::endl;
+    }
+}
+
+
 void sibir_at_init() {
     std::cout << "Kernel Launch Intercept Tool is launching." << std::endl;
+//    reinterpret_cast<hipError_t(*)(void**,size_t)>(sibir_get_hip_function("hipMalloc"))(reinterpret_cast<void **>(&counter), sizeof(uint64_t));
+//    dummy<<<1, 1>>>();
 }
 
 
 void sibir_at_term() {
     memset(&amdTable, 0, sizeof(hsa_ven_amd_loader_1_01_pfn_t));
+    int counterHost;
+    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
+        &counterHost, counter, 4, hipMemcpyDeviceToHost
+    );
+    std::cout << "Counter Value: " << counterHost << std::endl;
+    reinterpret_cast<hipError_t(*)(void*)>(sibir_get_hip_function("hipFree"))(counter);
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 
@@ -157,13 +392,36 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
             auto queue = args->hsa_queue_create.queue;
             queue_map[(*queue)->doorbell_signal.handle] = *queue;
         }
+
+        else if (api_id == HSA_API_ID_hsa_executable_freeze) {
+            auto executable = args->hsa_executable_freeze.executable;
+            fprintf(stdout, "HSA Executable Freeze Callback\n");
+            // Get the state of the executable (frozen or not frozen)
+            hsa_executable_state_t e_state;
+            CHECK_HSA_CALL(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE, &e_state));
+
+            fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
+            std::vector<hsa_agent_t> agentList;
+            std::vector<hsa_executable_symbol_t> symbols;
+            getGpuAgents(agentList);
+            getAllExecutableSymbols(executable, agentList, symbols);
+            iterateLoadedCodeObjects(executable);
+            fprintf(stdout, "");
+        }
     }
     else if (phase == SIBIR_API_PHASE_ENTER) {
         if (api_id == HSA_API_ID_hsa_signal_store_screlease) {
+            fprintf(stdout, "<call to (%s)\t on %s> ",
+                    "hsa_signal_store_screlease",
+                    "entry");
             interceptKernelLaunchCallback(args->hsa_signal_store_screlease.signal,
                                           args->hsa_signal_store_screlease.value);
             }
         else if (api_id == HSA_API_ID_hsa_signal_store_relaxed) {
+            fprintf(stdout, "<call to (%s)\t on %s> ",
+                    "hsa_signal_store_relaxed",
+                    "entry");
+
             interceptKernelLaunchCallback(args->hsa_signal_store_relaxed.signal,
                                           args->hsa_signal_store_relaxed.value);
         }
@@ -171,12 +429,31 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
 }
 
 void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_id_t api_id) {
+    if (!initializeGlobalVar) {
+        reinterpret_cast<hipError_t(*)(void**,size_t)>(sibir_get_hip_function("hipMalloc"))(
+            reinterpret_cast<void **>(&counter), sizeof(uint64_t));
+//        reinterpret_cast<hipError_t (*)(void* dst, int value, size_t sizeBytes)>(sibir_get_hip_function("hipMemset"))(counter, 0, 4);
+        initializeGlobalVar = true;
+    }
+    std::string name;
+//    if (!has_launched) {
+//        auto kernelLaunchFunc =
+//        reinterpret_cast<hipError_t(*)(const void*,
+//                                          dim3, dim3, void**, size_t, hipStream_t)>(sibir_get_hip_function("hipLaunchKernel"));
+//        kernelLaunchFunc(reinterpret_cast<const void*>(dummy), 1, 1, nullptr, 0, nullptr);
+////        dummy<<<1, 1>>>();
+//        has_launched = true;
+//    }
     fprintf(stdout, "<call to (%s)\t on %s> ",
             hip_api_name(api_id),
             phase == SIBIR_API_PHASE_ENTER ? "entry" : "exit"
             );
     switch (api_id) {
         case HIP_API_ID_hipLaunchKernel:
+//            name = std::string(hipKernelNameRefByPtr(args->hipLaunchKernel.function_address,
+//                                              args->hipLaunchKernel.stream));
+//            if (name.find("mult") != std::string::npos)
+//                instrumnted = false;
             fprintf(stdout, "kernel(\"%s\") stream(%p)",
                     hipKernelNameRefByPtr(args->hipLaunchKernel.function_address,
                                           args->hipLaunchKernel.stream),
