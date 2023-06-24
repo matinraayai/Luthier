@@ -29,6 +29,7 @@ void editTextSectionData(elfio::File *elf);
 void editShr(elfio::File *elf);
 void printSymbolTable(elfio::File *elf);
 std::vector<unsigned char> trampoline(char *codeobj, char *ipath);
+elfio::Note getNote(elfio::File *elf);
 
 uint64_t processBundle(char *data)
 {
@@ -89,7 +90,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   endOfHeader = processBundle((char *)header);
   endOfHeader = 0x209680;
 
-  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx906"};
+  std::string curr_target{"hipv4-amdgcn-amd-amdhsa--gfx908"};
 
   char *header_copy = new char[endOfHeader - (uint64_t)header];
   std::memcpy(header_copy, header, endOfHeader - (uint64_t)header);
@@ -118,7 +119,8 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   elfio::File elfFilep, elfFilei;
   elfFilep = elfFilep.FromMem(elfBinary); // load elf file from code object
   // Disassembler d(&elfFilep);
-  // elfio::Note noteSec = getNoteSection();
+  elfio::Note note = getNote(&elfFilep);
+  printf("%s", note.desc);
 
   // editNoteSectionData(&elfFile);
 
@@ -307,7 +309,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
   char *newShdrBinary = new char[newShdrSize];
   Elf64_Shdr *shr =
       reinterpret_cast<Elf64_Shdr *>(elfFilep.Blob() + Eheader->e_shoff);
-  //modify current section header table: offset, size and addr
+  // modify current section header table: offset, size and addr
   for (int i = 1; i < Eheader->e_shnum; i++)
   {
     shr[i].sh_offset = offsets[i - 1];
@@ -329,7 +331,7 @@ extern "C" std::vector<hipModule_t> *__hipRegisterFatBinary(char *data)
 
   std::memcpy((void *)(desc->offset), newELFBinary, 0x3680);
   desc->size = 0x3680;
-  //reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->numBundles = 2;
+  // reinterpret_cast<__ClangOffloadBundleHeader *>(header_copy)->numBundles = 2;
 
   // editTextSectionData(&elfFile);
 
@@ -408,6 +410,35 @@ void editTextSectionData(elfio::File *elf)
   // std::memcpy(oldInst + 4, newInst, 4);
 
   d.Disassemble(elf, "vectoradd_hip.exe -- after edit", std::cout);
+}
+
+// This function returns the note section of an elf file as an elfio::Note obj
+// Uses the same algorithm that getKernelArgumentMetaData in Rhipo uses.
+// By passing elfio::Note.desc into nlohmann::json::from_msgpack(), you can
+// get the note section as a JSON file. elfio::Note.desc is just a big string.
+elfio::Note getNote(elfio::File *elf)
+{
+  printf("Here in %s\n", __FUNCTION__);
+
+  auto note_section = elf->GetSectionByType("SHT_NOTE");
+  if (!note_section)
+  {
+    panic("note section is not found");
+  }
+
+  char *blog = note_section->Blob();
+  int offset = 0;
+  while (offset < note_section->size)
+  {
+    auto note = std::make_unique<elfio::Note>(elf, blog + offset);
+    offset += note->TotalSize();
+    if (note->name.rfind("AMDGPU") == 0)
+    {
+      printf("Offset %d\n", offset);
+      printf("Total Size %d\n", note->TotalSize());
+      return elfio::Note(elf, note->Blob());
+    }
+  }
 }
 
 // This function changes things in the note section by taking an elfio::Note
