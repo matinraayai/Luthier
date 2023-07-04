@@ -15,7 +15,7 @@ namespace fs = std::experimental::filesystem;
 class SibirHipInterceptor {
  private:
     void* handle_{nullptr};
-    std::function<void(hip_api_args_t*, const sibir_api_phase_t, const hip_api_id_t)> callback_;
+    std::function<void(void*, const sibir_api_phase_t, const int)> callback_;
 
     SibirHipInterceptor() {
         // Iterate through the process' loaded shared objects and try to dlopen the first entry with a
@@ -46,11 +46,11 @@ class SibirHipInterceptor {
 
     [[nodiscard]] bool IsEnabled() const { return handle_ != nullptr; }
 
-    [[nodiscard]] const std::function<void(hip_api_args_t*, const sibir_api_phase_t, const hip_api_id_t)>& getCallback() const {
+    [[nodiscard]] const std::function<void(void*, const sibir_api_phase_t, const int)>& getCallback() const {
         return callback_;
     }
 
-    void SetCallback(const std::function<void(hip_api_args_t*, const sibir_api_phase_t, const hip_api_id_t)> &callback) {
+    void SetCallback(const std::function<void(void*, const sibir_api_phase_t, const int)> &callback) {
         callback_ = callback;
     }
 

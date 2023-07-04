@@ -19,487 +19,17 @@
 # THE SOFTWARE.
 
 import os
-import sys
 import re
 import warnings
 
 import CppHeaderParser
 from typing import *
 import argparse
-import filecmp
-
-
-# Verbose message
-
-
-#############################################################
-# Normalizing API name
-def filtr_api_name(name):
-    name = re.sub(r'\s*$', r'', name);
-    return name
-
-
-def filtr_api_decl(record):
-    record = re.sub(r"\s__dparm\([^)]*\)", r'', record);
-    record = re.sub("\(void\*\)", r'', record);
-    return record
-
-
-# Normalizing API arguments
-def filtr_api_args(args_str):
-    args_str = re.sub(r'^\s*', r'', args_str)
-    args_str = re.sub(r'\s*$', r'', args_str)
-    args_str = re.sub(r'\s*,\s*', r',', args_str)
-    args_str = re.sub(r'\s+', r' ', args_str)
-    args_str = re.sub(r'\s*(\*+)\s*', r'\1 ', args_str)
-    args_str = re.sub(r'(\benum|struct) ', '', args_str)
-    return args_str
-
-
-# Normalizing types
-def norm_api_types(type_str):
-    type_str = re.sub(r'uint32_t', r'unsigned int', type_str)
-    type_str = re.sub(r'^unsigned$', r'unsigned int', type_str)
-    return type_str
-
-
-# Creating a list of arguments [(type, name), ...]
-def list_api_args(args_str):
-    args_str = filtr_api_args(args_str)
-    args_list = []
-    if args_str != '':
-        for arg_pair in args_str.split(','):
-            if arg_pair == 'void':
-                continue
-            arg_pair = re.sub(r'\s*=\s*\S+$', '', arg_pair)
-            m = re.match("^(.*)\s(\S+)$", arg_pair)
-            if m:
-                arg_type = norm_api_types(m.group(1))
-                arg_name = m.group(2)
-                args_list.append((arg_type, arg_name))
-            else:
-                fatal("bad args: args_str: '" + args_str + "' arg_pair: '" + arg_pair + "'")
-    return args_list
-
-
-# Creating arguments string "type0, type1, ..."
-def filtr_api_types(args_str):
-    args_list = list_api_args(args_str)
-    types_str = ''
-    for arg_tuple in args_list:
-        types_str += arg_tuple[0] + ', '
-    return types_str
-
-
-# Creating options list [opt0, opt1, ...]
-def filtr_api_opts(args_str):
-    args_list = list_api_args(args_str)
-    opts_list = []
-    for arg_tuple in args_list:
-        opts_list.append(arg_tuple[1])
-    return opts_list
-
-
-# Checking for pointer non-void arg type
-def pointer_ck(arg_type):
-    ptr_type = ''
-    m = re.match(r'(.*)\*$', arg_type)
-    if m:
-        ptr_type = m.group(1)
-        n = re.match(r'(.*)\*\*$', arg_type)
-        if not n:
-            ptr_type = re.sub(r'const ', '', ptr_type)
-        if ptr_type == 'void':
-            ptr_type = ''
-    return ptr_type
-
-
-#############################################################
-# Parsing API header
-# hipError_t hipSetupArgument(const void* arg, size_t size, size_t offset);
-def parse_api(inp_file_p, input_args_map, output_type_map):
-    global inp_file
-    global line_num
-    inp_file = inp_file_p
-
-    beg_pattern = re.compile(r"^(hipError_t|const char\s*\*)\s+([^(]+)\(")
-    api_pattern = re.compile(r"^(hipError_t|const char\s*\*)\s+([^(]+)\(([^)]*)\)")
-    end_pattern = re.compile("Texture")
-    hidden_pattern = re.compile(r'__attribute__\(\(visibility\("hidden"\)\)\)')
-    nms_open_pattern = re.compile(r'namespace hip_impl {')
-    nms_close_pattern = re.compile(r'}')
-
-    inp = open(inp_file, 'r')
-
-    found = 0
-    hidden = 0
-    nms_level = 0
-    record = ""
-    line_num = -1
-
-    for line in inp.readlines():
-        record += re.sub(r'^\s+', r' ', line[:-1])
-        line_num += 1
-
-        if len(record) > REC_MAX_LEN:
-            fatal("bad record \"" + record + "\"")
-
-        m = beg_pattern.match(line)
-        if m:
-            name = m.group(2)
-            if hidden != 0:
-                message("api: " + name + " - hidden")
-            elif nms_level != 0:
-                message("api: " + name + " - hip_impl")
-            else:
-                message("api: " + name)
-                found = 1
-
-        if found != 0:
-            record = re.sub(r"\s__dparm\([^)]*\)", '', record)
-            m = api_pattern.match(record)
-            if m:
-                found = 0
-                if end_pattern.search(record): continue
-                api_name = filtr_api_name(m.group(2))
-                api_args = m.group(3)
-                out_type = m.group(1)
-                if api_name not in input_args_map:
-                    input_args_map[api_name] = api_args
-                    output_type_map[api_name] = out_type
-            else:
-                continue
-
-        hidden = 0
-        if hidden_pattern.match(line):
-            hidden = 1
-
-        if nms_open_pattern.match(line):
-            nms_level += 1
-        if (nms_level > 0) and nms_close_pattern.match(line):
-            nms_level -= 1
-        if nms_level < 0:
-            fatal("nms level < 0")
-
-        record = ""
-
-    inp.close()
-    line_num = -1
-
-
-#############################################################
-# Parsing API implementation
-# hipError_t hipSetupArgument(const void* arg, size_t size, size_t offset) {
-#    HIP_INIT_API(hipSetupArgument, arg, size, offset);
-# inp_file - input implementation source file
-# api_map - input public API map [<api name>] => <api args>
-# out - output map  [<api name>] => [opt0, opt1, ...]
-def parse_content(inp_file_p, api_map, out):
-    global hip_patch_mode
-    global types_check_mode
-    global private_check_mode
-    global inp_file
-    global line_num
-    inp_file = inp_file_p
-
-    # API method begin pattern
-    beg_pattern = re.compile(r"^(hipError_t|const char\s*\*)\s+[^(]+\(")
-    # API declaration pattern
-    decl_pattern = re.compile(r"^(hipError_t|const char\s*\*)\s+([^(]+)\(([^\)]*)\)\s*;")
-    # API definition pattern
-    api_pattern = re.compile(r"^(hipError_t|const char\s*\*)\s+([^(]+)\(([^)]*)\)\s*{")
-    # API init macro pattern
-    init_pattern = re.compile(r"(^\s*HIP_INIT_API\s*\s*)\((([^,]+)(,.*|)|)(\);|,)\s*$")
-
-    # Open input file
-    inp = open(inp_file, 'r')
-
-    # API name
-    api_name = ""
-    # Valid public API found flag
-    api_valid = 0
-    # API overload (parameters mismatch)
-    api_overload = 0
-
-    # Input file patched content
-    content = ''
-    # Sub content for found API definition
-    sub_content = ''
-    # Current record, accumulating several API definition related lines
-    record = ''
-    # Current input file line number
-    line_num = -1
-    # API beginning found flag
-    found = 0
-
-    # Reading input file
-    for line in inp.readlines():
-        # Accumulating record
-        record += re.sub(r'^\s+', r' ', line[:-1])
-        line_num += 1
-
-        if len(record) > REC_MAX_LEN:
-            fatal("bad record \"" + record + "\"")
-            break;
-
-        # Looking for API begin
-        if found == 0:
-            record = re.sub(r'\s*extern\s+"C"\s+', r'', record);
-            if beg_pattern.match(record):
-                found = 1
-                record = filtr_api_decl(record)
-
-        # Matching API declaration
-        if found == 1:
-            if decl_pattern.match(record):
-                found = 0
-
-        # Matching API definition
-        if found == 1:
-            m = api_pattern.match(record)
-            # Checking if complete API matched
-            if m:
-                found = 2
-                api_valid = 0
-                api_overload = 0
-                api_name = filtr_api_name(m.group(2))
-                # Checking if API name is in the API map
-                if (private_check_mode == 0) or (api_name in api_map):
-                    if not api_name in api_map:
-                        api_map[api_name] = ''
-                    # Getting API arguments
-                    api_args = m.group(3)
-                    # Getting etalon arguments from the API map
-                    eta_args = api_map[api_name]
-                    if eta_args == '':
-                        eta_args = api_args
-                        api_map[api_name] = eta_args
-                    # Normalizing API arguments
-                    api_types = filtr_api_types(api_args)
-                    # Normalizing etalon arguments
-                    eta_types = filtr_api_types(eta_args)
-                    if (api_types == eta_types) or ((types_check_mode == 0) and (not api_name in out)):
-                        # API is already found and not is mismatched
-                        if (api_name in out):
-                            fatal("API redefined \"" + api_name + "\", record \"" + record + "\"")
-                        # Set valid public API found flag
-                        api_valid = 1
-                        # Set output API map with API arguments list
-                        out[api_name] = filtr_api_opts(api_args)
-                        # Register missmatched API methods
-                    else:
-                        api_overload = 1
-                        # Warning about mismatched API, possible non public overloaded version
-                        api_diff = '\t\t' + inp_file + " line(" + str(
-                            line_num) + ")\n\t\tapi: " + api_types + "\n\t\teta: " + eta_types
-                        message("\t" + api_name + ' args mismatch:\n' + api_diff + '\n')
-
-        # API found action
-        if found == 2:
-            if hip_patch_mode != 0:
-                # Looking for INIT macro
-                m = init_pattern.match(line)
-                if m:
-                    init_name = api_name
-                    if api_overload == 1:
-                        init_name = 'NONE'
-                    init_args = m.group(4)
-                    line = m.group(1) + '(' + init_name + init_args + m.group(5) + '\n'
-
-            m = init_pattern.match(line)
-            if m:
-                found = 0
-                if api_valid == 1: message("\t" + api_name)
-                # Ignore if it is initialized as NONE
-                init_name = m.group(3)
-                if init_name != 'NONE':
-                    # Check if init name matching API name
-                    # if init_name != api_name:
-                    #   fatal("init name mismatch: '" + init_name +  "' <> '" + api_name + "'")
-                    # Registering dummy API for non public API if the name in INIT is not NONE
-                    if api_valid == 0:
-                        # If init name is not in public API map then it is private API
-                        # else it was not identified and will be checked on finish
-                        if not init_name in api_map:
-                            if init_name in out:
-                                continue
-                                fatal("API reinit \"" + api_name + "\", record \"" + record + "\"")
-                            out[init_name] = []
-            elif re.search('}', line):
-                found = 0
-                # Expect INIT macro for valid public API
-                # Removing and registering non-conformant APIs with missing HIP_INIT macro
-                if api_valid == 1:
-                    if api_name in out:
-                        del out[api_name]
-                        del api_map[api_name]
-                        # Registering non-conformant APIs
-                        out['.' + api_name] = 1
-                    else:
-                        fatal("API is not in out \"" + api_name + "\", record \"" + record + "\"")
-
-        if found != 1:
-            record = ""
-        content += line
-
-    inp.close()
-    line_num = -1
-
-    if len(out) != 0:
-        return content
-    else:
-        return ''
-
-
-# src path walk
-def parse_src(api_map, src_path, src_patt, out):
-    global recursive_mode
-
-    pattern = re.compile(src_patt)
-    src_path = re.sub(r'\s', '', src_path)
-    for src_dir in src_path.split(':'):
-        message("Parsing " + src_dir + " for '" + src_patt + "'")
-        for root, dirs, files in os.walk(src_dir):
-            for fnm in files:
-                if pattern.search(fnm):
-                    file = root + '/' + fnm
-                    message(file)
-                    content = parse_content(file, api_map, out)
-                    if (hip_patch_mode != 0) and (content != ''):
-                        f = open(file, 'w')
-                        f.write(content)
-                        f.close()
-            if recursive_mode == 0:
-                break
-
-
-def generate_hip_private_api_enums(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod],
-                                   hip_api_id_enums: Dict[str, int]):
-    f.write('#ifndef HIP_PRIVATE_API\n#define HIP_PRIVATE_API\n\n')
-    f.write('enum hip_private_api_id_t {\n')
-    f.write('\tHIP_PRIVATE_API_ID_NONE = 0,\n')
-    api_id = 1000
-    f.write(f'\tHIP_PRIVATE_API_ID_FIRST = {api_id},\n')
-    for api_name in sorted(hip_runtime_api_map):
-        if f'HIP_API_ID_{api_name}' not in hip_api_id_enums:
-            f.write(f'\tHIP_PRIVATE_API_ID_{api_name} = {api_id},\n')
-            api_id += 1
-    f.write(f'\tHIP_PRIVATE_API_ID_LAST = {api_id}\n')
-    f.write("};\n\n")
-    f.write('#endif')
-
-
-def generate_hip_intercept_args(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod]):
-    f.write('#ifndef HIP_ARGS\n#define HIP_ARGS\n\n')
-    f.write("#include <hip/hip_runtime_api.h>\n\n")
-    for name in sorted(hip_runtime_api_map.keys()):
-        f.write(f'typedef struct {name}_args_s {{\n')
-
-        output_type = hip_runtime_api_map[name]['returns']
-        args = hip_runtime_api_map[name]['parameters']
-        if len(args) != 0:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                ptr_type = pointer_ck(arg_type)
-                arg_name = arg['name']
-                # Checking for enum type
-                if arg_type == "hipLimit_t":
-                    arg_type = 'enum ' + arg_type
-                # Function arguments
-                f.write(f"\t{arg_type} {arg_name};\n")
-                # if i != len(args) - 1:
-                #     f.write(';\n')
-        f.write(f'}} {name}_args_t;\n\n')
-        f.write(f'typedef {output_type} {name}_return_t;\n\n\n')
-    f.write("#endif")
-
-
-def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod],
-                                           hip_api_id_enums: Dict[str, int]) -> None:
-    for name in hip_api_id_enums:
-        actual_name = name[11:]
-        if actual_name not in hip_runtime_api_map and actual_name != "NONE" and actual_name != "FIRST" and \
-           actual_name != "LAST" and "RESERVED" not in actual_name and \
-           hip_api_id_enums[name] != "HIP_API_ID_NONE":
-            raise RuntimeError(f"{actual_name} is in hip_prof_str.h but not in the captured function APIs.\n")
-
-    f.write('#include "hip_intercept.h"\n\n\n')
-    for name in sorted(hip_runtime_api_map.keys()):
-        f.write('__attribute__((visibility("default")))\n')
-        output_type = hip_runtime_api_map[name]['returns']
-        f.write(f'{output_type} {name}(')
-        args = hip_runtime_api_map[name]['parameters']
-        if len(args) != 0:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                ptr_type = pointer_ck(arg_type)
-                arg_name = arg['name']
-                # Checking for enum type
-                if arg_type == "hipLimit_t":
-                    arg_type = 'enum ' + arg_type
-                # Function arguments
-                f.write(f"{arg_type} {arg_name}")
-                if i != len(args) - 1:
-                    f.write(', ')
-        f.write(') {\n')
-        f.write('\tauto& hipInterceptor = SibirHipInterceptor::Instance();\n')
-        f.write('\tauto& hipCallback = hipInterceptor.getCallback();\n')
-        if f"HIP_API_ID_{name}" not in hip_api_id_enums:
-            f.write(f'\tauto api_id = HIP_PRIVATE_API_ID_{name};\n')
-        else:
-            f.write(f'\tauto api_id = HIP_API_ID_{name};\n')
-        f.write('\t// Copy Arguments for PHASE_ENTER\n')
-        f.write('\thip_api_args_t hip_args{};\n')
-        if len(args) != 0:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(f"\thip_args.{name}.{arg_name} = {arg_name};\n")
-        f.write("\thipCallback(&hip_args, SIBIR_API_PHASE_ENTER, api_id);\n")
-        f.write(f"    static auto hip_func = hipInterceptor.GetHipFunction<{output_type}(*)(")
-        if len(args) != 0:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(arg_type)
-                if i != len(args) - 1:
-                    f.write(',')
-        f.write(f')>("{name}");\n')
-        f.write(f'    {output_type} out = hip_func(')
-        if len(args) != 0:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(f"hip_args.{name}.{arg_name}")
-                if i != len(args) - 1:
-                    f.write(', ')
-        f.write(");\n")
-        f.write("    // Exit Callback\n")
-        f.write("    hipCallback(&hip_args, SIBIR_API_PHASE_EXIT, api_id);\n")
-        if len(args) != 0:
-            f.write("    // Copy the modified arguments back to the original arguments\n")
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(f"    {arg_name} = hip_args.{name}.{arg_name};\n")
-        f.write("\n    return out;\n}\n\n")
 
 
 def parse_and_validate_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("HIP API interception generation script for Sibir; Originally used by AMD in "
                                      "HIP and roctracer projects.")
-    parser.add_argument("-v", "--verbose", action='store_true',
-                        help="enable verbose messages")
-    parser.add_argument("-r", "--recursive", action='store_true',
-                        help="process source directory recursively")
-    parser.add_argument("-t", "--type-matching-check", action='store_true',
-                        help="API types matching check")
-    parser.add_argument("--private-api-check", action='store_true',
-                        help="private API check")
-    parser.add_argument("--macro-patching-mode", action='store_true',
-                        help='Macro patching mode')
-    parser.add_argument("-e", action='store_true',
-                        help='on error exit mode')
     parser.add_argument("--hipamd-src-dir", type=str,
                         help='where hipamd src directory is located')
     parser.add_argument("--hip-include-dir", type=str, default='/opt/rocm/include/hip/',
@@ -517,6 +47,20 @@ def parse_and_validate_args() -> argparse.Namespace:
     return args
 
 
+# Checking for pointer non-void arg type
+def pointer_ck(arg_type):
+    ptr_type = ''
+    m = re.match(r'(.*)\*$', arg_type)
+    if m:
+        ptr_type = m.group(1)
+        n = re.match(r'(.*)\*\*$', arg_type)
+        if not n:
+            ptr_type = re.sub(r'const ', '', ptr_type)
+        if ptr_type == 'void':
+            ptr_type = ''
+    return ptr_type
+
+
 def convert_function_list_to_dict(func_list: List[CppHeaderParser.CppMethod]) -> Dict[str, CppHeaderParser.CppMethod]:
     out = {}
     for f in func_list:
@@ -524,50 +68,30 @@ def convert_function_list_to_dict(func_list: List[CppHeaderParser.CppMethod]) ->
             out[f['name']] = [f]
         else:
             out[f['name']].append(f)
-    for f_name, f_list in out.items():
-        if len(f_list) > 1:
-            candidates = set(i for i in range(len(f_list)))
-            for i, f in enumerate(f_list):
-                # Check for templated functions
-                if not f['template'] is False:
+    out_copy = out.copy()
+    for f_name, f_list in out_copy.items():
+        # if len(f_list) > 1:
+        candidates = set(i for i in range(len(f_list)))
+        for i, f in enumerate(f_list):
+            # Check for templated functions
+            if not f['template'] is False:
+                candidates.remove(i)
+                continue
+            # Check for functions with default arguments
+            for p in f['parameters']:
+                if 'default' in p:
                     candidates.remove(i)
                     continue
-                # Check for functions with default arguments
-                for p in f['parameters']:
-                    if 'default' in p:
-                        candidates.remove(i)
-                        continue
-            if len(candidates) > 1:
-                print(f"two or more candidates are found for {f_name}.")
-            if len(candidates) == 0:
-                raise RuntimeError("All candidates lost")
+
+        if len(candidates) == 0:
+            warnings.warn(f"No candidates for {f_name} are eligible for interception.")
+            del out[f_name]
+        elif len(candidates) > 1:
+            warnings.warn(f"two or more candidates are found for {f_name}.")
             out[f_name] = f_list[list(candidates)[0]]
         else:
             out[f_name] = f_list[0]
     return out
-
-
-# def remove_macro_annotated_code_from_header_content(content: List[str], macro: str) -> List[str]:
-#     """
-#     Removes the portion of the code annotated with the macro.
-#     :param content: content of the header as a list of lines (strings)
-#     :param macro: the macro to be removed (e.g. __cplusplus)
-#     :return: content of the header with the annotated portion removed
-#     """
-#     curr_line_number = 0
-#     while curr_line_number < len(content):
-#         if macro in content[curr_line_number] and "#if" in content[curr_line_number]:
-#             cur_ifdef_level = 1
-#             while cur_ifdef_level:
-#                 current_line = content[curr_line_number]
-#                 del content[curr_line_number]
-#                 if "#endif" not in current_line:
-#                     if "#ifdef" in current_line and macro not in current_line:
-#                         cur_ifdef_level += 1
-#                 else:
-#                     cur_ifdef_level -= 1
-#         curr_line_number += 1
-#     return content
 
 
 def parse_hipamd_src_functions(src_dir: str, hip_prof_api_enums: Dict[str, int]):
@@ -628,23 +152,147 @@ def combine_private_and_public_api_functions(public_api: Dict[str, CppHeaderPars
     for name, f in private_api.items():
         if name not in public_api:
             out[name] = f
-        else:
-            print(f"Function {name} was found in both private and public apis.\n")
 
     return out
 
 
-def create_hip_public_api_enum_map(hip_api_str_path: str) -> Dict[str, int]:
-    hip_prof_header = CppHeaderParser.CppHeader(hip_api_str_path)
+def parse_hip_prof_str_enum_map(hip_prof_str_path: str) -> Dict[str, int]:
+    hip_prof_header = CppHeaderParser.CppHeader(hip_prof_str_path)
     hip_prof_enums = hip_prof_header.enums[0]
     out = {}
     for e in hip_prof_enums['values']:
         if e['name'] not in out:
             out[e['name']] = e['value']
         else:
-            raise RuntimeError("Found duplicate names in hip_api_str.h.")
+            raise RuntimeError("Found duplicate names in hip_prof_str.h.")
     return out
 
+
+def generate_hip_private_api_enums(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod],
+                                   hip_api_id_enums: Dict[str, int]):
+    f.write('#ifndef HIP_PRIVATE_API\n#define HIP_PRIVATE_API\n\n')
+    f.write('enum hip_private_api_id_t {\n')
+    f.write('\tHIP_PRIVATE_API_ID_NONE = 0,\n')
+    api_id = 1000
+    f.write(f'\tHIP_PRIVATE_API_ID_FIRST = {api_id},\n')
+    for api_name in sorted(hip_runtime_api_map):
+        if f'HIP_API_ID_{api_name}' not in hip_api_id_enums:
+            f.write(f'\tHIP_PRIVATE_API_ID_{api_name} = {api_id},\n')
+            api_id += 1
+    f.write(f'\tHIP_PRIVATE_API_ID_LAST = {api_id - 1}\n')
+    f.write("};\n\n")
+    f.write('#endif')
+
+
+def generate_hip_intercept_args(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod]):
+    f.write('#ifndef HIP_ARGS\n#define HIP_ARGS\n\n')
+    f.write("#include <hip_intercept.h>\n\n")
+    for name in sorted(hip_runtime_api_map.keys()):
+        f.write(f'typedef struct hip_{name}_api_args_s {{\n')
+
+        output_type = hip_runtime_api_map[name]['rtnType']
+        args = hip_runtime_api_map[name]['parameters']
+        are_args_non_empty = len(args) != 0 and not (len(args) == 1 and args[0]['type'] == 'void')
+        if are_args_non_empty:
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                ptr_type = pointer_ck(arg_type)
+                arg_name = arg['name']
+                # Checking for enum type
+                if arg_type == "hipLimit_t":
+                    arg_type = 'enum ' + arg_type
+                # Function arguments
+                f.write(f"\t{arg_type} {arg_name};\n")
+                # if i != len(args) - 1:
+                #     f.write(';\n')
+        f.write(f'}} hip_{name}_api_args_t;\n\n')
+        f.write(f'typedef {output_type} {name}_return_t;\n\n\n')
+    f.write("#endif")
+
+
+def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod],
+                                           hip_api_id_enums: Dict[str, int]) -> None:
+    for name in hip_api_id_enums:
+        actual_name = name[11:]
+        if actual_name not in hip_runtime_api_map and actual_name != "NONE" and actual_name != "FIRST" and \
+                actual_name != "LAST" and "RESERVED" not in actual_name and \
+                hip_api_id_enums[name] != "HIP_API_ID_NONE":
+            raise RuntimeError(f"{actual_name} is in hip_prof_str.h but not in the captured function APIs.\n")
+
+    f.write('#include "hip_intercept.h"\n\n\n')
+    for name in sorted(hip_runtime_api_map.keys()):
+        f.write('__attribute__((visibility("default")))\n')
+        output_type = hip_runtime_api_map[name]['rtnType']
+
+        f.write(f'{output_type} {name}(')
+        args = hip_runtime_api_map[name]['parameters']
+        are_args_non_empty = len(args) != 0 and not (len(args) == 1 and args[0]['type'] == 'void')
+        if are_args_non_empty:
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                ptr_type = pointer_ck(arg_type)
+                arg_name = arg['name']
+                # Checking for enum type
+                if arg_type == "hipLimit_t":
+                    arg_type = 'enum ' + arg_type
+                # Function arguments
+                f.write(f"{arg_type} {arg_name}")
+                if i != len(args) - 1:
+                    f.write(', ')
+        f.write(') {\n')
+        f.write('\tauto& hipInterceptor = SibirHipInterceptor::Instance();\n')
+        f.write('\tauto& hipCallback = hipInterceptor.getCallback();\n')
+        if f"HIP_API_ID_{name}" not in hip_api_id_enums:
+            f.write(f'\tauto api_id = HIP_PRIVATE_API_ID_{name};\n')
+        else:
+            f.write(f'\tauto api_id = HIP_API_ID_{name};\n')
+        f.write('\t// Copy Arguments for PHASE_ENTER\n')
+
+        if are_args_non_empty:
+            f.write(f'\thip_{name}_api_args_t hip_func_args{{')
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                arg_name = arg['name']
+                f.write(f"{arg_name}")
+                if i != len(args) - 1:
+                    f.write(', ')
+            f.write("};\n")
+        callback_args = "static_cast<void*>(&hip_func_args)" if are_args_non_empty else "nullptr"
+        f.write(f"\thipCallback({callback_args}, SIBIR_API_PHASE_ENTER, api_id);\n")
+        f.write(f"\tstatic auto hip_func = hipInterceptor.GetHipFunction<{output_type}(*)(")
+        if are_args_non_empty:
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                arg_name = arg['name']
+                f.write(arg_type)
+                if i != len(args) - 1:
+                    f.write(',')
+        f.write(f')>("{name}");\n')
+        f.write("\t")
+        if output_type != "void":
+            f.write(f"{output_type} out = ")
+        f.write('hip_func(')
+        if are_args_non_empty:
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                arg_name = arg['name']
+                f.write(f"hip_func_args.{arg_name}")
+                if i != len(args) - 1:
+                    f.write(', ')
+        f.write(");\n")
+        f.write("\t// Exit Callback\n")
+        f.write(f"\thipCallback({callback_args}, SIBIR_API_PHASE_EXIT, api_id);\n")
+        if are_args_non_empty:
+            f.write("\t// Copy the modified arguments back to the original arguments (if non-const)\n")
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                arg_name = arg['name']
+                if "const" not in arg_type:
+                    f.write(f"\t{arg_name} = hip_func_args.{arg_name};\n")
+        if output_type != "void":
+            f.write("\n\treturn out;\n}\n\n")
+        else:
+            f.write("};\n\n")
 
 ########################################################################################################################
 
@@ -665,16 +313,13 @@ def main():
 
     hip_runtime_api_content = [re.sub(r"\s__dparm\([^)]*\)", r'', line) for line in hip_runtime_api_content]
 
-    # Remove all the C++ code since dlsym doesn't work with it too well
-    # remove_macro_annotated_code_from_header_content(hip_runtime_api_content, "__cplusplus")
-
     # Convert the content to a single string for CppHeader to parse
     hip_runtime_api_content = "".join(hip_runtime_api_content)
 
     hip_api_runtime_header = CppHeaderParser.CppHeader(hip_runtime_api_content, argType="string")
     hip_api_runtime_functions = convert_function_list_to_dict(hip_api_runtime_header.functions)
 
-    hip_api_enums = create_hip_public_api_enum_map(args.hip_prof_str)
+    hip_api_enums = parse_hip_prof_str_enum_map(args.hip_prof_str)
 
     hip_private_api_functions = parse_hipamd_src_functions(args.hipamd_src_dir, hip_api_enums)
 
