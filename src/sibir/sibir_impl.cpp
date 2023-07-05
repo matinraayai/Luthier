@@ -1,13 +1,13 @@
 #include <sibir_impl.hpp>
 #include <sibir.h>
 #include <roctracer/roctracer.h>
-//#include "src/disassembler/disassembler.h"
 #include "hsa_intercept.h"
 #include <amd-dbgapi/amd-dbgapi.h>
 #include <unistd.h>
 #include <iomanip>
+#include "code_object_manager.h"
 
-static amd_dbgapi_callbacks_t callbacks{
+static amd_dbgapi_callbacks_t amd_dbgapi_callbacks{
     .allocate_memory = malloc,
     .deallocate_memory = free,
 
@@ -36,13 +36,49 @@ static amd_dbgapi_callbacks_t callbacks{
         [](amd_dbgapi_log_level_t level, const char *message) {}
 };
 
+
+void Sibir::hip_startup_callback(void* cb_data, sibir_api_phase_t phase, int api_id) {
+    if (phase == SIBIR_API_PHASE_EXIT) {
+        if (api_id == HIP_PRIVATE_API_ID___hipRegisterFatBinary) {
+            auto args = reinterpret_cast<hip___hipRegisterFatBinary_api_args_t*>(cb_data);
+            SibirCodeObjectManager::Instance().setLastFatBinary(args->data);
+        }
+        else if (api_id == HIP_PRIVATE_API_ID___hipRegisterFunction) {
+            fprintf(stdout, "register Function Binary intercept\n");
+            auto args = reinterpret_cast<hip___hipRegisterFunction_api_args_t*>(cb_data);
+            fprintf(stdout, "args: hostFunction %X\n", args->hostFunction);
+            fprintf(stdout, "args: deviceFunction %s\n", args->deviceFunction);
+            fprintf(stdout, "args: deviceName %s\n", args->deviceName);
+            if (std::string(args->deviceFunction).find("__sibir_wrap__") == std::string::npos)
+                SibirHipInterceptor::Instance().SetCallback(Sibir::hip_api_callback);
+            else {
+                SibirCodeObjectManager::Instance().saveLastFatBinary();
+
+            }
+        }
+        else if (api_id == HIP_PRIVATE_API_ID___hipRegisterManagedVar) {
+
+        }
+        else if (api_id == HIP_PRIVATE_API_ID___hipRegisterSurface) {
+
+        }
+        else if (api_id == HIP_PRIVATE_API_ID___hipRegisterTexture) {
+
+        }
+        else if (api_id == HIP_PRIVATE_API_ID___hipRegisterVar) {
+
+        }
+    }
+}
+
+
 void __attribute__((constructor)) Sibir::init() {
     std::cout << "Initializing Sibir...." << std::endl << std::flush;
 
-    assert(amd_dbgapi_initialize(&callbacks) == AMD_DBGAPI_STATUS_SUCCESS);
+    assert(amd_dbgapi_initialize(&amd_dbgapi_callbacks) == AMD_DBGAPI_STATUS_SUCCESS);
     assert(SibirHipInterceptor::Instance().IsEnabled());
     sibir_at_init();
-    SibirHipInterceptor::Instance().SetCallback(Sibir::hip_api_callback);
+    SibirHipInterceptor::Instance().SetCallback(Sibir::hip_startup_callback);
     SibirHsaInterceptor::Instance().SetCallback(Sibir::hsa_api_callback);
 }
 
@@ -56,7 +92,7 @@ const HsaApiTable* sibir_get_hsa_table() {
     return &SibirHsaInterceptor::Instance().getSavedHsaTables().root;
 }
 
-void Sibir::hip_api_callback(hip_api_args_t* cb_data, sibir_api_phase_t phase, hip_api_id_t api_id) {
+void Sibir::hip_api_callback(void* cb_data, sibir_api_phase_t phase, int api_id) {
     sibir_at_hip_event(cb_data, phase, api_id);
 }
 

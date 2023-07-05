@@ -1,7 +1,10 @@
 #ifndef HIP_ARGS
 #define HIP_ARGS
 
-#include <hip_intercept.h>
+#include <hip/hip_runtime_api.h>
+namespace hip {
+	struct FatBinaryInfo{};
+}
 
 typedef struct hip___hipGetPCH_api_args_s {
 	const char * * pch;

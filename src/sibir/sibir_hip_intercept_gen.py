@@ -186,7 +186,11 @@ def generate_hip_private_api_enums(f: IO[Any], hip_runtime_api_map: Dict[str, Cp
 
 def generate_hip_intercept_args(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod]):
     f.write('#ifndef HIP_ARGS\n#define HIP_ARGS\n\n')
-    f.write("#include <hip_intercept.h>\n\n")
+    f.write("#include <hip/hip_runtime_api.h>\n")
+    f.write("namespace hip {\n")
+    f.write("\tstruct FatBinaryInfo{};\n")
+    f.write("}\n\n")
+
     for name in sorted(hip_runtime_api_map.keys()):
         f.write(f'typedef struct hip_{name}_api_args_s {{\n')
 
@@ -224,7 +228,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
         f.write('__attribute__((visibility("default")))\n')
         output_type = hip_runtime_api_map[name]['rtnType']
 
-        f.write(f'{output_type} {name}(')
+        f.write(f'extern "C" {output_type} {name}(')
         args = hip_runtime_api_map[name]['parameters']
         are_args_non_empty = len(args) != 0 and not (len(args) == 1 and args[0]['type'] == 'void')
         if are_args_non_empty:

@@ -2,7 +2,7 @@
 
 
 __attribute__((visibility("default")))
-void __hipGetPCH(const char * * pch, unsigned int * size) {
+extern "C" void __hipGetPCH(const char * * pch, unsigned int * size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipGetPCH;
@@ -18,7 +18,7 @@ void __hipGetPCH(const char * * pch, unsigned int * size) {
 };
 
 __attribute__((visibility("default")))
-hipError_t __hipPopCallConfiguration(dim3 * gridDim, dim3 * blockDim, size_t * sharedMem, hipStream_t * stream) {
+extern "C" hipError_t __hipPopCallConfiguration(dim3 * gridDim, dim3 * blockDim, size_t * sharedMem, hipStream_t * stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID___hipPopCallConfiguration;
@@ -39,7 +39,7 @@ hipError_t __hipPopCallConfiguration(dim3 * gridDim, dim3 * blockDim, size_t * s
 }
 
 __attribute__((visibility("default")))
-hipError_t __hipPushCallConfiguration(dim3 gridDim, dim3 blockDim, size_t sharedMem, hipStream_t stream) {
+extern "C" hipError_t __hipPushCallConfiguration(dim3 gridDim, dim3 blockDim, size_t sharedMem, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID___hipPushCallConfiguration;
@@ -60,7 +60,7 @@ hipError_t __hipPushCallConfiguration(dim3 gridDim, dim3 blockDim, size_t shared
 }
 
 __attribute__((visibility("default")))
-hip::FatBinaryInfo * * __hipRegisterFatBinary(const void * data) {
+extern "C" hip::FatBinaryInfo * * __hipRegisterFatBinary(const void * data) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterFatBinary;
@@ -77,7 +77,7 @@ hip::FatBinaryInfo * * __hipRegisterFatBinary(const void * data) {
 }
 
 __attribute__((visibility("default")))
-void __hipRegisterFunction(hip::FatBinaryInfo * * modules, const void * hostFunction, char * deviceFunction, const char * deviceName, unsigned int threadLimit, uint3 * tid, uint3 * bid, dim3 * blockDim, dim3 * gridDim, int * wSize) {
+extern "C" void __hipRegisterFunction(hip::FatBinaryInfo * * modules, const void * hostFunction, char * deviceFunction, const char * deviceName, unsigned int threadLimit, uint3 * tid, uint3 * bid, dim3 * blockDim, dim3 * gridDim, int * wSize) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterFunction;
@@ -100,7 +100,7 @@ void __hipRegisterFunction(hip::FatBinaryInfo * * modules, const void * hostFunc
 };
 
 __attribute__((visibility("default")))
-void __hipRegisterManagedVar(void * hipModule, void * * pointer, void * init_value, const char * name, size_t size, unsigned align) {
+extern "C" void __hipRegisterManagedVar(void * hipModule, void * * pointer, void * init_value, const char * name, size_t size, unsigned align) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterManagedVar;
@@ -120,7 +120,7 @@ void __hipRegisterManagedVar(void * hipModule, void * * pointer, void * init_val
 };
 
 __attribute__((visibility("default")))
-void __hipRegisterSurface(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int type, int ext) {
+extern "C" void __hipRegisterSurface(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int type, int ext) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterSurface;
@@ -141,7 +141,7 @@ void __hipRegisterSurface(hip::FatBinaryInfo * * modules, void * var, char * hos
 };
 
 __attribute__((visibility("default")))
-void __hipRegisterTexture(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int type, int norm, int ext) {
+extern "C" void __hipRegisterTexture(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int type, int norm, int ext) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterTexture;
@@ -163,7 +163,7 @@ void __hipRegisterTexture(hip::FatBinaryInfo * * modules, void * var, char * hos
 };
 
 __attribute__((visibility("default")))
-void __hipRegisterVar(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int ext, size_t size, int constant, int global) {
+extern "C" void __hipRegisterVar(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int ext, size_t size, int constant, int global) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterVar;
@@ -186,7 +186,7 @@ void __hipRegisterVar(hip::FatBinaryInfo * * modules, void * var, char * hostVar
 };
 
 __attribute__((visibility("default")))
-void __hipUnregisterFatBinary(hip::FatBinaryInfo * * modules) {
+extern "C" void __hipUnregisterFatBinary(hip::FatBinaryInfo * * modules) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipUnregisterFatBinary;
@@ -202,7 +202,7 @@ void __hipUnregisterFatBinary(hip::FatBinaryInfo * * modules) {
 };
 
 __attribute__((visibility("default")))
-const char * hipApiName(uint32_t id) {
+extern "C" const char * hipApiName(uint32_t id) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipApiName;
@@ -220,7 +220,7 @@ const char * hipApiName(uint32_t id) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipArray3DCreate(hipArray * * array, const HIP_ARRAY3D_DESCRIPTOR * pAllocateArray) {
+extern "C" hipError_t hipArray3DCreate(hipArray * * array, const HIP_ARRAY3D_DESCRIPTOR * pAllocateArray) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipArray3DCreate;
@@ -238,7 +238,7 @@ hipError_t hipArray3DCreate(hipArray * * array, const HIP_ARRAY3D_DESCRIPTOR * p
 }
 
 __attribute__((visibility("default")))
-hipError_t hipArrayCreate(hipArray * * pHandle, const HIP_ARRAY_DESCRIPTOR * pAllocateArray) {
+extern "C" hipError_t hipArrayCreate(hipArray * * pHandle, const HIP_ARRAY_DESCRIPTOR * pAllocateArray) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipArrayCreate;
@@ -256,7 +256,7 @@ hipError_t hipArrayCreate(hipArray * * pHandle, const HIP_ARRAY_DESCRIPTOR * pAl
 }
 
 __attribute__((visibility("default")))
-hipError_t hipArrayDestroy(hipArray * array) {
+extern "C" hipError_t hipArrayDestroy(hipArray * array) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipArrayDestroy;
@@ -274,7 +274,7 @@ hipError_t hipArrayDestroy(hipArray * array) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipBindTexture(size_t * offset, const textureReference * tex, const void * devPtr, const hipChannelFormatDesc * desc, size_t size) {
+extern "C" hipError_t hipBindTexture(size_t * offset, const textureReference * tex, const void * devPtr, const hipChannelFormatDesc * desc, size_t size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTexture;
@@ -293,7 +293,7 @@ hipError_t hipBindTexture(size_t * offset, const textureReference * tex, const v
 }
 
 __attribute__((visibility("default")))
-hipError_t hipBindTexture2D(size_t * offset, const textureReference * tex, const void * devPtr, const hipChannelFormatDesc * desc, size_t width, size_t height, size_t pitch) {
+extern "C" hipError_t hipBindTexture2D(size_t * offset, const textureReference * tex, const void * devPtr, const hipChannelFormatDesc * desc, size_t width, size_t height, size_t pitch) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTexture2D;
@@ -314,7 +314,7 @@ hipError_t hipBindTexture2D(size_t * offset, const textureReference * tex, const
 }
 
 __attribute__((visibility("default")))
-hipError_t hipBindTextureToArray(const textureReference * tex, hipArray_const_t array, const hipChannelFormatDesc * desc) {
+extern "C" hipError_t hipBindTextureToArray(const textureReference * tex, hipArray_const_t array, const hipChannelFormatDesc * desc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTextureToArray;
@@ -331,7 +331,7 @@ hipError_t hipBindTextureToArray(const textureReference * tex, hipArray_const_t 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipBindTextureToMipmappedArray(const textureReference * tex, hipMipmappedArray_const_t mipmappedArray, const hipChannelFormatDesc * desc) {
+extern "C" hipError_t hipBindTextureToMipmappedArray(const textureReference * tex, hipMipmappedArray_const_t mipmappedArray, const hipChannelFormatDesc * desc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTextureToMipmappedArray;
@@ -348,7 +348,7 @@ hipError_t hipBindTextureToMipmappedArray(const textureReference * tex, hipMipma
 }
 
 __attribute__((visibility("default")))
-hipError_t hipChooseDevice(int * device, const hipDeviceProp_t * prop) {
+extern "C" hipError_t hipChooseDevice(int * device, const hipDeviceProp_t * prop) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipChooseDevice;
@@ -366,7 +366,7 @@ hipError_t hipChooseDevice(int * device, const hipDeviceProp_t * prop) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipConfigureCall(dim3 gridDim, dim3 blockDim, size_t sharedMem, hipStream_t stream) {
+extern "C" hipError_t hipConfigureCall(dim3 gridDim, dim3 blockDim, size_t sharedMem, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipConfigureCall;
@@ -405,7 +405,7 @@ hipError_t hipCreateSurfaceObject(hipSurfaceObject_t * pSurfObject, const hipRes
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCreateTextureObject(hipTextureObject_t * pTexObject, const hipResourceDesc * pResDesc, const hipTextureDesc * pTexDesc, const struct hipResourceViewDesc * pResViewDesc) {
+extern "C" hipError_t hipCreateTextureObject(hipTextureObject_t * pTexObject, const hipResourceDesc * pResDesc, const hipTextureDesc * pTexDesc, const struct hipResourceViewDesc * pResViewDesc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCreateTextureObject;
@@ -423,7 +423,7 @@ hipError_t hipCreateTextureObject(hipTextureObject_t * pTexObject, const hipReso
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxCreate(hipCtx_t * ctx, unsigned int flags, hipDevice_t device) {
+extern "C" hipError_t hipCtxCreate(hipCtx_t * ctx, unsigned int flags, hipDevice_t device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxCreate;
@@ -443,7 +443,7 @@ hipError_t hipCtxCreate(hipCtx_t * ctx, unsigned int flags, hipDevice_t device) 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxDestroy(hipCtx_t ctx) {
+extern "C" hipError_t hipCtxDestroy(hipCtx_t ctx) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxDestroy;
@@ -461,7 +461,7 @@ hipError_t hipCtxDestroy(hipCtx_t ctx) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxDisablePeerAccess(hipCtx_t peerCtx) {
+extern "C" hipError_t hipCtxDisablePeerAccess(hipCtx_t peerCtx) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxDisablePeerAccess;
@@ -479,7 +479,7 @@ hipError_t hipCtxDisablePeerAccess(hipCtx_t peerCtx) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxEnablePeerAccess(hipCtx_t peerCtx, unsigned int flags) {
+extern "C" hipError_t hipCtxEnablePeerAccess(hipCtx_t peerCtx, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxEnablePeerAccess;
@@ -498,7 +498,7 @@ hipError_t hipCtxEnablePeerAccess(hipCtx_t peerCtx, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxGetApiVersion(hipCtx_t ctx, int * apiVersion) {
+extern "C" hipError_t hipCtxGetApiVersion(hipCtx_t ctx, int * apiVersion) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetApiVersion;
@@ -517,7 +517,7 @@ hipError_t hipCtxGetApiVersion(hipCtx_t ctx, int * apiVersion) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxGetCacheConfig(hipFuncCache_t * cacheConfig) {
+extern "C" hipError_t hipCtxGetCacheConfig(hipFuncCache_t * cacheConfig) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetCacheConfig;
@@ -535,7 +535,7 @@ hipError_t hipCtxGetCacheConfig(hipFuncCache_t * cacheConfig) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxGetCurrent(hipCtx_t * ctx) {
+extern "C" hipError_t hipCtxGetCurrent(hipCtx_t * ctx) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetCurrent;
@@ -553,7 +553,7 @@ hipError_t hipCtxGetCurrent(hipCtx_t * ctx) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxGetDevice(hipDevice_t * device) {
+extern "C" hipError_t hipCtxGetDevice(hipDevice_t * device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetDevice;
@@ -571,7 +571,7 @@ hipError_t hipCtxGetDevice(hipDevice_t * device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxGetFlags(unsigned int * flags) {
+extern "C" hipError_t hipCtxGetFlags(unsigned int * flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetFlags;
@@ -589,7 +589,7 @@ hipError_t hipCtxGetFlags(unsigned int * flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig * pConfig) {
+extern "C" hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig * pConfig) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetSharedMemConfig;
@@ -607,7 +607,7 @@ hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig * pConfig) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxPopCurrent(hipCtx_t * ctx) {
+extern "C" hipError_t hipCtxPopCurrent(hipCtx_t * ctx) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxPopCurrent;
@@ -625,7 +625,7 @@ hipError_t hipCtxPopCurrent(hipCtx_t * ctx) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxPushCurrent(hipCtx_t ctx) {
+extern "C" hipError_t hipCtxPushCurrent(hipCtx_t ctx) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxPushCurrent;
@@ -643,7 +643,7 @@ hipError_t hipCtxPushCurrent(hipCtx_t ctx) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig) {
+extern "C" hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSetCacheConfig;
@@ -661,7 +661,7 @@ hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxSetCurrent(hipCtx_t ctx) {
+extern "C" hipError_t hipCtxSetCurrent(hipCtx_t ctx) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSetCurrent;
@@ -679,7 +679,7 @@ hipError_t hipCtxSetCurrent(hipCtx_t ctx) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config) {
+extern "C" hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSetSharedMemConfig;
@@ -697,7 +697,7 @@ hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipCtxSynchronize() {
+extern "C" hipError_t hipCtxSynchronize() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSynchronize;
@@ -712,7 +712,7 @@ hipError_t hipCtxSynchronize() {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDestroyExternalMemory(hipExternalMemory_t extMem) {
+extern "C" hipError_t hipDestroyExternalMemory(hipExternalMemory_t extMem) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDestroyExternalMemory;
@@ -730,7 +730,7 @@ hipError_t hipDestroyExternalMemory(hipExternalMemory_t extMem) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDestroyExternalSemaphore(hipExternalSemaphore_t extSem) {
+extern "C" hipError_t hipDestroyExternalSemaphore(hipExternalSemaphore_t extSem) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDestroyExternalSemaphore;
@@ -766,7 +766,7 @@ hipError_t hipDestroySurfaceObject(hipSurfaceObject_t surfaceObject) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDestroyTextureObject(hipTextureObject_t textureObject) {
+extern "C" hipError_t hipDestroyTextureObject(hipTextureObject_t textureObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDestroyTextureObject;
@@ -784,7 +784,7 @@ hipError_t hipDestroyTextureObject(hipTextureObject_t textureObject) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceCanAccessPeer(int * canAccessPeer, int deviceId, int peerDeviceId) {
+extern "C" hipError_t hipDeviceCanAccessPeer(int * canAccessPeer, int deviceId, int peerDeviceId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceCanAccessPeer;
@@ -804,7 +804,7 @@ hipError_t hipDeviceCanAccessPeer(int * canAccessPeer, int deviceId, int peerDev
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceComputeCapability(int * major, int * minor, hipDevice_t device) {
+extern "C" hipError_t hipDeviceComputeCapability(int * major, int * minor, hipDevice_t device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceComputeCapability;
@@ -824,7 +824,7 @@ hipError_t hipDeviceComputeCapability(int * major, int * minor, hipDevice_t devi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceDisablePeerAccess(int peerDeviceId) {
+extern "C" hipError_t hipDeviceDisablePeerAccess(int peerDeviceId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceDisablePeerAccess;
@@ -842,7 +842,7 @@ hipError_t hipDeviceDisablePeerAccess(int peerDeviceId) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceEnablePeerAccess(int peerDeviceId, unsigned int flags) {
+extern "C" hipError_t hipDeviceEnablePeerAccess(int peerDeviceId, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceEnablePeerAccess;
@@ -861,7 +861,7 @@ hipError_t hipDeviceEnablePeerAccess(int peerDeviceId, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGet(hipDevice_t * device, int ordinal) {
+extern "C" hipError_t hipDeviceGet(hipDevice_t * device, int ordinal) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGet;
@@ -880,7 +880,7 @@ hipError_t hipDeviceGet(hipDevice_t * device, int ordinal) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetAttribute(int * pi, hipDeviceAttribute_t attr, int deviceId) {
+extern "C" hipError_t hipDeviceGetAttribute(int * pi, hipDeviceAttribute_t attr, int deviceId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetAttribute;
@@ -900,7 +900,7 @@ hipError_t hipDeviceGetAttribute(int * pi, hipDeviceAttribute_t attr, int device
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetByPCIBusId(int * device, const char * pciBusId) {
+extern "C" hipError_t hipDeviceGetByPCIBusId(int * device, const char * pciBusId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetByPCIBusId;
@@ -918,7 +918,7 @@ hipError_t hipDeviceGetByPCIBusId(int * device, const char * pciBusId) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetCacheConfig(hipFuncCache_t * cacheConfig) {
+extern "C" hipError_t hipDeviceGetCacheConfig(hipFuncCache_t * cacheConfig) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetCacheConfig;
@@ -936,7 +936,7 @@ hipError_t hipDeviceGetCacheConfig(hipFuncCache_t * cacheConfig) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetCount(int * count) {
+extern "C" hipError_t hipDeviceGetCount(int * count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetCount;
@@ -954,7 +954,7 @@ hipError_t hipDeviceGetCount(int * count) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetDefaultMemPool(hipMemPool_t * mem_pool, int device) {
+extern "C" hipError_t hipDeviceGetDefaultMemPool(hipMemPool_t * mem_pool, int device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetDefaultMemPool;
@@ -973,7 +973,7 @@ hipError_t hipDeviceGetDefaultMemPool(hipMemPool_t * mem_pool, int device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetGraphMemAttribute(int device, hipGraphMemAttributeType attr, void * value) {
+extern "C" hipError_t hipDeviceGetGraphMemAttribute(int device, hipGraphMemAttributeType attr, void * value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetGraphMemAttribute;
@@ -993,7 +993,7 @@ hipError_t hipDeviceGetGraphMemAttribute(int device, hipGraphMemAttributeType at
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetLimit(size_t * pValue, enum hipLimit_t limit) {
+extern "C" hipError_t hipDeviceGetLimit(size_t * pValue, enum hipLimit_t limit) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetLimit;
@@ -1012,7 +1012,7 @@ hipError_t hipDeviceGetLimit(size_t * pValue, enum hipLimit_t limit) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetMemPool(hipMemPool_t * mem_pool, int device) {
+extern "C" hipError_t hipDeviceGetMemPool(hipMemPool_t * mem_pool, int device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetMemPool;
@@ -1031,7 +1031,7 @@ hipError_t hipDeviceGetMemPool(hipMemPool_t * mem_pool, int device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetName(char * name, int len, hipDevice_t device) {
+extern "C" hipError_t hipDeviceGetName(char * name, int len, hipDevice_t device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetName;
@@ -1051,7 +1051,7 @@ hipError_t hipDeviceGetName(char * name, int len, hipDevice_t device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetP2PAttribute(int * value, hipDeviceP2PAttr attr, int srcDevice, int dstDevice) {
+extern "C" hipError_t hipDeviceGetP2PAttribute(int * value, hipDeviceP2PAttr attr, int srcDevice, int dstDevice) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetP2PAttribute;
@@ -1072,7 +1072,7 @@ hipError_t hipDeviceGetP2PAttribute(int * value, hipDeviceP2PAttr attr, int srcD
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetPCIBusId(char * pciBusId, int len, int device) {
+extern "C" hipError_t hipDeviceGetPCIBusId(char * pciBusId, int len, int device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetPCIBusId;
@@ -1092,7 +1092,7 @@ hipError_t hipDeviceGetPCIBusId(char * pciBusId, int len, int device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetSharedMemConfig(hipSharedMemConfig * pConfig) {
+extern "C" hipError_t hipDeviceGetSharedMemConfig(hipSharedMemConfig * pConfig) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetSharedMemConfig;
@@ -1110,7 +1110,7 @@ hipError_t hipDeviceGetSharedMemConfig(hipSharedMemConfig * pConfig) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetStreamPriorityRange(int * leastPriority, int * greatestPriority) {
+extern "C" hipError_t hipDeviceGetStreamPriorityRange(int * leastPriority, int * greatestPriority) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetStreamPriorityRange;
@@ -1129,7 +1129,7 @@ hipError_t hipDeviceGetStreamPriorityRange(int * leastPriority, int * greatestPr
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGetUuid(hipUUID * uuid, hipDevice_t device) {
+extern "C" hipError_t hipDeviceGetUuid(hipUUID * uuid, hipDevice_t device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetUuid;
@@ -1148,7 +1148,7 @@ hipError_t hipDeviceGetUuid(hipUUID * uuid, hipDevice_t device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceGraphMemTrim(int device) {
+extern "C" hipError_t hipDeviceGraphMemTrim(int device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGraphMemTrim;
@@ -1166,7 +1166,7 @@ hipError_t hipDeviceGraphMemTrim(int device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev, unsigned int * flags, int * active) {
+extern "C" hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev, unsigned int * flags, int * active) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxGetState;
@@ -1186,7 +1186,7 @@ hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev, unsigned int * flags, in
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
+extern "C" hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxRelease;
@@ -1204,7 +1204,7 @@ hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDevicePrimaryCtxReset(hipDevice_t dev) {
+extern "C" hipError_t hipDevicePrimaryCtxReset(hipDevice_t dev) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxReset;
@@ -1222,7 +1222,7 @@ hipError_t hipDevicePrimaryCtxReset(hipDevice_t dev) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDevicePrimaryCtxRetain(hipCtx_t * pctx, hipDevice_t dev) {
+extern "C" hipError_t hipDevicePrimaryCtxRetain(hipCtx_t * pctx, hipDevice_t dev) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxRetain;
@@ -1241,7 +1241,7 @@ hipError_t hipDevicePrimaryCtxRetain(hipCtx_t * pctx, hipDevice_t dev) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDevicePrimaryCtxSetFlags(hipDevice_t dev, unsigned int flags) {
+extern "C" hipError_t hipDevicePrimaryCtxSetFlags(hipDevice_t dev, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxSetFlags;
@@ -1260,7 +1260,7 @@ hipError_t hipDevicePrimaryCtxSetFlags(hipDevice_t dev, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceReset() {
+extern "C" hipError_t hipDeviceReset() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceReset;
@@ -1275,7 +1275,7 @@ hipError_t hipDeviceReset() {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceSetCacheConfig(hipFuncCache_t cacheConfig) {
+extern "C" hipError_t hipDeviceSetCacheConfig(hipFuncCache_t cacheConfig) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetCacheConfig;
@@ -1293,7 +1293,7 @@ hipError_t hipDeviceSetCacheConfig(hipFuncCache_t cacheConfig) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceSetGraphMemAttribute(int device, hipGraphMemAttributeType attr, void * value) {
+extern "C" hipError_t hipDeviceSetGraphMemAttribute(int device, hipGraphMemAttributeType attr, void * value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetGraphMemAttribute;
@@ -1313,7 +1313,7 @@ hipError_t hipDeviceSetGraphMemAttribute(int device, hipGraphMemAttributeType at
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceSetLimit(enum hipLimit_t limit, size_t value) {
+extern "C" hipError_t hipDeviceSetLimit(enum hipLimit_t limit, size_t value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetLimit;
@@ -1332,7 +1332,7 @@ hipError_t hipDeviceSetLimit(enum hipLimit_t limit, size_t value) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceSetMemPool(int device, hipMemPool_t mem_pool) {
+extern "C" hipError_t hipDeviceSetMemPool(int device, hipMemPool_t mem_pool) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetMemPool;
@@ -1351,7 +1351,7 @@ hipError_t hipDeviceSetMemPool(int device, hipMemPool_t mem_pool) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceSetSharedMemConfig(hipSharedMemConfig config) {
+extern "C" hipError_t hipDeviceSetSharedMemConfig(hipSharedMemConfig config) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetSharedMemConfig;
@@ -1369,7 +1369,7 @@ hipError_t hipDeviceSetSharedMemConfig(hipSharedMemConfig config) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceSynchronize() {
+extern "C" hipError_t hipDeviceSynchronize() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSynchronize;
@@ -1384,7 +1384,7 @@ hipError_t hipDeviceSynchronize() {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDeviceTotalMem(size_t * bytes, hipDevice_t device) {
+extern "C" hipError_t hipDeviceTotalMem(size_t * bytes, hipDevice_t device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceTotalMem;
@@ -1403,7 +1403,7 @@ hipError_t hipDeviceTotalMem(size_t * bytes, hipDevice_t device) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDriverGetVersion(int * driverVersion) {
+extern "C" hipError_t hipDriverGetVersion(int * driverVersion) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDriverGetVersion;
@@ -1421,7 +1421,7 @@ hipError_t hipDriverGetVersion(int * driverVersion) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDrvGetErrorName(hipError_t hipError, const char * * errorString) {
+extern "C" hipError_t hipDrvGetErrorName(hipError_t hipError, const char * * errorString) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipDrvGetErrorName;
@@ -1439,7 +1439,7 @@ hipError_t hipDrvGetErrorName(hipError_t hipError, const char * * errorString) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDrvGetErrorString(hipError_t hipError, const char * * errorString) {
+extern "C" hipError_t hipDrvGetErrorString(hipError_t hipError, const char * * errorString) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipDrvGetErrorString;
@@ -1457,7 +1457,7 @@ hipError_t hipDrvGetErrorString(hipError_t hipError, const char * * errorString)
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D * pCopy) {
+extern "C" hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D * pCopy) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvMemcpy2DUnaligned;
@@ -1474,7 +1474,7 @@ hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D * pCopy) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDrvMemcpy3D(const HIP_MEMCPY3D * pCopy) {
+extern "C" hipError_t hipDrvMemcpy3D(const HIP_MEMCPY3D * pCopy) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvMemcpy3D;
@@ -1491,7 +1491,7 @@ hipError_t hipDrvMemcpy3D(const HIP_MEMCPY3D * pCopy) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDrvMemcpy3DAsync(const HIP_MEMCPY3D * pCopy, hipStream_t stream) {
+extern "C" hipError_t hipDrvMemcpy3DAsync(const HIP_MEMCPY3D * pCopy, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvMemcpy3DAsync;
@@ -1509,7 +1509,7 @@ hipError_t hipDrvMemcpy3DAsync(const HIP_MEMCPY3D * pCopy, hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipDrvPointerGetAttributes(unsigned int numAttributes, hipPointer_attribute * attributes, void * * data, hipDeviceptr_t ptr) {
+extern "C" hipError_t hipDrvPointerGetAttributes(unsigned int numAttributes, hipPointer_attribute * attributes, void * * data, hipDeviceptr_t ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvPointerGetAttributes;
@@ -1530,7 +1530,7 @@ hipError_t hipDrvPointerGetAttributes(unsigned int numAttributes, hipPointer_att
 }
 
 __attribute__((visibility("default")))
-hipError_t hipEventCreate(hipEvent_t * event) {
+extern "C" hipError_t hipEventCreate(hipEvent_t * event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventCreate;
@@ -1548,7 +1548,7 @@ hipError_t hipEventCreate(hipEvent_t * event) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipEventCreateWithFlags(hipEvent_t * event, unsigned flags) {
+extern "C" hipError_t hipEventCreateWithFlags(hipEvent_t * event, unsigned flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventCreateWithFlags;
@@ -1567,7 +1567,7 @@ hipError_t hipEventCreateWithFlags(hipEvent_t * event, unsigned flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipEventDestroy(hipEvent_t event) {
+extern "C" hipError_t hipEventDestroy(hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventDestroy;
@@ -1585,7 +1585,7 @@ hipError_t hipEventDestroy(hipEvent_t event) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipEventElapsedTime(float * ms, hipEvent_t start, hipEvent_t stop) {
+extern "C" hipError_t hipEventElapsedTime(float * ms, hipEvent_t start, hipEvent_t stop) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventElapsedTime;
@@ -1605,7 +1605,7 @@ hipError_t hipEventElapsedTime(float * ms, hipEvent_t start, hipEvent_t stop) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipEventQuery(hipEvent_t event) {
+extern "C" hipError_t hipEventQuery(hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventQuery;
@@ -1623,7 +1623,7 @@ hipError_t hipEventQuery(hipEvent_t event) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipEventRecord(hipEvent_t event, hipStream_t stream) {
+extern "C" hipError_t hipEventRecord(hipEvent_t event, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventRecord;
@@ -1642,7 +1642,7 @@ hipError_t hipEventRecord(hipEvent_t event, hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipEventSynchronize(hipEvent_t event) {
+extern "C" hipError_t hipEventSynchronize(hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventSynchronize;
@@ -1660,7 +1660,7 @@ hipError_t hipEventSynchronize(hipEvent_t event) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2, uint32_t * linktype, uint32_t * hopcount) {
+extern "C" hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2, uint32_t * linktype, uint32_t * hopcount) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtGetLinkTypeAndHopCount;
@@ -1681,7 +1681,7 @@ hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2, uint32_t * lin
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExtLaunchKernel(const void * function_address, dim3 numBlocks, dim3 dimBlocks, void * * args, size_t sharedMemBytes, hipStream_t stream, hipEvent_t startEvent, hipEvent_t stopEvent, int flags) {
+extern "C" hipError_t hipExtLaunchKernel(const void * function_address, dim3 numBlocks, dim3 dimBlocks, void * * args, size_t sharedMemBytes, hipStream_t stream, hipEvent_t startEvent, hipEvent_t stopEvent, int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtLaunchKernel;
@@ -1706,7 +1706,7 @@ hipError_t hipExtLaunchKernel(const void * function_address, dim3 numBlocks, dim
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExtLaunchMultiKernelMultiDevice(hipLaunchParams * launchParamsList, int numDevices, unsigned int flags) {
+extern "C" hipError_t hipExtLaunchMultiKernelMultiDevice(hipLaunchParams * launchParamsList, int numDevices, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtLaunchMultiKernelMultiDevice;
@@ -1726,7 +1726,7 @@ hipError_t hipExtLaunchMultiKernelMultiDevice(hipLaunchParams * launchParamsList
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExtMallocWithFlags(void * * ptr, size_t sizeBytes, unsigned int flags) {
+extern "C" hipError_t hipExtMallocWithFlags(void * * ptr, size_t sizeBytes, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtMallocWithFlags;
@@ -1746,7 +1746,7 @@ hipError_t hipExtMallocWithFlags(void * * ptr, size_t sizeBytes, unsigned int fl
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExtModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t localWorkSizeX, uint32_t localWorkSizeY, uint32_t localWorkSizeZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent, uint32_t flags) {
+extern "C" hipError_t hipExtModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t localWorkSizeX, uint32_t localWorkSizeY, uint32_t localWorkSizeZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent, uint32_t flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtModuleLaunchKernel;
@@ -1777,7 +1777,7 @@ hipError_t hipExtModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, u
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExtStreamCreateWithCUMask(hipStream_t * stream, uint32_t cuMaskSize, const uint32_t * cuMask) {
+extern "C" hipError_t hipExtStreamCreateWithCUMask(hipStream_t * stream, uint32_t cuMaskSize, const uint32_t * cuMask) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtStreamCreateWithCUMask;
@@ -1796,7 +1796,7 @@ hipError_t hipExtStreamCreateWithCUMask(hipStream_t * stream, uint32_t cuMaskSiz
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t cuMaskSize, uint32_t * cuMask) {
+extern "C" hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t cuMaskSize, uint32_t * cuMask) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtStreamGetCUMask;
@@ -1816,7 +1816,7 @@ hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t cuMaskSize, uint32
 }
 
 __attribute__((visibility("default")))
-hipError_t hipExternalMemoryGetMappedBuffer(void * * devPtr, hipExternalMemory_t extMem, const hipExternalMemoryBufferDesc * bufferDesc) {
+extern "C" hipError_t hipExternalMemoryGetMappedBuffer(void * * devPtr, hipExternalMemory_t extMem, const hipExternalMemoryBufferDesc * bufferDesc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExternalMemoryGetMappedBuffer;
@@ -1835,7 +1835,7 @@ hipError_t hipExternalMemoryGetMappedBuffer(void * * devPtr, hipExternalMemory_t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFree(void * ptr) {
+extern "C" hipError_t hipFree(void * ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFree;
@@ -1853,7 +1853,7 @@ hipError_t hipFree(void * ptr) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFreeArray(hipArray * array) {
+extern "C" hipError_t hipFreeArray(hipArray * array) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeArray;
@@ -1871,7 +1871,7 @@ hipError_t hipFreeArray(hipArray * array) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFreeAsync(void * dev_ptr, hipStream_t stream) {
+extern "C" hipError_t hipFreeAsync(void * dev_ptr, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeAsync;
@@ -1890,7 +1890,7 @@ hipError_t hipFreeAsync(void * dev_ptr, hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFreeHost(void * ptr) {
+extern "C" hipError_t hipFreeHost(void * ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeHost;
@@ -1908,7 +1908,7 @@ hipError_t hipFreeHost(void * ptr) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFreeMipmappedArray(hipMipmappedArray_t mipmappedArray) {
+extern "C" hipError_t hipFreeMipmappedArray(hipMipmappedArray_t mipmappedArray) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeMipmappedArray;
@@ -1926,7 +1926,7 @@ hipError_t hipFreeMipmappedArray(hipMipmappedArray_t mipmappedArray) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFuncGetAttribute(int * value, hipFunction_attribute attrib, hipFunction_t hfunc) {
+extern "C" hipError_t hipFuncGetAttribute(int * value, hipFunction_attribute attrib, hipFunction_t hfunc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncGetAttribute;
@@ -1946,7 +1946,7 @@ hipError_t hipFuncGetAttribute(int * value, hipFunction_attribute attrib, hipFun
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFuncGetAttributes(struct hipFuncAttributes * attr, const void * func) {
+extern "C" hipError_t hipFuncGetAttributes(struct hipFuncAttributes * attr, const void * func) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncGetAttributes;
@@ -1964,7 +1964,7 @@ hipError_t hipFuncGetAttributes(struct hipFuncAttributes * attr, const void * fu
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFuncSetAttribute(const void * func, hipFuncAttribute attr, int value) {
+extern "C" hipError_t hipFuncSetAttribute(const void * func, hipFuncAttribute attr, int value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncSetAttribute;
@@ -1983,7 +1983,7 @@ hipError_t hipFuncSetAttribute(const void * func, hipFuncAttribute attr, int val
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFuncSetCacheConfig(const void * func, hipFuncCache_t config) {
+extern "C" hipError_t hipFuncSetCacheConfig(const void * func, hipFuncCache_t config) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncSetCacheConfig;
@@ -2001,7 +2001,7 @@ hipError_t hipFuncSetCacheConfig(const void * func, hipFuncCache_t config) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipFuncSetSharedMemConfig(const void * func, hipSharedMemConfig config) {
+extern "C" hipError_t hipFuncSetSharedMemConfig(const void * func, hipSharedMemConfig config) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncSetSharedMemConfig;
@@ -2019,7 +2019,7 @@ hipError_t hipFuncSetSharedMemConfig(const void * func, hipSharedMemConfig confi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGLGetDevices(unsigned int * pHipDeviceCount, int * pHipDevices, unsigned int hipDeviceCount, hipGLDeviceList deviceList) {
+extern "C" hipError_t hipGLGetDevices(unsigned int * pHipDeviceCount, int * pHipDevices, unsigned int hipDeviceCount, hipGLDeviceList deviceList) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGLGetDevices;
@@ -2040,7 +2040,7 @@ hipError_t hipGLGetDevices(unsigned int * pHipDeviceCount, int * pHipDevices, un
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetChannelDesc(hipChannelFormatDesc * desc, hipArray_const_t array) {
+extern "C" hipError_t hipGetChannelDesc(hipChannelFormatDesc * desc, hipArray_const_t array) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetChannelDesc;
@@ -2058,7 +2058,7 @@ hipError_t hipGetChannelDesc(hipChannelFormatDesc * desc, hipArray_const_t array
 }
 
 __attribute__((visibility("default")))
-const char * hipGetCmdName(unsigned op) {
+extern "C" const char * hipGetCmdName(unsigned op) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipGetCmdName;
@@ -2076,7 +2076,7 @@ const char * hipGetCmdName(unsigned op) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetDevice(int * deviceId) {
+extern "C" hipError_t hipGetDevice(int * deviceId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDevice;
@@ -2094,7 +2094,7 @@ hipError_t hipGetDevice(int * deviceId) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetDeviceCount(int * count) {
+extern "C" hipError_t hipGetDeviceCount(int * count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDeviceCount;
@@ -2112,7 +2112,7 @@ hipError_t hipGetDeviceCount(int * count) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetDeviceFlags(unsigned int * flags) {
+extern "C" hipError_t hipGetDeviceFlags(unsigned int * flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDeviceFlags;
@@ -2130,7 +2130,7 @@ hipError_t hipGetDeviceFlags(unsigned int * flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetDeviceProperties(hipDeviceProp_t * prop, int deviceId) {
+extern "C" hipError_t hipGetDeviceProperties(hipDeviceProp_t * prop, int deviceId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDeviceProperties;
@@ -2149,7 +2149,7 @@ hipError_t hipGetDeviceProperties(hipDeviceProp_t * prop, int deviceId) {
 }
 
 __attribute__((visibility("default")))
-const char * hipGetErrorName(hipError_t hip_error) {
+extern "C" const char * hipGetErrorName(hipError_t hip_error) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipGetErrorName;
@@ -2167,7 +2167,7 @@ const char * hipGetErrorName(hipError_t hip_error) {
 }
 
 __attribute__((visibility("default")))
-const char * hipGetErrorString(hipError_t hipError) {
+extern "C" const char * hipGetErrorString(hipError_t hipError) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetErrorString;
@@ -2185,7 +2185,7 @@ const char * hipGetErrorString(hipError_t hipError) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetLastError() {
+extern "C" hipError_t hipGetLastError() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetLastError;
@@ -2200,7 +2200,7 @@ hipError_t hipGetLastError() {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetMipmappedArrayLevel(hipArray_t * levelArray, hipMipmappedArray_const_t mipmappedArray, unsigned int level) {
+extern "C" hipError_t hipGetMipmappedArrayLevel(hipArray_t * levelArray, hipMipmappedArray_const_t mipmappedArray, unsigned int level) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetMipmappedArrayLevel;
@@ -2219,7 +2219,7 @@ hipError_t hipGetMipmappedArrayLevel(hipArray_t * levelArray, hipMipmappedArray_
 }
 
 __attribute__((visibility("default")))
-int hipGetStreamDeviceId(hipStream_t stream) {
+extern "C" int hipGetStreamDeviceId(hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipGetStreamDeviceId;
@@ -2237,7 +2237,7 @@ int hipGetStreamDeviceId(hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetSymbolAddress(void * * devPtr, const void * symbol) {
+extern "C" hipError_t hipGetSymbolAddress(void * * devPtr, const void * symbol) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetSymbolAddress;
@@ -2255,7 +2255,7 @@ hipError_t hipGetSymbolAddress(void * * devPtr, const void * symbol) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetSymbolSize(size_t * size, const void * symbol) {
+extern "C" hipError_t hipGetSymbolSize(size_t * size, const void * symbol) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetSymbolSize;
@@ -2273,7 +2273,7 @@ hipError_t hipGetSymbolSize(size_t * size, const void * symbol) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetTextureAlignmentOffset(size_t * offset, const textureReference * texref) {
+extern "C" hipError_t hipGetTextureAlignmentOffset(size_t * offset, const textureReference * texref) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureAlignmentOffset;
@@ -2291,7 +2291,7 @@ hipError_t hipGetTextureAlignmentOffset(size_t * offset, const textureReference 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetTextureObjectResourceDesc(hipResourceDesc * pResDesc, hipTextureObject_t textureObject) {
+extern "C" hipError_t hipGetTextureObjectResourceDesc(hipResourceDesc * pResDesc, hipTextureObject_t textureObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureObjectResourceDesc;
@@ -2310,7 +2310,7 @@ hipError_t hipGetTextureObjectResourceDesc(hipResourceDesc * pResDesc, hipTextur
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetTextureObjectResourceViewDesc(struct hipResourceViewDesc * pResViewDesc, hipTextureObject_t textureObject) {
+extern "C" hipError_t hipGetTextureObjectResourceViewDesc(struct hipResourceViewDesc * pResViewDesc, hipTextureObject_t textureObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureObjectResourceViewDesc;
@@ -2329,7 +2329,7 @@ hipError_t hipGetTextureObjectResourceViewDesc(struct hipResourceViewDesc * pRes
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetTextureObjectTextureDesc(hipTextureDesc * pTexDesc, hipTextureObject_t textureObject) {
+extern "C" hipError_t hipGetTextureObjectTextureDesc(hipTextureDesc * pTexDesc, hipTextureObject_t textureObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureObjectTextureDesc;
@@ -2348,7 +2348,7 @@ hipError_t hipGetTextureObjectTextureDesc(hipTextureDesc * pTexDesc, hipTextureO
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGetTextureReference(const textureReference * * texref, const void * symbol) {
+extern "C" hipError_t hipGetTextureReference(const textureReference * * texref, const void * symbol) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureReference;
@@ -2365,7 +2365,7 @@ hipError_t hipGetTextureReference(const textureReference * * texref, const void 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddChildGraphNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipGraph_t childGraph) {
+extern "C" hipError_t hipGraphAddChildGraphNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipGraph_t childGraph) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddChildGraphNode;
@@ -2386,7 +2386,7 @@ hipError_t hipGraphAddChildGraphNode(hipGraphNode_t * pGraphNode, hipGraph_t gra
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddDependencies(hipGraph_t graph, const hipGraphNode_t * from, const hipGraphNode_t * to, size_t numDependencies) {
+extern "C" hipError_t hipGraphAddDependencies(hipGraph_t graph, const hipGraphNode_t * from, const hipGraphNode_t * to, size_t numDependencies) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddDependencies;
@@ -2405,7 +2405,7 @@ hipError_t hipGraphAddDependencies(hipGraph_t graph, const hipGraphNode_t * from
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddEmptyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies) {
+extern "C" hipError_t hipGraphAddEmptyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddEmptyNode;
@@ -2425,7 +2425,7 @@ hipError_t hipGraphAddEmptyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, c
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddEventRecordNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipEvent_t event) {
+extern "C" hipError_t hipGraphAddEventRecordNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddEventRecordNode;
@@ -2446,7 +2446,7 @@ hipError_t hipGraphAddEventRecordNode(hipGraphNode_t * pGraphNode, hipGraph_t gr
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddEventWaitNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipEvent_t event) {
+extern "C" hipError_t hipGraphAddEventWaitNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddEventWaitNode;
@@ -2467,7 +2467,7 @@ hipError_t hipGraphAddEventWaitNode(hipGraphNode_t * pGraphNode, hipGraph_t grap
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddHostNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipHostNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphAddHostNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipHostNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddHostNode;
@@ -2487,7 +2487,7 @@ hipError_t hipGraphAddHostNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, co
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddKernelNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipKernelNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphAddKernelNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipKernelNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddKernelNode;
@@ -2507,7 +2507,7 @@ hipError_t hipGraphAddKernelNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddMemcpyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipMemcpy3DParms * pCopyParams) {
+extern "C" hipError_t hipGraphAddMemcpyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipMemcpy3DParms * pCopyParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNode;
@@ -2527,7 +2527,7 @@ hipError_t hipGraphAddMemcpyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddMemcpyNode1D(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphAddMemcpyNode1D(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNode1D;
@@ -2550,7 +2550,7 @@ hipError_t hipGraphAddMemcpyNode1D(hipGraphNode_t * pGraphNode, hipGraph_t graph
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddMemcpyNodeFromSymbol(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphAddMemcpyNodeFromSymbol(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNodeFromSymbol;
@@ -2574,7 +2574,7 @@ hipError_t hipGraphAddMemcpyNodeFromSymbol(hipGraphNode_t * pGraphNode, hipGraph
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddMemcpyNodeToSymbol(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphAddMemcpyNodeToSymbol(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNodeToSymbol;
@@ -2597,7 +2597,7 @@ hipError_t hipGraphAddMemcpyNodeToSymbol(hipGraphNode_t * pGraphNode, hipGraph_t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphAddMemsetNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipMemsetParams * pMemsetParams) {
+extern "C" hipError_t hipGraphAddMemsetNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipMemsetParams * pMemsetParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemsetNode;
@@ -2617,7 +2617,7 @@ hipError_t hipGraphAddMemsetNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphChildGraphNodeGetGraph(hipGraphNode_t node, hipGraph_t * pGraph) {
+extern "C" hipError_t hipGraphChildGraphNodeGetGraph(hipGraphNode_t node, hipGraph_t * pGraph) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphChildGraphNodeGetGraph;
@@ -2636,7 +2636,7 @@ hipError_t hipGraphChildGraphNodeGetGraph(hipGraphNode_t node, hipGraph_t * pGra
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphClone(hipGraph_t * pGraphClone, hipGraph_t originalGraph) {
+extern "C" hipError_t hipGraphClone(hipGraph_t * pGraphClone, hipGraph_t originalGraph) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphClone;
@@ -2655,7 +2655,7 @@ hipError_t hipGraphClone(hipGraph_t * pGraphClone, hipGraph_t originalGraph) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphCreate(hipGraph_t * pGraph, unsigned int flags) {
+extern "C" hipError_t hipGraphCreate(hipGraph_t * pGraph, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphCreate;
@@ -2674,7 +2674,7 @@ hipError_t hipGraphCreate(hipGraph_t * pGraph, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphDestroy(hipGraph_t graph) {
+extern "C" hipError_t hipGraphDestroy(hipGraph_t graph) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphDestroy;
@@ -2692,7 +2692,7 @@ hipError_t hipGraphDestroy(hipGraph_t graph) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphDestroyNode(hipGraphNode_t node) {
+extern "C" hipError_t hipGraphDestroyNode(hipGraphNode_t node) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphDestroyNode;
@@ -2710,7 +2710,7 @@ hipError_t hipGraphDestroyNode(hipGraphNode_t node) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphEventRecordNodeGetEvent(hipGraphNode_t node, hipEvent_t * event_out) {
+extern "C" hipError_t hipGraphEventRecordNodeGetEvent(hipGraphNode_t node, hipEvent_t * event_out) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventRecordNodeGetEvent;
@@ -2729,7 +2729,7 @@ hipError_t hipGraphEventRecordNodeGetEvent(hipGraphNode_t node, hipEvent_t * eve
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphEventRecordNodeSetEvent(hipGraphNode_t node, hipEvent_t event) {
+extern "C" hipError_t hipGraphEventRecordNodeSetEvent(hipGraphNode_t node, hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventRecordNodeSetEvent;
@@ -2748,7 +2748,7 @@ hipError_t hipGraphEventRecordNodeSetEvent(hipGraphNode_t node, hipEvent_t event
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphEventWaitNodeGetEvent(hipGraphNode_t node, hipEvent_t * event_out) {
+extern "C" hipError_t hipGraphEventWaitNodeGetEvent(hipGraphNode_t node, hipEvent_t * event_out) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventWaitNodeGetEvent;
@@ -2767,7 +2767,7 @@ hipError_t hipGraphEventWaitNodeGetEvent(hipGraphNode_t node, hipEvent_t * event
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphEventWaitNodeSetEvent(hipGraphNode_t node, hipEvent_t event) {
+extern "C" hipError_t hipGraphEventWaitNodeSetEvent(hipGraphNode_t node, hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventWaitNodeSetEvent;
@@ -2786,7 +2786,7 @@ hipError_t hipGraphEventWaitNodeSetEvent(hipGraphNode_t node, hipEvent_t event) 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecChildGraphNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, hipGraph_t childGraph) {
+extern "C" hipError_t hipGraphExecChildGraphNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, hipGraph_t childGraph) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecChildGraphNodeSetParams;
@@ -2806,7 +2806,7 @@ hipError_t hipGraphExecChildGraphNodeSetParams(hipGraphExec_t hGraphExec, hipGra
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecDestroy(hipGraphExec_t graphExec) {
+extern "C" hipError_t hipGraphExecDestroy(hipGraphExec_t graphExec) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecDestroy;
@@ -2824,7 +2824,7 @@ hipError_t hipGraphExecDestroy(hipGraphExec_t graphExec) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecEventRecordNodeSetEvent(hipGraphExec_t hGraphExec, hipGraphNode_t hNode, hipEvent_t event) {
+extern "C" hipError_t hipGraphExecEventRecordNodeSetEvent(hipGraphExec_t hGraphExec, hipGraphNode_t hNode, hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecEventRecordNodeSetEvent;
@@ -2844,7 +2844,7 @@ hipError_t hipGraphExecEventRecordNodeSetEvent(hipGraphExec_t hGraphExec, hipGra
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecEventWaitNodeSetEvent(hipGraphExec_t hGraphExec, hipGraphNode_t hNode, hipEvent_t event) {
+extern "C" hipError_t hipGraphExecEventWaitNodeSetEvent(hipGraphExec_t hGraphExec, hipGraphNode_t hNode, hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecEventWaitNodeSetEvent;
@@ -2864,7 +2864,7 @@ hipError_t hipGraphExecEventWaitNodeSetEvent(hipGraphExec_t hGraphExec, hipGraph
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecHostNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipHostNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphExecHostNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipHostNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecHostNodeSetParams;
@@ -2883,7 +2883,7 @@ hipError_t hipGraphExecHostNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecKernelNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipKernelNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphExecKernelNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipKernelNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecKernelNodeSetParams;
@@ -2902,7 +2902,7 @@ hipError_t hipGraphExecKernelNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecMemcpyNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, hipMemcpy3DParms * pNodeParams) {
+extern "C" hipError_t hipGraphExecMemcpyNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, hipMemcpy3DParms * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParams;
@@ -2922,7 +2922,7 @@ hipError_t hipGraphExecMemcpyNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecMemcpyNodeSetParams1D(hipGraphExec_t hGraphExec, hipGraphNode_t node, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphExecMemcpyNodeSetParams1D(hipGraphExec_t hGraphExec, hipGraphNode_t node, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParams1D;
@@ -2944,7 +2944,7 @@ hipError_t hipGraphExecMemcpyNodeSetParams1D(hipGraphExec_t hGraphExec, hipGraph
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecMemcpyNodeSetParamsFromSymbol(hipGraphExec_t hGraphExec, hipGraphNode_t node, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphExecMemcpyNodeSetParamsFromSymbol(hipGraphExec_t hGraphExec, hipGraphNode_t node, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParamsFromSymbol;
@@ -2967,7 +2967,7 @@ hipError_t hipGraphExecMemcpyNodeSetParamsFromSymbol(hipGraphExec_t hGraphExec, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecMemcpyNodeSetParamsToSymbol(hipGraphExec_t hGraphExec, hipGraphNode_t node, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphExecMemcpyNodeSetParamsToSymbol(hipGraphExec_t hGraphExec, hipGraphNode_t node, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParamsToSymbol;
@@ -2989,7 +2989,7 @@ hipError_t hipGraphExecMemcpyNodeSetParamsToSymbol(hipGraphExec_t hGraphExec, hi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecMemsetNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipMemsetParams * pNodeParams) {
+extern "C" hipError_t hipGraphExecMemsetNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipMemsetParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemsetNodeSetParams;
@@ -3008,7 +3008,7 @@ hipError_t hipGraphExecMemsetNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphExecUpdate(hipGraphExec_t hGraphExec, hipGraph_t hGraph, hipGraphNode_t * hErrorNode_out, hipGraphExecUpdateResult * updateResult_out) {
+extern "C" hipError_t hipGraphExecUpdate(hipGraphExec_t hGraphExec, hipGraph_t hGraph, hipGraphNode_t * hErrorNode_out, hipGraphExecUpdateResult * updateResult_out) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecUpdate;
@@ -3029,7 +3029,7 @@ hipError_t hipGraphExecUpdate(hipGraphExec_t hGraphExec, hipGraph_t hGraph, hipG
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphGetEdges(hipGraph_t graph, hipGraphNode_t * from, hipGraphNode_t * to, size_t * numEdges) {
+extern "C" hipError_t hipGraphGetEdges(hipGraph_t graph, hipGraphNode_t * from, hipGraphNode_t * to, size_t * numEdges) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphGetEdges;
@@ -3050,7 +3050,7 @@ hipError_t hipGraphGetEdges(hipGraph_t graph, hipGraphNode_t * from, hipGraphNod
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphGetNodes(hipGraph_t graph, hipGraphNode_t * nodes, size_t * numNodes) {
+extern "C" hipError_t hipGraphGetNodes(hipGraph_t graph, hipGraphNode_t * nodes, size_t * numNodes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphGetNodes;
@@ -3070,7 +3070,7 @@ hipError_t hipGraphGetNodes(hipGraph_t graph, hipGraphNode_t * nodes, size_t * n
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphGetRootNodes(hipGraph_t graph, hipGraphNode_t * pRootNodes, size_t * pNumRootNodes) {
+extern "C" hipError_t hipGraphGetRootNodes(hipGraph_t graph, hipGraphNode_t * pRootNodes, size_t * pNumRootNodes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphGetRootNodes;
@@ -3090,7 +3090,7 @@ hipError_t hipGraphGetRootNodes(hipGraph_t graph, hipGraphNode_t * pRootNodes, s
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphHostNodeGetParams(hipGraphNode_t node, hipHostNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphHostNodeGetParams(hipGraphNode_t node, hipHostNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphHostNodeGetParams;
@@ -3109,7 +3109,7 @@ hipError_t hipGraphHostNodeGetParams(hipGraphNode_t node, hipHostNodeParams * pN
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphHostNodeSetParams(hipGraphNode_t node, const hipHostNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphHostNodeSetParams(hipGraphNode_t node, const hipHostNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphHostNodeSetParams;
@@ -3127,7 +3127,7 @@ hipError_t hipGraphHostNodeSetParams(hipGraphNode_t node, const hipHostNodeParam
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphInstantiate(hipGraphExec_t * pGraphExec, hipGraph_t graph, hipGraphNode_t * pErrorNode, char * pLogBuffer, size_t bufferSize) {
+extern "C" hipError_t hipGraphInstantiate(hipGraphExec_t * pGraphExec, hipGraph_t graph, hipGraphNode_t * pErrorNode, char * pLogBuffer, size_t bufferSize) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphInstantiate;
@@ -3149,7 +3149,7 @@ hipError_t hipGraphInstantiate(hipGraphExec_t * pGraphExec, hipGraph_t graph, hi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphInstantiateWithFlags(hipGraphExec_t * pGraphExec, hipGraph_t graph, unsigned long long flags) {
+extern "C" hipError_t hipGraphInstantiateWithFlags(hipGraphExec_t * pGraphExec, hipGraph_t graph, unsigned long long flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphInstantiateWithFlags;
@@ -3169,7 +3169,7 @@ hipError_t hipGraphInstantiateWithFlags(hipGraphExec_t * pGraphExec, hipGraph_t 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphKernelNodeGetAttribute(hipGraphNode_t hNode, hipKernelNodeAttrID attr, hipKernelNodeAttrValue * value) {
+extern "C" hipError_t hipGraphKernelNodeGetAttribute(hipGraphNode_t hNode, hipKernelNodeAttrID attr, hipKernelNodeAttrValue * value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeGetAttribute;
@@ -3189,7 +3189,7 @@ hipError_t hipGraphKernelNodeGetAttribute(hipGraphNode_t hNode, hipKernelNodeAtt
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphKernelNodeGetParams(hipGraphNode_t node, hipKernelNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphKernelNodeGetParams(hipGraphNode_t node, hipKernelNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeGetParams;
@@ -3208,7 +3208,7 @@ hipError_t hipGraphKernelNodeGetParams(hipGraphNode_t node, hipKernelNodeParams 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphKernelNodeSetAttribute(hipGraphNode_t hNode, hipKernelNodeAttrID attr, const hipKernelNodeAttrValue * value) {
+extern "C" hipError_t hipGraphKernelNodeSetAttribute(hipGraphNode_t hNode, hipKernelNodeAttrID attr, const hipKernelNodeAttrValue * value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeSetAttribute;
@@ -3227,7 +3227,7 @@ hipError_t hipGraphKernelNodeSetAttribute(hipGraphNode_t hNode, hipKernelNodeAtt
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphKernelNodeSetParams(hipGraphNode_t node, const hipKernelNodeParams * pNodeParams) {
+extern "C" hipError_t hipGraphKernelNodeSetParams(hipGraphNode_t node, const hipKernelNodeParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeSetParams;
@@ -3245,7 +3245,7 @@ hipError_t hipGraphKernelNodeSetParams(hipGraphNode_t node, const hipKernelNodeP
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphLaunch(hipGraphExec_t graphExec, hipStream_t stream) {
+extern "C" hipError_t hipGraphLaunch(hipGraphExec_t graphExec, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphLaunch;
@@ -3264,7 +3264,7 @@ hipError_t hipGraphLaunch(hipGraphExec_t graphExec, hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphMemcpyNodeGetParams(hipGraphNode_t node, hipMemcpy3DParms * pNodeParams) {
+extern "C" hipError_t hipGraphMemcpyNodeGetParams(hipGraphNode_t node, hipMemcpy3DParms * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeGetParams;
@@ -3283,7 +3283,7 @@ hipError_t hipGraphMemcpyNodeGetParams(hipGraphNode_t node, hipMemcpy3DParms * p
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphMemcpyNodeSetParams(hipGraphNode_t node, const hipMemcpy3DParms * pNodeParams) {
+extern "C" hipError_t hipGraphMemcpyNodeSetParams(hipGraphNode_t node, const hipMemcpy3DParms * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParams;
@@ -3301,7 +3301,7 @@ hipError_t hipGraphMemcpyNodeSetParams(hipGraphNode_t node, const hipMemcpy3DPar
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphMemcpyNodeSetParams1D(hipGraphNode_t node, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphMemcpyNodeSetParams1D(hipGraphNode_t node, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParams1D;
@@ -3322,7 +3322,7 @@ hipError_t hipGraphMemcpyNodeSetParams1D(hipGraphNode_t node, void * dst, const 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphMemcpyNodeSetParamsFromSymbol(hipGraphNode_t node, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphMemcpyNodeSetParamsFromSymbol(hipGraphNode_t node, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParamsFromSymbol;
@@ -3344,7 +3344,7 @@ hipError_t hipGraphMemcpyNodeSetParamsFromSymbol(hipGraphNode_t node, void * dst
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphMemcpyNodeSetParamsToSymbol(hipGraphNode_t node, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipGraphMemcpyNodeSetParamsToSymbol(hipGraphNode_t node, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParamsToSymbol;
@@ -3365,7 +3365,7 @@ hipError_t hipGraphMemcpyNodeSetParamsToSymbol(hipGraphNode_t node, const void *
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphMemsetNodeGetParams(hipGraphNode_t node, hipMemsetParams * pNodeParams) {
+extern "C" hipError_t hipGraphMemsetNodeGetParams(hipGraphNode_t node, hipMemsetParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemsetNodeGetParams;
@@ -3384,7 +3384,7 @@ hipError_t hipGraphMemsetNodeGetParams(hipGraphNode_t node, hipMemsetParams * pN
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphMemsetNodeSetParams(hipGraphNode_t node, const hipMemsetParams * pNodeParams) {
+extern "C" hipError_t hipGraphMemsetNodeSetParams(hipGraphNode_t node, const hipMemsetParams * pNodeParams) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemsetNodeSetParams;
@@ -3402,7 +3402,7 @@ hipError_t hipGraphMemsetNodeSetParams(hipGraphNode_t node, const hipMemsetParam
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphNodeFindInClone(hipGraphNode_t * pNode, hipGraphNode_t originalNode, hipGraph_t clonedGraph) {
+extern "C" hipError_t hipGraphNodeFindInClone(hipGraphNode_t * pNode, hipGraphNode_t originalNode, hipGraph_t clonedGraph) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeFindInClone;
@@ -3422,7 +3422,7 @@ hipError_t hipGraphNodeFindInClone(hipGraphNode_t * pNode, hipGraphNode_t origin
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphNodeGetDependencies(hipGraphNode_t node, hipGraphNode_t * pDependencies, size_t * pNumDependencies) {
+extern "C" hipError_t hipGraphNodeGetDependencies(hipGraphNode_t node, hipGraphNode_t * pDependencies, size_t * pNumDependencies) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeGetDependencies;
@@ -3442,7 +3442,7 @@ hipError_t hipGraphNodeGetDependencies(hipGraphNode_t node, hipGraphNode_t * pDe
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphNodeGetDependentNodes(hipGraphNode_t node, hipGraphNode_t * pDependentNodes, size_t * pNumDependentNodes) {
+extern "C" hipError_t hipGraphNodeGetDependentNodes(hipGraphNode_t node, hipGraphNode_t * pDependentNodes, size_t * pNumDependentNodes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeGetDependentNodes;
@@ -3462,7 +3462,7 @@ hipError_t hipGraphNodeGetDependentNodes(hipGraphNode_t node, hipGraphNode_t * p
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphNodeGetType(hipGraphNode_t node, hipGraphNodeType * pType) {
+extern "C" hipError_t hipGraphNodeGetType(hipGraphNode_t node, hipGraphNodeType * pType) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeGetType;
@@ -3481,7 +3481,7 @@ hipError_t hipGraphNodeGetType(hipGraphNode_t node, hipGraphNodeType * pType) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphReleaseUserObject(hipGraph_t graph, hipUserObject_t object, unsigned int count) {
+extern "C" hipError_t hipGraphReleaseUserObject(hipGraph_t graph, hipUserObject_t object, unsigned int count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphReleaseUserObject;
@@ -3501,7 +3501,7 @@ hipError_t hipGraphReleaseUserObject(hipGraph_t graph, hipUserObject_t object, u
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphRemoveDependencies(hipGraph_t graph, const hipGraphNode_t * from, const hipGraphNode_t * to, size_t numDependencies) {
+extern "C" hipError_t hipGraphRemoveDependencies(hipGraph_t graph, const hipGraphNode_t * from, const hipGraphNode_t * to, size_t numDependencies) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphRemoveDependencies;
@@ -3520,7 +3520,7 @@ hipError_t hipGraphRemoveDependencies(hipGraph_t graph, const hipGraphNode_t * f
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphRetainUserObject(hipGraph_t graph, hipUserObject_t object, unsigned int count, unsigned int flags) {
+extern "C" hipError_t hipGraphRetainUserObject(hipGraph_t graph, hipUserObject_t object, unsigned int count, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphRetainUserObject;
@@ -3541,7 +3541,7 @@ hipError_t hipGraphRetainUserObject(hipGraph_t graph, hipUserObject_t object, un
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphUpload(hipGraphExec_t graphExec, hipStream_t stream) {
+extern "C" hipError_t hipGraphUpload(hipGraphExec_t graphExec, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphUpload;
@@ -3560,7 +3560,7 @@ hipError_t hipGraphUpload(hipGraphExec_t graphExec, hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphicsGLRegisterBuffer(hipGraphicsResource * * resource, GLuint buffer, unsigned int flags) {
+extern "C" hipError_t hipGraphicsGLRegisterBuffer(hipGraphicsResource * * resource, GLuint buffer, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsGLRegisterBuffer;
@@ -3580,7 +3580,7 @@ hipError_t hipGraphicsGLRegisterBuffer(hipGraphicsResource * * resource, GLuint 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphicsGLRegisterImage(hipGraphicsResource * * resource, GLuint image, GLenum target, unsigned int flags) {
+extern "C" hipError_t hipGraphicsGLRegisterImage(hipGraphicsResource * * resource, GLuint image, GLenum target, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsGLRegisterImage;
@@ -3601,7 +3601,7 @@ hipError_t hipGraphicsGLRegisterImage(hipGraphicsResource * * resource, GLuint i
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphicsMapResources(int count, hipGraphicsResource_t * resources, hipStream_t stream) {
+extern "C" hipError_t hipGraphicsMapResources(int count, hipGraphicsResource_t * resources, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsMapResources;
@@ -3621,7 +3621,7 @@ hipError_t hipGraphicsMapResources(int count, hipGraphicsResource_t * resources,
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphicsResourceGetMappedPointer(void * * devPtr, size_t * size, hipGraphicsResource_t resource) {
+extern "C" hipError_t hipGraphicsResourceGetMappedPointer(void * * devPtr, size_t * size, hipGraphicsResource_t resource) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsResourceGetMappedPointer;
@@ -3641,7 +3641,7 @@ hipError_t hipGraphicsResourceGetMappedPointer(void * * devPtr, size_t * size, h
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphicsSubResourceGetMappedArray(hipArray_t * array, hipGraphicsResource_t resource, unsigned int arrayIndex, unsigned int mipLevel) {
+extern "C" hipError_t hipGraphicsSubResourceGetMappedArray(hipArray_t * array, hipGraphicsResource_t resource, unsigned int arrayIndex, unsigned int mipLevel) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsSubResourceGetMappedArray;
@@ -3662,7 +3662,7 @@ hipError_t hipGraphicsSubResourceGetMappedArray(hipArray_t * array, hipGraphicsR
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphicsUnmapResources(int count, hipGraphicsResource_t * resources, hipStream_t stream) {
+extern "C" hipError_t hipGraphicsUnmapResources(int count, hipGraphicsResource_t * resources, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsUnmapResources;
@@ -3682,7 +3682,7 @@ hipError_t hipGraphicsUnmapResources(int count, hipGraphicsResource_t * resource
 }
 
 __attribute__((visibility("default")))
-hipError_t hipGraphicsUnregisterResource(hipGraphicsResource_t resource) {
+extern "C" hipError_t hipGraphicsUnregisterResource(hipGraphicsResource_t resource) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsUnregisterResource;
@@ -3700,7 +3700,7 @@ hipError_t hipGraphicsUnregisterResource(hipGraphicsResource_t resource) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHccModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
+extern "C" hipError_t hipHccModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHccModuleLaunchKernel;
@@ -3730,7 +3730,7 @@ hipError_t hipHccModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, u
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHostAlloc(void * * ptr, size_t size, unsigned int flags) {
+extern "C" hipError_t hipHostAlloc(void * * ptr, size_t size, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostAlloc;
@@ -3750,7 +3750,7 @@ hipError_t hipHostAlloc(void * * ptr, size_t size, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHostFree(void * ptr) {
+extern "C" hipError_t hipHostFree(void * ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostFree;
@@ -3768,7 +3768,7 @@ hipError_t hipHostFree(void * ptr) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHostGetDevicePointer(void * * devPtr, void * hstPtr, unsigned int flags) {
+extern "C" hipError_t hipHostGetDevicePointer(void * * devPtr, void * hstPtr, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostGetDevicePointer;
@@ -3788,7 +3788,7 @@ hipError_t hipHostGetDevicePointer(void * * devPtr, void * hstPtr, unsigned int 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHostGetFlags(unsigned int * flagsPtr, void * hostPtr) {
+extern "C" hipError_t hipHostGetFlags(unsigned int * flagsPtr, void * hostPtr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostGetFlags;
@@ -3807,7 +3807,7 @@ hipError_t hipHostGetFlags(unsigned int * flagsPtr, void * hostPtr) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHostMalloc(void * * ptr, size_t size, unsigned int flags) {
+extern "C" hipError_t hipHostMalloc(void * * ptr, size_t size, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostMalloc;
@@ -3827,7 +3827,7 @@ hipError_t hipHostMalloc(void * * ptr, size_t size, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHostRegister(void * hostPtr, size_t sizeBytes, unsigned int flags) {
+extern "C" hipError_t hipHostRegister(void * hostPtr, size_t sizeBytes, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostRegister;
@@ -3847,7 +3847,7 @@ hipError_t hipHostRegister(void * hostPtr, size_t sizeBytes, unsigned int flags)
 }
 
 __attribute__((visibility("default")))
-hipError_t hipHostUnregister(void * hostPtr) {
+extern "C" hipError_t hipHostUnregister(void * hostPtr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostUnregister;
@@ -3865,7 +3865,7 @@ hipError_t hipHostUnregister(void * hostPtr) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipImportExternalMemory(hipExternalMemory_t * extMem_out, const hipExternalMemoryHandleDesc * memHandleDesc) {
+extern "C" hipError_t hipImportExternalMemory(hipExternalMemory_t * extMem_out, const hipExternalMemoryHandleDesc * memHandleDesc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipImportExternalMemory;
@@ -3883,7 +3883,7 @@ hipError_t hipImportExternalMemory(hipExternalMemory_t * extMem_out, const hipEx
 }
 
 __attribute__((visibility("default")))
-hipError_t hipImportExternalSemaphore(hipExternalSemaphore_t * extSem_out, const hipExternalSemaphoreHandleDesc * semHandleDesc) {
+extern "C" hipError_t hipImportExternalSemaphore(hipExternalSemaphore_t * extSem_out, const hipExternalSemaphoreHandleDesc * semHandleDesc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipImportExternalSemaphore;
@@ -3901,7 +3901,7 @@ hipError_t hipImportExternalSemaphore(hipExternalSemaphore_t * extSem_out, const
 }
 
 __attribute__((visibility("default")))
-hipError_t hipInit(unsigned int flags) {
+extern "C" hipError_t hipInit(unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipInit;
@@ -3919,7 +3919,7 @@ hipError_t hipInit(unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipIpcCloseMemHandle(void * devPtr) {
+extern "C" hipError_t hipIpcCloseMemHandle(void * devPtr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcCloseMemHandle;
@@ -3937,7 +3937,7 @@ hipError_t hipIpcCloseMemHandle(void * devPtr) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipIpcGetEventHandle(hipIpcEventHandle_t * handle, hipEvent_t event) {
+extern "C" hipError_t hipIpcGetEventHandle(hipIpcEventHandle_t * handle, hipEvent_t event) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcGetEventHandle;
@@ -3956,7 +3956,7 @@ hipError_t hipIpcGetEventHandle(hipIpcEventHandle_t * handle, hipEvent_t event) 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipIpcGetMemHandle(hipIpcMemHandle_t * handle, void * devPtr) {
+extern "C" hipError_t hipIpcGetMemHandle(hipIpcMemHandle_t * handle, void * devPtr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcGetMemHandle;
@@ -3975,7 +3975,7 @@ hipError_t hipIpcGetMemHandle(hipIpcMemHandle_t * handle, void * devPtr) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipIpcOpenEventHandle(hipEvent_t * event, hipIpcEventHandle_t handle) {
+extern "C" hipError_t hipIpcOpenEventHandle(hipEvent_t * event, hipIpcEventHandle_t handle) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcOpenEventHandle;
@@ -3994,7 +3994,7 @@ hipError_t hipIpcOpenEventHandle(hipEvent_t * event, hipIpcEventHandle_t handle)
 }
 
 __attribute__((visibility("default")))
-hipError_t hipIpcOpenMemHandle(void * * devPtr, hipIpcMemHandle_t handle, unsigned int flags) {
+extern "C" hipError_t hipIpcOpenMemHandle(void * * devPtr, hipIpcMemHandle_t handle, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcOpenMemHandle;
@@ -4014,7 +4014,7 @@ hipError_t hipIpcOpenMemHandle(void * * devPtr, hipIpcMemHandle_t handle, unsign
 }
 
 __attribute__((visibility("default")))
-const char * hipKernelNameRef(const hipFunction_t f) {
+extern "C" const char * hipKernelNameRef(const hipFunction_t f) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipKernelNameRef;
@@ -4031,7 +4031,7 @@ const char * hipKernelNameRef(const hipFunction_t f) {
 }
 
 __attribute__((visibility("default")))
-const char * hipKernelNameRefByPtr(const void * hostFunction, hipStream_t stream) {
+extern "C" const char * hipKernelNameRefByPtr(const void * hostFunction, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipKernelNameRefByPtr;
@@ -4049,7 +4049,7 @@ const char * hipKernelNameRefByPtr(const void * hostFunction, hipStream_t stream
 }
 
 __attribute__((visibility("default")))
-hipError_t hipLaunchByPtr(const void * func) {
+extern "C" hipError_t hipLaunchByPtr(const void * func) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchByPtr;
@@ -4066,7 +4066,7 @@ hipError_t hipLaunchByPtr(const void * func) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipLaunchCooperativeKernel(const void * f, dim3 gridDim, dim3 blockDimX, void * * kernelParams, unsigned int sharedMemBytes, hipStream_t stream) {
+extern "C" hipError_t hipLaunchCooperativeKernel(const void * f, dim3 gridDim, dim3 blockDimX, void * * kernelParams, unsigned int sharedMemBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchCooperativeKernel;
@@ -4088,7 +4088,7 @@ hipError_t hipLaunchCooperativeKernel(const void * f, dim3 gridDim, dim3 blockDi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipLaunchCooperativeKernelMultiDevice(hipLaunchParams * launchParamsList, int numDevices, unsigned int flags) {
+extern "C" hipError_t hipLaunchCooperativeKernelMultiDevice(hipLaunchParams * launchParamsList, int numDevices, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchCooperativeKernelMultiDevice;
@@ -4108,7 +4108,7 @@ hipError_t hipLaunchCooperativeKernelMultiDevice(hipLaunchParams * launchParamsL
 }
 
 __attribute__((visibility("default")))
-hipError_t hipLaunchHostFunc(hipStream_t stream, hipHostFn_t fn, void * userData) {
+extern "C" hipError_t hipLaunchHostFunc(hipStream_t stream, hipHostFn_t fn, void * userData) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchHostFunc;
@@ -4128,7 +4128,7 @@ hipError_t hipLaunchHostFunc(hipStream_t stream, hipHostFn_t fn, void * userData
 }
 
 __attribute__((visibility("default")))
-hipError_t hipLaunchKernel(const void * function_address, dim3 numBlocks, dim3 dimBlocks, void * * args, size_t sharedMemBytes, hipStream_t stream) {
+extern "C" hipError_t hipLaunchKernel(const void * function_address, dim3 numBlocks, dim3 dimBlocks, void * * args, size_t sharedMemBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchKernel;
@@ -4150,7 +4150,7 @@ hipError_t hipLaunchKernel(const void * function_address, dim3 numBlocks, dim3 d
 }
 
 __attribute__((visibility("default")))
-hipError_t hipLaunchKernel_common(const void * hostFunction, dim3 gridDim, dim3 blockDim, void * * args, size_t sharedMemBytes, hipStream_t stream) {
+extern "C" hipError_t hipLaunchKernel_common(const void * hostFunction, dim3 gridDim, dim3 blockDim, void * * args, size_t sharedMemBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipLaunchKernel_common;
@@ -4172,7 +4172,7 @@ hipError_t hipLaunchKernel_common(const void * hostFunction, dim3 gridDim, dim3 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipLaunchKernel_spt(const void * hostFunction, dim3 gridDim, dim3 blockDim, void * * args, size_t sharedMemBytes, hipStream_t stream) {
+extern "C" hipError_t hipLaunchKernel_spt(const void * hostFunction, dim3 gridDim, dim3 blockDim, void * * args, size_t sharedMemBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipLaunchKernel_spt;
@@ -4194,7 +4194,7 @@ hipError_t hipLaunchKernel_spt(const void * hostFunction, dim3 gridDim, dim3 blo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMalloc(void * * ptr, size_t size) {
+extern "C" hipError_t hipMalloc(void * * ptr, size_t size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMalloc;
@@ -4213,7 +4213,7 @@ hipError_t hipMalloc(void * * ptr, size_t size) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMalloc3D(hipPitchedPtr * pitchedDevPtr, hipExtent extent) {
+extern "C" hipError_t hipMalloc3D(hipPitchedPtr * pitchedDevPtr, hipExtent extent) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMalloc3D;
@@ -4232,7 +4232,7 @@ hipError_t hipMalloc3D(hipPitchedPtr * pitchedDevPtr, hipExtent extent) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMalloc3DArray(hipArray * * array, const struct hipChannelFormatDesc * desc, struct hipExtent extent, unsigned int flags) {
+extern "C" hipError_t hipMalloc3DArray(hipArray * * array, const struct hipChannelFormatDesc * desc, struct hipExtent extent, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMalloc3DArray;
@@ -4252,7 +4252,7 @@ hipError_t hipMalloc3DArray(hipArray * * array, const struct hipChannelFormatDes
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMallocArray(hipArray * * array, const hipChannelFormatDesc * desc, size_t width, size_t height, unsigned int flags) {
+extern "C" hipError_t hipMallocArray(hipArray * * array, const hipChannelFormatDesc * desc, size_t width, size_t height, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocArray;
@@ -4273,7 +4273,7 @@ hipError_t hipMallocArray(hipArray * * array, const hipChannelFormatDesc * desc,
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMallocAsync(void * * dev_ptr, size_t size, hipStream_t stream) {
+extern "C" hipError_t hipMallocAsync(void * * dev_ptr, size_t size, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocAsync;
@@ -4293,7 +4293,7 @@ hipError_t hipMallocAsync(void * * dev_ptr, size_t size, hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMallocFromPoolAsync(void * * dev_ptr, size_t size, hipMemPool_t mem_pool, hipStream_t stream) {
+extern "C" hipError_t hipMallocFromPoolAsync(void * * dev_ptr, size_t size, hipMemPool_t mem_pool, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocFromPoolAsync;
@@ -4314,7 +4314,7 @@ hipError_t hipMallocFromPoolAsync(void * * dev_ptr, size_t size, hipMemPool_t me
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMallocHost(void * * ptr, size_t size) {
+extern "C" hipError_t hipMallocHost(void * * ptr, size_t size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocHost;
@@ -4333,7 +4333,7 @@ hipError_t hipMallocHost(void * * ptr, size_t size) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMallocManaged(void * * dev_ptr, size_t size, unsigned int flags) {
+extern "C" hipError_t hipMallocManaged(void * * dev_ptr, size_t size, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocManaged;
@@ -4353,7 +4353,7 @@ hipError_t hipMallocManaged(void * * dev_ptr, size_t size, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMallocMipmappedArray(hipMipmappedArray_t * mipmappedArray, const struct hipChannelFormatDesc * desc, struct hipExtent extent, unsigned int numLevels, unsigned int flags) {
+extern "C" hipError_t hipMallocMipmappedArray(hipMipmappedArray_t * mipmappedArray, const struct hipChannelFormatDesc * desc, struct hipExtent extent, unsigned int numLevels, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocMipmappedArray;
@@ -4374,7 +4374,7 @@ hipError_t hipMallocMipmappedArray(hipMipmappedArray_t * mipmappedArray, const s
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMallocPitch(void * * ptr, size_t * pitch, size_t width, size_t height) {
+extern "C" hipError_t hipMallocPitch(void * * ptr, size_t * pitch, size_t width, size_t height) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocPitch;
@@ -4395,7 +4395,7 @@ hipError_t hipMallocPitch(void * * ptr, size_t * pitch, size_t width, size_t hei
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemAddressFree(void * devPtr, size_t size) {
+extern "C" hipError_t hipMemAddressFree(void * devPtr, size_t size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAddressFree;
@@ -4414,7 +4414,7 @@ hipError_t hipMemAddressFree(void * devPtr, size_t size) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemAddressReserve(void * * ptr, size_t size, size_t alignment, void * addr, unsigned long long flags) {
+extern "C" hipError_t hipMemAddressReserve(void * * ptr, size_t size, size_t alignment, void * addr, unsigned long long flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAddressReserve;
@@ -4436,7 +4436,7 @@ hipError_t hipMemAddressReserve(void * * ptr, size_t size, size_t alignment, voi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemAdvise(const void * dev_ptr, size_t count, hipMemoryAdvise advice, int device) {
+extern "C" hipError_t hipMemAdvise(const void * dev_ptr, size_t count, hipMemoryAdvise advice, int device) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAdvise;
@@ -4456,7 +4456,7 @@ hipError_t hipMemAdvise(const void * dev_ptr, size_t count, hipMemoryAdvise advi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemAllocHost(void * * ptr, size_t size) {
+extern "C" hipError_t hipMemAllocHost(void * * ptr, size_t size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAllocHost;
@@ -4475,7 +4475,7 @@ hipError_t hipMemAllocHost(void * * ptr, size_t size) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemAllocPitch(hipDeviceptr_t * dptr, size_t * pitch, size_t widthInBytes, size_t height, unsigned int elementSizeBytes) {
+extern "C" hipError_t hipMemAllocPitch(hipDeviceptr_t * dptr, size_t * pitch, size_t widthInBytes, size_t height, unsigned int elementSizeBytes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAllocPitch;
@@ -4497,7 +4497,7 @@ hipError_t hipMemAllocPitch(hipDeviceptr_t * dptr, size_t * pitch, size_t widthI
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemCreate(hipMemGenericAllocationHandle_t * handle, size_t size, const hipMemAllocationProp * prop, unsigned long long flags) {
+extern "C" hipError_t hipMemCreate(hipMemGenericAllocationHandle_t * handle, size_t size, const hipMemAllocationProp * prop, unsigned long long flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemCreate;
@@ -4517,7 +4517,7 @@ hipError_t hipMemCreate(hipMemGenericAllocationHandle_t * handle, size_t size, c
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemExportToShareableHandle(void * shareableHandle, hipMemGenericAllocationHandle_t handle, hipMemAllocationHandleType handleType, unsigned long long flags) {
+extern "C" hipError_t hipMemExportToShareableHandle(void * shareableHandle, hipMemGenericAllocationHandle_t handle, hipMemAllocationHandleType handleType, unsigned long long flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemExportToShareableHandle;
@@ -4538,7 +4538,7 @@ hipError_t hipMemExportToShareableHandle(void * shareableHandle, hipMemGenericAl
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemGetAccess(unsigned long long * flags, const hipMemLocation * location, void * ptr) {
+extern "C" hipError_t hipMemGetAccess(unsigned long long * flags, const hipMemLocation * location, void * ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAccess;
@@ -4557,7 +4557,7 @@ hipError_t hipMemGetAccess(unsigned long long * flags, const hipMemLocation * lo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemGetAddressRange(hipDeviceptr_t * pbase, size_t * psize, hipDeviceptr_t dptr) {
+extern "C" hipError_t hipMemGetAddressRange(hipDeviceptr_t * pbase, size_t * psize, hipDeviceptr_t dptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAddressRange;
@@ -4577,7 +4577,7 @@ hipError_t hipMemGetAddressRange(hipDeviceptr_t * pbase, size_t * psize, hipDevi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemGetAllocationGranularity(size_t * granularity, const hipMemAllocationProp * prop, hipMemAllocationGranularity_flags option) {
+extern "C" hipError_t hipMemGetAllocationGranularity(size_t * granularity, const hipMemAllocationProp * prop, hipMemAllocationGranularity_flags option) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAllocationGranularity;
@@ -4596,7 +4596,7 @@ hipError_t hipMemGetAllocationGranularity(size_t * granularity, const hipMemAllo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemGetAllocationPropertiesFromHandle(hipMemAllocationProp * prop, hipMemGenericAllocationHandle_t handle) {
+extern "C" hipError_t hipMemGetAllocationPropertiesFromHandle(hipMemAllocationProp * prop, hipMemGenericAllocationHandle_t handle) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAllocationPropertiesFromHandle;
@@ -4615,7 +4615,7 @@ hipError_t hipMemGetAllocationPropertiesFromHandle(hipMemAllocationProp * prop, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemGetInfo(size_t * free, size_t * total) {
+extern "C" hipError_t hipMemGetInfo(size_t * free, size_t * total) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetInfo;
@@ -4634,7 +4634,7 @@ hipError_t hipMemGetInfo(size_t * free, size_t * total) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemImportFromShareableHandle(hipMemGenericAllocationHandle_t * handle, void * osHandle, hipMemAllocationHandleType shHandleType) {
+extern "C" hipError_t hipMemImportFromShareableHandle(hipMemGenericAllocationHandle_t * handle, void * osHandle, hipMemAllocationHandleType shHandleType) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemImportFromShareableHandle;
@@ -4654,7 +4654,7 @@ hipError_t hipMemImportFromShareableHandle(hipMemGenericAllocationHandle_t * han
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemMap(void * ptr, size_t size, size_t offset, hipMemGenericAllocationHandle_t handle, unsigned long long flags) {
+extern "C" hipError_t hipMemMap(void * ptr, size_t size, size_t offset, hipMemGenericAllocationHandle_t handle, unsigned long long flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemMap;
@@ -4676,7 +4676,7 @@ hipError_t hipMemMap(void * ptr, size_t size, size_t offset, hipMemGenericAlloca
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemMapArrayAsync(hipArrayMapInfo * mapInfoList, unsigned int count, hipStream_t stream) {
+extern "C" hipError_t hipMemMapArrayAsync(hipArrayMapInfo * mapInfoList, unsigned int count, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemMapArrayAsync;
@@ -4696,7 +4696,7 @@ hipError_t hipMemMapArrayAsync(hipArrayMapInfo * mapInfoList, unsigned int count
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolCreate(hipMemPool_t * mem_pool, const hipMemPoolProps * pool_props) {
+extern "C" hipError_t hipMemPoolCreate(hipMemPool_t * mem_pool, const hipMemPoolProps * pool_props) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolCreate;
@@ -4714,7 +4714,7 @@ hipError_t hipMemPoolCreate(hipMemPool_t * mem_pool, const hipMemPoolProps * poo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolDestroy(hipMemPool_t mem_pool) {
+extern "C" hipError_t hipMemPoolDestroy(hipMemPool_t mem_pool) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolDestroy;
@@ -4732,7 +4732,7 @@ hipError_t hipMemPoolDestroy(hipMemPool_t mem_pool) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolExportPointer(hipMemPoolPtrExportData * export_data, void * dev_ptr) {
+extern "C" hipError_t hipMemPoolExportPointer(hipMemPoolPtrExportData * export_data, void * dev_ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolExportPointer;
@@ -4751,7 +4751,7 @@ hipError_t hipMemPoolExportPointer(hipMemPoolPtrExportData * export_data, void *
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolExportToShareableHandle(void * shared_handle, hipMemPool_t mem_pool, hipMemAllocationHandleType handle_type, unsigned int flags) {
+extern "C" hipError_t hipMemPoolExportToShareableHandle(void * shared_handle, hipMemPool_t mem_pool, hipMemAllocationHandleType handle_type, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolExportToShareableHandle;
@@ -4772,7 +4772,7 @@ hipError_t hipMemPoolExportToShareableHandle(void * shared_handle, hipMemPool_t 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolGetAccess(hipMemAccessFlags * flags, hipMemPool_t mem_pool, hipMemLocation * location) {
+extern "C" hipError_t hipMemPoolGetAccess(hipMemAccessFlags * flags, hipMemPool_t mem_pool, hipMemLocation * location) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolGetAccess;
@@ -4792,7 +4792,7 @@ hipError_t hipMemPoolGetAccess(hipMemAccessFlags * flags, hipMemPool_t mem_pool,
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolGetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, void * value) {
+extern "C" hipError_t hipMemPoolGetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, void * value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolGetAttribute;
@@ -4812,7 +4812,7 @@ hipError_t hipMemPoolGetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, vo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolImportFromShareableHandle(hipMemPool_t * mem_pool, void * shared_handle, hipMemAllocationHandleType handle_type, unsigned int flags) {
+extern "C" hipError_t hipMemPoolImportFromShareableHandle(hipMemPool_t * mem_pool, void * shared_handle, hipMemAllocationHandleType handle_type, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolImportFromShareableHandle;
@@ -4833,7 +4833,7 @@ hipError_t hipMemPoolImportFromShareableHandle(hipMemPool_t * mem_pool, void * s
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolImportPointer(void * * dev_ptr, hipMemPool_t mem_pool, hipMemPoolPtrExportData * export_data) {
+extern "C" hipError_t hipMemPoolImportPointer(void * * dev_ptr, hipMemPool_t mem_pool, hipMemPoolPtrExportData * export_data) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolImportPointer;
@@ -4853,7 +4853,7 @@ hipError_t hipMemPoolImportPointer(void * * dev_ptr, hipMemPool_t mem_pool, hipM
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolSetAccess(hipMemPool_t mem_pool, const hipMemAccessDesc * desc_list, size_t count) {
+extern "C" hipError_t hipMemPoolSetAccess(hipMemPool_t mem_pool, const hipMemAccessDesc * desc_list, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolSetAccess;
@@ -4872,7 +4872,7 @@ hipError_t hipMemPoolSetAccess(hipMemPool_t mem_pool, const hipMemAccessDesc * d
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolSetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, void * value) {
+extern "C" hipError_t hipMemPoolSetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, void * value) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolSetAttribute;
@@ -4892,7 +4892,7 @@ hipError_t hipMemPoolSetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, vo
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPoolTrimTo(hipMemPool_t mem_pool, size_t min_bytes_to_hold) {
+extern "C" hipError_t hipMemPoolTrimTo(hipMemPool_t mem_pool, size_t min_bytes_to_hold) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolTrimTo;
@@ -4911,7 +4911,7 @@ hipError_t hipMemPoolTrimTo(hipMemPool_t mem_pool, size_t min_bytes_to_hold) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPrefetchAsync(const void * dev_ptr, size_t count, int device, hipStream_t stream) {
+extern "C" hipError_t hipMemPrefetchAsync(const void * dev_ptr, size_t count, int device, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPrefetchAsync;
@@ -4931,7 +4931,7 @@ hipError_t hipMemPrefetchAsync(const void * dev_ptr, size_t count, int device, h
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemPtrGetInfo(void * ptr, size_t * size) {
+extern "C" hipError_t hipMemPtrGetInfo(void * ptr, size_t * size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPtrGetInfo;
@@ -4950,7 +4950,7 @@ hipError_t hipMemPtrGetInfo(void * ptr, size_t * size) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemRangeGetAttribute(void * data, size_t data_size, hipMemRangeAttribute attribute, const void * dev_ptr, size_t count) {
+extern "C" hipError_t hipMemRangeGetAttribute(void * data, size_t data_size, hipMemRangeAttribute attribute, const void * dev_ptr, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRangeGetAttribute;
@@ -4971,7 +4971,7 @@ hipError_t hipMemRangeGetAttribute(void * data, size_t data_size, hipMemRangeAtt
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemRangeGetAttributes(void * * data, size_t * data_sizes, hipMemRangeAttribute * attributes, size_t num_attributes, const void * dev_ptr, size_t count) {
+extern "C" hipError_t hipMemRangeGetAttributes(void * * data, size_t * data_sizes, hipMemRangeAttribute * attributes, size_t num_attributes, const void * dev_ptr, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRangeGetAttributes;
@@ -4993,7 +4993,7 @@ hipError_t hipMemRangeGetAttributes(void * * data, size_t * data_sizes, hipMemRa
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemRelease(hipMemGenericAllocationHandle_t handle) {
+extern "C" hipError_t hipMemRelease(hipMemGenericAllocationHandle_t handle) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRelease;
@@ -5011,7 +5011,7 @@ hipError_t hipMemRelease(hipMemGenericAllocationHandle_t handle) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemRetainAllocationHandle(hipMemGenericAllocationHandle_t * handle, void * addr) {
+extern "C" hipError_t hipMemRetainAllocationHandle(hipMemGenericAllocationHandle_t * handle, void * addr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRetainAllocationHandle;
@@ -5030,7 +5030,7 @@ hipError_t hipMemRetainAllocationHandle(hipMemGenericAllocationHandle_t * handle
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemSetAccess(void * ptr, size_t size, const hipMemAccessDesc * desc, size_t count) {
+extern "C" hipError_t hipMemSetAccess(void * ptr, size_t size, const hipMemAccessDesc * desc, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemSetAccess;
@@ -5050,7 +5050,7 @@ hipError_t hipMemSetAccess(void * ptr, size_t size, const hipMemAccessDesc * des
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemUnmap(void * ptr, size_t size) {
+extern "C" hipError_t hipMemUnmap(void * ptr, size_t size) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemUnmap;
@@ -5069,7 +5069,7 @@ hipError_t hipMemUnmap(void * ptr, size_t size) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpy(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy;
@@ -5089,7 +5089,7 @@ hipError_t hipMemcpy(void * dst, const void * src, size_t sizeBytes, hipMemcpyKi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy2D(void * dst, size_t dpitch, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpy2D(void * dst, size_t dpitch, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2D;
@@ -5112,7 +5112,7 @@ hipError_t hipMemcpy2D(void * dst, size_t dpitch, const void * src, size_t spitc
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy2DAsync(void * dst, size_t dpitch, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
+extern "C" hipError_t hipMemcpy2DAsync(void * dst, size_t dpitch, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DAsync;
@@ -5136,7 +5136,7 @@ hipError_t hipMemcpy2DAsync(void * dst, size_t dpitch, const void * src, size_t 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy2DFromArray(void * dst, size_t dpitch, hipArray_const_t src, size_t wOffset, size_t hOffset, size_t width, size_t height, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpy2DFromArray(void * dst, size_t dpitch, hipArray_const_t src, size_t wOffset, size_t hOffset, size_t width, size_t height, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DFromArray;
@@ -5160,7 +5160,7 @@ hipError_t hipMemcpy2DFromArray(void * dst, size_t dpitch, hipArray_const_t src,
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy2DFromArrayAsync(void * dst, size_t dpitch, hipArray_const_t src, size_t wOffset, size_t hOffset, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
+extern "C" hipError_t hipMemcpy2DFromArrayAsync(void * dst, size_t dpitch, hipArray_const_t src, size_t wOffset, size_t hOffset, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DFromArrayAsync;
@@ -5185,7 +5185,7 @@ hipError_t hipMemcpy2DFromArrayAsync(void * dst, size_t dpitch, hipArray_const_t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy2DToArray(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpy2DToArray(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DToArray;
@@ -5209,7 +5209,7 @@ hipError_t hipMemcpy2DToArray(hipArray * dst, size_t wOffset, size_t hOffset, co
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy2DToArrayAsync(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
+extern "C" hipError_t hipMemcpy2DToArrayAsync(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DToArrayAsync;
@@ -5234,7 +5234,7 @@ hipError_t hipMemcpy2DToArrayAsync(hipArray * dst, size_t wOffset, size_t hOffse
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy3D(const struct hipMemcpy3DParms * p) {
+extern "C" hipError_t hipMemcpy3D(const struct hipMemcpy3DParms * p) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy3D;
@@ -5251,7 +5251,7 @@ hipError_t hipMemcpy3D(const struct hipMemcpy3DParms * p) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpy3DAsync(const struct hipMemcpy3DParms * p, hipStream_t stream) {
+extern "C" hipError_t hipMemcpy3DAsync(const struct hipMemcpy3DParms * p, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy3DAsync;
@@ -5269,7 +5269,7 @@ hipError_t hipMemcpy3DAsync(const struct hipMemcpy3DParms * p, hipStream_t strea
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyAsync(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyAsync(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyAsync;
@@ -5290,7 +5290,7 @@ hipError_t hipMemcpyAsync(void * dst, const void * src, size_t sizeBytes, hipMem
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyAtoH(void * dst, hipArray * srcArray, size_t srcOffset, size_t count) {
+extern "C" hipError_t hipMemcpyAtoH(void * dst, hipArray * srcArray, size_t srcOffset, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyAtoH;
@@ -5311,7 +5311,7 @@ hipError_t hipMemcpyAtoH(void * dst, hipArray * srcArray, size_t srcOffset, size
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyDtoD(hipDeviceptr_t dst, hipDeviceptr_t src, size_t sizeBytes) {
+extern "C" hipError_t hipMemcpyDtoD(hipDeviceptr_t dst, hipDeviceptr_t src, size_t sizeBytes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoD;
@@ -5331,7 +5331,7 @@ hipError_t hipMemcpyDtoD(hipDeviceptr_t dst, hipDeviceptr_t src, size_t sizeByte
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyDtoDAsync(hipDeviceptr_t dst, hipDeviceptr_t src, size_t sizeBytes, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyDtoDAsync(hipDeviceptr_t dst, hipDeviceptr_t src, size_t sizeBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoDAsync;
@@ -5352,7 +5352,7 @@ hipError_t hipMemcpyDtoDAsync(hipDeviceptr_t dst, hipDeviceptr_t src, size_t siz
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyDtoH(void * dst, hipDeviceptr_t src, size_t sizeBytes) {
+extern "C" hipError_t hipMemcpyDtoH(void * dst, hipDeviceptr_t src, size_t sizeBytes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoH;
@@ -5372,7 +5372,7 @@ hipError_t hipMemcpyDtoH(void * dst, hipDeviceptr_t src, size_t sizeBytes) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyDtoHAsync(void * dst, hipDeviceptr_t src, size_t sizeBytes, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyDtoHAsync(void * dst, hipDeviceptr_t src, size_t sizeBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoHAsync;
@@ -5393,7 +5393,7 @@ hipError_t hipMemcpyDtoHAsync(void * dst, hipDeviceptr_t src, size_t sizeBytes, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyFromArray(void * dst, hipArray_const_t srcArray, size_t wOffset, size_t hOffset, size_t count, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpyFromArray(void * dst, hipArray_const_t srcArray, size_t wOffset, size_t hOffset, size_t count, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyFromArray;
@@ -5415,7 +5415,7 @@ hipError_t hipMemcpyFromArray(void * dst, hipArray_const_t srcArray, size_t wOff
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyFromSymbol(void * dst, const void * symbol, size_t sizeBytes, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpyFromSymbol(void * dst, const void * symbol, size_t sizeBytes, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyFromSymbol;
@@ -5436,7 +5436,7 @@ hipError_t hipMemcpyFromSymbol(void * dst, const void * symbol, size_t sizeBytes
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyFromSymbolAsync(void * dst, const void * symbol, size_t sizeBytes, size_t offset, hipMemcpyKind kind, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyFromSymbolAsync(void * dst, const void * symbol, size_t sizeBytes, size_t offset, hipMemcpyKind kind, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyFromSymbolAsync;
@@ -5458,7 +5458,7 @@ hipError_t hipMemcpyFromSymbolAsync(void * dst, const void * symbol, size_t size
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyHtoA(hipArray * dstArray, size_t dstOffset, const void * srcHost, size_t count) {
+extern "C" hipError_t hipMemcpyHtoA(hipArray * dstArray, size_t dstOffset, const void * srcHost, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyHtoA;
@@ -5478,7 +5478,7 @@ hipError_t hipMemcpyHtoA(hipArray * dstArray, size_t dstOffset, const void * src
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyHtoD(hipDeviceptr_t dst, void * src, size_t sizeBytes) {
+extern "C" hipError_t hipMemcpyHtoD(hipDeviceptr_t dst, void * src, size_t sizeBytes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyHtoD;
@@ -5498,7 +5498,7 @@ hipError_t hipMemcpyHtoD(hipDeviceptr_t dst, void * src, size_t sizeBytes) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyHtoDAsync(hipDeviceptr_t dst, void * src, size_t sizeBytes, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyHtoDAsync(hipDeviceptr_t dst, void * src, size_t sizeBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyHtoDAsync;
@@ -5519,7 +5519,7 @@ hipError_t hipMemcpyHtoDAsync(hipDeviceptr_t dst, void * src, size_t sizeBytes, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyParam2D(const hip_Memcpy2D * pCopy) {
+extern "C" hipError_t hipMemcpyParam2D(const hip_Memcpy2D * pCopy) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyParam2D;
@@ -5536,7 +5536,7 @@ hipError_t hipMemcpyParam2D(const hip_Memcpy2D * pCopy) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyParam2DAsync(const hip_Memcpy2D * pCopy, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyParam2DAsync(const hip_Memcpy2D * pCopy, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyParam2DAsync;
@@ -5554,7 +5554,7 @@ hipError_t hipMemcpyParam2DAsync(const hip_Memcpy2D * pCopy, hipStream_t stream)
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyPeer(void * dst, int dstDeviceId, const void * src, int srcDeviceId, size_t sizeBytes) {
+extern "C" hipError_t hipMemcpyPeer(void * dst, int dstDeviceId, const void * src, int srcDeviceId, size_t sizeBytes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyPeer;
@@ -5575,7 +5575,7 @@ hipError_t hipMemcpyPeer(void * dst, int dstDeviceId, const void * src, int srcD
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyPeerAsync(void * dst, int dstDeviceId, const void * src, int srcDevice, size_t sizeBytes, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyPeerAsync(void * dst, int dstDeviceId, const void * src, int srcDevice, size_t sizeBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyPeerAsync;
@@ -5597,7 +5597,7 @@ hipError_t hipMemcpyPeerAsync(void * dst, int dstDeviceId, const void * src, int
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyToArray(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t count, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpyToArray(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t count, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyToArray;
@@ -5619,7 +5619,7 @@ hipError_t hipMemcpyToArray(hipArray * dst, size_t wOffset, size_t hOffset, cons
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyToSymbol(const void * symbol, const void * src, size_t sizeBytes, size_t offset, hipMemcpyKind kind) {
+extern "C" hipError_t hipMemcpyToSymbol(const void * symbol, const void * src, size_t sizeBytes, size_t offset, hipMemcpyKind kind) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyToSymbol;
@@ -5639,7 +5639,7 @@ hipError_t hipMemcpyToSymbol(const void * symbol, const void * src, size_t sizeB
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyToSymbolAsync(const void * symbol, const void * src, size_t sizeBytes, size_t offset, hipMemcpyKind kind, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyToSymbolAsync(const void * symbol, const void * src, size_t sizeBytes, size_t offset, hipMemcpyKind kind, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyToSymbolAsync;
@@ -5660,7 +5660,7 @@ hipError_t hipMemcpyToSymbolAsync(const void * symbol, const void * src, size_t 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemcpyWithStream(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind, hipStream_t stream) {
+extern "C" hipError_t hipMemcpyWithStream(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyWithStream;
@@ -5681,7 +5681,7 @@ hipError_t hipMemcpyWithStream(void * dst, const void * src, size_t sizeBytes, h
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemset(void * dst, int value, size_t sizeBytes) {
+extern "C" hipError_t hipMemset(void * dst, int value, size_t sizeBytes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset;
@@ -5701,7 +5701,7 @@ hipError_t hipMemset(void * dst, int value, size_t sizeBytes) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemset2D(void * dst, size_t pitch, int value, size_t width, size_t height) {
+extern "C" hipError_t hipMemset2D(void * dst, size_t pitch, int value, size_t width, size_t height) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset2D;
@@ -5723,7 +5723,7 @@ hipError_t hipMemset2D(void * dst, size_t pitch, int value, size_t width, size_t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemset2DAsync(void * dst, size_t pitch, int value, size_t width, size_t height, hipStream_t stream) {
+extern "C" hipError_t hipMemset2DAsync(void * dst, size_t pitch, int value, size_t width, size_t height, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset2DAsync;
@@ -5746,7 +5746,7 @@ hipError_t hipMemset2DAsync(void * dst, size_t pitch, int value, size_t width, s
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemset3D(hipPitchedPtr pitchedDevPtr, int value, hipExtent extent) {
+extern "C" hipError_t hipMemset3D(hipPitchedPtr pitchedDevPtr, int value, hipExtent extent) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset3D;
@@ -5766,7 +5766,7 @@ hipError_t hipMemset3D(hipPitchedPtr pitchedDevPtr, int value, hipExtent extent)
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemset3DAsync(hipPitchedPtr pitchedDevPtr, int value, hipExtent extent, hipStream_t stream) {
+extern "C" hipError_t hipMemset3DAsync(hipPitchedPtr pitchedDevPtr, int value, hipExtent extent, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset3DAsync;
@@ -5787,7 +5787,7 @@ hipError_t hipMemset3DAsync(hipPitchedPtr pitchedDevPtr, int value, hipExtent ex
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemsetAsync(void * dst, int value, size_t sizeBytes, hipStream_t stream) {
+extern "C" hipError_t hipMemsetAsync(void * dst, int value, size_t sizeBytes, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetAsync;
@@ -5808,7 +5808,7 @@ hipError_t hipMemsetAsync(void * dst, int value, size_t sizeBytes, hipStream_t s
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemsetD16(hipDeviceptr_t dest, unsigned short value, size_t count) {
+extern "C" hipError_t hipMemsetD16(hipDeviceptr_t dest, unsigned short value, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD16;
@@ -5828,7 +5828,7 @@ hipError_t hipMemsetD16(hipDeviceptr_t dest, unsigned short value, size_t count)
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemsetD16Async(hipDeviceptr_t dest, unsigned short value, size_t count, hipStream_t stream) {
+extern "C" hipError_t hipMemsetD16Async(hipDeviceptr_t dest, unsigned short value, size_t count, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD16Async;
@@ -5849,7 +5849,7 @@ hipError_t hipMemsetD16Async(hipDeviceptr_t dest, unsigned short value, size_t c
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemsetD32(hipDeviceptr_t dest, int value, size_t count) {
+extern "C" hipError_t hipMemsetD32(hipDeviceptr_t dest, int value, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD32;
@@ -5869,7 +5869,7 @@ hipError_t hipMemsetD32(hipDeviceptr_t dest, int value, size_t count) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemsetD32Async(hipDeviceptr_t dst, int value, size_t count, hipStream_t stream) {
+extern "C" hipError_t hipMemsetD32Async(hipDeviceptr_t dst, int value, size_t count, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD32Async;
@@ -5890,7 +5890,7 @@ hipError_t hipMemsetD32Async(hipDeviceptr_t dst, int value, size_t count, hipStr
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemsetD8(hipDeviceptr_t dest, unsigned char value, size_t count) {
+extern "C" hipError_t hipMemsetD8(hipDeviceptr_t dest, unsigned char value, size_t count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD8;
@@ -5910,7 +5910,7 @@ hipError_t hipMemsetD8(hipDeviceptr_t dest, unsigned char value, size_t count) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMemsetD8Async(hipDeviceptr_t dest, unsigned char value, size_t count, hipStream_t stream) {
+extern "C" hipError_t hipMemsetD8Async(hipDeviceptr_t dest, unsigned char value, size_t count, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD8Async;
@@ -5931,7 +5931,7 @@ hipError_t hipMemsetD8Async(hipDeviceptr_t dest, unsigned char value, size_t cou
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMipmappedArrayCreate(hipMipmappedArray_t * pHandle, HIP_ARRAY3D_DESCRIPTOR * pMipmappedArrayDesc, unsigned int numMipmapLevels) {
+extern "C" hipError_t hipMipmappedArrayCreate(hipMipmappedArray_t * pHandle, HIP_ARRAY3D_DESCRIPTOR * pMipmappedArrayDesc, unsigned int numMipmapLevels) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMipmappedArrayCreate;
@@ -5951,7 +5951,7 @@ hipError_t hipMipmappedArrayCreate(hipMipmappedArray_t * pHandle, HIP_ARRAY3D_DE
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMipmappedArrayDestroy(hipMipmappedArray_t hMipmappedArray) {
+extern "C" hipError_t hipMipmappedArrayDestroy(hipMipmappedArray_t hMipmappedArray) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMipmappedArrayDestroy;
@@ -5969,7 +5969,7 @@ hipError_t hipMipmappedArrayDestroy(hipMipmappedArray_t hMipmappedArray) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipMipmappedArrayGetLevel(hipArray_t * pLevelArray, hipMipmappedArray_t hMipMappedArray, unsigned int level) {
+extern "C" hipError_t hipMipmappedArrayGetLevel(hipArray_t * pLevelArray, hipMipmappedArray_t hMipMappedArray, unsigned int level) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMipmappedArrayGetLevel;
@@ -5989,7 +5989,7 @@ hipError_t hipMipmappedArrayGetLevel(hipArray_t * pLevelArray, hipMipmappedArray
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleGetFunction(hipFunction_t * function, hipModule_t module, const char * kname) {
+extern "C" hipError_t hipModuleGetFunction(hipFunction_t * function, hipModule_t module, const char * kname) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleGetFunction;
@@ -6008,7 +6008,7 @@ hipError_t hipModuleGetFunction(hipFunction_t * function, hipModule_t module, co
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleGetGlobal(hipDeviceptr_t * dptr, size_t * bytes, hipModule_t hmod, const char * name) {
+extern "C" hipError_t hipModuleGetGlobal(hipDeviceptr_t * dptr, size_t * bytes, hipModule_t hmod, const char * name) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleGetGlobal;
@@ -6028,7 +6028,7 @@ hipError_t hipModuleGetGlobal(hipDeviceptr_t * dptr, size_t * bytes, hipModule_t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleGetTexRef(textureReference * * texRef, hipModule_t hmod, const char * name) {
+extern "C" hipError_t hipModuleGetTexRef(textureReference * * texRef, hipModule_t hmod, const char * name) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleGetTexRef;
@@ -6047,7 +6047,7 @@ hipError_t hipModuleGetTexRef(textureReference * * texRef, hipModule_t hmod, con
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleLaunchKernel(hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream, void * * kernelParams, void * * extra) {
+extern "C" hipError_t hipModuleLaunchKernel(hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream, void * * kernelParams, void * * extra) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLaunchKernel;
@@ -6075,7 +6075,7 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f, unsigned int gridDimX, unsigne
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleLaunchKernelExt(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
+extern "C" hipError_t hipModuleLaunchKernelExt(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLaunchKernelExt;
@@ -6105,7 +6105,7 @@ hipError_t hipModuleLaunchKernelExt(hipFunction_t f, uint32_t globalWorkSizeX, u
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleLoad(hipModule_t * module, const char * fname) {
+extern "C" hipError_t hipModuleLoad(hipModule_t * module, const char * fname) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLoad;
@@ -6123,7 +6123,7 @@ hipError_t hipModuleLoad(hipModule_t * module, const char * fname) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleLoadData(hipModule_t * module, const void * image) {
+extern "C" hipError_t hipModuleLoadData(hipModule_t * module, const void * image) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLoadData;
@@ -6141,7 +6141,7 @@ hipError_t hipModuleLoadData(hipModule_t * module, const void * image) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleLoadDataEx(hipModule_t * module, const void * image, unsigned int numOptions, hipJitOption * options, void * * optionValues) {
+extern "C" hipError_t hipModuleLoadDataEx(hipModule_t * module, const void * image, unsigned int numOptions, hipJitOption * options, void * * optionValues) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLoadDataEx;
@@ -6162,7 +6162,7 @@ hipError_t hipModuleLoadDataEx(hipModule_t * module, const void * image, unsigne
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk) {
+extern "C" hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxActiveBlocksPerMultiprocessor;
@@ -6183,7 +6183,7 @@ hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, h
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
+extern "C" hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags;
@@ -6205,7 +6205,7 @@ hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * num
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
+extern "C" hipError_t hipModuleOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxPotentialBlockSize;
@@ -6227,7 +6227,7 @@ hipError_t hipModuleOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleOccupancyMaxPotentialBlockSizeWithFlags(int * gridSize, int * blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit, unsigned int flags) {
+extern "C" hipError_t hipModuleOccupancyMaxPotentialBlockSizeWithFlags(int * gridSize, int * blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxPotentialBlockSizeWithFlags;
@@ -6250,7 +6250,7 @@ hipError_t hipModuleOccupancyMaxPotentialBlockSizeWithFlags(int * gridSize, int 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipModuleUnload(hipModule_t module) {
+extern "C" hipError_t hipModuleUnload(hipModule_t module) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleUnload;
@@ -6268,7 +6268,7 @@ hipError_t hipModuleUnload(hipModule_t module) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, const void * f, int blockSize, size_t dynSharedMemPerBlk) {
+extern "C" hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, const void * f, int blockSize, size_t dynSharedMemPerBlk) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipOccupancyMaxActiveBlocksPerMultiprocessor;
@@ -6288,7 +6288,7 @@ hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, const v
 }
 
 __attribute__((visibility("default")))
-hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * numBlocks, const void * f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
+extern "C" hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * numBlocks, const void * f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags;
@@ -6309,7 +6309,7 @@ hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * numBlocks
 }
 
 __attribute__((visibility("default")))
-hipError_t hipOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSize, const void * f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
+extern "C" hipError_t hipOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSize, const void * f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipOccupancyMaxPotentialBlockSize;
@@ -6330,7 +6330,7 @@ hipError_t hipOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSize, co
 }
 
 __attribute__((visibility("default")))
-hipError_t hipPeekAtLastError() {
+extern "C" hipError_t hipPeekAtLastError() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipPeekAtLastError;
@@ -6345,7 +6345,7 @@ hipError_t hipPeekAtLastError() {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipPointerGetAttribute(void * data, hipPointer_attribute attribute, hipDeviceptr_t ptr) {
+extern "C" hipError_t hipPointerGetAttribute(void * data, hipPointer_attribute attribute, hipDeviceptr_t ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipPointerGetAttribute;
@@ -6365,7 +6365,7 @@ hipError_t hipPointerGetAttribute(void * data, hipPointer_attribute attribute, h
 }
 
 __attribute__((visibility("default")))
-hipError_t hipPointerGetAttributes(hipPointerAttribute_t * attributes, const void * ptr) {
+extern "C" hipError_t hipPointerGetAttributes(hipPointerAttribute_t * attributes, const void * ptr) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipPointerGetAttributes;
@@ -6383,7 +6383,7 @@ hipError_t hipPointerGetAttributes(hipPointerAttribute_t * attributes, const voi
 }
 
 __attribute__((visibility("default")))
-hipError_t hipProfilerStart() {
+extern "C" hipError_t hipProfilerStart() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipProfilerStart;
@@ -6398,7 +6398,7 @@ hipError_t hipProfilerStart() {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipProfilerStop() {
+extern "C" hipError_t hipProfilerStop() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipProfilerStop;
@@ -6413,7 +6413,7 @@ hipError_t hipProfilerStop() {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipRuntimeGetVersion(int * runtimeVersion) {
+extern "C" hipError_t hipRuntimeGetVersion(int * runtimeVersion) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipRuntimeGetVersion;
@@ -6431,7 +6431,7 @@ hipError_t hipRuntimeGetVersion(int * runtimeVersion) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipSetDevice(int deviceId) {
+extern "C" hipError_t hipSetDevice(int deviceId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetDevice;
@@ -6449,7 +6449,7 @@ hipError_t hipSetDevice(int deviceId) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipSetDeviceFlags(unsigned flags) {
+extern "C" hipError_t hipSetDeviceFlags(unsigned flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetDeviceFlags;
@@ -6467,7 +6467,7 @@ hipError_t hipSetDeviceFlags(unsigned flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipSetValidDevices(int * device_arr, int len) {
+extern "C" hipError_t hipSetValidDevices(int * device_arr, int len) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetValidDevices;
@@ -6486,7 +6486,7 @@ hipError_t hipSetValidDevices(int * device_arr, int len) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipSetupArgument(const void * arg, size_t size, size_t offset) {
+extern "C" hipError_t hipSetupArgument(const void * arg, size_t size, size_t offset) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetupArgument;
@@ -6505,7 +6505,7 @@ hipError_t hipSetupArgument(const void * arg, size_t size, size_t offset) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipSignalExternalSemaphoresAsync(const hipExternalSemaphore_t * extSemArray, const hipExternalSemaphoreSignalParams * paramsArray, unsigned int numExtSems, hipStream_t stream) {
+extern "C" hipError_t hipSignalExternalSemaphoresAsync(const hipExternalSemaphore_t * extSemArray, const hipExternalSemaphoreSignalParams * paramsArray, unsigned int numExtSems, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSignalExternalSemaphoresAsync;
@@ -6524,7 +6524,7 @@ hipError_t hipSignalExternalSemaphoresAsync(const hipExternalSemaphore_t * extSe
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamAddCallback(hipStream_t stream, hipStreamCallback_t callback, void * userData, unsigned int flags) {
+extern "C" hipError_t hipStreamAddCallback(hipStream_t stream, hipStreamCallback_t callback, void * userData, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamAddCallback;
@@ -6545,7 +6545,7 @@ hipError_t hipStreamAddCallback(hipStream_t stream, hipStreamCallback_t callback
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamAttachMemAsync(hipStream_t stream, void * dev_ptr, size_t length, unsigned int flags) {
+extern "C" hipError_t hipStreamAttachMemAsync(hipStream_t stream, void * dev_ptr, size_t length, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamAttachMemAsync;
@@ -6566,7 +6566,7 @@ hipError_t hipStreamAttachMemAsync(hipStream_t stream, void * dev_ptr, size_t le
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamBeginCapture(hipStream_t stream, hipStreamCaptureMode mode) {
+extern "C" hipError_t hipStreamBeginCapture(hipStream_t stream, hipStreamCaptureMode mode) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamBeginCapture;
@@ -6585,7 +6585,7 @@ hipError_t hipStreamBeginCapture(hipStream_t stream, hipStreamCaptureMode mode) 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamCreate(hipStream_t * stream) {
+extern "C" hipError_t hipStreamCreate(hipStream_t * stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamCreate;
@@ -6603,7 +6603,7 @@ hipError_t hipStreamCreate(hipStream_t * stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamCreateWithFlags(hipStream_t * stream, unsigned int flags) {
+extern "C" hipError_t hipStreamCreateWithFlags(hipStream_t * stream, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamCreateWithFlags;
@@ -6622,7 +6622,7 @@ hipError_t hipStreamCreateWithFlags(hipStream_t * stream, unsigned int flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamCreateWithPriority(hipStream_t * stream, unsigned int flags, int priority) {
+extern "C" hipError_t hipStreamCreateWithPriority(hipStream_t * stream, unsigned int flags, int priority) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamCreateWithPriority;
@@ -6642,7 +6642,7 @@ hipError_t hipStreamCreateWithPriority(hipStream_t * stream, unsigned int flags,
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamDestroy(hipStream_t stream) {
+extern "C" hipError_t hipStreamDestroy(hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamDestroy;
@@ -6660,7 +6660,7 @@ hipError_t hipStreamDestroy(hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t * pGraph) {
+extern "C" hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t * pGraph) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamEndCapture;
@@ -6679,7 +6679,7 @@ hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t * pGraph) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamGetCaptureInfo(hipStream_t stream, hipStreamCaptureStatus * pCaptureStatus, unsigned long long * pId) {
+extern "C" hipError_t hipStreamGetCaptureInfo(hipStream_t stream, hipStreamCaptureStatus * pCaptureStatus, unsigned long long * pId) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetCaptureInfo;
@@ -6699,7 +6699,7 @@ hipError_t hipStreamGetCaptureInfo(hipStream_t stream, hipStreamCaptureStatus * 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamGetCaptureInfo_v2(hipStream_t stream, hipStreamCaptureStatus * captureStatus_out, unsigned long long * id_out, hipGraph_t * graph_out, const hipGraphNode_t * * dependencies_out, size_t * numDependencies_out) {
+extern "C" hipError_t hipStreamGetCaptureInfo_v2(hipStream_t stream, hipStreamCaptureStatus * captureStatus_out, unsigned long long * id_out, hipGraph_t * graph_out, const hipGraphNode_t * * dependencies_out, size_t * numDependencies_out) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetCaptureInfo_v2;
@@ -6721,7 +6721,7 @@ hipError_t hipStreamGetCaptureInfo_v2(hipStream_t stream, hipStreamCaptureStatus
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamGetFlags(hipStream_t stream, unsigned int * flags) {
+extern "C" hipError_t hipStreamGetFlags(hipStream_t stream, unsigned int * flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetFlags;
@@ -6740,7 +6740,7 @@ hipError_t hipStreamGetFlags(hipStream_t stream, unsigned int * flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamGetPriority(hipStream_t stream, int * priority) {
+extern "C" hipError_t hipStreamGetPriority(hipStream_t stream, int * priority) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetPriority;
@@ -6759,7 +6759,7 @@ hipError_t hipStreamGetPriority(hipStream_t stream, int * priority) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamIsCapturing(hipStream_t stream, hipStreamCaptureStatus * pCaptureStatus) {
+extern "C" hipError_t hipStreamIsCapturing(hipStream_t stream, hipStreamCaptureStatus * pCaptureStatus) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamIsCapturing;
@@ -6778,7 +6778,7 @@ hipError_t hipStreamIsCapturing(hipStream_t stream, hipStreamCaptureStatus * pCa
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamQuery(hipStream_t stream) {
+extern "C" hipError_t hipStreamQuery(hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamQuery;
@@ -6796,7 +6796,7 @@ hipError_t hipStreamQuery(hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamSynchronize(hipStream_t stream) {
+extern "C" hipError_t hipStreamSynchronize(hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamSynchronize;
@@ -6814,7 +6814,7 @@ hipError_t hipStreamSynchronize(hipStream_t stream) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamUpdateCaptureDependencies(hipStream_t stream, hipGraphNode_t * dependencies, size_t numDependencies, unsigned int flags) {
+extern "C" hipError_t hipStreamUpdateCaptureDependencies(hipStream_t stream, hipGraphNode_t * dependencies, size_t numDependencies, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamUpdateCaptureDependencies;
@@ -6835,7 +6835,7 @@ hipError_t hipStreamUpdateCaptureDependencies(hipStream_t stream, hipGraphNode_t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamWaitEvent(hipStream_t stream, hipEvent_t event, unsigned int flags) {
+extern "C" hipError_t hipStreamWaitEvent(hipStream_t stream, hipEvent_t event, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWaitEvent;
@@ -6855,7 +6855,7 @@ hipError_t hipStreamWaitEvent(hipStream_t stream, hipEvent_t event, unsigned int
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamWaitValue32(hipStream_t stream, void * ptr, uint32_t value, unsigned int flags, uint32_t mask) {
+extern "C" hipError_t hipStreamWaitValue32(hipStream_t stream, void * ptr, uint32_t value, unsigned int flags, uint32_t mask) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWaitValue32;
@@ -6877,7 +6877,7 @@ hipError_t hipStreamWaitValue32(hipStream_t stream, void * ptr, uint32_t value, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamWaitValue64(hipStream_t stream, void * ptr, uint64_t value, unsigned int flags, uint64_t mask) {
+extern "C" hipError_t hipStreamWaitValue64(hipStream_t stream, void * ptr, uint64_t value, unsigned int flags, uint64_t mask) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWaitValue64;
@@ -6899,7 +6899,7 @@ hipError_t hipStreamWaitValue64(hipStream_t stream, void * ptr, uint64_t value, 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamWriteValue32(hipStream_t stream, void * ptr, uint32_t value, unsigned int flags) {
+extern "C" hipError_t hipStreamWriteValue32(hipStream_t stream, void * ptr, uint32_t value, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWriteValue32;
@@ -6920,7 +6920,7 @@ hipError_t hipStreamWriteValue32(hipStream_t stream, void * ptr, uint32_t value,
 }
 
 __attribute__((visibility("default")))
-hipError_t hipStreamWriteValue64(hipStream_t stream, void * ptr, uint64_t value, unsigned int flags) {
+extern "C" hipError_t hipStreamWriteValue64(hipStream_t stream, void * ptr, uint64_t value, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWriteValue64;
@@ -6941,7 +6941,7 @@ hipError_t hipStreamWriteValue64(hipStream_t stream, void * ptr, uint64_t value,
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexObjectCreate(hipTextureObject_t * pTexObject, const HIP_RESOURCE_DESC * pResDesc, const HIP_TEXTURE_DESC * pTexDesc, const HIP_RESOURCE_VIEW_DESC * pResViewDesc) {
+extern "C" hipError_t hipTexObjectCreate(hipTextureObject_t * pTexObject, const HIP_RESOURCE_DESC * pResDesc, const HIP_TEXTURE_DESC * pTexDesc, const HIP_RESOURCE_VIEW_DESC * pResViewDesc) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectCreate;
@@ -6959,7 +6959,7 @@ hipError_t hipTexObjectCreate(hipTextureObject_t * pTexObject, const HIP_RESOURC
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexObjectDestroy(hipTextureObject_t texObject) {
+extern "C" hipError_t hipTexObjectDestroy(hipTextureObject_t texObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectDestroy;
@@ -6977,7 +6977,7 @@ hipError_t hipTexObjectDestroy(hipTextureObject_t texObject) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexObjectGetResourceDesc(HIP_RESOURCE_DESC * pResDesc, hipTextureObject_t texObject) {
+extern "C" hipError_t hipTexObjectGetResourceDesc(HIP_RESOURCE_DESC * pResDesc, hipTextureObject_t texObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectGetResourceDesc;
@@ -6996,7 +6996,7 @@ hipError_t hipTexObjectGetResourceDesc(HIP_RESOURCE_DESC * pResDesc, hipTextureO
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexObjectGetResourceViewDesc(HIP_RESOURCE_VIEW_DESC * pResViewDesc, hipTextureObject_t texObject) {
+extern "C" hipError_t hipTexObjectGetResourceViewDesc(HIP_RESOURCE_VIEW_DESC * pResViewDesc, hipTextureObject_t texObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectGetResourceViewDesc;
@@ -7015,7 +7015,7 @@ hipError_t hipTexObjectGetResourceViewDesc(HIP_RESOURCE_VIEW_DESC * pResViewDesc
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexObjectGetTextureDesc(HIP_TEXTURE_DESC * pTexDesc, hipTextureObject_t texObject) {
+extern "C" hipError_t hipTexObjectGetTextureDesc(HIP_TEXTURE_DESC * pTexDesc, hipTextureObject_t texObject) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectGetTextureDesc;
@@ -7034,7 +7034,7 @@ hipError_t hipTexObjectGetTextureDesc(HIP_TEXTURE_DESC * pTexDesc, hipTextureObj
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetAddress(hipDeviceptr_t * dev_ptr, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetAddress(hipDeviceptr_t * dev_ptr, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetAddress;
@@ -7052,7 +7052,7 @@ hipError_t hipTexRefGetAddress(hipDeviceptr_t * dev_ptr, const textureReference 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetAddressMode(enum hipTextureAddressMode * pam, const textureReference * texRef, int dim) {
+extern "C" hipError_t hipTexRefGetAddressMode(enum hipTextureAddressMode * pam, const textureReference * texRef, int dim) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetAddressMode;
@@ -7071,7 +7071,7 @@ hipError_t hipTexRefGetAddressMode(enum hipTextureAddressMode * pam, const textu
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetArray(hipArray_t * pArray, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetArray(hipArray_t * pArray, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetArray;
@@ -7089,7 +7089,7 @@ hipError_t hipTexRefGetArray(hipArray_t * pArray, const textureReference * texRe
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetBorderColor(float * pBorderColor, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetBorderColor(float * pBorderColor, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetBorderColor;
@@ -7107,7 +7107,7 @@ hipError_t hipTexRefGetBorderColor(float * pBorderColor, const textureReference 
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetFilterMode(enum hipTextureFilterMode * pfm, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetFilterMode(enum hipTextureFilterMode * pfm, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetFilterMode;
@@ -7125,7 +7125,7 @@ hipError_t hipTexRefGetFilterMode(enum hipTextureFilterMode * pfm, const texture
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetFlags(unsigned int * pFlags, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetFlags(unsigned int * pFlags, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetFlags;
@@ -7143,7 +7143,7 @@ hipError_t hipTexRefGetFlags(unsigned int * pFlags, const textureReference * tex
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetFormat(hipArray_Format * pFormat, int * pNumChannels, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetFormat(hipArray_Format * pFormat, int * pNumChannels, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetFormat;
@@ -7162,7 +7162,7 @@ hipError_t hipTexRefGetFormat(hipArray_Format * pFormat, int * pNumChannels, con
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetMaxAnisotropy(int * pmaxAnsio, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetMaxAnisotropy(int * pmaxAnsio, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMaxAnisotropy;
@@ -7180,7 +7180,7 @@ hipError_t hipTexRefGetMaxAnisotropy(int * pmaxAnsio, const textureReference * t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetMipMappedArray(hipMipmappedArray_t * pArray, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetMipMappedArray(hipMipmappedArray_t * pArray, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipMappedArray;
@@ -7198,7 +7198,7 @@ hipError_t hipTexRefGetMipMappedArray(hipMipmappedArray_t * pArray, const textur
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetMipmapFilterMode(enum hipTextureFilterMode * pfm, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetMipmapFilterMode(enum hipTextureFilterMode * pfm, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmapFilterMode;
@@ -7216,7 +7216,7 @@ hipError_t hipTexRefGetMipmapFilterMode(enum hipTextureFilterMode * pfm, const t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetMipmapLevelBias(float * pbias, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetMipmapLevelBias(float * pbias, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmapLevelBias;
@@ -7234,7 +7234,7 @@ hipError_t hipTexRefGetMipmapLevelBias(float * pbias, const textureReference * t
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetMipmapLevelClamp(float * pminMipmapLevelClamp, float * pmaxMipmapLevelClamp, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetMipmapLevelClamp(float * pminMipmapLevelClamp, float * pmaxMipmapLevelClamp, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmapLevelClamp;
@@ -7253,7 +7253,7 @@ hipError_t hipTexRefGetMipmapLevelClamp(float * pminMipmapLevelClamp, float * pm
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefGetMipmappedArray(hipMipmappedArray_t * pArray, const textureReference * texRef) {
+extern "C" hipError_t hipTexRefGetMipmappedArray(hipMipmappedArray_t * pArray, const textureReference * texRef) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmappedArray;
@@ -7271,7 +7271,7 @@ hipError_t hipTexRefGetMipmappedArray(hipMipmappedArray_t * pArray, const textur
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetAddress(size_t * ByteOffset, textureReference * texRef, hipDeviceptr_t dptr, size_t bytes) {
+extern "C" hipError_t hipTexRefSetAddress(size_t * ByteOffset, textureReference * texRef, hipDeviceptr_t dptr, size_t bytes) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetAddress;
@@ -7292,7 +7292,7 @@ hipError_t hipTexRefSetAddress(size_t * ByteOffset, textureReference * texRef, h
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetAddress2D(textureReference * texRef, const HIP_ARRAY_DESCRIPTOR * desc, hipDeviceptr_t dptr, size_t Pitch) {
+extern "C" hipError_t hipTexRefSetAddress2D(textureReference * texRef, const HIP_ARRAY_DESCRIPTOR * desc, hipDeviceptr_t dptr, size_t Pitch) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetAddress2D;
@@ -7312,7 +7312,7 @@ hipError_t hipTexRefSetAddress2D(textureReference * texRef, const HIP_ARRAY_DESC
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetAddressMode(textureReference * texRef, int dim, enum hipTextureAddressMode am) {
+extern "C" hipError_t hipTexRefSetAddressMode(textureReference * texRef, int dim, enum hipTextureAddressMode am) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetAddressMode;
@@ -7332,7 +7332,7 @@ hipError_t hipTexRefSetAddressMode(textureReference * texRef, int dim, enum hipT
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetArray(textureReference * tex, hipArray_const_t array, unsigned int flags) {
+extern "C" hipError_t hipTexRefSetArray(textureReference * tex, hipArray_const_t array, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetArray;
@@ -7351,7 +7351,7 @@ hipError_t hipTexRefSetArray(textureReference * tex, hipArray_const_t array, uns
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetBorderColor(textureReference * texRef, float * pBorderColor) {
+extern "C" hipError_t hipTexRefSetBorderColor(textureReference * texRef, float * pBorderColor) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetBorderColor;
@@ -7370,7 +7370,7 @@ hipError_t hipTexRefSetBorderColor(textureReference * texRef, float * pBorderCol
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetFilterMode(textureReference * texRef, enum hipTextureFilterMode fm) {
+extern "C" hipError_t hipTexRefSetFilterMode(textureReference * texRef, enum hipTextureFilterMode fm) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetFilterMode;
@@ -7389,7 +7389,7 @@ hipError_t hipTexRefSetFilterMode(textureReference * texRef, enum hipTextureFilt
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetFlags(textureReference * texRef, unsigned int Flags) {
+extern "C" hipError_t hipTexRefSetFlags(textureReference * texRef, unsigned int Flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetFlags;
@@ -7408,7 +7408,7 @@ hipError_t hipTexRefSetFlags(textureReference * texRef, unsigned int Flags) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetFormat(textureReference * texRef, hipArray_Format fmt, int NumPackedComponents) {
+extern "C" hipError_t hipTexRefSetFormat(textureReference * texRef, hipArray_Format fmt, int NumPackedComponents) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetFormat;
@@ -7428,7 +7428,7 @@ hipError_t hipTexRefSetFormat(textureReference * texRef, hipArray_Format fmt, in
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetMaxAnisotropy(textureReference * texRef, unsigned int maxAniso) {
+extern "C" hipError_t hipTexRefSetMaxAnisotropy(textureReference * texRef, unsigned int maxAniso) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMaxAnisotropy;
@@ -7447,7 +7447,7 @@ hipError_t hipTexRefSetMaxAnisotropy(textureReference * texRef, unsigned int max
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetMipmapFilterMode(textureReference * texRef, enum hipTextureFilterMode fm) {
+extern "C" hipError_t hipTexRefSetMipmapFilterMode(textureReference * texRef, enum hipTextureFilterMode fm) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmapFilterMode;
@@ -7466,7 +7466,7 @@ hipError_t hipTexRefSetMipmapFilterMode(textureReference * texRef, enum hipTextu
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetMipmapLevelBias(textureReference * texRef, float bias) {
+extern "C" hipError_t hipTexRefSetMipmapLevelBias(textureReference * texRef, float bias) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmapLevelBias;
@@ -7485,7 +7485,7 @@ hipError_t hipTexRefSetMipmapLevelBias(textureReference * texRef, float bias) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetMipmapLevelClamp(textureReference * texRef, float minMipMapLevelClamp, float maxMipMapLevelClamp) {
+extern "C" hipError_t hipTexRefSetMipmapLevelClamp(textureReference * texRef, float minMipMapLevelClamp, float maxMipMapLevelClamp) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmapLevelClamp;
@@ -7505,7 +7505,7 @@ hipError_t hipTexRefSetMipmapLevelClamp(textureReference * texRef, float minMipM
 }
 
 __attribute__((visibility("default")))
-hipError_t hipTexRefSetMipmappedArray(textureReference * texRef, struct hipMipmappedArray * mipmappedArray, unsigned int Flags) {
+extern "C" hipError_t hipTexRefSetMipmappedArray(textureReference * texRef, struct hipMipmappedArray * mipmappedArray, unsigned int Flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmappedArray;
@@ -7525,7 +7525,7 @@ hipError_t hipTexRefSetMipmappedArray(textureReference * texRef, struct hipMipma
 }
 
 __attribute__((visibility("default")))
-hipError_t hipThreadExchangeStreamCaptureMode(hipStreamCaptureMode * mode) {
+extern "C" hipError_t hipThreadExchangeStreamCaptureMode(hipStreamCaptureMode * mode) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipThreadExchangeStreamCaptureMode;
@@ -7543,7 +7543,7 @@ hipError_t hipThreadExchangeStreamCaptureMode(hipStreamCaptureMode * mode) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipUnbindTexture(const textureReference * tex) {
+extern "C" hipError_t hipUnbindTexture(const textureReference * tex) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUnbindTexture;
@@ -7560,7 +7560,7 @@ hipError_t hipUnbindTexture(const textureReference * tex) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipUserObjectCreate(hipUserObject_t * object_out, void * ptr, hipHostFn_t destroy, unsigned int initialRefcount, unsigned int flags) {
+extern "C" hipError_t hipUserObjectCreate(hipUserObject_t * object_out, void * ptr, hipHostFn_t destroy, unsigned int initialRefcount, unsigned int flags) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUserObjectCreate;
@@ -7582,7 +7582,7 @@ hipError_t hipUserObjectCreate(hipUserObject_t * object_out, void * ptr, hipHost
 }
 
 __attribute__((visibility("default")))
-hipError_t hipUserObjectRelease(hipUserObject_t object, unsigned int count) {
+extern "C" hipError_t hipUserObjectRelease(hipUserObject_t object, unsigned int count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUserObjectRelease;
@@ -7601,7 +7601,7 @@ hipError_t hipUserObjectRelease(hipUserObject_t object, unsigned int count) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipUserObjectRetain(hipUserObject_t object, unsigned int count) {
+extern "C" hipError_t hipUserObjectRetain(hipUserObject_t object, unsigned int count) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUserObjectRetain;
@@ -7620,7 +7620,7 @@ hipError_t hipUserObjectRetain(hipUserObject_t object, unsigned int count) {
 }
 
 __attribute__((visibility("default")))
-hipError_t hipWaitExternalSemaphoresAsync(const hipExternalSemaphore_t * extSemArray, const hipExternalSemaphoreWaitParams * paramsArray, unsigned int numExtSems, hipStream_t stream) {
+extern "C" hipError_t hipWaitExternalSemaphoresAsync(const hipExternalSemaphore_t * extSemArray, const hipExternalSemaphoreWaitParams * paramsArray, unsigned int numExtSems, hipStream_t stream) {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipWaitExternalSemaphoresAsync;
@@ -7639,7 +7639,7 @@ hipError_t hipWaitExternalSemaphoresAsync(const hipExternalSemaphore_t * extSemA
 }
 
 __attribute__((visibility("default")))
-hipError_t hip_init() {
+extern "C" hipError_t hip_init() {
 	auto& hipInterceptor = SibirHipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hip_init;

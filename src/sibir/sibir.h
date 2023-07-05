@@ -212,7 +212,7 @@ void sibir_at_term();
 //// * For instance if cbid = cuMemcpyDtoH_v2 then params must be casted to
 //// * (cuMemcpyDtoH_v2_params *)
 //// * */
-void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_id_t api_id);
+void sibir_at_hip_event(void* args, sibir_api_phase_t phase, int hip_api_id);
 
 
 void sibir_at_hsa_event(hsa_api_args_t* cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id);
@@ -239,6 +239,20 @@ struct kernel_descriptor_t {
 
 
 std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kd(amd_dbgapi_global_address_t address);
+
+
+#define SIBIR_EXPORT_FUNC(f)               \
+    __global__ void __sibir_wrap__##f() {  \
+        void (*pfun)() = (void (*)())f;    \
+        if (pfun == (void (*)())1) pfun(); \
+    }
+
+//static inline const char* sibir_hip_api_name(uint32_t hip_api_id) {
+//    if (hip_api_id < 1000)
+//        return hip_api_name(hip_api_id);
+//    else
+//        return
+//}
 
 //void print_instructions(const std::vector<Inst>& isa);
 ////

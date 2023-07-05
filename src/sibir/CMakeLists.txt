@@ -11,13 +11,14 @@ list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 find_package(hip)
 # Create the library
 add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h hip_intercept.h hip_intercept.cpp
-        sibir_types.h hsa_intercept.h hsa_intercept.cpp)
+        sibir_types.h hsa_intercept.h hsa_intercept.cpp code_object_manager.h code_object_manager.cpp hip_arg_types.h
+        hip_private_api.h)
 
 # Some HSA include files won't work unless this is defined
 target_compile_definitions(sibir PUBLIC AMD_INTERNAL_BUILD)
 set_property(TARGET sibir PROPERTY COMPILE_FLAGS "-fPIC")
 
 # Link with HIP and ROCTracer
-target_link_libraries(sibir hip::host hip::device roctracer64 stdc++fs rocm-dbgapi)
+target_link_libraries(sibir hip::host hip::device roctracer64 stdc++fs rocm-dbgapi amd_comgr)
 
 target_include_directories(sibir PUBLIC .)
