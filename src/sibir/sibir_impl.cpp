@@ -38,26 +38,27 @@ static amd_dbgapi_callbacks_t amd_dbgapi_callbacks{
 
 
 void Sibir::hip_startup_callback(void* cb_data, sibir_api_phase_t phase, int api_id) {
+//    static std::vector<hip___hipRegisterFatBinary_api_args_t*>
+    static const void* lastSavedFatBinary{};
     if (phase == SIBIR_API_PHASE_EXIT) {
         if (api_id == HIP_PRIVATE_API_ID___hipRegisterFatBinary) {
             auto args = reinterpret_cast<hip___hipRegisterFatBinary_api_args_t*>(cb_data);
-            SibirCodeObjectManager::Instance().setLastFatBinary(args->data);
+            lastSavedFatBinary = args->data;
         }
         else if (api_id == HIP_PRIVATE_API_ID___hipRegisterFunction) {
-            fprintf(stdout, "register Function Binary intercept\n");
             auto args = reinterpret_cast<hip___hipRegisterFunction_api_args_t*>(cb_data);
-            fprintf(stdout, "args: hostFunction %X\n", args->hostFunction);
-            fprintf(stdout, "args: deviceFunction %s\n", args->deviceFunction);
-            fprintf(stdout, "args: deviceName %s\n", args->deviceName);
+            auto& coManager = SibirCodeObjectManager::Instance();
+
+            // If the function doesn't have __sibir_wrap__ in its name then it belongs to the instrumented application
+            // Give control to the user-defined callback
             if (std::string(args->deviceFunction).find("__sibir_wrap__") == std::string::npos)
                 SibirHipInterceptor::Instance().SetCallback(Sibir::hip_api_callback);
             else {
-                SibirCodeObjectManager::Instance().saveLastFatBinary();
-
+                coManager.registerFatBinary(lastSavedFatBinary);
+                coManager.registerFunction(lastSavedFatBinary, args->deviceFunction, args->hostFunction, args->deviceName);
             }
         }
         else if (api_id == HIP_PRIVATE_API_ID___hipRegisterManagedVar) {
-
         }
         else if (api_id == HIP_PRIVATE_API_ID___hipRegisterSurface) {
 
@@ -74,7 +75,6 @@ void Sibir::hip_startup_callback(void* cb_data, sibir_api_phase_t phase, int api
 
 void __attribute__((constructor)) Sibir::init() {
     std::cout << "Initializing Sibir...." << std::endl << std::flush;
-
     assert(amd_dbgapi_initialize(&amd_dbgapi_callbacks) == AMD_DBGAPI_STATUS_SUCCESS);
     assert(SibirHipInterceptor::Instance().IsEnabled());
     sibir_at_init();
@@ -92,6 +92,10 @@ const HsaApiTable* sibir_get_hsa_table() {
     return &SibirHsaInterceptor::Instance().getSavedHsaTables().root;
 }
 
+const hsa_ven_amd_loader_1_03_pfn_s* sibir_get_hsa_ven_amd_loader() {
+    return &SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+}
+
 void Sibir::hip_api_callback(void* cb_data, sibir_api_phase_t phase, int api_id) {
     sibir_at_hip_event(cb_data, phase, api_id);
 }
@@ -99,7 +103,13 @@ void Sibir::hip_api_callback(void* cb_data, sibir_api_phase_t phase, int api_id)
 void Sibir::hsa_api_callback(hsa_api_args_t* cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id) {
     sibir_at_hsa_event(cb_data, phase, api_id);
 }
-std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kd(amd_dbgapi_global_address_t address) {
+std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kernel_object(uint64_t kernel_object) {
+    const kernel_descriptor_t *kernelDescriptor = nullptr;
+    auto amdTable = SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    SIBIR_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernel_object),
+                                                                   reinterpret_cast<const void **>(&kernelDescriptor)));
+    auto kernelEntryPoint =
+        reinterpret_cast<amd_dbgapi_global_address_t>(kernel_object) + kernelDescriptor->kernel_code_entry_byte_offset;
 
     // For now assume gfx908
     // TODO: add the architecture code from the dbgapi headers
@@ -116,7 +126,7 @@ std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kd
     // The decoded instruction will be malloced by ::amd_dbgapi_disassemble_instruction
     // It has to be copied and freed
     char*instChar{};
-    auto curr_address = address;
+    auto curr_address = kernelEntryPoint;
     amd_dbgapi_size_t instrSize;
 
     std::vector<std::pair<std::string, std::vector<std::byte>>> instList;
@@ -159,6 +169,12 @@ std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kd
 
 void* sibir_get_hip_function(const char* funcName) {
     return SibirHipInterceptor::Instance().GetHipFunction(funcName);
+}
+
+
+void sibir_insert_call(const Instr *instr, const char *dev_func_name, sibir_ipoint_t point) {
+
+
 }
 
 extern "C" {

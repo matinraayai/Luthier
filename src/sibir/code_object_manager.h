@@ -2,6 +2,7 @@
 #define CODE_OBJECT_MANAGER_H
 #include <unordered_map>
 #include <amd_comgr.h>
+#include <hsa/hsa.h>
 
 class SibirCodeObjectManager {
  public:
@@ -14,13 +15,14 @@ class SibirCodeObjectManager {
         return instance;
     }
 
-    void setLastFatBinary(const void* data);
+    void registerFatBinary(const void* data);
 
-    void saveLastFatBinary();
-
-    void registerFunction(const char* funcName,
+    void registerFunction(const void* fatBinary,
+                          const char* funcName,
                           const void* hostFunction,
                           const char* deviceName);
+
+    hsa_executable_t getInstrumentationFunction(const char* functionName);
 
  private:
     typedef struct {
@@ -35,8 +37,6 @@ class SibirCodeObjectManager {
         for (auto it: fatBinaries_)
             amd_comgr_release_data(it.second);
     }
-
-    const void* lastFatBinary_{nullptr};
 
     std::unordered_map<const void*, amd_comgr_data_t> fatBinaries_{};
     std::unordered_map<const char*, function_info_t> functions_{};

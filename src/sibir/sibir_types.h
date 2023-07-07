@@ -15,6 +15,25 @@ enum sibir_api_phase_t {
     SIBIR_API_PHASE_EXIT
 };
 
+enum sibir_ipoint_t {
+    SIBIR_IPOINT_BEFORE,
+    SIBIR_IPOINT_AFTER
+};
+
+struct Instr {};
+
+struct kernel_descriptor_t {
+    uint8_t reserved0[16];
+    int64_t kernel_code_entry_byte_offset;
+    uint8_t reserved1[20];
+    uint32_t compute_pgm_rsrc3;
+    uint32_t compute_pgm_rsrc1;
+    uint32_t compute_pgm_rsrc2;
+    uint16_t kernel_code_properties;
+    uint8_t reserved2[6];
+};
+
+
 typedef decltype(hsa_api_data_t::args) hsa_api_args_t;
 
 #endif

@@ -4,8 +4,10 @@
 //#include "src/disassembler/inst.h"
 #include <amd-dbgapi/amd-dbgapi.h>
 #include <hsa/hsa_api_trace.h>
+#include <hsa/hsa_ven_amd_loader.h>
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
+#include "error_check.h"
 
 //extern "C" {
 
@@ -223,22 +225,14 @@ void sibir_at_hsa_event(hsa_api_args_t* cb_data, sibir_api_phase_t phase, hsa_ap
  */
 const HsaApiTable* sibir_get_hsa_table();
 
+const hsa_ven_amd_loader_1_03_pfn_s* sibir_get_hsa_ven_amd_loader();
+
 
 void* sibir_get_hip_function(const char* funcName);
 
-struct kernel_descriptor_t {
-    uint8_t reserved0[16];
-    int64_t kernel_code_entry_byte_offset;
-    uint8_t reserved1[20];
-    uint32_t compute_pgm_rsrc3;
-    uint32_t compute_pgm_rsrc1;
-    uint32_t compute_pgm_rsrc2;
-    uint16_t kernel_code_properties;
-    uint8_t reserved2[6];
-};
 
 
-std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kd(amd_dbgapi_global_address_t address);
+std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kernel_object(uint64_t kernel_object);
 
 
 #define SIBIR_EXPORT_FUNC(f)               \
@@ -324,6 +318,14 @@ std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kd
 //// * order in which they get executed is defined by the order in which
 //// * they have been inserted. */
 ////
+
+/**
+ *
+ * @param instr
+ * @param dev_func_name
+ * @param point
+ */
+void sibir_insert_call(const Instr* instr, const char* dev_func_name, sibir_ipoint_t point);
 ////void nvbit_insert_call(const Instr* instr, const char* dev_func_name,
 ////                       ipoint_t point);
 ////
