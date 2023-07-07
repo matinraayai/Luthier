@@ -49,32 +49,25 @@
 //const size_t BrInstructionIdx = 3;
 //const size_t BrInstructionAddr = 40;
 //
-//uint64_t readMemoryCallback(uint64_t From, char *To, uint64_t Size,
-//                            void *UserData) {
-//    checkUserData(UserData);
-//    if (From >= sizeof(Program)) {
-//        return 0;
-//    }
-//    if (From + Size > sizeof(Program)) {
-//        Size = sizeof(Program) - From;
-//    }
-//    memcpy(To, Program + From, Size);
-//    return Size;
-//}
-//
-//void printInstructionCallback(const char *Instruction, void *UserData) {
-//    checkUserData(UserData);
-//    if (InstructionsIdx == InstructionsLen) {
-//        fail("too many instructions");
-//    }
-//    const char *Expected = skipspace(Instructions[InstructionsIdx++]);
-//    const char *Actual = skipspace(Instruction);
-//    if (strncmp(Expected, Actual, strlenWithoutTrailingWhitespace(Actual))) {
-//        fail("incorrect instruction: expected '%s', actual '%s'", Expected, Actual);
-//    }
-//}
-//
-//void printAddressCallback(uint64_t Address, void *UserData) {
+uint64_t readMemoryCallback(sibir_address_t from, char *to, size_t size,
+                            void *userData) {
+    bool isEndOfProgram = reinterpret_cast<std::pair<std::string, bool>*>(userData)->second;
+    if (isEndOfProgram)
+        return 0;
+    else {
+        memcpy(reinterpret_cast<void*>(to),
+               reinterpret_cast<const void *>(from), size);
+        return size;
+    }
+}
+
+
+void printInstructionCallback(const char *instruction, void *userData) {
+    auto out = reinterpret_cast<std::pair<std::string, bool>*>(userData);
+    out->first = std::string(instruction);
+}
+
+void printAddressCallback(uint64_t Address, void *UserData) {
 //    checkUserData(UserData);
 //    size_t ActualIdx = InstructionsIdx - 1;
 //    if (ActualIdx != BrInstructionIdx) {
@@ -87,7 +80,7 @@
 //             "expected %u",
 //             Address, ActualIdx, BrInstructionAddr);
 //    }
-//}
+}
 
 
 hsa_status_t Disassembler::initGpuAgents() {
@@ -110,6 +103,7 @@ hsa_status_t Disassembler::initGpuAgents() {
 
     return coreTable.hsa_iterate_agents_fn(returnGpuAgentsCallback, &agents_);
 }
+
 std::vector<Instr *> Disassembler::disassemble(sibir_address_t kernelObject) {
     // Determine kernel's entry point
     const kernel_descriptor_t *kernelDescriptor{nullptr};
@@ -127,10 +121,11 @@ std::vector<Instr *> Disassembler::disassemble(sibir_address_t kernelObject) {
     SIBIR_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_executable(
         reinterpret_cast<void*>(kernelObject), &executable));
 
-    fprintf(stdout, "The kernel launch belongs to executable with handle: %lX.\n", executable.handle);
-
     if (agents_.empty())
         SIBIR_HSA_CHECK(initGpuAgents());
+
+    // TODO: Maybe make this part a private method instead of lambda?
+    // TODO: Cache the isa name queried in a map with their hsa_agent_ts
 
     auto callbackData = std::make_pair( hsa_agent_t{}, kernelObject);
 
@@ -179,25 +174,28 @@ std::vector<Instr *> Disassembler::disassemble(sibir_address_t kernelObject) {
     // Assert that there's only one supported ISA for the agent
     assert(supportedAgentIsaNames.size() == 1);
 
-    for (const auto& isaName: supportedAgentIsaNames)
-        std::cout << "Isa name of the agent: " << isaName << std::endl;
+    // Disassemble using AMD_COMGR
 
-//
-//    amd_comgr_status_t Status;
-//
-//    amd_comgr_disassembly_info_t DisassemblyInfo;
-//
-//    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info("amdgcn-amd-amdhsa--gfx900", &readMemoryCallback,
-//        &printInstructionCallback, &printAddressCallback, &DisassemblyInfo));
-//
-//    uint64_t Addr = 0;
-//    uint64_t Size = 0;
-//    while (Status == AMD_COMGR_STATUS_SUCCESS && Addr < sizeof(Program)) {
-//        Status = amd_comgr_disassemble_instruction(
-//            DisassemblyInfo, Addr, (void *)&ExpectedUserData, &Size);
-//        checkError(Status, "amd_comgr_disassemble_instruction");
-//        Addr += Size;
-//    }
+    amd_comgr_status_t Status = AMD_COMGR_STATUS_SUCCESS;
+
+    amd_comgr_disassembly_info_t disassemblyInfo;
+
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info(supportedAgentIsaNames[0].c_str(),
+                                                            &readMemoryCallback,
+                                                            &printInstructionCallback,
+                                                            &printAddressCallback,
+                                                            &disassemblyInfo));
+
+    uint64_t Addr = kernelEntryPoint;
+    uint64_t Size = 0;
+    std::pair<std::string, bool> dCallbackData{{}, false};
+    while (Status == AMD_COMGR_STATUS_SUCCESS && !dCallbackData.second) {
+        Status = amd_comgr_disassemble_instruction(
+            disassemblyInfo, Addr, (void *)&dCallbackData, &Size);
+        std::cout << "Instr: " << dCallbackData.first << std::endl;
+        dCallbackData.second = dCallbackData.first.find("s_endpgm") != std::string::npos;
+        Addr += Size;
+    }
 //
 //    if (InstructionsIdx != InstructionsLen) {
 //        fail("too few instructions\n");

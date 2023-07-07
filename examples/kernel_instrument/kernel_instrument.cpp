@@ -29,41 +29,7 @@ __device__ void instrumentation_kernel() {
 
 SIBIR_EXPORT_FUNC(instrumentation_kernel)
 
-/**
- * Returns the list of GPU HSA agents (devices) on the system
- * @param [out] agentList a vector of GPU agents
- * @return HSA_STATUS_SUCCESS
- */
-hsa_status_t getGpuAgents(std::vector<hsa_agent_t>& agentList) {
-    int i = 0;
-    auto coreTable = sibir_get_hsa_table()->core_;
-    auto iterateAgentCallback = [](hsa_agent_t agent, void* data) {
-        auto agent_list = reinterpret_cast<std::vector<hsa_agent_t>*>(data);
-        hsa_status_t stat = HSA_STATUS_ERROR;
-        hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
 
-        stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
-
-        if (stat != HSA_STATUS_SUCCESS) {
-            return stat;
-        }
-        if (dev_type == HSA_DEVICE_TYPE_GPU) {
-            agent_list->push_back(agent);
-        }
-        return stat;
-    };
-    return coreTable->hsa_iterate_agents_fn(iterateAgentCallback, &agentList);
-//    for (auto agent: agentList) {
-//        std::string vendorName, name;
-//        vendorName.resize(64);
-//        name.resize(64);
-//        coreTable->hsa_agent_get_info_fn(agent, HSA_AGENT_INFO_VENDOR_NAME, vendorName.data());
-//        std::cout << "Agent Vendor Name: " << vendorName << std::endl;
-//        coreTable->hsa_agent_get_info_fn(agent, HSA_AGENT_INFO_NAME, name.data());
-//        std::cout << "Agent Name: " << name << std::endl;
-//    }
-//    return HSA_STATUS_SUCCESS;
-}
 
 //hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
 //                                     std::vector<hsa_executable_symbol_t>& symbols) {
@@ -220,47 +186,10 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
             unsigned int packetType = extractAqlBits(packet->header, HSA_PACKET_HEADER_TYPE, HSA_PACKET_HEADER_WIDTH_TYPE);
             if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
                 auto *dispatchPacket = reinterpret_cast<hsa_kernel_dispatch_packet_t *>(packet);
-                const kernel_descriptor_t *kernelDescriptor = nullptr;
-                SIBIR_HSA_CHECK(amdTable->hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(dispatchPacket->kernel_object),
-                                                                              reinterpret_cast<const void **>(&kernelDescriptor)));
-                auto kernelEntryPoint =
-                    reinterpret_cast<amd_dbgapi_global_address_t>(dispatchPacket->kernel_object) + kernelDescriptor->kernel_code_entry_byte_offset;
+                sibir_disassemble_kernel_object(dispatchPacket->kernel_object);
 
 
-                // A way to backtrack from the kernel object to the symbol it belongs to (besides keeping track of a map)
-                hsa_executable_t executable;
 
-                SIBIR_HSA_CHECK(amdTable->hsa_ven_amd_loader_query_executable(
-                    reinterpret_cast<void*>(dispatchPacket->kernel_object), &executable));
-
-                fprintf(stdout, "The kernel launch belongs to executable with handle: %lX.\n", executable.handle);
-                auto& coreApi = sibir_get_hsa_table()->core_;
-                std::vector<hsa_agent_t> agents;
-                SIBIR_HSA_CHECK(getGpuAgents(agents));
-
-                auto callbackData = std::make_pair(hsa_executable_symbol_t{}, dispatchPacket->kernel_object);
-
-                auto execIterate = [](hsa_executable_t e, hsa_agent_t a, hsa_executable_symbol_t s, void* data){
-                    auto cbd = reinterpret_cast<std::pair<hsa_executable_symbol_t, uint64_t>*>(data);
-                    uint64_t ko;
-                    auto& coreApi = sibir_get_hsa_table()->core_;
-                    SIBIR_HSA_CHECK(coreApi->hsa_executable_symbol_get_info_fn(s, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &ko));
-                    if (ko == cbd->second)
-                        cbd->first = s;
-                    return HSA_STATUS_SUCCESS;
-                };
-
-                for (auto agent: agents)
-                    SIBIR_HSA_CHECK(coreApi->hsa_executable_iterate_agent_symbols_fn(executable, agent, execIterate, &callbackData));
-
-//                CHECK_HSA_CALL(coreApi->hsa_executable_symbol_get_info_fn(kernel_symbol, HSA_EXECUTABLE_SYMBOL_INFO_AGENT, &agent));
-
-                if (ko_symbol_map.contains(dispatchPacket->kernel_object)) {
-                    fprintf(stdout, "Kernel Object %lX was intercepted before.\n", dispatchPacket->kernel_object);
-                    hsa_executable_symbol_t kernel_symbol = ko_symbol_map[dispatchPacket->kernel_object];
-                    fprintf(stdout, "Symbol mapped to the KO: %lX\n", kernel_symbol.handle);
-                }
-                fprintf(stdout, "Kernel Object found the traditional way: %lX\n", callbackData.first.handle);
 //
 //                std::vector<hsa_isa_t> supportedIsas;
 //                auto agentIsaCallback = [](hsa_isa_t isa, void* data){
@@ -387,41 +316,41 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
             fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
             auto& coreTable = sibir_get_hsa_table()->core_;
             fprintf(stdout, "Executable handle: %lX", executable.handle);
-
-            std::vector<hsa_agent_t> agentList;
-            getGpuAgents(agentList);
-
-
-            auto symbolCallbackFunction = [](hsa_executable_t exec,
-                                             hsa_agent_t agent,
-                                             hsa_executable_symbol_t symbol,
-                                             void *data) {
-                auto out = reinterpret_cast<std::vector<hsa_executable_symbol_t>*>(data);
-                out->push_back(symbol);
-                return HSA_STATUS_SUCCESS;
-            };
-
-            for (size_t i = 0; i < agentList.size(); i++) {
-                std::cout << "iterating over agent " << i << " with handle: " << agentList[i] << std::endl;
-                std::vector<hsa_executable_symbol_t> symbols;
-                SIBIR_HSA_CHECK(
-                    coreTable->hsa_executable_iterate_agent_symbols_fn(executable, agentList[i],
-                                                                       symbolCallbackFunction, &symbols)
-                );
-                std::cout << "Number of symbols found: " << symbols.size() << std::endl;
-                for (auto symbol: symbols) {
-                    uint32_t nameLength;
-                    coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameLength);
-                    std::string name;
-                    name.resize(nameLength);
-                    coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data());
-                    std::cout << "Symbol Name: " << name << std::endl;
-                    uint64_t kernelObject;
-                    coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject);
-                    std::cout << "Kernel Object is " << kernelObject << std::endl;
-                    ko_symbol_map[kernelObject] = symbol;
-                }
-            }
+//
+//            std::vector<hsa_agent_t> agentList;
+////            getGpuAgents(agentList);
+//
+//
+//            auto symbolCallbackFunction = [](hsa_executable_t exec,
+//                                             hsa_agent_t agent,
+//                                             hsa_executable_symbol_t symbol,
+//                                             void *data) {
+//                auto out = reinterpret_cast<std::vector<hsa_executable_symbol_t>*>(data);
+//                out->push_back(symbol);
+//                return HSA_STATUS_SUCCESS;
+//            };
+//
+//            for (size_t i = 0; i < agentList.size(); i++) {
+//                std::cout << "iterating over agent " << i << " with handle: " << agentList[i] << std::endl;
+//                std::vector<hsa_executable_symbol_t> symbols;
+//                SIBIR_HSA_CHECK(
+//                    coreTable->hsa_executable_iterate_agent_symbols_fn(executable, agentList[i],
+//                                                                       symbolCallbackFunction, &symbols)
+//                );
+//                std::cout << "Number of symbols found: " << symbols.size() << std::endl;
+//                for (auto symbol: symbols) {
+//                    uint32_t nameLength;
+//                    coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameLength);
+//                    std::string name;
+//                    name.resize(nameLength);
+//                    coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data());
+//                    std::cout << "Symbol Name: " << name << std::endl;
+//                    uint64_t kernelObject;
+//                    coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject);
+//                    std::cout << "Kernel Object is " << kernelObject << std::endl;
+//                    ko_symbol_map[kernelObject] = symbol;
+//                }
+//            }
 
 //            printf("Test create input data set\n");
 //
