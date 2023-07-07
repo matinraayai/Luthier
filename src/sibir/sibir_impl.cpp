@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <iomanip>
 #include "code_object_manager.h"
+#include "disassembler.h"
 
 static amd_dbgapi_callbacks_t amd_dbgapi_callbacks{
     .allocate_memory = malloc,
@@ -37,7 +38,7 @@ static amd_dbgapi_callbacks_t amd_dbgapi_callbacks{
 };
 
 
-void Sibir::hip_startup_callback(void* cb_data, sibir_api_phase_t phase, int api_id) {
+void Sibir::hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_id) {
 //    static std::vector<hip___hipRegisterFatBinary_api_args_t*>
     static const void* lastSavedFatBinary{};
     if (phase == SIBIR_API_PHASE_EXIT) {
@@ -52,7 +53,7 @@ void Sibir::hip_startup_callback(void* cb_data, sibir_api_phase_t phase, int api
             // If the function doesn't have __sibir_wrap__ in its name then it belongs to the instrumented application
             // Give control to the user-defined callback
             if (std::string(args->deviceFunction).find("__sibir_wrap__") == std::string::npos)
-                SibirHipInterceptor::Instance().SetCallback(Sibir::hip_api_callback);
+                SibirHipInterceptor::Instance().SetCallback(Sibir::hipApiCallback);
             else {
                 coManager.registerFatBinary(lastSavedFatBinary);
                 coManager.registerFunction(lastSavedFatBinary, args->deviceFunction, args->hostFunction, args->deviceName);
@@ -78,8 +79,8 @@ void __attribute__((constructor)) Sibir::init() {
     assert(amd_dbgapi_initialize(&amd_dbgapi_callbacks) == AMD_DBGAPI_STATUS_SUCCESS);
     assert(SibirHipInterceptor::Instance().IsEnabled());
     sibir_at_init();
-    SibirHipInterceptor::Instance().SetCallback(Sibir::hip_startup_callback);
-    SibirHsaInterceptor::Instance().SetCallback(Sibir::hsa_api_callback);
+    SibirHipInterceptor::Instance().SetCallback(Sibir::hipStartupCallback);
+    SibirHsaInterceptor::Instance().SetCallback(Sibir::hsaApiCallback);
 }
 
 __attribute__((destructor)) void Sibir::finalize() {
@@ -96,62 +97,17 @@ const hsa_ven_amd_loader_1_03_pfn_s* sibir_get_hsa_ven_amd_loader() {
     return &SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
 }
 
-void Sibir::hip_api_callback(void* cb_data, sibir_api_phase_t phase, int api_id) {
+void Sibir::hipApiCallback(void* cb_data, sibir_api_phase_t phase, int api_id) {
     sibir_at_hip_event(cb_data, phase, api_id);
 }
 
-void Sibir::hsa_api_callback(hsa_api_args_t* cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id) {
+void Sibir::hsaApiCallback(hsa_api_args_t *cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id) {
     sibir_at_hsa_event(cb_data, phase, api_id);
 }
+
 std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kernel_object(uint64_t kernel_object) {
-    const kernel_descriptor_t *kernelDescriptor = nullptr;
-    auto amdTable = SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-    SIBIR_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernel_object),
-                                                                   reinterpret_cast<const void **>(&kernelDescriptor)));
-    auto kernelEntryPoint =
-        reinterpret_cast<amd_dbgapi_global_address_t>(kernel_object) + kernelDescriptor->kernel_code_entry_byte_offset;
-
-    // For now assume gfx908
-    // TODO: add the architecture code from the dbgapi headers
-    amd_dbgapi_architecture_id_t arch;
-    amd_dbgapi_get_architecture(0x030, &arch);
-
-
-    amd_dbgapi_size_t maxInstrLen;
-    amd_dbgapi_architecture_get_info(arch, AMD_DBGAPI_ARCHITECTURE_INFO_LARGEST_INSTRUCTION_SIZE,
-                                     sizeof(amd_dbgapi_size_t),
-                                     &maxInstrLen);
-
-    bool is_end = false;
-    // The decoded instruction will be malloced by ::amd_dbgapi_disassemble_instruction
-    // It has to be copied and freed
-    char*instChar{};
-    auto curr_address = kernelEntryPoint;
-    amd_dbgapi_size_t instrSize;
-
-    std::vector<std::pair<std::string, std::vector<std::byte>>> instList;
-    while(!is_end) {
-        instrSize = maxInstrLen;
-
-        amd_dbgapi_disassemble_instruction(arch, curr_address, &instrSize,
-                                           reinterpret_cast<void*>(curr_address),
-                                           &instChar, nullptr, {});
-
-        std::vector<std::byte> instBytes(instrSize);
-        // Copy the instruction bytes
-        for (amd_dbgapi_size_t i = 0; i < instrSize; i++) {
-            instBytes[i] = reinterpret_cast<std::byte*>(curr_address)[i];
-        }
-        // Copy the decoded instruction string
-        std::string instStr(instChar);
-
-        free(instChar);
-        instList.emplace_back(instStr, instBytes);
-
-        curr_address += instrSize;
-        is_end = instStr.find("s_endpgm") != std::string::npos;
-    }
-    return instList;
+    Disassembler::Instance().disassemble(kernel_object);
+    return {};
 }
 
 //void print_instructions(const std::vector<Inst>& isa) {

@@ -33,6 +33,7 @@ struct kernel_descriptor_t {
     uint8_t reserved2[6];
 };
 
+typedef uint64_t sibir_address_t;
 
 typedef decltype(hsa_api_data_t::args) hsa_api_args_t;
 

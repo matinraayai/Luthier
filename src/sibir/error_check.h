@@ -6,7 +6,7 @@
 #include <hsa/hsa.h>
 
 #define SIBIR_ROCM_LIB_API_CHECK(LIB_NAME, LIB_ERROR_TYPE, LIB_ERROR_SUCCESS_TYPE) \
-        inline void check_##LIB_NAME##_error(LIB_ERROR_TYPE err, const char* callName) { \
+        inline LIB_ERROR_TYPE check_##LIB_NAME##_error(LIB_ERROR_TYPE err, const char* callName) { \
            if (err != LIB_ERROR_SUCCESS_TYPE) { \
                 const char* errMsg = "Unknown Error"; \
                 LIB_NAME##_status_string(err, &errMsg); \
@@ -14,6 +14,7 @@
                 fprintf(stderr, "Error Code: %d.\n", err); \
                 fprintf(stderr, "More info: %s\n", errMsg); \
            } \
+           return err; \
         }
 
 SIBIR_ROCM_LIB_API_CHECK(hsa, hsa_status_t, HSA_STATUS_SUCCESS)
