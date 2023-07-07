@@ -2,7 +2,6 @@
 #define SIBIR_H
 #include "sibir_types.h"
 //#include "src/disassembler/inst.h"
-#include <amd-dbgapi/amd-dbgapi.h>
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <roctracer/roctracer_hip.h>

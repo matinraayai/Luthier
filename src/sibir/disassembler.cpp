@@ -152,22 +152,26 @@ std::vector<Instr *> Disassembler::disassemble(sibir_address_t kernelObject) {
 
     amd_comgr_disassembly_info_t disassemblyInfo;
 
+    // Maybe caching the disassembly info for each agent is a good idea? (instead of only the isaName)
+    // The destructor has to call destroy on each disassembly_info_t
+
     SIBIR_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info(isaName.c_str(),
                                                             &readMemoryCallback,
                                                             &printInstructionCallback,
                                                             &printAddressCallback,
                                                             &disassemblyInfo));
 
-    uint64_t Addr = kernelEntryPoint;
-    uint64_t Size = 0;
-    std::pair<std::string, bool> dCallbackData{{}, false};
-    while (Status == AMD_COMGR_STATUS_SUCCESS && !dCallbackData.second) {
+    uint64_t instrAddr = kernelEntryPoint;
+    uint64_t instrSize = 0;
+    std::pair<std::string, bool> kdDisassemblyCallbackData{{}, false};
+    while (Status == AMD_COMGR_STATUS_SUCCESS && !kdDisassemblyCallbackData.second) {
         Status = amd_comgr_disassemble_instruction(
-            disassemblyInfo, Addr, (void *)&dCallbackData, &Size);
-        std::cout << "Instr: " << dCallbackData.first << std::endl;
-        dCallbackData.second = dCallbackData.first.find("s_endpgm") != std::string::npos;
-        Addr += Size;
+            disassemblyInfo, instrAddr, (void *)&kdDisassemblyCallbackData, &instrSize);
+        std::cout << "Instr: " << kdDisassemblyCallbackData.first << std::endl;
+        kdDisassemblyCallbackData.second = kdDisassemblyCallbackData.first.find("s_endpgm") != std::string::npos;
+        instrAddr += instrSize;
     }
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_destroy_disassembly_info(disassemblyInfo));
     return {};
 }
 

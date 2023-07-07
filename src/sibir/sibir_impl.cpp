@@ -2,41 +2,9 @@
 #include <sibir.h>
 #include <roctracer/roctracer.h>
 #include "hsa_intercept.h"
-#include <amd-dbgapi/amd-dbgapi.h>
-#include <unistd.h>
 #include <iomanip>
 #include "code_object_manager.h"
 #include "disassembler.h"
-
-static amd_dbgapi_callbacks_t amd_dbgapi_callbacks{
-    .allocate_memory = malloc,
-    .deallocate_memory = free,
-
-    .get_os_pid =
-        [](amd_dbgapi_client_process_id_t client_process_id, pid_t *pid){
-            *pid = getpid();
-            return AMD_DBGAPI_STATUS_SUCCESS;
-        },
-
-    .insert_breakpoint =
-        [](amd_dbgapi_client_process_id_t client_process_id,
-           amd_dbgapi_global_address_t address,
-           amd_dbgapi_breakpoint_id_t breakpoint_id)
-    {
-        return AMD_DBGAPI_STATUS_SUCCESS;
-    },
-
-    .remove_breakpoint =
-        [](amd_dbgapi_client_process_id_t client_process_id,
-           amd_dbgapi_breakpoint_id_t breakpoint_id)
-    {
-        return AMD_DBGAPI_STATUS_SUCCESS;
-    },
-
-    .log_message =
-        [](amd_dbgapi_log_level_t level, const char *message) {}
-};
-
 
 void Sibir::hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_id) {
 //    static std::vector<hip___hipRegisterFatBinary_api_args_t*>
@@ -76,7 +44,6 @@ void Sibir::hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_i
 
 void __attribute__((constructor)) Sibir::init() {
     std::cout << "Initializing Sibir...." << std::endl << std::flush;
-    assert(amd_dbgapi_initialize(&amd_dbgapi_callbacks) == AMD_DBGAPI_STATUS_SUCCESS);
     assert(SibirHipInterceptor::Instance().IsEnabled());
     sibir_at_init();
     SibirHipInterceptor::Instance().SetCallback(Sibir::hipStartupCallback);
@@ -84,7 +51,6 @@ void __attribute__((constructor)) Sibir::init() {
 }
 
 __attribute__((destructor)) void Sibir::finalize() {
-    assert(amd_dbgapi_finalize() == AMD_DBGAPI_STATUS_SUCCESS);
     sibir_at_term();
     std::cout << "Sibir Terminated." << std::endl << std::flush;
 }

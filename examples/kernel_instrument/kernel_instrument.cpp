@@ -117,57 +117,57 @@ static unsigned extractAqlBits(unsigned v, unsigned pos, unsigned width) {
     return (v >> pos) & ((1 << width) - 1);
 };
 
-void instrumentKernel(const amd_dbgapi_global_address_t entrypoint) {
-
-    // For now assume gfx908
-    // TODO: add the architecture code from the dbgapi headers
-    amd_dbgapi_architecture_id_t arch;
-    amd_dbgapi_get_architecture(0x030, &arch);
-
-
-    amd_dbgapi_size_t maxInstrLen;
-    amd_dbgapi_architecture_get_info(arch, AMD_DBGAPI_ARCHITECTURE_INFO_LARGEST_INSTRUCTION_SIZE,
-                                     sizeof(amd_dbgapi_size_t),
-                                     &maxInstrLen);
-
-    bool is_end = false;
-    // The decoded instruction will be malloced by ::amd_dbgapi_disassemble_instruction
-    // It has to be copied and freed
-    char*instChar{};
-    auto curr_address = entrypoint;
-    amd_dbgapi_size_t instrSize;
-
-    while(!is_end) {
-        instrSize = maxInstrLen;
-
-        amd_dbgapi_disassemble_instruction(arch, curr_address, &instrSize,
-                                           reinterpret_cast<void*>(curr_address),
-                                           &instChar, nullptr, {});
-
-        std::vector<std::byte> instBytes(instrSize);
-        // Copy the instruction bytes
-        for (amd_dbgapi_size_t i = 0; i < instrSize; i++) {
-            instBytes[i] = reinterpret_cast<std::byte*>(curr_address)[i];
-        }
-        // Copy the decoded instruction string
-        std::string instStr(instChar);
-//        std::cout << instStr << ": ";
-        if (instStr.find("s_add_i32") != std::string::npos) {
-            std::cout << instStr << ": ";
-            for (const auto& el: instBytes)
-                std::cout << std::hex << std::setfill('0') << std::setw(2) << uint16_t(el) << " ";
-            auto overwrite_address = reinterpret_cast<uint8_t*>(curr_address);
-
-            overwrite_address[1] = 0x85;
-//            curr_address
-        }
-        free(instChar);
-
-        curr_address += instrSize;
-        is_end = instStr.find("s_endpgm") != std::string::npos;
-    }
-
-}
+//void instrumentKernel(const sibir_address_t entrypoint) {
+//
+//    // For now assume gfx908
+//    // TODO: add the architecture code from the dbgapi headers
+//    amd_dbgapi_architecture_id_t arch;
+//    amd_dbgapi_get_architecture(0x030, &arch);
+//
+//
+//    amd_dbgapi_size_t maxInstrLen;
+//    amd_dbgapi_architecture_get_info(arch, AMD_DBGAPI_ARCHITECTURE_INFO_LARGEST_INSTRUCTION_SIZE,
+//                                     sizeof(amd_dbgapi_size_t),
+//                                     &maxInstrLen);
+//
+//    bool is_end = false;
+//    // The decoded instruction will be malloced by ::amd_dbgapi_disassemble_instruction
+//    // It has to be copied and freed
+//    char*instChar{};
+//    auto curr_address = entrypoint;
+//    amd_dbgapi_size_t instrSize;
+//
+//    while(!is_end) {
+//        instrSize = maxInstrLen;
+//
+//        amd_dbgapi_disassemble_instruction(arch, curr_address, &instrSize,
+//                                           reinterpret_cast<void*>(curr_address),
+//                                           &instChar, nullptr, {});
+//
+//        std::vector<std::byte> instBytes(instrSize);
+//        // Copy the instruction bytes
+//        for (amd_dbgapi_size_t i = 0; i < instrSize; i++) {
+//            instBytes[i] = reinterpret_cast<std::byte*>(curr_address)[i];
+//        }
+//        // Copy the decoded instruction string
+//        std::string instStr(instChar);
+////        std::cout << instStr << ": ";
+//        if (instStr.find("s_add_i32") != std::string::npos) {
+//            std::cout << instStr << ": ";
+//            for (const auto& el: instBytes)
+//                std::cout << std::hex << std::setfill('0') << std::setw(2) << uint16_t(el) << " ";
+//            auto overwrite_address = reinterpret_cast<uint8_t*>(curr_address);
+//
+//            overwrite_address[1] = 0x85;
+////            curr_address
+//        }
+//        free(instChar);
+//
+//        curr_address += instrSize;
+//        is_end = instStr.find("s_endpgm") != std::string::npos;
+//    }
+//
+//}
 
 void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value) {
     auto amdTable = sibir_get_hsa_ven_amd_loader();

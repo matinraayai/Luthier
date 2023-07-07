@@ -19,6 +19,6 @@ target_compile_definitions(sibir PUBLIC AMD_INTERNAL_BUILD)
 set_property(TARGET sibir PROPERTY COMPILE_FLAGS "-fPIC")
 
 # Link with HIP and ROCTracer
-target_link_libraries(sibir hip::host hip::device roctracer64 stdc++fs rocm-dbgapi amd_comgr)
+target_link_libraries(sibir hip::host hip::device roctracer64 stdc++fs amd_comgr)
 
 target_include_directories(sibir PUBLIC .)
