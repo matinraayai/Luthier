@@ -39,7 +39,7 @@ class Disassembler {
         return instance;
     }
 
-    std::vector<Instr*> disassemble(sibir_address_t kernelObject);
+    std::vector<Instr> disassemble(sibir_address_t kernelObject);
 };
 
 

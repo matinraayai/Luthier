@@ -20,20 +20,7 @@ void printInstructionCallback(const char *instruction, void *userData) {
     out->first = std::string(instruction);
 }
 
-void printAddressCallback(uint64_t Address, void *UserData) {
-//    checkUserData(UserData);
-//    size_t ActualIdx = InstructionsIdx - 1;
-//    if (ActualIdx != BrInstructionIdx) {
-//        fail("absolute address resolved for instruction index %zu, expected index "
-//             "%zu",
-//             InstructionsIdx, BrInstructionIdx);
-//    }
-//    if (Address != BrInstructionAddr) {
-//        fail("incorrect absolute address %u resolved for instruction index %zu, "
-//             "expected %u",
-//             Address, ActualIdx, BrInstructionAddr);
-//    }
-}
+void printAddressCallback(uint64_t Address, void *UserData) {}
 
 hsa_status_t Disassembler::populateAgentInfo(hsa_agent_t agent, Disassembler::hsa_agent_entry_t& entry) {
     const auto& coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
@@ -102,7 +89,7 @@ hsa_status_t Disassembler::initGpuAgentsMap() {
     return coreTable.hsa_iterate_agents_fn(returnGpuAgentsCallback, &agents_);
 }
 
-std::vector<Instr *> Disassembler::disassemble(sibir_address_t kernelObject) {
+std::vector<Instr> Disassembler::disassemble(sibir_address_t kernelObject) {
     // Determine kernel's entry point
     const kernel_descriptor_t *kernelDescriptor{nullptr};
     auto amdTable = SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
@@ -164,14 +151,15 @@ std::vector<Instr *> Disassembler::disassemble(sibir_address_t kernelObject) {
     uint64_t instrAddr = kernelEntryPoint;
     uint64_t instrSize = 0;
     std::pair<std::string, bool> kdDisassemblyCallbackData{{}, false};
+    std::vector<Instr> out;
     while (Status == AMD_COMGR_STATUS_SUCCESS && !kdDisassemblyCallbackData.second) {
         Status = amd_comgr_disassemble_instruction(
             disassemblyInfo, instrAddr, (void *)&kdDisassemblyCallbackData, &instrSize);
-        std::cout << "Instr: " << kdDisassemblyCallbackData.first << std::endl;
+        out.push_back({instrAddr, kdDisassemblyCallbackData.first});
         kdDisassemblyCallbackData.second = kdDisassemblyCallbackData.first.find("s_endpgm") != std::string::npos;
         instrAddr += instrSize;
     }
     SIBIR_AMD_COMGR_CHECK(amd_comgr_destroy_disassembly_info(disassemblyInfo));
-    return {};
+    return out;
 }
 

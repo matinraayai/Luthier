@@ -9,6 +9,8 @@
 #include <hip/hip_runtime_api.h>
 #include <hip/amd_detail/hip_prof_str.h>
 
+typedef uint64_t sibir_address_t;
+
 
 enum sibir_api_phase_t {
     SIBIR_API_PHASE_ENTER,
@@ -20,7 +22,10 @@ enum sibir_ipoint_t {
     SIBIR_IPOINT_AFTER
 };
 
-struct Instr {};
+struct Instr {
+    sibir_address_t addr;
+    std::string instr;
+};
 
 struct kernel_descriptor_t {
     uint8_t reserved0[16];
@@ -33,7 +38,7 @@ struct kernel_descriptor_t {
     uint8_t reserved2[6];
 };
 
-typedef uint64_t sibir_address_t;
+
 
 typedef decltype(hsa_api_data_t::args) hsa_api_args_t;
 

@@ -71,9 +71,8 @@ void Sibir::hsaApiCallback(hsa_api_args_t *cb_data, sibir_api_phase_t phase, hsa
     sibir_at_hsa_event(cb_data, phase, api_id);
 }
 
-std::vector<std::pair<std::string, std::vector<std::byte>>> sibir_disassemble_kernel_object(uint64_t kernel_object) {
-    Disassembler::Instance().disassemble(kernel_object);
-    return {};
+std::vector<Instr> sibir_disassemble_kernel_object(uint64_t kernel_object) {
+    return Disassembler::Instance().disassemble(kernel_object);
 }
 
 //void print_instructions(const std::vector<Inst>& isa) {
@@ -94,8 +93,29 @@ void* sibir_get_hip_function(const char* funcName) {
 }
 
 
-void sibir_insert_call(const Instr *instr, const char *dev_func_name, sibir_ipoint_t point) {
+hsa_executable_t sibir_insert_call(const Instr *instr, const char *dev_func_name, sibir_ipoint_t point) {
 
+    std::vector<hsa_agent_t> agents;
+
+    auto& coreTable = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+
+    auto queryAgentsCallback = [](hsa_agent_t agent, void* data) {
+        auto agents = reinterpret_cast<std::vector<hsa_agent_t>*>(data);
+        hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
+
+        hsa_status_t stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
+
+        if (stat != HSA_STATUS_SUCCESS)
+            return stat;
+        if (dev_type == HSA_DEVICE_TYPE_GPU)
+            agents->push_back(agent);
+
+        return stat;
+    };
+
+    SIBIR_HSA_CHECK(coreTable.hsa_iterate_agents_fn(queryAgentsCallback, &agents));
+
+    return SibirCodeObjectManager::Instance().getInstrumentationFunction(dev_func_name, agents[0]);
 
 }
 
