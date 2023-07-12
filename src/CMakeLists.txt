@@ -1,29 +1,46 @@
 cmake_minimum_required(VERSION 3.2)
+project(sibir)
 
-# Subdirectories
-set(SUB_DIRS)
-foreach (DIR ${SUB_DIRS})
-  add_subdirectory(${DIR})
-endforeach (DIR)
+set(CMAKE_CXX_STANDARD 20)
 
-# The library that is shared by the driver and runtime implementation
-set(SRC
-    internal.h
-    internal.cc
-    elf.h
-    elf.cc
-    )
-add_library(sibir SHARED ${SRC})
-set_target_properties(sibir
-    PROPERTIES VERSION 0.0.1)
-set_property(TARGET sibir
-    PROPERTY COMPILE_FLAGS "-fPIC")
-target_link_libraries(sibir hip::host)
-#target_link_libraries(sibir assembler)
-#target_link_libraries(sibir disassembler)
-target_link_libraries(sibir bitops)
-target_link_libraries(sibir trampoline)
-target_link_libraries(sibir sectiongenerator)
+# Search for rocm in common locations
+list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 
-# Enable C++ 17
-target_compile_features(sibir PRIVATE cxx_std_17)
+# External Dependencies
+
+find_package(hip)
+
+find_package(amd_comgr)
+
+include(FetchContent)
+
+FetchContent_Declare(
+        elfio
+        DOWNLOAD_EXTRACT_TIMESTAMP 0
+        URL "https://github.com/serge1/ELFIO/archive/refs/heads/main.zip"
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/elfio/
+        BUILD_COMMAND ""
+        CONFIGURE_COMMAND ""
+)
+
+FetchContent_MakeAvailable(elfio)
+
+# Create the library
+add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h hip_intercept.h hip_intercept.cpp
+        sibir_types.h hsa_intercept.h hsa_intercept.cpp code_object_manager.hpp code_object_manager.cpp hip_arg_types.h
+        hip_private_api.h error_check.h disassembler.hpp disassembler.cpp
+        amdgpu_elf.hpp amdgpu_elf.cpp)
+
+
+target_include_directories(sibir PRIVATE ${elfio_SOURCE_DIR})
+
+
+# Some HSA include files won't work unless this is defined
+target_compile_definitions(sibir PUBLIC AMD_INTERNAL_BUILD)
+
+set_property(TARGET sibir PROPERTY COMPILE_FLAGS "-fPIC")
+
+# Link with HIP and ROCTracer
+target_link_libraries(sibir hip::host hip::device roctracer64 stdc++fs amd_comgr)
+
+target_include_directories(sibir PUBLIC .)
