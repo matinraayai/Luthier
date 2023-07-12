@@ -4,7 +4,7 @@
 #include "sibir_types.h"
 #include "code_object_manager.h"
 
-namespace Sibir {
+namespace sibir {
     void init();
     void finalize();
     void hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_id);

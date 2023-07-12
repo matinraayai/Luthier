@@ -21,10 +21,11 @@ static std::unordered_map<decltype(hsa_kernel_dispatch_packet_t::kernel_object),
 
 static bool instrumented{true};
 
-__device__ int counter;
+__device__ int counter = 0;
 
 __device__ void instrumentation_kernel() {
-    atomicAdd(&counter, 1);
+    counter = counter + 1;
+//    printf("Hello from Sibir!\n");
 }
 
 SIBIR_EXPORT_FUNC(instrumentation_kernel)
@@ -66,11 +67,27 @@ hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
 
             uint32_t nameSize;
             SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
-            std::cout << "Kernel name size: " << nameSize << std::endl;
+            std::cout << "Symbol name size: " << nameSize << std::endl;
             std::string name;
             name.resize(nameSize);
             SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
-            std::cout << "Kernel Name: " << name << std::endl;
+            std::cout << "Symbol Name: " << name << std::endl;
+
+            if (symbolKind == HSA_SYMBOL_KIND_VARIABLE) {
+                sibir_address_t variableAddress;
+                SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &variableAddress));
+                std::cout << "Variable location: " << std::hex << variableAddress << std::dec << std::endl;
+            }
+            else {
+                sibir_address_t kernelObject;
+                SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
+                std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
+                std::vector<Instr> instList = sibir_disassemble_kernel_object(kernelObject);
+                std::cout << "Disassembly of the KO: " << std::endl;
+                for (const auto& i : instList) {
+                    std::cout << i.instr << std::endl;
+                }
+            }
 
 //            symbolVec->push_back(symbol);
             return HSA_STATUS_SUCCESS;

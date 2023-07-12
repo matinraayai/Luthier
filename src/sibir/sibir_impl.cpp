@@ -6,7 +6,7 @@
 #include "code_object_manager.h"
 #include "disassembler.h"
 
-void Sibir::hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_id) {
+void sibir::hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_id) {
 //    static std::vector<hip___hipRegisterFatBinary_api_args_t*>
     static const void* lastSavedFatBinary{};
     if (phase == SIBIR_API_PHASE_EXIT) {
@@ -21,7 +21,7 @@ void Sibir::hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_i
             // If the function doesn't have __sibir_wrap__ in its name then it belongs to the instrumented application
             // Give control to the user-defined callback
             if (std::string(args->deviceFunction).find("__sibir_wrap__") == std::string::npos)
-                SibirHipInterceptor::Instance().SetCallback(Sibir::hipApiCallback);
+                SibirHipInterceptor::Instance().SetCallback(sibir::hipApiCallback);
             else {
                 coManager.registerFatBinary(lastSavedFatBinary);
                 coManager.registerFunction(lastSavedFatBinary, args->deviceFunction, args->hostFunction, args->deviceName);
@@ -42,15 +42,15 @@ void Sibir::hipStartupCallback(void* cb_data, sibir_api_phase_t phase, int api_i
 }
 
 
-void __attribute__((constructor)) Sibir::init() {
+void __attribute__((constructor)) sibir::init() {
     std::cout << "Initializing Sibir...." << std::endl << std::flush;
     assert(SibirHipInterceptor::Instance().IsEnabled());
     sibir_at_init();
-    SibirHipInterceptor::Instance().SetCallback(Sibir::hipStartupCallback);
-    SibirHsaInterceptor::Instance().SetCallback(Sibir::hsaApiCallback);
+    SibirHipInterceptor::Instance().SetCallback(sibir::hipStartupCallback);
+    SibirHsaInterceptor::Instance().SetCallback(sibir::hsaApiCallback);
 }
 
-__attribute__((destructor)) void Sibir::finalize() {
+__attribute__((destructor)) void sibir::finalize() {
     sibir_at_term();
     std::cout << "Sibir Terminated." << std::endl << std::flush;
 }
@@ -63,11 +63,11 @@ const hsa_ven_amd_loader_1_03_pfn_s* sibir_get_hsa_ven_amd_loader() {
     return &SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
 }
 
-void Sibir::hipApiCallback(void* cb_data, sibir_api_phase_t phase, int api_id) {
+void sibir::hipApiCallback(void* cb_data, sibir_api_phase_t phase, int api_id) {
     sibir_at_hip_event(cb_data, phase, api_id);
 }
 
-void Sibir::hsaApiCallback(hsa_api_args_t *cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id) {
+void sibir::hsaApiCallback(hsa_api_args_t *cb_data, sibir_api_phase_t phase, hsa_api_id_t api_id) {
     sibir_at_hsa_event(cb_data, phase, api_id);
 }
 

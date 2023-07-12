@@ -3,11 +3,6 @@ cmake_minimum_required(VERSION 3.2)
 project(src/sibir)
 
 list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
-# Include other files
-list(APPEND CMAKE_MODULE_PATH
-  "${PROJECT_SOURCE_DIR}/cmake")
-message(${CMAKE_MODULE_PATH})
-include(hip)
 
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS "-fPIC")
@@ -25,15 +20,15 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 add_definitions(-D_GLIBCXX_DEBUG)
 
 # Include sub directories
-set(SUB_DIRS src/sibir/ example/)
+set(SUB_DIRS src/sibir/ examples/kernel_instrument)
 foreach (DIR ${SUB_DIRS})
   add_subdirectory(${DIR})
 endforeach (DIR)
 
-add_custom_target(sibir-cli ALL
-  COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/sibir.py ${CMAKE_BINARY_DIR}/sibir
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/sibir.py
-  COMMENT "Move sibir command to output folder")
+#add_custom_target(sibir-cli ALL
+#  COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/sibir.py ${CMAKE_BINARY_DIR}/sibir
+#  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/sibir.py
+#  COMMENT "Move sibir command to output folder")
 
 
 

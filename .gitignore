@@ -38,3 +38,4 @@ hip_clang.cpp
 *.swp
 *hipv4-amdgcn-amd-amdhsa--gfx906
 *hipv4-amdgcn-amd-amdhsa--gfx908
+/ext/

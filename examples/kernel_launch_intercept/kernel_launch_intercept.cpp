@@ -10,7 +10,6 @@
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
 #include <string>
-//#include <amd-dbgapi/amd-dbgapi.h>
 
 // Since the kernel launch doesn't give us access to the queue the signal is associated with, we need to save the relationship in a map
 static std::map<decltype(hsa_signal_t::handle), hsa_queue_t*> queue_map;
@@ -22,17 +21,15 @@ static hsa_ven_amd_loader_1_03_pfn_t amdTable{};
 static bool amdTableInitialized{false};
 static bool initializeGlobalVar{false};
 
-static bool instrumnted{true};
+static bool instrumented{true};
 
-//__attribute__((used)) __device__ __host__ __noinline__ void hello_world_printf() {printf("hello world!\n");};
+__device__ __managed__ int counter;
 
-//__global__ void dummy() {
-// hello_world_printf();
-//}
+__device__ void instrumentation_kernel() {
+    atomicAdd(&counter, 1);
+}
 
-//static std::map<std::string, void*> hostFuncMap{std::make_pair("hello_world_printf", reinterpret_cast<void*>(hello_world_printf))};
-
-int* counter;
+SIBIR_EXPORT_FUNC(instrumentation_kernel)
 
 /**
  * Returns the list of GPU HSA agents (devices) on the system
@@ -177,6 +174,9 @@ void instrumentKernel(const amd_dbgapi_global_address_t entrypoint) {
         std::string instStr(instChar);
 //        std::cout << instStr << ": ";
         if (instStr.find("s_add_i32") != std::string::npos) {
+            std::cout << instStr << ": ";
+            for (const auto& el: instBytes)
+                std::cout << std::hex << std::setfill('0') << std::setw(2) << uint16_t(el) << " ";
             auto overwrite_address = reinterpret_cast<uint8_t*>(curr_address);
 //            auto out =
 //            reinterpret_cast<hipError_t (*)(void* dst, int value, size_t sizeBytes)>(sibir_get_hip_function("hipMemset"))(overwrite_address + 1,
@@ -202,7 +202,7 @@ void instrumentKernel(const amd_dbgapi_global_address_t entrypoint) {
     //02 85 02 81
 }
 
-void interceptKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value) {
+void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value) {
     auto it = queue_map.find(signal.handle);
     if (it != queue_map.end()) {
         hsa_queue_t *queue = it->second;
@@ -371,10 +371,10 @@ void sibir_at_term() {
     memset(&amdTable, 0, sizeof(hsa_ven_amd_loader_1_01_pfn_t));
     int counterHost;
     reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
-        &counterHost, counter, 4, hipMemcpyDeviceToHost
+        &counterHost, &counter, 4, hipMemcpyDeviceToHost
     );
     std::cout << "Counter Value: " << counterHost << std::endl;
-    reinterpret_cast<hipError_t(*)(void*)>(sibir_get_hip_function("hipFree"))(counter);
+//    reinterpret_cast<hipError_t(*)(void*)>(sibir_get_hip_function("hipFree"))(counter);
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 
@@ -428,7 +428,7 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
     }
 }
 
-void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_id_t api_id) {
+void sibir_at_hip_event(void* args, sibir_api_phase_t phase, int hip_api_id) {
     if (!initializeGlobalVar) {
         reinterpret_cast<hipError_t(*)(void**,size_t)>(sibir_get_hip_function("hipMalloc"))(
             reinterpret_cast<void **>(&counter), sizeof(uint64_t));
@@ -445,22 +445,15 @@ void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_i
 //        has_launched = true;
 //    }
     fprintf(stdout, "<call to (%s)\t on %s> ",
-            hip_api_name(api_id),
+            hip_api_name(hip_api_id),
             phase == SIBIR_API_PHASE_ENTER ? "entry" : "exit"
             );
-    switch (api_id) {
-        case HIP_API_ID_hipLaunchKernel:
-//            name = std::string(hipKernelNameRefByPtr(args->hipLaunchKernel.function_address,
-//                                              args->hipLaunchKernel.stream));
-//            if (name.find("mult") != std::string::npos)
-//                instrumnted = false;
-            fprintf(stdout, "kernel(\"%s\") stream(%p)",
-                    hipKernelNameRefByPtr(args->hipLaunchKernel.function_address,
-                                          args->hipLaunchKernel.stream),
-                    args->hipModuleLaunchKernel.stream);
-            break;
-        default:
-            break;
+    if (hip_api_id == HIP_API_ID_hipLaunchKernel) {
+        auto kern_args = reinterpret_cast<hip_hipLaunchKernel_api_args_t*>(args);
+        fprintf(stdout, "kernel(\"%s\") stream(%p)",
+                hipKernelNameRefByPtr(kern_args->function_address,
+                                      kern_args->stream),
+                kern_args->stream);
     }
     fprintf(stdout, "\n"); fflush(stdout);
 }
