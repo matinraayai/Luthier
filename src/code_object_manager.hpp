@@ -24,7 +24,7 @@ class CodeObjectManager {
                           const void *hostFunction,
                           const char *deviceName);
 
-    hsa_executable_t getInstrumentationFunction(const char *functionName, hsa_agent_t agent);
+    std::pair<const char*, size_t> getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent);
 
  private:
     typedef struct {

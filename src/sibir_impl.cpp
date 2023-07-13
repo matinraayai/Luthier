@@ -1,10 +1,12 @@
 #include "code_object_manager.hpp"
+#include "context_manager.hpp"
 #include "disassembler.hpp"
 #include "hsa_intercept.h"
 #include <iomanip>
 #include <roctracer/roctracer.h>
 #include <sibir.h>
-#include <sibir_impl.hpp>
+#include "sibir_impl.hpp"
+#include "code_generator.hpp"
 
 void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int api_id) {
     //    static std::vector<hip___hipRegisterFatBinary_api_args_t*>
@@ -67,7 +69,7 @@ void sibir::impl::hsaApiCallback(hsa_api_args_t *cb_data, sibir_api_phase_t phas
 }
 
 std::vector<Instr> sibir_disassemble_kernel_object(uint64_t kernel_object) {
-    return sibir::Disassembler::Instance().disassemble(kernel_object);
+    return sibir::Disassembler::disassemble(kernel_object);
 }
 
 //void print_instructions(const std::vector<Inst>& isa) {
@@ -89,27 +91,84 @@ void *sibir_get_hip_function(const char *funcName) {
 
 hsa_executable_t sibir_insert_call(const Instr *instr, const char *dev_func_name, sibir_ipoint_t point) {
 
-    std::vector<hsa_agent_t> agents;
+    // TODO: make this query the agent associated with the instr
 
-    auto &coreTable = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    auto agent = sibir::ContextManager::Instance().getHsaAgents()[0];
 
-    auto queryAgentsCallback = [](hsa_agent_t agent, void *data) {
-        auto agents = reinterpret_cast<std::vector<hsa_agent_t> *>(data);
-        hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
 
-        hsa_status_t stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
+    const char* codeObjectPtr;
+    size_t codeObjectSize;
 
-        if (stat != HSA_STATUS_SUCCESS)
-            return stat;
-        if (dev_type == HSA_DEVICE_TYPE_GPU)
-            agents->push_back(agent);
+    std::tie(codeObjectPtr, codeObjectSize) = sibir::CodeObjectManager::Instance().getCodeObjectOfInstrumentationFunction(dev_func_name, agent);
 
-        return stat;
+    sibir::CodeGenerator::instrument(agent, *instr, std::string(codeObjectPtr, codeObjectSize), point);
+
+
+    // COMGR symbol iteration things
+    amd_comgr_data_t coData;
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &coData));
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(coData, codeObjectSize,
+                                             codeObjectPtr));
+
+    auto symbolIterator = [](amd_comgr_symbol_t s, void *data) {
+        uint64_t nameLength;
+        auto status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_NAME_LENGTH, &nameLength));
+        if (status != AMD_COMGR_STATUS_SUCCESS)
+            return status;
+        std::string name;
+        name.resize(nameLength);
+        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_NAME, name.data()));
+        if (status != AMD_COMGR_STATUS_SUCCESS)
+            return status;
+
+        std::cout << "AMD COMGR symbol name: " << name << std::endl;
+
+        amd_comgr_symbol_type_t type;
+        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_TYPE, &type));
+        if (status != AMD_COMGR_STATUS_SUCCESS)
+            return status;
+
+        std::cout << "AMD COMGR symbol type: " << type << std::endl;
+
+        uint64_t size;
+        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_SIZE, &size));
+        if (status != AMD_COMGR_STATUS_SUCCESS)
+            return status;
+
+        std::cout << "AMD COMGR symbol size: " << size << std::endl;
+
+        bool isDefined;
+        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_IS_UNDEFINED, &isDefined));
+        if (status != AMD_COMGR_STATUS_SUCCESS)
+            return status;
+
+        std::cout << "AMD COMGR symbol is defined: " << size << std::endl;
+
+        uint64_t value;
+        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_VALUE, &value));
+        if (status != AMD_COMGR_STATUS_SUCCESS)
+            return status;
+
+        std::cout << "AMD COMGR symbol value: " << reinterpret_cast<void*>(value) << std::endl;
+
+        return AMD_COMGR_STATUS_SUCCESS;
     };
 
-    SIBIR_HSA_CHECK(coreTable.hsa_iterate_agents_fn(queryAgentsCallback, &agents));
+    amd_comgr_iterate_symbols(coData, symbolIterator, nullptr);
 
-    return sibir::CodeObjectManager::Instance().getInstrumentationFunction(dev_func_name, agents[0]);
+
+    auto coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    hsa_code_object_reader_t coReader;
+    hsa_executable_t executable;
+    SIBIR_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr,
+                                                                         codeObjectSize, &coReader));
+
+    SIBIR_HSA_CHECK(coreApi.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT, nullptr, &executable));
+
+    SIBIR_HSA_CHECK(coreApi.hsa_executable_load_agent_code_object_fn(executable, agent, coReader, nullptr, nullptr));
+
+    SIBIR_HSA_CHECK(coreApi.hsa_executable_freeze_fn(executable, nullptr));
+    return executable;
 }
 
 extern "C" {
