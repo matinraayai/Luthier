@@ -2,9 +2,11 @@
 #include "hsa_intercept.h"
 #include <assert.h>
 #include <elfio/elfio.hpp>
+#include "amdgpu_elf.hpp"
 #include <hip/hip_runtime_api.h>
 #include <iostream>
 #include <vector>
+#include "disassembler.hpp"
 
 namespace {
 struct __CudaFatBinaryWrapper {
@@ -77,6 +79,8 @@ hsa_executable_t sibir::CodeObjectManager::getInstrumentationFunction(const char
 
     //TODO: Make this work with hsa_agent's ISA
     //TODO: Put the hsa_agent map somewhere accessible (rethink abstraction)
+    auto coreHsaApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+
     std::vector<amd_comgr_code_object_info_t> isaInfo{{"amdgcn-amd-amdhsa--gfx908", 0, 0}};
 
     SIBIR_AMD_COMGR_CHECK(amd_comgr_lookup_code_object(fbData, isaInfo.data(), isaInfo.size()));
@@ -114,13 +118,36 @@ hsa_executable_t sibir::CodeObjectManager::getInstrumentationFunction(const char
         std::string name;
         if(note_reader.get_note(i, type, name, desc, descSize)) {
             std::cout << "Note name: " << name << std::endl;
-            auto f = std::fstream("./note_content", std::ios::out);
+//            auto f = std::fstream("./note_content", std::ios::out);
             std::string content(desc, descSize);
             std::cout << "Note content" << content << std::endl;
-            f << content;
-            f.close();
+//            f << content;
+//            f.close();
         }
     }
+
+    for (unsigned int i = 0; i < sibir::elf::getSymbolNum(coElfIO); i++) {
+        sibir::elf::SymbolInfo info;
+        sibir::elf::getSymbolInfo(coElfIO, i, info);
+        std::cout << "Symbol Name: " << info.sym_name << std::endl;
+        std::cout << "Section Name: " << info.sec_name << std::endl;
+        std::cout << "Address: " << reinterpret_cast<const void*>(info.address) << std::endl;
+        std::cout << "Sec address: " << reinterpret_cast<const void*>(info.sec_addr) << std::endl;
+        std::cout << "Size: " << info.size << std::endl;
+        std::cout << "Sec Size: " << info.sec_size << std::endl;
+        if (info.sym_name.find("instrumentation_kernel") != std::string::npos and info.sym_name.find("kd") == std::string::npos) {
+            auto insts = sibir::Disassembler::Instance().disassemble(agent, reinterpret_cast<sibir_address_t>(info.address), info.size);
+            for (auto i : insts)
+                std::cout << std::hex << i.addr << std::dec << ": " << i.instr << std::endl;
+        }
+        else if (info.sym_name.find("kd") != std::string::npos) {
+
+            const auto kd = reinterpret_cast<const kernel_descriptor_t*>(info.address);
+            std::cout << "KD: " << reinterpret_cast<const void *>(kd) << std::endl;
+            std::cout << "Offset in KD: " << kd->kernel_code_entry_byte_offset << std::endl;
+        }
+    }
+
 
     // COMGR symbol iteration things
     amd_comgr_data_t coData;
@@ -167,7 +194,7 @@ hsa_executable_t sibir::CodeObjectManager::getInstrumentationFunction(const char
         if (status != AMD_COMGR_STATUS_SUCCESS)
             return status;
 
-        std::cout << "AMD COMGR symbol value: " << value << std::endl;
+        std::cout << "AMD COMGR symbol value: " << reinterpret_cast<void*>(value) << std::endl;
 
         return AMD_COMGR_STATUS_SUCCESS;
     };

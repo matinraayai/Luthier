@@ -29,7 +29,7 @@ FetchContent_MakeAvailable(elfio)
 add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h hip_intercept.h hip_intercept.cpp
         sibir_types.h hsa_intercept.h hsa_intercept.cpp code_object_manager.hpp code_object_manager.cpp hip_arg_types.h
         hip_private_api.h error_check.h disassembler.hpp disassembler.cpp
-        amdgpu_elf.hpp amdgpu_elf.cpp)
+        amdgpu_elf.hpp amdgpu_elf.cpp context_manager.hpp context_manager.cpp)
 
 
 target_include_directories(sibir PRIVATE ${elfio_SOURCE_DIR})
