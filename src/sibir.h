@@ -324,7 +324,7 @@ std::vector<Instr> sibir_disassemble_kernel_object(uint64_t kernel_object);
  * @param dev_func_name
  * @param point
  */
-hsa_executable_t sibir_insert_call(const Instr* instr, const char* dev_func_name, sibir_ipoint_t point);
+void sibir_insert_call(const Instr* instr, const char* dev_func_name, sibir_ipoint_t point);
 ////void nvbit_insert_call(const Instr* instr, const char* dev_func_name,
 ////                       ipoint_t point);
 ////

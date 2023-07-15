@@ -25,6 +25,7 @@ enum sibir_ipoint_t {
 struct Instr {
     sibir_address_t addr;
     std::string instr;
+    size_t size;
 };
 
 struct kernel_descriptor_t {

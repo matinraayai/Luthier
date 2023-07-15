@@ -96,7 +96,7 @@ std::vector<Instr> sibir::Disassembler::disassemble(sibir_address_t kernelObject
     while (Status == AMD_COMGR_STATUS_SUCCESS && !kdDisassemblyCallbackData.second) {
         Status = amd_comgr_disassemble_instruction(
             disassemblyInfo, instrAddr, (void *)&kdDisassemblyCallbackData, &instrSize);
-        out.push_back({instrAddr, kdDisassemblyCallbackData.first});
+        out.push_back({instrAddr, kdDisassemblyCallbackData.first, instrSize});
         kdDisassemblyCallbackData.second = kdDisassemblyCallbackData.first.find("s_endpgm") != std::string::npos;
         instrAddr += instrSize;
     }
