@@ -469,10 +469,10 @@ bool getSymbolInfo(const elfio& io, unsigned int index, SymbolInfo& symInfo)
 
   symInfo.sec_addr = sec->get_data();
   symInfo.sec_size = sec->get_size();
-  std::cout << "Offset: " << sec->get_offset() << std::endl;
-  std::cout << "get Address: " << sec->get_address() << std::endl;
-  std::cout << "align address: " << sec->get_addr_align() << std::endl;
-  std::cout << "entry size: " << sec->get_entry_size() << std::endl;
+//  std::cout << "Offset: " << sec->get_offset() << std::endl;
+//  std::cout << "get Address: " << sec->get_address() << std::endl;
+//  std::cout << "align address: " << sec->get_addr_align() << std::endl;
+//  std::cout << "entry size: " << sec->get_entry_size() << std::endl;
   symInfo.address = symInfo.sec_addr + (size_t) value - (size_t) sec->get_offset();
   symInfo.size = (uint64_t) size;
 

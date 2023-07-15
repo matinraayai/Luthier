@@ -51,6 +51,8 @@ class ContextManager {
             agents.push_back({h.first});
         return agents;
     }
+
+    static std::string getDemangledName(const char *mangledName);
 };
 }
 

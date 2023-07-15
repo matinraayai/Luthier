@@ -108,32 +108,58 @@ std::vector<Instr> sibir::Disassembler::disassemble(hsa_agent_t agent, sibir_add
 
     std::string isaName = sibir::ContextManager::Instance().getHsaAgentInfo(agent).isa;
 
-    // Disassemble using AMD_COMGR
-
-    amd_comgr_status_t Status = AMD_COMGR_STATUS_SUCCESS;
-
     amd_comgr_disassembly_info_t disassemblyInfo;
 
     // Maybe caching the disassembly info for each agent is a good idea? (instead of only the isaName)
     // The destructor has to call destroy on each disassembly_info_t
 
+    auto readMemoryCB = [](sibir_address_t from, char *to, size_t size, void *userData) {
+        sibir_address_t progEndAddr = reinterpret_cast<std::pair<std::string, sibir_address_t> *>(userData)->second;
+
+        if ((from + size) > progEndAddr) {
+            if (from < progEndAddr) {
+                size_t lastChunkSize = progEndAddr - from;
+                memcpy(reinterpret_cast<void *>(to),
+                       reinterpret_cast<const void *>(from), lastChunkSize);
+                return lastChunkSize;
+            }
+            else
+                return size_t{0};
+        }
+        else {
+            memcpy(reinterpret_cast<void *>(to),
+                   reinterpret_cast<const void *>(from), size);
+            return size;
+        }
+    };
+
+    auto printInstructionCB = [](const char *instruction, void *userData) {
+        auto out = reinterpret_cast<std::pair<std::string, sibir_address_t> *>(userData);
+        out->first = std::string(instruction);
+    };
+
+
+
     SIBIR_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info(isaName.c_str(),
-                                                            &readMemoryCallback,
-                                                            &printInstructionCallback,
+                                                            readMemoryCB,
+                                                            printInstructionCB,
                                                             &printAddressCallback,
                                                             &disassemblyInfo));
 
     uint64_t instrAddr = entry;
     uint64_t instrSize = 0;
-    std::pair<std::string, bool> kdDisassemblyCallbackData{{}, false};
+    std::pair<std::string, sibir_address_t> kdDisassemblyCallbackData{{}, entry + size};
     std::vector<Instr> out;
-    std::cout << "Entry + size" << entry + size << std::endl;
-    while (Status == AMD_COMGR_STATUS_SUCCESS && !kdDisassemblyCallbackData.second) {
-        Status = amd_comgr_disassemble_instruction(
+    std::cout << "Entry + size: " << std::hex << entry + size << std::dec << std::endl;
+    while (true) {
+        auto Status = amd_comgr_disassemble_instruction(
             disassemblyInfo, instrAddr, (void *)&kdDisassemblyCallbackData, &instrSize);
-        out.push_back({instrAddr, kdDisassemblyCallbackData.first});
-        kdDisassemblyCallbackData.second = instrAddr > (entry + size);
-        instrAddr += instrSize;
+        if (Status == AMD_COMGR_STATUS_SUCCESS) {
+            out.push_back({instrAddr, kdDisassemblyCallbackData.first});
+            instrAddr += instrSize;
+        }
+        else
+            break;
     }
     SIBIR_AMD_COMGR_CHECK(amd_comgr_destroy_disassembly_info(disassemblyInfo));
     return out;
