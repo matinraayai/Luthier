@@ -7,7 +7,38 @@
 typedef uint64_t sibir_address_t;
 typedef uint64_t inst_size_t;
 
+enum memOpType {
+    NONE,
+    LOCAL,
+    GENERIC,
+    GLOBAL,
+    SHARED,
+    TEXTURE,
+    CONSTANT
+};
+
+enum OperandType {
+    InvalidOperantType,
+	RegOperand,
+	FloatOperand,
+	IntOperand,
+	LiteralConstant
+}
+
+
+struct operand {
+    int code;
+    OperandType optype;
+    long val[2];
+}
+
 class sibir_instr {
+private:
+    sibir_address_t addr;
+    inst_size_t size;
+    std::string inst_str;
+    std::vector<operand> operands;
+
 public:
     sibir_instr(sibir_address_t inst_addr, std::string inst_string, inst_size_t inst_size);
 
@@ -18,18 +49,13 @@ public:
     std::vector<std::string> getOperands();
     std::vector<std::string> getImmOperands();
     std::vector<std::string> getRegOperands();
-
-private:
-    sibir_address_t addr;
-    inst_size_t size;
-    std::string inst_name;
-    std::vector<std::string> operands;
 };
 
 sibir_instr::sibir_instr(sibir_address_t inst_addr, std::string inst_string, inst_size_t inst_size) {
     addr     = inst_addr;
+    inst_str = inst_string;
     size     = inst_size;
-
+    
     std::string instrstr_cpy(inst_string);
     std::string delim = " ";
     
