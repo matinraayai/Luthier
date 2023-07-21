@@ -1,7 +1,7 @@
 #ifndef SIBIR_H
 #define SIBIR_H
 #include "sibir_types.h"
-//#include "src/disassembler/inst.h"
+#include "instr.h"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <roctracer/roctracer_hip.h>
@@ -9,182 +9,6 @@
 #include "error_check.h"
 
 //extern "C" {
-
-/////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
-////class Instr {
-//// public:
-////  /* all supported arch have at most 255 general purpose registers */
-////  static constexpr const int RZ = 255;
-////  /* the always true predicate is indicated as "7" on all the archs */
-////  static constexpr const int PT = 7;
-////  /* the entire predicate register is ecoded as "8" */
-////  static constexpr const int PR = 8;
-////  static constexpr const int URZ = 63;
-////  static constexpr const int UPT = 7;  // uniform predicate true
-////  static constexpr const int UPR = 8;  // entire uniform predicate register
-////  static constexpr const int MAX_CHARS = 256;
-////
-////  enum class memOpType {
-////    NONE,
-////    LOCAL,     // local memory operation
-////    GENERIC,   // generic memory operation
-////    GLOBAL,    // global memory operation
-////    SHARED,    // shared memory operation
-////    CONSTANT,  // constant memory operation
-////    GLOBAL_TO_SHARED, // read from global memory then write to shared memory
-////  };
-////  static constexpr const char* memOpTypeStr[] = {
-////      "NONE", "LOCAL", "GENERIC", "GLOBAL", "SHARED", "CONSTANT",
-////      "GLOBAL_TO_SHARED"};
-////
-////  enum class operandType {
-////    IMM_UINT64,
-////    IMM_DOUBLE,
-////    REG,
-////    PRED,
-////    UREG,
-////    UPRED,
-////    CBANK,
-////    MREF,
-////    GENERIC
-////  };
-////
-////  static constexpr const char* operandTypeStr[] = {
-////      "IMM_UINT64", "IMM_DOUBLE", "REG",  "PRED",   "UREG",
-////      "UPRED",      "CBANK",      "MREF", "GENERIC"};
-////
-////  enum class regModifierType {
-////    /* stride modifiers */
-////    X1,
-////    X4,
-////    X8,
-////    X16,
-////    /* size modifiers */
-////    U32,
-////    U64,
-////    NO_MOD
-////  };
-////  static constexpr const char* regModifierTypeStr[] = {
-////      "X1", "X4", "X8", "X16", "U32", /* no U */ "64", "NO_MOD"};
-////
-////  typedef struct { int imm; } mref_t;
-////
-////  typedef struct {
-////    /* operand type */
-////    operandType type;
-////    /* is negative */
-////    bool is_neg;
-////    /* is not */
-////    bool is_not;
-////    /* is absolute */
-////    bool is_abs;
-////
-////    union {
-////      struct {
-////        uint64_t value;
-////      } imm_uint64;
-////
-////      struct {
-////        double value;
-////      } imm_double;
-////
-////      struct {
-////        int num;
-////        /* register properties .XXX */
-////        char prop[MAX_CHARS];
-////      } reg;
-////
-////      struct {
-////        int num;
-////      } pred;
-////
-////      struct {
-////        int id;
-////        bool has_imm_offset;
-////        int imm_offset;
-////        bool has_reg_offset;
-////        int reg_offset;
-////      } cbank;
-////
-////      struct {
-////        bool has_ra;
-////        int ra_num;
-////        regModifierType ra_mod;
-////        bool has_ur;
-////        int ur_num;
-////        bool has_imm;
-////        int imm;
-////      } mref;
-////
-////      struct {
-////        char array[MAX_CHARS];
-////      } generic;
-////
-////    } u;
-////  } operand_t;
-////
-////  /* returns the "string"  containing the SASS, i.e. IMAD.WIDE R8, R8, R9 */
-////  const char* getSass();
-////  /* returns offset in bytes of this instruction within the function */
-////  uint32_t getOffset();
-////  /* returns the id of the instruction within the function */
-////  uint32_t getIdx();
-////  /* returns true if instruction used predicate */
-////  bool hasPred();
-////  /* returns predicate number, only valid if hasPred() == true */
-////  int getPredNum();
-////  /* returns true if predicate is negated (i.e. @!P0), only valid if hasPred()
-////   * == true */
-////  bool isPredNeg();
-////  /* if predicate is uniform predicate (e.g., @UP0), only valid if hasPred()
-////   * == true */
-////  bool isPredUniform();
-////  /* returns full opcode of the instruction (i.e. IMAD.WIDE ) */
-////  const char* getOpcode();
-////  /* returns short opcode of the instruction (i.e. IMAD.WIDE returns IMAD) */
-////  const char* getOpcodeShort();
-////
-////  /* returns memOpType_t */
-////  memOpType getMemOpType();
-////  bool isLoad();
-////  bool isStore();
-////  bool isExtended();
-////  int getSize();
-////
-////  /* get number of operands */
-////  int getNumOperands();
-////  /* get specific operand */
-////  const operand_t* getOperand(int num_operand);
-////
-////  /* print fully decoded instruction */
-////  void printDecoded();
-////  /* prints one line instruction with idx, offset, sass */
-////  void print(const char* prefix = NULL);
-////
-//// private:
-////  /* Constructor used internally by NVBit */
-////  Instr();
-////  /* Reserved variable used internally by NVBit */
-////  const void* reserved;
-////  friend class Nvbit;
-////  friend class Function;
-////};
-////
-/////* basic block struct */
-////typedef struct { std::vector<Instr*> instrs; } basic_block_t;
-////
-/////* control flow graph struct */
-////typedef struct {
-////  /* indicates the control flow graph can't be statically predetermined
-////   * because the function from which is belong uses jmx/brx types of branches
-////   * which targets depends of registers values that are known only
-////   * at runtime */
-////  bool is_degenerate;
-////  /* vector of basic block */
-////  std::vector<basic_block_t*> bbs;
-////} CFG_t;
-//
-
 
 //
 ///*********************************************************************
@@ -231,7 +55,7 @@ void* sibir_get_hip_function(const char* funcName);
 
 
 
-std::vector<Instr> sibir_disassemble_kernel_object(uint64_t kernel_object);
+std::vector<sibir::Instr> sibir_disassemble_kernel_object(uint64_t kernel_object);
 
 
 #define SIBIR_EXPORT_FUNC(f)               \
@@ -324,10 +148,8 @@ std::vector<Instr> sibir_disassemble_kernel_object(uint64_t kernel_object);
  * @param dev_func_name
  * @param point
  */
-void sibir_insert_call(const Instr* instr, const char* dev_func_name, sibir_ipoint_t point);
-////void nvbit_insert_call(const Instr* instr, const char* dev_func_name,
-////                       ipoint_t point);
-////
+void sibir_insert_call(sibir::Instr* instr, const char* dev_func_name, sibir_ipoint_t point);
+
 /////* Add int32_t argument to last injected call, value of the predicate for this
 //// * instruction */
 ////void nvbit_add_call_arg_pred_val(const Instr* instr,
@@ -406,8 +228,8 @@ void sibir_insert_call(const Instr* instr, const char* dev_func_name, sibir_ipoi
 ////
 /////* Run instrumented on original function (and its related functions)
 //// * based on flag value */
-////void nvbit_enable_instrumented(CUcontext ctx, CUfunction func, bool flag,
-////                               bool apply_to_related = true);
+void sibir_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, sibir_address_t func, bool flag);
+//                               bool apply_to_related = true);
 ////
 /////* Set arguments at launch time, that will be loaded on input argument of
 //// * the instrumentation function */
@@ -420,9 +242,6 @@ void sibir_insert_call(const Instr* instr, const char* dev_func_name, sibir_ipoi
 ////void nvbit_set_tool_pthread(pthread_t tool_pthread);
 ////void nvbit_unset_tool_pthread(pthread_t tool_pthread);
 ////
-/////* Set nvdisasm */
-////void nvbit_set_nvdisasm(const char* nvdisasm);
-//}
 
 #endif
 ////

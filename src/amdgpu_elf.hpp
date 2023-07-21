@@ -112,19 +112,18 @@ struct SymbolInfo {
     std::string sym_name;//!   symbol name
     const char *address; //!   address of corresponding to symbol data
     uint64_t size;       //!   size of data corresponding to symbol
-    SymbolInfo() : sec_name(), sec_addr(nullptr), sec_size(0), sym_name(), address(nullptr), size(0) {}
+    size_t value;        //!   value of the symbol
+    SymbolInfo() : sec_name(), sec_addr(nullptr), sec_size(0), sym_name(), address(nullptr), size(0), value(0) {}
 
     SymbolInfo(const char *sename, const char *seaddr, uint64_t sesize, const char *syname,
-               const char *syaddr, uint64_t sysize) : sec_name(sename), sec_addr(seaddr),
-                                                      sec_size(sesize), sym_name(syname), address(syaddr), size(sysize) {}
+               const char *syaddr, uint64_t sysize, size_t syvalue) : sec_name(sename), sec_addr(seaddr),
+                                                                      sec_size(sesize), sym_name(syname), address(syaddr), size(sysize), value(syvalue) {}
 };
 
-unsigned int getSymbolNum(const elfio& io);
+unsigned int getSymbolNum(const elfio &io);
 
 /* Return SymbolInfo of the index-th symbol in SYMTAB section */
-bool getSymbolInfo(const elfio& io, unsigned int index, SymbolInfo &symInfo);
-
-
+bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo);
 
 //class ElfAmd {
 // public:
@@ -418,6 +417,6 @@ bool getSymbolInfo(const elfio& io, unsigned int index, SymbolInfo &symInfo);
 //    void elfMemoryRelease();
 //};
 
-}// namespace sibir
+}// namespace sibir::elf
 
 #endif

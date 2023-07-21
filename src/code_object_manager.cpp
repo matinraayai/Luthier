@@ -47,6 +47,27 @@ std::string getDemangledName(const char *mangledName) {
     return out;
 }
 
+
+std::string stripOffKernelLaunch(const std::string& elf, const std::string& demangledName) {
+
+    std::istringstream ss{elf};
+    ELFIO::elfio elfio;
+    elfio.load(ss);
+    auto numSymbols = sibir::elf::getSymbolNum(elfio);
+    for (int i = 0; i < numSymbols; i++) {
+        sibir::elf::SymbolInfo info;
+        sibir::elf::getSymbolInfo(elfio, i, info);
+        std::string demangledSymName = getDemangledName(info.sym_name.c_str());
+        if (demangledSymName.find("__sibir_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
+            std::cout << "Symbol name: " << getDemangledName(info.sym_name.c_str()) << std::endl;
+            std::cout << "Symbol size: " << info.size << std::endl;
+            std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
+            return {info.address, info.size};
+        }
+
+    }
+    return {};
+}
 }// namespace
 
 void sibir::CodeObjectManager::registerFatBinary(const void *data) {
@@ -68,11 +89,12 @@ void sibir::CodeObjectManager::registerFunction(const void *fbWrapper,
     if (!fatBinaries_.contains(fatBinary))
         registerFatBinary(fatBinary);
     std::string demangledName = getDemangledName(funcName);
+    demangledName = demangledName.substr(0, demangledName.find('('));
     if (!functions_.contains(demangledName))
         functions_.insert({demangledName, {std::string(funcName), hostFunction, std::string(deviceName), fatBinary}});
 }
 
-std::pair<const char*, size_t> sibir::CodeObjectManager::getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent) {
+std::string sibir::CodeObjectManager::getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent) {
     std::string funcNameKey = "__sibir_wrap__" + std::string(functionName);
 
     auto fb = functions_[funcNameKey].parentFatBinary;
@@ -84,5 +106,11 @@ std::pair<const char*, size_t> sibir::CodeObjectManager::getCodeObjectOfInstrume
 
     SIBIR_AMD_COMGR_CHECK(amd_comgr_lookup_code_object(fbData, isaInfo.data(), isaInfo.size()));
 
-    return {reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size};
+    // Strip off the kernel launch portion of the code object
+    return stripOffKernelLaunch({reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size}, functionName);
+//    return {reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size};
+}
+void sibir::CodeObjectManager::registerKD(sibir_address_t originalCode, sibir_address_t instrumentedCode) {
+    if (!instrumentedKernels_.contains(originalCode))
+        instrumentedKernels_.insert({originalCode, instrumentedCode});
 }

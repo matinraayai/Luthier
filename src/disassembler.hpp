@@ -1,5 +1,6 @@
 #ifndef DISASSEMBLER_H
 #define DISASSEMBLER_H
+#include "instr.h"
 #include <hsa/hsa.h>
 #include <unordered_map>
 #include <vector>
@@ -9,10 +10,8 @@ namespace sibir {
 
 class Disassembler {
  private:
-
-
-    Disassembler() {}
-    ~Disassembler() {}
+    Disassembler() = default;
+    ~Disassembler() = default;
 
  public:
     Disassembler(const Disassembler &) = delete;

@@ -475,6 +475,7 @@ bool getSymbolInfo(const elfio& io, unsigned int index, SymbolInfo& symInfo)
 //  std::cout << "entry size: " << sec->get_entry_size() << std::endl;
   symInfo.address = symInfo.sec_addr + (size_t) value - (size_t) sec->get_offset();
   symInfo.size = (uint64_t) size;
+  symInfo.value = (size_t) value;
 
   symInfo.sec_name = sec->get_name();
   symInfo.sym_name = sym_name;

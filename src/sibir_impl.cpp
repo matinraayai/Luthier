@@ -68,7 +68,7 @@ void sibir::impl::hsaApiCallback(hsa_api_args_t *cb_data, sibir_api_phase_t phas
     sibir_at_hsa_event(cb_data, phase, api_id);
 }
 
-std::vector<Instr> sibir_disassemble_kernel_object(uint64_t kernel_object) {
+std::vector<sibir::Instr> sibir_disassemble_kernel_object(uint64_t kernel_object) {
     return sibir::Disassembler::disassemble(kernel_object);
 }
 
@@ -89,19 +89,17 @@ void *sibir_get_hip_function(const char *funcName) {
     return SibirHipInterceptor::Instance().GetHipFunction(funcName);
 }
 
-void sibir_insert_call(const Instr *instr, const char *dev_func_name, sibir_ipoint_t point) {
+void sibir_insert_call(sibir::Instr *instr, const char *dev_func_name, sibir_ipoint_t point) {
 
-    // TODO: make this query the agent associated with the instr
-
-    auto agent = sibir::ContextManager::Instance().getHsaAgents()[0];
+    auto agent = instr->getAgent();
 
 
     const char* codeObjectPtr;
     size_t codeObjectSize;
 
-    std::tie(codeObjectPtr, codeObjectSize) = sibir::CodeObjectManager::Instance().getCodeObjectOfInstrumentationFunction(dev_func_name, agent);
+    std::string instrumentationFunc = sibir::CodeObjectManager::Instance().getCodeObjectOfInstrumentationFunction(dev_func_name, agent);
 
-    sibir::CodeGenerator::instrument(agent, *instr, std::string(codeObjectPtr, codeObjectSize), point);
+    sibir::CodeGenerator::instrument(*instr, instrumentationFunc, point);
 
 
 //    // COMGR symbol iteration things
@@ -169,6 +167,15 @@ void sibir_insert_call(const Instr *instr, const char *dev_func_name, sibir_ipoi
 //
 //    SIBIR_HSA_CHECK(coreApi.hsa_executable_freeze_fn(executable, nullptr));
 //    return executable;
+}
+
+void sibir_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, const sibir_address_t func, bool flag) {
+    if (flag) {
+        auto instrumentedKd = sibir::CodeObjectManager::Instance().getInstrumentedFunctionOfKD(func);
+        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
+    }
+    else
+        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(func);
 }
 
 extern "C" {

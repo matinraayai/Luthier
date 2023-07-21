@@ -1,6 +1,7 @@
 #ifndef CODE_GENERATOR_H
 #define CODE_GENERATOR_H
 #include "sibir_types.h"
+#include "instr.h"
 
 namespace sibir {
 class CodeGenerator {
@@ -13,7 +14,7 @@ class CodeGenerator {
         return instance;
     }
 
-    static void instrument(hsa_agent_t agent, const Instr& instr, const std::string& elf, sibir_ipoint_t point);
+    static void instrument(Instr& instr, const std::string&instrumentationFunction, sibir_ipoint_t point);
 
  private:
     typedef struct {

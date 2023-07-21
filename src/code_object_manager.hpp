@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include "sibir_types.h"
 
 namespace sibir {
 class CodeObjectManager {
@@ -24,7 +25,15 @@ class CodeObjectManager {
                           const void *hostFunction,
                           const char *deviceName);
 
-    std::pair<const char*, size_t> getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent);
+    std::string getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent);
+
+    void registerKD(sibir_address_t originalCode, sibir_address_t instrumentedCode);
+
+    sibir_address_t getInstrumentedFunctionOfKD(const sibir_address_t kd) {
+        std::cout << "Is in instrumented kernels? " << instrumentedKernels_.contains(kd) << std::endl;
+        std::cout << "Instrumented kernel address: " << std::hex << instrumentedKernels_[kd] << std::dec << std::endl;
+        return instrumentedKernels_[kd];
+    }
 
  private:
     typedef struct {
@@ -42,6 +51,8 @@ class CodeObjectManager {
 
     std::unordered_map<const void *, amd_comgr_data_t> fatBinaries_{};
     std::unordered_map<std::string, function_info_t> functions_{};
+
+    std::unordered_map<sibir_address_t, sibir_address_t> instrumentedKernels_;
 
     //    //Populated during __hipRegisterVars
     //    std::unordered_map<const void*, Var*> vars_;
