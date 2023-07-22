@@ -22,7 +22,7 @@ void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int
             // If the function doesn't have __sibir_wrap__ in its name then it belongs to the instrumented application
             // Give control to the user-defined callback
             if (std::string(args->deviceFunction).find("__sibir_wrap__") == std::string::npos)
-                SibirHipInterceptor::Instance().SetCallback(sibir::impl::hipApiCallback);
+                HipInterceptor::Instance().SetCallback(sibir::impl::hipApiCallback);
             else {
                 coManager.registerFatBinary(lastSavedFatBinary);
                 coManager.registerFunction(lastSavedFatBinary, args->deviceFunction, args->hostFunction, args->deviceName);
@@ -40,9 +40,9 @@ void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int
 __attribute__((constructor)) void sibir::impl::init() {
     std::cout << "Initializing Sibir...." << std::endl
               << std::flush;
-    assert(SibirHipInterceptor::Instance().IsEnabled());
+    assert(HipInterceptor::Instance().IsEnabled());
     sibir_at_init();
-    SibirHipInterceptor::Instance().SetCallback(sibir::impl::hipStartupCallback);
+    HipInterceptor::Instance().SetCallback(sibir::impl::hipStartupCallback);
     SibirHsaInterceptor::Instance().SetCallback(sibir::impl::hsaApiCallback);
 }
 
@@ -86,7 +86,7 @@ std::vector<sibir::Instr> sibir_disassemble_kernel_object(uint64_t kernel_object
 //}
 
 void *sibir_get_hip_function(const char *funcName) {
-    return SibirHipInterceptor::Instance().GetHipFunction(funcName);
+    return sibir::HipInterceptor::Instance().GetHipFunction(funcName);
 }
 
 void sibir_insert_call(sibir::Instr *instr, const char *dev_func_name, sibir_ipoint_t point) {

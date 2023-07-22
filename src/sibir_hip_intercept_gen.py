@@ -223,12 +223,14 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                 hip_api_id_enums[name] != "HIP_API_ID_NONE":
             raise RuntimeError(f"{actual_name} is in hip_prof_str.h but not in the captured function APIs.\n")
 
-    f.write('#include "hip_intercept.h"\n\n\n')
+    f.write('#include "hip_intercept.hpp"\n\n\n')
     for name in sorted(hip_runtime_api_map.keys()):
         f.write('__attribute__((visibility("default")))\n')
         output_type = hip_runtime_api_map[name]['rtnType']
 
-        f.write(f'extern "C" {output_type} {name}(')
+        if name != "hipCreateSurfaceObject" and name != "hipDestroySurfaceObject":
+            f.write('extern "C" ')
+        f.write(f'{output_type} {name}(')
         args = hip_runtime_api_map[name]['parameters']
         are_args_non_empty = len(args) != 0 and not (len(args) == 1 and args[0]['type'] == 'void')
         if are_args_non_empty:
@@ -244,7 +246,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                 if i != len(args) - 1:
                     f.write(', ')
         f.write(') {\n')
-        f.write('\tauto& hipInterceptor = SibirHipInterceptor::Instance();\n')
+        f.write('\tauto& hipInterceptor = sibir::HipInterceptor::Instance();\n')
         f.write('\tauto& hipCallback = hipInterceptor.getCallback();\n')
         if f"HIP_API_ID_{name}" not in hip_api_id_enums:
             f.write(f'\tauto api_id = HIP_PRIVATE_API_ID_{name};\n')

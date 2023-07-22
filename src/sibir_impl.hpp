@@ -1,7 +1,7 @@
-#ifndef SIBIR_IMPL
-#define SIBIR_IMPL
+#ifndef SIBIR_IMPL_HPP
+#define SIBIR_IMPL_HPP
 #include "code_object_manager.hpp"
-#include "hip_intercept.h"
+#include "hip_intercept.hpp"
 #include "sibir_types.h"
 
 namespace sibir::impl {

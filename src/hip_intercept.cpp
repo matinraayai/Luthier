@@ -1,9 +1,9 @@
-#include "hip_intercept.h"
+#include "hip_intercept.hpp"
 
 
 __attribute__((visibility("default")))
 extern "C" void __hipGetPCH(const char * * pch, unsigned int * size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipGetPCH;
 	// Copy Arguments for PHASE_ENTER
@@ -19,7 +19,7 @@ extern "C" void __hipGetPCH(const char * * pch, unsigned int * size) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t __hipPopCallConfiguration(dim3 * gridDim, dim3 * blockDim, size_t * sharedMem, hipStream_t * stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID___hipPopCallConfiguration;
 	// Copy Arguments for PHASE_ENTER
@@ -40,7 +40,7 @@ extern "C" hipError_t __hipPopCallConfiguration(dim3 * gridDim, dim3 * blockDim,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t __hipPushCallConfiguration(dim3 gridDim, dim3 blockDim, size_t sharedMem, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID___hipPushCallConfiguration;
 	// Copy Arguments for PHASE_ENTER
@@ -61,7 +61,7 @@ extern "C" hipError_t __hipPushCallConfiguration(dim3 gridDim, dim3 blockDim, si
 
 __attribute__((visibility("default")))
 extern "C" hip::FatBinaryInfo * * __hipRegisterFatBinary(const void * data) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterFatBinary;
 	// Copy Arguments for PHASE_ENTER
@@ -78,7 +78,7 @@ extern "C" hip::FatBinaryInfo * * __hipRegisterFatBinary(const void * data) {
 
 __attribute__((visibility("default")))
 extern "C" void __hipRegisterFunction(hip::FatBinaryInfo * * modules, const void * hostFunction, char * deviceFunction, const char * deviceName, unsigned int threadLimit, uint3 * tid, uint3 * bid, dim3 * blockDim, dim3 * gridDim, int * wSize) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterFunction;
 	// Copy Arguments for PHASE_ENTER
@@ -101,7 +101,7 @@ extern "C" void __hipRegisterFunction(hip::FatBinaryInfo * * modules, const void
 
 __attribute__((visibility("default")))
 extern "C" void __hipRegisterManagedVar(void * hipModule, void * * pointer, void * init_value, const char * name, size_t size, unsigned align) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterManagedVar;
 	// Copy Arguments for PHASE_ENTER
@@ -121,7 +121,7 @@ extern "C" void __hipRegisterManagedVar(void * hipModule, void * * pointer, void
 
 __attribute__((visibility("default")))
 extern "C" void __hipRegisterSurface(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int type, int ext) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterSurface;
 	// Copy Arguments for PHASE_ENTER
@@ -142,7 +142,7 @@ extern "C" void __hipRegisterSurface(hip::FatBinaryInfo * * modules, void * var,
 
 __attribute__((visibility("default")))
 extern "C" void __hipRegisterTexture(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int type, int norm, int ext) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterTexture;
 	// Copy Arguments for PHASE_ENTER
@@ -164,7 +164,7 @@ extern "C" void __hipRegisterTexture(hip::FatBinaryInfo * * modules, void * var,
 
 __attribute__((visibility("default")))
 extern "C" void __hipRegisterVar(hip::FatBinaryInfo * * modules, void * var, char * hostVar, char * deviceVar, int ext, size_t size, int constant, int global) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipRegisterVar;
 	// Copy Arguments for PHASE_ENTER
@@ -187,7 +187,7 @@ extern "C" void __hipRegisterVar(hip::FatBinaryInfo * * modules, void * var, cha
 
 __attribute__((visibility("default")))
 extern "C" void __hipUnregisterFatBinary(hip::FatBinaryInfo * * modules) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID___hipUnregisterFatBinary;
 	// Copy Arguments for PHASE_ENTER
@@ -203,7 +203,7 @@ extern "C" void __hipUnregisterFatBinary(hip::FatBinaryInfo * * modules) {
 
 __attribute__((visibility("default")))
 extern "C" const char * hipApiName(uint32_t id) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipApiName;
 	// Copy Arguments for PHASE_ENTER
@@ -221,7 +221,7 @@ extern "C" const char * hipApiName(uint32_t id) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipArray3DCreate(hipArray * * array, const HIP_ARRAY3D_DESCRIPTOR * pAllocateArray) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipArray3DCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -239,7 +239,7 @@ extern "C" hipError_t hipArray3DCreate(hipArray * * array, const HIP_ARRAY3D_DES
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipArrayCreate(hipArray * * pHandle, const HIP_ARRAY_DESCRIPTOR * pAllocateArray) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipArrayCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -257,7 +257,7 @@ extern "C" hipError_t hipArrayCreate(hipArray * * pHandle, const HIP_ARRAY_DESCR
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipArrayDestroy(hipArray * array) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipArrayDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -275,7 +275,7 @@ extern "C" hipError_t hipArrayDestroy(hipArray * array) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipBindTexture(size_t * offset, const textureReference * tex, const void * devPtr, const hipChannelFormatDesc * desc, size_t size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTexture;
 	// Copy Arguments for PHASE_ENTER
@@ -294,7 +294,7 @@ extern "C" hipError_t hipBindTexture(size_t * offset, const textureReference * t
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipBindTexture2D(size_t * offset, const textureReference * tex, const void * devPtr, const hipChannelFormatDesc * desc, size_t width, size_t height, size_t pitch) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTexture2D;
 	// Copy Arguments for PHASE_ENTER
@@ -315,7 +315,7 @@ extern "C" hipError_t hipBindTexture2D(size_t * offset, const textureReference *
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipBindTextureToArray(const textureReference * tex, hipArray_const_t array, const hipChannelFormatDesc * desc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTextureToArray;
 	// Copy Arguments for PHASE_ENTER
@@ -332,7 +332,7 @@ extern "C" hipError_t hipBindTextureToArray(const textureReference * tex, hipArr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipBindTextureToMipmappedArray(const textureReference * tex, hipMipmappedArray_const_t mipmappedArray, const hipChannelFormatDesc * desc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipBindTextureToMipmappedArray;
 	// Copy Arguments for PHASE_ENTER
@@ -349,7 +349,7 @@ extern "C" hipError_t hipBindTextureToMipmappedArray(const textureReference * te
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipChooseDevice(int * device, const hipDeviceProp_t * prop) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipChooseDevice;
 	// Copy Arguments for PHASE_ENTER
@@ -367,7 +367,7 @@ extern "C" hipError_t hipChooseDevice(int * device, const hipDeviceProp_t * prop
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipConfigureCall(dim3 gridDim, dim3 blockDim, size_t sharedMem, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipConfigureCall;
 	// Copy Arguments for PHASE_ENTER
@@ -388,7 +388,7 @@ extern "C" hipError_t hipConfigureCall(dim3 gridDim, dim3 blockDim, size_t share
 
 __attribute__((visibility("default")))
 hipError_t hipCreateSurfaceObject(hipSurfaceObject_t * pSurfObject, const hipResourceDesc * pResDesc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCreateSurfaceObject;
 	// Copy Arguments for PHASE_ENTER
@@ -406,7 +406,7 @@ hipError_t hipCreateSurfaceObject(hipSurfaceObject_t * pSurfObject, const hipRes
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCreateTextureObject(hipTextureObject_t * pTexObject, const hipResourceDesc * pResDesc, const hipTextureDesc * pTexDesc, const struct hipResourceViewDesc * pResViewDesc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCreateTextureObject;
 	// Copy Arguments for PHASE_ENTER
@@ -424,7 +424,7 @@ extern "C" hipError_t hipCreateTextureObject(hipTextureObject_t * pTexObject, co
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxCreate(hipCtx_t * ctx, unsigned int flags, hipDevice_t device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -444,7 +444,7 @@ extern "C" hipError_t hipCtxCreate(hipCtx_t * ctx, unsigned int flags, hipDevice
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxDestroy(hipCtx_t ctx) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -462,7 +462,7 @@ extern "C" hipError_t hipCtxDestroy(hipCtx_t ctx) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxDisablePeerAccess(hipCtx_t peerCtx) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxDisablePeerAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -480,7 +480,7 @@ extern "C" hipError_t hipCtxDisablePeerAccess(hipCtx_t peerCtx) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxEnablePeerAccess(hipCtx_t peerCtx, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxEnablePeerAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -499,7 +499,7 @@ extern "C" hipError_t hipCtxEnablePeerAccess(hipCtx_t peerCtx, unsigned int flag
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxGetApiVersion(hipCtx_t ctx, int * apiVersion) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetApiVersion;
 	// Copy Arguments for PHASE_ENTER
@@ -518,7 +518,7 @@ extern "C" hipError_t hipCtxGetApiVersion(hipCtx_t ctx, int * apiVersion) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxGetCacheConfig(hipFuncCache_t * cacheConfig) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetCacheConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -536,7 +536,7 @@ extern "C" hipError_t hipCtxGetCacheConfig(hipFuncCache_t * cacheConfig) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxGetCurrent(hipCtx_t * ctx) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetCurrent;
 	// Copy Arguments for PHASE_ENTER
@@ -554,7 +554,7 @@ extern "C" hipError_t hipCtxGetCurrent(hipCtx_t * ctx) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxGetDevice(hipDevice_t * device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetDevice;
 	// Copy Arguments for PHASE_ENTER
@@ -572,7 +572,7 @@ extern "C" hipError_t hipCtxGetDevice(hipDevice_t * device) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxGetFlags(unsigned int * flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -590,7 +590,7 @@ extern "C" hipError_t hipCtxGetFlags(unsigned int * flags) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig * pConfig) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxGetSharedMemConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -608,7 +608,7 @@ extern "C" hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig * pConfig) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxPopCurrent(hipCtx_t * ctx) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxPopCurrent;
 	// Copy Arguments for PHASE_ENTER
@@ -626,7 +626,7 @@ extern "C" hipError_t hipCtxPopCurrent(hipCtx_t * ctx) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxPushCurrent(hipCtx_t ctx) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxPushCurrent;
 	// Copy Arguments for PHASE_ENTER
@@ -644,7 +644,7 @@ extern "C" hipError_t hipCtxPushCurrent(hipCtx_t ctx) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSetCacheConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -662,7 +662,7 @@ extern "C" hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxSetCurrent(hipCtx_t ctx) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSetCurrent;
 	// Copy Arguments for PHASE_ENTER
@@ -680,7 +680,7 @@ extern "C" hipError_t hipCtxSetCurrent(hipCtx_t ctx) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSetSharedMemConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -698,7 +698,7 @@ extern "C" hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipCtxSynchronize() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipCtxSynchronize;
 	// Copy Arguments for PHASE_ENTER
@@ -713,7 +713,7 @@ extern "C" hipError_t hipCtxSynchronize() {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDestroyExternalMemory(hipExternalMemory_t extMem) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDestroyExternalMemory;
 	// Copy Arguments for PHASE_ENTER
@@ -731,7 +731,7 @@ extern "C" hipError_t hipDestroyExternalMemory(hipExternalMemory_t extMem) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDestroyExternalSemaphore(hipExternalSemaphore_t extSem) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDestroyExternalSemaphore;
 	// Copy Arguments for PHASE_ENTER
@@ -749,7 +749,7 @@ extern "C" hipError_t hipDestroyExternalSemaphore(hipExternalSemaphore_t extSem)
 
 __attribute__((visibility("default")))
 hipError_t hipDestroySurfaceObject(hipSurfaceObject_t surfaceObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDestroySurfaceObject;
 	// Copy Arguments for PHASE_ENTER
@@ -767,7 +767,7 @@ hipError_t hipDestroySurfaceObject(hipSurfaceObject_t surfaceObject) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDestroyTextureObject(hipTextureObject_t textureObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDestroyTextureObject;
 	// Copy Arguments for PHASE_ENTER
@@ -785,7 +785,7 @@ extern "C" hipError_t hipDestroyTextureObject(hipTextureObject_t textureObject) 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceCanAccessPeer(int * canAccessPeer, int deviceId, int peerDeviceId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceCanAccessPeer;
 	// Copy Arguments for PHASE_ENTER
@@ -805,7 +805,7 @@ extern "C" hipError_t hipDeviceCanAccessPeer(int * canAccessPeer, int deviceId, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceComputeCapability(int * major, int * minor, hipDevice_t device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceComputeCapability;
 	// Copy Arguments for PHASE_ENTER
@@ -825,7 +825,7 @@ extern "C" hipError_t hipDeviceComputeCapability(int * major, int * minor, hipDe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceDisablePeerAccess(int peerDeviceId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceDisablePeerAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -843,7 +843,7 @@ extern "C" hipError_t hipDeviceDisablePeerAccess(int peerDeviceId) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceEnablePeerAccess(int peerDeviceId, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceEnablePeerAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -862,7 +862,7 @@ extern "C" hipError_t hipDeviceEnablePeerAccess(int peerDeviceId, unsigned int f
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGet(hipDevice_t * device, int ordinal) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGet;
 	// Copy Arguments for PHASE_ENTER
@@ -881,7 +881,7 @@ extern "C" hipError_t hipDeviceGet(hipDevice_t * device, int ordinal) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetAttribute(int * pi, hipDeviceAttribute_t attr, int deviceId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -901,7 +901,7 @@ extern "C" hipError_t hipDeviceGetAttribute(int * pi, hipDeviceAttribute_t attr,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetByPCIBusId(int * device, const char * pciBusId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetByPCIBusId;
 	// Copy Arguments for PHASE_ENTER
@@ -919,7 +919,7 @@ extern "C" hipError_t hipDeviceGetByPCIBusId(int * device, const char * pciBusId
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetCacheConfig(hipFuncCache_t * cacheConfig) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetCacheConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -937,7 +937,7 @@ extern "C" hipError_t hipDeviceGetCacheConfig(hipFuncCache_t * cacheConfig) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetCount(int * count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetCount;
 	// Copy Arguments for PHASE_ENTER
@@ -955,7 +955,7 @@ extern "C" hipError_t hipDeviceGetCount(int * count) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetDefaultMemPool(hipMemPool_t * mem_pool, int device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetDefaultMemPool;
 	// Copy Arguments for PHASE_ENTER
@@ -974,7 +974,7 @@ extern "C" hipError_t hipDeviceGetDefaultMemPool(hipMemPool_t * mem_pool, int de
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetGraphMemAttribute(int device, hipGraphMemAttributeType attr, void * value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetGraphMemAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -994,7 +994,7 @@ extern "C" hipError_t hipDeviceGetGraphMemAttribute(int device, hipGraphMemAttri
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetLimit(size_t * pValue, enum hipLimit_t limit) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetLimit;
 	// Copy Arguments for PHASE_ENTER
@@ -1013,7 +1013,7 @@ extern "C" hipError_t hipDeviceGetLimit(size_t * pValue, enum hipLimit_t limit) 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetMemPool(hipMemPool_t * mem_pool, int device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetMemPool;
 	// Copy Arguments for PHASE_ENTER
@@ -1032,7 +1032,7 @@ extern "C" hipError_t hipDeviceGetMemPool(hipMemPool_t * mem_pool, int device) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetName(char * name, int len, hipDevice_t device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetName;
 	// Copy Arguments for PHASE_ENTER
@@ -1052,7 +1052,7 @@ extern "C" hipError_t hipDeviceGetName(char * name, int len, hipDevice_t device)
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetP2PAttribute(int * value, hipDeviceP2PAttr attr, int srcDevice, int dstDevice) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetP2PAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -1073,7 +1073,7 @@ extern "C" hipError_t hipDeviceGetP2PAttribute(int * value, hipDeviceP2PAttr att
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetPCIBusId(char * pciBusId, int len, int device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetPCIBusId;
 	// Copy Arguments for PHASE_ENTER
@@ -1093,7 +1093,7 @@ extern "C" hipError_t hipDeviceGetPCIBusId(char * pciBusId, int len, int device)
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetSharedMemConfig(hipSharedMemConfig * pConfig) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetSharedMemConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -1111,7 +1111,7 @@ extern "C" hipError_t hipDeviceGetSharedMemConfig(hipSharedMemConfig * pConfig) 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetStreamPriorityRange(int * leastPriority, int * greatestPriority) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetStreamPriorityRange;
 	// Copy Arguments for PHASE_ENTER
@@ -1130,7 +1130,7 @@ extern "C" hipError_t hipDeviceGetStreamPriorityRange(int * leastPriority, int *
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGetUuid(hipUUID * uuid, hipDevice_t device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGetUuid;
 	// Copy Arguments for PHASE_ENTER
@@ -1149,7 +1149,7 @@ extern "C" hipError_t hipDeviceGetUuid(hipUUID * uuid, hipDevice_t device) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceGraphMemTrim(int device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceGraphMemTrim;
 	// Copy Arguments for PHASE_ENTER
@@ -1167,7 +1167,7 @@ extern "C" hipError_t hipDeviceGraphMemTrim(int device) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev, unsigned int * flags, int * active) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxGetState;
 	// Copy Arguments for PHASE_ENTER
@@ -1187,7 +1187,7 @@ extern "C" hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev, unsigned int 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxRelease;
 	// Copy Arguments for PHASE_ENTER
@@ -1205,7 +1205,7 @@ extern "C" hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDevicePrimaryCtxReset(hipDevice_t dev) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxReset;
 	// Copy Arguments for PHASE_ENTER
@@ -1223,7 +1223,7 @@ extern "C" hipError_t hipDevicePrimaryCtxReset(hipDevice_t dev) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDevicePrimaryCtxRetain(hipCtx_t * pctx, hipDevice_t dev) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxRetain;
 	// Copy Arguments for PHASE_ENTER
@@ -1242,7 +1242,7 @@ extern "C" hipError_t hipDevicePrimaryCtxRetain(hipCtx_t * pctx, hipDevice_t dev
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDevicePrimaryCtxSetFlags(hipDevice_t dev, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDevicePrimaryCtxSetFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -1261,7 +1261,7 @@ extern "C" hipError_t hipDevicePrimaryCtxSetFlags(hipDevice_t dev, unsigned int 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceReset() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceReset;
 	// Copy Arguments for PHASE_ENTER
@@ -1276,7 +1276,7 @@ extern "C" hipError_t hipDeviceReset() {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceSetCacheConfig(hipFuncCache_t cacheConfig) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetCacheConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -1294,7 +1294,7 @@ extern "C" hipError_t hipDeviceSetCacheConfig(hipFuncCache_t cacheConfig) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceSetGraphMemAttribute(int device, hipGraphMemAttributeType attr, void * value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetGraphMemAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -1314,7 +1314,7 @@ extern "C" hipError_t hipDeviceSetGraphMemAttribute(int device, hipGraphMemAttri
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceSetLimit(enum hipLimit_t limit, size_t value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetLimit;
 	// Copy Arguments for PHASE_ENTER
@@ -1333,7 +1333,7 @@ extern "C" hipError_t hipDeviceSetLimit(enum hipLimit_t limit, size_t value) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceSetMemPool(int device, hipMemPool_t mem_pool) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetMemPool;
 	// Copy Arguments for PHASE_ENTER
@@ -1352,7 +1352,7 @@ extern "C" hipError_t hipDeviceSetMemPool(int device, hipMemPool_t mem_pool) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceSetSharedMemConfig(hipSharedMemConfig config) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSetSharedMemConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -1370,7 +1370,7 @@ extern "C" hipError_t hipDeviceSetSharedMemConfig(hipSharedMemConfig config) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceSynchronize() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceSynchronize;
 	// Copy Arguments for PHASE_ENTER
@@ -1385,7 +1385,7 @@ extern "C" hipError_t hipDeviceSynchronize() {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDeviceTotalMem(size_t * bytes, hipDevice_t device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDeviceTotalMem;
 	// Copy Arguments for PHASE_ENTER
@@ -1404,7 +1404,7 @@ extern "C" hipError_t hipDeviceTotalMem(size_t * bytes, hipDevice_t device) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDriverGetVersion(int * driverVersion) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDriverGetVersion;
 	// Copy Arguments for PHASE_ENTER
@@ -1422,7 +1422,7 @@ extern "C" hipError_t hipDriverGetVersion(int * driverVersion) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDrvGetErrorName(hipError_t hipError, const char * * errorString) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipDrvGetErrorName;
 	// Copy Arguments for PHASE_ENTER
@@ -1440,7 +1440,7 @@ extern "C" hipError_t hipDrvGetErrorName(hipError_t hipError, const char * * err
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDrvGetErrorString(hipError_t hipError, const char * * errorString) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipDrvGetErrorString;
 	// Copy Arguments for PHASE_ENTER
@@ -1458,7 +1458,7 @@ extern "C" hipError_t hipDrvGetErrorString(hipError_t hipError, const char * * e
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D * pCopy) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvMemcpy2DUnaligned;
 	// Copy Arguments for PHASE_ENTER
@@ -1475,7 +1475,7 @@ extern "C" hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D * pCopy) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDrvMemcpy3D(const HIP_MEMCPY3D * pCopy) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvMemcpy3D;
 	// Copy Arguments for PHASE_ENTER
@@ -1492,7 +1492,7 @@ extern "C" hipError_t hipDrvMemcpy3D(const HIP_MEMCPY3D * pCopy) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDrvMemcpy3DAsync(const HIP_MEMCPY3D * pCopy, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvMemcpy3DAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -1510,7 +1510,7 @@ extern "C" hipError_t hipDrvMemcpy3DAsync(const HIP_MEMCPY3D * pCopy, hipStream_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipDrvPointerGetAttributes(unsigned int numAttributes, hipPointer_attribute * attributes, void * * data, hipDeviceptr_t ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipDrvPointerGetAttributes;
 	// Copy Arguments for PHASE_ENTER
@@ -1531,7 +1531,7 @@ extern "C" hipError_t hipDrvPointerGetAttributes(unsigned int numAttributes, hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipEventCreate(hipEvent_t * event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -1549,7 +1549,7 @@ extern "C" hipError_t hipEventCreate(hipEvent_t * event) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipEventCreateWithFlags(hipEvent_t * event, unsigned flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventCreateWithFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -1568,7 +1568,7 @@ extern "C" hipError_t hipEventCreateWithFlags(hipEvent_t * event, unsigned flags
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipEventDestroy(hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -1586,7 +1586,7 @@ extern "C" hipError_t hipEventDestroy(hipEvent_t event) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipEventElapsedTime(float * ms, hipEvent_t start, hipEvent_t stop) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventElapsedTime;
 	// Copy Arguments for PHASE_ENTER
@@ -1606,7 +1606,7 @@ extern "C" hipError_t hipEventElapsedTime(float * ms, hipEvent_t start, hipEvent
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipEventQuery(hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventQuery;
 	// Copy Arguments for PHASE_ENTER
@@ -1624,7 +1624,7 @@ extern "C" hipError_t hipEventQuery(hipEvent_t event) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipEventRecord(hipEvent_t event, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventRecord;
 	// Copy Arguments for PHASE_ENTER
@@ -1643,7 +1643,7 @@ extern "C" hipError_t hipEventRecord(hipEvent_t event, hipStream_t stream) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipEventSynchronize(hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipEventSynchronize;
 	// Copy Arguments for PHASE_ENTER
@@ -1661,7 +1661,7 @@ extern "C" hipError_t hipEventSynchronize(hipEvent_t event) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2, uint32_t * linktype, uint32_t * hopcount) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtGetLinkTypeAndHopCount;
 	// Copy Arguments for PHASE_ENTER
@@ -1682,7 +1682,7 @@ extern "C" hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2, uin
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExtLaunchKernel(const void * function_address, dim3 numBlocks, dim3 dimBlocks, void * * args, size_t sharedMemBytes, hipStream_t stream, hipEvent_t startEvent, hipEvent_t stopEvent, int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtLaunchKernel;
 	// Copy Arguments for PHASE_ENTER
@@ -1707,7 +1707,7 @@ extern "C" hipError_t hipExtLaunchKernel(const void * function_address, dim3 num
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExtLaunchMultiKernelMultiDevice(hipLaunchParams * launchParamsList, int numDevices, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtLaunchMultiKernelMultiDevice;
 	// Copy Arguments for PHASE_ENTER
@@ -1727,7 +1727,7 @@ extern "C" hipError_t hipExtLaunchMultiKernelMultiDevice(hipLaunchParams * launc
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExtMallocWithFlags(void * * ptr, size_t sizeBytes, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtMallocWithFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -1747,7 +1747,7 @@ extern "C" hipError_t hipExtMallocWithFlags(void * * ptr, size_t sizeBytes, unsi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExtModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t localWorkSizeX, uint32_t localWorkSizeY, uint32_t localWorkSizeZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent, uint32_t flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtModuleLaunchKernel;
 	// Copy Arguments for PHASE_ENTER
@@ -1778,7 +1778,7 @@ extern "C" hipError_t hipExtModuleLaunchKernel(hipFunction_t f, uint32_t globalW
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExtStreamCreateWithCUMask(hipStream_t * stream, uint32_t cuMaskSize, const uint32_t * cuMask) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtStreamCreateWithCUMask;
 	// Copy Arguments for PHASE_ENTER
@@ -1797,7 +1797,7 @@ extern "C" hipError_t hipExtStreamCreateWithCUMask(hipStream_t * stream, uint32_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t cuMaskSize, uint32_t * cuMask) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExtStreamGetCUMask;
 	// Copy Arguments for PHASE_ENTER
@@ -1817,7 +1817,7 @@ extern "C" hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t cuMaskS
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipExternalMemoryGetMappedBuffer(void * * devPtr, hipExternalMemory_t extMem, const hipExternalMemoryBufferDesc * bufferDesc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipExternalMemoryGetMappedBuffer;
 	// Copy Arguments for PHASE_ENTER
@@ -1836,7 +1836,7 @@ extern "C" hipError_t hipExternalMemoryGetMappedBuffer(void * * devPtr, hipExter
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFree(void * ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFree;
 	// Copy Arguments for PHASE_ENTER
@@ -1854,7 +1854,7 @@ extern "C" hipError_t hipFree(void * ptr) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFreeArray(hipArray * array) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeArray;
 	// Copy Arguments for PHASE_ENTER
@@ -1872,7 +1872,7 @@ extern "C" hipError_t hipFreeArray(hipArray * array) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFreeAsync(void * dev_ptr, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -1891,7 +1891,7 @@ extern "C" hipError_t hipFreeAsync(void * dev_ptr, hipStream_t stream) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFreeHost(void * ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeHost;
 	// Copy Arguments for PHASE_ENTER
@@ -1909,7 +1909,7 @@ extern "C" hipError_t hipFreeHost(void * ptr) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFreeMipmappedArray(hipMipmappedArray_t mipmappedArray) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFreeMipmappedArray;
 	// Copy Arguments for PHASE_ENTER
@@ -1927,7 +1927,7 @@ extern "C" hipError_t hipFreeMipmappedArray(hipMipmappedArray_t mipmappedArray) 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFuncGetAttribute(int * value, hipFunction_attribute attrib, hipFunction_t hfunc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncGetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -1947,7 +1947,7 @@ extern "C" hipError_t hipFuncGetAttribute(int * value, hipFunction_attribute att
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFuncGetAttributes(struct hipFuncAttributes * attr, const void * func) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncGetAttributes;
 	// Copy Arguments for PHASE_ENTER
@@ -1965,7 +1965,7 @@ extern "C" hipError_t hipFuncGetAttributes(struct hipFuncAttributes * attr, cons
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFuncSetAttribute(const void * func, hipFuncAttribute attr, int value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncSetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -1984,7 +1984,7 @@ extern "C" hipError_t hipFuncSetAttribute(const void * func, hipFuncAttribute at
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFuncSetCacheConfig(const void * func, hipFuncCache_t config) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncSetCacheConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -2002,7 +2002,7 @@ extern "C" hipError_t hipFuncSetCacheConfig(const void * func, hipFuncCache_t co
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipFuncSetSharedMemConfig(const void * func, hipSharedMemConfig config) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipFuncSetSharedMemConfig;
 	// Copy Arguments for PHASE_ENTER
@@ -2020,7 +2020,7 @@ extern "C" hipError_t hipFuncSetSharedMemConfig(const void * func, hipSharedMemC
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGLGetDevices(unsigned int * pHipDeviceCount, int * pHipDevices, unsigned int hipDeviceCount, hipGLDeviceList deviceList) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGLGetDevices;
 	// Copy Arguments for PHASE_ENTER
@@ -2041,7 +2041,7 @@ extern "C" hipError_t hipGLGetDevices(unsigned int * pHipDeviceCount, int * pHip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetChannelDesc(hipChannelFormatDesc * desc, hipArray_const_t array) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetChannelDesc;
 	// Copy Arguments for PHASE_ENTER
@@ -2059,7 +2059,7 @@ extern "C" hipError_t hipGetChannelDesc(hipChannelFormatDesc * desc, hipArray_co
 
 __attribute__((visibility("default")))
 extern "C" const char * hipGetCmdName(unsigned op) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipGetCmdName;
 	// Copy Arguments for PHASE_ENTER
@@ -2077,7 +2077,7 @@ extern "C" const char * hipGetCmdName(unsigned op) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetDevice(int * deviceId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDevice;
 	// Copy Arguments for PHASE_ENTER
@@ -2095,7 +2095,7 @@ extern "C" hipError_t hipGetDevice(int * deviceId) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetDeviceCount(int * count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDeviceCount;
 	// Copy Arguments for PHASE_ENTER
@@ -2113,7 +2113,7 @@ extern "C" hipError_t hipGetDeviceCount(int * count) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetDeviceFlags(unsigned int * flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDeviceFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -2131,7 +2131,7 @@ extern "C" hipError_t hipGetDeviceFlags(unsigned int * flags) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetDeviceProperties(hipDeviceProp_t * prop, int deviceId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetDeviceProperties;
 	// Copy Arguments for PHASE_ENTER
@@ -2150,7 +2150,7 @@ extern "C" hipError_t hipGetDeviceProperties(hipDeviceProp_t * prop, int deviceI
 
 __attribute__((visibility("default")))
 extern "C" const char * hipGetErrorName(hipError_t hip_error) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipGetErrorName;
 	// Copy Arguments for PHASE_ENTER
@@ -2168,7 +2168,7 @@ extern "C" const char * hipGetErrorName(hipError_t hip_error) {
 
 __attribute__((visibility("default")))
 extern "C" const char * hipGetErrorString(hipError_t hipError) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetErrorString;
 	// Copy Arguments for PHASE_ENTER
@@ -2186,7 +2186,7 @@ extern "C" const char * hipGetErrorString(hipError_t hipError) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetLastError() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetLastError;
 	// Copy Arguments for PHASE_ENTER
@@ -2201,7 +2201,7 @@ extern "C" hipError_t hipGetLastError() {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetMipmappedArrayLevel(hipArray_t * levelArray, hipMipmappedArray_const_t mipmappedArray, unsigned int level) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetMipmappedArrayLevel;
 	// Copy Arguments for PHASE_ENTER
@@ -2220,7 +2220,7 @@ extern "C" hipError_t hipGetMipmappedArrayLevel(hipArray_t * levelArray, hipMipm
 
 __attribute__((visibility("default")))
 extern "C" int hipGetStreamDeviceId(hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipGetStreamDeviceId;
 	// Copy Arguments for PHASE_ENTER
@@ -2238,7 +2238,7 @@ extern "C" int hipGetStreamDeviceId(hipStream_t stream) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetSymbolAddress(void * * devPtr, const void * symbol) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetSymbolAddress;
 	// Copy Arguments for PHASE_ENTER
@@ -2256,7 +2256,7 @@ extern "C" hipError_t hipGetSymbolAddress(void * * devPtr, const void * symbol) 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetSymbolSize(size_t * size, const void * symbol) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetSymbolSize;
 	// Copy Arguments for PHASE_ENTER
@@ -2274,7 +2274,7 @@ extern "C" hipError_t hipGetSymbolSize(size_t * size, const void * symbol) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetTextureAlignmentOffset(size_t * offset, const textureReference * texref) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureAlignmentOffset;
 	// Copy Arguments for PHASE_ENTER
@@ -2292,7 +2292,7 @@ extern "C" hipError_t hipGetTextureAlignmentOffset(size_t * offset, const textur
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetTextureObjectResourceDesc(hipResourceDesc * pResDesc, hipTextureObject_t textureObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureObjectResourceDesc;
 	// Copy Arguments for PHASE_ENTER
@@ -2311,7 +2311,7 @@ extern "C" hipError_t hipGetTextureObjectResourceDesc(hipResourceDesc * pResDesc
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetTextureObjectResourceViewDesc(struct hipResourceViewDesc * pResViewDesc, hipTextureObject_t textureObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureObjectResourceViewDesc;
 	// Copy Arguments for PHASE_ENTER
@@ -2330,7 +2330,7 @@ extern "C" hipError_t hipGetTextureObjectResourceViewDesc(struct hipResourceView
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetTextureObjectTextureDesc(hipTextureDesc * pTexDesc, hipTextureObject_t textureObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureObjectTextureDesc;
 	// Copy Arguments for PHASE_ENTER
@@ -2349,7 +2349,7 @@ extern "C" hipError_t hipGetTextureObjectTextureDesc(hipTextureDesc * pTexDesc, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGetTextureReference(const textureReference * * texref, const void * symbol) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGetTextureReference;
 	// Copy Arguments for PHASE_ENTER
@@ -2366,7 +2366,7 @@ extern "C" hipError_t hipGetTextureReference(const textureReference * * texref, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddChildGraphNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipGraph_t childGraph) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddChildGraphNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2387,7 +2387,7 @@ extern "C" hipError_t hipGraphAddChildGraphNode(hipGraphNode_t * pGraphNode, hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddDependencies(hipGraph_t graph, const hipGraphNode_t * from, const hipGraphNode_t * to, size_t numDependencies) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddDependencies;
 	// Copy Arguments for PHASE_ENTER
@@ -2406,7 +2406,7 @@ extern "C" hipError_t hipGraphAddDependencies(hipGraph_t graph, const hipGraphNo
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddEmptyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddEmptyNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2426,7 +2426,7 @@ extern "C" hipError_t hipGraphAddEmptyNode(hipGraphNode_t * pGraphNode, hipGraph
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddEventRecordNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddEventRecordNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2447,7 +2447,7 @@ extern "C" hipError_t hipGraphAddEventRecordNode(hipGraphNode_t * pGraphNode, hi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddEventWaitNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddEventWaitNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2468,7 +2468,7 @@ extern "C" hipError_t hipGraphAddEventWaitNode(hipGraphNode_t * pGraphNode, hipG
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddHostNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipHostNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddHostNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2488,7 +2488,7 @@ extern "C" hipError_t hipGraphAddHostNode(hipGraphNode_t * pGraphNode, hipGraph_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddKernelNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipKernelNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddKernelNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2508,7 +2508,7 @@ extern "C" hipError_t hipGraphAddKernelNode(hipGraphNode_t * pGraphNode, hipGrap
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddMemcpyNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipMemcpy3DParms * pCopyParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2528,7 +2528,7 @@ extern "C" hipError_t hipGraphAddMemcpyNode(hipGraphNode_t * pGraphNode, hipGrap
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddMemcpyNode1D(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNode1D;
 	// Copy Arguments for PHASE_ENTER
@@ -2551,7 +2551,7 @@ extern "C" hipError_t hipGraphAddMemcpyNode1D(hipGraphNode_t * pGraphNode, hipGr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddMemcpyNodeFromSymbol(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNodeFromSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -2575,7 +2575,7 @@ extern "C" hipError_t hipGraphAddMemcpyNodeFromSymbol(hipGraphNode_t * pGraphNod
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddMemcpyNodeToSymbol(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemcpyNodeToSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -2598,7 +2598,7 @@ extern "C" hipError_t hipGraphAddMemcpyNodeToSymbol(hipGraphNode_t * pGraphNode,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphAddMemsetNode(hipGraphNode_t * pGraphNode, hipGraph_t graph, const hipGraphNode_t * pDependencies, size_t numDependencies, const hipMemsetParams * pMemsetParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphAddMemsetNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2618,7 +2618,7 @@ extern "C" hipError_t hipGraphAddMemsetNode(hipGraphNode_t * pGraphNode, hipGrap
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphChildGraphNodeGetGraph(hipGraphNode_t node, hipGraph_t * pGraph) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphChildGraphNodeGetGraph;
 	// Copy Arguments for PHASE_ENTER
@@ -2637,7 +2637,7 @@ extern "C" hipError_t hipGraphChildGraphNodeGetGraph(hipGraphNode_t node, hipGra
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphClone(hipGraph_t * pGraphClone, hipGraph_t originalGraph) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphClone;
 	// Copy Arguments for PHASE_ENTER
@@ -2656,7 +2656,7 @@ extern "C" hipError_t hipGraphClone(hipGraph_t * pGraphClone, hipGraph_t origina
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphCreate(hipGraph_t * pGraph, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -2675,7 +2675,7 @@ extern "C" hipError_t hipGraphCreate(hipGraph_t * pGraph, unsigned int flags) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphDestroy(hipGraph_t graph) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -2693,7 +2693,7 @@ extern "C" hipError_t hipGraphDestroy(hipGraph_t graph) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphDestroyNode(hipGraphNode_t node) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphDestroyNode;
 	// Copy Arguments for PHASE_ENTER
@@ -2711,7 +2711,7 @@ extern "C" hipError_t hipGraphDestroyNode(hipGraphNode_t node) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphEventRecordNodeGetEvent(hipGraphNode_t node, hipEvent_t * event_out) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventRecordNodeGetEvent;
 	// Copy Arguments for PHASE_ENTER
@@ -2730,7 +2730,7 @@ extern "C" hipError_t hipGraphEventRecordNodeGetEvent(hipGraphNode_t node, hipEv
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphEventRecordNodeSetEvent(hipGraphNode_t node, hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventRecordNodeSetEvent;
 	// Copy Arguments for PHASE_ENTER
@@ -2749,7 +2749,7 @@ extern "C" hipError_t hipGraphEventRecordNodeSetEvent(hipGraphNode_t node, hipEv
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphEventWaitNodeGetEvent(hipGraphNode_t node, hipEvent_t * event_out) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventWaitNodeGetEvent;
 	// Copy Arguments for PHASE_ENTER
@@ -2768,7 +2768,7 @@ extern "C" hipError_t hipGraphEventWaitNodeGetEvent(hipGraphNode_t node, hipEven
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphEventWaitNodeSetEvent(hipGraphNode_t node, hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphEventWaitNodeSetEvent;
 	// Copy Arguments for PHASE_ENTER
@@ -2787,7 +2787,7 @@ extern "C" hipError_t hipGraphEventWaitNodeSetEvent(hipGraphNode_t node, hipEven
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecChildGraphNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, hipGraph_t childGraph) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecChildGraphNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -2807,7 +2807,7 @@ extern "C" hipError_t hipGraphExecChildGraphNodeSetParams(hipGraphExec_t hGraphE
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecDestroy(hipGraphExec_t graphExec) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -2825,7 +2825,7 @@ extern "C" hipError_t hipGraphExecDestroy(hipGraphExec_t graphExec) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecEventRecordNodeSetEvent(hipGraphExec_t hGraphExec, hipGraphNode_t hNode, hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecEventRecordNodeSetEvent;
 	// Copy Arguments for PHASE_ENTER
@@ -2845,7 +2845,7 @@ extern "C" hipError_t hipGraphExecEventRecordNodeSetEvent(hipGraphExec_t hGraphE
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecEventWaitNodeSetEvent(hipGraphExec_t hGraphExec, hipGraphNode_t hNode, hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecEventWaitNodeSetEvent;
 	// Copy Arguments for PHASE_ENTER
@@ -2865,7 +2865,7 @@ extern "C" hipError_t hipGraphExecEventWaitNodeSetEvent(hipGraphExec_t hGraphExe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecHostNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipHostNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecHostNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -2884,7 +2884,7 @@ extern "C" hipError_t hipGraphExecHostNodeSetParams(hipGraphExec_t hGraphExec, h
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecKernelNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipKernelNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecKernelNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -2903,7 +2903,7 @@ extern "C" hipError_t hipGraphExecKernelNodeSetParams(hipGraphExec_t hGraphExec,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecMemcpyNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, hipMemcpy3DParms * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -2923,7 +2923,7 @@ extern "C" hipError_t hipGraphExecMemcpyNodeSetParams(hipGraphExec_t hGraphExec,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecMemcpyNodeSetParams1D(hipGraphExec_t hGraphExec, hipGraphNode_t node, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParams1D;
 	// Copy Arguments for PHASE_ENTER
@@ -2945,7 +2945,7 @@ extern "C" hipError_t hipGraphExecMemcpyNodeSetParams1D(hipGraphExec_t hGraphExe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecMemcpyNodeSetParamsFromSymbol(hipGraphExec_t hGraphExec, hipGraphNode_t node, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParamsFromSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -2968,7 +2968,7 @@ extern "C" hipError_t hipGraphExecMemcpyNodeSetParamsFromSymbol(hipGraphExec_t h
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecMemcpyNodeSetParamsToSymbol(hipGraphExec_t hGraphExec, hipGraphNode_t node, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemcpyNodeSetParamsToSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -2990,7 +2990,7 @@ extern "C" hipError_t hipGraphExecMemcpyNodeSetParamsToSymbol(hipGraphExec_t hGr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecMemsetNodeSetParams(hipGraphExec_t hGraphExec, hipGraphNode_t node, const hipMemsetParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecMemsetNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3009,7 +3009,7 @@ extern "C" hipError_t hipGraphExecMemsetNodeSetParams(hipGraphExec_t hGraphExec,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphExecUpdate(hipGraphExec_t hGraphExec, hipGraph_t hGraph, hipGraphNode_t * hErrorNode_out, hipGraphExecUpdateResult * updateResult_out) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphExecUpdate;
 	// Copy Arguments for PHASE_ENTER
@@ -3030,7 +3030,7 @@ extern "C" hipError_t hipGraphExecUpdate(hipGraphExec_t hGraphExec, hipGraph_t h
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphGetEdges(hipGraph_t graph, hipGraphNode_t * from, hipGraphNode_t * to, size_t * numEdges) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphGetEdges;
 	// Copy Arguments for PHASE_ENTER
@@ -3051,7 +3051,7 @@ extern "C" hipError_t hipGraphGetEdges(hipGraph_t graph, hipGraphNode_t * from, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphGetNodes(hipGraph_t graph, hipGraphNode_t * nodes, size_t * numNodes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphGetNodes;
 	// Copy Arguments for PHASE_ENTER
@@ -3071,7 +3071,7 @@ extern "C" hipError_t hipGraphGetNodes(hipGraph_t graph, hipGraphNode_t * nodes,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphGetRootNodes(hipGraph_t graph, hipGraphNode_t * pRootNodes, size_t * pNumRootNodes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphGetRootNodes;
 	// Copy Arguments for PHASE_ENTER
@@ -3091,7 +3091,7 @@ extern "C" hipError_t hipGraphGetRootNodes(hipGraph_t graph, hipGraphNode_t * pR
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphHostNodeGetParams(hipGraphNode_t node, hipHostNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphHostNodeGetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3110,7 +3110,7 @@ extern "C" hipError_t hipGraphHostNodeGetParams(hipGraphNode_t node, hipHostNode
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphHostNodeSetParams(hipGraphNode_t node, const hipHostNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphHostNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3128,7 +3128,7 @@ extern "C" hipError_t hipGraphHostNodeSetParams(hipGraphNode_t node, const hipHo
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphInstantiate(hipGraphExec_t * pGraphExec, hipGraph_t graph, hipGraphNode_t * pErrorNode, char * pLogBuffer, size_t bufferSize) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphInstantiate;
 	// Copy Arguments for PHASE_ENTER
@@ -3150,7 +3150,7 @@ extern "C" hipError_t hipGraphInstantiate(hipGraphExec_t * pGraphExec, hipGraph_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphInstantiateWithFlags(hipGraphExec_t * pGraphExec, hipGraph_t graph, unsigned long long flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphInstantiateWithFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -3170,7 +3170,7 @@ extern "C" hipError_t hipGraphInstantiateWithFlags(hipGraphExec_t * pGraphExec, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphKernelNodeGetAttribute(hipGraphNode_t hNode, hipKernelNodeAttrID attr, hipKernelNodeAttrValue * value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeGetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -3190,7 +3190,7 @@ extern "C" hipError_t hipGraphKernelNodeGetAttribute(hipGraphNode_t hNode, hipKe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphKernelNodeGetParams(hipGraphNode_t node, hipKernelNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeGetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3209,7 +3209,7 @@ extern "C" hipError_t hipGraphKernelNodeGetParams(hipGraphNode_t node, hipKernel
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphKernelNodeSetAttribute(hipGraphNode_t hNode, hipKernelNodeAttrID attr, const hipKernelNodeAttrValue * value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeSetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -3228,7 +3228,7 @@ extern "C" hipError_t hipGraphKernelNodeSetAttribute(hipGraphNode_t hNode, hipKe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphKernelNodeSetParams(hipGraphNode_t node, const hipKernelNodeParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphKernelNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3246,7 +3246,7 @@ extern "C" hipError_t hipGraphKernelNodeSetParams(hipGraphNode_t node, const hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphLaunch(hipGraphExec_t graphExec, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphLaunch;
 	// Copy Arguments for PHASE_ENTER
@@ -3265,7 +3265,7 @@ extern "C" hipError_t hipGraphLaunch(hipGraphExec_t graphExec, hipStream_t strea
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphMemcpyNodeGetParams(hipGraphNode_t node, hipMemcpy3DParms * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeGetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3284,7 +3284,7 @@ extern "C" hipError_t hipGraphMemcpyNodeGetParams(hipGraphNode_t node, hipMemcpy
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphMemcpyNodeSetParams(hipGraphNode_t node, const hipMemcpy3DParms * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3302,7 +3302,7 @@ extern "C" hipError_t hipGraphMemcpyNodeSetParams(hipGraphNode_t node, const hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphMemcpyNodeSetParams1D(hipGraphNode_t node, void * dst, const void * src, size_t count, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParams1D;
 	// Copy Arguments for PHASE_ENTER
@@ -3323,7 +3323,7 @@ extern "C" hipError_t hipGraphMemcpyNodeSetParams1D(hipGraphNode_t node, void * 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphMemcpyNodeSetParamsFromSymbol(hipGraphNode_t node, void * dst, const void * symbol, size_t count, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParamsFromSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -3345,7 +3345,7 @@ extern "C" hipError_t hipGraphMemcpyNodeSetParamsFromSymbol(hipGraphNode_t node,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphMemcpyNodeSetParamsToSymbol(hipGraphNode_t node, const void * symbol, const void * src, size_t count, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemcpyNodeSetParamsToSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -3366,7 +3366,7 @@ extern "C" hipError_t hipGraphMemcpyNodeSetParamsToSymbol(hipGraphNode_t node, c
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphMemsetNodeGetParams(hipGraphNode_t node, hipMemsetParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemsetNodeGetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3385,7 +3385,7 @@ extern "C" hipError_t hipGraphMemsetNodeGetParams(hipGraphNode_t node, hipMemset
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphMemsetNodeSetParams(hipGraphNode_t node, const hipMemsetParams * pNodeParams) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphMemsetNodeSetParams;
 	// Copy Arguments for PHASE_ENTER
@@ -3403,7 +3403,7 @@ extern "C" hipError_t hipGraphMemsetNodeSetParams(hipGraphNode_t node, const hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphNodeFindInClone(hipGraphNode_t * pNode, hipGraphNode_t originalNode, hipGraph_t clonedGraph) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeFindInClone;
 	// Copy Arguments for PHASE_ENTER
@@ -3423,7 +3423,7 @@ extern "C" hipError_t hipGraphNodeFindInClone(hipGraphNode_t * pNode, hipGraphNo
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphNodeGetDependencies(hipGraphNode_t node, hipGraphNode_t * pDependencies, size_t * pNumDependencies) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeGetDependencies;
 	// Copy Arguments for PHASE_ENTER
@@ -3443,7 +3443,7 @@ extern "C" hipError_t hipGraphNodeGetDependencies(hipGraphNode_t node, hipGraphN
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphNodeGetDependentNodes(hipGraphNode_t node, hipGraphNode_t * pDependentNodes, size_t * pNumDependentNodes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeGetDependentNodes;
 	// Copy Arguments for PHASE_ENTER
@@ -3463,7 +3463,7 @@ extern "C" hipError_t hipGraphNodeGetDependentNodes(hipGraphNode_t node, hipGrap
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphNodeGetType(hipGraphNode_t node, hipGraphNodeType * pType) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphNodeGetType;
 	// Copy Arguments for PHASE_ENTER
@@ -3482,7 +3482,7 @@ extern "C" hipError_t hipGraphNodeGetType(hipGraphNode_t node, hipGraphNodeType 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphReleaseUserObject(hipGraph_t graph, hipUserObject_t object, unsigned int count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphReleaseUserObject;
 	// Copy Arguments for PHASE_ENTER
@@ -3502,7 +3502,7 @@ extern "C" hipError_t hipGraphReleaseUserObject(hipGraph_t graph, hipUserObject_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphRemoveDependencies(hipGraph_t graph, const hipGraphNode_t * from, const hipGraphNode_t * to, size_t numDependencies) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphRemoveDependencies;
 	// Copy Arguments for PHASE_ENTER
@@ -3521,7 +3521,7 @@ extern "C" hipError_t hipGraphRemoveDependencies(hipGraph_t graph, const hipGrap
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphRetainUserObject(hipGraph_t graph, hipUserObject_t object, unsigned int count, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphRetainUserObject;
 	// Copy Arguments for PHASE_ENTER
@@ -3542,7 +3542,7 @@ extern "C" hipError_t hipGraphRetainUserObject(hipGraph_t graph, hipUserObject_t
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphUpload(hipGraphExec_t graphExec, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphUpload;
 	// Copy Arguments for PHASE_ENTER
@@ -3561,7 +3561,7 @@ extern "C" hipError_t hipGraphUpload(hipGraphExec_t graphExec, hipStream_t strea
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphicsGLRegisterBuffer(hipGraphicsResource * * resource, GLuint buffer, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsGLRegisterBuffer;
 	// Copy Arguments for PHASE_ENTER
@@ -3581,7 +3581,7 @@ extern "C" hipError_t hipGraphicsGLRegisterBuffer(hipGraphicsResource * * resour
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphicsGLRegisterImage(hipGraphicsResource * * resource, GLuint image, GLenum target, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsGLRegisterImage;
 	// Copy Arguments for PHASE_ENTER
@@ -3602,7 +3602,7 @@ extern "C" hipError_t hipGraphicsGLRegisterImage(hipGraphicsResource * * resourc
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphicsMapResources(int count, hipGraphicsResource_t * resources, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsMapResources;
 	// Copy Arguments for PHASE_ENTER
@@ -3622,7 +3622,7 @@ extern "C" hipError_t hipGraphicsMapResources(int count, hipGraphicsResource_t *
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphicsResourceGetMappedPointer(void * * devPtr, size_t * size, hipGraphicsResource_t resource) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsResourceGetMappedPointer;
 	// Copy Arguments for PHASE_ENTER
@@ -3642,7 +3642,7 @@ extern "C" hipError_t hipGraphicsResourceGetMappedPointer(void * * devPtr, size_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphicsSubResourceGetMappedArray(hipArray_t * array, hipGraphicsResource_t resource, unsigned int arrayIndex, unsigned int mipLevel) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsSubResourceGetMappedArray;
 	// Copy Arguments for PHASE_ENTER
@@ -3663,7 +3663,7 @@ extern "C" hipError_t hipGraphicsSubResourceGetMappedArray(hipArray_t * array, h
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphicsUnmapResources(int count, hipGraphicsResource_t * resources, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsUnmapResources;
 	// Copy Arguments for PHASE_ENTER
@@ -3683,7 +3683,7 @@ extern "C" hipError_t hipGraphicsUnmapResources(int count, hipGraphicsResource_t
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipGraphicsUnregisterResource(hipGraphicsResource_t resource) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipGraphicsUnregisterResource;
 	// Copy Arguments for PHASE_ENTER
@@ -3701,7 +3701,7 @@ extern "C" hipError_t hipGraphicsUnregisterResource(hipGraphicsResource_t resour
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHccModuleLaunchKernel(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHccModuleLaunchKernel;
 	// Copy Arguments for PHASE_ENTER
@@ -3731,7 +3731,7 @@ extern "C" hipError_t hipHccModuleLaunchKernel(hipFunction_t f, uint32_t globalW
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHostAlloc(void * * ptr, size_t size, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostAlloc;
 	// Copy Arguments for PHASE_ENTER
@@ -3751,7 +3751,7 @@ extern "C" hipError_t hipHostAlloc(void * * ptr, size_t size, unsigned int flags
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHostFree(void * ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostFree;
 	// Copy Arguments for PHASE_ENTER
@@ -3769,7 +3769,7 @@ extern "C" hipError_t hipHostFree(void * ptr) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHostGetDevicePointer(void * * devPtr, void * hstPtr, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostGetDevicePointer;
 	// Copy Arguments for PHASE_ENTER
@@ -3789,7 +3789,7 @@ extern "C" hipError_t hipHostGetDevicePointer(void * * devPtr, void * hstPtr, un
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHostGetFlags(unsigned int * flagsPtr, void * hostPtr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostGetFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -3808,7 +3808,7 @@ extern "C" hipError_t hipHostGetFlags(unsigned int * flagsPtr, void * hostPtr) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHostMalloc(void * * ptr, size_t size, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostMalloc;
 	// Copy Arguments for PHASE_ENTER
@@ -3828,7 +3828,7 @@ extern "C" hipError_t hipHostMalloc(void * * ptr, size_t size, unsigned int flag
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHostRegister(void * hostPtr, size_t sizeBytes, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostRegister;
 	// Copy Arguments for PHASE_ENTER
@@ -3848,7 +3848,7 @@ extern "C" hipError_t hipHostRegister(void * hostPtr, size_t sizeBytes, unsigned
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipHostUnregister(void * hostPtr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipHostUnregister;
 	// Copy Arguments for PHASE_ENTER
@@ -3866,7 +3866,7 @@ extern "C" hipError_t hipHostUnregister(void * hostPtr) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipImportExternalMemory(hipExternalMemory_t * extMem_out, const hipExternalMemoryHandleDesc * memHandleDesc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipImportExternalMemory;
 	// Copy Arguments for PHASE_ENTER
@@ -3884,7 +3884,7 @@ extern "C" hipError_t hipImportExternalMemory(hipExternalMemory_t * extMem_out, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipImportExternalSemaphore(hipExternalSemaphore_t * extSem_out, const hipExternalSemaphoreHandleDesc * semHandleDesc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipImportExternalSemaphore;
 	// Copy Arguments for PHASE_ENTER
@@ -3902,7 +3902,7 @@ extern "C" hipError_t hipImportExternalSemaphore(hipExternalSemaphore_t * extSem
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipInit(unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipInit;
 	// Copy Arguments for PHASE_ENTER
@@ -3920,7 +3920,7 @@ extern "C" hipError_t hipInit(unsigned int flags) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipIpcCloseMemHandle(void * devPtr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcCloseMemHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -3938,7 +3938,7 @@ extern "C" hipError_t hipIpcCloseMemHandle(void * devPtr) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipIpcGetEventHandle(hipIpcEventHandle_t * handle, hipEvent_t event) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcGetEventHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -3957,7 +3957,7 @@ extern "C" hipError_t hipIpcGetEventHandle(hipIpcEventHandle_t * handle, hipEven
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipIpcGetMemHandle(hipIpcMemHandle_t * handle, void * devPtr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcGetMemHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -3976,7 +3976,7 @@ extern "C" hipError_t hipIpcGetMemHandle(hipIpcMemHandle_t * handle, void * devP
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipIpcOpenEventHandle(hipEvent_t * event, hipIpcEventHandle_t handle) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcOpenEventHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -3995,7 +3995,7 @@ extern "C" hipError_t hipIpcOpenEventHandle(hipEvent_t * event, hipIpcEventHandl
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipIpcOpenMemHandle(void * * devPtr, hipIpcMemHandle_t handle, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipIpcOpenMemHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -4015,7 +4015,7 @@ extern "C" hipError_t hipIpcOpenMemHandle(void * * devPtr, hipIpcMemHandle_t han
 
 __attribute__((visibility("default")))
 extern "C" const char * hipKernelNameRef(const hipFunction_t f) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipKernelNameRef;
 	// Copy Arguments for PHASE_ENTER
@@ -4032,7 +4032,7 @@ extern "C" const char * hipKernelNameRef(const hipFunction_t f) {
 
 __attribute__((visibility("default")))
 extern "C" const char * hipKernelNameRefByPtr(const void * hostFunction, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipKernelNameRefByPtr;
 	// Copy Arguments for PHASE_ENTER
@@ -4050,7 +4050,7 @@ extern "C" const char * hipKernelNameRefByPtr(const void * hostFunction, hipStre
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipLaunchByPtr(const void * func) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchByPtr;
 	// Copy Arguments for PHASE_ENTER
@@ -4067,7 +4067,7 @@ extern "C" hipError_t hipLaunchByPtr(const void * func) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipLaunchCooperativeKernel(const void * f, dim3 gridDim, dim3 blockDimX, void * * kernelParams, unsigned int sharedMemBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchCooperativeKernel;
 	// Copy Arguments for PHASE_ENTER
@@ -4089,7 +4089,7 @@ extern "C" hipError_t hipLaunchCooperativeKernel(const void * f, dim3 gridDim, d
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipLaunchCooperativeKernelMultiDevice(hipLaunchParams * launchParamsList, int numDevices, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchCooperativeKernelMultiDevice;
 	// Copy Arguments for PHASE_ENTER
@@ -4109,7 +4109,7 @@ extern "C" hipError_t hipLaunchCooperativeKernelMultiDevice(hipLaunchParams * la
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipLaunchHostFunc(hipStream_t stream, hipHostFn_t fn, void * userData) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchHostFunc;
 	// Copy Arguments for PHASE_ENTER
@@ -4129,7 +4129,7 @@ extern "C" hipError_t hipLaunchHostFunc(hipStream_t stream, hipHostFn_t fn, void
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipLaunchKernel(const void * function_address, dim3 numBlocks, dim3 dimBlocks, void * * args, size_t sharedMemBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipLaunchKernel;
 	// Copy Arguments for PHASE_ENTER
@@ -4151,7 +4151,7 @@ extern "C" hipError_t hipLaunchKernel(const void * function_address, dim3 numBlo
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipLaunchKernel_common(const void * hostFunction, dim3 gridDim, dim3 blockDim, void * * args, size_t sharedMemBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipLaunchKernel_common;
 	// Copy Arguments for PHASE_ENTER
@@ -4173,7 +4173,7 @@ extern "C" hipError_t hipLaunchKernel_common(const void * hostFunction, dim3 gri
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipLaunchKernel_spt(const void * hostFunction, dim3 gridDim, dim3 blockDim, void * * args, size_t sharedMemBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hipLaunchKernel_spt;
 	// Copy Arguments for PHASE_ENTER
@@ -4195,7 +4195,7 @@ extern "C" hipError_t hipLaunchKernel_spt(const void * hostFunction, dim3 gridDi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMalloc(void * * ptr, size_t size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMalloc;
 	// Copy Arguments for PHASE_ENTER
@@ -4214,7 +4214,7 @@ extern "C" hipError_t hipMalloc(void * * ptr, size_t size) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMalloc3D(hipPitchedPtr * pitchedDevPtr, hipExtent extent) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMalloc3D;
 	// Copy Arguments for PHASE_ENTER
@@ -4233,7 +4233,7 @@ extern "C" hipError_t hipMalloc3D(hipPitchedPtr * pitchedDevPtr, hipExtent exten
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMalloc3DArray(hipArray * * array, const struct hipChannelFormatDesc * desc, struct hipExtent extent, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMalloc3DArray;
 	// Copy Arguments for PHASE_ENTER
@@ -4253,7 +4253,7 @@ extern "C" hipError_t hipMalloc3DArray(hipArray * * array, const struct hipChann
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMallocArray(hipArray * * array, const hipChannelFormatDesc * desc, size_t width, size_t height, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocArray;
 	// Copy Arguments for PHASE_ENTER
@@ -4274,7 +4274,7 @@ extern "C" hipError_t hipMallocArray(hipArray * * array, const hipChannelFormatD
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMallocAsync(void * * dev_ptr, size_t size, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -4294,7 +4294,7 @@ extern "C" hipError_t hipMallocAsync(void * * dev_ptr, size_t size, hipStream_t 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMallocFromPoolAsync(void * * dev_ptr, size_t size, hipMemPool_t mem_pool, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocFromPoolAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -4315,7 +4315,7 @@ extern "C" hipError_t hipMallocFromPoolAsync(void * * dev_ptr, size_t size, hipM
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMallocHost(void * * ptr, size_t size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocHost;
 	// Copy Arguments for PHASE_ENTER
@@ -4334,7 +4334,7 @@ extern "C" hipError_t hipMallocHost(void * * ptr, size_t size) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMallocManaged(void * * dev_ptr, size_t size, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocManaged;
 	// Copy Arguments for PHASE_ENTER
@@ -4354,7 +4354,7 @@ extern "C" hipError_t hipMallocManaged(void * * dev_ptr, size_t size, unsigned i
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMallocMipmappedArray(hipMipmappedArray_t * mipmappedArray, const struct hipChannelFormatDesc * desc, struct hipExtent extent, unsigned int numLevels, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocMipmappedArray;
 	// Copy Arguments for PHASE_ENTER
@@ -4375,7 +4375,7 @@ extern "C" hipError_t hipMallocMipmappedArray(hipMipmappedArray_t * mipmappedArr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMallocPitch(void * * ptr, size_t * pitch, size_t width, size_t height) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMallocPitch;
 	// Copy Arguments for PHASE_ENTER
@@ -4396,7 +4396,7 @@ extern "C" hipError_t hipMallocPitch(void * * ptr, size_t * pitch, size_t width,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemAddressFree(void * devPtr, size_t size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAddressFree;
 	// Copy Arguments for PHASE_ENTER
@@ -4415,7 +4415,7 @@ extern "C" hipError_t hipMemAddressFree(void * devPtr, size_t size) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemAddressReserve(void * * ptr, size_t size, size_t alignment, void * addr, unsigned long long flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAddressReserve;
 	// Copy Arguments for PHASE_ENTER
@@ -4437,7 +4437,7 @@ extern "C" hipError_t hipMemAddressReserve(void * * ptr, size_t size, size_t ali
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemAdvise(const void * dev_ptr, size_t count, hipMemoryAdvise advice, int device) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAdvise;
 	// Copy Arguments for PHASE_ENTER
@@ -4457,7 +4457,7 @@ extern "C" hipError_t hipMemAdvise(const void * dev_ptr, size_t count, hipMemory
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemAllocHost(void * * ptr, size_t size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAllocHost;
 	// Copy Arguments for PHASE_ENTER
@@ -4476,7 +4476,7 @@ extern "C" hipError_t hipMemAllocHost(void * * ptr, size_t size) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemAllocPitch(hipDeviceptr_t * dptr, size_t * pitch, size_t widthInBytes, size_t height, unsigned int elementSizeBytes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemAllocPitch;
 	// Copy Arguments for PHASE_ENTER
@@ -4498,7 +4498,7 @@ extern "C" hipError_t hipMemAllocPitch(hipDeviceptr_t * dptr, size_t * pitch, si
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemCreate(hipMemGenericAllocationHandle_t * handle, size_t size, const hipMemAllocationProp * prop, unsigned long long flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -4518,7 +4518,7 @@ extern "C" hipError_t hipMemCreate(hipMemGenericAllocationHandle_t * handle, siz
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemExportToShareableHandle(void * shareableHandle, hipMemGenericAllocationHandle_t handle, hipMemAllocationHandleType handleType, unsigned long long flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemExportToShareableHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -4539,7 +4539,7 @@ extern "C" hipError_t hipMemExportToShareableHandle(void * shareableHandle, hipM
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemGetAccess(unsigned long long * flags, const hipMemLocation * location, void * ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -4558,7 +4558,7 @@ extern "C" hipError_t hipMemGetAccess(unsigned long long * flags, const hipMemLo
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemGetAddressRange(hipDeviceptr_t * pbase, size_t * psize, hipDeviceptr_t dptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAddressRange;
 	// Copy Arguments for PHASE_ENTER
@@ -4578,7 +4578,7 @@ extern "C" hipError_t hipMemGetAddressRange(hipDeviceptr_t * pbase, size_t * psi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemGetAllocationGranularity(size_t * granularity, const hipMemAllocationProp * prop, hipMemAllocationGranularity_flags option) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAllocationGranularity;
 	// Copy Arguments for PHASE_ENTER
@@ -4597,7 +4597,7 @@ extern "C" hipError_t hipMemGetAllocationGranularity(size_t * granularity, const
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemGetAllocationPropertiesFromHandle(hipMemAllocationProp * prop, hipMemGenericAllocationHandle_t handle) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetAllocationPropertiesFromHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -4616,7 +4616,7 @@ extern "C" hipError_t hipMemGetAllocationPropertiesFromHandle(hipMemAllocationPr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemGetInfo(size_t * free, size_t * total) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemGetInfo;
 	// Copy Arguments for PHASE_ENTER
@@ -4635,7 +4635,7 @@ extern "C" hipError_t hipMemGetInfo(size_t * free, size_t * total) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemImportFromShareableHandle(hipMemGenericAllocationHandle_t * handle, void * osHandle, hipMemAllocationHandleType shHandleType) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemImportFromShareableHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -4655,7 +4655,7 @@ extern "C" hipError_t hipMemImportFromShareableHandle(hipMemGenericAllocationHan
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemMap(void * ptr, size_t size, size_t offset, hipMemGenericAllocationHandle_t handle, unsigned long long flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemMap;
 	// Copy Arguments for PHASE_ENTER
@@ -4677,7 +4677,7 @@ extern "C" hipError_t hipMemMap(void * ptr, size_t size, size_t offset, hipMemGe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemMapArrayAsync(hipArrayMapInfo * mapInfoList, unsigned int count, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemMapArrayAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -4697,7 +4697,7 @@ extern "C" hipError_t hipMemMapArrayAsync(hipArrayMapInfo * mapInfoList, unsigne
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolCreate(hipMemPool_t * mem_pool, const hipMemPoolProps * pool_props) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -4715,7 +4715,7 @@ extern "C" hipError_t hipMemPoolCreate(hipMemPool_t * mem_pool, const hipMemPool
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolDestroy(hipMemPool_t mem_pool) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -4733,7 +4733,7 @@ extern "C" hipError_t hipMemPoolDestroy(hipMemPool_t mem_pool) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolExportPointer(hipMemPoolPtrExportData * export_data, void * dev_ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolExportPointer;
 	// Copy Arguments for PHASE_ENTER
@@ -4752,7 +4752,7 @@ extern "C" hipError_t hipMemPoolExportPointer(hipMemPoolPtrExportData * export_d
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolExportToShareableHandle(void * shared_handle, hipMemPool_t mem_pool, hipMemAllocationHandleType handle_type, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolExportToShareableHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -4773,7 +4773,7 @@ extern "C" hipError_t hipMemPoolExportToShareableHandle(void * shared_handle, hi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolGetAccess(hipMemAccessFlags * flags, hipMemPool_t mem_pool, hipMemLocation * location) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolGetAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -4793,7 +4793,7 @@ extern "C" hipError_t hipMemPoolGetAccess(hipMemAccessFlags * flags, hipMemPool_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolGetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, void * value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolGetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -4813,7 +4813,7 @@ extern "C" hipError_t hipMemPoolGetAttribute(hipMemPool_t mem_pool, hipMemPoolAt
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolImportFromShareableHandle(hipMemPool_t * mem_pool, void * shared_handle, hipMemAllocationHandleType handle_type, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolImportFromShareableHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -4834,7 +4834,7 @@ extern "C" hipError_t hipMemPoolImportFromShareableHandle(hipMemPool_t * mem_poo
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolImportPointer(void * * dev_ptr, hipMemPool_t mem_pool, hipMemPoolPtrExportData * export_data) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolImportPointer;
 	// Copy Arguments for PHASE_ENTER
@@ -4854,7 +4854,7 @@ extern "C" hipError_t hipMemPoolImportPointer(void * * dev_ptr, hipMemPool_t mem
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolSetAccess(hipMemPool_t mem_pool, const hipMemAccessDesc * desc_list, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolSetAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -4873,7 +4873,7 @@ extern "C" hipError_t hipMemPoolSetAccess(hipMemPool_t mem_pool, const hipMemAcc
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolSetAttribute(hipMemPool_t mem_pool, hipMemPoolAttr attr, void * value) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolSetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -4893,7 +4893,7 @@ extern "C" hipError_t hipMemPoolSetAttribute(hipMemPool_t mem_pool, hipMemPoolAt
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPoolTrimTo(hipMemPool_t mem_pool, size_t min_bytes_to_hold) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPoolTrimTo;
 	// Copy Arguments for PHASE_ENTER
@@ -4912,7 +4912,7 @@ extern "C" hipError_t hipMemPoolTrimTo(hipMemPool_t mem_pool, size_t min_bytes_t
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPrefetchAsync(const void * dev_ptr, size_t count, int device, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPrefetchAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -4932,7 +4932,7 @@ extern "C" hipError_t hipMemPrefetchAsync(const void * dev_ptr, size_t count, in
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemPtrGetInfo(void * ptr, size_t * size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemPtrGetInfo;
 	// Copy Arguments for PHASE_ENTER
@@ -4951,7 +4951,7 @@ extern "C" hipError_t hipMemPtrGetInfo(void * ptr, size_t * size) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemRangeGetAttribute(void * data, size_t data_size, hipMemRangeAttribute attribute, const void * dev_ptr, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRangeGetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -4972,7 +4972,7 @@ extern "C" hipError_t hipMemRangeGetAttribute(void * data, size_t data_size, hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemRangeGetAttributes(void * * data, size_t * data_sizes, hipMemRangeAttribute * attributes, size_t num_attributes, const void * dev_ptr, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRangeGetAttributes;
 	// Copy Arguments for PHASE_ENTER
@@ -4994,7 +4994,7 @@ extern "C" hipError_t hipMemRangeGetAttributes(void * * data, size_t * data_size
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemRelease(hipMemGenericAllocationHandle_t handle) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRelease;
 	// Copy Arguments for PHASE_ENTER
@@ -5012,7 +5012,7 @@ extern "C" hipError_t hipMemRelease(hipMemGenericAllocationHandle_t handle) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemRetainAllocationHandle(hipMemGenericAllocationHandle_t * handle, void * addr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemRetainAllocationHandle;
 	// Copy Arguments for PHASE_ENTER
@@ -5031,7 +5031,7 @@ extern "C" hipError_t hipMemRetainAllocationHandle(hipMemGenericAllocationHandle
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemSetAccess(void * ptr, size_t size, const hipMemAccessDesc * desc, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemSetAccess;
 	// Copy Arguments for PHASE_ENTER
@@ -5051,7 +5051,7 @@ extern "C" hipError_t hipMemSetAccess(void * ptr, size_t size, const hipMemAcces
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemUnmap(void * ptr, size_t size) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemUnmap;
 	// Copy Arguments for PHASE_ENTER
@@ -5070,7 +5070,7 @@ extern "C" hipError_t hipMemUnmap(void * ptr, size_t size) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy;
 	// Copy Arguments for PHASE_ENTER
@@ -5090,7 +5090,7 @@ extern "C" hipError_t hipMemcpy(void * dst, const void * src, size_t sizeBytes, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy2D(void * dst, size_t dpitch, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2D;
 	// Copy Arguments for PHASE_ENTER
@@ -5113,7 +5113,7 @@ extern "C" hipError_t hipMemcpy2D(void * dst, size_t dpitch, const void * src, s
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy2DAsync(void * dst, size_t dpitch, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5137,7 +5137,7 @@ extern "C" hipError_t hipMemcpy2DAsync(void * dst, size_t dpitch, const void * s
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy2DFromArray(void * dst, size_t dpitch, hipArray_const_t src, size_t wOffset, size_t hOffset, size_t width, size_t height, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DFromArray;
 	// Copy Arguments for PHASE_ENTER
@@ -5161,7 +5161,7 @@ extern "C" hipError_t hipMemcpy2DFromArray(void * dst, size_t dpitch, hipArray_c
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy2DFromArrayAsync(void * dst, size_t dpitch, hipArray_const_t src, size_t wOffset, size_t hOffset, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DFromArrayAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5186,7 +5186,7 @@ extern "C" hipError_t hipMemcpy2DFromArrayAsync(void * dst, size_t dpitch, hipAr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy2DToArray(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DToArray;
 	// Copy Arguments for PHASE_ENTER
@@ -5210,7 +5210,7 @@ extern "C" hipError_t hipMemcpy2DToArray(hipArray * dst, size_t wOffset, size_t 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy2DToArrayAsync(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t spitch, size_t width, size_t height, hipMemcpyKind kind, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy2DToArrayAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5235,7 +5235,7 @@ extern "C" hipError_t hipMemcpy2DToArrayAsync(hipArray * dst, size_t wOffset, si
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy3D(const struct hipMemcpy3DParms * p) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy3D;
 	// Copy Arguments for PHASE_ENTER
@@ -5252,7 +5252,7 @@ extern "C" hipError_t hipMemcpy3D(const struct hipMemcpy3DParms * p) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpy3DAsync(const struct hipMemcpy3DParms * p, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpy3DAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5270,7 +5270,7 @@ extern "C" hipError_t hipMemcpy3DAsync(const struct hipMemcpy3DParms * p, hipStr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyAsync(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5291,7 +5291,7 @@ extern "C" hipError_t hipMemcpyAsync(void * dst, const void * src, size_t sizeBy
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyAtoH(void * dst, hipArray * srcArray, size_t srcOffset, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyAtoH;
 	// Copy Arguments for PHASE_ENTER
@@ -5312,7 +5312,7 @@ extern "C" hipError_t hipMemcpyAtoH(void * dst, hipArray * srcArray, size_t srcO
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyDtoD(hipDeviceptr_t dst, hipDeviceptr_t src, size_t sizeBytes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoD;
 	// Copy Arguments for PHASE_ENTER
@@ -5332,7 +5332,7 @@ extern "C" hipError_t hipMemcpyDtoD(hipDeviceptr_t dst, hipDeviceptr_t src, size
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyDtoDAsync(hipDeviceptr_t dst, hipDeviceptr_t src, size_t sizeBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoDAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5353,7 +5353,7 @@ extern "C" hipError_t hipMemcpyDtoDAsync(hipDeviceptr_t dst, hipDeviceptr_t src,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyDtoH(void * dst, hipDeviceptr_t src, size_t sizeBytes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoH;
 	// Copy Arguments for PHASE_ENTER
@@ -5373,7 +5373,7 @@ extern "C" hipError_t hipMemcpyDtoH(void * dst, hipDeviceptr_t src, size_t sizeB
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyDtoHAsync(void * dst, hipDeviceptr_t src, size_t sizeBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyDtoHAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5394,7 +5394,7 @@ extern "C" hipError_t hipMemcpyDtoHAsync(void * dst, hipDeviceptr_t src, size_t 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyFromArray(void * dst, hipArray_const_t srcArray, size_t wOffset, size_t hOffset, size_t count, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyFromArray;
 	// Copy Arguments for PHASE_ENTER
@@ -5416,7 +5416,7 @@ extern "C" hipError_t hipMemcpyFromArray(void * dst, hipArray_const_t srcArray, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyFromSymbol(void * dst, const void * symbol, size_t sizeBytes, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyFromSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -5437,7 +5437,7 @@ extern "C" hipError_t hipMemcpyFromSymbol(void * dst, const void * symbol, size_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyFromSymbolAsync(void * dst, const void * symbol, size_t sizeBytes, size_t offset, hipMemcpyKind kind, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyFromSymbolAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5459,7 +5459,7 @@ extern "C" hipError_t hipMemcpyFromSymbolAsync(void * dst, const void * symbol, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyHtoA(hipArray * dstArray, size_t dstOffset, const void * srcHost, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyHtoA;
 	// Copy Arguments for PHASE_ENTER
@@ -5479,7 +5479,7 @@ extern "C" hipError_t hipMemcpyHtoA(hipArray * dstArray, size_t dstOffset, const
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyHtoD(hipDeviceptr_t dst, void * src, size_t sizeBytes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyHtoD;
 	// Copy Arguments for PHASE_ENTER
@@ -5499,7 +5499,7 @@ extern "C" hipError_t hipMemcpyHtoD(hipDeviceptr_t dst, void * src, size_t sizeB
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyHtoDAsync(hipDeviceptr_t dst, void * src, size_t sizeBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyHtoDAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5520,7 +5520,7 @@ extern "C" hipError_t hipMemcpyHtoDAsync(hipDeviceptr_t dst, void * src, size_t 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyParam2D(const hip_Memcpy2D * pCopy) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyParam2D;
 	// Copy Arguments for PHASE_ENTER
@@ -5537,7 +5537,7 @@ extern "C" hipError_t hipMemcpyParam2D(const hip_Memcpy2D * pCopy) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyParam2DAsync(const hip_Memcpy2D * pCopy, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyParam2DAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5555,7 +5555,7 @@ extern "C" hipError_t hipMemcpyParam2DAsync(const hip_Memcpy2D * pCopy, hipStrea
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyPeer(void * dst, int dstDeviceId, const void * src, int srcDeviceId, size_t sizeBytes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyPeer;
 	// Copy Arguments for PHASE_ENTER
@@ -5576,7 +5576,7 @@ extern "C" hipError_t hipMemcpyPeer(void * dst, int dstDeviceId, const void * sr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyPeerAsync(void * dst, int dstDeviceId, const void * src, int srcDevice, size_t sizeBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyPeerAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5598,7 +5598,7 @@ extern "C" hipError_t hipMemcpyPeerAsync(void * dst, int dstDeviceId, const void
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyToArray(hipArray * dst, size_t wOffset, size_t hOffset, const void * src, size_t count, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyToArray;
 	// Copy Arguments for PHASE_ENTER
@@ -5620,7 +5620,7 @@ extern "C" hipError_t hipMemcpyToArray(hipArray * dst, size_t wOffset, size_t hO
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyToSymbol(const void * symbol, const void * src, size_t sizeBytes, size_t offset, hipMemcpyKind kind) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyToSymbol;
 	// Copy Arguments for PHASE_ENTER
@@ -5640,7 +5640,7 @@ extern "C" hipError_t hipMemcpyToSymbol(const void * symbol, const void * src, s
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyToSymbolAsync(const void * symbol, const void * src, size_t sizeBytes, size_t offset, hipMemcpyKind kind, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyToSymbolAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5661,7 +5661,7 @@ extern "C" hipError_t hipMemcpyToSymbolAsync(const void * symbol, const void * s
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemcpyWithStream(void * dst, const void * src, size_t sizeBytes, hipMemcpyKind kind, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemcpyWithStream;
 	// Copy Arguments for PHASE_ENTER
@@ -5682,7 +5682,7 @@ extern "C" hipError_t hipMemcpyWithStream(void * dst, const void * src, size_t s
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemset(void * dst, int value, size_t sizeBytes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset;
 	// Copy Arguments for PHASE_ENTER
@@ -5702,7 +5702,7 @@ extern "C" hipError_t hipMemset(void * dst, int value, size_t sizeBytes) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemset2D(void * dst, size_t pitch, int value, size_t width, size_t height) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset2D;
 	// Copy Arguments for PHASE_ENTER
@@ -5724,7 +5724,7 @@ extern "C" hipError_t hipMemset2D(void * dst, size_t pitch, int value, size_t wi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemset2DAsync(void * dst, size_t pitch, int value, size_t width, size_t height, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset2DAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5747,7 +5747,7 @@ extern "C" hipError_t hipMemset2DAsync(void * dst, size_t pitch, int value, size
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemset3D(hipPitchedPtr pitchedDevPtr, int value, hipExtent extent) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset3D;
 	// Copy Arguments for PHASE_ENTER
@@ -5767,7 +5767,7 @@ extern "C" hipError_t hipMemset3D(hipPitchedPtr pitchedDevPtr, int value, hipExt
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemset3DAsync(hipPitchedPtr pitchedDevPtr, int value, hipExtent extent, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemset3DAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5788,7 +5788,7 @@ extern "C" hipError_t hipMemset3DAsync(hipPitchedPtr pitchedDevPtr, int value, h
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemsetAsync(void * dst, int value, size_t sizeBytes, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -5809,7 +5809,7 @@ extern "C" hipError_t hipMemsetAsync(void * dst, int value, size_t sizeBytes, hi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemsetD16(hipDeviceptr_t dest, unsigned short value, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD16;
 	// Copy Arguments for PHASE_ENTER
@@ -5829,7 +5829,7 @@ extern "C" hipError_t hipMemsetD16(hipDeviceptr_t dest, unsigned short value, si
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemsetD16Async(hipDeviceptr_t dest, unsigned short value, size_t count, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD16Async;
 	// Copy Arguments for PHASE_ENTER
@@ -5850,7 +5850,7 @@ extern "C" hipError_t hipMemsetD16Async(hipDeviceptr_t dest, unsigned short valu
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemsetD32(hipDeviceptr_t dest, int value, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD32;
 	// Copy Arguments for PHASE_ENTER
@@ -5870,7 +5870,7 @@ extern "C" hipError_t hipMemsetD32(hipDeviceptr_t dest, int value, size_t count)
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemsetD32Async(hipDeviceptr_t dst, int value, size_t count, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD32Async;
 	// Copy Arguments for PHASE_ENTER
@@ -5891,7 +5891,7 @@ extern "C" hipError_t hipMemsetD32Async(hipDeviceptr_t dst, int value, size_t co
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemsetD8(hipDeviceptr_t dest, unsigned char value, size_t count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD8;
 	// Copy Arguments for PHASE_ENTER
@@ -5911,7 +5911,7 @@ extern "C" hipError_t hipMemsetD8(hipDeviceptr_t dest, unsigned char value, size
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMemsetD8Async(hipDeviceptr_t dest, unsigned char value, size_t count, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMemsetD8Async;
 	// Copy Arguments for PHASE_ENTER
@@ -5932,7 +5932,7 @@ extern "C" hipError_t hipMemsetD8Async(hipDeviceptr_t dest, unsigned char value,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMipmappedArrayCreate(hipMipmappedArray_t * pHandle, HIP_ARRAY3D_DESCRIPTOR * pMipmappedArrayDesc, unsigned int numMipmapLevels) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMipmappedArrayCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -5952,7 +5952,7 @@ extern "C" hipError_t hipMipmappedArrayCreate(hipMipmappedArray_t * pHandle, HIP
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMipmappedArrayDestroy(hipMipmappedArray_t hMipmappedArray) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMipmappedArrayDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -5970,7 +5970,7 @@ extern "C" hipError_t hipMipmappedArrayDestroy(hipMipmappedArray_t hMipmappedArr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipMipmappedArrayGetLevel(hipArray_t * pLevelArray, hipMipmappedArray_t hMipMappedArray, unsigned int level) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipMipmappedArrayGetLevel;
 	// Copy Arguments for PHASE_ENTER
@@ -5990,7 +5990,7 @@ extern "C" hipError_t hipMipmappedArrayGetLevel(hipArray_t * pLevelArray, hipMip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleGetFunction(hipFunction_t * function, hipModule_t module, const char * kname) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleGetFunction;
 	// Copy Arguments for PHASE_ENTER
@@ -6009,7 +6009,7 @@ extern "C" hipError_t hipModuleGetFunction(hipFunction_t * function, hipModule_t
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleGetGlobal(hipDeviceptr_t * dptr, size_t * bytes, hipModule_t hmod, const char * name) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleGetGlobal;
 	// Copy Arguments for PHASE_ENTER
@@ -6029,7 +6029,7 @@ extern "C" hipError_t hipModuleGetGlobal(hipDeviceptr_t * dptr, size_t * bytes, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleGetTexRef(textureReference * * texRef, hipModule_t hmod, const char * name) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleGetTexRef;
 	// Copy Arguments for PHASE_ENTER
@@ -6048,7 +6048,7 @@ extern "C" hipError_t hipModuleGetTexRef(textureReference * * texRef, hipModule_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleLaunchKernel(hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream, void * * kernelParams, void * * extra) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLaunchKernel;
 	// Copy Arguments for PHASE_ENTER
@@ -6076,7 +6076,7 @@ extern "C" hipError_t hipModuleLaunchKernel(hipFunction_t f, unsigned int gridDi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleLaunchKernelExt(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLaunchKernelExt;
 	// Copy Arguments for PHASE_ENTER
@@ -6106,7 +6106,7 @@ extern "C" hipError_t hipModuleLaunchKernelExt(hipFunction_t f, uint32_t globalW
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleLoad(hipModule_t * module, const char * fname) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLoad;
 	// Copy Arguments for PHASE_ENTER
@@ -6124,7 +6124,7 @@ extern "C" hipError_t hipModuleLoad(hipModule_t * module, const char * fname) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleLoadData(hipModule_t * module, const void * image) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLoadData;
 	// Copy Arguments for PHASE_ENTER
@@ -6142,7 +6142,7 @@ extern "C" hipError_t hipModuleLoadData(hipModule_t * module, const void * image
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleLoadDataEx(hipModule_t * module, const void * image, unsigned int numOptions, hipJitOption * options, void * * optionValues) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleLoadDataEx;
 	// Copy Arguments for PHASE_ENTER
@@ -6163,7 +6163,7 @@ extern "C" hipError_t hipModuleLoadDataEx(hipModule_t * module, const void * ima
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxActiveBlocksPerMultiprocessor;
 	// Copy Arguments for PHASE_ENTER
@@ -6184,7 +6184,7 @@ extern "C" hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(int * n
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -6206,7 +6206,7 @@ extern "C" hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlag
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxPotentialBlockSize;
 	// Copy Arguments for PHASE_ENTER
@@ -6228,7 +6228,7 @@ extern "C" hipError_t hipModuleOccupancyMaxPotentialBlockSize(int * gridSize, in
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleOccupancyMaxPotentialBlockSizeWithFlags(int * gridSize, int * blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleOccupancyMaxPotentialBlockSizeWithFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -6251,7 +6251,7 @@ extern "C" hipError_t hipModuleOccupancyMaxPotentialBlockSizeWithFlags(int * gri
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipModuleUnload(hipModule_t module) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipModuleUnload;
 	// Copy Arguments for PHASE_ENTER
@@ -6269,7 +6269,7 @@ extern "C" hipError_t hipModuleUnload(hipModule_t module) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(int * numBlocks, const void * f, int blockSize, size_t dynSharedMemPerBlk) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipOccupancyMaxActiveBlocksPerMultiprocessor;
 	// Copy Arguments for PHASE_ENTER
@@ -6289,7 +6289,7 @@ extern "C" hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(int * numBloc
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int * numBlocks, const void * f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -6310,7 +6310,7 @@ extern "C" hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipOccupancyMaxPotentialBlockSize(int * gridSize, int * blockSize, const void * f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipOccupancyMaxPotentialBlockSize;
 	// Copy Arguments for PHASE_ENTER
@@ -6331,7 +6331,7 @@ extern "C" hipError_t hipOccupancyMaxPotentialBlockSize(int * gridSize, int * bl
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipPeekAtLastError() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipPeekAtLastError;
 	// Copy Arguments for PHASE_ENTER
@@ -6346,7 +6346,7 @@ extern "C" hipError_t hipPeekAtLastError() {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipPointerGetAttribute(void * data, hipPointer_attribute attribute, hipDeviceptr_t ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipPointerGetAttribute;
 	// Copy Arguments for PHASE_ENTER
@@ -6366,7 +6366,7 @@ extern "C" hipError_t hipPointerGetAttribute(void * data, hipPointer_attribute a
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipPointerGetAttributes(hipPointerAttribute_t * attributes, const void * ptr) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipPointerGetAttributes;
 	// Copy Arguments for PHASE_ENTER
@@ -6384,7 +6384,7 @@ extern "C" hipError_t hipPointerGetAttributes(hipPointerAttribute_t * attributes
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipProfilerStart() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipProfilerStart;
 	// Copy Arguments for PHASE_ENTER
@@ -6399,7 +6399,7 @@ extern "C" hipError_t hipProfilerStart() {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipProfilerStop() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipProfilerStop;
 	// Copy Arguments for PHASE_ENTER
@@ -6414,7 +6414,7 @@ extern "C" hipError_t hipProfilerStop() {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipRuntimeGetVersion(int * runtimeVersion) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipRuntimeGetVersion;
 	// Copy Arguments for PHASE_ENTER
@@ -6432,7 +6432,7 @@ extern "C" hipError_t hipRuntimeGetVersion(int * runtimeVersion) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipSetDevice(int deviceId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetDevice;
 	// Copy Arguments for PHASE_ENTER
@@ -6450,7 +6450,7 @@ extern "C" hipError_t hipSetDevice(int deviceId) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipSetDeviceFlags(unsigned flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetDeviceFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -6468,7 +6468,7 @@ extern "C" hipError_t hipSetDeviceFlags(unsigned flags) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipSetValidDevices(int * device_arr, int len) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetValidDevices;
 	// Copy Arguments for PHASE_ENTER
@@ -6487,7 +6487,7 @@ extern "C" hipError_t hipSetValidDevices(int * device_arr, int len) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipSetupArgument(const void * arg, size_t size, size_t offset) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSetupArgument;
 	// Copy Arguments for PHASE_ENTER
@@ -6506,7 +6506,7 @@ extern "C" hipError_t hipSetupArgument(const void * arg, size_t size, size_t off
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipSignalExternalSemaphoresAsync(const hipExternalSemaphore_t * extSemArray, const hipExternalSemaphoreSignalParams * paramsArray, unsigned int numExtSems, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipSignalExternalSemaphoresAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -6525,7 +6525,7 @@ extern "C" hipError_t hipSignalExternalSemaphoresAsync(const hipExternalSemaphor
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamAddCallback(hipStream_t stream, hipStreamCallback_t callback, void * userData, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamAddCallback;
 	// Copy Arguments for PHASE_ENTER
@@ -6546,7 +6546,7 @@ extern "C" hipError_t hipStreamAddCallback(hipStream_t stream, hipStreamCallback
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamAttachMemAsync(hipStream_t stream, void * dev_ptr, size_t length, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamAttachMemAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -6567,7 +6567,7 @@ extern "C" hipError_t hipStreamAttachMemAsync(hipStream_t stream, void * dev_ptr
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamBeginCapture(hipStream_t stream, hipStreamCaptureMode mode) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamBeginCapture;
 	// Copy Arguments for PHASE_ENTER
@@ -6586,7 +6586,7 @@ extern "C" hipError_t hipStreamBeginCapture(hipStream_t stream, hipStreamCapture
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamCreate(hipStream_t * stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -6604,7 +6604,7 @@ extern "C" hipError_t hipStreamCreate(hipStream_t * stream) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamCreateWithFlags(hipStream_t * stream, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamCreateWithFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -6623,7 +6623,7 @@ extern "C" hipError_t hipStreamCreateWithFlags(hipStream_t * stream, unsigned in
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamCreateWithPriority(hipStream_t * stream, unsigned int flags, int priority) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamCreateWithPriority;
 	// Copy Arguments for PHASE_ENTER
@@ -6643,7 +6643,7 @@ extern "C" hipError_t hipStreamCreateWithPriority(hipStream_t * stream, unsigned
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamDestroy(hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -6661,7 +6661,7 @@ extern "C" hipError_t hipStreamDestroy(hipStream_t stream) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t * pGraph) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamEndCapture;
 	// Copy Arguments for PHASE_ENTER
@@ -6680,7 +6680,7 @@ extern "C" hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t * pGrap
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamGetCaptureInfo(hipStream_t stream, hipStreamCaptureStatus * pCaptureStatus, unsigned long long * pId) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetCaptureInfo;
 	// Copy Arguments for PHASE_ENTER
@@ -6700,7 +6700,7 @@ extern "C" hipError_t hipStreamGetCaptureInfo(hipStream_t stream, hipStreamCaptu
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamGetCaptureInfo_v2(hipStream_t stream, hipStreamCaptureStatus * captureStatus_out, unsigned long long * id_out, hipGraph_t * graph_out, const hipGraphNode_t * * dependencies_out, size_t * numDependencies_out) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetCaptureInfo_v2;
 	// Copy Arguments for PHASE_ENTER
@@ -6722,7 +6722,7 @@ extern "C" hipError_t hipStreamGetCaptureInfo_v2(hipStream_t stream, hipStreamCa
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamGetFlags(hipStream_t stream, unsigned int * flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -6741,7 +6741,7 @@ extern "C" hipError_t hipStreamGetFlags(hipStream_t stream, unsigned int * flags
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamGetPriority(hipStream_t stream, int * priority) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamGetPriority;
 	// Copy Arguments for PHASE_ENTER
@@ -6760,7 +6760,7 @@ extern "C" hipError_t hipStreamGetPriority(hipStream_t stream, int * priority) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamIsCapturing(hipStream_t stream, hipStreamCaptureStatus * pCaptureStatus) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamIsCapturing;
 	// Copy Arguments for PHASE_ENTER
@@ -6779,7 +6779,7 @@ extern "C" hipError_t hipStreamIsCapturing(hipStream_t stream, hipStreamCaptureS
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamQuery(hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamQuery;
 	// Copy Arguments for PHASE_ENTER
@@ -6797,7 +6797,7 @@ extern "C" hipError_t hipStreamQuery(hipStream_t stream) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamSynchronize(hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamSynchronize;
 	// Copy Arguments for PHASE_ENTER
@@ -6815,7 +6815,7 @@ extern "C" hipError_t hipStreamSynchronize(hipStream_t stream) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamUpdateCaptureDependencies(hipStream_t stream, hipGraphNode_t * dependencies, size_t numDependencies, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamUpdateCaptureDependencies;
 	// Copy Arguments for PHASE_ENTER
@@ -6836,7 +6836,7 @@ extern "C" hipError_t hipStreamUpdateCaptureDependencies(hipStream_t stream, hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamWaitEvent(hipStream_t stream, hipEvent_t event, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWaitEvent;
 	// Copy Arguments for PHASE_ENTER
@@ -6856,7 +6856,7 @@ extern "C" hipError_t hipStreamWaitEvent(hipStream_t stream, hipEvent_t event, u
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamWaitValue32(hipStream_t stream, void * ptr, uint32_t value, unsigned int flags, uint32_t mask) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWaitValue32;
 	// Copy Arguments for PHASE_ENTER
@@ -6878,7 +6878,7 @@ extern "C" hipError_t hipStreamWaitValue32(hipStream_t stream, void * ptr, uint3
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamWaitValue64(hipStream_t stream, void * ptr, uint64_t value, unsigned int flags, uint64_t mask) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWaitValue64;
 	// Copy Arguments for PHASE_ENTER
@@ -6900,7 +6900,7 @@ extern "C" hipError_t hipStreamWaitValue64(hipStream_t stream, void * ptr, uint6
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamWriteValue32(hipStream_t stream, void * ptr, uint32_t value, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWriteValue32;
 	// Copy Arguments for PHASE_ENTER
@@ -6921,7 +6921,7 @@ extern "C" hipError_t hipStreamWriteValue32(hipStream_t stream, void * ptr, uint
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipStreamWriteValue64(hipStream_t stream, void * ptr, uint64_t value, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipStreamWriteValue64;
 	// Copy Arguments for PHASE_ENTER
@@ -6942,7 +6942,7 @@ extern "C" hipError_t hipStreamWriteValue64(hipStream_t stream, void * ptr, uint
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexObjectCreate(hipTextureObject_t * pTexObject, const HIP_RESOURCE_DESC * pResDesc, const HIP_TEXTURE_DESC * pTexDesc, const HIP_RESOURCE_VIEW_DESC * pResViewDesc) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -6960,7 +6960,7 @@ extern "C" hipError_t hipTexObjectCreate(hipTextureObject_t * pTexObject, const 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexObjectDestroy(hipTextureObject_t texObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectDestroy;
 	// Copy Arguments for PHASE_ENTER
@@ -6978,7 +6978,7 @@ extern "C" hipError_t hipTexObjectDestroy(hipTextureObject_t texObject) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexObjectGetResourceDesc(HIP_RESOURCE_DESC * pResDesc, hipTextureObject_t texObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectGetResourceDesc;
 	// Copy Arguments for PHASE_ENTER
@@ -6997,7 +6997,7 @@ extern "C" hipError_t hipTexObjectGetResourceDesc(HIP_RESOURCE_DESC * pResDesc, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexObjectGetResourceViewDesc(HIP_RESOURCE_VIEW_DESC * pResViewDesc, hipTextureObject_t texObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectGetResourceViewDesc;
 	// Copy Arguments for PHASE_ENTER
@@ -7016,7 +7016,7 @@ extern "C" hipError_t hipTexObjectGetResourceViewDesc(HIP_RESOURCE_VIEW_DESC * p
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexObjectGetTextureDesc(HIP_TEXTURE_DESC * pTexDesc, hipTextureObject_t texObject) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexObjectGetTextureDesc;
 	// Copy Arguments for PHASE_ENTER
@@ -7035,7 +7035,7 @@ extern "C" hipError_t hipTexObjectGetTextureDesc(HIP_TEXTURE_DESC * pTexDesc, hi
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetAddress(hipDeviceptr_t * dev_ptr, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetAddress;
 	// Copy Arguments for PHASE_ENTER
@@ -7053,7 +7053,7 @@ extern "C" hipError_t hipTexRefGetAddress(hipDeviceptr_t * dev_ptr, const textur
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetAddressMode(enum hipTextureAddressMode * pam, const textureReference * texRef, int dim) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetAddressMode;
 	// Copy Arguments for PHASE_ENTER
@@ -7072,7 +7072,7 @@ extern "C" hipError_t hipTexRefGetAddressMode(enum hipTextureAddressMode * pam, 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetArray(hipArray_t * pArray, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetArray;
 	// Copy Arguments for PHASE_ENTER
@@ -7090,7 +7090,7 @@ extern "C" hipError_t hipTexRefGetArray(hipArray_t * pArray, const textureRefere
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetBorderColor(float * pBorderColor, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetBorderColor;
 	// Copy Arguments for PHASE_ENTER
@@ -7108,7 +7108,7 @@ extern "C" hipError_t hipTexRefGetBorderColor(float * pBorderColor, const textur
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetFilterMode(enum hipTextureFilterMode * pfm, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetFilterMode;
 	// Copy Arguments for PHASE_ENTER
@@ -7126,7 +7126,7 @@ extern "C" hipError_t hipTexRefGetFilterMode(enum hipTextureFilterMode * pfm, co
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetFlags(unsigned int * pFlags, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -7144,7 +7144,7 @@ extern "C" hipError_t hipTexRefGetFlags(unsigned int * pFlags, const textureRefe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetFormat(hipArray_Format * pFormat, int * pNumChannels, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetFormat;
 	// Copy Arguments for PHASE_ENTER
@@ -7163,7 +7163,7 @@ extern "C" hipError_t hipTexRefGetFormat(hipArray_Format * pFormat, int * pNumCh
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetMaxAnisotropy(int * pmaxAnsio, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMaxAnisotropy;
 	// Copy Arguments for PHASE_ENTER
@@ -7181,7 +7181,7 @@ extern "C" hipError_t hipTexRefGetMaxAnisotropy(int * pmaxAnsio, const textureRe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetMipMappedArray(hipMipmappedArray_t * pArray, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipMappedArray;
 	// Copy Arguments for PHASE_ENTER
@@ -7199,7 +7199,7 @@ extern "C" hipError_t hipTexRefGetMipMappedArray(hipMipmappedArray_t * pArray, c
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetMipmapFilterMode(enum hipTextureFilterMode * pfm, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmapFilterMode;
 	// Copy Arguments for PHASE_ENTER
@@ -7217,7 +7217,7 @@ extern "C" hipError_t hipTexRefGetMipmapFilterMode(enum hipTextureFilterMode * p
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetMipmapLevelBias(float * pbias, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmapLevelBias;
 	// Copy Arguments for PHASE_ENTER
@@ -7235,7 +7235,7 @@ extern "C" hipError_t hipTexRefGetMipmapLevelBias(float * pbias, const textureRe
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetMipmapLevelClamp(float * pminMipmapLevelClamp, float * pmaxMipmapLevelClamp, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmapLevelClamp;
 	// Copy Arguments for PHASE_ENTER
@@ -7254,7 +7254,7 @@ extern "C" hipError_t hipTexRefGetMipmapLevelClamp(float * pminMipmapLevelClamp,
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefGetMipmappedArray(hipMipmappedArray_t * pArray, const textureReference * texRef) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefGetMipmappedArray;
 	// Copy Arguments for PHASE_ENTER
@@ -7272,7 +7272,7 @@ extern "C" hipError_t hipTexRefGetMipmappedArray(hipMipmappedArray_t * pArray, c
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetAddress(size_t * ByteOffset, textureReference * texRef, hipDeviceptr_t dptr, size_t bytes) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetAddress;
 	// Copy Arguments for PHASE_ENTER
@@ -7293,7 +7293,7 @@ extern "C" hipError_t hipTexRefSetAddress(size_t * ByteOffset, textureReference 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetAddress2D(textureReference * texRef, const HIP_ARRAY_DESCRIPTOR * desc, hipDeviceptr_t dptr, size_t Pitch) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetAddress2D;
 	// Copy Arguments for PHASE_ENTER
@@ -7313,7 +7313,7 @@ extern "C" hipError_t hipTexRefSetAddress2D(textureReference * texRef, const HIP
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetAddressMode(textureReference * texRef, int dim, enum hipTextureAddressMode am) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetAddressMode;
 	// Copy Arguments for PHASE_ENTER
@@ -7333,7 +7333,7 @@ extern "C" hipError_t hipTexRefSetAddressMode(textureReference * texRef, int dim
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetArray(textureReference * tex, hipArray_const_t array, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetArray;
 	// Copy Arguments for PHASE_ENTER
@@ -7352,7 +7352,7 @@ extern "C" hipError_t hipTexRefSetArray(textureReference * tex, hipArray_const_t
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetBorderColor(textureReference * texRef, float * pBorderColor) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetBorderColor;
 	// Copy Arguments for PHASE_ENTER
@@ -7371,7 +7371,7 @@ extern "C" hipError_t hipTexRefSetBorderColor(textureReference * texRef, float *
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetFilterMode(textureReference * texRef, enum hipTextureFilterMode fm) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetFilterMode;
 	// Copy Arguments for PHASE_ENTER
@@ -7390,7 +7390,7 @@ extern "C" hipError_t hipTexRefSetFilterMode(textureReference * texRef, enum hip
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetFlags(textureReference * texRef, unsigned int Flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetFlags;
 	// Copy Arguments for PHASE_ENTER
@@ -7409,7 +7409,7 @@ extern "C" hipError_t hipTexRefSetFlags(textureReference * texRef, unsigned int 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetFormat(textureReference * texRef, hipArray_Format fmt, int NumPackedComponents) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetFormat;
 	// Copy Arguments for PHASE_ENTER
@@ -7429,7 +7429,7 @@ extern "C" hipError_t hipTexRefSetFormat(textureReference * texRef, hipArray_For
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetMaxAnisotropy(textureReference * texRef, unsigned int maxAniso) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMaxAnisotropy;
 	// Copy Arguments for PHASE_ENTER
@@ -7448,7 +7448,7 @@ extern "C" hipError_t hipTexRefSetMaxAnisotropy(textureReference * texRef, unsig
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetMipmapFilterMode(textureReference * texRef, enum hipTextureFilterMode fm) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmapFilterMode;
 	// Copy Arguments for PHASE_ENTER
@@ -7467,7 +7467,7 @@ extern "C" hipError_t hipTexRefSetMipmapFilterMode(textureReference * texRef, en
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetMipmapLevelBias(textureReference * texRef, float bias) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmapLevelBias;
 	// Copy Arguments for PHASE_ENTER
@@ -7486,7 +7486,7 @@ extern "C" hipError_t hipTexRefSetMipmapLevelBias(textureReference * texRef, flo
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetMipmapLevelClamp(textureReference * texRef, float minMipMapLevelClamp, float maxMipMapLevelClamp) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmapLevelClamp;
 	// Copy Arguments for PHASE_ENTER
@@ -7506,7 +7506,7 @@ extern "C" hipError_t hipTexRefSetMipmapLevelClamp(textureReference * texRef, fl
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipTexRefSetMipmappedArray(textureReference * texRef, struct hipMipmappedArray * mipmappedArray, unsigned int Flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipTexRefSetMipmappedArray;
 	// Copy Arguments for PHASE_ENTER
@@ -7526,7 +7526,7 @@ extern "C" hipError_t hipTexRefSetMipmappedArray(textureReference * texRef, stru
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipThreadExchangeStreamCaptureMode(hipStreamCaptureMode * mode) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipThreadExchangeStreamCaptureMode;
 	// Copy Arguments for PHASE_ENTER
@@ -7544,7 +7544,7 @@ extern "C" hipError_t hipThreadExchangeStreamCaptureMode(hipStreamCaptureMode * 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipUnbindTexture(const textureReference * tex) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUnbindTexture;
 	// Copy Arguments for PHASE_ENTER
@@ -7561,7 +7561,7 @@ extern "C" hipError_t hipUnbindTexture(const textureReference * tex) {
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipUserObjectCreate(hipUserObject_t * object_out, void * ptr, hipHostFn_t destroy, unsigned int initialRefcount, unsigned int flags) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUserObjectCreate;
 	// Copy Arguments for PHASE_ENTER
@@ -7583,7 +7583,7 @@ extern "C" hipError_t hipUserObjectCreate(hipUserObject_t * object_out, void * p
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipUserObjectRelease(hipUserObject_t object, unsigned int count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUserObjectRelease;
 	// Copy Arguments for PHASE_ENTER
@@ -7602,7 +7602,7 @@ extern "C" hipError_t hipUserObjectRelease(hipUserObject_t object, unsigned int 
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipUserObjectRetain(hipUserObject_t object, unsigned int count) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipUserObjectRetain;
 	// Copy Arguments for PHASE_ENTER
@@ -7621,7 +7621,7 @@ extern "C" hipError_t hipUserObjectRetain(hipUserObject_t object, unsigned int c
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hipWaitExternalSemaphoresAsync(const hipExternalSemaphore_t * extSemArray, const hipExternalSemaphoreWaitParams * paramsArray, unsigned int numExtSems, hipStream_t stream) {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_API_ID_hipWaitExternalSemaphoresAsync;
 	// Copy Arguments for PHASE_ENTER
@@ -7640,7 +7640,7 @@ extern "C" hipError_t hipWaitExternalSemaphoresAsync(const hipExternalSemaphore_
 
 __attribute__((visibility("default")))
 extern "C" hipError_t hip_init() {
-	auto& hipInterceptor = SibirHipInterceptor::Instance();
+	auto& hipInterceptor = sibir::HipInterceptor::Instance();
 	auto& hipCallback = hipInterceptor.getCallback();
 	auto api_id = HIP_PRIVATE_API_ID_hip_init;
 	// Copy Arguments for PHASE_ENTER
