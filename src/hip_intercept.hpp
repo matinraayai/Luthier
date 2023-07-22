@@ -1,5 +1,5 @@
-#ifndef HIP_INTERCEPT_H_
-#define HIP_INTERCEPT_H_
+#ifndef HIP_INTERCEPT_HPP
+#define HIP_INTERCEPT_HPP
 
 #include "sibir_types.h"
 #include <dlfcn.h>
@@ -66,11 +66,7 @@ class HipInterceptor {
     template<typename FunctionPtr>
     FunctionPtr GetHipFunction(const char *symbol) const {
         assert(IsEnabled());
-
-        auto function_ptr = reinterpret_cast<FunctionPtr>(GetHipFunction(symbol));
-        if (function_ptr == nullptr)
-            throw std::runtime_error("symbol lookup'" + std::string(symbol) + "' failed: " + std::string(::dlerror()));
-        return function_ptr;
+        return reinterpret_cast<FunctionPtr>(GetHipFunction(symbol));
     }
 
     static inline HipInterceptor &Instance() {

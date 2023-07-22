@@ -1,8 +1,8 @@
 #include "context_manager.hpp"
-#include "hsa_intercept.h"
+#include "hsa_intercept.hpp"
 
 hsa_status_t sibir::ContextManager::populateAgentInfo(hsa_agent_t agent, sibir::hsa_agent_entry_t& entry) {
-    const auto& coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    const auto& coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_status_t status;
 
     // Get the name (architecture) of the agent
@@ -16,7 +16,7 @@ hsa_status_t sibir::ContextManager::populateAgentInfo(hsa_agent_t agent, sibir::
 
     auto getIsaNameCallback = [](hsa_isa_t isa, void* data){
         auto out = reinterpret_cast<std::vector<std::string>*>(data);
-        auto coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+        auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
         hsa_status_t status = HSA_STATUS_ERROR;
         uint32_t isaNameSize;
         status = SIBIR_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaNameSize));
@@ -45,7 +45,7 @@ hsa_status_t sibir::ContextManager::populateAgentInfo(hsa_agent_t agent, sibir::
 
 
 hsa_status_t sibir::ContextManager::initGpuAgentsMap() {
-    auto& coreTable = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    auto& coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
 
     auto returnGpuAgentsCallback = [](hsa_agent_t agent, void* data) {
         auto agentMap = reinterpret_cast<std::unordered_map<decltype(hsa_agent_t::handle), hsa_agent_entry_t>*>(data);

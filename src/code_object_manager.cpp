@@ -1,13 +1,13 @@
 #include "code_object_manager.hpp"
-#include "hsa_intercept.h"
+#include "amdgpu_elf.hpp"
+#include "context_manager.hpp"
+#include "disassembler.hpp"
+#include "hsa_intercept.hpp"
 #include <assert.h>
 #include <elfio/elfio.hpp>
-#include "amdgpu_elf.hpp"
 #include <hip/hip_runtime_api.h>
 #include <iostream>
 #include <vector>
-#include "disassembler.hpp"
-#include "context_manager.hpp"
 
 namespace {
 struct __CudaFatBinaryWrapper {

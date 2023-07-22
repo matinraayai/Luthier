@@ -1,5 +1,5 @@
-#ifndef HSA_INTERCEPT_H_
-#define HSA_INTERCEPT_H_
+#ifndef HSA_INTERCEPT_HPP
+#define HSA_INTERCEPT_HPP
 
 #include "sibir_types.h"
 #include "error_check.h"
@@ -10,32 +10,31 @@
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 
-
-class SibirHsaInterceptor {
+namespace sibir {
+class HsaInterceptor {
  private:
     HsaApiTableContainer savedTables_;
     HsaApiTableContainer interceptTables_;
     hsa_ven_amd_loader_1_03_pfn_s amdTable_;
 
-    std::function<void(hsa_api_args_t*, const sibir_api_phase_t, const hsa_api_id_t)> callback_;
+    std::function<void(hsa_api_args_t *, const sibir_api_phase_t, const hsa_api_id_t)> callback_;
 
-    void installCoreApiWrappers(CoreApiTable* table);
+    void installCoreApiWrappers(CoreApiTable *table);
 
-    void installAmdExtWrappers(AmdExtTable* table);
+    void installAmdExtWrappers(AmdExtTable *table);
 
-    void installImageExtWrappers(ImageExtTable* table);
+    void installImageExtWrappers(ImageExtTable *table);
 
-    SibirHsaInterceptor() {}
-    ~SibirHsaInterceptor() {
+    HsaInterceptor() {}
+    ~HsaInterceptor() {
         memset(&savedTables_, 0, sizeof(HsaApiTableContainer));
         memset(&interceptTables_, 0, sizeof(HsaApiTableContainer));
         memset(&amdTable_, 0, sizeof(hsa_ven_amd_loader_1_03_pfn_t));
     }
 
  public:
-
-    SibirHsaInterceptor(const SibirHsaInterceptor &) = delete;
-    SibirHsaInterceptor & operator=(const SibirHsaInterceptor &) = delete;
+    HsaInterceptor(const HsaInterceptor &) = delete;
+    HsaInterceptor &operator=(const HsaInterceptor &) = delete;
 
     [[nodiscard]] const HsaApiTableContainer &getSavedHsaTables() const {
         return savedTables_;
@@ -49,20 +48,18 @@ class SibirHsaInterceptor {
         callback_ = callback;
     }
 
-    bool captureHsaApiTable(HsaApiTable* table) {
+    bool captureHsaApiTable(HsaApiTable *table) {
         installCoreApiWrappers(table->core_);
         installAmdExtWrappers(table->amd_ext_);
         installImageExtWrappers(table->image_ext_);
         SIBIR_HSA_CHECK(table->core_->hsa_system_get_major_extension_table_fn(
-                HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_03_pfn_t),
-                &amdTable_));
+            HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_03_pfn_t),
+            &amdTable_));
         return true;
     }
 
-
-
-    static inline SibirHsaInterceptor& Instance() {
-        static SibirHsaInterceptor instance;
+    static inline HsaInterceptor &Instance() {
+        static HsaInterceptor instance;
         return instance;
     }
 
@@ -70,5 +67,6 @@ class SibirHsaInterceptor {
         return callback_;
     }
 };
+}
 
 #endif

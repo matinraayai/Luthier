@@ -1,6 +1,6 @@
 #include "instr.hpp"
 #include "error_check.h"
-#include "hsa_intercept.h"
+#include "hsa_intercept.hpp"
 
 sibir_address_t sibir::Instr::getHostAddress() {
 //    if (kd_ != nullptr && hostAddress_ == sibir_address_t{}) {
@@ -20,7 +20,7 @@ hsa_executable_t sibir::Instr::getExecutable() {
 const kernel_descriptor_t *sibir::Instr::getKernelDescriptor() {
     const kernel_descriptor_t *kernelDescriptor{nullptr};
 
-    auto coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
     SIBIR_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(executableSymbol_,
                                                               HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
                                                               reinterpret_cast<sibir_address_t*>(&kernelDescriptor)));
@@ -35,7 +35,7 @@ sibir::Instr::Instr(std::string instStr, hsa_agent_t  agent,
                                        executableSymbol_(symbol), deviceAddress_(DeviceAccessibleInstrAddress),
                                        size_(instrSize),
                                        executable_(executable) {
-    SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable().hsa_ven_amd_loader_query_host_address(
+    HsaInterceptor::Instance().getHsaVenAmdLoaderTable().hsa_ven_amd_loader_query_host_address(
                                                 reinterpret_cast<const void*>(DeviceAccessibleInstrAddress),
                                                 reinterpret_cast<const void**>(&hostAddress_)
                                                 );

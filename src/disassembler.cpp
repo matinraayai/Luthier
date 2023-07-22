@@ -1,6 +1,6 @@
 #include "disassembler.hpp"
 #include "context_manager.hpp"
-#include "hsa_intercept.h"
+#include "hsa_intercept.hpp"
 
 namespace {
 
@@ -47,7 +47,7 @@ void printAddressCallback(uint64_t Address, void *UserData) {}
 
 
 hsa_symbol_kind_t getSymbolKind(hsa_executable_symbol_t symbol) {
-    auto coreHsaApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    auto coreHsaApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_symbol_kind_t symbolKind;
     SIBIR_HSA_CHECK(coreHsaApi.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
     return symbolKind;
@@ -55,7 +55,7 @@ hsa_symbol_kind_t getSymbolKind(hsa_executable_symbol_t symbol) {
 
 sibir_address_t getKdEntryPoint(sibir_address_t kernelObject) {
     const kernel_descriptor_t *kernelDescriptor{nullptr};
-    const auto& amdTable = SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    const auto& amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     SIBIR_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
                                                                    reinterpret_cast<const void **>(&kernelDescriptor)));
 
@@ -63,8 +63,8 @@ sibir_address_t getKdEntryPoint(sibir_address_t kernelObject) {
 }
 
 std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObjectInfo(sibir_address_t kernelObject) {
-    const auto& amdTable = SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-    const auto& coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    const auto& amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
 
     // A way to backtrack from the kernel object to the symbol it belongs to (besides keeping track of a map)
     hsa_executable_t executable;
@@ -83,7 +83,7 @@ std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObje
     auto findKoAgentIterator = [](hsa_executable_t e, hsa_agent_t a, hsa_executable_symbol_t s, void *data) {
         auto cbd = reinterpret_cast<disassemble_callback_data_t*>(data);
         uint64_t ko;
-        auto &coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+        auto &coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
         auto status = SIBIR_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(s, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &ko));
         if (status != HSA_STATUS_SUCCESS)
             return status;

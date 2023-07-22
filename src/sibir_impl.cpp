@@ -1,12 +1,12 @@
+#include "sibir_impl.hpp"
+#include "code_generator.hpp"
 #include "code_object_manager.hpp"
 #include "context_manager.hpp"
 #include "disassembler.hpp"
-#include "hsa_intercept.h"
+#include "hsa_intercept.hpp"
 #include <iomanip>
 #include <roctracer/roctracer.h>
 #include <sibir.h>
-#include "sibir_impl.hpp"
-#include "code_generator.hpp"
 
 void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int api_id) {
     //    static std::vector<hip___hipRegisterFatBinary_api_args_t*>
@@ -43,7 +43,7 @@ __attribute__((constructor)) void sibir::impl::init() {
     assert(HipInterceptor::Instance().IsEnabled());
     sibir_at_init();
     HipInterceptor::Instance().SetCallback(sibir::impl::hipStartupCallback);
-    SibirHsaInterceptor::Instance().SetCallback(sibir::impl::hsaApiCallback);
+    HsaInterceptor::Instance().SetCallback(sibir::impl::hsaApiCallback);
 }
 
 __attribute__((destructor)) void sibir::impl::finalize() {
@@ -53,11 +53,11 @@ __attribute__((destructor)) void sibir::impl::finalize() {
 }
 
 const HsaApiTable *sibir_get_hsa_table() {
-    return &SibirHsaInterceptor::Instance().getSavedHsaTables().root;
+    return &sibir::HsaInterceptor::Instance().getSavedHsaTables().root;
 }
 
 const hsa_ven_amd_loader_1_03_pfn_s *sibir_get_hsa_ven_amd_loader() {
-    return &SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    return &sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
 }
 
 void sibir::impl::hipApiCallback(void *cb_data, sibir_api_phase_t phase, int api_id) {
@@ -185,7 +185,7 @@ ROCTRACER_EXPORT extern const uint32_t HSA_AMD_TOOL_PRIORITY = 49;
 ROCTRACER_EXPORT bool OnLoad(HsaApiTable *table, uint64_t runtime_version,
                              uint64_t failed_tool_count, const char *const *failed_tool_names) {
     [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
-    return SibirHsaInterceptor::Instance().captureHsaApiTable(table);
+    return sibir::HsaInterceptor::Instance().captureHsaApiTable(table);
 }
 
 ROCTRACER_EXPORT void OnUnload() {}

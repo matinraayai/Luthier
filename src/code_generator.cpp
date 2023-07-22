@@ -5,7 +5,7 @@
 #include "disassembler.hpp"
 #include "elfio/elfio.hpp"
 #include "error_check.h"
-#include "hsa_intercept.h"
+#include "hsa_intercept.hpp"
 #include "instr.hpp"
 
 //    std::cout << "Using ELFIO to iterate over the sections of the ELF" << std::endl;
@@ -56,7 +56,7 @@
 //    }
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
-    const auto& coreHsaApiTable = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    const auto& coreHsaApiTable = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
     uint32_t nameSize;
     SIBIR_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
     std::string name;
@@ -74,7 +74,7 @@ hsa_status_t registerExecutableSymbol(const hsa_executable_t& executable,
         auto originalSymbol = reinterpret_cast<hsa_executable_symbol_t *>(data);
         auto originalSymbolName = getSymbolName(*originalSymbol);
 
-        auto& coreTable = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+        auto& coreTable = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
         hsa_symbol_kind_t symbolKind;
         SIBIR_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
@@ -119,7 +119,7 @@ hsa_status_t registerExecutableSymbol(const hsa_executable_t& executable,
 
 
 hsa_executable_t createExecutable(const char* codeObjectPtr, size_t codeObjectSize, hsa_agent_t agent) {
-    auto coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
+    auto coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_code_object_reader_t coReader;
     hsa_executable_t executable;
     SIBIR_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr,
@@ -134,7 +134,7 @@ hsa_executable_t createExecutable(const char* codeObjectPtr, size_t codeObjectSi
 }
 
 std::pair<sibir_address_t, size_t> getLoadedCodeObject(hsa_executable_t executable) {
-    auto amdTable = SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    auto amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
     auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
@@ -161,7 +161,7 @@ std::pair<sibir_address_t, size_t> getLoadedCodeObject(hsa_executable_t executab
 }
 
 std::pair<sibir_address_t, size_t> getCodeObject(hsa_executable_t executable) {
-    auto amdTable = SibirHsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    auto amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
     auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
