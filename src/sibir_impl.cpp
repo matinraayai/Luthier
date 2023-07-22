@@ -69,7 +69,7 @@ void sibir::impl::hsaApiCallback(hsa_api_args_t *cb_data, sibir_api_phase_t phas
 }
 
 std::vector<sibir::Instr> sibir_disassemble_kernel_object(uint64_t kernel_object) {
-    return sibir::Disassembler::disassemble(kernel_object);
+    return sibir::Disassembler::Instance().disassemble(kernel_object);
 }
 
 //void print_instructions(const std::vector<Inst>& isa) {

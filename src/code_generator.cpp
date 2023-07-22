@@ -1,12 +1,12 @@
 #include "code_generator.hpp"
 #include "amdgpu_elf.hpp"
-#include "elfio/elfio.hpp"
-#include "disassembler.hpp"
+#include "code_object_manager.hpp"
 #include "context_manager.hpp"
+#include "disassembler.hpp"
+#include "elfio/elfio.hpp"
 #include "error_check.h"
 #include "hsa_intercept.h"
-#include "instr.h"
-#include "code_object_manager.hpp"
+#include "instr.hpp"
 
 //    std::cout << "Using ELFIO to iterate over the sections of the ELF" << std::endl;
 //
@@ -99,7 +99,7 @@ hsa_status_t registerExecutableSymbol(const hsa_executable_t& executable,
                                                             );
             std::cout << "original kernel location: " << std::hex << originalKernelObject << std::dec << std::endl;
             std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
-            std::vector<sibir::Instr> instList = sibir::Disassembler::disassemble(kernelObject);
+            std::vector<sibir::Instr> instList = sibir::Disassembler::Instance().disassemble(kernelObject);
             std::cout << "Disassembly of the KO: " << std::endl;
             for (const auto& i : instList) {
                 std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
@@ -269,12 +269,30 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     // Instrument Section append
     auto hostCodeObjectTextSection = hostCodeObjectElfIo.sections[".text"];
 
+//    std::string topPortion = assemble({"s_load_dwordx2 s[0:1], s[4:5], 0x0",
+//                                       "v_mov_b32_e32 v2, 0",
+//                                       "v_mov_b32_e32 v3, 1",
+//                                       "s_waitcnt lgkmcnt(0)",
+//                                       "s_getpc_b64 s[4:5]",
+//                                       "s_add_u32 s4, s4, 0xc",
+//                                       "s_addc_u32 s5, s5, 0",
+//                                       "s_swappc_b64 s[2:3], s[4:5]"}, agent);
+//    std::string oldTextSection;
+//    oldTextSection.resize(hostCodeObjectTextSection->get_size() - 0x28);
+//    std::memcpy(oldTextSection.data(), hostCodeObjectTextSection->get_data() + 0x28, oldTextSection.size());
+//
+//    hostCodeObjectTextSection->set_data(topPortion);
+//    hostCodeObjectTextSection->append_data(oldTextSection);
+
     std::string nop = assemble("s_nop 0", agent);
     hostCodeObjectTextSection->append_data(nop);
     size_t instrumentCodeOffset = hostCodeObjectTextSection->get_size();
 
-    hostCodeObjectTextSection->append_data(instrumentationFunction);
+//    hostCodeObjectTextSection->append_data(instrumentationFunction);
+    std::string dummyInst = assemble({std::string("s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)"),
+                                      std::string("s_setpc_b64 s[0:1]")}, agent);
 
+    hostCodeObjectTextSection->append_data(dummyInst);
     hostCodeObjectTextSection->append_data(nop);
 
     size_t trampolineCodeOffset = hostCodeObjectTextSection->get_size();
@@ -294,7 +312,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     ss << "0x" << std::hex << firstAddOffset << std::endl;
     trampoline += assemble({"s_sub_u32 s2, s2, " + ss.str(),
                             "s_subb_u32 s3, s3, 0x0",
-                            "s_swappc_b64 s[30:31], s[2:3]",
+                            "s_swappc_b64 s[0:1], s[2:3]",
                             instr.getInstr()}, agent);
 
 
@@ -393,7 +411,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
 
 
     std::cout << "Loaded code object is located at: " <<  reinterpret_cast<const void*>(loadedCodeObject.first) << std::endl;
-    auto insts = sibir::Disassembler::disassemble(agent, reinterpret_cast<sibir_address_t>(hcoElfIo.sections[".text"]->get_address()) + reinterpret_cast<sibir_address_t>(loadedCodeObject.first), hcoElfIo.sections[".text"]->get_size());
+    auto insts = sibir::Disassembler::Instance().disassemble(agent, reinterpret_cast<sibir_address_t>(hcoElfIo.sections[".text"]->get_address()) + reinterpret_cast<sibir_address_t>(loadedCodeObject.first), hcoElfIo.sections[".text"]->get_size());
     unsigned int nop_inst_idx = 0;
 
     for (unsigned int i = 0; i < insts.size(); i++) {

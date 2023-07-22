@@ -1,12 +1,12 @@
 #ifndef SIBIR_H
 #define SIBIR_H
+#include "error_check.h"
+#include "instr.hpp"
 #include "sibir_types.h"
-#include "instr.h"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
-#include "error_check.h"
 
 //extern "C" {
 

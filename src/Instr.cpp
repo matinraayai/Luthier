@@ -1,6 +1,6 @@
-#include "instr.h"
-#include "hsa_intercept.h"
+#include "instr.hpp"
 #include "error_check.h"
+#include "hsa_intercept.h"
 
 sibir_address_t sibir::Instr::getHostAddress() {
 //    if (kd_ != nullptr && hostAddress_ == sibir_address_t{}) {

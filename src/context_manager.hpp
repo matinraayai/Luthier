@@ -42,7 +42,7 @@ class ContextManager {
     }
 
 
-    const inline sibir::hsa_agent_entry_t& getHsaAgentInfo(hsa_agent_t agent) {return agentsMap_[agent.handle];}
+    inline const sibir::hsa_agent_entry_t& getHsaAgentInfo(hsa_agent_t agent) const {return agentsMap_.at(agent.handle);}
 
     std::vector<hsa_agent_t> getHsaAgents() const {
         std::vector<hsa_agent_t> agents;
