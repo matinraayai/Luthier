@@ -25,6 +25,16 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(elfio)
 
+FetchContent_Declare(
+        fmt
+        DOWNLOAD_EXTRACT_TIMESTAMP 0
+        URL "https://github.com/fmtlib/fmt/archive/refs/heads/master.zip"
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/fmt/
+        CONFIGURE_COMMAND "cmake -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE ..."
+)
+
+FetchContent_MakeAvailable(fmt)
+
 # Create the library
 add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h hip_intercept.hpp hip_intercept.cpp sibir_types.h
         hsa_intercept.hpp hsa_intercept.cpp code_object_manager.hpp code_object_manager.cpp hip_arg_types.h
@@ -40,7 +50,6 @@ target_compile_definitions(sibir PUBLIC AMD_INTERNAL_BUILD)
 
 set_property(TARGET sibir PROPERTY COMPILE_FLAGS "-fPIC")
 
-# Link with HIP and ROCTracer
-target_link_libraries(sibir hip::host hip::device roctracer64 stdc++fs amd_comgr)
+target_link_libraries(sibir hip::host hip::device roctracer64 stdc++fs amd_comgr fmt::fmt)
 
 target_include_directories(sibir PUBLIC .)
