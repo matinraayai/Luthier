@@ -36,9 +36,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fmt)
 
 # Create the library
-add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h hip_intercept.hpp hip_intercept.cpp sibir_types.h
+add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h hip_intercept.hpp hip_intercept.cpp sibir_types.hpp
         hsa_intercept.hpp hsa_intercept.cpp code_object_manager.hpp code_object_manager.cpp hip_arg_types.h
-        hip_private_api.h error_check.h disassembler.hpp disassembler.cpp amdgpu_elf.hpp amdgpu_elf.cpp
+        hip_private_api.h error_check.hpp disassembler.hpp disassembler.cpp amdgpu_elf.hpp amdgpu_elf.cpp
         context_manager.hpp context_manager.cpp code_generator.hpp code_generator.cpp instr.hpp Instr.cpp)
 
 

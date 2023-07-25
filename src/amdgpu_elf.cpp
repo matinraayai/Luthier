@@ -19,77 +19,66 @@
  THE SOFTWARE. */
 
 #include "amdgpu_elf.hpp"
-#include "error_check.h"
+#include "error_check.hpp"
 
-#include <cstring>
-#include <cassert>
 #include <string>
 
-#if defined(__linux__)
-    #include <unistd.h>
-#endif
-
 #include <thread>
-#include <random>
-#include <sstream>
-
-
-
 
 namespace sibir::elf {
 using namespace ELFIO;
 
 #if !defined(ELFMAG)
-#define ELFMAG  "\177ELF"
+#define ELFMAG "\177ELF"
 #define SELFMAG 4
 #endif
 
 typedef struct {
     ElfSections id;
-    const char  *name;
-    uint64_t    d_align;  // section alignment in bytes
-    Elf32_Word  sh_type;  // section type
-    Elf32_Word  sh_flags; // section flags
-    const char  *desc;
+    const char *name;
+    uint64_t d_align;   // section alignment in bytes
+    Elf32_Word sh_type; // section type
+    Elf32_Word sh_flags;// section flags
+    const char *desc;
 } ElfSectionsDesc;
 
 namespace {
-  // Objects that are visible only within this module
-  constexpr ElfSectionsDesc ElfSecDesc[] =
-  {
-    {LLVMIR,         ".llvmir",         1, SHT_PROGBITS, 0, "ASIC-independent LLVM IR" },
-    {SOURCE,         ".source",         1, SHT_PROGBITS, 0, "OpenCL source" },
-    {ILTEXT,         ".amdil",          1, SHT_PROGBITS, 0, "AMD IL text" },
-    {ASTEXT,         ".astext",         1, SHT_PROGBITS, 0, "X86 assembly text" },
-    {CAL,            ".text",           1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "AMD CalImage" },
-    {DLL,            ".text",           1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 dll" },
-    {STRTAB,         ".strtab",         1, SHT_STRTAB,   SHF_STRINGS, "String table" },
-    {SYMTAB,         ".symtab",         sizeof(Elf_Xword), SHT_SYMTAB,   0, "Symbol table" },
-    {RODATA,         ".rodata",         1, SHT_PROGBITS, SHF_ALLOC, "Read-only data" },
-    {SHSTRTAB,       ".shstrtab",       1, SHT_STRTAB,   SHF_STRINGS, "Section names" },
-    {NOTES,          ".note",           1, SHT_NOTE,     0, "used by loader for notes" },
-    {COMMENT,        ".comment",        1, SHT_PROGBITS, 0, "Version string" },
-    {ILDEBUG,        ".debugil",        1, SHT_PROGBITS, 0, "AMD Debug IL" },
-    {DEBUG_INFO,     ".debug_info",     1, SHT_PROGBITS, 0, "Dwarf debug info" },
-    {DEBUG_ABBREV,   ".debug_abbrev",   1, SHT_PROGBITS, 0, "Dwarf debug abbrev" },
-    {DEBUG_LINE,     ".debug_line",     1, SHT_PROGBITS, 0, "Dwarf debug line" },
-    {DEBUG_PUBNAMES, ".debug_pubnames", 1, SHT_PROGBITS, 0, "Dwarf debug pubnames" },
-    {DEBUG_PUBTYPES, ".debug_pubtypes", 1, SHT_PROGBITS, 0, "Dwarf debug pubtypes" },
-    {DEBUG_LOC,      ".debug_loc",      1, SHT_PROGBITS, 0, "Dwarf debug loc" },
-    {DEBUG_ARANGES,  ".debug_aranges",  1, SHT_PROGBITS, 0, "Dwarf debug aranges" },
-    {DEBUG_RANGES,   ".debug_ranges",   1, SHT_PROGBITS, 0, "Dwarf debug ranges" },
-    {DEBUG_MACINFO,  ".debug_macinfo",  1, SHT_PROGBITS, 0, "Dwarf debug macinfo" },
-    {DEBUG_STR,      ".debug_str",      1, SHT_PROGBITS, 0, "Dwarf debug str" },
-    {DEBUG_FRAME,    ".debug_frame",    1, SHT_PROGBITS, 0, "Dwarf debug frame" },
-    {JITBINARY,      ".text",           1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 JIT Binary" },
-    {CODEGEN,         ".cg",            1, SHT_PROGBITS, 0, "Target dependent IL" },
-    {TEXT,            ".text",          1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "Device specific ISA" },
-    {INTERNAL,        ".internal",      1, SHT_PROGBITS, 0, "Internal usage" },
-    {SPIR,            ".spir",          1, SHT_PROGBITS, 0, "Vendor/Device-independent LLVM IR" },
-    {SPIRV,           ".spirv",         1, SHT_PROGBITS, 0, "SPIR-V Binary" },
-    {RUNTIME_METADATA,".AMDGPU.runtime_metadata",  1, SHT_PROGBITS, 0, "AMDGPU runtime metadata" },
-  };
-}
+// Objects that are visible only within this module
+constexpr ElfSectionsDesc ElfSecDesc[] =
+    {
+        {LLVMIR, ".llvmir", 1, SHT_PROGBITS, 0, "ASIC-independent LLVM IR"},
+        {SOURCE, ".source", 1, SHT_PROGBITS, 0, "OpenCL source"},
+        {ILTEXT, ".amdil", 1, SHT_PROGBITS, 0, "AMD IL text"},
+        {ASTEXT, ".astext", 1, SHT_PROGBITS, 0, "X86 assembly text"},
+        {CAL, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "AMD CalImage"},
+        {DLL, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 dll"},
+        {STRTAB, ".strtab", 1, SHT_STRTAB, SHF_STRINGS, "String table"},
+        {SYMTAB, ".symtab", sizeof(Elf_Xword), SHT_SYMTAB, 0, "Symbol table"},
+        {RODATA, ".rodata", 1, SHT_PROGBITS, SHF_ALLOC, "Read-only data"},
+        {SHSTRTAB, ".shstrtab", 1, SHT_STRTAB, SHF_STRINGS, "Section names"},
+        {NOTES, ".note", 1, SHT_NOTE, 0, "used by loader for notes"},
+        {COMMENT, ".comment", 1, SHT_PROGBITS, 0, "Version string"},
+        {ILDEBUG, ".debugil", 1, SHT_PROGBITS, 0, "AMD Debug IL"},
+        {DEBUG_INFO, ".debug_info", 1, SHT_PROGBITS, 0, "Dwarf debug info"},
+        {DEBUG_ABBREV, ".debug_abbrev", 1, SHT_PROGBITS, 0, "Dwarf debug abbrev"},
+        {DEBUG_LINE, ".debug_line", 1, SHT_PROGBITS, 0, "Dwarf debug line"},
+        {DEBUG_PUBNAMES, ".debug_pubnames", 1, SHT_PROGBITS, 0, "Dwarf debug pubnames"},
+        {DEBUG_PUBTYPES, ".debug_pubtypes", 1, SHT_PROGBITS, 0, "Dwarf debug pubtypes"},
+        {DEBUG_LOC, ".debug_loc", 1, SHT_PROGBITS, 0, "Dwarf debug loc"},
+        {DEBUG_ARANGES, ".debug_aranges", 1, SHT_PROGBITS, 0, "Dwarf debug aranges"},
+        {DEBUG_RANGES, ".debug_ranges", 1, SHT_PROGBITS, 0, "Dwarf debug ranges"},
+        {DEBUG_MACINFO, ".debug_macinfo", 1, SHT_PROGBITS, 0, "Dwarf debug macinfo"},
+        {DEBUG_STR, ".debug_str", 1, SHT_PROGBITS, 0, "Dwarf debug str"},
+        {DEBUG_FRAME, ".debug_frame", 1, SHT_PROGBITS, 0, "Dwarf debug frame"},
+        {JITBINARY, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 JIT Binary"},
+        {CODEGEN, ".cg", 1, SHT_PROGBITS, 0, "Target dependent IL"},
+        {TEXT, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "Device specific ISA"},
+        {INTERNAL, ".internal", 1, SHT_PROGBITS, 0, "Internal usage"},
+        {SPIR, ".spir", 1, SHT_PROGBITS, 0, "Vendor/Device-independent LLVM IR"},
+        {SPIRV, ".spirv", 1, SHT_PROGBITS, 0, "SPIR-V Binary"},
+        {RUNTIME_METADATA, ".AMDGPU.runtime_metadata", 1, SHT_PROGBITS, 0, "AMDGPU runtime metadata"},
+};
+}// namespace
 
 /////////////////////////////////////////////////////////////////
 //////////////////////// elf initializers ///////////////////////
@@ -415,10 +404,10 @@ namespace {
 //  return true;
 //}
 //
-unsigned int getSymbolNum(const elfio& io) {
-  symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
-  auto num = symbol_reader.get_symbols_num() - 1;  // Exclude the first dummy symbol
-  return num;
+unsigned int getSymbolNum(const elfio &io) {
+    symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
+    auto num = symbol_reader.get_symbols_num() - 1;// Exclude the first dummy symbol
+    return num;
 }
 //
 //unsigned int ElfAmd::getSegmentNum() const {
@@ -434,53 +423,52 @@ unsigned int getSymbolNum(const elfio& io) {
 //  return ret;
 //}
 
-bool getSymbolInfo(const elfio& io, unsigned int index, SymbolInfo& symInfo)
-{
+bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo) {
 
-  symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
+    symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
 
-  auto num = getSymbolNum(io);
+    auto num = getSymbolNum(io);
 
-  if (index >= num) {
-    SibirErrorFmt(" failed: wrong index %u >= symbols num %hu", index, num);
-    return false;
-  }
+    if (index >= num) {
+        SibirErrorFmt(" failed: wrong index {} >= symbols num {}", index, num);
+        return false;
+    }
 
-  std::string   sym_name;
-  Elf64_Addr    value = 0;
-  Elf_Xword     size = 0;
-  unsigned char bind = 0;
-  unsigned char type = 0;
-  Elf_Half      sec_index = 0;
-  unsigned char other = 0;
+    std::string sym_name;
+    Elf64_Addr value = 0;
+    Elf_Xword size = 0;
+    unsigned char bind = 0;
+    unsigned char type = 0;
+    Elf_Half sec_index = 0;
+    unsigned char other = 0;
 
-  // index++ for real index on top of the first dummy symbol
-  bool ret = symbol_reader.get_symbol(++index, sym_name, value, size, bind, type,
-                                      sec_index, other);
-  if (!ret) {
-    SibirErrorFmt("failed to get_symbol(%u)", index);
-    return false;
-  }
-  section* sec = io.sections[sec_index];
-  if (sec == nullptr) {
-    SibirErrorFmt("failed: null section at %u", sec_index);
-    return false;
-  }
+    // index++ for real index on top of the first dummy symbol
+    bool ret = symbol_reader.get_symbol(++index, sym_name, value, size, bind, type,
+                                        sec_index, other);
+    if (!ret) {
+        SibirErrorFmt("failed to get_symbol({})", index);
+        return false;
+    }
+    section *sec = io.sections[sec_index];
+    if (sec == nullptr) {
+        SibirErrorFmt("failed: null section at {}", sec_index);
+        return false;
+    }
 
-  symInfo.sec_addr = sec->get_data();
-  symInfo.sec_size = sec->get_size();
-//  std::cout << "Offset: " << sec->get_offset() << std::endl;
-//  std::cout << "get Address: " << sec->get_address() << std::endl;
-//  std::cout << "align address: " << sec->get_addr_align() << std::endl;
-//  std::cout << "entry size: " << sec->get_entry_size() << std::endl;
-  symInfo.address = symInfo.sec_addr + (size_t) value - (size_t) sec->get_offset();
-  symInfo.size = (uint64_t) size;
-  symInfo.value = (size_t) value;
+    symInfo.sec_addr = sec->get_data();
+    symInfo.sec_size = sec->get_size();
+    //  std::cout << "Offset: " << sec->get_offset() << std::endl;
+    //  std::cout << "get Address: " << sec->get_address() << std::endl;
+    //  std::cout << "align address: " << sec->get_addr_align() << std::endl;
+    //  std::cout << "entry size: " << sec->get_entry_size() << std::endl;
+    symInfo.address = symInfo.sec_addr + (size_t) value - (size_t) sec->get_offset();
+    symInfo.size = (uint64_t) size;
+    symInfo.value = (size_t) value;
 
-  symInfo.sec_name = sec->get_name();
-  symInfo.sym_name = sym_name;
+    symInfo.sec_name = sec->get_name();
+    symInfo.sym_name = sym_name;
 
-  return true;
+    return true;
 }
 
 //bool ElfAmd::addSectionData (
@@ -957,4 +945,4 @@ bool getSymbolInfo(const elfio& io, unsigned int index, SymbolInfo& symInfo)
 //  elfMemory_.clear();
 //}
 
-} // namespace amd
+}// namespace sibir::elf

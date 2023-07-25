@@ -1,9 +1,11 @@
-#ifndef ERROR_CHECK_H
-#define ERROR_CHECK_H
+#ifndef ERROR_CHECK_HPP
+#define ERROR_CHECK_HPP
 
 #include <amd_comgr.h>
 #include <hip/hip_runtime_api.h>
 #include <hsa/hsa.h>
+#include <fmt/core.h>
+#include <stdexcept>
 
 
 //TODO: implement a proper logger
@@ -33,12 +35,7 @@
 //  ClPrint(amd::LOG_INFO, amd::LOG_CODE, "%-5d: [%zx] %p %s: " format, \
 //          getpid(), std::this_thread::get_id(), this, __func__, __VA_ARGS__)
 //#else
-#define SibirTrace(level)
-#define SibirInfoMsg(msg)
-#define SibirWarningMsg(msg)
-#define SibirDebug(format, ...)
-#define SibirWarningFmt(format, ...)
-#define SibirInfoFmt(format, ...)
+
 //#endif
 
 // Borrowed from ROCclr (for now)
@@ -47,20 +44,19 @@
   fprintf(stderr, msg)
 
 #define SibirErrorFmt(format, ...) \
-  fprintf(stderr, format, __VA_ARGS__)
+  fmt::print(stderr, fmt::runtime(format), __VA_ARGS__)
 
 
 
 #define SIBIR_ROCM_LIB_API_CHECK(LIB_NAME, LIB_ERROR_TYPE, LIB_ERROR_SUCCESS_TYPE) \
-        inline LIB_ERROR_TYPE check_##LIB_NAME##_error(LIB_ERROR_TYPE err, const char* callName, const char* fileName, const int line) { \
-           if (err != LIB_ERROR_SUCCESS_TYPE) { \
+        inline void check_##LIB_NAME##_error(LIB_ERROR_TYPE err, const char* callName, const char* fileName, const int line) { \
+            if (err != LIB_ERROR_SUCCESS_TYPE) { \
                 const char* errMsg = "Unknown Error"; \
-                LIB_NAME##_status_string(err, &errMsg); \
-                fprintf(stderr, "%s, line %d: Sibir %s call to function %s failed!\n", fileName, line, #LIB_NAME, callName); \
-                fprintf(stderr, "Error Code: %d.\n", err); \
-                fprintf(stderr, "More info: %s\n", errMsg); \
-           } \
-           return err; \
+                LIB_NAME##_status_string(err, &errMsg);                            \
+                std::string what = fmt::format(fmt::runtime("{:s}, line {:d}: Sibir {:s} call to function {:s} failed; Error Code: {:d}.\nError Details: {:s}."),\
+                                           fileName, line, #LIB_NAME, callName, static_cast<int>(err), errMsg);                                                             \
+                throw std::runtime_error(what);\
+            }\
         }
 
 SIBIR_ROCM_LIB_API_CHECK(hsa, hsa_status_t, HSA_STATUS_SUCCESS)

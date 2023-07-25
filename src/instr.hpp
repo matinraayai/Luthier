@@ -1,6 +1,6 @@
 #ifndef INSTR_H
 #define INSTR_H
-#include "sibir_types.h"
+#include "sibir_types.hpp"
 #include <hsa/hsa.h>
 
 

@@ -100,9 +100,9 @@ std::string sibir::CodeObjectManager::getCodeObjectOfInstrumentationFunction(con
     auto fb = functions_[funcNameKey].parentFatBinary;
     auto fbData = fatBinaries_[fb];
 
-    auto agentIsa = sibir::ContextManager::Instance().getHsaAgentInfo(agent).isa.c_str();
+    auto agentIsa = sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
 
-    std::vector<amd_comgr_code_object_info_t> isaInfo{{agentIsa, 0, 0}};
+    std::vector<amd_comgr_code_object_info_t> isaInfo{{agentIsa.c_str(), 0, 0}};
 
     SIBIR_AMD_COMGR_CHECK(amd_comgr_lookup_code_object(fbData, isaInfo.data(), isaInfo.size()));
 

@@ -1,11 +1,11 @@
 #ifndef CODE_OBJECT_MANAGER_H
 #define CODE_OBJECT_MANAGER_H
+#include "sibir_types.hpp"
 #include <amd_comgr.h>
 #include <hsa/hsa.h>
 #include <map>
 #include <memory>
 #include <unordered_map>
-#include "sibir_types.h"
 
 namespace sibir {
 class CodeObjectManager {

@@ -19,10 +19,9 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE. */
 
-
-#include <hsa/hsa_api_trace.h>
 #include "hsa_intercept.hpp"
-#include "sibir_types.h"
+#include "sibir_types.hpp"
+#include <hsa/hsa_api_trace.h>
 
 /* section: API callback functions */
 

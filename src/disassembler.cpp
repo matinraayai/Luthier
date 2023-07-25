@@ -84,9 +84,7 @@ std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObje
         auto cbd = reinterpret_cast<disassemble_callback_data_t*>(data);
         uint64_t ko;
         auto &coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
-        auto status = SIBIR_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(s, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &ko));
-        if (status != HSA_STATUS_SUCCESS)
-            return status;
+        SIBIR_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(s, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &ko));
         if (ko == cbd->ko) {
             cbd->executable = e;
             cbd->agent = a;
@@ -117,7 +115,7 @@ std::vector<sibir::Instr> sibir::Disassembler::disassemble(sibir_address_t kerne
     sibir_address_t kernelEntryPoint = getKdEntryPoint(kernelObject);
     std::tie(symbolAgent, executable, executableSymbol) = getKernelObjectInfo(kernelObject);
 
-    std::string isaName = contextManager.getHsaAgentInfo(symbolAgent).isa;
+    std::string isaName = contextManager.getHsaAgentInfo(symbolAgent)->getIsaName();
 
     // Disassemble using AMD_COMGR
 
@@ -141,7 +139,7 @@ std::vector<sibir::Instr> sibir::Disassembler::disassemble(sibir_address_t kerne
 
 std::vector<sibir::Instr> sibir::Disassembler::disassemble(hsa_agent_t agent, sibir_address_t entry, size_t size) {
 
-    std::string isaName = sibir::ContextManager::Instance().getHsaAgentInfo(agent).isa;
+    std::string isaName = sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
 
     auto disassemblyInfo = getSizeDisassemblyInfo(isaName);
 

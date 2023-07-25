@@ -1,8 +1,8 @@
 #ifndef SIBIR_H
 #define SIBIR_H
-#include "error_check.h"
+#include "error_check.hpp"
 #include "instr.hpp"
-#include "sibir_types.h"
+#include "sibir_types.hpp"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <roctracer/roctracer_hip.h>

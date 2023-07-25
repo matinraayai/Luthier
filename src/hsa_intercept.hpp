@@ -1,8 +1,8 @@
 #ifndef HSA_INTERCEPT_HPP
 #define HSA_INTERCEPT_HPP
 
-#include "sibir_types.h"
-#include "error_check.h"
+#include "error_check.hpp"
+#include "sibir_types.hpp"
 #include <roctracer/roctracer.h>
 #include <roctracer/roctracer_hsa.h>
 

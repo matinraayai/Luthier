@@ -1,13 +1,14 @@
 #ifndef HIP_INTERCEPT_HPP
 #define HIP_INTERCEPT_HPP
 
-#include "sibir_types.h"
+#include "sibir_types.hpp"
 #include <dlfcn.h>
 #include <experimental/filesystem>
 #include <functional>
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <link.h>
+#include <fmt/core.h>
 
 namespace fs = std::experimental::filesystem;
 
@@ -59,7 +60,7 @@ class HipInterceptor {
 
         void *function_ptr = ::dlsym(handle_, symbol);
         if (function_ptr == nullptr)
-            throw std::runtime_error("symbol lookup'" + std::string(symbol) + "' failed: " + std::string(::dlerror()));
+            throw std::runtime_error(fmt::format("symbol lookup '{:s}' failed: {:s}", std::string(symbol), std::string(::dlerror())));
         return function_ptr;
     }
 

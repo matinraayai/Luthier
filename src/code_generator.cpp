@@ -4,32 +4,95 @@
 #include "context_manager.hpp"
 #include "disassembler.hpp"
 #include "elfio/elfio.hpp"
-#include "error_check.h"
+#include "error_check.hpp"
 #include "hsa_intercept.hpp"
 #include "instr.hpp"
+#include <fmt/core.h>
+#include <fmt/ranges.h>
 
-//    std::cout << "Using ELFIO to iterate over the sections of the ELF" << std::endl;
+amd_comgr_status_t printEntryCo(amd_comgr_metadata_node_t key,
+                              amd_comgr_metadata_node_t value, void *data) {
+    amd_comgr_metadata_kind_t kind;
+    amd_comgr_metadata_node_t son;
+    amd_comgr_status_t status;
+    size_t size;
+    char *keybuf;
+    char *valbuf;
+    int *indent = (int *)data;
+
+    // assume key to be string in this test function
+    status = amd_comgr_get_metadata_kind(key, &kind);
+    if (kind != AMD_COMGR_METADATA_KIND_STRING)
+        return AMD_COMGR_STATUS_ERROR;
+    status = amd_comgr_get_metadata_string(key, &size, NULL);
+    keybuf = (char *)calloc(size, sizeof(char));
+    status = amd_comgr_get_metadata_string(key, &size, keybuf);
+
+    status = amd_comgr_get_metadata_kind(value, &kind);
+    for (int i = 0; i < *indent; i++)
+        printf("  ");
+
+    switch (kind) {
+        case AMD_COMGR_METADATA_KIND_STRING: {
+            printf("%s  :  ", size ? keybuf : "");
+            status = amd_comgr_get_metadata_string(value, &size, NULL);
+            valbuf = (char *)calloc(size, sizeof(char));
+            status = amd_comgr_get_metadata_string(value, &size, valbuf);
+            printf(" %s\n", valbuf);
+            free(valbuf);
+            break;
+        }
+        case AMD_COMGR_METADATA_KIND_LIST: {
+            *indent += 1;
+            status = amd_comgr_get_metadata_list_size(value, &size);
+            printf("LIST %s %zd entries = \n", keybuf, size);
+            for (size_t i = 0; i < size; i++) {
+                status = amd_comgr_index_list_metadata(value, i, &son);
+                status = printEntryCo(key, son, data);
+                status = amd_comgr_destroy_metadata(son);
+            }
+            *indent = *indent > 0 ? *indent - 1 : 0;
+            break;
+        }
+        case AMD_COMGR_METADATA_KIND_MAP: {
+            *indent += 1;
+            status = amd_comgr_get_metadata_map_size(value, &size);
+            printf("MAP %zd entries = \n", size);
+            status = amd_comgr_iterate_map_metadata(value, printEntryCo, data);
+            *indent = *indent > 0 ? *indent - 1 : 0;
+            break;
+        }
+        default:
+            free(keybuf);
+            return AMD_COMGR_STATUS_ERROR;
+    } // switch
+
+    free(keybuf);
+    return AMD_COMGR_STATUS_SUCCESS;
+};
+
+//    fmt::println(stdout, "Using ELFIO to iterate over the sections of the ELF");
 //
 //    for (auto it = coElfIO.sections.begin(); it != coElfIO.sections.end(); it++) {
 //        auto sec = it->get();
-//        std::cout << "Name: " << sec->get_name() << std::endl;
-//        std::cout << "Address: " << sec->get_address() << std::endl;
+//        fmt::println(stdout, "Name: {}", sec->get_name()");
+//        fmt::println(stdout, "Address: {}", sec->get_address());
 //    }
 
-//    std::cout << "Using ELFIO to iterate over the segments of the ELF" << std::endl;
+//    fmt::println(stdout, "Using ELFIO to iterate over the segments of the ELF");
 //    for (auto it = coElfIO.segments.begin(); it != coElfIO.segments.end(); it++) {
 //        auto seg = it->get();
 //        auto num_sections = seg->get_sections_num();
-//        std::cout << "Section numbers: " << num_sections << std::endl;
+//        fmt::println(stdout, "Section numbers: {}", num_sections);
 //        for (int i = 0; i < num_sections; i++) {
-//            std::cout << "Section info: " << std::endl;
+//            fmt::println(stdout, "Section info: ");
 //            auto section_idx = seg->get_section_index_at(i);
 //            auto sec = coElfIO.sections[section_idx];
-//            std::cout << "Name: " << sec->get_name() << std::endl;
-//            std::cout << "Address: " << sec->get_address() << std::endl;
-//            std::cout << "Size: " << sec->get_size() << std::endl;
+//            fmt::println(stdout, "Name: {}", sec->get_name());
+//            fmt::println(stdout, "Address: {}", sec->get_address());
+//            fmt::println(stdout, "Size: {}", sec->get_size());
 //        }
-//        std::cout << "Type: " << seg->get_type() << std::endl;
+//        fmt::println(stdout, "Type: {}", seg->get_type());
 //    }
 //
 //    std::cout << "Read the notes section: " << std::endl;
@@ -65,7 +128,7 @@ std::string getSymbolName(hsa_executable_symbol_t symbol) {
     return name;
 }
 
-hsa_status_t registerExecutableSymbol(const hsa_executable_t& executable,
+hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executable,
                                       const hsa_executable_symbol_t originalSymbol,
                                       hsa_agent_t agent) {
 
@@ -78,10 +141,11 @@ hsa_status_t registerExecutableSymbol(const hsa_executable_t& executable,
         hsa_symbol_kind_t symbolKind;
         SIBIR_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
-        std::cout << "Symbol kind: " << symbolKind << std::endl;
+        fmt::println(stdout, "Symbol kind: {}.", static_cast<int>(symbolKind));
 
         std::string symbolName = getSymbolName(symbol);
-        std::cout << "Symbol Name: " << symbolName << std::endl;
+
+        fmt::println(stdout, "Symbol name: {}.", symbolName);
 
         if (symbolKind == HSA_SYMBOL_KIND_VARIABLE) {
             sibir_address_t variableAddress;
@@ -202,11 +266,9 @@ std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
 
     SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
 
-
-
     SIBIR_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
     SIBIR_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
-                                                             sibir::ContextManager::Instance().getHsaAgentInfo(agent).isa.c_str()));
+                                                             sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName().c_str()));
     SIBIR_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
     SIBIR_AMD_COMGR_CHECK(
         amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE,
@@ -229,21 +291,31 @@ std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
 
 
 std::string assemble(const std::vector<sibir::Instr>& instrVector, hsa_agent_t agent) {
-    std::stringstream instStrStream;
+    std::vector<std::string> instrStringVec(instrVector.size());
+    for (unsigned int i = 0; i < instrStringVec.size(); i++)
+        instrStringVec[i] = instrVector[i].getInstr();
 
-    for (const auto& i: instrVector)
-        instStrStream << i.getInstr() << std::endl;
-    std::string instString = instStrStream.str();
-    return assemble(instString, agent);
+    return assemble(fmt::format("{}", fmt::join(instrStringVec, "\n")), agent);
 }
 
 std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t agent) {
-    std::stringstream instStrStream;
 
-    for (const auto& i: instrVector)
-        instStrStream << i << std::endl;
-    std::string instString = instStrStream.str();
+    std::string instString = fmt::format("{}", fmt::join(instrVector, "\n"));
     return assemble(instString, agent);
+}
+
+
+void iterateCodeObjectMetaData(sibir_address_t codeObjectData, size_t codeObjectSize) {
+    // COMGR symbol iteration things
+    amd_comgr_data_t coData;
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &coData));
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(coData, codeObjectSize, reinterpret_cast<const char*>(codeObjectData)));
+    amd_comgr_metadata_node_t meta;
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_data_metadata(coData, &meta));
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data_name(coData, "my-data.s"));
+    int Indent = 1;
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(meta, printEntryCo, (void *)&Indent));
+    SIBIR_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(meta));
 }
 
 
@@ -252,9 +324,10 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     hsa_agent_t agent = instr.getAgent();
 
     // Query the original executable associated with the instr
-    std::cout << "Instruction to be instrumented: " << instr.getInstr() << std::endl;
-    std::cout << "Instruction address: " << std::hex << reinterpret_cast<void*>(instr.getDeviceAddress()) << std::dec << std::endl;
 
+    fmt::println(stdout, "Instruction to be instrumented: {}", instr.getInstr());
+    fmt::println(stdout, "Instruction address: {:#x}", instr.getDeviceAddress());
+    sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getAddressableNumSGPRsfromComgrMeta();
     hsa_executable_t originalExecutable = instr.getExecutable();
 
     // Get the host code object associated with the executable
@@ -305,12 +378,12 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     int firstAddOffset = (int) (trampolinePcOffset - instrumentCodeOffset);
 //    int firstAddOffset = 0x60;
 
-    std::cout << "Trampoline PC offset: " << std::hex << trampolinePcOffset << std::endl;
-    std::cout << "Instrument Code Offset: " << std::hex << instrumentCodeOffset << std::endl;
-    std::cout << "The set PC offset: " << std::hex << firstAddOffset << std::dec << std::endl;
-    std::stringstream ss;
-    ss << "0x" << std::hex << firstAddOffset << std::endl;
-    trampoline += assemble({"s_sub_u32 s2, s2, " + ss.str(),
+    fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
+    fmt::println(stdout, "Instrument Code Offset: {:#x}", instrumentCodeOffset);
+    fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
+
+
+    trampoline += assemble({fmt::format("s_sub_u32 s2, s2, {:#x}", firstAddOffset),
                             "s_subb_u32 s3, s3, 0x0",
                             "s_swappc_b64 s[0:1], s[2:3]",
                             instr.getInstr()}, agent);
@@ -322,43 +395,23 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     trampolinePcOffset = trampolineCodeOffset + trampoline.size() + 4;
 //    hostCodeObjectTextSection->append_data(trampoline);
 
-    ss.str("");
-    ss.clear();
     short lastBranchImm = - static_cast<short>((trampolinePcOffset - 0x04) / 4);
-//    short lastBranchImm = -45;
-    ss << "s_branch 0x" << std::hex << lastBranchImm << std::endl;
-    std::cout << ss.str() << std::endl;
-    trampoline += assemble({ss.str()}, agent);
+    trampoline += assemble({fmt::format("s_branch {:#x}", lastBranchImm)}, agent);
     hostCodeObjectTextSection->append_data(trampoline);
 
-    ss.str("");
-    ss.clear();
-
-    std::cout << std::hex << "trampoline code offset" << trampolineCodeOffset << std::endl;
+    fmt::println(stdout, "Trampoline code offset {:#x}", trampolineCodeOffset);
 
     auto firstBranchImm = static_cast<short>((trampolineCodeOffset - 4 - 0x00) / 4);
-    ss << "s_branch 0x" << std::hex << firstBranchImm << std::endl;
-//    ss << "s_branch 0x12" << std::endl; // >> correct jump to endpgm
-    std::cout << ss.str() << std::endl;
-    std::string firstJump = assemble({ss.str()}, agent);
+
+    std::string firstJump = assemble({fmt::format("s_branch {:#x}", firstBranchImm)}, agent);
     if (instr.getSize() == 8)
         firstJump += assemble({std::string("s_nop 0")}, agent);
     std::string newContent;
     newContent.resize(hostCodeObjectTextSection->get_size());
     std::memcpy(newContent.data(), hostCodeObjectTextSection->get_data(), newContent.size());
-//    std::string desperateJump = assemble({
-//        "s_getpc_b64 s[10:11]",
-//        "s_add_u32 s10, s10, 0x10",
-//        "s_addc_u32 s11, s11, 0x0",
-//        "s_swappc_b64 s[30:31], s[10:11]"
-//    }, agent);
 
     std::memcpy(newContent.data(), firstJump.data(), firstJump.size());
-//    std::memcpy(newContent.data(), desperateJump.data(), desperateJump.size());
     hostCodeObjectTextSection->set_data(newContent);
-//    std::memcpy(hostCodeObjectTextSection->get_data(), firstJump.data(), firstJump.size());
-
-//    hostCodeObjectTextSection->append_data(lastJump);
 
     std::stringstream instElfSS;
     hostCodeObjectElfIo.save(instElfSS);
@@ -367,7 +420,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     // Create an executable with the ELF
     hsa_executable_t executable = createExecutable(outputElf.data(), outputElf.size(), agent);
 
-    registerExecutableSymbol(executable, instr.getSymbol(), agent);
+    registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent);
     // Get the loaded code object on the device
     // It is loaded, so it's not a complete ELF anymore
     std::pair<sibir_address_t, size_t> loadedCodeObject = getLoadedCodeObject(executable);
@@ -375,20 +428,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     // It is used to figure out offsets in the segments of the loaded code object
     std::pair<sibir_address_t, size_t> hostLoadedCodeObject = getCodeObject(executable);
 
-//    hsa_amd_pointer_info_t ptrInfo;
-//    ptrInfo.size = sizeof(hsa_amd_pointer_info_t);
-//    SibirHsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_pointer_info_fn(
-//        reinterpret_cast<void*>(loadedCodeObject.first),
-//        &ptrInfo,
-//        nullptr,
-//        nullptr,
-//        nullptr
-//        );
-
-//    std::cout << ptrInfo << std::endl;
-//    std::cout << ptrInfo.agentBaseAddress << std::endl;
-//    std::cout << ptrInfo.hostBaseAddress << std::endl;
-//    std::cout << "Agent? " << (ptrInfo.agentOwner.handle == agent.handle) << std::endl;
+    iterateCodeObjectMetaData(hostLoadedCodeObject.first, hostLoadedCodeObject.second);
 
     ELFIO::elfio hcoElfIo;
     std::istringstream hcoStrStream{std::string(
@@ -422,28 +462,6 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
         }
     }
     std::cout << "First instrumentation instruction located at: " << reinterpret_cast<const void*>(insts[nop_inst_idx + 1].getDeviceAddress()) << std::endl;
-
-//    // Calculate the last unconditional branch instruction's address
-//
-//    std::stringstream lastBranch;
-//
-//    auto trmpPC = insts[nop_inst_idx + 1].addr + 4;
-//    short trmpBranchImm = (instr.addr - trmpPC - 4) / 4;
-//    lastBranch << "s_branch 0x" << std::hex << trmpBranchImm;
-//    Instr lastBranchInstr{insts.back().addr, lastBranch.str(), 0};
-//    std::cout << "Last branch instruction: " << lastBranchInstr.instr << std::endl;
-//    std::string lastBranchAssembled = assemble({lastBranchInstr}, agent);
-//    std::memcpy(reinterpret_cast<void *>(insts.back().addr), lastBranchAssembled.data(), lastBranchAssembled.size());
-//    std::stringstream firstBranch;
-//
-//    trmpPC = insts[nop_inst_idx + 1].addr;
-//    short origBranchImm = (trmpPC - instr.addr - 4) / 4;
-//
-//    firstBranch << "s_branch 0x" << std::hex << origBranchImm;
-//    Instr firstBranchInstr{instr.addr, firstBranch.str(), 0};
-//    std::cout << "First branch instruction: " << firstBranchInstr.instr << std::endl;
-//    std::string firstBranchAssembled = assemble({firstBranchInstr}, agent);
-
 
             for (auto it = hcoElfIo.sections.begin(); it != hcoElfIo.sections.end(); it++) {
                 //        auto seg = it->get();

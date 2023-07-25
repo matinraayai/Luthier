@@ -1,7 +1,7 @@
 #ifndef CODE_GENERATOR_H
 #define CODE_GENERATOR_H
 #include "instr.hpp"
-#include "sibir_types.h"
+#include "sibir_types.hpp"
 
 namespace sibir {
 class CodeGenerator {
