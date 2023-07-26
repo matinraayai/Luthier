@@ -20,17 +20,18 @@ enum memOpType {
 };
 
 enum OperandType {      // I ported these over from our old Inst.h
-    InvalidOperantType,
+    InvalidOperandType,
 	RegOperand,
-    SpecialRegOperand,  // For now, operands like VMCNT and LGKMCNT will be counted as special regs
+    SpecialRegOperand,
 	ImmOperand,
 	LiteralConstant
 };
 
 struct operand {
+    std::string op_str;
     int code;
     OperandType type;
-    // long val[2]; // NVBit has this field, I'm pretty sure it's for imm operands
+    unsigned long val;
 };
 
 class sibir_instr {
@@ -38,6 +39,8 @@ private:
     sibir_address_t addr;
     inst_size_t size;
     std::string str;
+
+    memOpType memtype;
     
     std::vector<operand> operands;
     std::vector<operand> GetOperandsFromString(std::string inst_string);
