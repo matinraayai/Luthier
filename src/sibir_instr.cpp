@@ -7,12 +7,12 @@ sibir_instr::sibir_instr(sibir_address_t inst_addr, inst_size_t inst_size, std::
     GetOperandsFromString(inst.instr);
 }
 
-sibir_instr::sibir_instr(Instr inst) {
-    addr     = inst.addr;
-    size     = inst.size;
-    str      = inst.instr;
-    GetOperandsFromString(inst.instr);
-}
+// sibir_instr::sibir_instr(Instr inst) {
+//     addr     = inst.addr;
+//     size     = inst.size;
+//     str      = inst.instr;
+//     GetOperandsFromString(inst.instr);
+// }
 
 std::vector<operand> sibir_instr::GetOperandsFromString(std::string inst_string) {
     std::string instrstr_cpy(inst_string);
