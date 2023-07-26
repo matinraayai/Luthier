@@ -21,12 +21,6 @@ enum sibir_ipoint_t {
     SIBIR_IPOINT_AFTER
 };
 
-struct Instr {
-    sibir_address_t addr;
-    std::string instr;
-    size_t size;
-};
-
 struct kernel_descriptor_t {
     uint8_t reserved0[16];
     int64_t kernel_code_entry_byte_offset;

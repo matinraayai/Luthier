@@ -48,7 +48,7 @@ private:
 
 public:
     sibir_instr(sibir_address_t inst_addr, inst_size_t inst_size, std::string inst_string);
-    sibir_instr(Instr inst);
+    // sibir_instr(Instr inst);
 
     std::string getInstString();
     int getNumOperands();
