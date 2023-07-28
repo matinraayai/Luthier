@@ -107,7 +107,8 @@ std::string sibir::CodeObjectManager::getCodeObjectOfInstrumentationFunction(con
     SIBIR_AMD_COMGR_CHECK(amd_comgr_lookup_code_object(fbData, isaInfo.data(), isaInfo.size()));
 
     // Strip off the kernel launch portion of the code object
-    return stripOffKernelLaunch({reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size}, functionName);
+    return {reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size};
+//    return stripOffKernelLaunch({reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size}, functionName);
 //    return {reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size};
 }
 void sibir::CodeObjectManager::registerKD(sibir_address_t originalCode, sibir_address_t instrumentedCode) {

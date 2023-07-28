@@ -151,12 +151,12 @@ void sibir_insert_call(sibir::Instr *instr, const char *dev_func_name, sibir_ipo
 }
 
 void sibir_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, const sibir_address_t func, bool flag) {
-    if (flag) {
-        auto instrumentedKd = sibir::CodeObjectManager::Instance().getInstrumentedFunctionOfKD(func);
-        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
-    }
-    else
-        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(func);
+//    if (flag) {
+//        auto instrumentedKd = sibir::CodeObjectManager::Instance().getInstrumentedFunctionOfKD(func);
+//        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
+//    }
+//    else
+//        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(func);
 }
 
 extern "C" {

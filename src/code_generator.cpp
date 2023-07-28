@@ -71,6 +71,8 @@ amd_comgr_status_t printEntryCo(amd_comgr_metadata_node_t key,
     return AMD_COMGR_STATUS_SUCCESS;
 };
 
+
+
 //    fmt::println(stdout, "Using ELFIO to iterate over the sections of the ELF");
 //
 //    for (auto it = coElfIO.sections.begin(); it != coElfIO.sections.end(); it++) {
@@ -322,64 +324,40 @@ void iterateCodeObjectMetaData(sibir_address_t codeObjectData, size_t codeObject
 void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &instrumentationFunction, sibir_ipoint_t point) {
 
     hsa_agent_t agent = instr.getAgent();
+    // Load the instrumentation ELF into the agent, and get its location on the device
+    auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
 
-    // Query the original executable associated with the instr
+    auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
 
-    fmt::println(stdout, "Instruction to be instrumented: {}", instr.getInstr());
-    fmt::println(stdout, "Instruction address: {:#x}", instr.getDeviceAddress());
-    sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getAddressableNumSGPRsfromComgrMeta();
-    hsa_executable_t originalExecutable = instr.getExecutable();
+    // Get a pointer to the beginning of the .text section of the instrumentation executable
+    sibir_address_t instrmntTextSectionStart = instrmntLoadedCodeObject.first + 0x1000;
 
-    // Get the host code object associated with the executable
-    auto originalExecHostCo = getCodeObject(originalExecutable);
-
-    // Load the host code object to ELFIO and extend the .text section with the instrumentation code section + trampoline
-    ELFIO::elfio hostCodeObjectElfIo;
-    std::istringstream temp{std::string{reinterpret_cast<char*>(originalExecHostCo.first),
-                                        originalExecHostCo.second}
-    };
-    hostCodeObjectElfIo.load(temp);
-    // Instrument Section append
-    auto hostCodeObjectTextSection = hostCodeObjectElfIo.sections[".text"];
-
-//    std::string topPortion = assemble({"s_load_dwordx2 s[0:1], s[4:5], 0x0",
-//                                       "v_mov_b32_e32 v2, 0",
-//                                       "v_mov_b32_e32 v3, 1",
-//                                       "s_waitcnt lgkmcnt(0)",
-//                                       "s_getpc_b64 s[4:5]",
-//                                       "s_add_u32 s4, s4, 0xc",
-//                                       "s_addc_u32 s5, s5, 0",
-//                                       "s_swappc_b64 s[2:3], s[4:5]"}, agent);
-//    std::string oldTextSection;
-//    oldTextSection.resize(hostCodeObjectTextSection->get_size() - 0x28);
-//    std::memcpy(oldTextSection.data(), hostCodeObjectTextSection->get_data() + 0x28, oldTextSection.size());
-//
-//    hostCodeObjectTextSection->set_data(topPortion);
-//    hostCodeObjectTextSection->append_data(oldTextSection);
-
-    std::string nop = assemble("s_nop 0", agent);
-    hostCodeObjectTextSection->append_data(nop);
-    size_t instrumentCodeOffset = hostCodeObjectTextSection->get_size();
-
-//    hostCodeObjectTextSection->append_data(instrumentationFunction);
-    std::string dummyInst = assemble({std::string("s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)"),
+    // The instrumentation function is inserted first
+    std::string dummyInstrmnt = assemble({std::string("s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)"),
                                       std::string("s_setpc_b64 s[0:1]")}, agent);
 
-    hostCodeObjectTextSection->append_data(dummyInst);
-    hostCodeObjectTextSection->append_data(nop);
+    // Padded with nop
+    std::string nopInstr = assemble("s_nop 0", agent);
 
-    size_t trampolineCodeOffset = hostCodeObjectTextSection->get_size();
+    std::memcpy(reinterpret_cast<void*>(instrmntTextSectionStart), dummyInstrmnt.data(), dummyInstrmnt.size());
 
-    // Extend the original code object with trampoline code
-    std::string trampoline = assemble({std::string("s_getpc_b64 s[2:3]")}, agent);
-    size_t trampolinePcOffset = trampolineCodeOffset + trampoline.size();
+    std::memcpy(reinterpret_cast<void*>(instrmntTextSectionStart + dummyInstrmnt.size()), nopInstr.data(), nopInstr.size());
+
+    // Trampoline starts after the nop
+    sibir_address_t trampolineStartAddr = instrmntTextSectionStart + dummyInstrmnt.size() + nopInstr.size();
 
 
-    int firstAddOffset = (int) (trampolinePcOffset - instrumentCodeOffset);
-//    int firstAddOffset = 0x60;
+    std::string trampoline = assemble("s_getpc_b64 s[2:3]", agent);
+
+    // Get the PC of the instruction after the get PC instruction
+    sibir_address_t trampolinePcOffset = trampolineStartAddr + trampoline.size();
+
+
+    int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
+    //    int firstAddOffset = 0x60;
 
     fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
-    fmt::println(stdout, "Instrument Code Offset: {:#x}", instrumentCodeOffset);
+    fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
     fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
 
 
@@ -389,44 +367,103 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
                             instr.getInstr()}, agent);
 
 
-    //    auto trmpPC = insts[nop_inst_idx + 1].addr + 4;
-    //    short trmpBranchImm = (instr.addr - trmpPC - 4) / 4;
+    trampolinePcOffset = trampolineStartAddr + trampoline.size() + 4;
+    //    hostCodeObjectTextSection->append_data(trampoline);
 
-    trampolinePcOffset = trampolineCodeOffset + trampoline.size() + 4;
-//    hostCodeObjectTextSection->append_data(trampoline);
+    short lastBranchImm = - static_cast<short>((trampolinePcOffset - (instr.getDeviceAddress() + 4)) / 4);
 
-    short lastBranchImm = - static_cast<short>((trampolinePcOffset - 0x04) / 4);
-    trampoline += assemble({fmt::format("s_branch {:#x}", lastBranchImm)}, agent);
-    hostCodeObjectTextSection->append_data(trampoline);
+    trampoline += assemble(fmt::format("s_branch {:#x}", lastBranchImm), agent);
 
-    fmt::println(stdout, "Trampoline code offset {:#x}", trampolineCodeOffset);
+    std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
 
-    auto firstBranchImm = static_cast<short>((trampolineCodeOffset - 4 - 0x00) / 4);
+    // Overwrite the target instruction
+    auto firstBranchImm = static_cast<short>((trampolineStartAddr - 4 - instr.getDeviceAddress()) / 4);
 
     std::string firstJump = assemble({fmt::format("s_branch {:#x}", firstBranchImm)}, agent);
     if (instr.getSize() == 8)
         firstJump += assemble({std::string("s_nop 0")}, agent);
-    std::string newContent;
-    newContent.resize(hostCodeObjectTextSection->get_size());
-    std::memcpy(newContent.data(), hostCodeObjectTextSection->get_data(), newContent.size());
+    std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), firstJump.data(), firstJump.size());
 
-    std::memcpy(newContent.data(), firstJump.data(), firstJump.size());
-    hostCodeObjectTextSection->set_data(newContent);
+//
+//    // Load the host code object to ELFIO and extend the .text section with the instrumentation code section + trampoline
+//    ELFIO::elfio hostCodeObjectElfIo;
+//    std::istringstream temp{std::string{reinterpret_cast<char*>(originalExecHostCo.first),
+//                                        originalExecHostCo.second}
+//    };
+//    hostCodeObjectElfIo.load(temp);
+//    // Instrument Section append
+//    auto hostCodeObjectTextSection = hostCodeObjectElfIo.sections[".text"];
+//
+//    std::string nop = assemble("s_nop 0", agent);
+//    hostCodeObjectTextSection->append_data(nop);
+//    size_t instrumentCodeOffset = hostCodeObjectTextSection->get_size();
+//
+////    hostCodeObjectTextSection->append_data(instrumentationFunction);
+//    std::string dummyInst = assemble({std::string("s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)"),
+//                                      std::string("s_setpc_b64 s[0:1]")}, agent);
+//
+//    hostCodeObjectTextSection->append_data(dummyInst);
+//    hostCodeObjectTextSection->append_data(nop);
+//
+//    size_t trampolineCodeOffset = hostCodeObjectTextSection->get_size();
+//
+//    // Extend the original code object with trampoline code
+//    std::string trampoline = assemble({std::string("s_getpc_b64 s[2:3]")}, agent);
+//    size_t trampolinePcOffset = trampolineCodeOffset + trampoline.size();
+//
+//
+//    int firstAddOffset = (int) (trampolinePcOffset - instrumentCodeOffset);
+////    int firstAddOffset = 0x60;
+//
+//    fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
+//    fmt::println(stdout, "Instrument Code Offset: {:#x}", instrumentCodeOffset);
+//    fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
+//
+//
+//    trampoline += assemble({fmt::format("s_sub_u32 s2, s2, {:#x}", firstAddOffset),
+//                            "s_subb_u32 s3, s3, 0x0",
+//                            "s_swappc_b64 s[0:1], s[2:3]",
+//                            instr.getInstr()}, agent);
+//
+//
+//    //    auto trmpPC = insts[nop_inst_idx + 1].addr + 4;
+//    //    short trmpBranchImm = (instr.addr - trmpPC - 4) / 4;
+//
+//    trampolinePcOffset = trampolineCodeOffset + trampoline.size() + 4;
+////    hostCodeObjectTextSection->append_data(trampoline);
+//
+//    short lastBranchImm = - static_cast<short>((trampolinePcOffset - 0x04) / 4);
+//    trampoline += assemble({fmt::format("s_branch {:#x}", lastBranchImm)}, agent);
+//    hostCodeObjectTextSection->append_data(trampoline);
+//
+//    fmt::println(stdout, "Trampoline code offset {:#x}", trampolineCodeOffset);
+//
+//    auto firstBranchImm = static_cast<short>((trampolineCodeOffset - 4 - 0x00) / 4);
+//
+//    std::string firstJump = assemble({fmt::format("s_branch {:#x}", firstBranchImm)}, agent);
+//    if (instr.getSize() == 8)
+//        firstJump += assemble({std::string("s_nop 0")}, agent);
+//    std::string newContent;
+//    newContent.resize(hostCodeObjectTextSection->get_size());
+//    std::memcpy(newContent.data(), hostCodeObjectTextSection->get_data(), newContent.size());
+//
+//    std::memcpy(newContent.data(), firstJump.data(), firstJump.size());
+//    hostCodeObjectTextSection->set_data(newContent);
+//
+//    std::stringstream instElfSS;
+//    hostCodeObjectElfIo.save(instElfSS);
+//    std::string outputElf = instElfSS.str();
+//
+//    // Create an executable with the ELF
+//    hsa_executable_t executable = createExecutable(outputElf.data(), outputElf.size(), agent);
 
-    std::stringstream instElfSS;
-    hostCodeObjectElfIo.save(instElfSS);
-    std::string outputElf = instElfSS.str();
-
-    // Create an executable with the ELF
-    hsa_executable_t executable = createExecutable(outputElf.data(), outputElf.size(), agent);
-
-    registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent);
+//    registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent);
     // Get the loaded code object on the device
     // It is loaded, so it's not a complete ELF anymore
-    std::pair<sibir_address_t, size_t> loadedCodeObject = getLoadedCodeObject(executable);
+    std::pair<sibir_address_t, size_t> loadedCodeObject = getLoadedCodeObject(instr.getExecutable());
     // Get the host ELF associated with the loaded code object
     // It is used to figure out offsets in the segments of the loaded code object
-    std::pair<sibir_address_t, size_t> hostLoadedCodeObject = getCodeObject(executable);
+    std::pair<sibir_address_t, size_t> hostLoadedCodeObject = getCodeObject(instr.getExecutable());
 
     iterateCodeObjectMetaData(hostLoadedCodeObject.first, hostLoadedCodeObject.second);
 
