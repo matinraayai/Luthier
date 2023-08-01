@@ -10,7 +10,7 @@
 #include <iostream>
 
 
-#define AGENT_META_ACCESSOR(metaName, metaType, typeConvertor) \
+#define AGENT_COMGR_META_ACCESSOR(metaName, metaType, typeConvertor) \
     metaType get##metaName##fromComgrMeta() {                                 \
         std::string key{#metaName};\
         if (!amdComgrMetaDataMap_.contains(key)) {             \
@@ -50,16 +50,16 @@ class AgentMetaData {
 
     std::string getIsaName() const { return isaName_; };
 
-    AGENT_META_ACCESSOR(AddressableNumSGPRs, int, std::atoi)
-    AGENT_META_ACCESSOR(AddressableNumVGPRs, int, std::atoi)
-    AGENT_META_ACCESSOR(Architecture, std::string, std::string)
-    AGENT_META_ACCESSOR(EUsPerCU, int, std::atoi)
-    AGENT_META_ACCESSOR(LDSBankCount, int, std::atoi)
-    AGENT_META_ACCESSOR(LocalMemorySize, int, std::atoi)
-    AGENT_META_ACCESSOR(MaxFlatWorkGroupSize, int, std::atoi)
-    AGENT_META_ACCESSOR(MaxWavesPerCU, int, std::atoi)
-    AGENT_META_ACCESSOR(TotalNumSGPRs, int, std::atoi)
-    AGENT_META_ACCESSOR(totalNumVGPRs, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(AddressableNumSGPRs, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(AddressableNumVGPRs, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(Architecture, std::string, std::string)
+    AGENT_COMGR_META_ACCESSOR(EUsPerCU, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(LDSBankCount, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(LocalMemorySize, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(MaxFlatWorkGroupSize, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(MaxWavesPerCU, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(TotalNumSGPRs, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(totalNumVGPRs, int, std::atoi)
 
 };
 //typedef struct sibir_hsa_agent_info_entry_s {
@@ -86,7 +86,7 @@ class AgentMetaData {
 //        std::string isaName;
 //    } hsa;
 //} sibir_hsa_agent_info_entry_t;
-#undef AGENT_META_ACCESSOR
+#undef AGENT_COMGR_META_ACCESSOR
 
 class ContextManager {
  private:

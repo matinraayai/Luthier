@@ -73,52 +73,7 @@ amd_comgr_status_t printEntryCo(amd_comgr_metadata_node_t key,
 
 
 
-//    fmt::println(stdout, "Using ELFIO to iterate over the sections of the ELF");
-//
-//    for (auto it = coElfIO.sections.begin(); it != coElfIO.sections.end(); it++) {
-//        auto sec = it->get();
-//        fmt::println(stdout, "Name: {}", sec->get_name()");
-//        fmt::println(stdout, "Address: {}", sec->get_address());
-//    }
 
-//    fmt::println(stdout, "Using ELFIO to iterate over the segments of the ELF");
-//    for (auto it = coElfIO.segments.begin(); it != coElfIO.segments.end(); it++) {
-//        auto seg = it->get();
-//        auto num_sections = seg->get_sections_num();
-//        fmt::println(stdout, "Section numbers: {}", num_sections);
-//        for (int i = 0; i < num_sections; i++) {
-//            fmt::println(stdout, "Section info: ");
-//            auto section_idx = seg->get_section_index_at(i);
-//            auto sec = coElfIO.sections[section_idx];
-//            fmt::println(stdout, "Name: {}", sec->get_name());
-//            fmt::println(stdout, "Address: {}", sec->get_address());
-//            fmt::println(stdout, "Size: {}", sec->get_size());
-//        }
-//        fmt::println(stdout, "Type: {}", seg->get_type());
-//    }
-//
-//    std::cout << "Read the notes section: " << std::endl;
-//
-//    ELFIO::section* noteSec = coElfIO.sections[".note"];
-//
-//    ELFIO::note_section_accessor note_reader(coElfIO, noteSec);
-//
-//    auto num = note_reader.get_notes_num();
-//    ELFIO::Elf_Word type = 0;
-//    char* desc = nullptr;
-//    ELFIO::Elf_Word descSize = 0;
-
-//    for (unsigned int i = 0; i < num; i++) {
-//        std::string name;
-//        if(note_reader.get_note(i, type, name, desc, descSize)) {
-//            std::cout << "Note name: " << name << std::endl;
-//            //            auto f = std::fstream("./note_content", std::ios::out);
-//            std::string content(desc, descSize);
-//            std::cout << "Note content" << content << std::endl;
-//            //            f << content;
-//            //            f.close();
-//        }
-//    }
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
     const auto& coreHsaApiTable = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
@@ -291,15 +246,6 @@ std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
     return {io.sections[".text"]->get_data(), io.sections[".text"]->get_size()};
 }
 
-
-std::string assemble(const std::vector<sibir::Instr>& instrVector, hsa_agent_t agent) {
-    std::vector<std::string> instrStringVec(instrVector.size());
-    for (unsigned int i = 0; i < instrStringVec.size(); i++)
-        instrStringVec[i] = instrVector[i].getInstr();
-
-    return assemble(fmt::format("{}", fmt::join(instrStringVec, "\n")), agent);
-}
-
 std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t agent) {
 
     std::string instString = fmt::format("{}", fmt::join(instrVector, "\n"));
@@ -321,20 +267,50 @@ void iterateCodeObjectMetaData(sibir_address_t codeObjectData, size_t codeObject
 }
 
 
+void* allocateHsaMemory(hsa_agent_t agent, size_t size) {
+    const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+    hsa_region_t region;
+
+    auto regionIterator = [](hsa_region_t region, void* data) {
+        const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+        hsa_region_segment_t segment;
+        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
+        uint32_t flags;
+        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
+
+        auto out = reinterpret_cast<hsa_region_t*>(data);
+        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & HSA_REGION_GLOBAL_FLAG_FINE_GRAINED))
+            *out = region;
+        return HSA_STATUS_SUCCESS;
+    };
+    SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_regions_fn(agent, regionIterator, &region));
+    void* deviceMemory;
+    SIBIR_HSA_CHECK(coreApi.hsa_memory_allocate_fn(region, size, &deviceMemory));
+    return deviceMemory;
+}
+
+
 void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &instrumentationFunction, sibir_ipoint_t point) {
 
     hsa_agent_t agent = instr.getAgent();
     // Load the instrumentation ELF into the agent, and get its location on the device
-    auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
+//    auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
 
-    auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
+    auto instrmntLoadedCodeObject = std::make_pair(
+        reinterpret_cast<sibir_address_t>(allocateHsaMemory(agent, instrumentationFunction.size())),
+        instrumentationFunction.size()
+        );
+
+//    auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
+
+
 
     // Get a pointer to the beginning of the .text section of the instrumentation executable
     sibir_address_t instrmntTextSectionStart = instrmntLoadedCodeObject.first + 0x1000;
 
     // The instrumentation function is inserted first
-    std::string dummyInstrmnt = assemble({std::string("s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)"),
-                                      std::string("s_setpc_b64 s[0:1]")}, agent);
+    std::string dummyInstrmnt = assemble(std::vector<std::string>
+        {"s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)", "s_setpc_b64 s[0:1]"}, agent);
 
     // Padded with nop
     std::string nopInstr = assemble("s_nop 0", agent);
@@ -354,7 +330,6 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
 
 
     int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
-    //    int firstAddOffset = 0x60;
 
     fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
     fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
@@ -384,80 +359,6 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
         firstJump += assemble({std::string("s_nop 0")}, agent);
     std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), firstJump.data(), firstJump.size());
 
-//
-//    // Load the host code object to ELFIO and extend the .text section with the instrumentation code section + trampoline
-//    ELFIO::elfio hostCodeObjectElfIo;
-//    std::istringstream temp{std::string{reinterpret_cast<char*>(originalExecHostCo.first),
-//                                        originalExecHostCo.second}
-//    };
-//    hostCodeObjectElfIo.load(temp);
-//    // Instrument Section append
-//    auto hostCodeObjectTextSection = hostCodeObjectElfIo.sections[".text"];
-//
-//    std::string nop = assemble("s_nop 0", agent);
-//    hostCodeObjectTextSection->append_data(nop);
-//    size_t instrumentCodeOffset = hostCodeObjectTextSection->get_size();
-//
-////    hostCodeObjectTextSection->append_data(instrumentationFunction);
-//    std::string dummyInst = assemble({std::string("s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)"),
-//                                      std::string("s_setpc_b64 s[0:1]")}, agent);
-//
-//    hostCodeObjectTextSection->append_data(dummyInst);
-//    hostCodeObjectTextSection->append_data(nop);
-//
-//    size_t trampolineCodeOffset = hostCodeObjectTextSection->get_size();
-//
-//    // Extend the original code object with trampoline code
-//    std::string trampoline = assemble({std::string("s_getpc_b64 s[2:3]")}, agent);
-//    size_t trampolinePcOffset = trampolineCodeOffset + trampoline.size();
-//
-//
-//    int firstAddOffset = (int) (trampolinePcOffset - instrumentCodeOffset);
-////    int firstAddOffset = 0x60;
-//
-//    fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
-//    fmt::println(stdout, "Instrument Code Offset: {:#x}", instrumentCodeOffset);
-//    fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
-//
-//
-//    trampoline += assemble({fmt::format("s_sub_u32 s2, s2, {:#x}", firstAddOffset),
-//                            "s_subb_u32 s3, s3, 0x0",
-//                            "s_swappc_b64 s[0:1], s[2:3]",
-//                            instr.getInstr()}, agent);
-//
-//
-//    //    auto trmpPC = insts[nop_inst_idx + 1].addr + 4;
-//    //    short trmpBranchImm = (instr.addr - trmpPC - 4) / 4;
-//
-//    trampolinePcOffset = trampolineCodeOffset + trampoline.size() + 4;
-////    hostCodeObjectTextSection->append_data(trampoline);
-//
-//    short lastBranchImm = - static_cast<short>((trampolinePcOffset - 0x04) / 4);
-//    trampoline += assemble({fmt::format("s_branch {:#x}", lastBranchImm)}, agent);
-//    hostCodeObjectTextSection->append_data(trampoline);
-//
-//    fmt::println(stdout, "Trampoline code offset {:#x}", trampolineCodeOffset);
-//
-//    auto firstBranchImm = static_cast<short>((trampolineCodeOffset - 4 - 0x00) / 4);
-//
-//    std::string firstJump = assemble({fmt::format("s_branch {:#x}", firstBranchImm)}, agent);
-//    if (instr.getSize() == 8)
-//        firstJump += assemble({std::string("s_nop 0")}, agent);
-//    std::string newContent;
-//    newContent.resize(hostCodeObjectTextSection->get_size());
-//    std::memcpy(newContent.data(), hostCodeObjectTextSection->get_data(), newContent.size());
-//
-//    std::memcpy(newContent.data(), firstJump.data(), firstJump.size());
-//    hostCodeObjectTextSection->set_data(newContent);
-//
-//    std::stringstream instElfSS;
-//    hostCodeObjectElfIo.save(instElfSS);
-//    std::string outputElf = instElfSS.str();
-//
-//    // Create an executable with the ELF
-//    hsa_executable_t executable = createExecutable(outputElf.data(), outputElf.size(), agent);
-
-//    registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent);
     // Get the loaded code object on the device
     // It is loaded, so it's not a complete ELF anymore
     std::pair<sibir_address_t, size_t> loadedCodeObject = getLoadedCodeObject(instr.getExecutable());
@@ -470,7 +371,11 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     ELFIO::elfio hcoElfIo;
     std::istringstream hcoStrStream{std::string(
         reinterpret_cast<char*>(hostLoadedCodeObject.first), hostLoadedCodeObject.second)};
-    hcoElfIo.load(hcoStrStream);
+    hcoElfIo.load(hcoStrStream, true);
+    ELFIO::elfio lcoElfIo;
+    std::istringstream lcoStrStream{std::string(
+        reinterpret_cast<char*>(loadedCodeObject.first), loadedCodeObject.second)};
+    lcoElfIo.load(lcoStrStream, true);
 
     std::cout << "Host Code Object starts at: " << reinterpret_cast<void*>(hostLoadedCodeObject.first) << std::endl;
     std::cout << "Host Code Object ends at" << reinterpret_cast<void*>(hostLoadedCodeObject.first + hostLoadedCodeObject.second) << std::endl;
@@ -481,123 +386,32 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
                    reinterpret_cast<const sibir_address_t>(hostLoadedCodeObject.first));
     std::cout << "Text section offset: " << reinterpret_cast<const void*>(offset) << std::endl;
 
-//    auto instSectionOffset = hcoElfIo.sections[".trampoline"]->get_address();
-//    std::cout << "The trampoline should be located at: " << reinterpret_cast<void*>(instSectionOffset) << std::endl;
+    ELFIO::section* noteSec = hcoElfIo.sections[".note"];
 
-    const sibir_address_t loadedCoTextSection = reinterpret_cast<const sibir_address_t>(hcoElfIo.sections[".text"]->get_address()) + reinterpret_cast<const sibir_address_t>(loadedCodeObject.first);
+    fmt::println(stdout, "Note section's address: {:#x}", noteSec->get_address());
+    fmt::println(stdout, "Note section's size: {}", noteSec->get_size());
+    ELFIO::note_section_accessor note_reader(hcoElfIo, noteSec);
+    auto num = note_reader.get_notes_num();
+    ELFIO::Elf_Word type = 0;
+    char* desc = nullptr;
+    ELFIO::Elf_Word descSize = 0;
 
-
-    std::cout << "Loaded code object is located at: " <<  reinterpret_cast<const void*>(loadedCodeObject.first) << std::endl;
-    auto insts = sibir::Disassembler::Instance().disassemble(agent, reinterpret_cast<sibir_address_t>(hcoElfIo.sections[".text"]->get_address()) + reinterpret_cast<sibir_address_t>(loadedCodeObject.first), hcoElfIo.sections[".text"]->get_size());
-    unsigned int nop_inst_idx = 0;
-
-    for (unsigned int i = 0; i < insts.size(); i++) {
-        auto inst = insts[i];
-        std::cout << std::hex << inst.getHostAddress() << std::dec << ": " << inst.getInstr() << std::endl;
-        if (inst.getInstr().find("s_nop") != std::string::npos) {
-            nop_inst_idx = i;
+    for (unsigned int i = 0; i < num; i++) {
+        std::string name;
+        if(note_reader.get_note(i, type, name, desc, descSize)) {
+            std::cout << "Note name: " << name << std::endl;
+            //            auto f = std::fstream("./note_content", std::ios::out);
+            std::string content(desc, descSize);
+            std::cout << "Note content" << content << std::endl;
+            //            f << content;
+            //            f.close();
         }
     }
-    std::cout << "First instrumentation instruction located at: " << reinterpret_cast<const void*>(insts[nop_inst_idx + 1].getDeviceAddress()) << std::endl;
-
-            for (auto it = hcoElfIo.sections.begin(); it != hcoElfIo.sections.end(); it++) {
-                //        auto seg = it->get();
-                //        auto num_sections = seg->get_sections_num();
-                //        std::cout << "Section numbers: " << num_sections << std::endl;
-                //        for (int i = 0; i < num_sections; i++) {
-                std::cout << "Section info: " << std::endl;
-                //            auto section_idx = seg->get_section_index_at(i);
-                //            auto sec = lcoElfIo.sections[section_idx];
-                auto sec = it->get();
-                std::cout << "Name: " << sec->get_name() << std::endl;
-                std::cout << "Address: " << sec->get_address() << std::endl;
-                std::cout << "Size: " << sec->get_size() << std::endl;
-            }
-            std::cout << "Number of symbols: " << sibir::elf::getSymbolNum(hcoElfIo) << std::endl;
-            for (int i = 0; i < sibir::elf::getSymbolNum(hcoElfIo); i++) {
-                sibir::elf::SymbolInfo info;
-                sibir::elf::getSymbolInfo(hcoElfIo, i, info);
-                std::cout << info.sym_name << std::endl;
-                std::cout << "Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
-                std::cout << "Value: " << info.value << std::endl;
-                std::cout << "Sec Address: " << reinterpret_cast<const void*>(info.sec_addr) << std::endl;
-                std::cout << "Sec Name: " << info.sec_name << std::endl;
-                if (info.sym_name.find("kd") != std::string::npos) {
-
-                    const auto kd = reinterpret_cast<const kernel_descriptor_t*>(info.address);
-//                    sibir::CodeObjectManager::Instance().registerKD(instr.getKernelDescriptor(), kd);
-//                    std::cout << "KD: " << reinterpret_cast<const void *>(kd) << std::endl;
-//                    std::cout << "Offset in KD: " << kd->kernel_code_entry_byte_offset << std::endl;
-                }
-            }
-
-
-
-//    std::memcpy(reinterpret_cast<void *>(instr.addr), firstBranchAssembled.data(), firstBranchAssembled.size());
-//    hwInsts[0].append(o_branch.str());
-
-    //    hwInsts[6].append(t_branch.str());
-//    instList.push_back(a.Assemble(hwInsts[6], instList.back()->PC + 4));
-
-
-
-    //    std::cout << "Text section for the original elf starts at: " << reinterpret_cast<const void*>(coElfIO.sections[".text"]->get_data()) << std::endl;
-    //    std::cout << "loaded code object: " << hostCodeObject.size() << std::endl;
-//    std::cout << "Did elfio load correctly? " << hcoElfIo.load(hcoStrStream) << std::endl;
-
-        //    std::cout << "Number of symbols: " << sibir::elf::getSymbolNum(lcoElfIo) << std::endl;
-
-//        std::cout << "Using ELFIO to iterate over the segments of the ELF" << std::endl;
-//        std::cout << "Number of segments: " << hcoElfIo.segments.size() << std::endl;
-//        std::cout << "Number of sections: " << hcoElfIo.sections.size() << std::endl;
-//        std::cout << "Machine: " << hcoElfIo.get_machine() << std::endl;
-//
-//        for (auto it = hcoElfIo.sections.begin(); it != hcoElfIo.sections.end(); it++) {
-//            //        auto seg = it->get();
-//            //        auto num_sections = seg->get_sections_num();
-//            //        std::cout << "Section numbers: " << num_sections << std::endl;
-//            //        for (int i = 0; i < num_sections; i++) {
-//            std::cout << "Section info: " << std::endl;
-//            //            auto section_idx = seg->get_section_index_at(i);
-//            //            auto sec = lcoElfIo.sections[section_idx];
-//            auto sec = it->get();
-//            std::cout << "Name: " << sec->get_name() << std::endl;
-//            std::cout << "Address: " << sec->get_address() << std::endl;
-//            std::cout << "Size: " << sec->get_size() << std::endl;
-//        }
-
-//        std::cout << "Type: " << seg->get_type() << std::endl;
-//    }
-
-
-
-
-//    for (unsigned int i = 0; i < sibir::elf::getSymbolNum(lcoElfIo); i++) {
-//        sibir::elf::SymbolInfo info;
-//        sibir::elf::getSymbolInfo(lcoElfIo, i, info);
-//        if (info.sec_name == ".text") {
-//            std::cout << "Symbol Name: " << sibir::ContextManager::getDemangledName(info.sym_name.c_str()) << std::endl;
-//            std::cout << "Address: " << reinterpret_cast<const void*>(info.address) << std::endl;
-//            std::cout << "Sec address: " << reinterpret_cast<const void*>(info.sec_addr) << std::endl;
-//            std::cout << "Size: " << info.size << std::endl;
-//            std::cout << "Sec Size: " << info.sec_size << std::endl;
-//            if (info.sym_name.find("instrumentation_kernel") != std::string::npos
-//                and info.sym_name.find("kd") == std::string::npos) {
-////                std::vector<Instr> writeInst{{0, "s_branch 0xffff"}};
-////                std::string instContent = assemble(writeInst, agent);
-////                memcpy((void *) info.address, instContent.data(), instContent.size() * sizeof(char));
-////                std::cout << "Assembled instruction size: " << instContent.size() << std::endl;
-//                auto insts = sibir::Disassembler::disassemble(agent, reinterpret_cast<sibir_address_t>(info.address), info.size);
-//                for (const auto& inst : insts)
-//                    std::cout << std::hex << inst.addr << std::dec << ": " << inst.instr << std::endl;
-//            }
-//            else if (info.sym_name.find("kd") != std::string::npos) {
-//
-//                const auto kd = reinterpret_cast<const kernel_descriptor_t*>(info.address);
-//                std::cout << "KD: " << reinterpret_cast<const void *>(kd) << std::endl;
-//                std::cout << "Offset in KD: " << kd->kernel_code_entry_byte_offset << std::endl;
-//            }
-//
-//        }
-//    }
+    fmt::println(stdout, "Device code header:\n{:s}", std::string(reinterpret_cast<const char*>(loadedCodeObject.first),
+                                                                  0x1000));
+    fmt::println(stdout, "Host code header:\n{:s}", std::string(reinterpret_cast<const char*>(hostLoadedCodeObject.first) + noteSec->get_address(),
+                                                                noteSec->get_size()));
+    fmt::println(stdout, "Are headers the same? {}", std::string(reinterpret_cast<const char*>(loadedCodeObject.first),
+                                                                 0x1000) ==  std::string(reinterpret_cast<const char*>(hostLoadedCodeObject.first),
+                                    0x1000));
 }

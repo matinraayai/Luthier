@@ -53,12 +53,78 @@ hsa_symbol_kind_t getSymbolKind(hsa_executable_symbol_t symbol) {
     return symbolKind;
 }
 
+//void PrintAmdComputePgmRsrcOne(std::ostream& out, amd_compute_pgm_rsrc_one32_t compute_pgm_rsrc1)
+//{
+//    out << "  COMPUTE_PGM_RSRC1 (0x" << std::hex << std::setw(8) << std::setfill('0') << compute_pgm_rsrc1 << "):" << std::endl;
+//    out << std::dec;
+//
+//    uint32_t granulated_workitem_vgpr_count = AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
+//    out << attr2 << "granulated_workitem_vgpr_count" << eq
+//        << granulated_workitem_vgpr_count
+//        << std::endl;
+//    uint32_t granulated_wavefront_sgpr_count = AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT);
+//    out << attr2 << "granulated_wavefront_sgpr_count" << eq
+//        << granulated_wavefront_sgpr_count
+//        << std::endl;
+//    uint32_t priority = AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_PRIORITY);
+//    out << attr2 << "priority" << eq
+//        << priority
+//        << std::endl;
+//    uint32_t float_round_mode_32 = AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_ROUND_MODE_32);
+//    out << attr2 << "float_round_mode_32" << eq
+//        << AmdFloatRoundModeToString((amd_float_round_mode_t)float_round_mode_32)
+//        << std::endl;
+//    uint32_t float_round_mode_16_64 = AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_ROUND_MODE_16_64);
+//    out << attr2 << "float_round_mode_16_64" << eq
+//        << AmdFloatRoundModeToString((amd_float_round_mode_t)float_round_mode_16_64)
+//        << std::endl;
+//    uint32_t float_denorm_mode_32 = AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_DENORM_MODE_32);
+//    out << attr2 << "float_denorm_mode_32" << eq
+//        << AmdFloatDenormModeToString((amd_float_denorm_mode_t)float_denorm_mode_32)
+//        << std::endl;
+//    uint32_t float_denorm_mode_16_64 = AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_DENORM_MODE_16_64);
+//    out << attr2 << "float_denorm_mode_16_64" << eq
+//        << AmdFloatDenormModeToString((amd_float_denorm_mode_t)float_denorm_mode_16_64)
+//        << std::endl;
+//    if (AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_PRIV)) {
+//        out << attr2 << "priv" << eq << "TRUE"
+//            << std::endl;
+//    }
+//    if (AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_ENABLE_DX10_CLAMP)) {
+//        out << attr2 << "enable_dx10_clamp" << eq << "TRUE"
+//            << std::endl;
+//    }
+//    if (AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_DEBUG_MODE)) {
+//        out << attr2 << "debug_mode" << eq << "TRUE"
+//            << std::endl;
+//    }
+//    if (AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_ENABLE_IEEE_MODE)) {
+//        out << attr2 << "enable_ieee_mode" << eq << "TRUE"
+//            << std::endl;
+//    }
+//    if (AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_BULKY)) {
+//        out << attr2 << "bulky" << eq << "TRUE"
+//            << std::endl;
+//    }
+//    if (AMD_HSA_BITS_GET(compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_CDBG_USER)) {
+//        out << attr2 << "cdbg_user" << eq << "TRUE"
+//            << std::endl;
+//    }
+//}
+
 sibir_address_t getKdEntryPoint(sibir_address_t kernelObject) {
     const kernel_descriptor_t *kernelDescriptor{nullptr};
     const auto& amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     SIBIR_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
                                                                    reinterpret_cast<const void **>(&kernelDescriptor)));
-
+    uint32_t granulated_workitem_vgpr_count = AMD_HSA_BITS_GET(kernelDescriptor->compute_pgm_rsrc1,
+                                                               AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
+    fmt::println(stdout, "Number of VGPRs: {}", granulated_workitem_vgpr_count);
+    uint32_t granulated_wavefront_sgpr_count = AMD_HSA_BITS_GET(kernelDescriptor->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT);
+    fmt::println(stdout, "Number of SGPRs: {}", granulated_wavefront_sgpr_count);
+    uint32_t priority = AMD_HSA_BITS_GET(kernelDescriptor->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_PRIORITY);
+    fmt::println(stdout, "Priority: {}", priority);
+    fmt::println(stdout, "RSRC 1: {}", kernelDescriptor->compute_pgm_rsrc1);
     return reinterpret_cast<sibir_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 }
 

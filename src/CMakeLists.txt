@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.2)
 project(sibir)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 
 # Search for rocm in common locations
 list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
@@ -39,7 +39,8 @@ FetchContent_MakeAvailable(fmt)
 add_library(sibir SHARED sibir_impl.hpp sibir_impl.cpp sibir.h hip_intercept.hpp hip_intercept.cpp sibir_types.hpp
         hsa_intercept.hpp hsa_intercept.cpp code_object_manager.hpp code_object_manager.cpp hip_arg_types.h
         hip_private_api.h error_check.hpp disassembler.hpp disassembler.cpp amdgpu_elf.hpp amdgpu_elf.cpp
-        context_manager.hpp context_manager.cpp code_generator.hpp code_generator.cpp instr.hpp Instr.cpp)
+        context_manager.hpp context_manager.cpp code_generator.hpp code_generator.cpp instr.hpp instr.cpp
+        amdgpu_kernel_code.hpp amdgpu_kernel_code.cpp)
 
 
 target_include_directories(sibir PRIVATE ${elfio_SOURCE_DIR})
