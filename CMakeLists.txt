@@ -14,7 +14,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 add_library(sibir SHARED
         src/sibir_impl.hpp src/sibir_impl.cpp include/sibir.h src/hip_intercept.hpp src/hip_intercept.cpp
         include/sibir_types.hpp src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
-        src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h include/error_and_log.hpp
+        src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h include/error.h
         src/disassembler.hpp src/disassembler.cpp src/amdgpu_elf.hpp src/amdgpu_elf.cpp
         src/context_manager.hpp src/context_manager.cpp src/code_generator.hpp src/code_generator.cpp include/instr.hpp
         src/instr.cpp src/log.hpp)
@@ -100,7 +100,7 @@ target_compile_definitions(sibir PUBLIC "-D_GLIBCXX_DEBUG")
 
 target_include_directories(sibir PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
-target_link_libraries(sibir hip::host roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only hsa-runtime64)
+target_link_libraries(sibir hip::host hsakmt roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only hsa-runtime64)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================

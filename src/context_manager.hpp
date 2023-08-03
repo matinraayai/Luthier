@@ -1,14 +1,14 @@
 #ifndef CONTEXT_MANAGER_HPP
 #define CONTEXT_MANAGER_HPP
-#include "error_and_log.hpp"
+#include "error.h"
 #include <any>
+#include <fmt/color.h>
 #include <hsa/hsa.h>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <unordered_map>
 #include <vector>
-#include <fmt/color.h>
 
 #define AGENT_COMGR_META_ACCESSOR(metaName, metaType, typeConvertor) \
     metaType get##metaName##fromComgrMeta() {                                 \
@@ -136,6 +136,8 @@ class ContextManager {
             agents.push_back({h.first});
         return agents;
     }
+
+
 
     static std::string getDemangledName(const char *mangledName);
 };

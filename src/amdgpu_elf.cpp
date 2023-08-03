@@ -19,7 +19,7 @@
  THE SOFTWARE. */
 
 #include "amdgpu_elf.hpp"
-#include "error_and_log.hpp"
+#include "error.h"
 #include "log.hpp"
 
 #include <string>

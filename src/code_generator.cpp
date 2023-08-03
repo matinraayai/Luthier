@@ -6,6 +6,7 @@
 #include "elfio/elfio.hpp"
 #include "hsa_intercept.hpp"
 #include "instr.hpp"
+#include <hsakmt/hsakmt.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <fmt/color.h>
@@ -192,6 +193,8 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 
 
 void* allocateHsaMemory(hsa_agent_t agent, size_t size) {
+    // {NonPaged = 1, CachePolicy = 0, ReadOnly = 0, PageSize = 0, HostAccess = 1, NoSubstitute = 1, GDSMemory = 0, Scratch = 0, AtomicAccessFull = 0, AtomicAccessPartial = 0,
+    //      ExecuteAccess = 1, CoarseGrain = 1, AQLQueueMemory = 0, FixedAddress = 0, NoNUMABind = 0, Uncached = 0, Reserved = 0}
     const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_region_t region;
 

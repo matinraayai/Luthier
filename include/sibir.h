@@ -1,6 +1,6 @@
 #ifndef SIBIR_H
 #define SIBIR_H
-#include "error_and_log.hpp"
+#include "error.h"
 #include "instr.hpp"
 #include "sibir_types.hpp"
 #include <hsa/hsa_api_trace.h>

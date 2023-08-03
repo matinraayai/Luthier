@@ -1,5 +1,5 @@
 #include "instr.hpp"
-#include "error_and_log.hpp"
+#include "error.h"
 #include "hsa_intercept.hpp"
 
 sibir_address_t sibir::Instr::getHostAddress() {
