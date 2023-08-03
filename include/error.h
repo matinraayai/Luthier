@@ -36,11 +36,6 @@ SIBIR_ROCM_LIB_API_CHECK(amd_comgr, amd_comgr_status_t, AMD_COMGR_STATUS_SUCCESS
 
 #undef SIBIR_ROCM_LIB_API_CHECK
 
-#define SIBIR_AMD_COMGR_CHECK(call) check_amd_comgr_error(call, #call, __FILE_NAME__, __LINE__)
-
-#define SIBIR_HSA_CHECK(call) check_hsa_error(call, #call, __FILE_NAME__, __LINE__)
-
-
 inline void check_hip_error(hipError_t err, const char* callName, const char* fileName, const int line) {
     if (err != hipSuccess) {
         const char* errMsg = hipGetErrorString(err);
@@ -49,6 +44,9 @@ inline void check_hip_error(hipError_t err, const char* callName, const char* fi
         throw std::runtime_error(what);
     }
 }
+
+#define SIBIR_HIP_CHECK(call) check_hip_error(call, #call, __FILE_NAME__, __LINE__)
+
 
 inline void check_hsakmt_error(HSAKMT_STATUS err, const char* callName, const char* fileName, const int line) {
     std::string errMsg;
@@ -119,6 +117,15 @@ inline void check_hsakmt_error(HSAKMT_STATUS err, const char* callName, const ch
                                        fileName, line, callName, static_cast<int>(err), errMsg);
         throw std::runtime_error(what);
     }
+
 #undef SIBIR_ROCM_LIB_ERROR_MSG
+
+#define SIBIR_AMD_COMGR_CHECK(call) check_amd_comgr_error(call, #call, __FILE_NAME__, __LINE__)
+
+#define SIBIR_HSA_CHECK(call) check_hsa_error(call, #call, __FILE_NAME__, __LINE__)
+
+#define SIBIR_HIP_CHECK(call) check_hip_error(call, #call, __FILE_NAME__, __LINE__)
+
+#define SIBIR_HSAKMT_CHECK(call) check_hsakmt_error(call, #call, __FILE_NAME__, __LINE__)
 
 #endif
