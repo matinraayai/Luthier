@@ -1,5 +1,4 @@
 #include "context_manager.hpp"
-#include "hsa_intercept.hpp"
 #include <amd_comgr/amd_comgr.h>
 #include <fmt/color.h>
 
@@ -62,37 +61,6 @@ amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMet
     return AMD_COMGR_STATUS_SUCCESS;
 };
 
-std::shared_ptr<sibir::AgentMetaData> sibir::ContextManager::populateAgentInfo(hsa_agent_t agent) {
-    const auto& coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
-    // Get the name (architecture) of the agent
-    std::string agentName;
-    agentName.resize(64);
-
-    coreApi.hsa_agent_get_info_fn(agent, HSA_AGENT_INFO_ISA, agentName.data());
-
-    // Get the Isa name of the agent
-    std::vector<std::string> supportedAgentIsaNames;
-
-    auto getIsaNameCallback = [](hsa_isa_t isa, void* data) {
-        auto out = reinterpret_cast<std::vector<std::string>*>(data);
-        auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
-        uint32_t isaNameSize;
-        SIBIR_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaNameSize));
-        std::string isaName;
-        isaName.resize(isaNameSize);
-        SIBIR_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME, isaName.data()));
-        out->push_back(isaName);
-        return HSA_STATUS_SUCCESS;
-    };
-
-    SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_isas_fn(agent, getIsaNameCallback, &supportedAgentIsaNames));
-
-    // Assert that there's only one supported ISA for the agent
-    assert(supportedAgentIsaNames.size() == 1);
-
-    return std::make_shared<AgentMetaData>(supportedAgentIsaNames[0]);
-}
-
 
 hsa_status_t sibir::ContextManager::initGpuAgentsMap() {
     auto& coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
@@ -106,7 +74,7 @@ hsa_status_t sibir::ContextManager::initGpuAgentsMap() {
         if (stat != HSA_STATUS_SUCCESS)
             return stat;
         if (dev_type == HSA_DEVICE_TYPE_GPU) {
-            auto entry = sibir::ContextManager::populateAgentInfo(agent);
+            auto entry = std::make_shared<AgentMetaData>(agent);
             agentMap->insert({agent.handle, entry});
         }
 
@@ -141,3 +109,30 @@ std::string sibir::ContextManager::getDemangledName(const char *mangledName) {
 
     return out;
 }
+
+sibir::AgentMetaData::AgentMetaData(hsa_agent_t agent) : agent_(agent) {
+        const auto& coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+        // Get the Isa name of the agent
+        std::vector<std::string> supportedAgentIsaNames;
+        auto getIsaNameCallback = [](hsa_isa_t isa, void* data) {
+            auto out = reinterpret_cast<std::vector<std::string>*>(data);
+            auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+            uint32_t isaNameSize;
+            SIBIR_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaNameSize));
+            std::string isaName;
+            isaName.resize(isaNameSize);
+            SIBIR_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME, isaName.data()));
+            out->push_back(isaName);
+            return HSA_STATUS_SUCCESS;
+        };
+
+        SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_isas_fn(agent, getIsaNameCallback, &supportedAgentIsaNames));
+
+        // For now assert that there's only one supported ISA for the agent
+        assert(supportedAgentIsaNames.size() == 1);
+
+        hsaMetaDataMap_.insert({HSA_AGENT_INFO_ISA, supportedAgentIsaNames});
+        isaName_ = supportedAgentIsaNames[0];
+        SIBIR_AMD_COMGR_CHECK(amd_comgr_get_isa_metadata(isaName_.c_str(), &metaDataRootNode_));
+};
+

@@ -1,6 +1,7 @@
 #ifndef CONTEXT_MANAGER_HPP
 #define CONTEXT_MANAGER_HPP
 #include "error.h"
+#include "hsa_intercept.hpp"
 #include <any>
 #include <fmt/color.h>
 #include <hsa/hsa.h>
@@ -26,21 +27,30 @@
         return std::any_cast<metaType>(amdComgrMetaDataMap_.at(key));                                 \
     }
 
+#define AGENT_HSA_META_ACCESSOR(metaName, metaReturnType, hsaInfoType) \
+    metaReturnType getAgent##metaName##fromHsa() { \
+        if (!hsaMetaDataMap_.contains((hsa_agent_info_t) hsaInfoType)) {                  \
+            const auto &coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core; \
+            metaReturnType out;                                        \
+            SIBIR_HSA_CHECK(coreApi.hsa_agent_get_info_fn(agent_, (hsa_agent_info_t) hsaInfoType, &out)); \
+            hsaMetaDataMap_.insert({(hsa_agent_info_t) hsaInfoType, out});\
+        }                                                              \
+        return std::any_cast<metaReturnType>(hsaMetaDataMap_.at((hsa_agent_info_t) hsaInfoType));         \
+    }
 
 namespace sibir {
 
 class AgentMetaData {
  private:
     std::unordered_map<std::string, std::any> amdComgrMetaDataMap_;
-    std::unordered_map<std::string, std::any> hsaMetaDataMap_;
+    std::unordered_map<hsa_agent_info_t, std::any> hsaMetaDataMap_;
     std::string isaName_;
+    hsa_agent_t agent_;
     amd_comgr_metadata_node_t metaDataRootNode_;
 
 
  public:
-    explicit AgentMetaData(std::string isaName) : isaName_(std::move(isaName)) {
-        SIBIR_AMD_COMGR_CHECK(amd_comgr_get_isa_metadata(isaName_.c_str(), &metaDataRootNode_));
-    };
+    explicit AgentMetaData(hsa_agent_t agent);
     AgentMetaData() = delete;
 
     ~AgentMetaData() {
@@ -49,6 +59,8 @@ class AgentMetaData {
     }
 
     std::string getIsaName() const { return isaName_; };
+
+    AGENT_HSA_META_ACCESSOR(DriverNodeId, uint32_t, HSA_AMD_AGENT_INFO_DRIVER_NODE_ID);
 
     AGENT_COMGR_META_ACCESSOR(AddressableNumSGPRs, int, std::atoi)
     AGENT_COMGR_META_ACCESSOR(AddressableNumVGPRs, int, std::atoi)
@@ -94,6 +106,7 @@ class AgentMetaData {
 //    } hsa;
 //} sibir_hsa_agent_info_entry_t;
 #undef AGENT_COMGR_META_ACCESSOR
+#undef AGENT_HSA_META_ACCESSOR
 
 class ContextManager {
  private:
