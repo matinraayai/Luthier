@@ -5,8 +5,7 @@
 #include "hsa_intercept.hpp"
 #include "hip_intercept.hpp"
 #include <roctracer/roctracer.h>
-#include <sibir.h>
-#include <fmt/core.h>
+#include "sibir.h"
 #include <fmt/color.h>
 
 void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int api_id) {
@@ -38,7 +37,7 @@ void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int
 }
 
 __attribute__((constructor)) void sibir::impl::init() {
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::red), "Initializing sibir...\n");
+    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::red), "Initializing sibir...\n");
     assert(HipInterceptor::Instance().IsEnabled());
     sibir_at_init();
     HipInterceptor::Instance().SetCallback(sibir::impl::hipStartupCallback);
@@ -47,7 +46,7 @@ __attribute__((constructor)) void sibir::impl::init() {
 
 __attribute__((destructor)) void sibir::impl::finalize() {
     sibir_at_term();
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::red), "Sibir terminated.\n");
+    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::red), "Sibir terminated.\n");
 }
 
 const HsaApiTable *sibir_get_hsa_table() {

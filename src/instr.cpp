@@ -1,5 +1,5 @@
 #include "instr.hpp"
-#include "error_check.hpp"
+#include "error_and_log.hpp"
 #include "hsa_intercept.hpp"
 
 sibir_address_t sibir::Instr::getHostAddress() {
@@ -31,10 +31,10 @@ sibir::Instr::Instr(std::string instStr, hsa_agent_t  agent,
                     hsa_executable_t executable,
                     hsa_executable_symbol_t symbol,
                     sibir_address_t DeviceAccessibleInstrAddress,
-                    size_t instrSize): instStr_(std::move(instStr)), agent_(agent),
-                                       executableSymbol_(symbol), deviceAddress_(DeviceAccessibleInstrAddress),
-                                       size_(instrSize),
-                                       executable_(executable) {
+                    size_t instrSize): executable_(executable), deviceAddress_(DeviceAccessibleInstrAddress),
+                                       instStr_(std::move(instStr)), size_(instrSize),
+                                       agent_(agent),
+                                       executableSymbol_(symbol) {
     HsaInterceptor::Instance().getHsaVenAmdLoaderTable().hsa_ven_amd_loader_query_host_address(
                                                 reinterpret_cast<const void*>(DeviceAccessibleInstrAddress),
                                                 reinterpret_cast<const void**>(&hostAddress_)

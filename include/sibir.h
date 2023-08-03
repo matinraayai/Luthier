@@ -1,6 +1,6 @@
 #ifndef SIBIR_H
 #define SIBIR_H
-#include "error_check.hpp"
+#include "error_and_log.hpp"
 #include "instr.hpp"
 #include "sibir_types.hpp"
 #include <hsa/hsa_api_trace.h>
@@ -251,6 +251,8 @@ void sibir_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, si
 //// *
 //// **********************************************************************/
 ////
+/**
+
 ////#define PRINT_VAR(env_var, help, var)                                      \
 ////    std::cout << std::setw(20) << env_var << " = " << var << " - " << help \
 ////              << std::endl;
@@ -277,3 +279,4 @@ void sibir_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, si
 ////        var = s;                        \
 ////    }                                   \
 ////    PRINT_VAR(env_var, help, var)
+*/

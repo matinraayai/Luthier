@@ -1,6 +1,7 @@
 #include "context_manager.hpp"
 #include "hsa_intercept.hpp"
 #include <amd_comgr/amd_comgr.h>
+#include <fmt/color.h>
 
 
 amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMetaDataNode,
@@ -12,6 +13,7 @@ amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMet
     size_t size;
     std::string key;
     std::string value;
+
 
     SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(keyMetaDataNode, &size, nullptr));
     key.resize(size);
@@ -62,8 +64,6 @@ amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMet
 
 std::shared_ptr<sibir::AgentMetaData> sibir::ContextManager::populateAgentInfo(hsa_agent_t agent) {
     const auto& coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
-    hsa_status_t status;
-
     // Get the name (architecture) of the agent
     std::string agentName;
     agentName.resize(64);
@@ -120,7 +120,6 @@ std::string sibir::ContextManager::getDemangledName(const char *mangledName) {
     amd_comgr_data_t mangledNameData;
     amd_comgr_data_t demangledNameData;
     std::string out;
-    amd_comgr_status_t status;
 
     SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
 

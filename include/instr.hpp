@@ -199,13 +199,13 @@ class Instr {
      */
     Instr(std::string instStr, hsa_agent_t agent, hsa_executable_t executable,
           hsa_executable_symbol_t symbol, sibir_address_t deviceAccessibleInstrAddress,
-          sibir_address_t hostAccessibleInstrAddress, size_t instrSize) : instStr_(std::move(instStr)),
-                                                                          agent_(agent),
-                                                                          executableSymbol_(symbol),
+          sibir_address_t hostAccessibleInstrAddress, size_t instrSize) : executable_(executable),
+                                                                          hostAddress_(hostAccessibleInstrAddress),
                                                                           deviceAddress_(deviceAccessibleInstrAddress),
+                                                                          instStr_(std::move(instStr)),
                                                                           size_(instrSize),
-                                                                          executable_(executable),
-                                                                          hostAddress_(hostAccessibleInstrAddress){};
+                                                                          agent_(agent),
+                                                                          executableSymbol_(symbol){};
 
     /**
      *
@@ -243,11 +243,11 @@ class Instr {
 
     Instr(std::string instStr,
           sibir_address_t instrHostAddress,
-          size_t instrSize) : instStr_(std::move(instStr)),
+          size_t instrSize) : executable_(hsa_executable_t{0}),
                               hostAddress_(instrHostAddress),
-                              size_(instrSize),
-                              executable_(hsa_executable_t{0}),
                               deviceAddress_(0),
+                              instStr_(std::move(instStr)),
+                              size_(instrSize),
                               executableSymbol_({0}){};
 
     const kernel_descriptor_t *getKernelDescriptor();

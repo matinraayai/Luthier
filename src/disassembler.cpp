@@ -46,12 +46,12 @@ auto sizePrintInstructionCallback(const char *instruction, void *userData) {
 void printAddressCallback(uint64_t Address, void *UserData) {}
 
 
-hsa_symbol_kind_t getSymbolKind(hsa_executable_symbol_t symbol) {
-    auto coreHsaApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
-    hsa_symbol_kind_t symbolKind;
-    SIBIR_HSA_CHECK(coreHsaApi.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
-    return symbolKind;
-}
+//[[nodiscard]] hsa_symbol_kind_t getSymbolKind(hsa_executable_symbol_t symbol) {
+//    auto coreHsaApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+//    hsa_symbol_kind_t symbolKind;
+//    SIBIR_HSA_CHECK(coreHsaApi.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
+//    return symbolKind;
+//}
 
 //void PrintAmdComputePgmRsrcOne(std::ostream& out, amd_compute_pgm_rsrc_one32_t compute_pgm_rsrc1)
 //{
@@ -117,14 +117,6 @@ sibir_address_t getKdEntryPoint(sibir_address_t kernelObject) {
     const auto& amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     SIBIR_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
                                                                    reinterpret_cast<const void **>(&kernelDescriptor)));
-    uint32_t granulated_workitem_vgpr_count = AMD_HSA_BITS_GET(kernelDescriptor->compute_pgm_rsrc1,
-                                                               AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
-    fmt::println(stdout, "Number of VGPRs: {}", granulated_workitem_vgpr_count);
-    uint32_t granulated_wavefront_sgpr_count = AMD_HSA_BITS_GET(kernelDescriptor->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT);
-    fmt::println(stdout, "Number of SGPRs: {}", granulated_wavefront_sgpr_count);
-    uint32_t priority = AMD_HSA_BITS_GET(kernelDescriptor->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_PRIORITY);
-    fmt::println(stdout, "Priority: {}", priority);
-    fmt::println(stdout, "RSRC 1: {}", kernelDescriptor->compute_pgm_rsrc1);
     return reinterpret_cast<sibir_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 }
 

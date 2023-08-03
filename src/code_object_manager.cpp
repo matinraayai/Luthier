@@ -24,7 +24,6 @@ std::string getDemangledName(const char *mangledName) {
     amd_comgr_data_t mangledNameData;
     amd_comgr_data_t demangledNameData;
     std::string out;
-    amd_comgr_status_t status;
 
     SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
 
@@ -48,26 +47,26 @@ std::string getDemangledName(const char *mangledName) {
 }
 
 
-std::string stripOffKernelLaunch(const std::string& elf, const std::string& demangledName) {
-
-    std::istringstream ss{elf};
-    ELFIO::elfio elfio;
-    elfio.load(ss);
-    auto numSymbols = sibir::elf::getSymbolNum(elfio);
-    for (int i = 0; i < numSymbols; i++) {
-        sibir::elf::SymbolInfo info;
-        sibir::elf::getSymbolInfo(elfio, i, info);
-        std::string demangledSymName = getDemangledName(info.sym_name.c_str());
-        if (demangledSymName.find("__sibir_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
-            std::cout << "Symbol name: " << getDemangledName(info.sym_name.c_str()) << std::endl;
-            std::cout << "Symbol size: " << info.size << std::endl;
-            std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
-            return {info.address, info.size};
-        }
-
-    }
-    return {};
-}
+//std::string stripOffKernelLaunch(const std::string& elf, const std::string& demangledName) {
+//
+//    std::istringstream ss{elf};
+//    ELFIO::elfio elfio;
+//    elfio.load(ss);
+//    auto numSymbols = sibir::elf::getSymbolNum(elfio);
+//    for (unsigned int i = 0; i < numSymbols; i++) {
+//        sibir::elf::SymbolInfo info;
+//        sibir::elf::getSymbolInfo(elfio, i, info);
+//        std::string demangledSymName = getDemangledName(info.sym_name.c_str());
+//        if (demangledSymName.find("__sibir_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
+//            std::cout << "Symbol name: " << getDemangledName(info.sym_name.c_str()) << std::endl;
+//            std::cout << "Symbol size: " << info.size << std::endl;
+//            std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
+//            return {info.address, info.size};
+//        }
+//
+//    }
+//    return {};
+//}
 }// namespace
 
 void sibir::CodeObjectManager::registerFatBinary(const void *data) {

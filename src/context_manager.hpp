@@ -1,14 +1,14 @@
 #ifndef CONTEXT_MANAGER_HPP
 #define CONTEXT_MANAGER_HPP
-#include "error_check.hpp"
-#include <hsa/hsa.h>
-#include <unordered_map>
-#include <map>
-#include <vector>
+#include "error_and_log.hpp"
 #include <any>
-#include <memory>
+#include <hsa/hsa.h>
 #include <iostream>
-
+#include <map>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+#include <fmt/color.h>
 
 #define AGENT_COMGR_META_ACCESSOR(metaName, metaType, typeConvertor) \
     metaType get##metaName##fromComgrMeta() {                                 \
@@ -59,26 +59,33 @@ class AgentMetaData {
     AGENT_COMGR_META_ACCESSOR(MaxFlatWorkGroupSize, int, std::atoi)
     AGENT_COMGR_META_ACCESSOR(MaxWavesPerCU, int, std::atoi)
     AGENT_COMGR_META_ACCESSOR(TotalNumSGPRs, int, std::atoi)
-    AGENT_COMGR_META_ACCESSOR(totalNumVGPRs, int, std::atoi)
-
+    AGENT_COMGR_META_ACCESSOR(TotalNumVGPRs, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(VGPRAllocGranule, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(SGPRAllocGranule, int, std::atoi)
+    AGENT_COMGR_META_ACCESSOR(Name, std::string, std::string)
+    AGENT_COMGR_META_ACCESSOR(Os, std::string, std::string)
+    AGENT_COMGR_META_ACCESSOR(Processor, std::string, std::string)
+    AGENT_COMGR_META_ACCESSOR(TrapHandlerEnabled, bool, bool)
+    AGENT_COMGR_META_ACCESSOR(Vendor, std::string, std::string)
+    AGENT_COMGR_META_ACCESSOR(Version, std::string, std::string)
 };
 //typedef struct sibir_hsa_agent_info_entry_s {
 //    // metadata information obtained from AMD Comgr library
 //    struct  {
 //        bool sramecc;
 //        bool xnack;
-//        unsigned int lDSBankCount;
-//        unsigned int localMemorySize;
-//        unsigned int maxFlatWorkGroupSize;
-//        unsigned int maxWavesPerCU;
-//        std::string name;
-//        std::string os;
-//        std::string processor;
-//        unsigned int sGPRAllocGranule;
-//        unsigned int vGPRAllocGranule;
-//        unsigned int totalNumSGPRs;
-//        unsigned int totalNumVGPRs;
-//        bool trapHandlerEnabled;
+//        unsigned int lDSBankCount; /
+//        unsigned int localMemorySize; /
+//        unsigned int maxFlatWorkGroupSize; /
+//        unsigned int maxWavesPerCU; /
+//        std::string name; /
+//        std::string os; /
+//        std::string processor; /
+//        unsigned int sGPRAllocGranule; /
+//        unsigned int vGPRAllocGranule; /
+//        unsigned int totalNumSGPRs; /
+//        unsigned int totalNumVGPRs; /
+//        bool trapHandlerEnabled; /
 //        std::string vendor;
 //        std::string version;
 //    } amd_comgr;
@@ -139,4 +146,4 @@ class ContextManager {
 
 
 
-#endif //CONTEXT_MANAGER_H_
+#endif //CONTEXT_MANAGER_HPP

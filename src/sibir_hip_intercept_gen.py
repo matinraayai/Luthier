@@ -225,11 +225,10 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
 
     f.write('#include "hip_intercept.hpp"\n\n\n')
     for name in sorted(hip_runtime_api_map.keys()):
-        f.write('__attribute__((visibility("default")))\n')
-        output_type = hip_runtime_api_map[name]['rtnType']
-
         if name != "hipCreateSurfaceObject" and name != "hipDestroySurfaceObject":
             f.write('extern "C" ')
+        f.write('__attribute__((visibility("default")))\n')
+        output_type = hip_runtime_api_map[name]['rtnType']
         f.write(f'{output_type} {name}(')
         args = hip_runtime_api_map[name]['parameters']
         are_args_non_empty = len(args) != 0 and not (len(args) == 1 and args[0]['type'] == 'void')

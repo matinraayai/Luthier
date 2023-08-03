@@ -1,4 +1,4 @@
-#include "sibir.h"
+#include <sibir.h>
 #include <fstream>
 #include <functional>
 #include <hip/hip_runtime_api.h>
@@ -19,12 +19,18 @@ std::mutex mutex;
 
 static std::unordered_map<decltype(hsa_kernel_dispatch_packet_t::kernel_object), hsa_executable_symbol_t> ko_symbol_map;
 
-static bool instrumented{true};
+static bool instrumented{false};
 
-__device__ int counter = 0;
+__device__ int globalCounter = 0;
 
-__device__ void instrumentation_kernel() {
-    counter = counter + 1;
+__device__ __noinline__ void instrumentation_kernel(int* counter) {
+//    int i = 0;
+//    i = i + 4;
+//    i = i * 40;
+//    return i;
+//    return 1;
+    *counter = *counter + 1;
+//    atomicAdd(counter, 1);
 //    printf("Hello from Sibir!\n");
 }
 
@@ -82,10 +88,10 @@ hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
                 sibir_address_t kernelObject;
                 SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
                 std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
-                std::vector<Instr> instList = sibir_disassemble_kernel_object(kernelObject);
+                std::vector<sibir::Instr> instList = sibir_disassemble_kernel_object(kernelObject);
                 std::cout << "Disassembly of the KO: " << std::endl;
                 for (const auto& i : instList) {
-                    std::cout << i.instr << std::endl;
+                    std::cout << i.getInstr() << std::endl;
                 }
             }
 
@@ -133,7 +139,7 @@ static unsigned extractAqlBits(unsigned v, unsigned pos, unsigned width) {
     return (v >> pos) & ((1 << width) - 1);
 };
 
-void iterateLoadedCodeObjects(hsa_executable_t executable) {
+void getLoadedCodeObject(hsa_executable_t executable) {
     auto amdTable = sibir_get_hsa_ven_amd_loader();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
@@ -207,11 +213,19 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
             unsigned int packetType = extractAqlBits(packet->header, HSA_PACKET_HEADER_TYPE, HSA_PACKET_HEADER_WIDTH_TYPE);
             if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
                 auto *dispatchPacket = reinterpret_cast<hsa_kernel_dispatch_packet_t *>(packet);
-                std::vector<Instr> instrVec = sibir_disassemble_kernel_object(dispatchPacket->kernel_object);
-                auto executable = sibir_insert_call(&instrVec[0], "instrumentation_kernel()", SIBIR_IPOINT_AFTER);
+                std::cout << "Dispatch packet's kernel arg address: " << dispatchPacket->kernarg_address << std::endl;
+                if (!instrumented) {
+                std::vector<sibir::Instr> instrVec = sibir_disassemble_kernel_object(dispatchPacket->kernel_object);
+                    sibir_insert_call(&instrVec[0], "instrumentation_kernel", SIBIR_IPOINT_AFTER);
+                    instrumented = true;
+                    sibir_enable_instrumented(dispatchPacket, reinterpret_cast<sibir_address_t>(dispatchPacket->kernel_object),
+                                              true);
+                }
+
+
 //                iterateLoadedCodeObjects(executable);
-                std::vector<hsa_executable_symbol_t> symbols;
-                getAllExecutableSymbols(executable, symbols);
+//                std::vector<hsa_executable_symbol_t> symbols;
+//                getAllExecutableSymbols(executable, symbols);
 
 //
 //                std::vector<hsa_isa_t> supportedIsas;
@@ -259,7 +273,7 @@ void sibir_at_init() {
 void sibir_at_term() {
     int counterHost;
     reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
-        &counterHost, &counter, 4, hipMemcpyDeviceToHost
+        &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost
     );
     std::cout << "Counter Value: " << counterHost << std::endl;
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
