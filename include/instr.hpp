@@ -3,6 +3,8 @@
 #include "luthier_types.hpp"
 #include <hsa/hsa.h>
 
+#include <vector>
+#include <string>
 
 /////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
 ////class Instr {
@@ -180,6 +182,26 @@
 //
 
 namespace luthier {
+
+// I ported these over from our old Inst.h
+enum OperandType { 
+    InvalidOperandType,
+    RegOperand,
+    SpecialRegOperand,
+	ImmOperand,
+	LiteralConstant
+};
+
+struct operand {
+    std::string op_str;
+    OperandType type;
+    // unsigned long val;
+    int code;
+    double floatValue;
+    long int intValue;
+    uint32_t literalConstant;
+};
+
 /**
  * Instr is an abstraction over ISA located in memory. If the Instr is located inside an executable,
  * it must be backed by an hsa_executable_symbol_t and a (frozen) hsa_executable_t.
@@ -265,6 +287,17 @@ class Instr {
     [[nodiscard]] hsa_executable_symbol_t getSymbol() const {return executableSymbol_;}
     [[nodiscard]] hsa_agent_t getAgent() const {return agent_;}
 
+    std::string getInstString();
+    int getNumOperands();
+    operand getOperand(int num);
+    OperandType getOperandType(int num);
+
+    std::vector<operand> getAllOperands();
+    std::vector<operand> getImmOperands();
+    std::vector<operand> getRegOperands();
+
+
+
  private:
     hsa_executable_t executable_{};//
     luthier_address_t hostAddress_{};// Host-accessible address of the instruction
@@ -273,6 +306,10 @@ class Instr {
     size_t size_;
     hsa_agent_t agent_;
     const hsa_executable_symbol_t executableSymbol_;
+
+    std::vector<operand> operands;
+    std::vector<operand> GetOperandsFromString(std::string inst_string);
+    operand EncodeOperand(std::string op);
 };
 
 }// namespace luthier
