@@ -113,7 +113,7 @@ inline void check_hsakmt_error(HSAKMT_STATUS err, const char* callName, const ch
     }
     if (err != HSAKMT_STATUS_SUCCESS) {
         std::string what = fmt::format(fmt::runtime(SIBIR_ROCM_LIB_ERROR_MSG),
-                                       fileName, line, callName, static_cast<int>(err), errMsg);
+                                       fileName, line, "hsakmt", callName, static_cast<int>(err), errMsg);
         throw std::runtime_error(what);
     }
 }

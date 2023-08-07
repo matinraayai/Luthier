@@ -6,14 +6,13 @@
 #include "elfio/elfio.hpp"
 #include "hsa_intercept.hpp"
 #include "instr.hpp"
-#include <hsakmt/hsakmt.h>
+#include "log.hpp"
+#include <dlfcn.h>
+#include <fmt/color.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
-#include <fmt/color.h>
-
-
-
-
+#include <hsakmt/hsakmt.h>
+#include <hsa/hsa_ext_amd.h>
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
     const auto& coreHsaApiTable = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
@@ -192,48 +191,232 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 }
 
 
-void* allocateHsaMemory(hsa_agent_t agent, size_t size) {
-    // {NonPaged = 1, CachePolicy = 0, ReadOnly = 0, PageSize = 0, HostAccess = 1, NoSubstitute = 1, GDSMemory = 0, Scratch = 0, AtomicAccessFull = 0, AtomicAccessPartial = 0,
-    //      ExecuteAccess = 1, CoarseGrain = 1, AQLQueueMemory = 0, FixedAddress = 0, NoNUMABind = 0, Uncached = 0, Reserved = 0}
-    const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
-    hsa_region_t region;
+void* allocateHsaKmtMemory(hsa_agent_t agent, size_t size, sibir::elf::mem_backed_code_object_t codeObject, sibir::elf::mem_backed_code_object_t hostCodeObject) {
+    uint32_t hsaKmtAgentNodeId = sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getAgentDriverNodeIdfromHsa();
+    const auto& amdExtApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+    hsa_amd_pointer_info_t loadedCodeObjectPointerInfo;
+    sibir_address_t address = codeObject.data;
+    fmt::println("Address to query: {:#x}", address);
+    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
+                                      &loadedCodeObjectPointerInfo, nullptr, nullptr, nullptr));
+    fmt::println("Loaded code object info:");
+    fmt::println("Type: {}", (uint32_t) loadedCodeObjectPointerInfo.type);
+    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.agentBaseAddress));
+    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.hostBaseAddress));
+    fmt::println("size: {}", loadedCodeObjectPointerInfo.sizeInBytes);
 
+    sibir_address_t preferredAddress = codeObject.data;
+    hsa_amd_pointer_info_t preferredAddressInfo;
+    amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(preferredAddress), &preferredAddressInfo, nullptr, nullptr, nullptr);
+    assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
+    preferredAddress += preferredAddressInfo.sizeInBytes;
+
+    while(preferredAddressInfo.sizeInBytes != 0) {
+        fmt::println("Address to query: {:#x}", preferredAddress);
+        amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(preferredAddress), &preferredAddressInfo, nullptr, nullptr, nullptr);
+        preferredAddress += preferredAddressInfo.sizeInBytes;
+        assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
+        fmt::println("Code object's memory info:");
+        fmt::println("Type: {}", (uint32_t) preferredAddressInfo.type);
+        fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.agentBaseAddress));
+        fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.hostBaseAddress));
+        fmt::println("Base address of the loaded code object: {:#x}", codeObject.data);
+        fmt::println("size: {}", preferredAddressInfo.sizeInBytes);
+        fmt::println("size of the code object on device: {}", codeObject.size);
+        fmt::println("size of the code object on host: {}", hostCodeObject.size);
+
+    }
+    fmt::println("Found a potential address!");
+    return reinterpret_cast<void*>(preferredAddress);
+
+
+//    SIBIR_HSAKMT_CHECK(hsaKmtOpenKFD());
+//    HsaSystemProperties properties;
+//    SIBIR_HSAKMT_CHECK(hsaKmtAcquireSystemProperties(&properties));
+//    HsaPointerInfo hsakmtPtrInfo;
+//    SIBIR_HSAKMT_CHECK(hsaKmtQueryPointerInfo(reinterpret_cast<void*>(codeObject.data), &hsakmtPtrInfo));
+//    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress));
+//    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.CPUAddress));
+//    fmt::println("size: {}", hsakmtPtrInfo.SizeInBytes);
+//    HsaMemFlags flags = hsakmtPtrInfo.MemFlags;
+//    flags.ui32.FixedAddress = 1;
+
+
+    fmt::println("Allocating with the HSA extension.");
+
+    struct cbdt {
+        sibir_address_t preferredAddress;
+        size_t size;
+        bool allocated;
+    } callbackData{preferredAddress, size};
+//
+//    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+    const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+//    auto poolIterator = [](hsa_amd_memory_pool_t pool, void* data) {
+//        auto callbackData = reinterpret_cast<cbdt *>(data);
+//        fmt::println("Address value before anything: {:#x}", callbackData->preferredAddress);
+//        const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+//        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//        hsa_amd_segment_t segment;
+//        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment));
+//        uint32_t flags;
+//        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags));
+//        bool hostAccessible;
+//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
+//                                                       &hostAccessible));
+//
+//        size_t regionSize;
+//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
+//#ifdef SIBIR_LOG_ENABLE_DEBUG
+//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
+//                   "Memory Flags: {:b}\n", flags);
+//        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
+//        fmt::println(stdout, "Size: {}", regionSize);
+//        fmt::println(stdout, "Host accessible: {}", hostAccessible);
+//
+//#endif
+//        if (segment == HSA_AMD_SEGMENT_GLOBAL && (flags & (uint32_t)HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) && !hostAccessible && !callbackData->allocated) {
+//            auto status = amdApi.hsa_amd_memory_pool_allocate_fn(pool, callbackData->size,
+//                                                   HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG | HSA_AMD_MEMORY_POOL_FIXED_FLAG,
+//                                                   reinterpret_cast<void**>(callbackData->preferredAddress));
+//            if (status == HSA_STATUS_SUCCESS) {
+//                callbackData->allocated = true;
+//                return HSA_STATUS_SUCCESS;
+//            }
+//            else if (status != HSA_STATUS_ERROR_OUT_OF_RESOURCES)
+//                return status;
+//            else
+//                fmt::println("Failed to allocate!. Current address value: {:#x}", callbackData->preferredAddress);
+//        }
+//
+//        return HSA_STATUS_SUCCESS;
+//    };
+////    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_agent_iterate_memory_pools_fn(agent, poolIterator, &callbackData));
+//
+//
     auto regionIterator = [](hsa_region_t region, void* data) {
+        auto cbdata = reinterpret_cast<cbdt*>(data);
+        auto pa = cbdata->preferredAddress;
+        fmt::println("Address value before anything: {:#x}", cbdata->preferredAddress);
+        fmt::println("Requested size: {:#x}", cbdata->size);
         const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
         hsa_region_segment_t segment;
         SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
         uint32_t flags;
         SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
+        bool hostAccessible;
+        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
+                                                       &hostAccessible));
 
-        void* baseAddress;
-        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_BASE, &baseAddress));
-        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque), "Base address of the memory region: {:#x}\n", reinterpret_cast<sibir_address_t>(baseAddress));
-        auto out = reinterpret_cast<hsa_region_t*>(data);
-        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & HSA_REGION_GLOBAL_FLAG_FINE_GRAINED)) {
-            *out = region;
+        size_t regionSize;
+        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
+#ifdef SIBIR_LOG_ENABLE_DEBUG
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
+                   "Memory Flags: {:b}\n", flags);
+        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
+        fmt::println(stdout, "Size: {:#x}", regionSize);
+        fmt::println(stdout, "Host accessible: {}", hostAccessible);
+
+#endif
+        // NonPaged=1, NoSubstitute = 1, Host Access, Coarse
+        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & (uint32_t)HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) && hostAccessible && !cbdata->allocated) {
+            fmt::println("Found a potential region to allocate with!");
+            auto status = amdApi.hsa_amd_memory_pool_allocate_fn({region.handle},
+                                                                      cbdata->size, HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG | HSA_AMD_MEMORY_POOL_FIXED_FLAG,
+                                                                      reinterpret_cast<void**>(&pa));
+            if (status == HSA_STATUS_SUCCESS) {
+                cbdata->allocated = true;
+                return HSA_STATUS_SUCCESS;
+            }
+            else if (status != HSA_STATUS_ERROR_OUT_OF_RESOURCES) {
+                return status;
+            }
+            else
+                fmt::println("Failed to allocate!. Current address value: {:#x}", cbdata->preferredAddress);
+
         }
-
         return HSA_STATUS_SUCCESS;
     };
-    SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_regions_fn(agent, regionIterator, &region));
-    void* deviceMemory;
-    SIBIR_HSA_CHECK(coreApi.hsa_memory_allocate_fn(region, size, &deviceMemory));
-    return deviceMemory;
+
+    SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_regions_fn(agent, regionIterator, &callbackData));
+
+    if (callbackData.allocated) {
+        fmt::println("Successfully allocated at {:#x}", preferredAddress);
+        return reinterpret_cast<void*>(callbackData.preferredAddress);
+    }
+    else {
+        throw std::runtime_error("Failed to allocate memory");
+    }
+
+//    auto handle = dlopen("libhsa-runtime64.so", RTLD_LAZY);
+//    if (handle == nullptr) {
+//        fmt::println("dlopen failed: {}\n", dlerror());
+//    }
+//    else {
+//        fmt::println("FOUND IT!");
+//        void *function_ptr = ::dlsym(handle, "hsaKmtAllocMemory");
+//        if (function_ptr == nullptr) {
+//            fmt::println("Function not found :(");
+//        } else {
+//            fmt::println("Function was found!");
+//        }
+//    }
+
+//    sibir_address_t preferredAddress = reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress) + hsakmtPtrInfo.SizeInBytes;
+//    fmt::println("Preferred Address was at: {:#x}", preferredAddress);
+//    SIBIR_HSAKMT_CHECK(hsaKmtAllocMemory(hsaKmtAgentNodeId, size + (4096 - (size % 4096)), flags, reinterpret_cast<void **>(&preferredAddress)));
+//    fmt::println("Address was allocated at: {:#x}", preferredAddress);
+//    return reinterpret_cast<void*>(preferredAddress);
+//     Query where the executable's memory region ends
+//     {NonPaged = 1, CachePolicy = 0, ReadOnly = 0, PageSize = 0, HostAccess = 1, NoSubstitute = 1, GDSMemory = 0, Scratch = 0, }
+
+//    struct cbdt {
+//        hsa_amd_memory_pool_t pool;
+//        sibir::elf::mem_backed_code_object_t co;
+//    } callbackData{};
+//
+//    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//    auto regionIterator = [](hsa_amd_memory_pool_t pool, void* data) {
+//        auto cbdata = reinterpret_cast<cbdt*>(data);
+//        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//        hsa_amd_memory_pool_info_t
+//        hsa_region_segment_t segment;
+//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
+//        uint32_t flags;
+//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
+//
+//        void* baseAddress;
+//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_BASE, &baseAddress));
+//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque), "Base address of the memory region: {:#x}\n", reinterpret_cast<sibir_address_t>(baseAddress));
+//        auto out = reinterpret_cast<hsa_region_t*>(data);
+//        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & HSA_REGION_GLOBAL_FLAG_FINE_GRAINED)) {
+//            *out = region;
+//        }
+//
+//        return HSA_STATUS_SUCCESS;
+//    };
+//    SIBIR_HSA_CHECK(amdApi.hsa_amd_agent_iterate_memory_pools_fn(agent, regionIterator, &callbackData));
+//    void* deviceMemory;
+//    SIBIR_HSA_CHECK(coreApi.hsa_memory_allocate_fn(region, size, &deviceMemory));
+//    return deviceMemory;
 }
 
 
 void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &instrumentationFunction, sibir_ipoint_t point) {
+    SIBIR_LOG_FUNCTION_CALL_START
 
     hsa_agent_t agent = instr.getAgent();
+    sibir_address_t instDeviceAddress = instr.getDeviceAddress();
     // Load the instrumentation ELF into the agent, and get its location on the device
-//    auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
+    auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
 
-    auto instrmntLoadedCodeObject = sibir::elf::mem_backed_code_object_t(
-        reinterpret_cast<sibir_address_t>(allocateHsaMemory(agent, instrumentationFunction.size())),
-        instrumentationFunction.size()
-        );
-
-//    auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
+//    auto instrmntLoadedCodeObject = sibir::elf::mem_backed_code_object_t(
+//        reinterpret_cast<sibir_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable()))),
+//        instrumentationFunction.size()
+//        );
+//    auto instrmntTextSectionStart = reinterpret_cast<sibir_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
+    auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
 
 
 
@@ -254,56 +437,139 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     // Trampoline starts after the nop
     sibir_address_t trampolineStartAddr = instrmntTextSectionStart + dummyInstrmnt.size() + nopInstr.size();
 
+    // Trampoline is located within the short jump range
+    sibir_address_t trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineStartAddr - instDeviceAddress :
+                                                                                      instDeviceAddress - trampolineStartAddr;
 
-    std::string trampoline = assemble("s_getpc_b64 s[2:3]", agent);
+    std::string trampoline;
+    if (false) {
+        trampoline = assemble("s_getpc_b64 s[2:3]", agent);
 
-    // Get the PC of the instruction after the get PC instruction
-    sibir_address_t trampolinePcOffset = trampolineStartAddr + trampoline.size();
-
-
-    int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
-
-    fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
-    fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
-    fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
+        // Get the PC of the instruction after the get PC instruction
+        sibir_address_t trampolinePcOffset = trampolineStartAddr + trampoline.size();
 
 
-    trampoline += assemble({fmt::format("s_sub_u32 s2, s2, {:#x}", firstAddOffset),
-                            "s_subb_u32 s3, s3, 0x0",
-                            "s_swappc_b64 s[0:1], s[2:3]",
-                            instr.getInstr()}, agent);
+        int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
+
+        fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
+        fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
+        fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
 
 
-    trampolinePcOffset = trampolineStartAddr + trampoline.size() + 4;
-    //    hostCodeObjectTextSection->append_data(trampoline);
+        trampoline += assemble({fmt::format("s_sub_u32 s2, s2, {:#x}", firstAddOffset),
+                                "s_subb_u32 s3, s3, 0x0",
+                                "s_swappc_b64 s[0:1], s[2:3]",
+                                instr.getInstr()}, agent);
 
-    short lastBranchImm = - (short)((int64_t(trampolinePcOffset) - int64_t(instr.getDeviceAddress() + 4)) / 4);
+
+        trampolinePcOffset = trampolineStartAddr + trampoline.size() + 4;
+        //    hostCodeObjectTextSection->append_data(trampoline);
+        int lastBranchImmInt;
+        short lastBranchImm;
+        if (trampolinePcOffset < instr.getDeviceAddress()) {
+            lastBranchImmInt = (instr.getDeviceAddress() + 4 - trampolinePcOffset) / 4;
+            lastBranchImm = (short) (lastBranchImmInt);
+        }
+        else {
+            lastBranchImmInt = (trampolinePcOffset - (instr.getDeviceAddress() + 4)) / 4;
+            lastBranchImm = -(short)(lastBranchImmInt);
+        }
+
 #ifdef SIBIR_LOG_ENABLE_DEBUG
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline PC Offset: {:#x}\n", trampolinePcOffset);
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
-    auto debugoffset = -((int64_t(trampolinePcOffset) - int64_t(instr.getDeviceAddress() + 4)) / 4);
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Last branch imm: {:#x}\n", debugoffset);
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "After conversion to short: {:#x}\n", (short)(debugoffset));
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline PC Offset: {:#x}\n", trampolinePcOffset);
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Last branch imm: {:#x}\n", lastBranchImmInt);
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "After conversion to short: {:#x}\n", lastBranchImm);
 #endif
 
-    trampoline += assemble(fmt::format("s_branch {:#x}", lastBranchImm), agent);
+        trampoline += assemble(fmt::format("s_branch {:#x}", lastBranchImm), agent);
 
-    std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
+        std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
 
-    // Overwrite the target instruction
-    auto firstBranchImm = static_cast<short>((int64_t(trampolineStartAddr) - 4 - int64_t(instr.getDeviceAddress())) / 4);
+        const auto& amdExtApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+        hsa_amd_pointer_info_t instrPtrInfo;
+        sibir_address_t address = instr.getDeviceAddress();
+        fmt::println("Address to query: {:#x}", address);
+        SIBIR_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
+                                                          &instrPtrInfo, nullptr, nullptr, nullptr));
+        fmt::println("Instruction Info:");
+        fmt::println("Type: {}", (uint32_t) instrPtrInfo.type);
+        fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(instrPtrInfo.agentBaseAddress));
+        fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(instrPtrInfo.hostBaseAddress));
+        fmt::println("size: {}", instrPtrInfo.sizeInBytes);
+
+
+        // Overwrite the target instruction
+        int firstBranchImmUnconverted;
+        short firstBranchImm;
+        if (trampolineStartAddr < instr.getDeviceAddress()) {
+            firstBranchImmUnconverted = (instr.getDeviceAddress() + 4 - trampolineStartAddr) / 4;
+            firstBranchImm = -static_cast<short>(firstBranchImmUnconverted);
+        }
+        else {
+            firstBranchImmUnconverted = (trampolineStartAddr - (instr.getDeviceAddress() + 4)) / 4;
+            firstBranchImm = static_cast<short>(firstBranchImmUnconverted);
+        }
 #ifdef SIBIR_LOG_ENABLE_DEBUG
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline start Address: {:#x}\n", trampolineStartAddr);
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
-    debugoffset = (int64_t(trampolineStartAddr) - 4 - int64_t(instr.getDeviceAddress())) / 4;
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "First branch imm: {:#x}\n", debugoffset);
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "After conversion to short: {:#x}\n", (short)(debugoffset));
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline start Address: {:#x}\n", trampolineStartAddr);
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "First branch imm: {:#x}\n", firstBranchImmUnconverted);
+        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "After conversion to short: {:#x}\n", firstBranchImm);
 #endif
 
-    std::string firstJump = assemble({fmt::format("s_branch {:#x}", firstBranchImm)}, agent);
-    if (instr.getSize() == 8)
-        firstJump += assemble({std::string("s_nop 0")}, agent);
-    std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), firstJump.data(), firstJump.size());
+        //    std::string firstJump = assemble("s_trap 1", agent);
+        std::string firstJump = assemble({fmt::format("s_branch {:#x}", firstBranchImm)}, agent);
+        if (instr.getSize() == 8)
+            firstJump += assemble({std::string("s_nop 0")}, agent);
+        std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), firstJump.data(), firstJump.size());
+    }
+
+    else {
+        trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineInstrOffset - 4 : trampolineInstrOffset + 4;
+        constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
+        constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
+        uint32_t upperTrampolineInstrOffset = trampolineInstrOffset & upperMaskUint64_t >> 16;
+        uint32_t lowerTrampolineInstrOffset = trampolineInstrOffset & lowerMaskUint64_t;
+        //TODO: take care of when the address diff is larger than unsigned int
+
+        fmt::println("Upper diff: {:#x}\n", upperTrampolineInstrOffset);
+        fmt::println("Lower diff: {:#x}\n", lowerTrampolineInstrOffset);
+        fmt::println("Actual diff: {:#x}\n", trampolineInstrOffset);
+        std::string targetToTrampolineOffsetInstr = trampolineStartAddr > instDeviceAddress ? fmt::format("s_add_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset) :
+                                                                                            fmt::format("s_sub_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset);
+        std::string longJumpForTarget = assemble(std::vector<std::string>{"s_getpc_b64 s[6:7]",
+                                                                          targetToTrampolineOffsetInstr}, agent);
+
+        if (upperTrampolineInstrOffset != 0) {
+            longJumpForTarget += trampolineStartAddr > instDeviceAddress ? assemble(fmt::format("s_addc_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent) :
+                                                                         assemble(fmt::format("s_subb_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent);
+        }
+
+       longJumpForTarget += assemble("s_swappc_b64 s[2:3], s[6:7]", agent);
+        fmt::println("Assembled!!!");
+        std::string displacedInstr = std::string(reinterpret_cast<const char*>(instr.getDeviceAddress()),
+                                                 longJumpForTarget.size());
+
+        // Get the PC of the instruction after the get PC instruction
+        sibir_address_t trampolinePcOffset = trampolineStartAddr;
+
+
+        int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
+
+        fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
+        fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
+        fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
+
+
+        trampoline = assemble({fmt::format("s_sub_u32 s6, s6, {:#x}", firstAddOffset),
+                                "s_subb_u32 s7, s7, 0x0",
+                                "s_swappc_b64 s[0:1], s[6:7]"}, agent);
+        trampoline += displacedInstr;
+        trampoline += assemble("s_setpc_b64 s[2:3]", agent);
+
+        std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
+        std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), longJumpForTarget.data(), longJumpForTarget.size());
+    }
 
 #ifdef SIBIR_LOG_ENABLE_DEBUG
     auto finalTargetInstructions =
@@ -312,8 +578,8 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
 
     for (const auto& i: finalTargetInstructions) {
         auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
-                                                                            fmt::emphasis::blink :
-                                                                            fmt::emphasis::bold;
+                                                                                                                                                                    fmt::emphasis::underline :
+                                                                                                                                                                    fmt::emphasis::bold;
         fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
     }
     auto finalInstrumentationInstructions =
@@ -325,50 +591,22 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     }
 #endif
 
-//    ELFIO::elfio hcoElfIo;
-//    std::istringstream hcoStrStream{std::string(
-//        reinterpret_cast<char*>(hostLoadedCodeObject.first), hostLoadedCodeObject.second)};
-//    hcoElfIo.load(hcoStrStream, true);
-//    ELFIO::elfio lcoElfIo;
-//    std::istringstream lcoStrStream{std::string(
-//        reinterpret_cast<char*>(loadedCodeObject.first), loadedCodeObject.second)};
-//    lcoElfIo.load(lcoStrStream, true);
-//
-//    std::cout << "Host Code Object starts at: " << reinterpret_cast<void*>(hostLoadedCodeObject.first) << std::endl;
-//    std::cout << "Host Code Object ends at" << reinterpret_cast<void*>(hostLoadedCodeObject.first + hostLoadedCodeObject.second) << std::endl;
-//    std::cout << "Device Code Object starts at: " << reinterpret_cast<void*>(loadedCodeObject.first) << std::endl;
-//    std::cout << "Device Code Object ends at" << reinterpret_cast<void*>(loadedCodeObject.first + loadedCodeObject.second) << std::endl;
-//    std::cout << "Text section for the ELF of HCO starts at: " << reinterpret_cast<const void*>(hcoElfIo.sections[".text"]->get_address()) << std::endl;
-//    auto offset = (reinterpret_cast<const sibir_address_t>(hcoElfIo.sections[".text"]->get_data()) -
-//                   reinterpret_cast<const sibir_address_t>(hostLoadedCodeObject.first));
-//    std::cout << "Text section offset: " << reinterpret_cast<const void*>(offset) << std::endl;
-//
-//    ELFIO::section* noteSec = hcoElfIo.sections[".note"];
-//
-//    fmt::println(stdout, "Note section's address: {:#x}", noteSec->get_address());
-//    fmt::println(stdout, "Note section's size: {}", noteSec->get_size());
-//    ELFIO::note_section_accessor note_reader(hcoElfIo, noteSec);
-//    auto num = note_reader.get_notes_num();
-//    ELFIO::Elf_Word type = 0;
-//    char* desc = nullptr;
-//    ELFIO::Elf_Word descSize = 0;
-//
-//    for (unsigned int i = 0; i < num; i++) {
-//        std::string name;
-//        if(note_reader.get_note(i, type, name, desc, descSize)) {
-//            std::cout << "Note name: " << name << std::endl;
-//            //            auto f = std::fstream("./note_content", std::ios::out);
-//            std::string content(desc, descSize);
-//            std::cout << "Note content" << content << std::endl;
-//            //            f << content;
-//            //            f.close();
-//        }
-//    }
-//    fmt::println(stdout, "Device code header:\n{:s}", std::string(reinterpret_cast<const char*>(loadedCodeObject.first),
-//                                                                  0x1000));
-//    fmt::println(stdout, "Host code header:\n{:s}", std::string(reinterpret_cast<const char*>(hostLoadedCodeObject.first) + noteSec->get_address(),
-//                                                                noteSec->get_size()));
-//    fmt::println(stdout, "Are headers the same? {}", std::string(reinterpret_cast<const char*>(loadedCodeObject.first),
-//                                                                 0x1000) ==  std::string(reinterpret_cast<const char*>(hostLoadedCodeObject.first),
-//                                    0x1000));
+#ifdef SIBIR_LOG_ENABLE_DEBUG
+    auto hostInstructions =
+        sibir::Disassembler::Instance().disassemble(agent, getCodeObject(instr.getExecutable()).data + 0x1000, 0x54);
+    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Host Executable:\n");
+
+    for (const auto& i: hostInstructions) {
+        auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
+                                                                                                                                                                    fmt::emphasis::underline :
+                                                                                                                                                                    fmt::emphasis::bold;
+        fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
+    }
+#endif
+
+
+
+
+
+    SIBIR_LOG_FUNCTION_CALL_END
 }

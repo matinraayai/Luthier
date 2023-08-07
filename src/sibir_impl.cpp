@@ -7,8 +7,10 @@
 #include <roctracer/roctracer.h>
 #include "sibir.h"
 #include <fmt/color.h>
+#include "log.hpp"
 
 void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int api_id) {
+    SIBIR_LOG_FUNCTION_CALL_START
     static const void *lastSavedFatBinary{};
     if (phase == SIBIR_API_PHASE_EXIT) {
         if (api_id == HIP_PRIVATE_API_ID___hipRegisterFatBinary) {
@@ -34,19 +36,22 @@ void sibir::impl::hipStartupCallback(void *cb_data, sibir_api_phase_t phase, int
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterVar) {
         }
     }
+    SIBIR_LOG_FUNCTION_CALL_END
 }
 
 __attribute__((constructor)) void sibir::impl::init() {
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::red), "Initializing sibir...\n");
+    SIBIR_LOG_FUNCTION_CALL_START
     assert(HipInterceptor::Instance().IsEnabled());
     sibir_at_init();
     HipInterceptor::Instance().SetCallback(sibir::impl::hipStartupCallback);
     HsaInterceptor::Instance().SetCallback(sibir::impl::hsaApiCallback);
+    SIBIR_LOG_FUNCTION_CALL_END
 }
 
 __attribute__((destructor)) void sibir::impl::finalize() {
+    SIBIR_LOG_FUNCTION_CALL_START
     sibir_at_term();
-    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::red), "Sibir terminated.\n");
+    SIBIR_LOG_FUNCTION_CALL_END
 }
 
 const HsaApiTable *sibir_get_hsa_table() {
@@ -80,73 +85,6 @@ void sibir_insert_call(sibir::Instr *instr, const char *dev_func_name, sibir_ipo
     std::string instrumentationFunc = sibir::CodeObjectManager::Instance().getCodeObjectOfInstrumentationFunction(dev_func_name, agent);
 
     sibir::CodeGenerator::instrument(*instr, instrumentationFunc, point);
-
-
-//    // COMGR symbol iteration things
-//    amd_comgr_data_t coData;
-//    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &coData));
-//    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(coData, codeObjectSize,
-//                                             codeObjectPtr));
-//
-//    auto symbolIterator = [](amd_comgr_symbol_t s, void *data) {
-//        uint64_t nameLength;
-//        auto status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_NAME_LENGTH, &nameLength));
-//        if (status != AMD_COMGR_STATUS_SUCCESS)
-//            return status;
-//        std::string name;
-//        name.resize(nameLength);
-//        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_NAME, name.data()));
-//        if (status != AMD_COMGR_STATUS_SUCCESS)
-//            return status;
-//
-//        std::cout << "AMD COMGR symbol name: " << name << std::endl;
-//
-//        amd_comgr_symbol_type_t type;
-//        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_TYPE, &type));
-//        if (status != AMD_COMGR_STATUS_SUCCESS)
-//            return status;
-//
-//        std::cout << "AMD COMGR symbol type: " << type << std::endl;
-//
-//        uint64_t size;
-//        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_SIZE, &size));
-//        if (status != AMD_COMGR_STATUS_SUCCESS)
-//            return status;
-//
-//        std::cout << "AMD COMGR symbol size: " << size << std::endl;
-//
-//        bool isDefined;
-//        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_IS_UNDEFINED, &isDefined));
-//        if (status != AMD_COMGR_STATUS_SUCCESS)
-//            return status;
-//
-//        std::cout << "AMD COMGR symbol is defined: " << size << std::endl;
-//
-//        uint64_t value;
-//        status = SIBIR_AMD_COMGR_CHECK(amd_comgr_symbol_get_info(s, AMD_COMGR_SYMBOL_INFO_VALUE, &value));
-//        if (status != AMD_COMGR_STATUS_SUCCESS)
-//            return status;
-//
-//        std::cout << "AMD COMGR symbol value: " << reinterpret_cast<void*>(value) << std::endl;
-//
-//        return AMD_COMGR_STATUS_SUCCESS;
-//    };
-//
-//    amd_comgr_iterate_symbols(coData, symbolIterator, nullptr);
-
-
-//    auto coreApi = SibirHsaInterceptor::Instance().getSavedHsaTables().core;
-//    hsa_code_object_reader_t coReader;
-//    hsa_executable_t executable;
-//    SIBIR_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr,
-//                                                                         codeObjectSize, &coReader));
-//
-//    SIBIR_HSA_CHECK(coreApi.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT, nullptr, &executable));
-//
-//    SIBIR_HSA_CHECK(coreApi.hsa_executable_load_agent_code_object_fn(executable, agent, coReader, nullptr, nullptr));
-//
-//    SIBIR_HSA_CHECK(coreApi.hsa_executable_freeze_fn(executable, nullptr));
-//    return executable;
 }
 
 void sibir_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, const sibir_address_t func, bool flag) {

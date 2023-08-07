@@ -1,13 +1,22 @@
 #ifndef SIBIR_SRC_LOG_HPP
 #define SIBIR_SRC_LOG_HPP
 
-#include <amd_comgr/amd_comgr.h>
-#include <hip/hip_runtime_api.h>
-#include <hsa/hsa.h>
-#include <fmt/core.h>
-#include <stdexcept>
+#include <fmt/color.h>
+
 //TODO: implement a proper logger
 
+
+#ifdef SIBIR_LOG_ENABLE_INFO
+
+#define SIBIR_LOG_FUNCTION_CALL_START fmt::print(stdout, fmt::emphasis::underline | fg(fmt::color::burly_wood), "<< Sibir function call to {} >>\n", __PRETTY_FUNCTION__);
+#define SIBIR_LOG_FUNCTION_CALL_END fmt::print(stdout, fmt::emphasis::underline | fg(fmt::color::burly_wood), "<< Return from function {}>>\n", __PRETTY_FUNCTION__);
+
+#else
+
+#define SIBIR_LOG_FUNCTION_CALL_START
+#define SIBIR_LOG_FUNCTION_CALL_END
+
+#endif
 
 #ifdef SIBIR_LOG_ENABLE_DEBUG
 
