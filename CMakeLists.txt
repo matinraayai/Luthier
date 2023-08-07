@@ -69,7 +69,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(fmt)
 
-target_compile_options(fmt INTERFACE "-fPIC")
+target_compile_options(fmt-header-only INTERFACE "-fPIC")
 # ======================================================================================================================
 # ======================================================================================================================
 
@@ -81,6 +81,8 @@ target_compile_options(fmt INTERFACE "-fPIC")
 find_package(hip REQUIRED)
 
 find_package(amd_comgr REQUIRED)
+
+find_package(hsakmt 1.0 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm)
 
 target_link_directories(sibir PUBLIC /opt/rocm/lib/)
 target_include_directories(sibir PUBLIC /opt/rocm/include)
@@ -100,7 +102,8 @@ target_compile_definitions(sibir PUBLIC "-D_GLIBCXX_DEBUG")
 
 target_include_directories(sibir PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
-target_link_libraries(sibir hip::host hsakmt roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only hsa-runtime64)
+
+target_link_libraries(sibir hip::host hsakmt::hsakmt roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only hsa-runtime64)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================
