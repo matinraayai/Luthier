@@ -530,7 +530,6 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
         constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
         uint32_t upperTrampolineInstrOffset = trampolineInstrOffset & upperMaskUint64_t >> 16;
         uint32_t lowerTrampolineInstrOffset = trampolineInstrOffset & lowerMaskUint64_t;
-        //TODO: take care of when the address diff is larger than unsigned int
 
         fmt::println("Upper diff: {:#x}\n", upperTrampolineInstrOffset);
         fmt::println("Lower diff: {:#x}\n", lowerTrampolineInstrOffset);
