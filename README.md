@@ -1,2 +1,4 @@
-# Sibir
-Sibir is a GPU binary instrumentation tool for AMD GPUs
+# Welcome to the Sibir project's repository!
+
+For more information on how to build, get started, and contribute, see the [documentation](docs) folder.
+

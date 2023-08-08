@@ -21,6 +21,9 @@ Heterogeneous-Compute Interface for Portability (HIP) compiler and its runtime. 
 calls, compile device-side code, and load user-written device code.
 5. **A C/C++ compiler**, like [GNU GCC](https://gcc.gnu.org/) or [Clang](https://clang.llvm.org/).
 
+The following components are dependencies automatically downloaded and compiled by CMake:
+1. **[{fmt}](https://github.com/fmtlib/fmt)** library used for string formatting and pretty printing inside Sibir.
+2. **[ELFIO](https://github.com/serge1/ELFIO)** library used to parse and create AMD ELF code objects in memory.
 ## Build Options
 
 ### Sibir-specific Options

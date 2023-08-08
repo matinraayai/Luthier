@@ -191,217 +191,217 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 }
 
 
-void* allocateHsaKmtMemory(hsa_agent_t agent, size_t size, sibir::elf::mem_backed_code_object_t codeObject, sibir::elf::mem_backed_code_object_t hostCodeObject) {
-    uint32_t hsaKmtAgentNodeId = sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getAgentDriverNodeIdfromHsa();
-    const auto& amdExtApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-    hsa_amd_pointer_info_t loadedCodeObjectPointerInfo;
-    sibir_address_t address = codeObject.data;
-    fmt::println("Address to query: {:#x}", address);
-    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
-                                      &loadedCodeObjectPointerInfo, nullptr, nullptr, nullptr));
-    fmt::println("Loaded code object info:");
-    fmt::println("Type: {}", (uint32_t) loadedCodeObjectPointerInfo.type);
-    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.agentBaseAddress));
-    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.hostBaseAddress));
-    fmt::println("size: {}", loadedCodeObjectPointerInfo.sizeInBytes);
-
-    sibir_address_t preferredAddress = codeObject.data;
-    hsa_amd_pointer_info_t preferredAddressInfo;
-    amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(preferredAddress), &preferredAddressInfo, nullptr, nullptr, nullptr);
-    assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
-    preferredAddress += preferredAddressInfo.sizeInBytes;
-
-    while(preferredAddressInfo.sizeInBytes != 0) {
-        fmt::println("Address to query: {:#x}", preferredAddress);
-        amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(preferredAddress), &preferredAddressInfo, nullptr, nullptr, nullptr);
-        preferredAddress += preferredAddressInfo.sizeInBytes;
-        assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
-        fmt::println("Code object's memory info:");
-        fmt::println("Type: {}", (uint32_t) preferredAddressInfo.type);
-        fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.agentBaseAddress));
-        fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.hostBaseAddress));
-        fmt::println("Base address of the loaded code object: {:#x}", codeObject.data);
-        fmt::println("size: {}", preferredAddressInfo.sizeInBytes);
-        fmt::println("size of the code object on device: {}", codeObject.size);
-        fmt::println("size of the code object on host: {}", hostCodeObject.size);
-
-    }
-    fmt::println("Found a potential address!");
-    return reinterpret_cast<void*>(preferredAddress);
-
-
-//    SIBIR_HSAKMT_CHECK(hsaKmtOpenKFD());
-//    HsaSystemProperties properties;
-//    SIBIR_HSAKMT_CHECK(hsaKmtAcquireSystemProperties(&properties));
-//    HsaPointerInfo hsakmtPtrInfo;
-//    SIBIR_HSAKMT_CHECK(hsaKmtQueryPointerInfo(reinterpret_cast<void*>(codeObject.data), &hsakmtPtrInfo));
-//    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress));
-//    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.CPUAddress));
-//    fmt::println("size: {}", hsakmtPtrInfo.SizeInBytes);
-//    HsaMemFlags flags = hsakmtPtrInfo.MemFlags;
-//    flags.ui32.FixedAddress = 1;
-
-
-    fmt::println("Allocating with the HSA extension.");
-
-    struct cbdt {
-        sibir_address_t preferredAddress;
-        size_t size;
-        bool allocated;
-    } callbackData{preferredAddress, size};
+//void* allocateHsaKmtMemory(hsa_agent_t agent, size_t size, sibir::elf::mem_backed_code_object_t codeObject, sibir::elf::mem_backed_code_object_t hostCodeObject) {
+//    uint32_t hsaKmtAgentNodeId = sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getAgentDriverNodeIdfromHsa();
+//    const auto& amdExtApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//    hsa_amd_pointer_info_t loadedCodeObjectPointerInfo;
+//    sibir_address_t address = codeObject.data;
+//    fmt::println("Address to query: {:#x}", address);
+//    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
+//                                      &loadedCodeObjectPointerInfo, nullptr, nullptr, nullptr));
+//    fmt::println("Loaded code object info:");
+//    fmt::println("Type: {}", (uint32_t) loadedCodeObjectPointerInfo.type);
+//    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.agentBaseAddress));
+//    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.hostBaseAddress));
+//    fmt::println("size: {}", loadedCodeObjectPointerInfo.sizeInBytes);
 //
-//    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-    const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
-//    auto poolIterator = [](hsa_amd_memory_pool_t pool, void* data) {
-//        auto callbackData = reinterpret_cast<cbdt *>(data);
-//        fmt::println("Address value before anything: {:#x}", callbackData->preferredAddress);
+//    sibir_address_t preferredAddress = codeObject.data;
+//    hsa_amd_pointer_info_t preferredAddressInfo;
+//    amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(preferredAddress), &preferredAddressInfo, nullptr, nullptr, nullptr);
+//    assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
+//    preferredAddress += preferredAddressInfo.sizeInBytes;
+//
+//    while(preferredAddressInfo.sizeInBytes != 0) {
+//        fmt::println("Address to query: {:#x}", preferredAddress);
+//        amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(preferredAddress), &preferredAddressInfo, nullptr, nullptr, nullptr);
+//        preferredAddress += preferredAddressInfo.sizeInBytes;
+//        assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
+//        fmt::println("Code object's memory info:");
+//        fmt::println("Type: {}", (uint32_t) preferredAddressInfo.type);
+//        fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.agentBaseAddress));
+//        fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.hostBaseAddress));
+//        fmt::println("Base address of the loaded code object: {:#x}", codeObject.data);
+//        fmt::println("size: {}", preferredAddressInfo.sizeInBytes);
+//        fmt::println("size of the code object on device: {}", codeObject.size);
+//        fmt::println("size of the code object on host: {}", hostCodeObject.size);
+//
+//    }
+//    fmt::println("Found a potential address!");
+//    return reinterpret_cast<void*>(preferredAddress);
+//
+//
+////    SIBIR_HSAKMT_CHECK(hsaKmtOpenKFD());
+////    HsaSystemProperties properties;
+////    SIBIR_HSAKMT_CHECK(hsaKmtAcquireSystemProperties(&properties));
+////    HsaPointerInfo hsakmtPtrInfo;
+////    SIBIR_HSAKMT_CHECK(hsaKmtQueryPointerInfo(reinterpret_cast<void*>(codeObject.data), &hsakmtPtrInfo));
+////    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress));
+////    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.CPUAddress));
+////    fmt::println("size: {}", hsakmtPtrInfo.SizeInBytes);
+////    HsaMemFlags flags = hsakmtPtrInfo.MemFlags;
+////    flags.ui32.FixedAddress = 1;
+//
+//
+//    fmt::println("Allocating with the HSA extension.");
+//
+//    struct cbdt {
+//        sibir_address_t preferredAddress;
+//        size_t size;
+//        bool allocated;
+//    } callbackData{preferredAddress, size};
+////
+////    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//    const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+////    auto poolIterator = [](hsa_amd_memory_pool_t pool, void* data) {
+////        auto callbackData = reinterpret_cast<cbdt *>(data);
+////        fmt::println("Address value before anything: {:#x}", callbackData->preferredAddress);
+////        const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+////        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+////        hsa_amd_segment_t segment;
+////        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment));
+////        uint32_t flags;
+////        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags));
+////        bool hostAccessible;
+////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
+////                                                       &hostAccessible));
+////
+////        size_t regionSize;
+////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
+////#ifdef SIBIR_LOG_ENABLE_DEBUG
+////        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
+////                   "Memory Flags: {:b}\n", flags);
+////        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
+////        fmt::println(stdout, "Size: {}", regionSize);
+////        fmt::println(stdout, "Host accessible: {}", hostAccessible);
+////
+////#endif
+////        if (segment == HSA_AMD_SEGMENT_GLOBAL && (flags & (uint32_t)HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) && !hostAccessible && !callbackData->allocated) {
+////            auto status = amdApi.hsa_amd_memory_pool_allocate_fn(pool, callbackData->size,
+////                                                   HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG | HSA_AMD_MEMORY_POOL_FIXED_FLAG,
+////                                                   reinterpret_cast<void**>(callbackData->preferredAddress));
+////            if (status == HSA_STATUS_SUCCESS) {
+////                callbackData->allocated = true;
+////                return HSA_STATUS_SUCCESS;
+////            }
+////            else if (status != HSA_STATUS_ERROR_OUT_OF_RESOURCES)
+////                return status;
+////            else
+////                fmt::println("Failed to allocate!. Current address value: {:#x}", callbackData->preferredAddress);
+////        }
+////
+////        return HSA_STATUS_SUCCESS;
+////    };
+//////    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_agent_iterate_memory_pools_fn(agent, poolIterator, &callbackData));
+////
+////
+//    auto regionIterator = [](hsa_region_t region, void* data) {
+//        auto cbdata = reinterpret_cast<cbdt*>(data);
+//        auto pa = cbdata->preferredAddress;
+//        fmt::println("Address value before anything: {:#x}", cbdata->preferredAddress);
+//        fmt::println("Requested size: {:#x}", cbdata->size);
 //        const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
 //        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-//        hsa_amd_segment_t segment;
-//        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment));
-//        uint32_t flags;
-//        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags));
-//        bool hostAccessible;
-//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
-//                                                       &hostAccessible));
-//
-//        size_t regionSize;
-//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
-//#ifdef SIBIR_LOG_ENABLE_DEBUG
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
-//                   "Memory Flags: {:b}\n", flags);
-//        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
-//        fmt::println(stdout, "Size: {}", regionSize);
-//        fmt::println(stdout, "Host accessible: {}", hostAccessible);
-//
-//#endif
-//        if (segment == HSA_AMD_SEGMENT_GLOBAL && (flags & (uint32_t)HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) && !hostAccessible && !callbackData->allocated) {
-//            auto status = amdApi.hsa_amd_memory_pool_allocate_fn(pool, callbackData->size,
-//                                                   HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG | HSA_AMD_MEMORY_POOL_FIXED_FLAG,
-//                                                   reinterpret_cast<void**>(callbackData->preferredAddress));
-//            if (status == HSA_STATUS_SUCCESS) {
-//                callbackData->allocated = true;
-//                return HSA_STATUS_SUCCESS;
-//            }
-//            else if (status != HSA_STATUS_ERROR_OUT_OF_RESOURCES)
-//                return status;
-//            else
-//                fmt::println("Failed to allocate!. Current address value: {:#x}", callbackData->preferredAddress);
-//        }
-//
-//        return HSA_STATUS_SUCCESS;
-//    };
-////    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_agent_iterate_memory_pools_fn(agent, poolIterator, &callbackData));
-//
-//
-    auto regionIterator = [](hsa_region_t region, void* data) {
-        auto cbdata = reinterpret_cast<cbdt*>(data);
-        auto pa = cbdata->preferredAddress;
-        fmt::println("Address value before anything: {:#x}", cbdata->preferredAddress);
-        fmt::println("Requested size: {:#x}", cbdata->size);
-        const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
-        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-        hsa_region_segment_t segment;
-        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
-        uint32_t flags;
-        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
-        bool hostAccessible;
-        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
-                                                       &hostAccessible));
-
-        size_t regionSize;
-        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
-#ifdef SIBIR_LOG_ENABLE_DEBUG
-        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
-                   "Memory Flags: {:b}\n", flags);
-        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
-        fmt::println(stdout, "Size: {:#x}", regionSize);
-        fmt::println(stdout, "Host accessible: {}", hostAccessible);
-
-#endif
-        // NonPaged=1, NoSubstitute = 1, Host Access, Coarse
-        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & (uint32_t)HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) && hostAccessible && !cbdata->allocated) {
-            fmt::println("Found a potential region to allocate with!");
-            auto status = amdApi.hsa_amd_memory_pool_allocate_fn({region.handle},
-                                                                      cbdata->size, HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG | HSA_AMD_MEMORY_POOL_FIXED_FLAG,
-                                                                      reinterpret_cast<void**>(&pa));
-            if (status == HSA_STATUS_SUCCESS) {
-                cbdata->allocated = true;
-                return HSA_STATUS_SUCCESS;
-            }
-            else if (status != HSA_STATUS_ERROR_OUT_OF_RESOURCES) {
-                return status;
-            }
-            else
-                fmt::println("Failed to allocate!. Current address value: {:#x}", cbdata->preferredAddress);
-
-        }
-        return HSA_STATUS_SUCCESS;
-    };
-
-    SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_regions_fn(agent, regionIterator, &callbackData));
-
-    if (callbackData.allocated) {
-        fmt::println("Successfully allocated at {:#x}", preferredAddress);
-        return reinterpret_cast<void*>(callbackData.preferredAddress);
-    }
-    else {
-        throw std::runtime_error("Failed to allocate memory");
-    }
-
-//    auto handle = dlopen("libhsa-runtime64.so", RTLD_LAZY);
-//    if (handle == nullptr) {
-//        fmt::println("dlopen failed: {}\n", dlerror());
-//    }
-//    else {
-//        fmt::println("FOUND IT!");
-//        void *function_ptr = ::dlsym(handle, "hsaKmtAllocMemory");
-//        if (function_ptr == nullptr) {
-//            fmt::println("Function not found :(");
-//        } else {
-//            fmt::println("Function was found!");
-//        }
-//    }
-
-//    sibir_address_t preferredAddress = reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress) + hsakmtPtrInfo.SizeInBytes;
-//    fmt::println("Preferred Address was at: {:#x}", preferredAddress);
-//    SIBIR_HSAKMT_CHECK(hsaKmtAllocMemory(hsaKmtAgentNodeId, size + (4096 - (size % 4096)), flags, reinterpret_cast<void **>(&preferredAddress)));
-//    fmt::println("Address was allocated at: {:#x}", preferredAddress);
-//    return reinterpret_cast<void*>(preferredAddress);
-//     Query where the executable's memory region ends
-//     {NonPaged = 1, CachePolicy = 0, ReadOnly = 0, PageSize = 0, HostAccess = 1, NoSubstitute = 1, GDSMemory = 0, Scratch = 0, }
-
-//    struct cbdt {
-//        hsa_amd_memory_pool_t pool;
-//        sibir::elf::mem_backed_code_object_t co;
-//    } callbackData{};
-//
-//    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-//    auto regionIterator = [](hsa_amd_memory_pool_t pool, void* data) {
-//        auto cbdata = reinterpret_cast<cbdt*>(data);
-//        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-//        hsa_amd_memory_pool_info_t
 //        hsa_region_segment_t segment;
 //        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
 //        uint32_t flags;
 //        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
+//        bool hostAccessible;
+//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
+//                                                       &hostAccessible));
 //
-//        void* baseAddress;
-//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_BASE, &baseAddress));
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque), "Base address of the memory region: {:#x}\n", reinterpret_cast<sibir_address_t>(baseAddress));
-//        auto out = reinterpret_cast<hsa_region_t*>(data);
-//        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & HSA_REGION_GLOBAL_FLAG_FINE_GRAINED)) {
-//            *out = region;
+//        size_t regionSize;
+//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
+//#ifdef SIBIR_LOG_ENABLE_DEBUG
+//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
+//                   "Memory Flags: {:b}\n", flags);
+//        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
+//        fmt::println(stdout, "Size: {:#x}", regionSize);
+//        fmt::println(stdout, "Host accessible: {}", hostAccessible);
+//
+//#endif
+//        // NonPaged=1, NoSubstitute = 1, Host Access, Coarse
+//        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & (uint32_t)HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) && hostAccessible && !cbdata->allocated) {
+//            fmt::println("Found a potential region to allocate with!");
+//            auto status = amdApi.hsa_amd_memory_pool_allocate_fn({region.handle},
+//                                                                      cbdata->size, HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG | HSA_AMD_MEMORY_POOL_FIXED_FLAG,
+//                                                                      reinterpret_cast<void**>(&pa));
+//            if (status == HSA_STATUS_SUCCESS) {
+//                cbdata->allocated = true;
+//                return HSA_STATUS_SUCCESS;
+//            }
+//            else if (status != HSA_STATUS_ERROR_OUT_OF_RESOURCES) {
+//                return status;
+//            }
+//            else
+//                fmt::println("Failed to allocate!. Current address value: {:#x}", cbdata->preferredAddress);
+//
 //        }
-//
 //        return HSA_STATUS_SUCCESS;
 //    };
-//    SIBIR_HSA_CHECK(amdApi.hsa_amd_agent_iterate_memory_pools_fn(agent, regionIterator, &callbackData));
-//    void* deviceMemory;
-//    SIBIR_HSA_CHECK(coreApi.hsa_memory_allocate_fn(region, size, &deviceMemory));
-//    return deviceMemory;
-}
-
+//
+//    SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_regions_fn(agent, regionIterator, &callbackData));
+//
+//    if (callbackData.allocated) {
+//        fmt::println("Successfully allocated at {:#x}", preferredAddress);
+//        return reinterpret_cast<void*>(callbackData.preferredAddress);
+//    }
+//    else {
+//        throw std::runtime_error("Failed to allocate memory");
+//    }
+//
+////    auto handle = dlopen("libhsa-runtime64.so", RTLD_LAZY);
+////    if (handle == nullptr) {
+////        fmt::println("dlopen failed: {}\n", dlerror());
+////    }
+////    else {
+////        fmt::println("FOUND IT!");
+////        void *function_ptr = ::dlsym(handle, "hsaKmtAllocMemory");
+////        if (function_ptr == nullptr) {
+////            fmt::println("Function not found :(");
+////        } else {
+////            fmt::println("Function was found!");
+////        }
+////    }
+//
+////    sibir_address_t preferredAddress = reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress) + hsakmtPtrInfo.SizeInBytes;
+////    fmt::println("Preferred Address was at: {:#x}", preferredAddress);
+////    SIBIR_HSAKMT_CHECK(hsaKmtAllocMemory(hsaKmtAgentNodeId, size + (4096 - (size % 4096)), flags, reinterpret_cast<void **>(&preferredAddress)));
+////    fmt::println("Address was allocated at: {:#x}", preferredAddress);
+////    return reinterpret_cast<void*>(preferredAddress);
+////     Query where the executable's memory region ends
+////     {NonPaged = 1, CachePolicy = 0, ReadOnly = 0, PageSize = 0, HostAccess = 1, NoSubstitute = 1, GDSMemory = 0, Scratch = 0, }
+//
+////    struct cbdt {
+////        hsa_amd_memory_pool_t pool;
+////        sibir::elf::mem_backed_code_object_t co;
+////    } callbackData{};
+////
+////    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+////    auto regionIterator = [](hsa_amd_memory_pool_t pool, void* data) {
+////        auto cbdata = reinterpret_cast<cbdt*>(data);
+////        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+////        hsa_amd_memory_pool_info_t
+////        hsa_region_segment_t segment;
+////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
+////        uint32_t flags;
+////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
+////
+////        void* baseAddress;
+////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_BASE, &baseAddress));
+////        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque), "Base address of the memory region: {:#x}\n", reinterpret_cast<sibir_address_t>(baseAddress));
+////        auto out = reinterpret_cast<hsa_region_t*>(data);
+////        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & HSA_REGION_GLOBAL_FLAG_FINE_GRAINED)) {
+////            *out = region;
+////        }
+////
+////        return HSA_STATUS_SUCCESS;
+////    };
+////    SIBIR_HSA_CHECK(amdApi.hsa_amd_agent_iterate_memory_pools_fn(agent, regionIterator, &callbackData));
+////    void* deviceMemory;
+////    SIBIR_HSA_CHECK(coreApi.hsa_memory_allocate_fn(region, size, &deviceMemory));
+////    return deviceMemory;
+//}
+//
 
 void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &instrumentationFunction, sibir_ipoint_t point) {
     SIBIR_LOG_FUNCTION_CALL_START

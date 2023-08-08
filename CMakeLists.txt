@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
 
 # Global CXX Setup =====================================================================================================
 project(sibir VERSION 0.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
-# Put results in bin/lib folder
+# Put results in the lib/ folder
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # ======================================================================================================================
@@ -107,7 +107,7 @@ target_link_libraries(sibir hip::host hsakmt::hsakmt roctracer64 elfio::elfio st
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================
-if (SIBIR_BUILD_EXAMPLES)
+if (${SIBIR_BUILD_EXAMPLES})
   set(SUB_DIRS examples/kernel_instrument)
   foreach (DIR ${SUB_DIRS})
     add_subdirectory(${DIR})
