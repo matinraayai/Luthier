@@ -287,7 +287,6 @@ class Instr {
     [[nodiscard]] hsa_executable_symbol_t getSymbol() const {return executableSymbol_;}
     [[nodiscard]] hsa_agent_t getAgent() const {return agent_;}
 
-    std::string getInstString();
     int getNumOperands();
     operand getOperand(int num);
     OperandType getOperandType(int num);
@@ -308,7 +307,7 @@ class Instr {
     const hsa_executable_symbol_t executableSymbol_;
 
     std::vector<operand> operands;
-    std::vector<operand> GetOperandsFromString(std::string inst_string);
+    void GetOperandsFromString();
     operand EncodeOperand(std::string op);
 };
 
