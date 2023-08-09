@@ -77,25 +77,37 @@ sibir::operand sibir::Instr::EncodeOperand(std::string op) {
     std::string opstr(op);
     int code;
 
-    // Special Register Operands
-    if (op.find("vmcnt")   != std::string::npos || // For now, operands like VMCNT and LGKMCNT will be counted as special regs
-        op.find("lgkmcnt") != std::string::npos) {
-        code = -1; // Can't find the code to use here in the ISA, need to fix this
-        return {opstr, SpecialRegOperand, code, -1, -1, 0};
-    } else if (!op.compare("vcc")) {
+    // Wait Counter Operands
+    if (op.find("vmcnt")   != std::string::npos ||
+        op.find("lgkmcnt") != std::string::npos
+        // TO-DO: add export/mem-write-data count
+        ) {
+        code = -1;
+        op.erase(0, op.find("(") + 1);
+        op.erase(op.find(")"), op.length());
+
+        return {opstr, WaitCounter, code, -1, stoi(op, 0, 10), 0};
+        // return {opstr, WaitCounter, code, -1, -1, 0};
+    } 
+
+    // Comp Register Operands
+    if (!op.compare("vcc")) {
         code = 251;
-        return {opstr, SpecialRegOperand, code, -1, -1, 0};
+        // return {opstr, SpecialRegOperand, code, -1, -1, 0};
+        return {opstr, RegOperand, code, -1, -1, 0};
     } 
     // else if (!op.compare("exec")) {
     //     code = 252;
     //     return {op, SpecialRegOperand, code, -1, -1, 0};
+    //    return {op, RegOperand, code, -1, -1, 0};
     // }
     else if (!op.compare("scc")) {
         code = 253;
-        return {op, SpecialRegOperand, code, -1, -1, 0};
+        // return {op, SpecialRegOperand, code, -1, -1, 0};
+        return {op, RegOperand, code, -1, -1, 0};
     }
 
-    // // Register Operands (gpr)
+    // Register Operands (gpr)
     size_t sgpr_label_at = op.find("s");
     size_t vgpr_label_at = op.find("v");
     if (sgpr_label_at != std::string::npos) {
@@ -116,21 +128,29 @@ sibir::operand sibir::Instr::EncodeOperand(std::string op) {
         return {opstr, RegOperand, code, -1, -1, 0};
     }   
 
-    // // Immediates
-    if (op.find("0x") != std::string::npos) {
-        op.erase(0, 2);
-        code = -1;
-        return {opstr, ImmOperand, code, -1, stoi(op, 0, 16), 0};
-    }
+
     // // Inline Constants 
     // else {
     //     code = -1;
     //     type = LiteralConstant;
-    //     if (op.compare("off"))  // This operand is used for global mem instructions -- the ISA doc doesn't mention it anywhere
+    //     if (op.compare("off"))  // This operand is used for global mem instructions
     //         val = stoi(op, 0, 10);
     //     return {op, code, type, val};
     // }
-    return {opstr, InvalidOperandType, -1, -1, -1, 0};
+    // return {opstr, InvalidOperandType, -1, -1, -1, 0};
+    if (!op.compare("off")) {
+        return {opstr, SpecialOperand, -1, -1, -1, 0};
+    }
+
+    // Assume all other operands are Immediates
+    if (op.find("0x") != std::string::npos) {   // Imm in Hex 
+        op.erase(0, 2);
+        code = -1;
+        return {opstr, ImmOperand, code, -1, stoi(op, 0, 16), 0};
+    } else {    // Imm in Decimal
+        code = -1;
+        return {opstr, ImmOperand, code, -1, stoi(op, 0, 10), 0};
+    }
 }
 
 int sibir::Instr::getNumOperands() { return operands.size(); }
@@ -155,8 +175,8 @@ std::vector<sibir::operand> sibir::Instr::getImmOperands() {
 std::vector<sibir::operand> sibir::Instr::getRegOperands() {
     std::vector<sibir::operand> reg_ops;
     for (int i = 0; i < operands.size(); i++) {
-        if (operands.at(i).type == RegOperand || 
-            operands.at(i).type == SpecialRegOperand) {
+        if (operands.at(i).type == RegOperand) { // || 
+            // operands.at(i).type == SpecialRegOperand) {
             reg_ops.push_back(operands.at(i));
         }
     }
