@@ -187,9 +187,11 @@ namespace luthier {
 enum OperandType { 
     InvalidOperandType,
     RegOperand,
-    SpecialRegOperand,
+    // SpecialRegOperand,
+    WaitCounter,
 	ImmOperand,
-	LiteralConstant
+	LiteralConstant,
+    SpecialOperand
 };
 
 struct operand {
@@ -197,7 +199,7 @@ struct operand {
     OperandType type;
     // unsigned long val;
     int code;
-    double floatValue;
+    float floatValue;
     long int intValue;
     uint32_t literalConstant;
 };
