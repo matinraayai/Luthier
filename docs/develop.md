@@ -1,9 +1,9 @@
-# Sibir Development Guide
-Contributing to Sibir requires a good understanding of the internals of the AMD ROCm stack.  
+# Luthier Development Guide
+Contributing to Luthier requires a good understanding of the internals of the AMD ROCm stack.  
 Therefore, it is 
 
-## Sibir Dependencies
-Sibir depends on the following AMD ROCm software to work:
+## Luthier Dependencies
+Luthier depends on the following AMD ROCm software to work:
 1. AMD Code Object Manager library (AMD Comgr) provides
 2. AMD ROCR to
 
