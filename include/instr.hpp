@@ -1,6 +1,6 @@
 #ifndef INSTR_H
 #define INSTR_H
-#include "sibir_types.hpp"
+#include "luthier_types.hpp"
 #include <hsa/hsa.h>
 
 
@@ -179,7 +179,7 @@
 ////} CFG_t;
 //
 
-namespace sibir {
+namespace luthier {
 /**
  * Instr is an abstraction over ISA located in memory. If the Instr is located inside an executable,
  * it must be backed by an hsa_executable_symbol_t and a (frozen) hsa_executable_t.
@@ -198,8 +198,8 @@ class Instr {
      * @param instrSize
      */
     Instr(std::string instStr, hsa_agent_t agent, hsa_executable_t executable,
-          hsa_executable_symbol_t symbol, sibir_address_t deviceAccessibleInstrAddress,
-          sibir_address_t hostAccessibleInstrAddress, size_t instrSize) : executable_(executable),
+          hsa_executable_symbol_t symbol, luthier_address_t deviceAccessibleInstrAddress,
+          luthier_address_t hostAccessibleInstrAddress, size_t instrSize) : executable_(executable),
                                                                           hostAddress_(hostAccessibleInstrAddress),
                                                                           deviceAddress_(deviceAccessibleInstrAddress),
                                                                           instStr_(std::move(instStr)),
@@ -216,7 +216,7 @@ class Instr {
      * @param instrSize
      */
     Instr(std::string instStr, hsa_agent_t agent, hsa_executable_t executable,
-          hsa_executable_symbol_t symbol, sibir_address_t DeviceAccessibleInstrAddress,
+          hsa_executable_symbol_t symbol, luthier_address_t DeviceAccessibleInstrAddress,
           size_t instrSize);
 
     //TODO: Add more constructors
@@ -230,7 +230,7 @@ class Instr {
     //     */
     //    Instr(std::string instStr,
     //          hsa_executable_symbol_t symbol,
-    //          sibir_address_t DeviceAccessibleInstrAddress,
+    //          luthier_address_t DeviceAccessibleInstrAddress,
     //          size_t instrSize) : instStr_(std::move(instStr)),
     //                              executableSymbol_(symbol),
     //                              deviceAddress_(DeviceAccessibleInstrAddress),
@@ -242,7 +242,7 @@ class Instr {
     //                              };
 
     Instr(std::string instStr,
-          sibir_address_t instrHostAddress,
+          luthier_address_t instrHostAddress,
           size_t instrSize) : executable_(hsa_executable_t{0}),
                               hostAddress_(instrHostAddress),
                               deviceAddress_(0),
@@ -252,11 +252,11 @@ class Instr {
 
     const kernel_descriptor_t *getKernelDescriptor();
 
-    sibir_address_t getHostAddress();
+    luthier_address_t getHostAddress();
 
     [[nodiscard]] hsa_executable_t getExecutable();
 
-    [[nodiscard]] sibir_address_t getDeviceAddress() const { return deviceAddress_; };
+    [[nodiscard]] luthier_address_t getDeviceAddress() const { return deviceAddress_; };
 
     [[nodiscard]] size_t getSize() const { return size_; };
 
@@ -267,14 +267,14 @@ class Instr {
 
  private:
     hsa_executable_t executable_{};//
-    sibir_address_t hostAddress_{};// Host-accessible address of the instruction
-    sibir_address_t deviceAddress_;// Device-accessible address of the instruction
+    luthier_address_t hostAddress_{};// Host-accessible address of the instruction
+    luthier_address_t deviceAddress_;// Device-accessible address of the instruction
     std::string instStr_;
     size_t size_;
     hsa_agent_t agent_;
     const hsa_executable_symbol_t executableSymbol_;
 };
 
-}// namespace sibir
+}// namespace luthier
 
 #endif

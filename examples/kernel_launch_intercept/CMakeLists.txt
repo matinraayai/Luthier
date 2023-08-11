@@ -8,11 +8,11 @@ find_package(hip)
 
 
 
-list(APPEND CMAKE_MODULE_PATH ../../src/sibir)
+list(APPEND CMAKE_MODULE_PATH ../../luthier)
 
 add_library(kernel_launch_intercept SHARED kernel_launch_intercept.cpp)
 
 set_property(TARGET kernel_launch_intercept PROPERTY COMPILE_FLAGS "-fPIC")
 
 
-target_link_libraries(kernel_launch_intercept PUBLIC sibir hip::host hip::device)
+target_link_libraries(kernel_launch_intercept PUBLIC luthier hip::host hip::device)

@@ -7,20 +7,17 @@
 #include "hsa_intercept.hpp"
 #include "instr.hpp"
 #include "log.hpp"
-#include <dlfcn.h>
 #include <fmt/color.h>
 #include <fmt/core.h>
-#include <fmt/ranges.h>
-#include <hsakmt/hsakmt.h>
 #include <hsa/hsa_ext_amd.h>
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
-    const auto& coreHsaApiTable = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+    const auto& coreHsaApiTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
     uint32_t nameSize;
-    SIBIR_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
+    LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
     std::string name;
     name.resize(nameSize);
-    SIBIR_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
+    LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
     return name;
 }
 
@@ -33,9 +30,9 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
         auto originalSymbol = reinterpret_cast<hsa_executable_symbol_t *>(data);
         auto originalSymbolName = getSymbolName(*originalSymbol);
 
-        auto& coreTable = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+        auto& coreTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
         hsa_symbol_kind_t symbolKind;
-        SIBIR_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
+        LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
         fmt::println(stdout, "Symbol kind: {}.", static_cast<int>(symbolKind));
 
@@ -44,22 +41,22 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
         fmt::println(stdout, "Symbol name: {}.", symbolName);
 
         if (symbolKind == HSA_SYMBOL_KIND_VARIABLE) {
-            sibir_address_t variableAddress;
-            SIBIR_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &variableAddress));
+            luthier_address_t variableAddress;
+            LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &variableAddress));
             std::cout << "Variable location: " << std::hex << variableAddress << std::dec << std::endl;
         }
         if (symbolKind == HSA_SYMBOL_KIND_KERNEL && symbolName == originalSymbolName) {
-            sibir_address_t kernelObject;
-            sibir_address_t originalKernelObject;
-            SIBIR_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
-            SIBIR_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(*originalSymbol,
+            luthier_address_t kernelObject;
+            luthier_address_t originalKernelObject;
+            LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
+            LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(*originalSymbol,
                                                                         HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &originalKernelObject));
-            sibir::CodeObjectManager::Instance().registerKD(reinterpret_cast<sibir_address_t>(originalKernelObject),
-                                                            reinterpret_cast<sibir_address_t>(kernelObject)
+            luthier::CodeObjectManager::Instance().registerKD(reinterpret_cast<luthier_address_t>(originalKernelObject),
+                                                            reinterpret_cast<luthier_address_t>(kernelObject)
                                                             );
             std::cout << "original kernel location: " << std::hex << originalKernelObject << std::dec << std::endl;
             std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
-            std::vector<sibir::Instr> instList = sibir::Disassembler::Instance().disassemble(kernelObject);
+            std::vector<luthier::Instr> instList = luthier::Disassembler::Instance().disassemble(kernelObject);
             std::cout << "Disassembly of the KO: " << std::endl;
             for (const auto& i : instList) {
                 std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
@@ -79,22 +76,22 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
 
 
 hsa_executable_t createExecutable(const char* codeObjectPtr, size_t codeObjectSize, hsa_agent_t agent) {
-    auto coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+    auto coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_code_object_reader_t coReader;
     hsa_executable_t executable;
-    SIBIR_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr,
+    LUTHIER_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr,
                                                                          codeObjectSize, &coReader));
 
-    SIBIR_HSA_CHECK(coreApi.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT, nullptr, &executable));
+    LUTHIER_HSA_CHECK(coreApi.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT, nullptr, &executable));
 
-    SIBIR_HSA_CHECK(coreApi.hsa_executable_load_agent_code_object_fn(executable, agent, coReader, nullptr, nullptr));
+    LUTHIER_HSA_CHECK(coreApi.hsa_executable_load_agent_code_object_fn(executable, agent, coReader, nullptr, nullptr));
 
-    SIBIR_HSA_CHECK(coreApi.hsa_executable_freeze_fn(executable, nullptr));
+    LUTHIER_HSA_CHECK(coreApi.hsa_executable_freeze_fn(executable, nullptr));
     return executable;
 }
 
-sibir::elf::mem_backed_code_object_t getLoadedCodeObject(hsa_executable_t executable) {
-    auto amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+luthier::elf::mem_backed_code_object_t getLoadedCodeObject(hsa_executable_t executable) {
+    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
     auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
@@ -117,11 +114,11 @@ sibir::elf::mem_backed_code_object_t getLoadedCodeObject(hsa_executable_t execut
     amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
                                                              HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
                                                              &lcoSizeDevice);
-    return {reinterpret_cast<sibir_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)};
+    return {reinterpret_cast<luthier_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)};
 }
 
-sibir::elf::mem_backed_code_object_t getCodeObject(hsa_executable_t executable) {
-    auto amdTable = sibir::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+luthier::elf::mem_backed_code_object_t getCodeObject(hsa_executable_t executable) {
+    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
     auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
@@ -144,7 +141,7 @@ sibir::elf::mem_backed_code_object_t getCodeObject(hsa_executable_t executable) 
     amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
                                                             HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
                                                             &lcoSize);
-    return {reinterpret_cast<sibir_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)};
+    return {reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)};
 }
 
 std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
@@ -153,20 +150,20 @@ std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &dataIn));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, instListStr.size(), instListStr.data()));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data_name(dataIn, "my_source.s"));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_data_set_add(dataSetIn, dataIn));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &dataIn));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, instListStr.size(), instListStr.data()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(dataIn, "my_source.s"));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(dataSetIn, dataIn));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
-                                                             sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName().c_str()));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
-    SIBIR_AMD_COMGR_CHECK(
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
+                                                             luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName().c_str()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
+    LUTHIER_AMD_COMGR_CHECK(
         amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE,
                             dataAction, dataSetIn, dataSetOut));
     amd_comgr_data_t dataOut;
@@ -191,21 +188,21 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 }
 
 
-//void* allocateHsaKmtMemory(hsa_agent_t agent, size_t size, sibir::elf::mem_backed_code_object_t codeObject, sibir::elf::mem_backed_code_object_t hostCodeObject) {
-//    uint32_t hsaKmtAgentNodeId = sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getAgentDriverNodeIdfromHsa();
-//    const auto& amdExtApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//void* allocateHsaKmtMemory(hsa_agent_t agent, size_t size, luthier::elf::mem_backed_code_object_t codeObject, luthier::elf::mem_backed_code_object_t hostCodeObject) {
+//    uint32_t hsaKmtAgentNodeId = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getAgentDriverNodeIdfromHsa();
+//    const auto& amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
 //    hsa_amd_pointer_info_t loadedCodeObjectPointerInfo;
-//    sibir_address_t address = codeObject.data;
+//    luthier_address_t address = codeObject.data;
 //    fmt::println("Address to query: {:#x}", address);
-//    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
+//    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
 //                                      &loadedCodeObjectPointerInfo, nullptr, nullptr, nullptr));
 //    fmt::println("Loaded code object info:");
 //    fmt::println("Type: {}", (uint32_t) loadedCodeObjectPointerInfo.type);
-//    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.agentBaseAddress));
-//    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(loadedCodeObjectPointerInfo.hostBaseAddress));
+//    fmt::println("Agent base address: {:#x}", reinterpret_cast<luthier_address_t>(loadedCodeObjectPointerInfo.agentBaseAddress));
+//    fmt::println("Host base address: {:#x}", reinterpret_cast<luthier_address_t>(loadedCodeObjectPointerInfo.hostBaseAddress));
 //    fmt::println("size: {}", loadedCodeObjectPointerInfo.sizeInBytes);
 //
-//    sibir_address_t preferredAddress = codeObject.data;
+//    luthier_address_t preferredAddress = codeObject.data;
 //    hsa_amd_pointer_info_t preferredAddressInfo;
 //    amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(preferredAddress), &preferredAddressInfo, nullptr, nullptr, nullptr);
 //    assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
@@ -218,8 +215,8 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 //        assert(sizeof(hsa_amd_pointer_info_t) == preferredAddressInfo.size);
 //        fmt::println("Code object's memory info:");
 //        fmt::println("Type: {}", (uint32_t) preferredAddressInfo.type);
-//        fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.agentBaseAddress));
-//        fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(preferredAddressInfo.hostBaseAddress));
+//        fmt::println("Agent base address: {:#x}", reinterpret_cast<luthier_address_t>(preferredAddressInfo.agentBaseAddress));
+//        fmt::println("Host base address: {:#x}", reinterpret_cast<luthier_address_t>(preferredAddressInfo.hostBaseAddress));
 //        fmt::println("Base address of the loaded code object: {:#x}", codeObject.data);
 //        fmt::println("size: {}", preferredAddressInfo.sizeInBytes);
 //        fmt::println("size of the code object on device: {}", codeObject.size);
@@ -230,13 +227,13 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 //    return reinterpret_cast<void*>(preferredAddress);
 //
 //
-////    SIBIR_HSAKMT_CHECK(hsaKmtOpenKFD());
+////    LUTHIER_HSAKMT_CHECK(hsaKmtOpenKFD());
 ////    HsaSystemProperties properties;
-////    SIBIR_HSAKMT_CHECK(hsaKmtAcquireSystemProperties(&properties));
+////    LUTHIER_HSAKMT_CHECK(hsaKmtAcquireSystemProperties(&properties));
 ////    HsaPointerInfo hsakmtPtrInfo;
-////    SIBIR_HSAKMT_CHECK(hsaKmtQueryPointerInfo(reinterpret_cast<void*>(codeObject.data), &hsakmtPtrInfo));
-////    fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress));
-////    fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.CPUAddress));
+////    LUTHIER_HSAKMT_CHECK(hsaKmtQueryPointerInfo(reinterpret_cast<void*>(codeObject.data), &hsakmtPtrInfo));
+////    fmt::println("Agent base address: {:#x}", reinterpret_cast<luthier_address_t>(hsakmtPtrInfo.GPUAddress));
+////    fmt::println("Host base address: {:#x}", reinterpret_cast<luthier_address_t>(hsakmtPtrInfo.CPUAddress));
 ////    fmt::println("size: {}", hsakmtPtrInfo.SizeInBytes);
 ////    HsaMemFlags flags = hsakmtPtrInfo.MemFlags;
 ////    flags.ui32.FixedAddress = 1;
@@ -245,29 +242,29 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 //    fmt::println("Allocating with the HSA extension.");
 //
 //    struct cbdt {
-//        sibir_address_t preferredAddress;
+//        luthier_address_t preferredAddress;
 //        size_t size;
 //        bool allocated;
 //    } callbackData{preferredAddress, size};
 ////
-////    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-//    const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
+////    const auto& amdApi = luthier::HsaInterceptor::instance().getSavedHsaTables().amd_ext;
+//    const auto& coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
 ////    auto poolIterator = [](hsa_amd_memory_pool_t pool, void* data) {
 ////        auto callbackData = reinterpret_cast<cbdt *>(data);
 ////        fmt::println("Address value before anything: {:#x}", callbackData->preferredAddress);
-////        const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
-////        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+////        const auto& coreApi = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
+////        const auto& amdApi = luthier::HsaInterceptor::instance().getSavedHsaTables().amd_ext;
 ////        hsa_amd_segment_t segment;
-////        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment));
+////        LUTHIER_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment));
 ////        uint32_t flags;
-////        SIBIR_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags));
+////        LUTHIER_HSA_CHECK(amdApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags));
 ////        bool hostAccessible;
-////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
+////        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
 ////                                                       &hostAccessible));
 ////
 ////        size_t regionSize;
-////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
-////#ifdef SIBIR_LOG_ENABLE_DEBUG
+////        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn({pool.handle}, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
+////#ifdef LUTHIER_LOG_ENABLE_DEBUG
 ////        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
 ////                   "Memory Flags: {:b}\n", flags);
 ////        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
@@ -291,7 +288,7 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 ////
 ////        return HSA_STATUS_SUCCESS;
 ////    };
-//////    SIBIR_HSA_CHECK(amdExtApi.hsa_amd_agent_iterate_memory_pools_fn(agent, poolIterator, &callbackData));
+//////    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_agent_iterate_memory_pools_fn(agent, poolIterator, &callbackData));
 ////
 ////
 //    auto regionIterator = [](hsa_region_t region, void* data) {
@@ -299,19 +296,19 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 //        auto pa = cbdata->preferredAddress;
 //        fmt::println("Address value before anything: {:#x}", cbdata->preferredAddress);
 //        fmt::println("Requested size: {:#x}", cbdata->size);
-//        const auto& coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core;
-//        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//        const auto& coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
+//        const auto& amdApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
 //        hsa_region_segment_t segment;
-//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
+//        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
 //        uint32_t flags;
-//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
+//        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
 //        bool hostAccessible;
-//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
+//        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_HOST_ACCESSIBLE,
 //                                                       &hostAccessible));
 //
 //        size_t regionSize;
-//        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
-//#ifdef SIBIR_LOG_ENABLE_DEBUG
+//        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_REGION_INFO_SIZE, &regionSize));
+//#ifdef LUTHIER_LOG_ENABLE_DEBUG
 //        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque),
 //                   "Memory Flags: {:b}\n", flags);
 //        fmt::println(stdout, "Segment: {}", (uint32_t) segment);
@@ -339,7 +336,7 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 //        return HSA_STATUS_SUCCESS;
 //    };
 //
-//    SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_regions_fn(agent, regionIterator, &callbackData));
+//    LUTHIER_HSA_CHECK(coreApi.hsa_agent_iterate_regions_fn(agent, regionIterator, &callbackData));
 //
 //    if (callbackData.allocated) {
 //        fmt::println("Successfully allocated at {:#x}", preferredAddress);
@@ -363,9 +360,9 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 ////        }
 ////    }
 //
-////    sibir_address_t preferredAddress = reinterpret_cast<sibir_address_t>(hsakmtPtrInfo.GPUAddress) + hsakmtPtrInfo.SizeInBytes;
+////    luthier_address_t preferredAddress = reinterpret_cast<luthier_address_t>(hsakmtPtrInfo.GPUAddress) + hsakmtPtrInfo.SizeInBytes;
 ////    fmt::println("Preferred Address was at: {:#x}", preferredAddress);
-////    SIBIR_HSAKMT_CHECK(hsaKmtAllocMemory(hsaKmtAgentNodeId, size + (4096 - (size % 4096)), flags, reinterpret_cast<void **>(&preferredAddress)));
+////    LUTHIER_HSAKMT_CHECK(hsaKmtAllocMemory(hsaKmtAgentNodeId, size + (4096 - (size % 4096)), flags, reinterpret_cast<void **>(&preferredAddress)));
 ////    fmt::println("Address was allocated at: {:#x}", preferredAddress);
 ////    return reinterpret_cast<void*>(preferredAddress);
 ////     Query where the executable's memory region ends
@@ -373,22 +370,22 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 //
 ////    struct cbdt {
 ////        hsa_amd_memory_pool_t pool;
-////        sibir::elf::mem_backed_code_object_t co;
+////        luthier::elf::mem_backed_code_object_t co;
 ////    } callbackData{};
 ////
-////    const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+////    const auto& amdApi = luthier::HsaInterceptor::instance().getSavedHsaTables().amd_ext;
 ////    auto regionIterator = [](hsa_amd_memory_pool_t pool, void* data) {
 ////        auto cbdata = reinterpret_cast<cbdt*>(data);
-////        const auto& amdApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+////        const auto& amdApi = luthier::HsaInterceptor::instance().getSavedHsaTables().amd_ext;
 ////        hsa_amd_memory_pool_info_t
 ////        hsa_region_segment_t segment;
-////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
+////        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_SEGMENT, &segment));
 ////        uint32_t flags;
-////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
+////        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags));
 ////
 ////        void* baseAddress;
-////        SIBIR_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_BASE, &baseAddress));
-////        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque), "Base address of the memory region: {:#x}\n", reinterpret_cast<sibir_address_t>(baseAddress));
+////        LUTHIER_HSA_CHECK(coreApi.hsa_region_get_info_fn(region, (hsa_region_info_t) HSA_AMD_REGION_INFO_BASE, &baseAddress));
+////        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::bisque), "Base address of the memory region: {:#x}\n", reinterpret_cast<luthier_address_t>(baseAddress));
 ////        auto out = reinterpret_cast<hsa_region_t*>(data);
 ////        if (segment == HSA_REGION_SEGMENT_GLOBAL && (flags & HSA_REGION_GLOBAL_FLAG_FINE_GRAINED)) {
 ////            *out = region;
@@ -396,32 +393,32 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 ////
 ////        return HSA_STATUS_SUCCESS;
 ////    };
-////    SIBIR_HSA_CHECK(amdApi.hsa_amd_agent_iterate_memory_pools_fn(agent, regionIterator, &callbackData));
+////    LUTHIER_HSA_CHECK(amdApi.hsa_amd_agent_iterate_memory_pools_fn(agent, regionIterator, &callbackData));
 ////    void* deviceMemory;
-////    SIBIR_HSA_CHECK(coreApi.hsa_memory_allocate_fn(region, size, &deviceMemory));
+////    LUTHIER_HSA_CHECK(coreApi.hsa_memory_allocate_fn(region, size, &deviceMemory));
 ////    return deviceMemory;
 //}
 //
 
-void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &instrumentationFunction, sibir_ipoint_t point) {
-    SIBIR_LOG_FUNCTION_CALL_START
+void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string &instrumentationFunction, luthier_ipoint_t point) {
+    LUTHIER_LOG_FUNCTION_CALL_START
 
     hsa_agent_t agent = instr.getAgent();
-    sibir_address_t instDeviceAddress = instr.getDeviceAddress();
+    luthier_address_t instDeviceAddress = instr.getDeviceAddress();
     // Load the instrumentation ELF into the agent, and get its location on the device
     auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
 
-//    auto instrmntLoadedCodeObject = sibir::elf::mem_backed_code_object_t(
-//        reinterpret_cast<sibir_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable()))),
+//    auto instrmntLoadedCodeObject = luthier::elf::mem_backed_code_object_t(
+//        reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable()))),
 //        instrumentationFunction.size()
 //        );
-//    auto instrmntTextSectionStart = reinterpret_cast<sibir_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
+//    auto instrmntTextSectionStart = reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
     auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
 
 
 
     // Get a pointer to the beginning of the .text section of the instrumentation executable
-    sibir_address_t instrmntTextSectionStart = instrmntLoadedCodeObject.data + 0x1000;
+    luthier_address_t instrmntTextSectionStart = instrmntLoadedCodeObject.data + 0x1000;
 
     // The instrumentation function is inserted first
     std::string dummyInstrmnt = assemble(std::vector<std::string>
@@ -435,10 +432,10 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     std::memcpy(reinterpret_cast<void*>(instrmntTextSectionStart + dummyInstrmnt.size()), nopInstr.data(), nopInstr.size());
 
     // Trampoline starts after the nop
-    sibir_address_t trampolineStartAddr = instrmntTextSectionStart + dummyInstrmnt.size() + nopInstr.size();
+    luthier_address_t trampolineStartAddr = instrmntTextSectionStart + dummyInstrmnt.size() + nopInstr.size();
 
     // Trampoline is located within the short jump range
-    sibir_address_t trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineStartAddr - instDeviceAddress :
+    luthier_address_t trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineStartAddr - instDeviceAddress :
                                                                                       instDeviceAddress - trampolineStartAddr;
 
     std::string trampoline;
@@ -446,7 +443,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
         trampoline = assemble("s_getpc_b64 s[2:3]", agent);
 
         // Get the PC of the instruction after the get PC instruction
-        sibir_address_t trampolinePcOffset = trampolineStartAddr + trampoline.size();
+        luthier_address_t trampolinePcOffset = trampolineStartAddr + trampoline.size();
 
 
         int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
@@ -475,7 +472,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
             lastBranchImm = -(short)(lastBranchImmInt);
         }
 
-#ifdef SIBIR_LOG_ENABLE_DEBUG
+#ifdef LUTHIER_LOG_ENABLE_DEBUG
         fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline PC Offset: {:#x}\n", trampolinePcOffset);
         fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
         fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Last branch imm: {:#x}\n", lastBranchImmInt);
@@ -486,16 +483,16 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
 
         std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
 
-        const auto& amdExtApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+        const auto& amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
         hsa_amd_pointer_info_t instrPtrInfo;
-        sibir_address_t address = instr.getDeviceAddress();
+        luthier_address_t address = instr.getDeviceAddress();
         fmt::println("Address to query: {:#x}", address);
-        SIBIR_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
+        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
                                                           &instrPtrInfo, nullptr, nullptr, nullptr));
         fmt::println("Instruction Info:");
         fmt::println("Type: {}", (uint32_t) instrPtrInfo.type);
-        fmt::println("Agent base address: {:#x}", reinterpret_cast<sibir_address_t>(instrPtrInfo.agentBaseAddress));
-        fmt::println("Host base address: {:#x}", reinterpret_cast<sibir_address_t>(instrPtrInfo.hostBaseAddress));
+        fmt::println("Agent base address: {:#x}", reinterpret_cast<luthier_address_t>(instrPtrInfo.agentBaseAddress));
+        fmt::println("Host base address: {:#x}", reinterpret_cast<luthier_address_t>(instrPtrInfo.hostBaseAddress));
         fmt::println("size: {}", instrPtrInfo.sizeInBytes);
 
 
@@ -510,7 +507,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
             firstBranchImmUnconverted = (trampolineStartAddr - (instr.getDeviceAddress() + 4)) / 4;
             firstBranchImm = static_cast<short>(firstBranchImmUnconverted);
         }
-#ifdef SIBIR_LOG_ENABLE_DEBUG
+#ifdef LUTHIER_LOG_ENABLE_DEBUG
         fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline start Address: {:#x}\n", trampolineStartAddr);
         fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
         fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "First branch imm: {:#x}\n", firstBranchImmUnconverted);
@@ -550,7 +547,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
                                                  longJumpForTarget.size());
 
         // Get the PC of the instruction after the get PC instruction
-        sibir_address_t trampolinePcOffset = trampolineStartAddr;
+        luthier_address_t trampolinePcOffset = trampolineStartAddr;
 
 
         int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
@@ -570,9 +567,9 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
         std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), longJumpForTarget.data(), longJumpForTarget.size());
     }
 
-#ifdef SIBIR_LOG_ENABLE_DEBUG
+#ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto finalTargetInstructions =
-        sibir::Disassembler::Instance().disassemble(reinterpret_cast<sibir_address_t>(instr.getKernelDescriptor()));
+        luthier::Disassembler::Instance().disassemble(reinterpret_cast<luthier_address_t>(instr.getKernelDescriptor()));
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instrumented Kernel Final View:\n");
 
     for (const auto& i: finalTargetInstructions) {
@@ -582,7 +579,7 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
         fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
     }
     auto finalInstrumentationInstructions =
-        sibir::Disassembler::Instance().disassemble(agent, instrmntTextSectionStart,
+        luthier::Disassembler::Instance().disassemble(agent, instrmntTextSectionStart,
                                                     dummyInstrmnt.size() + nopInstr.size() + trampoline.size());
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::orange_red), "Instrumented Kernel Final View:\n");
     for (const auto& i: finalInstrumentationInstructions) {
@@ -590,9 +587,9 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
     }
 #endif
 
-#ifdef SIBIR_LOG_ENABLE_DEBUG
+#ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto hostInstructions =
-        sibir::Disassembler::Instance().disassemble(agent, getCodeObject(instr.getExecutable()).data + 0x1000, 0x54);
+        luthier::Disassembler::Instance().disassemble(agent, getCodeObject(instr.getExecutable()).data + 0x1000, 0x54);
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Host Executable:\n");
 
     for (const auto& i: hostInstructions) {
@@ -607,5 +604,5 @@ void sibir::CodeGenerator::instrument(sibir::Instr &instr, const std::string &in
 
 
 
-    SIBIR_LOG_FUNCTION_CALL_END
+    LUTHIER_LOG_FUNCTION_CALL_END
 }

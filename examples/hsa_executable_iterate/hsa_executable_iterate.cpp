@@ -10,15 +10,15 @@
 #include <roctracer/roctracer.h>
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_hsa.h>
-#include <sibir.h>
+#include <luthier.h>
 #include <string>
 
-void sibir_at_init() {
+void luthier_at_init() {
     std::cout << "Hi from Sibir!" << std::endl;
 }
 
 
-void sibir_at_term() {
+void luthier_at_term() {
     std::cout << "Bye from Sibir!" << std::endl;
 }
 
@@ -84,7 +84,7 @@ hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
     return HSA_STATUS_SUCCESS;
 }
 
-void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_id_t api_id) {
+void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
     if (phase == SIBIR_API_PHASE_EXIT) {
         if (api_id == HSA_API_ID_hsa_executable_freeze) {
             auto executable = args->hsa_executable_freeze.executable;
@@ -105,7 +105,7 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
 
 }
 
-void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_id_t api_id) {
+void luthier_at_hip_event(hip_api_args_t* args, luthier_api_phase_t phase, hip_api_id_t api_id) {
     fprintf(stdout, "<call to (%s)\t on %s> ",
             hip_api_name(api_id),
             phase == SIBIR_API_PHASE_ENTER ? "entry" : "exit"

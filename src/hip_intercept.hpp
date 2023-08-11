@@ -1,7 +1,7 @@
 #ifndef HIP_INTERCEPT_HPP
 #define HIP_INTERCEPT_HPP
 
-#include "sibir_types.hpp"
+#include "luthier_types.hpp"
 #include <dlfcn.h>
 #include <experimental/filesystem>
 #include <functional>
@@ -13,11 +13,11 @@
 namespace fs = std::experimental::filesystem;
 
 // Borrowed from RocTracer's BaseLoader
-namespace sibir {
+namespace luthier {
 class HipInterceptor {
  private:
     void *handle_{nullptr};
-    std::function<void(void *, const sibir_api_phase_t, const int)> callback_;
+    std::function<void(void *, const luthier_api_phase_t, const int)> callback_;
 
     HipInterceptor() {
         // Iterate through the process' loaded shared objects and try to dlopen the first entry with a
@@ -47,11 +47,11 @@ class HipInterceptor {
 
     [[nodiscard]] bool IsEnabled() const { return handle_ != nullptr; }
 
-    [[nodiscard]] const std::function<void(void *, const sibir_api_phase_t, const int)> &getCallback() const {
+    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int)> &getCallback() const {
         return callback_;
     }
 
-    void SetCallback(const std::function<void(void *, const sibir_api_phase_t, const int)> &callback) {
+    void SetCallback(const std::function<void(void *, const luthier_api_phase_t, const int)> &callback) {
         callback_ = callback;
     }
 
@@ -75,6 +75,6 @@ class HipInterceptor {
         return instance;
     }
 };
-};// namespace sibir
+};// namespace luthier
 
 #endif

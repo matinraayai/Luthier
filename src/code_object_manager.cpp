@@ -25,23 +25,23 @@ std::string getDemangledName(const char *mangledName) {
     amd_comgr_data_t demangledNameData;
     std::string out;
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
 
     size_t size = strlen(mangledName);
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_demangle_symbol_name(mangledNameData, &demangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_demangle_symbol_name(mangledNameData, &demangledNameData));
 
     size_t demangledNameSize = 0;
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, nullptr));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, nullptr));
 
     out.resize(demangledNameSize);
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, out.data()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, out.data()));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_release_data(mangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(mangledNameData));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_release_data(demangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(demangledNameData));
 
     return out;
 }
@@ -52,12 +52,12 @@ std::string getDemangledName(const char *mangledName) {
 //    std::istringstream ss{elf};
 //    ELFIO::elfio elfio;
 //    elfio.load(ss);
-//    auto numSymbols = sibir::elf::getSymbolNum(elfio);
+//    auto numSymbols = luthier::elf::getSymbolNum(elfio);
 //    for (unsigned int i = 0; i < numSymbols; i++) {
-//        sibir::elf::SymbolInfo info;
-//        sibir::elf::getSymbolInfo(elfio, i, info);
+//        luthier::elf::SymbolInfo info;
+//        luthier::elf::getSymbolInfo(elfio, i, info);
 //        std::string demangledSymName = getDemangledName(info.sym_name.c_str());
-//        if (demangledSymName.find("__sibir_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
+//        if (demangledSymName.find("__luthier_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
 //            std::cout << "Symbol name: " << getDemangledName(info.sym_name.c_str()) << std::endl;
 //            std::cout << "Symbol size: " << info.size << std::endl;
 //            std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
@@ -69,20 +69,20 @@ std::string getDemangledName(const char *mangledName) {
 //}
 }// namespace
 
-void sibir::CodeObjectManager::registerFatBinary(const void *data) {
+void luthier::CodeObjectManager::registerFatBinary(const void *data) {
     assert(data != nullptr);
     auto fbWrapper = reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
     assert(fbWrapper->magic == __hipFatMAGIC2 && fbWrapper->version == 1);
     auto fatBinary = fbWrapper->binary;
     if (!fatBinaries_.contains(fatBinary)) {
         amd_comgr_data_t fbData;
-        SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_FATBIN, &fbData));
-        SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(fbData, 4096, reinterpret_cast<const char *>(fatBinary)));
+        LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_FATBIN, &fbData));
+        LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(fbData, 4096, reinterpret_cast<const char *>(fatBinary)));
         fatBinaries_.insert({fatBinary, fbData});
     }
 }
 
-void sibir::CodeObjectManager::registerFunction(const void *fbWrapper,
+void luthier::CodeObjectManager::registerFunction(const void *fbWrapper,
                                               const char *funcName, const void *hostFunction, const char *deviceName) {
     auto fatBinary = reinterpret_cast<const __CudaFatBinaryWrapper *>(fbWrapper)->binary;
     if (!fatBinaries_.contains(fatBinary))
@@ -93,24 +93,24 @@ void sibir::CodeObjectManager::registerFunction(const void *fbWrapper,
         functions_.insert({demangledName, {std::string(funcName), hostFunction, std::string(deviceName), fatBinary}});
 }
 
-std::string sibir::CodeObjectManager::getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent) {
-    std::string funcNameKey = "__sibir_wrap__" + std::string(functionName);
+std::string luthier::CodeObjectManager::getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent) {
+    std::string funcNameKey = "__luthier_wrap__" + std::string(functionName);
 
     auto fb = functions_[funcNameKey].parentFatBinary;
     auto fbData = fatBinaries_[fb];
 
-    auto agentIsa = sibir::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
+    auto agentIsa = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
 
     std::vector<amd_comgr_code_object_info_t> isaInfo{{agentIsa.c_str(), 0, 0}};
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_lookup_code_object(fbData, isaInfo.data(), isaInfo.size()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_lookup_code_object(fbData, isaInfo.data(), isaInfo.size()));
 
     // Strip off the kernel launch portion of the code object
     return {reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size};
 //    return stripOffKernelLaunch({reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size}, functionName);
 //    return {reinterpret_cast<const char*>(fb) + isaInfo[0].offset, isaInfo[0].size};
 }
-void sibir::CodeObjectManager::registerKD(sibir_address_t originalCode, sibir_address_t instrumentedCode) {
+void luthier::CodeObjectManager::registerKD(luthier_address_t originalCode, luthier_address_t instrumentedCode) {
     if (!instrumentedKernels_.contains(originalCode))
         instrumentedKernels_.insert({originalCode, instrumentedCode});
 }

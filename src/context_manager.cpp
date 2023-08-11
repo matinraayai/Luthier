@@ -14,20 +14,20 @@ amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMet
     std::string value;
 
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(keyMetaDataNode, &size, nullptr));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(keyMetaDataNode, &size, nullptr));
     key.resize(size);
     fmt::println("Size of key: {}", size);
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(keyMetaDataNode, &size, key.data()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(keyMetaDataNode, &size, key.data()));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_kind(valueMetaDataNode, &kind));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_kind(valueMetaDataNode, &kind));
 
     switch (kind) {
         case AMD_COMGR_METADATA_KIND_STRING: {
             fmt::println("Kind: Str");
             fmt::println("Size of value: {}", size);
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaDataNode, &size, nullptr));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaDataNode, &size, nullptr));
             value.resize(size);
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaDataNode, &size, value.data()));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaDataNode, &size, value.data()));
             if (!metaDataMap->contains(key)) {
                 metaDataMap->insert({key, value});
             }
@@ -38,20 +38,20 @@ amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMet
         }
         case AMD_COMGR_METADATA_KIND_LIST: {
             fmt::println("Kind: List");
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_list_size(valueMetaDataNode, &size));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_list_size(valueMetaDataNode, &size));
             metaDataMap->insert({key, std::vector<std::string>(size)});
             for (size_t i = 0; i < size; i++) {
-                SIBIR_AMD_COMGR_CHECK(amd_comgr_index_list_metadata(valueMetaDataNode, i, &sonMetaData));
-                SIBIR_AMD_COMGR_CHECK(iterateComgrMetaDataCallback(keyMetaDataNode, sonMetaData, data));
-                SIBIR_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(sonMetaData));
+                LUTHIER_AMD_COMGR_CHECK(amd_comgr_index_list_metadata(valueMetaDataNode, i, &sonMetaData));
+                LUTHIER_AMD_COMGR_CHECK(iterateComgrMetaDataCallback(keyMetaDataNode, sonMetaData, data));
+                LUTHIER_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(sonMetaData));
             }
             break;
         }
         case AMD_COMGR_METADATA_KIND_MAP: {
             fmt::println("Kind: Map");
             std::unordered_map<std::string, std::any> childMap;
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_map_size(valueMetaDataNode, &size));
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(valueMetaDataNode, iterateComgrMetaDataCallback, &childMap));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_map_size(valueMetaDataNode, &size));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(valueMetaDataNode, iterateComgrMetaDataCallback, &childMap));
             metaDataMap->insert({key, childMap});
             break;
         }
@@ -62,7 +62,7 @@ amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMet
 };
 
 
-hsa_status_t sibir::ContextManager::initGpuAgentsMap() {
+hsa_status_t luthier::ContextManager::initGpuAgentsMap() {
     auto& coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
 
     auto returnGpuAgentsCallback = [](hsa_agent_t agent, void* data) {
@@ -84,33 +84,33 @@ hsa_status_t sibir::ContextManager::initGpuAgentsMap() {
     return coreTable.hsa_iterate_agents_fn(returnGpuAgentsCallback, &agentsMetaDataMap_);
 }
 
-std::string sibir::ContextManager::getDemangledName(const char *mangledName) {
+std::string luthier::ContextManager::getDemangledName(const char *mangledName) {
     amd_comgr_data_t mangledNameData;
     amd_comgr_data_t demangledNameData;
     std::string out;
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
 
     size_t size = strlen(mangledName);
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_demangle_symbol_name(mangledNameData, &demangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_demangle_symbol_name(mangledNameData, &demangledNameData));
 
     size_t demangledNameSize = 0;
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, nullptr));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, nullptr));
 
     out.resize(demangledNameSize);
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, out.data()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, out.data()));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_release_data(mangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(mangledNameData));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_release_data(demangledNameData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(demangledNameData));
 
     return out;
 }
 
-sibir::AgentMetaData::AgentMetaData(hsa_agent_t agent) : agent_(agent) {
+luthier::AgentMetaData::AgentMetaData(hsa_agent_t agent) : agent_(agent) {
         const auto& coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
         // Get the Isa name of the agent
         std::vector<std::string> supportedAgentIsaNames;
@@ -118,21 +118,21 @@ sibir::AgentMetaData::AgentMetaData(hsa_agent_t agent) : agent_(agent) {
             auto out = reinterpret_cast<std::vector<std::string>*>(data);
             auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
             uint32_t isaNameSize;
-            SIBIR_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaNameSize));
+            LUTHIER_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaNameSize));
             std::string isaName;
             isaName.resize(isaNameSize);
-            SIBIR_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME, isaName.data()));
+            LUTHIER_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME, isaName.data()));
             out->push_back(isaName);
             return HSA_STATUS_SUCCESS;
         };
 
-        SIBIR_HSA_CHECK(coreApi.hsa_agent_iterate_isas_fn(agent, getIsaNameCallback, &supportedAgentIsaNames));
+        LUTHIER_HSA_CHECK(coreApi.hsa_agent_iterate_isas_fn(agent, getIsaNameCallback, &supportedAgentIsaNames));
 
         // For now assert that there's only one supported ISA for the agent
         assert(supportedAgentIsaNames.size() == 1);
 
         hsaMetaDataMap_.insert({HSA_AGENT_INFO_ISA, supportedAgentIsaNames});
         isaName_ = supportedAgentIsaNames[0];
-        SIBIR_AMD_COMGR_CHECK(amd_comgr_get_isa_metadata(isaName_.c_str(), &metaDataRootNode_));
+        LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_isa_metadata(isaName_.c_str(), &metaDataRootNode_));
 };
 

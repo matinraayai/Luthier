@@ -16,12 +16,12 @@
         std::string key{#metaName};\
         if (!amdComgrMetaDataMap_.contains(key)) {             \
             amd_comgr_metadata_node_t valueMetaData;           \
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_metadata_lookup(metaDataRootNode_, key.c_str(), &valueMetaData)); \
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_metadata_lookup(metaDataRootNode_, key.c_str(), &valueMetaData)); \
             std::string value;                                 \
             size_t size;                                       \
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaData, &size, nullptr));      \
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaData, &size, nullptr));      \
             value.resize(size);                                \
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaData, &size, value.data())); \
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(valueMetaData, &size, value.data())); \
             amdComgrMetaDataMap_.insert({key, typeConvertor(value.c_str())});                                     \
         }                                                      \
         return std::any_cast<metaType>(amdComgrMetaDataMap_.at(key));                                 \
@@ -30,15 +30,15 @@
 #define AGENT_HSA_META_ACCESSOR(metaName, metaReturnType, hsaInfoType) \
     metaReturnType getAgent##metaName##fromHsa() { \
         if (!hsaMetaDataMap_.contains((hsa_agent_info_t) hsaInfoType)) {                  \
-            const auto &coreApi = sibir::HsaInterceptor::Instance().getSavedHsaTables().core; \
+            const auto &coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core; \
             metaReturnType out;                                        \
-            SIBIR_HSA_CHECK(coreApi.hsa_agent_get_info_fn(agent_, (hsa_agent_info_t) hsaInfoType, &out)); \
+            LUTHIER_HSA_CHECK(coreApi.hsa_agent_get_info_fn(agent_, (hsa_agent_info_t) hsaInfoType, &out)); \
             hsaMetaDataMap_.insert({(hsa_agent_info_t) hsaInfoType, out});\
         }                                                              \
         return std::any_cast<metaReturnType>(hsaMetaDataMap_.at((hsa_agent_info_t) hsaInfoType));         \
     }
 
-namespace sibir {
+namespace luthier {
 
 class AgentMetaData {
  private:
@@ -81,7 +81,7 @@ class AgentMetaData {
     AGENT_COMGR_META_ACCESSOR(Vendor, std::string, std::string)
     AGENT_COMGR_META_ACCESSOR(Version, std::string, std::string)
 };
-//typedef struct sibir_hsa_agent_info_entry_s {
+//typedef struct luthier_hsa_agent_info_entry_s {
 //    // metadata information obtained from AMD Comgr library
 //    struct  {
 //        bool sramecc;
@@ -104,7 +104,7 @@ class AgentMetaData {
 //    struct  {
 //        std::string isaName;
 //    } hsa;
-//} sibir_hsa_agent_info_entry_t;
+//} luthier_hsa_agent_info_entry_t;
 #undef AGENT_COMGR_META_ACCESSOR
 #undef AGENT_HSA_META_ACCESSOR
 
@@ -112,11 +112,11 @@ class ContextManager {
  private:
     // Use the agent handle for hashing
     // The order in which the agents are put in the map is important, hence this should be an ordered map
-    typedef std::map<decltype(hsa_agent_t::handle), std::shared_ptr<sibir::AgentMetaData>> agent_meta_map_t;
+    typedef std::map<decltype(hsa_agent_t::handle), std::shared_ptr<luthier::AgentMetaData>> agent_meta_map_t;
     agent_meta_map_t agentsMetaDataMap_{};
 
     ContextManager() {
-        SIBIR_HSA_CHECK(initGpuAgentsMap());
+        LUTHIER_HSA_CHECK(initGpuAgentsMap());
     }
     ~ContextManager() {
         agentsMetaDataMap_.clear();

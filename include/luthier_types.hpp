@@ -1,5 +1,5 @@
-#ifndef SIBIR_TYPES_HPP
-#define SIBIR_TYPES_HPP
+#ifndef LUTHIER_TYPES_HPP
+#define LUTHIER_TYPES_HPP
 
 #include "hip_arg_types.h"
 #include "hip_private_api.h"
@@ -10,16 +10,16 @@
 #include <roctracer/hsa_prof_str.h>
 #include <hsa/amd_hsa_kernel_code.h>
 
-typedef uint64_t sibir_address_t;
+typedef uint64_t luthier_address_t;
 
-enum sibir_api_phase_t {
-    SIBIR_API_PHASE_ENTER,
-    SIBIR_API_PHASE_EXIT
+enum luthier_api_phase_t {
+    LUTHIER_API_PHASE_ENTER,
+    LUTHIER_API_PHASE_EXIT
 };
 
-enum sibir_ipoint_t {
-    SIBIR_IPOINT_BEFORE,
-    SIBIR_IPOINT_AFTER
+enum luthier_ipoint_t {
+    LUTHIER_IPOINT_BEFORE,
+    LUTHIER_IPOINT_AFTER
 };
 
 //struct kernel_descriptor_t {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.2)
-project(sibir_init_example)
+project(luthier_init_example)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -10,11 +10,11 @@ find_package(hip)
 
 
 
-list(APPEND CMAKE_MODULE_PATH ../../src/sibir)
+list(APPEND CMAKE_MODULE_PATH ../../src/luthier)
 # Create the library
-add_library(sibir_init_example SHARED sibir_init_example.cpp)
+add_library(luthier_init_example SHARED luthier_init_example.cpp)
 
-set_property(TARGET sibir_init_example PROPERTY COMPILE_FLAGS "-fPIC")
+set_property(TARGET luthier_init_example PROPERTY COMPILE_FLAGS "-fPIC")
 
 
-target_link_libraries(sibir_init_example PUBLIC sibir hip::host hip::device)
+target_link_libraries(luthier_init_example PUBLIC luthier hip::host hip::device)

@@ -28,7 +28,7 @@ import argparse
 
 
 def parse_and_validate_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser("HIP API interception generation script for Sibir; Originally used by AMD in "
+    parser = argparse.ArgumentParser("HIP API interception generation script for Luthier; Originally used by AMD in "
                                      "HIP and roctracer projects.")
     parser.add_argument("--hipamd-src-dir", type=str,
                         help='where hipamd src directory is located')
@@ -37,7 +37,7 @@ def parse_and_validate_args() -> argparse.Namespace:
     parser.add_argument("--hip-prof-str", type=str,
                         help='path to hip_prof_str.h')
     parser.add_argument("--output", type=str, default="./hip_intercept.cpp",
-                        help="where to save the generated interception function for Sibir")
+                        help="where to save the generated interception function for Luthier")
     args = parser.parse_args()
 
     assert os.path.isdir(args.hipamd_src_dir), f"input file {args.hipamd_src_dir} not found"
@@ -245,7 +245,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                 if i != len(args) - 1:
                     f.write(', ')
         f.write(') {\n')
-        f.write('\tauto& hipInterceptor = sibir::HipInterceptor::Instance();\n')
+        f.write('\tauto& hipInterceptor = luthier::HipInterceptor::Instance();\n')
         f.write('\tauto& hipCallback = hipInterceptor.getCallback();\n')
         if f"HIP_API_ID_{name}" not in hip_api_id_enums:
             f.write(f'\tauto api_id = HIP_PRIVATE_API_ID_{name};\n')
@@ -263,7 +263,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                     f.write(', ')
             f.write("};\n")
         callback_args = "static_cast<void*>(&hip_func_args)" if are_args_non_empty else "nullptr"
-        f.write(f"\thipCallback({callback_args}, SIBIR_API_PHASE_ENTER, api_id);\n")
+        f.write(f"\thipCallback({callback_args}, LUTHIER_API_PHASE_ENTER, api_id);\n")
         f.write(f"\tstatic auto hip_func = hipInterceptor.GetHipFunction<{output_type}(*)(")
         if are_args_non_empty:
             for i, arg in enumerate(args):
@@ -286,7 +286,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                     f.write(', ')
         f.write(");\n")
         f.write("\t// Exit Callback\n")
-        f.write(f"\thipCallback({callback_args}, SIBIR_API_PHASE_EXIT, api_id);\n")
+        f.write(f"\thipCallback({callback_args}, LUTHIER_API_PHASE_EXIT, api_id);\n")
         if are_args_non_empty:
             f.write("\t// Copy the modified arguments back to the original arguments (if non-const)\n")
             for i, arg in enumerate(args):

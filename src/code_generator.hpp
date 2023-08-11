@@ -1,20 +1,20 @@
-#ifndef CODE_GENERATOR_H
-#define CODE_GENERATOR_H
+#ifndef CODE_GENERATOR_HPP
+#define CODE_GENERATOR_HPP
 #include "instr.hpp"
-#include "sibir_types.hpp"
+#include "luthier_types.hpp"
 
-namespace sibir {
+namespace luthier {
 class CodeGenerator {
  public:
     CodeGenerator(const CodeGenerator &) = delete;
     CodeGenerator &operator=(const CodeGenerator &) = delete;
 
-    static inline CodeGenerator &Instance() {
+    static inline CodeGenerator &instance() {
         static CodeGenerator instance;
         return instance;
     }
 
-    static void instrument(Instr& instr, const std::string&instrumentationFunction, sibir_ipoint_t point);
+    static void instrument(Instr& instr, const std::string&instrumentationFunction, luthier_ipoint_t point);
 
  private:
     typedef struct {
@@ -26,6 +26,8 @@ class CodeGenerator {
 
     CodeGenerator() {}
     ~CodeGenerator() {}
+
+
 
 };
 }

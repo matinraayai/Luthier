@@ -16,30 +16,30 @@
 
 #endif
 
-#define SIBIR_ROCM_LIB_ERROR_MSG "{:s}, line {:d}: Sibir {:s} call to function {:s} failed with "\
+#define LUTHIER_ROCM_LIB_ERROR_MSG "{:s}, line {:d}: Luthier {:s} call to function {:s} failed with "\
                                  "Error Code {:d}.\n\nError code reason according to the library: {:s}."
 
-#define SIBIR_ROCM_LIB_API_CHECK(LIB_NAME, LIB_ERROR_TYPE, LIB_ERROR_SUCCESS_TYPE) \
+#define LUTHIER_ROCM_LIB_API_CHECK(LIB_NAME, LIB_ERROR_TYPE, LIB_ERROR_SUCCESS_TYPE) \
         inline void check_##LIB_NAME##_error(LIB_ERROR_TYPE err, const char* callName, const char* fileName, const int line) { \
             if (err != LIB_ERROR_SUCCESS_TYPE) { \
                 const char* errMsg = "Unknown Error"; \
                 LIB_NAME##_status_string(err, &errMsg);                            \
-                std::string what = fmt::format(fmt::runtime(SIBIR_ROCM_LIB_ERROR_MSG),\
+                std::string what = fmt::format(fmt::runtime(LUTHIER_ROCM_LIB_ERROR_MSG),\
                                            fileName, line, #LIB_NAME, callName, static_cast<int>(err), errMsg);                                                             \
                 throw std::runtime_error(what);\
             }\
         }
 
-SIBIR_ROCM_LIB_API_CHECK(hsa, hsa_status_t, HSA_STATUS_SUCCESS)
+LUTHIER_ROCM_LIB_API_CHECK(hsa, hsa_status_t, HSA_STATUS_SUCCESS)
 
-SIBIR_ROCM_LIB_API_CHECK(amd_comgr, amd_comgr_status_t, AMD_COMGR_STATUS_SUCCESS)
+LUTHIER_ROCM_LIB_API_CHECK(amd_comgr, amd_comgr_status_t, AMD_COMGR_STATUS_SUCCESS)
 
-#undef SIBIR_ROCM_LIB_API_CHECK
+#undef LUTHIER_ROCM_LIB_API_CHECK
 
 inline void check_hip_error(hipError_t err, const char* callName, const char* fileName, const int line) {
     if (err != hipSuccess) {
         const char* errMsg = hipGetErrorString(err);
-        std::string what = fmt::format(fmt::runtime(SIBIR_ROCM_LIB_ERROR_MSG),
+        std::string what = fmt::format(fmt::runtime(LUTHIER_ROCM_LIB_ERROR_MSG),
                                        fileName, line, "hip", callName, static_cast<int>(err), errMsg);
         throw std::runtime_error(what);
     }
@@ -112,20 +112,20 @@ inline void check_hsakmt_error(HSAKMT_STATUS err, const char* callName, const ch
             break;
     }
     if (err != HSAKMT_STATUS_SUCCESS) {
-        std::string what = fmt::format(fmt::runtime(SIBIR_ROCM_LIB_ERROR_MSG),
+        std::string what = fmt::format(fmt::runtime(LUTHIER_ROCM_LIB_ERROR_MSG),
                                        fileName, line, "hsakmt", callName, static_cast<int>(err), errMsg);
         throw std::runtime_error(what);
     }
 }
 
-#undef SIBIR_ROCM_LIB_ERROR_MSG
+#undef LUTHIER_ROCM_LIB_ERROR_MSG
 
-#define SIBIR_AMD_COMGR_CHECK(call) check_amd_comgr_error(call, #call, __FILE_NAME__, __LINE__)
+#define LUTHIER_AMD_COMGR_CHECK(call) check_amd_comgr_error(call, #call, __FILE_NAME__, __LINE__)
 
-#define SIBIR_HSA_CHECK(call) check_hsa_error(call, #call, __FILE_NAME__, __LINE__)
+#define LUTHIER_HSA_CHECK(call) check_hsa_error(call, #call, __FILE_NAME__, __LINE__)
 
-#define SIBIR_HIP_CHECK(call) check_hip_error(call, #call, __FILE_NAME__, __LINE__)
+#define LUTHIER_HIP_CHECK(call) check_hip_error(call, #call, __FILE_NAME__, __LINE__)
 
-#define SIBIR_HSAKMT_CHECK(call) check_hsakmt_error(call, #call, __FILE_NAME__, __LINE__)
+#define LUTHIER_HSAKMT_CHECK(call) check_hsakmt_error(call, #call, __FILE_NAME__, __LINE__)
 
 #endif

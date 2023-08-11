@@ -323,7 +323,7 @@ class ApiDescrParser:
 
         self.cpp_content += '#include <hsa/hsa_api_trace.h>\n'
         self.cpp_content += '#include "hsa_intercept.hpp"\n'
-        self.cpp_content += '#include "sibir_types.h"\n'
+        self.cpp_content += '#include "luthier_types.h"\n'
 
         self.cpp_content += self.add_section('API callback functions', '', self.gen_callbacks)
         self.cpp_content += self.add_section('API intercepting code', '', self.gen_intercept)
@@ -366,12 +366,12 @@ class ApiDescrParser:
                 item = struct['astr'][var]
                 content += f'      args.{call}.{var} = {var};\n'
 
-            content += f'      sibir::HsaInterceptor::Instance().GetCallback()(&args, SIBIR_API_PHASE_ENTER, '\
+            content += f'      luthier::HsaInterceptor::instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, '\
                        f'HSA_API_ID_{call});\n'
 
             if ret_type != 'void':
                 content += f'      {ret_type} out = '
-            content += f'sibir::HsaInterceptor::Instance().getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
+            content += f'luthier::HsaInterceptor::instance().getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
             for i, var in enumerate(struct['alst']):
                 content += f'args.{call}.{var}'
                 if i != len(struct['alst']) - 1:
@@ -379,7 +379,7 @@ class ApiDescrParser:
             content += ');\n'
             content += '\n'
 
-            content += f'      sibir::HsaInterceptor::Instance().GetCallback()(&args, SIBIR_API_PHASE_EXIT, ' \
+            content += f'      luthier::HsaInterceptor::instance().GetCallback()(&args, LUTHIER_API_PHASE_EXIT, ' \
                        f'HSA_API_ID_{call});\n'
             for var in struct['alst']:
                 content += f'      {var} = args.{call}.{var};\n'
@@ -400,7 +400,7 @@ class ApiDescrParser:
             # else:
             content += '};\n'
         if n == 0 or (call == '-' and name != '-'):
-            content += 'void sibir::HsaInterceptor::install' + name + 'Wrappers(' + name + 'Table* table) {\n'
+            content += 'void luthier::HsaInterceptor::install' + name + 'Wrappers(' + name + 'Table* table) {\n'
             content += f'  savedTables_.{API_TABLE_NAMES[name]}' + ' = *table;\n'
         if call != '-':
             if call != 'hsa_shut_down':

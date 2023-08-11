@@ -26,7 +26,7 @@
 
 #include <thread>
 
-namespace sibir::elf {
+namespace luthier::elf {
 using namespace ELFIO;
 
 #if !defined(ELFMAG)
@@ -95,7 +95,7 @@ bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo) {
     auto num = getSymbolNum(io);
 
     if (index >= num) {
-        SibirErrorFmt(" failed: wrong index {} >= symbols num {}", index, num);
+        LuthierErrorFmt(" failed: wrong index {} >= symbols num {}", index, num);
         return false;
     }
 
@@ -111,12 +111,12 @@ bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo) {
     bool ret = symbol_reader.get_symbol(++index, sym_name, value, size, bind, type,
                                         sec_index, other);
     if (!ret) {
-        SibirErrorFmt("failed to get_symbol({})", index);
+        LuthierErrorFmt("failed to get_symbol({})", index);
         return false;
     }
     section *sec = io.sections[sec_index];
     if (sec == nullptr) {
-        SibirErrorFmt("failed: null section at {}", sec_index);
+        LuthierErrorFmt("failed: null section at {}", sec_index);
         return false;
     }
 
@@ -147,44 +147,44 @@ amd_comgr_status_t printEntryCo(amd_comgr_metadata_node_t key,
     int *indent = (int *)data;
 
     // assume key to be string in this test function
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_kind(key, &kind));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_kind(key, &kind));
     if (kind != AMD_COMGR_METADATA_KIND_STRING)
         return AMD_COMGR_STATUS_ERROR;
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(key, &size, NULL));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(key, &size, NULL));
     keybuf = (char *)calloc(size, sizeof(char));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(key, &size, keybuf));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(key, &size, keybuf));
 
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_kind(value, &kind));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_kind(value, &kind));
     for (int i = 0; i < *indent; i++)
         printf("  ");
 
     switch (kind) {
         case AMD_COMGR_METADATA_KIND_STRING: {
             printf("%s  :  ", size ? keybuf : "");
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(value, &size, NULL));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(value, &size, NULL));
             valbuf = (char *)calloc(size, sizeof(char));
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(value, &size, valbuf));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_string(value, &size, valbuf));
             printf(" %s\n", valbuf);
             free(valbuf);
             break;
         }
         case AMD_COMGR_METADATA_KIND_LIST: {
             *indent += 1;
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_list_size(value, &size));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_list_size(value, &size));
             printf("LIST %s %zd entries = \n", keybuf, size);
             for (size_t i = 0; i < size; i++) {
-                SIBIR_AMD_COMGR_CHECK(amd_comgr_index_list_metadata(value, i, &son));
-                SIBIR_AMD_COMGR_CHECK(printEntryCo(key, son, data));
-                SIBIR_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(son));
+                LUTHIER_AMD_COMGR_CHECK(amd_comgr_index_list_metadata(value, i, &son));
+                LUTHIER_AMD_COMGR_CHECK(printEntryCo(key, son, data));
+                LUTHIER_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(son));
             }
             *indent = *indent > 0 ? *indent - 1 : 0;
             break;
         }
         case AMD_COMGR_METADATA_KIND_MAP: {
             *indent += 1;
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_get_metadata_map_size(value, &size));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_metadata_map_size(value, &size));
             printf("MAP %zd entries = \n", size);
-            SIBIR_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(value, printEntryCo, data));
+            LUTHIER_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(value, printEntryCo, data));
             *indent = *indent > 0 ? *indent - 1 : 0;
             break;
         }
@@ -198,17 +198,17 @@ amd_comgr_status_t printEntryCo(amd_comgr_metadata_node_t key,
 };
 
 
-void iterateCodeObjectMetaData(sibir_address_t codeObjectData, size_t codeObjectSize) {
+void iterateCodeObjectMetaData(luthier_address_t codeObjectData, size_t codeObjectSize) {
     // COMGR symbol iteration things
     amd_comgr_data_t coData;
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &coData));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(coData, codeObjectSize, reinterpret_cast<const char*>(codeObjectData)));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &coData));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(coData, codeObjectSize, reinterpret_cast<const char*>(codeObjectData)));
     amd_comgr_metadata_node_t meta;
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_get_data_metadata(coData, &meta));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data_name(coData, "my-data.s"));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data_metadata(coData, &meta));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(coData, "my-data.s"));
     int Indent = 1;
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(meta, printEntryCo, (void *)&Indent));
-    SIBIR_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(meta));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(meta, printEntryCo, (void *)&Indent));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(meta));
 }
 
-}// namespace sibir::elf
+}// namespace luthier::elf

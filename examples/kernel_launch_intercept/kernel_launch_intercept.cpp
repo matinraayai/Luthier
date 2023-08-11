@@ -1,4 +1,4 @@
-#include "sibir.h"
+#include "luthier.h"
 #include <fstream>
 #include <functional>
 #include <hip/hip_runtime_api.h>
@@ -179,10 +179,10 @@ void instrumentKernel(const amd_dbgapi_global_address_t entrypoint) {
                 std::cout << std::hex << std::setfill('0') << std::setw(2) << uint16_t(el) << " ";
             auto overwrite_address = reinterpret_cast<uint8_t*>(curr_address);
 //            auto out =
-//            reinterpret_cast<hipError_t (*)(void* dst, int value, size_t sizeBytes)>(sibir_get_hip_function("hipMemset"))(overwrite_address + 1,
+//            reinterpret_cast<hipError_t (*)(void* dst, int value, size_t sizeBytes)>(luthier_get_hip_function("hipMemset"))(overwrite_address + 1,
 //                                                                                                                          0xc5, 1);
 //            assert(out == HIP_SUCCESS);
-//            reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
+//            reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
 //                overwrite_address + 1,
 //                )
             overwrite_address[1] = 0x85;
@@ -207,7 +207,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
     if (it != queue_map.end()) {
         hsa_queue_t *queue = it->second;
         mutex.lock();
-        const uint64_t begin = sibir_get_hsa_table()->core_->hsa_queue_load_read_index_relaxed_fn(queue);
+        const uint64_t begin = luthier_get_hsa_table()->core_->hsa_queue_load_read_index_relaxed_fn(queue);
         const uint64_t end = value + 1;
         mutex.unlock();
         uint32_t mask = queue->size - 1;
@@ -237,9 +237,9 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                 auto kernelEntryPoint =
                     reinterpret_cast<amd_dbgapi_global_address_t>(dispatchPacket->kernel_object) + kernelDescriptor->kernel_code_entry_byte_offset;
                 instrumentKernel(kernelEntryPoint);
-//                auto instructions = sibir_disassemble_kd(kernelEntryPoint);
+//                auto instructions = luthier_disassemble_kd(kernelEntryPoint);
 //                hipPointerAttribute_t counterAttributes;
-//                reinterpret_cast<hipError_t (*)(hipPointerAttribute_t *, const void *)>(sibir_get_hip_function("hipPointerGetAttributes"))(
+//                reinterpret_cast<hipError_t (*)(hipPointerAttribute_t *, const void *)>(luthier_get_hip_function("hipPointerGetAttributes"))(
 //                    &counterAttributes, counter);
 ////                std::cout << "Counter address on host: " << counterAttributes.hostPointer << std::endl;
 ////                std::cout << "Counter address on device:" << (reinterpret_cast<uint64_t>(counterAttributes.devicePointer) & 0xFFFFFFFF) << std::endl;
@@ -281,7 +281,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
 //
 //                    for (const auto &i: counterCode)
 //                        for (const auto &b: i) {
-//                            reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
+//                            reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
 //                                overwriteAddress, (void *) &b, 1, hipMemcpyHostToDevice);
 ////                            *overwriteAddress = b;
 //                            overwriteAddress++;
@@ -360,28 +360,28 @@ void iterateLoadedCodeObjects(hsa_executable_t executable) {
 }
 
 
-void sibir_at_init() {
+void luthier_at_init() {
     std::cout << "Kernel Launch Intercept Tool is launching." << std::endl;
-//    reinterpret_cast<hipError_t(*)(void**,size_t)>(sibir_get_hip_function("hipMalloc"))(reinterpret_cast<void **>(&counter), sizeof(uint64_t));
+//    reinterpret_cast<hipError_t(*)(void**,size_t)>(luthier_get_hip_function("hipMalloc"))(reinterpret_cast<void **>(&counter), sizeof(uint64_t));
 //    dummy<<<1, 1>>>();
 }
 
 
-void sibir_at_term() {
+void luthier_at_term() {
     memset(&amdTable, 0, sizeof(hsa_ven_amd_loader_1_01_pfn_t));
     int counterHost;
-    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
+    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
         &counterHost, &counter, 4, hipMemcpyDeviceToHost
     );
     std::cout << "Counter Value: " << counterHost << std::endl;
-//    reinterpret_cast<hipError_t(*)(void*)>(sibir_get_hip_function("hipFree"))(counter);
+//    reinterpret_cast<hipError_t(*)(void*)>(luthier_get_hip_function("hipFree"))(counter);
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 
 
-void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_id_t api_id) {
+void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
     if (!amdTableInitialized) {
-        CHECK_HSA_CALL(sibir_get_hsa_table()->core_->hsa_system_get_major_extension_table_fn(
+        CHECK_HSA_CALL(luthier_get_hsa_table()->core_->hsa_system_get_major_extension_table_fn(
             HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_01_pfn_t),
             &amdTable));
         amdTableInitialized = true;
@@ -428,18 +428,18 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
     }
 }
 
-void sibir_at_hip_event(void* args, sibir_api_phase_t phase, int hip_api_id) {
+void luthier_at_hip_event(void* args, luthier_api_phase_t phase, int hip_api_id) {
     if (!initializeGlobalVar) {
-        reinterpret_cast<hipError_t(*)(void**,size_t)>(sibir_get_hip_function("hipMalloc"))(
+        reinterpret_cast<hipError_t(*)(void**,size_t)>(luthier_get_hip_function("hipMalloc"))(
             reinterpret_cast<void **>(&counter), sizeof(uint64_t));
-//        reinterpret_cast<hipError_t (*)(void* dst, int value, size_t sizeBytes)>(sibir_get_hip_function("hipMemset"))(counter, 0, 4);
+//        reinterpret_cast<hipError_t (*)(void* dst, int value, size_t sizeBytes)>(luthier_get_hip_function("hipMemset"))(counter, 0, 4);
         initializeGlobalVar = true;
     }
     std::string name;
 //    if (!has_launched) {
 //        auto kernelLaunchFunc =
 //        reinterpret_cast<hipError_t(*)(const void*,
-//                                          dim3, dim3, void**, size_t, hipStream_t)>(sibir_get_hip_function("hipLaunchKernel"));
+//                                          dim3, dim3, void**, size_t, hipStream_t)>(luthier_get_hip_function("hipLaunchKernel"));
 //        kernelLaunchFunc(reinterpret_cast<const void*>(dummy), 1, 1, nullptr, 0, nullptr);
 ////        dummy<<<1, 1>>>();
 //        has_launched = true;

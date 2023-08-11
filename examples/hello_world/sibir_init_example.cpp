@@ -1,4 +1,4 @@
-//#include "src/sibir/sibir.h"
+//#include "src/luthier/luthier.h"
 //#include <fstream>
 //#include <functional>
 //#include <hip/hip_runtime_api.h>
@@ -33,12 +33,12 @@
 //static std::map<decltype(hsa_signal_t::handle), hsa_queue_t*> queue_map;
 //std::mutex mutex;
 //
-//void sibir_at_init() {
+//void luthier_at_init() {
 //    std::cout << "Hi from Sibir!" << std::endl;
 //}
 //
 //
-//void sibir_at_term() {
+//void luthier_at_term() {
 //    std::cout << "Bye from Sibir!" << std::endl;
 //}
 //
@@ -140,7 +140,7 @@
 //    return err;
 //}
 //
-//void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_id_t api_id) {
+//void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
 //    if (phase == SIBIR_API_PHASE_EXIT) {
 //        if (api_id == HSA_API_ID_hsa_executable_freeze) {
 //            auto executable = args->hsa_executable_freeze.executable;
@@ -184,7 +184,7 @@
 ////                        dispatch_packet->workgroup_size_x = 0;
 //                        const kernel_descriptor_t *kernel_code = nullptr;
 //                        //                        hsa_ven_amd_loader_1_01_pfn_t* amd_table;
-//                        //                        sibir_get_hsa_table()->core_->hsa_system_get_extension_table_fn(
+//                        //                        luthier_get_hsa_table()->core_->hsa_system_get_extension_table_fn(
 //                        //                            HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_01_pfn_t),
 //                        //                            amd_table);
 //                        //                        amd_table->hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void*>(dispatch_packet->kernel_object),
@@ -222,7 +222,7 @@
 //                        std::cout << dispatch_packet->grid_size_x << ", " << dispatch_packet->grid_size_y << ", " << dispatch_packet->grid_size_z << std::endl;
 //                        const kernel_descriptor_t* kernel_code = nullptr;
 //                        hsa_ven_amd_loader_1_01_pfn_t amd_table{};
-//                        CHECK_HSA_CALL(sibir_get_hsa_table()->core_->hsa_system_get_major_extension_table_fn(
+//                        CHECK_HSA_CALL(luthier_get_hsa_table()->core_->hsa_system_get_major_extension_table_fn(
 //                            HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_01_pfn_t),
 //                            &amd_table));
 //                        //                        hipPointerAttribute_t packet_attrs;
@@ -278,7 +278,7 @@
 //                        std::cout << dispatch_packet->grid_size_x << ", " << dispatch_packet->grid_size_y << ", " << dispatch_packet->grid_size_z << std::endl;
 //                        const kernel_descriptor_t* kernel_code = nullptr;
 //                        hsa_ven_amd_loader_1_01_pfn_t amd_table{};
-//                        CHECK_HSA_CALL(sibir_get_hsa_table()->core_->hsa_system_get_major_extension_table_fn(
+//                        CHECK_HSA_CALL(luthier_get_hsa_table()->core_->hsa_system_get_major_extension_table_fn(
 //                            HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_01_pfn_t),
 //                            &amd_table));
 ////                        hipPointerAttribute_t packet_attrs;
@@ -324,7 +324,7 @@
 ////                        dispatch_packet->workgroup_size_x = 1;
 ////                        const kernel_descriptor_t* kernel_code = nullptr;
 ////                        hsa_ven_amd_loader_1_01_pfn_t* amd_table;
-////                        sibir_get_hsa_table()->core_->hsa_system_get_extension_table_fn(
+////                        luthier_get_hsa_table()->core_->hsa_system_get_extension_table_fn(
 ////                            HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_01_pfn_t),
 ////                            amd_table);
 ////                        amd_table->hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void*>(dispatch_packet->kernel_object),
@@ -340,7 +340,7 @@
 //    }
 //}
 //
-//void sibir_at_hip_event(hip_api_args_t* args, sibir_api_phase_t phase, hip_api_id_t api_id) {
+//void luthier_at_hip_event(hip_api_args_t* args, luthier_api_phase_t phase, hip_api_id_t api_id) {
 //    fprintf(stdout, "<call to (%s)\t on %s> ",
 //            hip_api_name(api_id),
 //            phase == SIBIR_API_PHASE_ENTER ? "entry" : "exit"

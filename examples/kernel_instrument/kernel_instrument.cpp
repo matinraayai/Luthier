@@ -1,4 +1,4 @@
-#include <sibir.h>
+#include <luthier.h>
 #include <fstream>
 #include <functional>
 #include <hip/hip_runtime_api.h>
@@ -31,10 +31,10 @@ __device__ __noinline__ void instrumentation_kernel(int* counter) {
 //    return 1;
     *counter = *counter + 1;
 //    atomicAdd(counter, 1);
-//    printf("Hello from Sibir!\n");
+//    printf("Hello from LUTHIER!\n");
 }
 
-SIBIR_EXPORT_FUNC(instrumentation_kernel)
+LUTHIER_EXPORT_FUNC(instrumentation_kernel)
 
 
 
@@ -42,7 +42,7 @@ hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
                                      std::vector<hsa_executable_symbol_t>& symbols) {
     std::vector<hsa_agent_t> agents;
 
-    auto& coreTable = sibir_get_hsa_table()->core_;
+    auto& coreTable = luthier_get_hsa_table()->core_;
 
     auto queryAgentsCallback = [](hsa_agent_t agent, void* data) {
         auto agents = reinterpret_cast<std::vector<hsa_agent_t>*>(data);
@@ -58,37 +58,37 @@ hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
         return stat;
     };
 
-    SIBIR_HSA_CHECK(coreTable->hsa_iterate_agents_fn(queryAgentsCallback, &agents));
+    LUTHIER_HSA_CHECK(coreTable->hsa_iterate_agents_fn(queryAgentsCallback, &agents));
 
 
     hsa_status_t out = HSA_STATUS_ERROR;
     for (auto agent : agents) {
         auto iterCallback = [](hsa_executable_t executable, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data) {
             auto symbolVec = reinterpret_cast<std::vector<hsa_executable_symbol_t>*>(data);
-            auto& coreTable = sibir_get_hsa_table()->core_;
+            auto& coreTable = luthier_get_hsa_table()->core_;
             hsa_symbol_kind_t symbolKind;
-            SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
+            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
             std::cout << "Symbol kind: " << symbolKind << std::endl;
 
             uint32_t nameSize;
-            SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
+            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
             std::cout << "Symbol name size: " << nameSize << std::endl;
             std::string name;
             name.resize(nameSize);
-            SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
+            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
             std::cout << "Symbol Name: " << name << std::endl;
 
             if (symbolKind == HSA_SYMBOL_KIND_VARIABLE) {
-                sibir_address_t variableAddress;
-                SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &variableAddress));
+                luthier_address_t variableAddress;
+                LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &variableAddress));
                 std::cout << "Variable location: " << std::hex << variableAddress << std::dec << std::endl;
             }
             else {
-                sibir_address_t kernelObject;
-                SIBIR_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
+                luthier_address_t kernelObject;
+                LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
                 std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
-                std::vector<sibir::Instr> instList = sibir_disassemble_kernel_object(kernelObject);
+                std::vector<luthier::Instr> instList = luthier_disassemble_kernel_object(kernelObject);
                 std::cout << "Disassembly of the KO: " << std::endl;
                 for (const auto& i : instList) {
                     std::cout << i.getInstr() << std::endl;
@@ -139,70 +139,70 @@ static unsigned extractAqlBits(unsigned v, unsigned pos, unsigned width) {
     return (v >> pos) & ((1 << width) - 1);
 };
 
-void getLoadedCodeObject(hsa_executable_t executable) {
-    auto amdTable = sibir_get_hsa_ven_amd_loader();
-    // Get a list of loaded code objects inside the executable
-    std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
-    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
-        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
-        out->push_back(lco);
-        return HSA_STATUS_SUCCESS;
-    };
-    amdTable->hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
-
-    // Dump all the code objects into files
-    for (int i = 0; i < loadedCodeObjects.size(); i++) {
-        // Query the base address of the loaded code object on host
-        uint64_t lcoBaseAddrHost;
-        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
-                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
-                                                                 &lcoBaseAddrHost);
-        // Query the size of the loaded code object on host
-        uint64_t lcoSizeHost;
-        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
-                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
-                                                                 &lcoSizeHost);
-
-
-
-        uint64_t lcoBaseAddrDevice;
-        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
-                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
-                                                                 &lcoBaseAddrDevice);
-        // Query the size of the loaded code object
-        uint64_t lcoSizeDevice;
-        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
-                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
-                                                                 &lcoSizeDevice);
-
-
-        std::cout << "Base address of the executable on the host: " << reinterpret_cast<void*>(lcoBaseAddrHost) << std::endl;
-        std::cout << "Size of the executable on the host: " << lcoSizeHost << std::endl;
-        std::cout << "Base address of the executable on the device: " << reinterpret_cast<void*>(lcoBaseAddrDevice) << std::endl;
-        std::cout << "Size of the executable on the device: " << lcoSizeDevice << std::endl;
-
-
-        std::string coContentHost(reinterpret_cast<char*>(lcoBaseAddrHost), lcoSizeHost);
-        std::string coContentDevice(reinterpret_cast<char*>(lcoBaseAddrDevice), lcoSizeDevice);
-        auto h = std::fstream("./" + std::to_string(executable.handle) + "_host_" + std::to_string(i) + ".elf",
-                              std::ios_base::out);
-        h << coContentHost << std::endl;
-        h.close();
-        auto d = std::fstream("./" + std::to_string(executable.handle) + "_device_" + std::to_string(i) + ".elf",
-                              std::ios_base::out);
-        d << coContentDevice << std::endl;
-        d.close();
-        std::cout << "=============================================================================================" << std::endl;
-    }
-}
+//void getLoadedCodeObject(hsa_executable_t executable) {
+//    auto amdTable = luthier_get_hsa_ven_amd_loader();
+//    // Get a list of loaded code objects inside the executable
+//    std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
+//    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
+//        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
+//        out->push_back(lco);
+//        return HSA_STATUS_SUCCESS;
+//    };
+//    amdTable->hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+//
+//    // Dump all the code objects into files
+//    for (int i = 0; i < loadedCodeObjects.size(); i++) {
+//        // Query the base address of the loaded code object on host
+//        uint64_t lcoBaseAddrHost;
+//        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+//                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
+//                                                                 &lcoBaseAddrHost);
+//        // Query the size of the loaded code object on host
+//        uint64_t lcoSizeHost;
+//        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+//                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
+//                                                                 &lcoSizeHost);
+//
+//
+//
+//        uint64_t lcoBaseAddrDevice;
+//        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+//                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
+//                                                                 &lcoBaseAddrDevice);
+//        // Query the size of the loaded code object
+//        uint64_t lcoSizeDevice;
+//        amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[i],
+//                                                                 HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
+//                                                                 &lcoSizeDevice);
+//
+//
+//        std::cout << "Base address of the executable on the host: " << reinterpret_cast<void*>(lcoBaseAddrHost) << std::endl;
+//        std::cout << "Size of the executable on the host: " << lcoSizeHost << std::endl;
+//        std::cout << "Base address of the executable on the device: " << reinterpret_cast<void*>(lcoBaseAddrDevice) << std::endl;
+//        std::cout << "Size of the executable on the device: " << lcoSizeDevice << std::endl;
+//
+//
+//        std::string coContentHost(reinterpret_cast<char*>(lcoBaseAddrHost), lcoSizeHost);
+//        std::string coContentDevice(reinterpret_cast<char*>(lcoBaseAddrDevice), lcoSizeDevice);
+//        auto h = std::fstream("./" + std::to_string(executable.handle) + "_host_" + std::to_string(i) + ".elf",
+//                              std::ios_base::out);
+//        h << coContentHost << std::endl;
+//        h.close();
+//        auto d = std::fstream("./" + std::to_string(executable.handle) + "_device_" + std::to_string(i) + ".elf",
+//                              std::ios_base::out);
+//        d << coContentDevice << std::endl;
+//        d.close();
+//        std::cout << "=============================================================================================" << std::endl;
+//    }
+//}
 
 void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value) {
-    auto amdTable = sibir_get_hsa_ven_amd_loader();
+    auto amdTable = luthier_get_hsa_ven_amd_loader();
     std:: cout << "was found in map? " << queue_map.contains(signal.handle) << std::endl;
     if (queue_map.contains(signal.handle)) {
         hsa_queue_t *queue = queue_map[signal.handle];
         mutex.lock();
-        const uint64_t begin = sibir_get_hsa_table()->core_->hsa_queue_load_read_index_relaxed_fn(queue);
+        const uint64_t begin = luthier_get_hsa_table()->core_->hsa_queue_load_read_index_relaxed_fn(queue);
         const uint64_t end = value + 1;
         mutex.unlock();
         uint32_t mask = queue->size - 1;
@@ -215,10 +215,10 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                 auto *dispatchPacket = reinterpret_cast<hsa_kernel_dispatch_packet_t *>(packet);
                 std::cout << "Dispatch packet's kernel arg address: " << dispatchPacket->kernarg_address << std::endl;
                 if (!instrumented) {
-                std::vector<sibir::Instr> instrVec = sibir_disassemble_kernel_object(dispatchPacket->kernel_object);
-                    sibir_insert_call(&instrVec[0], "instrumentation_kernel", SIBIR_IPOINT_AFTER);
+                std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
+                    luthier_insert_call(&instrVec[0], "instrumentation_kernel", LUTHIER_IPOINT_AFTER);
                     instrumented = true;
-                    sibir_enable_instrumented(dispatchPacket, reinterpret_cast<sibir_address_t>(dispatchPacket->kernel_object),
+                    luthier_enable_instrumented(dispatchPacket, reinterpret_cast<luthier_address_t>(dispatchPacket->kernel_object),
                                               true);
                 }
 
@@ -233,7 +233,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
 //                    std::cout << "Here!" << std::endl;
 //                    reinterpret_cast<std::vector<hsa_isa_t>*>(data)->push_back(isa);
 //                    size_t nameLen;
-//                    auto& coreApi = sibir_get_hsa_table()->core_;
+//                    auto& coreApi = luthier_get_hsa_table()->core_;
 //                    CHECK_HSA_CALL(coreApi->hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &nameLen));
 //                    auto isaName = new char[nameLen];
 //                    CHECK_HSA_CALL(coreApi->hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaName));
@@ -265,14 +265,14 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
 
 
 
-void sibir_at_init() {
+void luthier_at_init() {
     std::cout << "Kernel Instrument Tool is launching." << std::endl;
 }
 
 
-void sibir_at_term() {
+void luthier_at_term() {
     int counterHost;
-    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(sibir_get_hip_function("hipMemcpy"))(
+    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
         &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost
     );
     std::cout << "Counter Value: " << counterHost << std::endl;
@@ -280,8 +280,8 @@ void sibir_at_term() {
 }
 
 
-void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_id_t api_id) {
-    if (phase == SIBIR_API_PHASE_EXIT) {
+void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
+    if (phase == LUTHIER_API_PHASE_EXIT) {
         // Save the doorbell signal handles in the map whenever a queue is created.
         if (api_id == HSA_API_ID_hsa_queue_create) {
             auto queue = args->hsa_queue_create.queue;
@@ -293,10 +293,10 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
             fprintf(stdout, "HSA Executable Freeze Callback\n");
             // Get the state of the executable (frozen or not frozen)
             hsa_executable_state_t e_state;
-            SIBIR_HSA_CHECK(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE, &e_state));
+            LUTHIER_HSA_CHECK(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE, &e_state));
 
             fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
-            auto& coreTable = sibir_get_hsa_table()->core_;
+            auto& coreTable = luthier_get_hsa_table()->core_;
             fprintf(stdout, "Executable handle: %lX\n", executable.handle);
 //
 //            std::vector<hsa_agent_t> agentList;
@@ -315,7 +315,7 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
 //            for (size_t i = 0; i < agentList.size(); i++) {
 //                std::cout << "iterating over agent " << i << " with handle: " << agentList[i] << std::endl;
 //                std::vector<hsa_executable_symbol_t> symbols;
-//                SIBIR_HSA_CHECK(
+//                LUTHIER_HSA_CHECK(
 //                    coreTable->hsa_executable_iterate_agent_symbols_fn(executable, agentList[i],
 //                                                                       symbolCallbackFunction, &symbols)
 //                );
@@ -343,21 +343,21 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
 //            amd_comgr_action_info_t DataAction;
 //            amd_comgr_status_t Status;
 //
-//            SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data_set(&DataSetIn));
+//            LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&DataSetIn));
 //
 //            // File 1
-//            SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &DataIn1));
+//            LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &DataIn1));
 //
-//            SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data(DataIn1, Size1, Buf1));
-//
-//
-//            SIBIR_AMD_COMGR_CHECK(amd_comgr_set_data_name(DataIn1, "source1.s"));
+//            LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(DataIn1, Size1, Buf1));
 //
 //
-//            SIBIR_AMD_COMGR_CHECK(amd_comgr_data_set_add(DataSetIn, DataIn1));
+//            LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(DataIn1, "source1.s"));
 //
 //
-//            SIBIR_AMD_COMGR_CHECK(amd_comgr_create_data_set(&DataSetOut));
+//            LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(DataSetIn, DataIn1));
+//
+//
+//            LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&DataSetOut));
 //
 //            {
 //                printf("Test action assemble\n");
@@ -376,7 +376,7 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
 
             //
 //            getAllExecutableSymbols(executable, symbols);
-//            auto coreTable = sibir_get_hsa_table()->core_;
+//            auto coreTable = luthier_get_hsa_table()->core_;
 //            for (auto s: symbols) {
 //                hsa_symbol_kind_t kind;
 //                coreTable->hsa_executable_symbol_get_info_fn(s, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &kind);
@@ -399,7 +399,7 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
             fprintf(stdout, "");
         }
     }
-    else if (phase == SIBIR_API_PHASE_ENTER) {
+    else if (phase == LUTHIER_API_PHASE_ENTER) {
         if (api_id == HSA_API_ID_hsa_signal_store_screlease) {
             fprintf(stdout, "<call to (%s)\t on %s> ",
                     "hsa_signal_store_screlease",
@@ -418,10 +418,10 @@ void sibir_at_hsa_event(hsa_api_args_t* args, sibir_api_phase_t phase, hsa_api_i
     }
 }
 
-void sibir_at_hip_event(void* args, sibir_api_phase_t phase, int hip_api_id) {
+void luthier_at_hip_event(void* args, luthier_api_phase_t phase, int hip_api_id) {
     fprintf(stdout, "<call to (%s)\t on %s> ",
             hip_api_name(hip_api_id),
-            phase == SIBIR_API_PHASE_ENTER ? "entry" : "exit"
+            phase == LUTHIER_API_PHASE_ENTER ? "entry" : "exit"
             );
     if (hip_api_id == HIP_API_ID_hipLaunchKernel) {
         auto kern_args = reinterpret_cast<hip_hipLaunchKernel_api_args_t*>(args);

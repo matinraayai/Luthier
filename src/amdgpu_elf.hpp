@@ -22,15 +22,15 @@
 #define AMDGPU_ELF
 
 #include <map>
-#include "sibir_types.hpp"
+#include "luthier_types.hpp"
 #include <elfio/elfio.hpp>
 using ELFIO::Elf64_Ehdr;
 using ELFIO::Elf64_Shdr;
 
-namespace sibir::elf {
+namespace luthier::elf {
 
 typedef struct {
-    sibir_address_t data;
+    luthier_address_t data;
     size_t size;
 } mem_backed_code_object_t;
 
@@ -95,6 +95,6 @@ bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo);
 
 
 
-}// namespace sibir::elf
+}// namespace luthier::elf
 
 #endif

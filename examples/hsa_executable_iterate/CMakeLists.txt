@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.2)
-project(sibir_init_example)
+project(luthier_init_example)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -10,11 +10,11 @@ find_package(hip)
 
 
 
-list(APPEND CMAKE_MODULE_PATH ../../src/sibir)
+list(APPEND CMAKE_MODULE_PATH ../../src/luthier)
 # Create the library
 add_library(hsa_executable_iterate SHARED hsa_executable_iterate.cpp)
 
 set_property(TARGET hsa_executable_iterate PROPERTY COMPILE_FLAGS "-fPIC")
 
 
-target_link_libraries(hsa_executable_iterate PUBLIC sibir hip::host hip::device)
+target_link_libraries(hsa_executable_iterate PUBLIC luthier hip::host hip::device)

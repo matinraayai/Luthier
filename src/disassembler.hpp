@@ -1,14 +1,14 @@
 #ifndef DISASSEMBLER_HPP
 #define DISASSEMBLER_HPP
 #include "instr.hpp"
-#include "sibir_types.hpp"
+#include "luthier_types.hpp"
 #include <amd_comgr/amd_comgr.h>
 #include <functional>
 #include <hsa/hsa.h>
 #include <unordered_map>
 #include <vector>
 
-namespace sibir {
+namespace luthier {
 
 class Disassembler {
  public:
@@ -24,13 +24,13 @@ class Disassembler {
 
     std::vector<Instr> disassemble(hsa_executable_symbol_t symbol);
 
-    std::vector<Instr> disassemble(sibir_address_t kernelObject);
+    std::vector<Instr> disassemble(luthier_address_t kernelObject);
 
-    std::vector<Instr> disassemble(sibir_address_t kernelObject, size_t size);
+    std::vector<Instr> disassemble(luthier_address_t kernelObject, size_t size);
 
-    std::vector<Instr> disassemble(hsa_agent_t agent, sibir_address_t address);
+    std::vector<Instr> disassemble(hsa_agent_t agent, luthier_address_t address);
 
-    std::vector<Instr> disassemble(hsa_agent_t agent, sibir_address_t address, size_t size);
+    std::vector<Instr> disassemble(hsa_agent_t agent, luthier_address_t address, size_t size);
 
  private:
     Disassembler() = default;
@@ -50,6 +50,6 @@ class Disassembler {
 
 };
 
-}// namespace sibir
+}// namespace luthier
 
 #endif
