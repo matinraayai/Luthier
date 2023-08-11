@@ -17,7 +17,8 @@ namespace luthier {
 class HipInterceptor {
  private:
     void *handle_{nullptr};
-    std::function<void(void *, const luthier_api_phase_t, const int)> callback_;
+    std::function<void(void *, const luthier_api_phase_t, const int)> userCallback_{};
+    std::function<void(void *, const luthier_api_phase_t, const int)> internalCallback_{};
 
     HipInterceptor() {
         // Iterate through the process' loaded shared objects and try to dlopen the first entry with a
@@ -47,12 +48,19 @@ class HipInterceptor {
 
     [[nodiscard]] bool IsEnabled() const { return handle_ != nullptr; }
 
-    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int)> &getCallback() const {
-        return callback_;
+    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int)> &getUserCallback() const {
+        return userCallback_;
     }
 
-    void SetCallback(const std::function<void(void *, const luthier_api_phase_t, const int)> &callback) {
-        callback_ = callback;
+    void SetUserCallback(const std::function<void(void *, const luthier_api_phase_t, const int)> &callback) {
+        userCallback_ = callback;
+    }
+
+    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int)> &getInternalCallback() const {
+        return internalCallback_;
+    }
+    void SetInternalCallback(const std::function<void(void *, const luthier_api_phase_t, const int)> &internal_callback) {
+        internalCallback_ = internal_callback;
     }
 
     void *GetHipFunction(const char *symbol) const {

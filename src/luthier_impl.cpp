@@ -27,11 +27,8 @@ void luthier::impl::hipStartupCallback(void *cb_data, luthier_api_phase_t phase,
             // If the function doesn't have __luthier_wrap__ in its name then it belongs to the instrumented application or
             // HIP can manage on its own since no device function is present to strip from it
             // Give control to the user-defined callback
-            if (std::string(lastRFuncArgs.deviceFunction).find("__luthier_wrap__") == std::string::npos)
-                HipInterceptor::Instance().SetCallback(luthier::impl::hipApiCallback);
-            else {
+            if (std::string(lastRFuncArgs.deviceFunction).find("__luthier_wrap__") != std::string::npos)
                 hijackRegistration = true;
-            }
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterManagedVar) {
             lastRManagedVarArgs = *reinterpret_cast<hip___hipRegisterManagedVar_api_args_t *>(cb_data);
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterSurface) {
@@ -61,7 +58,8 @@ __attribute__((constructor)) void luthier::impl::init() {
     LUTHIER_LOG_FUNCTION_CALL_START
     assert(HipInterceptor::Instance().IsEnabled());
     luthier_at_init();
-    HipInterceptor::Instance().SetCallback(luthier::impl::hipStartupCallback);
+    HipInterceptor::Instance().SetInternalCallback(luthier::impl::hipStartupCallback);
+    HipInterceptor::Instance().SetUserCallback(luthier::impl::hipApiCallback);
     HsaInterceptor::Instance().SetCallback(luthier::impl::hsaApiCallback);
     LUTHIER_LOG_FUNCTION_CALL_END
 }
