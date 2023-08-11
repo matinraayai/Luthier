@@ -21,12 +21,23 @@ void luthier::impl::hipStartupCallback(void *cb_data, luthier_api_phase_t phase,
 
     if (phase == LUTHIER_API_PHASE_EXIT) {
         if (api_id == HIP_PRIVATE_API_ID___hipRegisterFatBinary) {
+            if (hijackRegistration) {
+                auto &coManager = CodeObjectManager::Instance();
+                coManager.registerFatBinary(lastRFatBinArgs.data);
+                coManager.registerFunction(lastRFatBinArgs.data,
+                                           lastRFuncArgs.deviceFunction,
+                                           lastRFuncArgs.hostFunction,
+                                           lastRFuncArgs.deviceName);
+                auto unregisterFunc = HipInterceptor::Instance().GetHipFunction<void(*)
+                                                                                    (hip::FatBinaryInfo**)>("__hipUnregisterFatBinary");
+                unregisterFunc(lastRFuncArgs.modules);
+                hijackRegistration = false;
+            }
             lastRFatBinArgs = *reinterpret_cast<hip___hipRegisterFatBinary_api_args_t *>(cb_data);
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterFunction) {
             lastRFuncArgs = *reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cb_data);
             // If the function doesn't have __luthier_wrap__ in its name then it belongs to the instrumented application or
             // HIP can manage on its own since no device function is present to strip from it
-            // Give control to the user-defined callback
             if (std::string(lastRFuncArgs.deviceFunction).find("__luthier_wrap__") != std::string::npos)
                 hijackRegistration = true;
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterManagedVar) {
@@ -37,18 +48,6 @@ void luthier::impl::hipStartupCallback(void *cb_data, luthier_api_phase_t phase,
             lastRTextureArgs = *reinterpret_cast<hip___hipRegisterTexture_api_args_t *>(cb_data);
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterVar) {
             lastRVarArgs = *reinterpret_cast<hip___hipRegisterVar_api_args_t *>(cb_data);
-            if (hijackRegistration) {
-                auto &coManager = CodeObjectManager::Instance();
-                coManager.registerFatBinary(lastRFatBinArgs.data);
-                coManager.registerFunction(lastRFatBinArgs.data,
-                                           lastRFuncArgs.deviceFunction,
-                                           lastRFuncArgs.hostFunction,
-                                           lastRFuncArgs.deviceName);
-                auto unregisterFunc = HipInterceptor::Instance().GetHipFunction<void(*)
-                    (hip::FatBinaryInfo**)>("__hipUnregisterFatBinary");
-                unregisterFunc(lastRFuncArgs.modules);
-                hijackRegistration = false;
-            }
         }
     }
     LUTHIER_LOG_FUNCTION_CALL_END
