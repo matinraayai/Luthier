@@ -7,7 +7,6 @@
 #include <functional>
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
-#include <link.h>
 #include <fmt/core.h>
 
 namespace fs = std::experimental::filesystem;
@@ -18,25 +17,9 @@ class HipInterceptor {
  private:
     void *handle_{nullptr};
     std::function<void(void *, const luthier_api_phase_t, const int)> userCallback_{};
-    std::function<void(void *, const luthier_api_phase_t, const int)> internalCallback_{};
+    std::function<void(void *, const luthier_api_phase_t, const int, bool*)> internalCallback_{};
 
-    HipInterceptor() {
-        // Iterate through the process' loaded shared objects and try to dlopen the first entry with a
-        // file name starting with the given 'pattern'. This allows the loader to acquire a handle
-        // to the target library iff it is already loaded. The handle is used to query symbols
-        // exported by that library.
-
-        auto callback = [this](dl_phdr_info *info) {
-            if (handle_ == nullptr && fs::path(info->dlpi_name).filename().string().rfind("libamdhip64.so", 0) == 0)
-                handle_ = ::dlopen(info->dlpi_name, RTLD_LAZY);
-        };
-        dl_iterate_phdr(
-            [](dl_phdr_info *info, size_t size, void *data) {
-                (*reinterpret_cast<decltype(callback) *>(data))(info);
-                return 0;
-            },
-            &callback);
-    }
+    HipInterceptor();
 
     ~HipInterceptor() {
         if (handle_ != nullptr) ::dlclose(handle_);
@@ -56,10 +39,10 @@ class HipInterceptor {
         userCallback_ = callback;
     }
 
-    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int)> &getInternalCallback() const {
+    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int, bool*)> &getInternalCallback() const {
         return internalCallback_;
     }
-    void SetInternalCallback(const std::function<void(void *, const luthier_api_phase_t, const int)> &internal_callback) {
+    void SetInternalCallback(const std::function<void(void *, const luthier_api_phase_t, const int, bool*)> &internal_callback) {
         internalCallback_ = internal_callback;
     }
 

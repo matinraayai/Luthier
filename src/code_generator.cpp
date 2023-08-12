@@ -525,12 +525,12 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineInstrOffset - 4 : trampolineInstrOffset + 4;
         constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
         constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
-        uint32_t upperTrampolineInstrOffset = trampolineInstrOffset & upperMaskUint64_t >> 16;
+        uint32_t upperTrampolineInstrOffset = (trampolineInstrOffset & upperMaskUint64_t) >> 32;
         uint32_t lowerTrampolineInstrOffset = trampolineInstrOffset & lowerMaskUint64_t;
 
-        fmt::println("Upper diff: {:#x}\n", upperTrampolineInstrOffset);
-        fmt::println("Lower diff: {:#x}\n", lowerTrampolineInstrOffset);
-        fmt::println("Actual diff: {:#x}\n", trampolineInstrOffset);
+        fmt::println("Upper diff: {:#b}\n", upperTrampolineInstrOffset);
+        fmt::println("Lower diff: {:#b}\n", lowerTrampolineInstrOffset);
+        fmt::println("Actual diff: {:#b}\n", trampolineInstrOffset);
         std::string targetToTrampolineOffsetInstr = trampolineStartAddr > instDeviceAddress ? fmt::format("s_add_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset) :
                                                                                             fmt::format("s_sub_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset);
         std::string longJumpForTarget = assemble(std::vector<std::string>{"s_getpc_b64 s[6:7]",

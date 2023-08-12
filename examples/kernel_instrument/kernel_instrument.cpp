@@ -21,7 +21,7 @@ static std::unordered_map<decltype(hsa_kernel_dispatch_packet_t::kernel_object),
 
 static bool instrumented{false};
 
-__device__ int globalCounter = 0;
+__managed__ int globalCounter = 0;
 
 __device__ __noinline__ void instrumentation_kernel(int* counter) {
 //    int i = 0;
@@ -298,6 +298,7 @@ void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_a
             fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
             auto& coreTable = luthier_get_hsa_table()->core_;
             fprintf(stdout, "Executable handle: %lX\n", executable.handle);
+
 //
 //            std::vector<hsa_agent_t> agentList;
 ////            getGpuAgents(agentList);

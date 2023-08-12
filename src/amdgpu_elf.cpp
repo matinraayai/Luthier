@@ -22,12 +22,32 @@
 #include "error.h"
 #include "log.hpp"
 
+#include <llvm/Support/BinaryStreamReader.h>
+
 #include <string>
 
 #include <thread>
 
 namespace luthier::elf {
 using namespace ELFIO;
+
+static size_t constexpr strLiteralLength(char const *str) {
+    size_t I = 0;
+    while (str[I]) {
+        ++I;
+    }
+    return I;
+}
+
+static constexpr const char *OFFLOAD_KIND_HIP = "hip";
+static constexpr const char *OFFLOAD_KIND_HIPV4 = "hipv4";
+static constexpr const char *OFFLOAD_KIND_HCC = "hcc";
+static constexpr const char *CLANG_OFFLOAD_BUNDLER_MAGIC =
+    "__CLANG_OFFLOAD_BUNDLE__";
+static constexpr size_t OffloadBundleMagicLen =
+    strLiteralLength(CLANG_OFFLOAD_BUNDLER_MAGIC);
+
+
 
 #if !defined(ELFMAG)
 #define ELFMAG "\177ELF"
@@ -209,6 +229,80 @@ void iterateCodeObjectMetaData(luthier_address_t codeObjectData, size_t codeObje
     int Indent = 1;
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_iterate_map_metadata(meta, printEntryCo, (void *)&Indent));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(meta));
+}
+
+struct __CudaFatBinaryWrapper {
+    unsigned int magic;
+    unsigned int version;
+    void *binary;
+    void *dummy1;
+};
+
+constexpr unsigned __hipFatMAGIC2 = 0x48495046;// "HIPF"
+
+amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<elfio>& fatBinaryElfs) {
+    auto fbWrapper = reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
+    assert(fbWrapper->magic == __hipFatMAGIC2 && fbWrapper->version == 1);
+    auto fatBinary = fbWrapper->binary;
+
+    llvm::BinaryStreamReader Reader(llvm::StringRef(reinterpret_cast<const char*>(fatBinary), 4096),
+                                    llvm::support::little);
+    llvm::StringRef Magic;
+    auto EC = Reader.readFixedString(Magic, OffloadBundleMagicLen);
+    if (EC) {
+        return AMD_COMGR_STATUS_ERROR;
+    }
+    if (Magic != CLANG_OFFLOAD_BUNDLER_MAGIC) {
+        return AMD_COMGR_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    uint64_t NumOfCodeObjects;
+    EC = Reader.readInteger(NumOfCodeObjects);
+    if (EC) {
+        return AMD_COMGR_STATUS_ERROR;
+    }
+    // For each code object, extract BundleEntryID information, and check that
+    // against each ISA in the QueryList
+    fatBinaryElfs.resize(NumOfCodeObjects);
+    for (uint64_t I = 0; I < NumOfCodeObjects; I++) {
+        uint64_t BundleEntryCodeObjectSize;
+        uint64_t BundleEntryCodeObjectOffset;
+        uint64_t BundleEntryIDSize;
+        llvm::StringRef BundleEntryID;
+
+        if (auto EC = Reader.readInteger(BundleEntryCodeObjectOffset)) {
+            return AMD_COMGR_STATUS_ERROR;
+        }
+
+        if (auto Status = Reader.readInteger(BundleEntryCodeObjectSize)) {
+            return AMD_COMGR_STATUS_ERROR;
+        }
+
+        if (auto Status = Reader.readInteger(BundleEntryIDSize)) {
+            return AMD_COMGR_STATUS_ERROR;
+        }
+
+        if (Reader.readFixedString(BundleEntryID, BundleEntryIDSize)) {
+            return AMD_COMGR_STATUS_ERROR;
+        }
+
+        const auto OffloadAndTargetId = BundleEntryID.split('-');
+        fmt::println("Target: {}", OffloadAndTargetId.second.str());
+        if (OffloadAndTargetId.first != OFFLOAD_KIND_HIP &&
+            OffloadAndTargetId.first != OFFLOAD_KIND_HIPV4 &&
+            OffloadAndTargetId.first != OFFLOAD_KIND_HCC) {
+            continue;
+        }
+        std::stringstream ss{std::string(reinterpret_cast<const char*>(fatBinary) + BundleEntryCodeObjectOffset,
+                                         BundleEntryCodeObjectSize)};
+        if (!fatBinaryElfs.at(I).load(ss, true)) {
+            fmt::println("Size of the code object: {}", BundleEntryCodeObjectSize);
+            fmt::println("Failed to parse the ELF.");
+            return AMD_COMGR_STATUS_ERROR;
+        }
+
+    }
+
+    return AMD_COMGR_STATUS_SUCCESS;
 }
 
 }// namespace luthier::elf

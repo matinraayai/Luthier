@@ -21,11 +21,10 @@
 #ifndef AMDGPU_ELF
 #define AMDGPU_ELF
 
-#include <map>
 #include "luthier_types.hpp"
+#include <amd_comgr/amd_comgr.h>
 #include <elfio/elfio.hpp>
-using ELFIO::Elf64_Ehdr;
-using ELFIO::Elf64_Shdr;
+#include <map>
 
 namespace luthier::elf {
 
@@ -33,8 +32,6 @@ typedef struct {
     luthier_address_t data;
     size_t size;
 } mem_backed_code_object_t;
-
-using namespace ELFIO;
 
 typedef enum {
     LLVMIR = 0,
@@ -86,13 +83,13 @@ struct SymbolInfo {
                                                                       sec_size(sesize), sym_name(syname), address(syaddr), size(sysize), value(syvalue) {}
 };
 
-unsigned int getSymbolNum(const elfio &io);
+unsigned int getSymbolNum(const ELFIO::elfio &io);
 
 /* Return SymbolInfo of the index-th symbol in SYMTAB section */
-bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo);
+bool getSymbolInfo(const ELFIO::elfio &io, unsigned int index, SymbolInfo &symInfo);
 
 
-
+amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<ELFIO::elfio>& fatBinaryElfs);
 
 
 }// namespace luthier::elf
