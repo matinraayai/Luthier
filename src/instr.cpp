@@ -2,6 +2,77 @@
 #include "error.h"
 #include "hsa_intercept.hpp"
 
+// sibir::Operand ::Operand(std::string op_str, OperandType type, int code = -1, 
+//             float floatValue = -1, long int intValue = -1, uint32_t literalConstant = 0) {
+sibir::Operand::Operand(std::string op_str, OperandType type, int code, 
+        float floatValue, long int intValue, uint32_t literalConstant) {    
+    operand         = op_str;
+    operandType     = type;
+    operandCode     = code;
+    operandFloatVal = floatValue;
+    operandIntVal   = intValue;
+    operandConst    = literalConstant;
+}
+
+std::string sibir::Operand::getOperand() const { return operand; }
+sibir::OperandType sibir::Operand::getOperandType() const { return operandType; }
+int sibir::Operand::getOperandCode() const { return operandCode; }
+float sibir::Operand::getOperandFloatValue() const { return operandFloatVal; }
+long int sibir::Operand::getOperandIntValue() const { return operandIntVal; }
+uint32_t sibir::Operand::getOperandLiteralConstant() const { return operandConst; }
+
+// std::ostream& operator<<(std::ostream &os, const sibir::Operand &op) {
+//     os << op.getOperand();
+
+//     switch (op.getOperandType()) {
+//         case sibir::RegOperand:
+//         case sibir::SpecialRegOperand:
+//             os << " (Register Encoding: "
+//                << op.getOperandCode() << ")" << std::endl;
+//             break;
+//         case sibir::WaitCounter:
+//             os << " (Counter)" << std::endl;
+//             break;
+//         case sibir::ImmOperand:
+//             os << " (Immediate)" << std::endl;
+//             break;
+//         case sibir::LiteralConstant:
+//             os << " (Literal Constant)" << std::endl;
+//             break;
+//         case sibir::SpecialOperand:
+//             os << " (This one means I didn't know how to encode it)" << std::endl;
+//             break;
+//         default:
+//             os << " (Invalid Operand)" << std::endl;
+//     }
+//     return os;
+// }
+
+// I'm too lazy to change this from using the query functions to calling the class members
+void sibir::Operand::printOp() {
+    std::cout << getOperand();
+    switch (getOperandType()) {
+        case RegOperand:
+        case SpecialRegOperand:
+            std::cout << "\t(Register Encoding: " << getOperandCode() << ")" << std::endl;
+            break;
+        case WaitCounter:
+            std::cout << "\t(Counter)" << std::endl;
+            break;
+        case ImmOperand:
+            std::cout << "\t(Immediate)" << std::endl;
+            break;
+        case LiteralConstant:
+            std::cout << "\t(Literal Constant)" << std::endl;
+            break;
+        case SpecialOperand:
+            std::cout << "\t(This one means I didn't know how to encode it)" << std::endl;
+            break;
+        default:
+            std::cout << "\t(Invalid Operand)" << std::endl;
+    }
+}
+
 luthier_address_t luthier::Instr::getHostAddress() {
 //    if (kd_ != nullptr && hostAddress_ == luthier_address_t{}) {
 //        LUTHIER_HSA_CHECK(
@@ -73,38 +144,37 @@ void sibir::Instr::GetOperandsFromString() {
 // This is fine for now while I'm developing the instruction class because this isn't being passed
 // into anything like an assembler. However, I hope to eventually have correct values for everything
 // to prevent any problems down the road.
-sibir::operand sibir::Instr::EncodeOperand(std::string op) {
+// sibir::operand sibir::Instr::EncodeOperand(std::string op) {
+sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
     std::string opstr(op);
     int code;
 
     // Wait Counter Operands
+    // TO-DO: add export/mem-write-data count
     if (op.find("vmcnt")   != std::string::npos ||
-        op.find("lgkmcnt") != std::string::npos
-        // TO-DO: add export/mem-write-data count
-        ) {
-        code = -1;
+        op.find("lgkmcnt") != std::string::npos) {
+        // code = -1;
         op.erase(0, op.find("(") + 1);
         op.erase(op.find(")"), op.length());
 
-        return {opstr, WaitCounter, code, -1, stoi(op, 0, 10), 0};
-        // return {opstr, WaitCounter, code, -1, -1, 0};
+        // return {opstr, WaitCounter, code, -1, stoi(op, 0, 10), 0};
+        return sibir::Operand(opstr, WaitCounter, code, -1, stoi(op, 0, 10), 0);
     } 
 
     // Comp Register Operands
     if (!op.compare("vcc")) {
         code = 251;
         // return {opstr, SpecialRegOperand, code, -1, -1, 0};
-        return {opstr, RegOperand, code, -1, -1, 0};
+        return sibir::Operand(opstr, SpecialRegOperand, code, -1, -1, 0);
     } 
-    // else if (!op.compare("exec")) {
+    // else if (!op.compare("exec")) { // Need to test this one
     //     code = 252;
     //     return {op, SpecialRegOperand, code, -1, -1, 0};
-    //    return {op, RegOperand, code, -1, -1, 0};
     // }
     else if (!op.compare("scc")) {
         code = 253;
         // return {op, SpecialRegOperand, code, -1, -1, 0};
-        return {op, RegOperand, code, -1, -1, 0};
+        return sibir::Operand(opstr, SpecialRegOperand, code, -1, -1, 0);
     }
 
     // Register Operands (gpr)
@@ -117,7 +187,8 @@ sibir::operand sibir::Instr::EncodeOperand(std::string op) {
             op.erase(op.find(":"), op.length());
         }
         code = stoi(op, 0, 10);
-        return {opstr, RegOperand, code, -1, -1, 0};
+        // return {opstr, RegOperand, code, -1, -1, 0};
+        return sibir::Operand(opstr, RegOperand, code, -1, -1, 0);
     } else if (vgpr_label_at != std::string::npos) {
         op.erase(vgpr_label_at, 1);
         if (op.find("[") != std::string::npos) {
@@ -125,7 +196,8 @@ sibir::operand sibir::Instr::EncodeOperand(std::string op) {
             op.erase(op.find(":"), op.length());
         }
         code = stoi(op, 0, 10) + 256;
-        return {opstr, RegOperand, code, -1, -1, 0};
+        // return {opstr, RegOperand, code, -1, -1, 0};
+        return sibir::Operand(opstr, RegOperand, code, -1, -1, 0);
     }   
 
 
@@ -138,48 +210,99 @@ sibir::operand sibir::Instr::EncodeOperand(std::string op) {
     //     return {op, code, type, val};
     // }
     // return {opstr, InvalidOperandType, -1, -1, -1, 0};
-    if (!op.compare("off")) {
-        return {opstr, SpecialOperand, -1, -1, -1, 0};
+    
+    // This probably doesn't count as an inline constant. The ISA literally says NOTHING about this operand
+    // It also ONLY appears with Flat, Scratch, and Global instructions to tell you that the instruction is
+    // using an offset
+    if (!op.compare("off")) { 
+        // return {opstr, SpecialOperand, -1, -1, -1, 0};
+        return sibir::Operand(opstr, SpecialOperand, -1, -1, -1, 0);
     }
 
     // Assume all other operands are Immediates
     if (op.find("0x") != std::string::npos) {   // Imm in Hex 
         op.erase(0, 2);
         code = -1;
-        return {opstr, ImmOperand, code, -1, stoi(op, 0, 16), 0};
+        // return {opstr, ImmOperand, code, -1, stoi(op, 0, 16), 0};
+        return sibir::Operand(opstr, ImmOperand, code, -1, stoi(op, 0, 16), 0);
     } else {    // Imm in Decimal
         code = -1;
-        return {opstr, ImmOperand, code, -1, stoi(op, 0, 10), 0};
+        // return {opstr, ImmOperand, code, -1, stoi(op, 0, 10), 0};
+        return sibir::Operand(opstr, ImmOperand, code, -1, stoi(op, 0, 10), 0);
     }
 }
 
 int sibir::Instr::getNumOperands() { return operands.size(); }
 
-sibir::operand sibir::Instr::getOperand(int num) { return operands.at(num); }
+// int sibir::Instr::getNumRegsUsed() {
+//     // std::vector<sibir::operand> reg_ops = getRegOperands();
+//     std::vector<sibir::Operand> reg_ops = getRegOperands();
+//     return int(reg_ops.size());
+// }
 
-sibir :: OperandType 
-sibir::Instr::getOperandType(int num) { return operands.at(num).type; }
+// // sibir::operand 
+// sibir::Operand
+// sibir::Instr::getOperand(int op_num) { return operands.at(op_num); }
 
-std::vector<sibir::operand> sibir::Instr::getAllOperands() { return operands; }
+// sibir::OperandType 
+// sibir::Instr::getOperandType(int op_num) { return operands.at(op_num).type; }
 
-std::vector<sibir::operand> sibir::Instr::getImmOperands() {
-    std::vector<sibir::operand> imm_ops;
-    for (int i = 0; i < operands.size(); i++) {
-        if (operands.at(i).type == ImmOperand) {
-            imm_ops.push_back(operands.at(i));
-        }
-    }
-    return imm_ops;
-}
+// std::vector<sibir::operand> 
+std::vector<sibir::Operand> 
+sibir::Instr::getAllOperands() { return operands; }
 
-std::vector<sibir::operand> sibir::Instr::getRegOperands() {
-    std::vector<sibir::operand> reg_ops;
-    for (int i = 0; i < operands.size(); i++) {
-        if (operands.at(i).type == RegOperand) { // || 
-            // operands.at(i).type == SpecialRegOperand) {
-            reg_ops.push_back(operands.at(i));
-        }
-    }
-    return reg_ops;
-}
+// // std::vector<sibir::operand> sibir::Instr::getImmOperands() {
+// std::vector<sibir::Operand> sibir::Instr::getImmOperands() {
+//     // std::vector<sibir::operand> imm_ops;
+//     std::vector<sibir::Operand> imm_ops;
+//     for (int i = 0; i < operands.size(); i++) {
+//         if (operands.at(i).type == ImmOperand) {
+//             imm_ops.push_back(operands.at(i));
+//         }
+//     }
+//     return imm_ops;
+// }
 
+// // std::vector<sibir::operand> sibir::Instr::getRegOperands() {
+// std::vector<sibir::Operand> sibir::Instr::getRegOperands() {
+//     // std::vector<sibir::operand> reg_ops;
+//     std::vector<sibir::Operand> reg_ops;
+//     for (int i = 0; i < operands.size(); i++) {
+//         if (operands.at(i).type == RegOperand) { // || 
+//             // operands.at(i).type == SpecialRegOperand) {
+//             reg_ops.push_back(operands.at(i));
+//         }
+//     }
+//     return reg_ops;
+// }
+
+
+
+// // For these functions, not sure if we need a way to actually apply changes to mem
+// bool sibir::Instr::changeRegNum(int reg_op_num, int new_reg_code){
+//     sibir::operand op = operands.at(reg_op_num);
+    
+//     if (op.type != RegOperand || op.type != SpecialRegOperand){
+//         return false;
+//     }
+
+//     op.code = new_reg_code;
+
+//     // If we want to change the operand string:
+//     // if (new_reg_code < 102) {
+        
+//     // }
+//     operands.at(reg_op_num) = op;
+//     return true;
+// }
+
+// bool sibir::Instr::changeImmVal(int imm_op_num, int new_imm_val) {
+//     sibir::operand op = operands.at(reg_op_num);
+    
+//     if (op.type != ImmOperand){
+//         return false;
+//     }
+
+//     op.intValue = new_imm_val;
+//     return true;
+// }
