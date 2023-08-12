@@ -3,8 +3,9 @@
 #include "luthier_types.hpp"
 #include <hsa/hsa.h>
 
-#include <vector>
+// #include <iostream>
 #include <string>
+#include <vector>
 
 /////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
 ////class Instr {
@@ -187,21 +188,51 @@ namespace luthier {
 enum OperandType { 
     InvalidOperandType,
     RegOperand,
-    // SpecialRegOperand,
+    SpecialRegOperand,
     WaitCounter,
 	ImmOperand,
 	LiteralConstant,
     SpecialOperand
 };
 
-struct operand {
-    std::string op_str;
-    OperandType type;
-    // unsigned long val;
-    int code;
-    float floatValue;
-    long int intValue;
-    uint32_t literalConstant;
+// struct operand {
+// // To do: Mae these private and make getters 
+// // private:
+//     std::string op_str;
+//     OperandType type;
+//     // unsigned long val;
+//     int code;
+//     float floatValue;
+//     long int intValue;
+//     uint32_t literalConstant;
+// };
+class Operand   // Probably won't need to make an operand.hpp/cpp bc this class won't have many functions
+{
+public:
+    // Operand(std::string op_str, OperandType type, int code = -1, 
+    //         float floatValue = -1, long int intValue = -1, uint32_t literalConstant = 0);
+    Operand(std::string op_str, OperandType type, int code, 
+            float floatValue, long int intValue, uint32_t literalConstant);
+    
+    std::string getOperand() const;
+    OperandType getOperandType() const;
+    int getOperandCode() const;
+    float getOperandFloatValue() const;
+    long int getOperandIntValue() const;
+    uint32_t getOperandLiteralConstant() const;
+
+    // Couldn't get this to work. Sadness
+    // friend std::ostream& operator<<(std::ostream &os, const Operand &op);
+    // Overloading << operator would be great here, but apparently I'm just horrible at C++
+    void printOp();
+
+private:
+    std::string operand;
+    OperandType operandType;
+    int operandCode;
+    float operandFloatVal;
+    long int operandIntVal;
+    uint32_t operandConst;
 };
 
 /**
@@ -290,14 +321,20 @@ class Instr {
     [[nodiscard]] hsa_agent_t getAgent() const {return agent_;}
 
     int getNumOperands();
-    operand getOperand(int num);
-    OperandType getOperandType(int num);
+    // int getNumRegsUsed();
+    // operand getOperand(int op_num);
+    // OperandType getOperandType(int op_num);
 
-    std::vector<operand> getAllOperands();
-    std::vector<operand> getImmOperands();
-    std::vector<operand> getRegOperands();
+    std::vector<Operand> getAllOperands();
+    // std::vector<operand> getAllOperands();
+    // std::vector<operand> getImmOperands();
+    // std::vector<operand> getRegOperands();
 
-
+    /* MOVE THESE INTO THE OPERAND CLASS */
+    // Instructions that edit operands, reutrn TRUE/FALSE on success/fail
+    // reg code has to match what's in the ISA
+    // bool changeRegNum(int reg_op_num, int new_reg_code);
+    // bool changeImmVal(int imm_op_num, int new_imm_val);
 
  private:
     hsa_executable_t executable_{};//
@@ -308,9 +345,11 @@ class Instr {
     hsa_agent_t agent_;
     const hsa_executable_symbol_t executableSymbol_;
 
-    std::vector<operand> operands;
+    // std::vector<operand> operands;
+    std::vector<Operand> operands;
     void GetOperandsFromString();
-    operand EncodeOperand(std::string op);
+    // operand EncodeOperand(std::string op);
+    Operand EncodeOperand(std::string op);
 };
 
 }// namespace luthier
