@@ -14,42 +14,94 @@
 namespace luthier::impl {
 
 void resetHipRegistrationArgs(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFatBinArgs,
-                           std::optional<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
-                           std::optional<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
-                           std::optional<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
-                           std::optional<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
-                           std::optional<hip___hipRegisterVar_api_args_t>& rVarArgs) {
+                              std::vector<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
+                              std::vector<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
+                              std::vector<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
+                              std::vector<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
+                              std::vector<hip___hipRegisterVar_api_args_t>& rVarArgs) {
     rFatBinArgs = std::nullopt;
-    rFuncArgs = std::nullopt;
-    rManagedVarArgs = std::nullopt;
-    rSurfaceArgs = std::nullopt;
-    rTextureArgs = std::nullopt;
-    rVarArgs = std::nullopt;
+    rFuncArgs.clear();
+    rManagedVarArgs.clear();
+    rSurfaceArgs.clear();
+    rTextureArgs.clear();
+    rVarArgs.clear();
 }
 
 void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFatBinArgs,
-                         std::optional<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
-                         std::optional<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
-                         std::optional<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
-                         std::optional<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
-                         std::optional<hip___hipRegisterVar_api_args_t>& rVarArgs) {
+                         std::vector<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
+                         std::vector<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
+                         std::vector<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
+                         std::vector<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
+                         std::vector<hip___hipRegisterVar_api_args_t>& rVarArgs) {
     auto &coManager = CodeObjectManager::Instance();
     std::vector<ELFIO::elfio> elfs;
-    LUTHIER_AMD_COMGR_CHECK(luthier::elf::getCodeObjectElfsFromFatBinary(rFatBinArgs.value().data, elfs));
-    auto secNumbers = luthier::elf::getSymbolNum(elfs[1]);
-    for (unsigned int i = 0; i < secNumbers; i++) {
-        //                    luthier::elf::SymbolInfo info;
-        //                    luthier::elf::getSymbolInfo(elfs[1], i, info);
-        //                    fmt::println("Symbol's name and value: {}, {}", info.sym_name, info.value);
-        //                    fmt::println("Symbol's address: {:#x}", reinterpret_cast<luthier_address_t>(info.address));
-        //                    fmt::println("Symbol's content: {}", *reinterpret_cast<const int*>(info.address));
+    LUTHIER_AMD_COMGR_CHECK(luthier::elf::getCodeObjectElfsFromFatBinary(rFatBinArgs->data, elfs));
+//    luthier::elf::stripTextSectionFromCodeObject(elfs[1]);
+
+//    auto secNumbers = luthier::elf::getSymbolNum(elfs[1]);
+//    for (unsigned int i = 0; i < secNumbers; i++) {
+//        //                    luthier::elf::SymbolInfo info;
+//        //                    luthier::elf::getSymbolInfo(elfs[1], i, info);
+//        //                    fmt::println("Symbol's name and value: {}, {}", info.sym_name, info.value);
+//        //                    fmt::println("Symbol's address: {:#x}", reinterpret_cast<luthier_address_t>(info.address));
+//        //                    fmt::println("Symbol's content: {}", *reinterpret_cast<const int*>(info.address));
+//    }
+
+    coManager.registerFatBinary(rFatBinArgs->data);
+    for (const auto& arg: rFuncArgs) {
+        coManager.registerFunction(rFatBinArgs->data,
+                                   arg.deviceFunction,
+                                   arg.hostFunction,
+                                   arg.deviceName);
     }
 
-    coManager.registerFatBinary(rFatBinArgs.value().data);
-    coManager.registerFunction(rFatBinArgs.value().data,
-                               rFuncArgs.value().deviceFunction,
-                               rFuncArgs.value().hostFunction,
-                               rFuncArgs.value().deviceName);
+
+
+    const auto &hipInterceptor = HipInterceptor::Instance();
+    auto rFatBinFunc = hipInterceptor.GetHipFunction<hip::FatBinaryInfo **(*) (const void *)>("__hipRegisterFatBinary");
+    if (rFatBinArgs.has_value()) {
+        auto fatBinaryInfo = rFatBinFunc(rFatBinArgs->data);
+        if (!rManagedVarArgs.empty()) {
+            auto rManagedVarFunc = hipInterceptor.GetHipFunction<void(*)(void *, void * *, void *,
+                                                                          const char * , size_t , unsigned)>("__hipRegisterManagedVar");
+            for (const auto& arg: rManagedVarArgs) {
+                rManagedVarFunc(reinterpret_cast<void*>(fatBinaryInfo), arg.pointer, arg.init_value,
+                                arg.name, arg.size, arg.align);
+            }
+
+        }
+        if (!rSurfaceArgs.empty()) {
+            auto rSurfaceFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo * *, void *, char *,
+                                                                       char *, int, int)>("__hipRegisterSurface");
+            for (const auto& arg: rSurfaceArgs) {
+                rSurfaceFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar,
+                             arg.type, arg.ext);
+            }
+
+        }
+        if (!rVarArgs.empty()) {
+            auto rVarFunc = hipInterceptor.GetHipFunction<void(*)(hip::FatBinaryInfo * * modules,
+                                                                   void * var,
+                                                                   char * hostVar,
+                                                                   char * deviceVar,
+                                                                   int ext,
+                                                                   size_t size,
+                                                                   int constant,
+                                                                   int global)>("__hipRegisterVar");
+            for (const auto& arg: rVarArgs) {
+                rVarFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar, arg.ext, arg.size,
+                         arg.constant, arg.global);
+            }
+        }
+    }
+    auto hipLaunchKernelFunc = HipInterceptor::Instance().GetHipFunction<hipError_t(*)(hipFunction_t f, uint32_t gridDimX, uint32_t gridDimY,
+                                                                                        uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY,
+                                                                                        uint32_t blockDimZ, uint32_t sharedMemBytes, hipStream_t hStream,
+                                                                                        void** kernelParams, void** extra)>("hipModuleLaunchKernel");
+    assert(hipLaunchKernelFunc(nullptr, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, nullptr) == hipErrorInvalidImage);
+
+
+
     //                auto unregisterFunc = HipInterceptor::Instance().GetHipFunction<void(*)
     //                                                                                    (hip::FatBinaryInfo**)>("__hipUnregisterFatBinary");
     //                unregisterFunc(lastRFuncArgs.modules);
@@ -62,16 +114,16 @@ void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& r
 }
 
 void normalHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFatBinArgs,
-                       std::optional<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
-                       std::optional<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
-                       std::optional<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
-                       std::optional<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
-                       std::optional<hip___hipRegisterVar_api_args_t>& rVarArgs) {
+                       std::vector<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
+                       std::vector<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
+                       std::vector<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
+                       std::vector<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
+                       std::vector<hip___hipRegisterVar_api_args_t>& rVarArgs) {
     const auto &hipInterceptor = HipInterceptor::Instance();
     auto rFatBinFunc = hipInterceptor.GetHipFunction<hip::FatBinaryInfo **(*) (const void *)>("__hipRegisterFatBinary");
     if (rFatBinArgs.has_value()) {
         auto fatBinaryInfo = rFatBinFunc(rFatBinArgs->data);
-        if (rFuncArgs.has_value()) {
+        if (!rFuncArgs.empty()) {
             auto rMethodFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo * *,
                                                                       const void *,
                                                                       char *,
@@ -79,23 +131,31 @@ void normalHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFa
                                                                       unsigned int,
                                                                       uint3 *, uint3 *, dim3 *,
                                                                       dim3 *, int *)>("__hipRegisterFunction");
-            rMethodFunc(fatBinaryInfo, rFuncArgs->hostFunction, rFuncArgs->deviceFunction, rFuncArgs->deviceName,
-                        rFuncArgs->threadLimit, rFuncArgs->tid, rFuncArgs->bid, rFuncArgs->blockDim,
-                        rFuncArgs->gridDim, rFuncArgs->wSize);
+            for (const auto& args: rFuncArgs) {
+                rMethodFunc(fatBinaryInfo, args.hostFunction, args.deviceFunction, args.deviceName,
+                            args.threadLimit, args.tid, args.bid, args.blockDim,
+                            args.gridDim, args.wSize);
+            }
         }
-        if (rManagedVarArgs.has_value()) {
+        if (!rManagedVarArgs.empty()) {
             auto rManagedVarFunc = hipInterceptor.GetHipFunction<void(*)(void *, void * *, void *,
                                                                           const char * , size_t , unsigned)>("__hipRegisterManagedVar");
-            rManagedVarFunc(rManagedVarArgs->hipModule, rManagedVarArgs->pointer, rManagedVarArgs->init_value,
-                            rManagedVarArgs->name, rManagedVarArgs->size, rManagedVarArgs->align);
+            for (const auto& arg: rManagedVarArgs) {
+                rManagedVarFunc(reinterpret_cast<void*>(fatBinaryInfo), arg.pointer, arg.init_value,
+                                arg.name, arg.size, arg.align);
+            }
+
         }
-        if (rSurfaceArgs.has_value()) {
+        if (!rSurfaceArgs.empty()) {
             auto rSurfaceFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo * *, void *, char *,
                                                                        char *, int, int)>("__hipRegisterSurface");
-            rSurfaceFunc(fatBinaryInfo, rSurfaceArgs->var, rSurfaceArgs->hostVar, rSurfaceArgs->deviceVar,
-                         rSurfaceArgs->type, rSurfaceArgs->ext);
+            for (const auto& arg: rSurfaceArgs) {
+                rSurfaceFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar,
+                             arg.type, arg.ext);
+            }
+
         }
-        if (rVarArgs.has_value()) {
+        if (!rVarArgs.empty()) {
             auto rVarFunc = hipInterceptor.GetHipFunction<void(*)(hip::FatBinaryInfo * * modules,
                                                                    void * var,
                                                                    char * hostVar,
@@ -104,8 +164,10 @@ void normalHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFa
                                                                    size_t size,
                                                                    int constant,
                                                                    int global)>("__hipRegisterVar");
-            rVarFunc(fatBinaryInfo, rVarArgs->var, rVarArgs->hostVar, rVarArgs->deviceVar, rVarArgs->ext, rVarArgs->size,
-                     rVarArgs->constant, rVarArgs->global);
+            for (const auto& arg: rVarArgs) {
+                rVarFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar, arg.ext, arg.size,
+                         arg.constant, arg.global);
+            }
         }
     }
     resetHipRegistrationArgs(rFatBinArgs,
@@ -132,21 +194,16 @@ void hipApiInternalCallback(void *cb_data, luthier_api_phase_t phase, int api_id
     static std::optional<hip___hipRegisterFatBinary_api_args_t>
         lastRFatBinArgs{std::nullopt}; //> if __hipRegisterFatBinary was called, holds the arguments
                                        // of the call; Otherwise holds std::nullopt
-    static std::optional<hip___hipRegisterFunction_api_args_t>
-        lastRFuncArgs{std::nullopt}; //> if __hipRegisterFunction was called, holds the arguments
-                                     // of the call; Otherwise holds std::nullopt
-    static std::optional<hip___hipRegisterManagedVar_api_args_t>
-        lastRManagedVarArgs{std::nullopt}; //> if __hipRegisterManagedVar was called, holds the arguments
-                                           // of the call; Otherwise holds std::nullopt
-    static std::optional<hip___hipRegisterSurface_api_args_t>
-        lastRSurfaceArgs{std::nullopt}; //> if __hipRegisterSurface was called, holds the arguments
-                                        // of the call; Otherwise holds std::nullopt
-    static std::optional<hip___hipRegisterTexture_api_args_t>
-        lastRTextureArgs{std::nullopt}; //> if __hipRegisterTexture was called, holds the arguments
-                                        // of the call; Otherwise holds std::nullopt
-    static std::optional<hip___hipRegisterVar_api_args_t>
-        lastRVarArgs{std::nullopt}; //> if __hipRegisterVar was called, holds the arguments
-                                    // of the call; Otherwise holds std::nullopt
+    static std::vector<hip___hipRegisterFunction_api_args_t>
+        lastRFuncArgs{}; //> list of functions to register for the last saved Fat Binary
+    static std::vector<hip___hipRegisterManagedVar_api_args_t>
+        lastRManagedVarArgs{}; //> list of managed variables to register for the last saved Fat Binary
+    static std::vector<hip___hipRegisterSurface_api_args_t>
+        lastRSurfaceArgs{}; //> list of surface variables to register for the last saved Fat Binary
+    static std::vector<hip___hipRegisterTexture_api_args_t>
+        lastRTextureArgs{}; //> list of texture variables to register for the last saved Fat Binary
+    static std::vector<hip___hipRegisterVar_api_args_t>
+        lastRVarArgs{}; //> list of global variables to register for the last Fat saved Binary
 
     if (!isHipRegistrationOver && phase == LUTHIER_API_PHASE_ENTER) {
         if (api_id == HIP_PRIVATE_API_ID___hipRegisterFatBinary) {
@@ -161,23 +218,23 @@ void hipApiInternalCallback(void *cb_data, luthier_api_phase_t phase, int api_id
             lastRFatBinArgs = *reinterpret_cast<hip___hipRegisterFatBinary_api_args_t *>(cb_data);
             *skip_func = true;
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterFunction) {
-            lastRFuncArgs = *reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cb_data);
+            lastRFuncArgs.push_back(*reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cb_data));
             *skip_func = true;
             // If the function doesn't have __luthier_wrap__ in its name then it belongs to the instrumented application or
             // HIP can manage on its own since no device function is present to strip from it
-            if (std::string(lastRFuncArgs.value().deviceFunction).find("__luthier_wrap__") != std::string::npos)
+            if (std::string(lastRFuncArgs.front().deviceFunction).find("__luthier_wrap__") != std::string::npos)
                 hijackRegistrationIterForLuthier = true;
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterManagedVar) {
-            lastRManagedVarArgs = *reinterpret_cast<hip___hipRegisterManagedVar_api_args_t *>(cb_data);
+            lastRManagedVarArgs.push_back(*reinterpret_cast<hip___hipRegisterManagedVar_api_args_t *>(cb_data));
             *skip_func = true;
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterSurface) {
-            lastRSurfaceArgs = *reinterpret_cast<hip___hipRegisterSurface_api_args_t *>(cb_data);
+            lastRSurfaceArgs.push_back(*reinterpret_cast<hip___hipRegisterSurface_api_args_t *>(cb_data));
             *skip_func = true;
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterTexture) {
-            lastRTextureArgs = *reinterpret_cast<hip___hipRegisterTexture_api_args_t *>(cb_data);
+            lastRTextureArgs.push_back(*reinterpret_cast<hip___hipRegisterTexture_api_args_t *>(cb_data));
             *skip_func = true;
         } else if (api_id == HIP_PRIVATE_API_ID___hipRegisterVar) {
-            lastRVarArgs = *reinterpret_cast<hip___hipRegisterVar_api_args_t *>(cb_data);
+            lastRVarArgs.push_back(*reinterpret_cast<hip___hipRegisterVar_api_args_t *>(cb_data));
             *skip_func = true;
         } else {
             if (hijackRegistrationIterForLuthier) {

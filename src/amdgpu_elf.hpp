@@ -91,6 +91,7 @@ bool getSymbolInfo(const ELFIO::elfio &io, unsigned int index, SymbolInfo &symIn
 
 amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<ELFIO::elfio>& fatBinaryElfs);
 
+mem_backed_code_object_t stripTextSectionFromCodeObject(ELFIO::elfio& elfio);
 
 }// namespace luthier::elf
 

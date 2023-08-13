@@ -439,7 +439,7 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
                                                                                       instDeviceAddress - trampolineStartAddr;
 
     std::string trampoline;
-    if (false) {
+    if (trampolineInstrOffset < ((2 << 16) - 1)) {
         trampoline = assemble("s_getpc_b64 s[2:3]", agent);
 
         // Get the PC of the instruction after the get PC instruction

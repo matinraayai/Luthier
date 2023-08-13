@@ -21,6 +21,7 @@
 #include "amdgpu_elf.hpp"
 #include "error.h"
 #include "log.hpp"
+#include <elfio/elfio_dump.hpp>
 
 #include <llvm/Support/BinaryStreamReader.h>
 
@@ -294,7 +295,7 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
         }
         std::stringstream ss{std::string(reinterpret_cast<const char*>(fatBinary) + BundleEntryCodeObjectOffset,
                                          BundleEntryCodeObjectSize)};
-        if (!fatBinaryElfs.at(I).load(ss, true)) {
+        if (!fatBinaryElfs.at(I).load(ss, false)) {
             fmt::println("Size of the code object: {}", BundleEntryCodeObjectSize);
             fmt::println("Failed to parse the ELF.");
             return AMD_COMGR_STATUS_ERROR;
@@ -303,6 +304,53 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
     }
 
     return AMD_COMGR_STATUS_SUCCESS;
+}
+
+
+mem_backed_code_object_t stripTextSectionFromCodeObject(ELFIO::elfio& elfio) {
+    ELFIO::elfio writer;
+    symbol_section_accessor symbol_reader(elfio, elfio.sections[ElfSecDesc[SYMTAB].name]);
+
+    auto num = getSymbolNum(elfio);
+
+
+    std::string sym_name;
+    Elf64_Addr value = 0;
+    Elf_Xword size = 0;
+    unsigned char bind = 0;
+    unsigned char type = 0;
+    Elf_Half sec_index = 0;
+    unsigned char other = 0;
+
+    fmt::println("Number of sections: {}", elfio.sections.size());
+    for (const auto& s: elfio.sections) {
+        fmt::println("Name of the section: {}", s->get_name());
+        fmt::println("Address: {:#x}", s->get_address());
+        fmt::println("Section size: {}", s->get_size());
+    }
+    fmt::println("Number of sections: {}", elfio.segments.size());
+    for (const auto& s: elfio.segments) {
+        fmt::println("Address: {:#x}", s->get_virtual_address());
+    }
+
+    for (unsigned int i = 1; i < num; i++) {
+        bool ret = symbol_reader.get_symbol(i, sym_name, value, size, bind, type,
+                                            sec_index, other);
+        section *sec = elfio.sections[sec_index];
+        fmt::println("Section address: {:#x}", sec->get_address());
+        fmt::println("Symbol name: {}", sym_name);
+        fmt::println("Section name: {}", sec->get_name());
+        fmt::println("Section size: {}", sec->get_size());
+    }
+    // index++ for real index on top of the first dummy symbol
+
+    //    for (unsigned int i = 0; i < secNumbers; i++) {
+    //        //                    luthier::elf::SymbolInfo info;
+    //        //                    luthier::elf::getSymbolInfo(elfs[1], i, info);
+    //        //                    fmt::println("Symbol's name and value: {}, {}", info.sym_name, info.value);
+    //        //                    fmt::println("Symbol's address: {:#x}", reinterpret_cast<luthier_address_t>(info.address));
+    //        //                    fmt::println("Symbol's content: {}", *reinterpret_cast<const int*>(info.address));
+    //    }
 }
 
 }// namespace luthier::elf
