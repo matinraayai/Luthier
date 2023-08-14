@@ -21,9 +21,11 @@ static std::unordered_map<decltype(hsa_kernel_dispatch_packet_t::kernel_object),
 
 static bool instrumented{false};
 
-__managed__ int globalCounter = 0;
+MARK_LUTHIER_DEVICE_MODULE
 
-__device__ __noinline__ void instrumentation_kernel(int* counter) {
+__managed__ int globalCounter = 20;
+
+ __device__ __noinline__ extern "C" void instrumentation_kernel(int* counter) {
 //    int i = 0;
 //    i = i + 4;
 //    i = i * 40;
@@ -62,42 +64,43 @@ hsa_status_t getAllExecutableSymbols(const hsa_executable_t& executable,
 
 
     hsa_status_t out = HSA_STATUS_ERROR;
+    auto iterCallback = [](hsa_executable_t executable, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data) {
+        std::cout << "Agent handle: " << agent.handle << std::endl;
+        auto& coreTable = luthier_get_hsa_table()->core_;
+        hsa_symbol_kind_t symbolKind;
+        LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
+
+        std::cout << "Symbol kind: " << symbolKind << std::endl;
+
+        uint32_t nameSize;
+        LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
+        std::cout << "Symbol name size: " << nameSize << std::endl;
+        std::string name;
+        name.resize(nameSize);
+        LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
+        std::cout << "Symbol Name: " << name << std::endl;
+
+        if (symbolKind == HSA_SYMBOL_KIND_VARIABLE) {
+            luthier_address_t variableAddress;
+            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &variableAddress));
+            std::cout << "Variable location: " << std::hex << variableAddress << std::dec << std::endl;
+        }
+        else {
+            luthier_address_t kernelObject;
+            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
+            std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
+//                            std::vector<luthier::Instr> instList = luthier_disassemble_kernel_object(kernelObject);
+//                            std::cout << "Disassembly of the KO: " << std::endl;
+//                            for (const auto& i : instList) {
+//                                std::cout << i.getInstr() << std::endl;
+//                            }
+        }
+
+        //            symbolVec->push_back(symbol);
+        return HSA_STATUS_SUCCESS;
+    };
     for (auto agent : agents) {
-        auto iterCallback = [](hsa_executable_t executable, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data) {
-            auto symbolVec = reinterpret_cast<std::vector<hsa_executable_symbol_t>*>(data);
-            auto& coreTable = luthier_get_hsa_table()->core_;
-            hsa_symbol_kind_t symbolKind;
-            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
-            std::cout << "Symbol kind: " << symbolKind << std::endl;
-
-            uint32_t nameSize;
-            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
-            std::cout << "Symbol name size: " << nameSize << std::endl;
-            std::string name;
-            name.resize(nameSize);
-            LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
-            std::cout << "Symbol Name: " << name << std::endl;
-
-            if (symbolKind == HSA_SYMBOL_KIND_VARIABLE) {
-                luthier_address_t variableAddress;
-                LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &variableAddress));
-                std::cout << "Variable location: " << std::hex << variableAddress << std::dec << std::endl;
-            }
-            else {
-                luthier_address_t kernelObject;
-                LUTHIER_HSA_CHECK(coreTable->hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
-                std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
-                std::vector<luthier::Instr> instList = luthier_disassemble_kernel_object(kernelObject);
-                std::cout << "Disassembly of the KO: " << std::endl;
-                for (const auto& i : instList) {
-                    std::cout << i.getInstr() << std::endl;
-                }
-            }
-
-//            symbolVec->push_back(symbol);
-            return HSA_STATUS_SUCCESS;
-        };
         out = hsa_executable_iterate_agent_symbols(executable,
                                                    agent,
                                                    iterCallback, &symbols);
@@ -216,7 +219,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                 std::cout << "Dispatch packet's kernel arg address: " << dispatchPacket->kernarg_address << std::endl;
                 if (!instrumented) {
                 std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
-                    luthier_insert_call(&instrVec[0], "instrumentation_kernel", LUTHIER_IPOINT_AFTER);
+                    luthier_insert_call(&instrVec[0], LUTHIER_GET_EXPORT_FUNC(instrumentation_kernel), LUTHIER_IPOINT_AFTER);
                     instrumented = true;
                     luthier_enable_instrumented(dispatchPacket, reinterpret_cast<luthier_address_t>(dispatchPacket->kernel_object),
                                               true);
@@ -271,11 +274,11 @@ void luthier_at_init() {
 
 
 void luthier_at_term() {
-    int counterHost;
-    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
-        &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost
-    );
-    std::cout << "Counter Value: " << counterHost << std::endl;
+//    int counterHost;
+//    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
+//        &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost
+//    );
+    std::cout << "Counter Value: " << globalCounter << std::endl;
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 
@@ -298,7 +301,8 @@ void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_a
             fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
             auto& coreTable = luthier_get_hsa_table()->core_;
             fprintf(stdout, "Executable handle: %lX\n", executable.handle);
-
+            std::vector<hsa_executable_symbol_t> symbols;
+            getAllExecutableSymbols(executable, symbols);
 //
 //            std::vector<hsa_agent_t> agentList;
 ////            getGpuAgents(agentList);

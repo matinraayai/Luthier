@@ -58,11 +58,21 @@ void* luthier_get_hip_function(const char* funcName);
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object);
 
 
+// If the tool requires device code it needs to call this macro once
+// Managed variables force the HIP runtime to eagerly load Luthier modules statically so that Luthier can access it for
+// instrumentation
+// The __luthier_reserved symbol is how Luthier knows which module needs to be managed internally and which modules are
+// part of the instrumented application
+#define MARK_LUTHIER_DEVICE_MODULE __managed__ char __luthier_reserved = 0;
+
 #define LUTHIER_EXPORT_FUNC(f)               \
-    __global__ void __luthier_wrap__##f() {  \
+    extern "C" __global__ void __luthier_wrap__##f() {  \
         void (*pfun)() = (void (*)())f;    \
         if (pfun == (void (*)())1) pfun(); \
     }
+
+// Luthier uses the pointer to the dummy global wrapper to each function as its unique identifier
+#define LUTHIER_GET_EXPORT_FUNC(f) reinterpret_cast<const void *>(__luthier_wrap__##f)
 
 //static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
 //    if (hip_api_id < 1000)
@@ -145,10 +155,10 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
 /**
  *
  * @param instr
- * @param dev_func_name
+ * @param dev_func
  * @param point
  */
-void luthier_insert_call(luthier::Instr* instr, const char* dev_func_name, luthier_ipoint_t point);
+void luthier_insert_call(luthier::Instr* instr, const void *dev_func, luthier_ipoint_t point);
 
 /////* Add int32_t argument to last injected call, value of the predicate for this
 //// * instruction */

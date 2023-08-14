@@ -33,30 +33,6 @@ void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& r
                          std::vector<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
                          std::vector<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
                          std::vector<hip___hipRegisterVar_api_args_t>& rVarArgs) {
-    auto &coManager = CodeObjectManager::Instance();
-    std::vector<ELFIO::elfio> elfs;
-    LUTHIER_AMD_COMGR_CHECK(luthier::elf::getCodeObjectElfsFromFatBinary(rFatBinArgs->data, elfs));
-//    luthier::elf::stripTextSectionFromCodeObject(elfs[1]);
-
-//    auto secNumbers = luthier::elf::getSymbolNum(elfs[1]);
-//    for (unsigned int i = 0; i < secNumbers; i++) {
-//        //                    luthier::elf::SymbolInfo info;
-//        //                    luthier::elf::getSymbolInfo(elfs[1], i, info);
-//        //                    fmt::println("Symbol's name and value: {}, {}", info.sym_name, info.value);
-//        //                    fmt::println("Symbol's address: {:#x}", reinterpret_cast<luthier_address_t>(info.address));
-//        //                    fmt::println("Symbol's content: {}", *reinterpret_cast<const int*>(info.address));
-//    }
-
-    coManager.registerFatBinary(rFatBinArgs->data);
-    for (const auto& arg: rFuncArgs) {
-        coManager.registerFunction(rFatBinArgs->data,
-                                   arg.deviceFunction,
-                                   arg.hostFunction,
-                                   arg.deviceName);
-    }
-
-
-
     const auto &hipInterceptor = HipInterceptor::Instance();
     auto rFatBinFunc = hipInterceptor.GetHipFunction<hip::FatBinaryInfo **(*) (const void *)>("__hipRegisterFatBinary");
     if (rFatBinArgs.has_value()) {
@@ -94,17 +70,38 @@ void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& r
             }
         }
     }
-    auto hipLaunchKernelFunc = HipInterceptor::Instance().GetHipFunction<hipError_t(*)(hipFunction_t f, uint32_t gridDimX, uint32_t gridDimY,
-                                                                                        uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY,
-                                                                                        uint32_t blockDimZ, uint32_t sharedMemBytes, hipStream_t hStream,
-                                                                                        void** kernelParams, void** extra)>("hipModuleLaunchKernel");
-    assert(hipLaunchKernelFunc(nullptr, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, nullptr) == hipErrorInvalidImage);
+    if (!rFuncArgs.empty()) {
+        auto hipLaunchKernelFunc = hipInterceptor.GetHipFunction<hipError_t(*)(hipFunction_t f, uint32_t gridDimX, uint32_t gridDimY,
+                                                                                            uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY,
+                                                                                            uint32_t blockDimZ, uint32_t sharedMemBytes, hipStream_t hStream,
+                                                                                            void** kernelParams, void** extra)>("hipModuleLaunchKernel");
+        auto hipGetDeviceCountFunc = hipInterceptor.GetHipFunction<hipError_t(*)(int* count)>("hipGetDeviceCount");
+        auto hipSetDeviceFunc = hipInterceptor.GetHipFunction<hipError_t(*)(int deviceId)>("hipSetDevice");
+        int deviceCount;
+        LUTHIER_HIP_CHECK(hipGetDeviceCountFunc(&deviceCount));
+        for (int i = 0; i < deviceCount; i++) {
+            // Force the HIP runtime to freeze the executable associated with Luthier tool's code object (done per device)
+            // Luthier code objects should have at least one managed variable for this to work
+            // This will not trigger the launch of any kernels and should return quickly after checking the function argument
+            LUTHIER_HIP_CHECK(hipSetDeviceFunc(i));
+            assert(hipLaunchKernelFunc(nullptr, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, nullptr) == hipErrorInvalidImage);
+        }
+
+        auto &coManager = CodeObjectManager::Instance();
+        coManager.registerFatBinary(rFatBinArgs->data);
+        for (const auto& arg: rFuncArgs) {
+            coManager.registerFunction(rFatBinArgs->data,
+                                       arg.deviceFunction,
+                                       arg.hostFunction,
+                                       arg.deviceName);
+        }
+
+    }
 
 
 
-    //                auto unregisterFunc = HipInterceptor::Instance().GetHipFunction<void(*)
-    //                                                                                    (hip::FatBinaryInfo**)>("__hipUnregisterFatBinary");
-    //                unregisterFunc(lastRFuncArgs.modules);
+
+
     resetHipRegistrationArgs(rFatBinArgs,
                              rFuncArgs,
                              rManagedVarArgs,
@@ -298,11 +295,11 @@ void *luthier_get_hip_function(const char *funcName) {
     return luthier::HipInterceptor::Instance().GetHipFunction(funcName);
 }
 
-void luthier_insert_call(luthier::Instr *instr, const char *dev_func_name, luthier_ipoint_t point) {
+void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ipoint_t point) {
 
     auto agent = instr->getAgent();
 
-    std::string instrumentationFunc = luthier::CodeObjectManager::Instance().getCodeObjectOfInstrumentationFunction(dev_func_name, agent);
+    std::string instrumentationFunc = luthier::CodeObjectManager::Instance().getCodeObjectOfInstrumentationFunction(dev_func, agent);
 
     luthier::CodeGenerator::instrument(*instr, instrumentationFunc, point);
 }

@@ -25,7 +25,7 @@ class CodeObjectManager {
                           const void *hostFunction,
                           const char *deviceName);
 
-    std::string getCodeObjectOfInstrumentationFunction(const char *functionName, hsa_agent_t agent);
+    std::string getCodeObjectOfInstrumentationFunction(const void *function, hsa_agent_t agent);
 
     void registerKD(luthier_address_t originalCode, luthier_address_t instrumentedCode);
 
@@ -37,8 +37,8 @@ class CodeObjectManager {
 
  private:
     typedef struct {
+        std::unordered_map<decltype(hsa_agent_t::handle), hsa_executable_t> agentToExecMap;
         const std::string name;
-        const void *hostFunction;
         const std::string deviceName;
         const void *parentFatBinary;
     } function_info_t;
@@ -49,8 +49,10 @@ class CodeObjectManager {
             amd_comgr_release_data(it.second);
     }
 
+    std::unordered_map<const void*, function_info_t> functions_{};
+
     std::unordered_map<const void *, amd_comgr_data_t> fatBinaries_{};
-    std::unordered_map<std::string, function_info_t> functions_{};
+//    std::unordered_map<std::string, function_info_t> functions_{};
 
     std::unordered_map<luthier_address_t, luthier_address_t> instrumentedKernels_;
 
