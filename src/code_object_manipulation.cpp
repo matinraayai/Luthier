@@ -18,8 +18,9 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE. */
 
-#include "amdgpu_elf.hpp"
+#include "code_object_manipulation.hpp"
 #include "error.h"
+#include "hsa_intercept.hpp"
 #include "log.hpp"
 #include <elfio/elfio_dump.hpp>
 
@@ -29,7 +30,7 @@
 
 #include <thread>
 
-namespace luthier::elf {
+namespace luthier::co_manip {
 using namespace ELFIO;
 
 static size_t constexpr strLiteralLength(char const *str) {
@@ -141,7 +142,7 @@ bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo) {
         return false;
     }
 
-    symInfo.sec_addr = sec->get_data();
+    symInfo.sec_addr = reinterpret_cast<const char *>(sec->get_address());
     symInfo.sec_size = sec->get_size();
     //  std::cout << "Offset: " << sec->get_offset() << std::endl;
     //  std::cout << "get Address: " << sec->get_address() << std::endl;
@@ -232,18 +233,9 @@ void iterateCodeObjectMetaData(luthier_address_t codeObjectData, size_t codeObje
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(meta));
 }
 
-struct __CudaFatBinaryWrapper {
-    unsigned int magic;
-    unsigned int version;
-    void *binary;
-    void *dummy1;
-};
-
-constexpr unsigned __hipFatMAGIC2 = 0x48495046;// "HIPF"
-
 amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<elfio>& fatBinaryElfs) {
-    auto fbWrapper = reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
-    assert(fbWrapper->magic == __hipFatMAGIC2 && fbWrapper->version == 1);
+    auto fbWrapper = reinterpret_cast<const CudaFatBinaryWrapper *>(data);
+    assert(fbWrapper->magic == hipFatMAGIC2 && fbWrapper->version == 1);
     auto fatBinary = fbWrapper->binary;
 
     llvm::BinaryStreamReader Reader(llvm::StringRef(reinterpret_cast<const char*>(fatBinary), 4096),
@@ -306,14 +298,12 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
     return AMD_COMGR_STATUS_SUCCESS;
 }
 
-
-mem_backed_code_object_t stripTextSectionFromCodeObject(ELFIO::elfio& elfio) {
-    ELFIO::elfio writer;
+code_object_region_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName) {
     symbol_section_accessor symbol_reader(elfio, elfio.sections[ElfSecDesc[SYMTAB].name]);
 
     auto num = getSymbolNum(elfio);
 
-
+//    symInfo.address = symInfo.sec_addr + (size_t) value - (size_t) sec->get_offset();
     std::string sym_name;
     Elf64_Addr value = 0;
     Elf_Xword size = 0;
@@ -351,6 +341,87 @@ mem_backed_code_object_t stripTextSectionFromCodeObject(ELFIO::elfio& elfio) {
     //        //                    fmt::println("Symbol's address: {:#x}", reinterpret_cast<luthier_address_t>(info.address));
     //        //                    fmt::println("Symbol's content: {}", *reinterpret_cast<const int*>(info.address));
     //    }
+}
+
+
+std::string getDemangledName(const char *mangledName) {
+    amd_comgr_data_t mangledNameData;
+    amd_comgr_data_t demangledNameData;
+    std::string out;
+
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
+
+    size_t size = strlen(mangledName);
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName));
+
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_demangle_symbol_name(mangledNameData, &demangledNameData));
+
+    size_t demangledNameSize = 0;
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, nullptr));
+
+    out.resize(demangledNameSize);
+
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, out.data()));
+
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(mangledNameData));
+
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(demangledNameData));
+
+    return out;
+}
+
+luthier::co_manip::code_object_region_t getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable) {
+    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    // Get a list of loaded code objects inside the executable
+    std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
+    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
+        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
+        out->push_back(lco);
+        return HSA_STATUS_SUCCESS;
+    };
+    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+
+    // Can be removed
+    assert(loadedCodeObjects.size() == 1);
+
+
+    uint64_t lcoBaseAddrDevice;
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
+                                                            &lcoBaseAddrDevice);
+    // Query the size of the loaded code object
+    uint64_t lcoSizeDevice;
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
+                                                            &lcoSizeDevice);
+    return {reinterpret_cast<luthier_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)};
+}
+
+luthier::co_manip::code_object_region_t getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable) {
+    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    // Get a list of loaded code objects inside the executable
+    std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
+    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
+        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
+        out->push_back(lco);
+        return HSA_STATUS_SUCCESS;
+    };
+    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+
+    // Can be removed
+    assert(loadedCodeObjects.size() == 1);
+
+
+    uint64_t lcoBaseAddr;
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
+                                                            &lcoBaseAddr);
+    // Query the size of the loaded code object
+    uint64_t lcoSize;
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
+                                                            &lcoSize);
+    return {reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)};
 }
 
 }// namespace luthier::elf

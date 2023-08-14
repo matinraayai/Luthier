@@ -1,15 +1,15 @@
+#include "luthier.h"
 #include "code_generator.hpp"
 #include "code_object_manager.hpp"
+#include "code_object_manipulation.hpp"
 #include "disassembler.hpp"
-#include "hsa_intercept.hpp"
-#include "hip_intercept.hpp"
-#include <roctracer/roctracer.h>
-#include "luthier.h"
-#include "amdgpu_elf.hpp"
-#include "log.hpp"
 #include "error.h"
+#include "hip_intercept.hpp"
+#include "hsa_intercept.hpp"
+#include "log.hpp"
 #include "luthier_types.hpp"
 #include <optional>
+#include <roctracer/roctracer.h>
 
 namespace luthier::impl {
 

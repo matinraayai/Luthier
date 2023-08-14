@@ -18,20 +18,31 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE. */
 
-#ifndef AMDGPU_ELF
-#define AMDGPU_ELF
+#ifndef AMDGPU_CODE_OBJECT_MANIPULATION
+#define AMDGPU_CODE_OBJECT_MANIPULATION
 
 #include "luthier_types.hpp"
 #include <amd_comgr/amd_comgr.h>
 #include <elfio/elfio.hpp>
 #include <map>
 
-namespace luthier::elf {
+namespace luthier::co_manip {
+
+// Taken from the hipamd project
+struct CudaFatBinaryWrapper {
+    unsigned int magic;
+    unsigned int version;
+    void *binary;
+    void *dummy1;
+};
+
+// Taken from the hipamd project
+constexpr unsigned hipFatMAGIC2 = 0x48495046;
 
 typedef struct {
     luthier_address_t data;
     size_t size;
-} mem_backed_code_object_t;
+} code_object_region_t;
 
 typedef enum {
     LLVMIR = 0,
@@ -89,9 +100,15 @@ unsigned int getSymbolNum(const ELFIO::elfio &io);
 bool getSymbolInfo(const ELFIO::elfio &io, unsigned int index, SymbolInfo &symInfo);
 
 
+std::string getDemangledName(const char *mangledName);
+
 amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<ELFIO::elfio>& fatBinaryElfs);
 
-mem_backed_code_object_t stripTextSectionFromCodeObject(ELFIO::elfio& elfio);
+code_object_region_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName);
+
+code_object_region_t getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable);
+
+code_object_region_t getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable);
 
 }// namespace luthier::elf
 

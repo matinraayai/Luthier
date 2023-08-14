@@ -252,7 +252,7 @@ class Instr {
 
     const kernel_descriptor_t *getKernelDescriptor();
 
-    luthier_address_t getHostAddress();
+    luthier_address_t getHostAddress() const;
 
     [[nodiscard]] hsa_executable_t getExecutable();
 

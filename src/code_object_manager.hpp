@@ -52,15 +52,8 @@ class CodeObjectManager {
     std::unordered_map<const void*, function_info_t> functions_{};
 
     std::unordered_map<const void *, amd_comgr_data_t> fatBinaries_{};
-//    std::unordered_map<std::string, function_info_t> functions_{};
 
     std::unordered_map<luthier_address_t, luthier_address_t> instrumentedKernels_;
-
-    //    //Populated during __hipRegisterVars
-    //    std::unordered_map<const void*, Var*> vars_;
-    //    //Populated during __hipRegisterManagedVar
-    //    std::vector<Var*> managedVars_;
-    //    std::unordered_map<int, bool> managedVarsDevicePtrInitalized_;
 };
 };// namespace luthier
 

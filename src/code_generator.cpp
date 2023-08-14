@@ -1,6 +1,6 @@
 #include "code_generator.hpp"
-#include "amdgpu_elf.hpp"
 #include "code_object_manager.hpp"
+#include "code_object_manipulation.hpp"
 #include "context_manager.hpp"
 #include "disassembler.hpp"
 #include "elfio/elfio.hpp"
@@ -90,59 +90,7 @@ hsa_executable_t createExecutable(const char* codeObjectPtr, size_t codeObjectSi
     return executable;
 }
 
-luthier::elf::mem_backed_code_object_t getLoadedCodeObject(hsa_executable_t executable) {
-    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-    // Get a list of loaded code objects inside the executable
-    std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
-    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
-        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
-        out->push_back(lco);
-        return HSA_STATUS_SUCCESS;
-    };
-    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
 
-    // Can be removed
-    assert(loadedCodeObjects.size() == 1);
-
-
-    uint64_t lcoBaseAddrDevice;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                             HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
-                                                             &lcoBaseAddrDevice);
-    // Query the size of the loaded code object
-    uint64_t lcoSizeDevice;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                             HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
-                                                             &lcoSizeDevice);
-    return {reinterpret_cast<luthier_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)};
-}
-
-luthier::elf::mem_backed_code_object_t getCodeObject(hsa_executable_t executable) {
-    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-    // Get a list of loaded code objects inside the executable
-    std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
-    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
-        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
-        out->push_back(lco);
-        return HSA_STATUS_SUCCESS;
-    };
-    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
-
-    // Can be removed
-    assert(loadedCodeObjects.size() == 1);
-
-
-    uint64_t lcoBaseAddr;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
-                                                            &lcoBaseAddr);
-    // Query the size of the loaded code object
-    uint64_t lcoSize;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
-                                                            &lcoSize);
-    return {reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)};
-}
 
 std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
 
@@ -413,7 +361,7 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
 //        instrumentationFunction.size()
 //        );
 //    auto instrmntTextSectionStart = reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
-    auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
+    auto instrmntLoadedCodeObject = luthier::co_manip::getDeviceLoadedCodeObjectOfExecutable(instrumentationExecutable);
 
 
 
@@ -583,20 +531,20 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
                                                     dummyInstrmnt.size() + nopInstr.size() + trampoline.size());
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::orange_red), "Instrumented Kernel Final View:\n");
     for (const auto& i: finalInstrumentationInstructions) {
-        fmt::print(stdout, fmt::emphasis::bold, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
+        fmt::print(stdout, fmt::emphasis::bold, "{:#x}: {:s}\n", i.getHostAddress(), i.getInstr());
     }
 #endif
 
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto hostInstructions =
-        luthier::Disassembler::Instance().disassemble(agent, getCodeObject(instr.getExecutable()).data + 0x1000, 0x54);
+        luthier::Disassembler::Instance().disassemble(agent, luthier::co_manip::getDeviceLoadedCodeObjectOfExecutable(instr.getExecutable()).data + 0x1000, 0x54);
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Host Executable:\n");
 
     for (const auto& i: hostInstructions) {
-        auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
+        auto printFormat = instr.getDeviceAddress() <= i.getHostAddress() && (i.getHostAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
                                                                                                                                                                     fmt::emphasis::underline :
                                                                                                                                                                     fmt::emphasis::bold;
-        fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
+        fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getHostAddress(), i.getInstr());
     }
 #endif
 

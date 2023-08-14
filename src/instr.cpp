@@ -2,7 +2,7 @@
 #include "error.h"
 #include "hsa_intercept.hpp"
 
-luthier_address_t luthier::Instr::getHostAddress() {
+luthier_address_t luthier::Instr::getHostAddress() const {
 //    if (kd_ != nullptr && hostAddress_ == luthier_address_t{}) {
 //        LUTHIER_HSA_CHECK(
 //            LuthierHsaInterceptor::Instance().getHsaVenAmdLoaderTable().

@@ -65,6 +65,8 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
 // part of the instrumented application
 #define MARK_LUTHIER_DEVICE_MODULE __managed__ char __luthier_reserved = 0;
 
+#define LUTHIER_DECLARE_FUNC  __device__ __noinline__ extern "C" void
+
 #define LUTHIER_EXPORT_FUNC(f)               \
     extern "C" __global__ void __luthier_wrap__##f() {  \
         void (*pfun)() = (void (*)())f;    \
@@ -72,7 +74,7 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
     }
 
 // Luthier uses the pointer to the dummy global wrapper to each function as its unique identifier
-#define LUTHIER_GET_EXPORT_FUNC(f) reinterpret_cast<const void *>(__luthier_wrap__##f)
+#define LUTHIER_GET_EXPORTED_FUNC(f) reinterpret_cast<const void *>(__luthier_wrap__##f)
 
 //static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
 //    if (hip_api_id < 1000)

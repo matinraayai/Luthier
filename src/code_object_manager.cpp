@@ -1,5 +1,5 @@
 #include "code_object_manager.hpp"
-#include "amdgpu_elf.hpp"
+#include "code_object_manipulation.hpp"
 #include "context_manager.hpp"
 #include "disassembler.hpp"
 #include "hsa_intercept.hpp"
@@ -10,69 +10,34 @@
 #include <vector>
 
 namespace {
-struct __CudaFatBinaryWrapper {
-    unsigned int magic;
-    unsigned int version;
-    void *binary;
-    void *dummy1;
-};
-
-constexpr unsigned __hipFatMAGIC2 = 0x48495046;// "HIPF"
 
 
-std::string getDemangledName(const char *mangledName) {
-    amd_comgr_data_t mangledNameData;
-    amd_comgr_data_t demangledNameData;
-    std::string out;
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
-
-    size_t size = strlen(mangledName);
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_demangle_symbol_name(mangledNameData, &demangledNameData));
-
-    size_t demangledNameSize = 0;
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, nullptr));
-
-    out.resize(demangledNameSize);
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(demangledNameData, &demangledNameSize, out.data()));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(mangledNameData));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_release_data(demangledNameData));
-
-    return out;
-}
-
-
-std::string stripOffKernelLaunch(const std::string& elf, const std::string& demangledName) {
-
-    std::istringstream ss{elf};
-    ELFIO::elfio elfio;
-    elfio.load(ss);
-    auto numSymbols = luthier::elf::getSymbolNum(elfio);
+luthier::co_manip::code_object_region_t stripOffKernelLaunch(luthier::co_manip::code_object_region_t codeObject, const std::string& demangledName) {
+    ELFIO::elfio reader;
+    std::stringstream loadedCodeObjectSS{std::string(reinterpret_cast<const char*>(codeObject.data), codeObject.size)};
+    reader.load(loadedCodeObjectSS, true);
+    auto numSymbols = luthier::co_manip::getSymbolNum(reader);
+    std::cout << "Demangled name: " << demangledName << std::endl;
     for (unsigned int i = 0; i < numSymbols; i++) {
-        luthier::elf::SymbolInfo info;
-        luthier::elf::getSymbolInfo(elfio, i, info);
-        std::string demangledSymName = getDemangledName(info.sym_name.c_str());
+        luthier::co_manip::SymbolInfo info;
+        luthier::co_manip::getSymbolInfo(reader, i, info);
+        std::string demangledSymName = luthier::co_manip::getDemangledName(info.sym_name.c_str());
         std::cout << "Symbol name: " << info.sym_name.c_str() << std::endl;
         std::cout << "Symbol size: " << info.size << std::endl;
         std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
     }
     for (unsigned int i = 0; i < numSymbols; i++) {
-        luthier::elf::SymbolInfo info;
-        luthier::elf::getSymbolInfo(elfio, i, info);
-        std::string demangledSymName = getDemangledName(info.sym_name.c_str());
+        luthier::co_manip::SymbolInfo info;
+        luthier::co_manip::getSymbolInfo(reader, i, info);
+        std::string demangledSymName = luthier::co_manip::getDemangledName(info.sym_name.c_str());
         std::cout << "Symbol name: " << info.sym_name.c_str() << std::endl;
         std::cout << "Symbol size: " << info.size << std::endl;
         std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
         if (demangledSymName.find("__luthier_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
-            std::cout << "Symbol name: " << getDemangledName(info.sym_name.c_str()) << std::endl;
+            std::cout << "Symbol name: " << luthier::co_manip::getDemangledName(info.sym_name.c_str()) << std::endl;
             std::cout << "Symbol size: " << info.size << std::endl;
             std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
-            return {info.address, info.size};
+            return {codeObject.data + (luthier_address_t) info.address, info.size};
         }
 
     }
@@ -83,8 +48,8 @@ std::string stripOffKernelLaunch(const std::string& elf, const std::string& dema
 
 void luthier::CodeObjectManager::registerFatBinary(const void *data) {
     assert(data != nullptr);
-    auto fbWrapper = reinterpret_cast<const __CudaFatBinaryWrapper *>(data);
-    assert(fbWrapper->magic == __hipFatMAGIC2 && fbWrapper->version == 1);
+    auto fbWrapper = reinterpret_cast<const luthier::co_manip::CudaFatBinaryWrapper *>(data);
+    assert(fbWrapper->magic == luthier::co_manip::hipFatMAGIC2 && fbWrapper->version == 1);
     auto fatBinary = fbWrapper->binary;
     if (!fatBinaries_.contains(fatBinary)) {
         amd_comgr_data_t fbData;
@@ -130,20 +95,23 @@ void luthier::CodeObjectManager::registerFunction(const void *fbWrapper,
     loaderApi.hsa_ven_amd_loader_iterate_executables(findLuthierExecutable, &luthierExecutables);
     fmt::println("Number of executables captured: {}", luthierExecutables.size());
     assert(fbWrapper != nullptr);
-    auto fbWrapperData = reinterpret_cast<const __CudaFatBinaryWrapper *>(fbWrapper);
-    assert(fbWrapperData->magic == __hipFatMAGIC2 && fbWrapperData->version == 1);
+    auto fbWrapperData = reinterpret_cast<const luthier::co_manip::CudaFatBinaryWrapper *>(fbWrapper);
+    assert(fbWrapperData->magic == luthier::co_manip::hipFatMAGIC2 && fbWrapperData->version == 1);
     auto fatBinary = fbWrapperData->binary;
     if (!fatBinaries_.contains(fatBinary))
         registerFatBinary(fatBinary);
 
-    std::string demangledName = getDemangledName(funcName);
-    demangledName = demangledName.substr(0, demangledName.find('('));
+    std::string demangledName = luthier::co_manip::getDemangledName(funcName);
+    demangledName = demangledName.substr(demangledName.find("__luthier_wrap__") + strlen("__luthier_wrap__"), demangledName.find('('));
     if (!functions_.contains(hostFunction))
-        functions_.insert({hostFunction, {luthierExecutables, std::string(funcName), std::string(deviceName), fatBinary}});
+        functions_.insert({hostFunction, {luthierExecutables, std::string(funcName), std::string(demangledName), fatBinary}});
 }
 
 std::string luthier::CodeObjectManager::getCodeObjectOfInstrumentationFunction(const void *function, hsa_agent_t agent) {
-//    std::string funcNameKey = "__luthier_wrap__" + std::string(function);
+    auto executable = functions_[function].agentToExecMap[agent.handle];
+    auto loadedCodeObject = luthier::co_manip::getHostLoadedCodeObjectOfExecutable(executable);
+
+    stripOffKernelLaunch(loadedCodeObject, functions_[function].deviceName);
 
     auto fb = functions_[function].parentFatBinary;
     auto fbData = fatBinaries_[fb];
