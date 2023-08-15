@@ -184,7 +184,7 @@
 
 namespace luthier {
 
-// I ported these over from our old Inst.h
+// Might be good to move this into the operand class eventually
 enum OperandType { 
     InvalidOperandType,
     RegOperand,
@@ -195,22 +195,13 @@ enum OperandType {
     SpecialOperand
 };
 
-// struct operand {
-// // To do: Mae these private and make getters 
-// // private:
-//     std::string op_str;
-//     OperandType type;
-//     // unsigned long val;
-//     int code;
-//     float floatValue;
-//     long int intValue;
-//     uint32_t literalConstant;
-// };
-class Operand   // Probably won't need to make an operand.hpp/cpp bc this class won't have many functions
-{
-public:
-    // Operand(std::string op_str, OperandType type, int code = -1, 
-    //         float floatValue = -1, long int intValue = -1, uint32_t literalConstant = 0);
+// Should we move the operand stuff into an operand.cpp/hpp?
+/**
+ * @brief Informative comment goes here
+ * 
+ */
+class Operand {
+ public:
     Operand(std::string op_str, OperandType type, int code, 
             float floatValue, long int intValue, uint32_t literalConstant);
     
@@ -220,13 +211,9 @@ public:
     float getOperandFloatValue() const;
     long int getOperandIntValue() const;
     uint32_t getOperandLiteralConstant() const;
-
-    // Couldn't get this to work. Sadness
-    // friend std::ostream& operator<<(std::ostream &os, const Operand &op);
-    // Overloading << operator would be great here, but apparently I'm just horrible at C++
     void printOp();
 
-private:
+ private:
     std::string operand;
     OperandType operandType;
     int operandCode;
@@ -321,17 +308,16 @@ class Instr {
     [[nodiscard]] hsa_agent_t getAgent() const {return agent_;}
 
     int getNumOperands();
-    // int getNumRegsUsed();
-    // operand getOperand(int op_num);
-    // OperandType getOperandType(int op_num);
+    int getNumRegsUsed();
+    Operand getOperand(int op_num);
 
     std::vector<Operand> getAllOperands();
-    // std::vector<operand> getAllOperands();
-    // std::vector<operand> getImmOperands();
-    // std::vector<operand> getRegOperands();
+    std::vector<Operand> getImmOperands();
+    std::vector<Operand> getRegOperands();
 
-    /* MOVE THESE INTO THE OPERAND CLASS */
-    // Instructions that edit operands, reutrn TRUE/FALSE on success/fail
+    // Instructions that edit operands, reutrn TRUE/FALSE on success/fail 
+    // These will need to have corresponding functions in the operand class as well
+    // **Don't know if we need these
     // reg code has to match what's in the ISA
     // bool changeRegNum(int reg_op_num, int new_reg_code);
     // bool changeImmVal(int imm_op_num, int new_imm_val);
@@ -345,10 +331,8 @@ class Instr {
     hsa_agent_t agent_;
     const hsa_executable_symbol_t executableSymbol_;
 
-    // std::vector<operand> operands;
     std::vector<Operand> operands;
     void GetOperandsFromString();
-    // operand EncodeOperand(std::string op);
     Operand EncodeOperand(std::string op);
 };
 
