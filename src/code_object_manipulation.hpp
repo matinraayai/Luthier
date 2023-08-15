@@ -106,9 +106,9 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
 
 code_object_region_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName);
 
-code_object_region_t getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable);
+std::vector<luthier::co_manip::code_object_region_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
-code_object_region_t getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable);
+std::vector<luthier::co_manip::code_object_region_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
 }// namespace luthier::elf
 

@@ -10,6 +10,8 @@
 #include <fmt/color.h>
 #include <fmt/core.h>
 #include <hsa/hsa_ext_amd.h>
+#include <hsa/amd_hsa_common.h>
+#include <hsa/amd_hsa_kernel_code.h>
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
     const auto& coreHsaApiTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
@@ -74,20 +76,62 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
     return HSA_STATUS_SUCCESS;
 }
 
-
-hsa_executable_t createExecutable(const char* codeObjectPtr, size_t codeObjectSize, hsa_agent_t agent) {
+luthier::co_manip::code_object_region_t createExecutableMemoryRegion(size_t codeObjectSize, hsa_agent_t agent) {
     auto coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
-    hsa_code_object_reader_t coReader;
-    hsa_executable_t executable;
-    LUTHIER_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr,
-                                                                         codeObjectSize, &coReader));
+    auto amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+    bool isSVMSupported{false};
+    coreApi.hsa_system_get_info_fn(HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED, &isSVMSupported);
+//    assert(isSVMSupported == true);
 
-    LUTHIER_HSA_CHECK(coreApi.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT, nullptr, &executable));
+    auto callback = [](hsa_amd_memory_pool_t pool, void* data) {
+        auto out = reinterpret_cast<hsa_amd_memory_pool_t*>(data);
+        auto amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+        if (data == nullptr) {
+            return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+        }
 
-    LUTHIER_HSA_CHECK(coreApi.hsa_executable_load_agent_code_object_fn(executable, agent, coReader, nullptr, nullptr));
+        hsa_region_segment_t segment_type{};
+        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment_type));
 
-    LUTHIER_HSA_CHECK(coreApi.hsa_executable_freeze_fn(executable, nullptr));
-    return executable;
+        if (segment_type == HSA_REGION_SEGMENT_GLOBAL) {
+            uint32_t global_flag = 0;
+            LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &global_flag));
+            if ((global_flag & HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) != 0) {
+                *out = pool;
+            }
+        }
+        return HSA_STATUS_SUCCESS;
+    };
+    void* ptr;
+    hsa_amd_memory_pool_t pool;
+    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_agent_iterate_memory_pools_fn(agent, callback, &pool));
+    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_memory_pool_allocate_fn(pool, codeObjectSize, HSA_AMD_MEMORY_POOL_STANDARD_FLAG, &ptr));
+
+//    std::vector<hsa_agent_t> cpuAgents;
+//    auto returnCpuAgentsCallback = [](hsa_agent_t agent, void* data) {
+//        auto agentMap = reinterpret_cast<decltype(cpuAgents)*>(data);
+//        hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
+//
+//        hsa_status_t stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
+//
+//        if (stat != HSA_STATUS_SUCCESS)
+//            return stat;
+//        if (dev_type == HSA_DEVICE_TYPE_GPU) {
+//            agentMap->push_back(agent);
+//        }
+//
+//        return stat;
+//    };
+//
+//    LUTHIER_HSA_CHECK(coreApi.hsa_iterate_agents_fn(returnCpuAgentsCallback, &cpuAgents));
+//
+//    LuthierLogDebug("Number of CPU agents found: {}", cpuAgents.size());
+//    std::vector<hsa_amd_svm_attribute_pair_t> attributeList {
+//        {HSA_AMD_SVM_ATTRIB_GPU_EXEC, true},
+//        {HSA_AMD_SVM_ATTRIB_AGENT_ACCESSIBLE_IN_PLACE, cpuAgents[0].handle},
+//    };
+//    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_svm_attributes_set_fn(ptr, codeObjectSize, attributeList.data(), attributeList.size()));
+    return {reinterpret_cast<luthier_address_t>(ptr), codeObjectSize};
 }
 
 
@@ -348,25 +392,38 @@ std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t ag
 //}
 //
 
-void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string &instrumentationFunction, luthier_ipoint_t point) {
+void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
+                                        luthier_ipoint_t point) {
     LUTHIER_LOG_FUNCTION_CALL_START
-
     hsa_agent_t agent = instr.getAgent();
+    const auto& coManager = luthier::CodeObjectManager::Instance();
+    luthier::co_manip::code_object_region_t instrumentationFunction = coManager.getCodeObjectOfInstrumentationFunction(device_func, agent);
+    kernel_descriptor_t* kd = luthier::CodeObjectManager::Instance().getKernelDescriptorOfInstrumentationFunction(device_func, agent);
+    auto funcVgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
+    auto funcSgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT);
+    auto instrKd = instr.getKernelDescriptor();
+    auto instrVgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
+    auto instrSgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT);
+    AMD_HSA_BITS_SET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, funcVgprCount);
+    AMD_HSA_BITS_SET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, funcSgprCount + 1);
+    LuthierLogDebug("Function SGPR count: {}. VGPR count: {}", funcVgprCount, funcSgprCount);
+    LuthierLogDebug("Instr SGPR count: {}. VGPR count: {}", instrVgprCount, instrSgprCount);
+
     luthier_address_t instDeviceAddress = instr.getDeviceAddress();
     // Load the instrumentation ELF into the agent, and get its location on the device
-    auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
+    auto instrumentationExecutable = createExecutableMemoryRegion(instrumentationFunction.size, agent);
 
 //    auto instrmntLoadedCodeObject = luthier::elf::mem_backed_code_object_t(
 //        reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable()))),
 //        instrumentationFunction.size()
 //        );
 //    auto instrmntTextSectionStart = reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
-    auto instrmntLoadedCodeObject = luthier::co_manip::getDeviceLoadedCodeObjectOfExecutable(instrumentationExecutable);
+//    auto instrmntLoadedCodeObject = luthier::co_manip::getDeviceLoadedCodeObjectOfExecutable(instrumentationExecutable, agent);
 
 
 
     // Get a pointer to the beginning of the .text section of the instrumentation executable
-    luthier_address_t instrmntTextSectionStart = instrmntLoadedCodeObject.data + 0x1000;
+    luthier_address_t instrmntTextSectionStart = instrumentationExecutable.data;
 
     // The instrumentation function is inserted first
     std::string dummyInstrmnt = assemble(std::vector<std::string>
@@ -537,7 +594,7 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
 
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto hostInstructions =
-        luthier::Disassembler::Instance().disassemble(agent, luthier::co_manip::getDeviceLoadedCodeObjectOfExecutable(instr.getExecutable()).data + 0x1000, 0x54);
+        luthier::Disassembler::Instance().disassemble(agent, luthier::co_manip::getHostLoadedCodeObjectOfExecutable(instr.getExecutable(), agent)[0].data + 0x1000, 0x54);
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Host Executable:\n");
 
     for (const auto& i: hostInstructions) {

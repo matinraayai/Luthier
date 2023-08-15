@@ -1,9 +1,11 @@
-#ifndef CODE_OBJECT_MANAGER_H
-#define CODE_OBJECT_MANAGER_H
+#ifndef CODE_OBJECT_MANAGER_HPP
+#define CODE_OBJECT_MANAGER_HPP
 #include "luthier_types.hpp"
+#include "code_object_manipulation.hpp"
+#include <vector>
 #include <amd_comgr/amd_comgr.h>
 #include <hsa/hsa.h>
-#include <map>
+#include <set>
 #include <memory>
 #include <unordered_map>
 
@@ -18,14 +20,13 @@ class CodeObjectManager {
         return instance;
     }
 
-    void registerFatBinary(const void *data);
 
-    void registerFunction(const void *fbWrapper,
-                          const char *funcName,
-                          const void *hostFunction,
-                          const char *deviceName);
 
-    std::string getCodeObjectOfInstrumentationFunction(const void *function, hsa_agent_t agent);
+    void registerFunctions(const std::vector<std::tuple<const void *, const char *>>& instrumentationFunctionInfo);
+
+    co_manip::code_object_region_t getCodeObjectOfInstrumentationFunction(const void *function, hsa_agent_t agent) const;
+
+    kernel_descriptor_t* getKernelDescriptorOfInstrumentationFunction(const void* function, hsa_agent_t agent) const;
 
     void registerKD(luthier_address_t originalCode, luthier_address_t instrumentedCode);
 
@@ -36,22 +37,27 @@ class CodeObjectManager {
     }
 
  private:
+    typedef struct function_agent_entry_s {
+        luthier::co_manip::code_object_region_t function{};
+        kernel_descriptor_t* kd{};
+    } per_agent_instrumentation_function_entry_t;
+
     typedef struct {
-        std::unordered_map<decltype(hsa_agent_t::handle), hsa_executable_t> agentToExecMap;
-        const std::string name;
-        const std::string deviceName;
-        const void *parentFatBinary;
-    } function_info_t;
+        std::unordered_map<decltype(hsa_agent_t::handle), per_agent_instrumentation_function_entry_t> agentToExecMap;
+        const std::string globalFunctionName;
+        const std::string deviceFunctionName;
+    } instrumentation_function_info_t;
 
     CodeObjectManager() {}
     ~CodeObjectManager() {
-        for (auto it: fatBinaries_)
-            amd_comgr_release_data(it.second);
     }
 
-    std::unordered_map<const void*, function_info_t> functions_{};
+    void registerLuthierExecutables();
 
-    std::unordered_map<const void *, amd_comgr_data_t> fatBinaries_{};
+
+    std::set<decltype(hsa_executable_t::handle)> executables_{};
+
+    std::unordered_map<const void*, instrumentation_function_info_t> functions_{};
 
     std::unordered_map<luthier_address_t, luthier_address_t> instrumentedKernels_;
 };

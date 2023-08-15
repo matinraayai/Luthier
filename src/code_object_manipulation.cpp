@@ -370,7 +370,8 @@ std::string getDemangledName(const char *mangledName) {
     return out;
 }
 
-luthier::co_manip::code_object_region_t getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable) {
+std::vector<luthier::co_manip::code_object_region_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable,
+                                                                                           hsa_agent_t agent) {
     auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
@@ -381,23 +382,34 @@ luthier::co_manip::code_object_region_t getDeviceLoadedCodeObjectOfExecutable(hs
     };
     amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
 
-    // Can be removed
-    assert(loadedCodeObjects.size() == 1);
-
-
-    uint64_t lcoBaseAddrDevice;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
-                                                            &lcoBaseAddrDevice);
-    // Query the size of the loaded code object
-    uint64_t lcoSizeDevice;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
-                                                            &lcoSizeDevice);
-    return {reinterpret_cast<luthier_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)};
+    std::vector<luthier::co_manip::code_object_region_t> out;
+    for (const auto &lco: loadedCodeObjects) {
+        hsa_ven_amd_loader_loaded_code_object_kind_t coKind;
+        LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
+                                                                                  HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_KIND,
+                                                                                  &coKind));
+        assert(coKind == HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_KIND_AGENT);
+        hsa_agent_t coAgent;
+        LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
+                                                                                  HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT,
+                                                                                  &coAgent));
+        if (coAgent.handle == agent.handle) {
+            uint64_t lcoBaseAddrDevice;
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                                    HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
+                                                                    &lcoBaseAddrDevice);
+            // Query the size of the loaded code object
+            uint64_t lcoSizeDevice;
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                                    HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
+                                                                    &lcoSizeDevice);
+            out.push_back({reinterpret_cast<luthier_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)});
+        }
+    }
+    return out;
 }
 
-luthier::co_manip::code_object_region_t getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable) {
+std::vector<luthier::co_manip::code_object_region_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent) {
     auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
@@ -406,22 +418,33 @@ luthier::co_manip::code_object_region_t getHostLoadedCodeObjectOfExecutable(hsa_
         out->push_back(lco);
         return HSA_STATUS_SUCCESS;
     };
-    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+    LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, &loadedCodeObjects));
 
-    // Can be removed
-    assert(loadedCodeObjects.size() == 1);
-
-
-    uint64_t lcoBaseAddr;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
-                                                            &lcoBaseAddr);
-    // Query the size of the loaded code object
-    uint64_t lcoSize;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
-                                                            &lcoSize);
-    return {reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)};
+    std::vector<luthier::co_manip::code_object_region_t> out;
+    for (const auto &lco: loadedCodeObjects) {
+        hsa_ven_amd_loader_loaded_code_object_kind_t coKind;
+        LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
+                                                                                  HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_KIND,
+                                                                                  &coKind));
+        assert(coKind == HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_KIND_AGENT);
+        hsa_agent_t coAgent;
+        LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
+                                                                HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT,
+                                                                &coAgent));
+        if (coAgent.handle == agent.handle) {
+            uint64_t lcoBaseAddr;
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                                    HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
+                                                                    &lcoBaseAddr);
+            // Query the size of the loaded code object
+            uint64_t lcoSize;
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                                    HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
+                                                                    &lcoSize);
+            out.push_back({reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)});
+        }
+    }
+    return out;
 }
 
 }// namespace luthier::elf

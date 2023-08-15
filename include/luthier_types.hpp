@@ -12,6 +12,11 @@
 
 typedef uint64_t luthier_address_t;
 
+
+constexpr const char* LUTHIER_DEVICE_FUNCTION_WRAP = "__luthier_wrap__";
+
+constexpr const char* LUTHIER_RESERVED_MANAGED_VAR = "__luthier_reserved";
+
 enum luthier_api_phase_t {
     LUTHIER_API_PHASE_ENTER,
     LUTHIER_API_PHASE_EXIT

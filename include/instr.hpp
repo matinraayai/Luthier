@@ -250,7 +250,7 @@ class Instr {
                               size_(instrSize),
                               executableSymbol_({0}){};
 
-    const kernel_descriptor_t *getKernelDescriptor();
+    kernel_descriptor_t *getKernelDescriptor();
 
     luthier_address_t getHostAddress() const;
 

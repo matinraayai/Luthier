@@ -71,6 +71,9 @@ void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& r
         }
     }
     if (!rFuncArgs.empty()) {
+        // Force the HIP runtime to freeze the executable associated with Luthier tool's code object (done per device)
+        // Luthier code objects should have at least one managed variable for this to work
+        // This will not trigger the launch of any kernels and should return quickly after checking the function argument
         auto hipLaunchKernelFunc = hipInterceptor.GetHipFunction<hipError_t(*)(hipFunction_t f, uint32_t gridDimX, uint32_t gridDimY,
                                                                                             uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY,
                                                                                             uint32_t blockDimZ, uint32_t sharedMemBytes, hipStream_t hStream,
@@ -80,22 +83,17 @@ void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& r
         int deviceCount;
         LUTHIER_HIP_CHECK(hipGetDeviceCountFunc(&deviceCount));
         for (int i = 0; i < deviceCount; i++) {
-            // Force the HIP runtime to freeze the executable associated with Luthier tool's code object (done per device)
-            // Luthier code objects should have at least one managed variable for this to work
-            // This will not trigger the launch of any kernels and should return quickly after checking the function argument
             LUTHIER_HIP_CHECK(hipSetDeviceFunc(i));
             assert(hipLaunchKernelFunc(nullptr, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, nullptr) == hipErrorInvalidImage);
         }
 
         auto &coManager = CodeObjectManager::Instance();
-        coManager.registerFatBinary(rFatBinArgs->data);
+        std::vector<std::tuple<const void*, const char*>> coManagerArgs;
+        coManagerArgs.reserve(rFuncArgs.size());
         for (const auto& arg: rFuncArgs) {
-            coManager.registerFunction(rFatBinArgs->data,
-                                       arg.deviceFunction,
-                                       arg.hostFunction,
-                                       arg.deviceName);
+            coManagerArgs.emplace_back(arg.hostFunction, arg.deviceFunction);
         }
-
+        coManager.registerFunctions(coManagerArgs);
     }
 
 
@@ -296,12 +294,7 @@ void *luthier_get_hip_function(const char *funcName) {
 }
 
 void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ipoint_t point) {
-
-    auto agent = instr->getAgent();
-
-    std::string instrumentationFunc = luthier::CodeObjectManager::Instance().getCodeObjectOfInstrumentationFunction(dev_func, agent);
-
-    luthier::CodeGenerator::instrument(*instr, instrumentationFunc, point);
+    luthier::CodeGenerator::instrument(*instr, dev_func, point);
 }
 
 void luthier_enable_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet, const luthier_address_t func, bool flag) {

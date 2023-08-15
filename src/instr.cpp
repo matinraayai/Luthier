@@ -17,8 +17,8 @@ luthier_address_t luthier::Instr::getHostAddress() const {
 hsa_executable_t luthier::Instr::getExecutable() {
     return executable_;
 }
-const kernel_descriptor_t *luthier::Instr::getKernelDescriptor() {
-    const kernel_descriptor_t *kernelDescriptor{nullptr};
+kernel_descriptor_t *luthier::Instr::getKernelDescriptor() {
+    kernel_descriptor_t *kernelDescriptor{nullptr};
 
     auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
     LUTHIER_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(executableSymbol_,

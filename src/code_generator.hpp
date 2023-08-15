@@ -1,5 +1,6 @@
 #ifndef CODE_GENERATOR_HPP
 #define CODE_GENERATOR_HPP
+#include "code_object_manipulation.hpp"
 #include "instr.hpp"
 #include "luthier_types.hpp"
 
@@ -14,7 +15,8 @@ class CodeGenerator {
         return instance;
     }
 
-    static void instrument(Instr& instr, const std::string&instrumentationFunction, luthier_ipoint_t point);
+    static void instrument(Instr &instr, const void* dev_func,
+                           luthier_ipoint_t point);
 
  private:
     typedef struct {
