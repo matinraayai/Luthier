@@ -4,7 +4,7 @@
 
 
 
-sibir::Operand::Operand(std::string op_str, OperandType type, int code,
+luthier::Operand::Operand(std::string op_str, OperandType type, int code,
         float floatValue, long int intValue, uint32_t literalConstant) {
     operand         = op_str;
     operandType     = type;
@@ -14,14 +14,14 @@ sibir::Operand::Operand(std::string op_str, OperandType type, int code,
     operandConst    = literalConstant;
 }
 
-std::string sibir::Operand::getOperand() const { return operand; }
-sibir::OperandType sibir::Operand::getOperandType() const { return operandType; }
-int sibir::Operand::getOperandCode() const { return operandCode; }
-float sibir::Operand::getOperandFloatValue() const { return operandFloatVal; }
-long int sibir::Operand::getOperandIntValue() const { return operandIntVal; }
-uint32_t sibir::Operand::getOperandLiteralConstant() const { return operandConst; }
+std::string luthier::Operand::getOperand() const { return operand; }
+luthier::OperandType luthier::Operand::getOperandType() const { return operandType; }
+int luthier::Operand::getOperandCode() const { return operandCode; }
+float luthier::Operand::getOperandFloatValue() const { return operandFloatVal; }
+long int luthier::Operand::getOperandIntValue() const { return operandIntVal; }
+uint32_t luthier::Operand::getOperandLiteralConstant() const { return operandConst; }
 
-void sibir::Operand::printOp() { // this function exists because I couldn't get overloaded << to work
+void luthier::Operand::printOp() { // this function exists because I couldn't get overloaded << to work
     std::cout << getOperand();
     switch (getOperandType()) {
         case RegOperand:
@@ -85,7 +85,7 @@ luthier::Instr::Instr(std::string instStr, hsa_agent_t agent,
     GetOperandsFromString();
 };
 
-void sibir::Instr::GetOperandsFromString() {
+void luthier::Instr::GetOperandsFromString() {
     std::string instrstr_cpy(instStr_);
     std::string delim = " ";
     std::vector<std::string> op_str_vec;
@@ -115,7 +115,7 @@ void sibir::Instr::GetOperandsFromString() {
 // This is fine for now while I'm developing the instruction class because this isn't being passed
 // into anything like an assembler. However, I hope to eventually have correct values for everything
 // to prevent any problems down the road.
-sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
+luthier::Operand luthier::Instr::EncodeOperand(std::string op) {
     std::string opstr(op);
     int code;
 
@@ -126,13 +126,13 @@ sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
         code = -1;
         op.erase(0, op.find("(") + 1);
         op.erase(op.find(")"), op.length());
-        return sibir::Operand(opstr, WaitCounter, code, -1, stoi(op, 0, 10), 0);
+        return luthier::Operand(opstr, WaitCounter, code, -1, stoi(op, 0, 10), 0);
     }
 
     // Comp Register Operands
     if (!op.compare("vcc")) {
         code = 251;
-        return sibir::Operand(opstr, SpecialRegOperand, code, -1, -1, 0);
+        return luthier::Operand(opstr, SpecialRegOperand, code, -1, -1, 0);
     }
     // else if (!op.compare("exec")) { // Need to test this one
     //     code = 252;
@@ -140,7 +140,7 @@ sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
     // }
     else if (!op.compare("scc")) {
         code = 253;
-        return sibir::Operand(opstr, SpecialRegOperand, code, -1, -1, 0);
+        return luthier::Operand(opstr, SpecialRegOperand, code, -1, -1, 0);
     }
 
     // Register Operands (gpr)
@@ -153,7 +153,7 @@ sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
             op.erase(op.find(":"), op.length());
         }
         code = stoi(op, 0, 10);
-        return sibir::Operand(opstr, RegOperand, code, -1, -1, 0);
+        return luthier::Operand(opstr, RegOperand, code, -1, -1, 0);
     } else if (vgpr_label_at != std::string::npos) {
         op.erase(vgpr_label_at, 1);
         if (op.find("[") != std::string::npos) {
@@ -161,7 +161,7 @@ sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
             op.erase(op.find(":"), op.length());
         }
         code = stoi(op, 0, 10) + 256;
-        return sibir::Operand(opstr, RegOperand, code, -1, -1, 0);
+        return luthier::Operand(opstr, RegOperand, code, -1, -1, 0);
     }
 
     // Inline Constants     
@@ -169,7 +169,7 @@ sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
     // It also ONLY appears with Flat, Scratch, and Global instructions to tell you that the instruction is
     // using an offset
     if (!op.compare("off")) {
-        return sibir::Operand(opstr, SpecialOperand, -1, -1, -1, 0);
+        return luthier::Operand(opstr, SpecialOperand, -1, -1, -1, 0);
     }
 
     // Assume all other operands are Immediates
@@ -177,28 +177,28 @@ sibir::Operand sibir::Instr::EncodeOperand(std::string op) {
     if (op.find("0x") != std::string::npos) {
         op.erase(0, 2);
         code = -1;
-        return sibir::Operand(opstr, ImmOperand, code, -1, stoi(op, 0, 16), 0);
+        return luthier::Operand(opstr, ImmOperand, code, -1, stoi(op, 0, 16), 0);
     } 
     // Imm in Decimal
     else {
         code = -1;
-        return sibir::Operand(opstr, ImmOperand, code, -1, stoi(op, 0, 10), 0);
+        return luthier::Operand(opstr, ImmOperand, code, -1, stoi(op, 0, 10), 0);
     }
 }
 
-int sibir::Instr::getNumOperands() { return operands.size(); }
+int luthier::Instr::getNumOperands() { return operands.size(); }
 
-int sibir::Instr::getNumRegsUsed() {
-    std::vector<sibir::Operand> reg_ops = getRegOperands();
+int luthier::Instr::getNumRegsUsed() {
+    std::vector<luthier::Operand> reg_ops = getRegOperands();
     return int(reg_ops.size());
 }
 
-sibir::Operand sibir::Instr::getOperand(int op_num) { return operands.at(op_num); }
+luthier::Operand luthier::Instr::getOperand(int op_num) { return operands.at(op_num); }
 
-std::vector<sibir::Operand> sibir::Instr::getAllOperands() { return operands; }
+std::vector<luthier::Operand> luthier::Instr::getAllOperands() { return operands; }
 
-std::vector<sibir::Operand> sibir::Instr::getImmOperands() {
-    std::vector<sibir::Operand> imm_ops;
+std::vector<luthier::Operand> luthier::Instr::getImmOperands() {
+    std::vector<luthier::Operand> imm_ops;
     for (int i = 0; i < operands.size(); i++) {
         if (operands.at(i).getOperandType() == ImmOperand) {
             imm_ops.push_back(operands.at(i));
@@ -207,8 +207,8 @@ std::vector<sibir::Operand> sibir::Instr::getImmOperands() {
     return imm_ops;
 }
 
-std::vector<sibir::Operand> sibir::Instr::getRegOperands() {
-    std::vector<sibir::Operand> reg_ops;
+std::vector<luthier::Operand> luthier::Instr::getRegOperands() {
+    std::vector<luthier::Operand> reg_ops;
     for (int i = 0; i < operands.size(); i++) {
         if (operands.at(i).getOperandType() == RegOperand || 
             operands.at(i).getOperandType() == SpecialRegOperand) {
@@ -219,10 +219,9 @@ std::vector<sibir::Operand> sibir::Instr::getRegOperands() {
 }
 
 
-// I don't know if we need these functions:
-// // For these functions, not sure if we need a way to actually apply changes to mem
-// bool sibir::Instr::changeRegNum(int reg_op_num, int new_reg_code){
-//     sibir::operand op = operands.at(reg_op_num);
+// Edit operand instructions - implement later, as needed
+// bool luthier::Instr::changeRegNum(int reg_op_num, int new_reg_code){
+//     luthier::operand op = operands.at(reg_op_num);
     
 //     if (op.type != RegOperand || op.type != SpecialRegOperand){
 //         return false;
@@ -238,8 +237,8 @@ std::vector<sibir::Operand> sibir::Instr::getRegOperands() {
 //     return true;
 // }
 
-// bool sibir::Instr::changeImmVal(int imm_op_num, int new_imm_val) {
-//     sibir::operand op = operands.at(reg_op_num);
+// bool luthier::Instr::changeImmVal(int imm_op_num, int new_imm_val) {
+//     luthier::operand op = operands.at(reg_op_num);
     
 //     if (op.type != ImmOperand){
 //         return false;
