@@ -3,7 +3,6 @@
 #include "luthier_types.hpp"
 #include <hsa/hsa.h>
 
-// #include <iostream>
 #include <string>
 #include <vector>
 
@@ -197,8 +196,7 @@ enum OperandType {
 
 // Should we move the operand stuff into an operand.cpp/hpp?
 /**
- * @brief Informative comment goes here
- * 
+ * Describes a single operand in an instruction
  */
 class Operand {
  public:
@@ -315,9 +313,8 @@ class Instr {
     std::vector<Operand> getImmOperands();
     std::vector<Operand> getRegOperands();
 
-    // Instructions that edit operands, reutrn TRUE/FALSE on success/fail 
+    // Functions that edit operands, reutrn TRUE/FALSE on success/fail 
     // These will need to have corresponding functions in the operand class as well
-    // **Don't know if we need these
     // reg code has to match what's in the ISA
     // bool changeRegNum(int reg_op_num, int new_reg_code);
     // bool changeImmVal(int imm_op_num, int new_imm_val);
