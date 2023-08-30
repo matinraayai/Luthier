@@ -2,7 +2,10 @@
 #define INSTR_H
 #include "luthier_types.hpp"
 #include <hsa/hsa.h>
+#include <fmt/ostream.h>
 
+#include <string>
+#include <vector>
 
 /////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
 ////class Instr {
@@ -180,9 +183,45 @@
 //
 
 namespace luthier {
+
+// TODO: Should we move the operand stuff into an operand.cpp/hpp?
 /**
- * Instr is an abstraction over ISA located in memory. If the Instr is located inside an executable,
- * it must be backed by an hsa_executable_symbol_t and a (frozen) hsa_executable_t.
+ * Describes a single operand in an instruction
+ */
+class Operand {
+ public:
+    enum OperandType {
+        InvalidOperandType,
+        RegOperand,
+        SpecialRegOperand,
+        WaitCounter,
+        ImmOperand,
+        LiteralConstant,
+        SpecialOperand
+    };
+    Operand(std::string op_str, OperandType type, int code, 
+            float floatValue, long int intValue, uint32_t literalConstant);
+    
+    [[nodiscard]] std::string getOperand() const;
+    [[nodiscard]] OperandType getOperandType() const;
+    [[nodiscard]] int getOperandCode() const;
+    [[nodiscard]] float getOperandFloatValue() const;
+    [[nodiscard]] long int getOperandIntValue() const;
+    [[nodiscard]] uint32_t getOperandLiteralConstant() const;
+    friend std::ostream& operator<<(std::ostream& os, const Operand& op);
+
+ private:
+    std::string operand;
+    OperandType operandType;
+    int operandCode;
+    float operandFloatVal;
+    long int operandIntVal;
+    uint32_t operandConst;
+};
+
+/**
+ * @class Instr is an abstraction over ISA located in memory. If the Instr is located inside an executable,
+ * it must be backed by an @struct hsa_executable_symbol_t and a (frozen) @struct hsa_executable_t.
  * It can also be backed by host memory only.
  * The human-readable string form of the instruction should only use the std::string class instead.
  */
@@ -265,16 +304,37 @@ class Instr {
     [[nodiscard]] hsa_executable_symbol_t getSymbol() const {return executableSymbol_;}
     [[nodiscard]] hsa_agent_t getAgent() const {return agent_;}
 
+    unsigned int getNumOperands();
+    int getNumRegsUsed();
+    Operand getOperand(int op_num);
+
+    std::vector<Operand> getAllOperands();
+    std::vector<Operand> getImmOperands();
+    std::vector<Operand> getRegOperands();
+
+    // Functions that edit operands, reutrn TRUE/FALSE on success/fail 
+    // These will need to have corresponding functions in the operand class as well
+    // reg code has to match what's in the ISA
+    // bool changeRegNum(int reg_op_num, int new_reg_code);
+    // bool changeImmVal(int imm_op_num, int new_imm_val);
+
  private:
     hsa_executable_t executable_{};//
     luthier_address_t hostAddress_{};// Host-accessible address of the instruction
     luthier_address_t deviceAddress_;// Device-accessible address of the instruction
     std::string instStr_;
     size_t size_;
-    hsa_agent_t agent_;
+    hsa_agent_t agent_{};
     const hsa_executable_symbol_t executableSymbol_;
+
+    std::vector<Operand> operands;
+    void GetOperandsFromString();
+    static Operand EncodeOperand(std::string op);
 };
 
 }// namespace luthier
+
+template <> struct fmt::formatter<luthier::Operand> : fmt::ostream_formatter {};
+
 
 #endif
