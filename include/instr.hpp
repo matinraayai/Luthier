@@ -2,6 +2,7 @@
 #define INSTR_H
 #include "luthier_types.hpp"
 #include <hsa/hsa.h>
+#include <fmt/ostream.h>
 
 #include <string>
 #include <vector>
@@ -203,13 +204,13 @@ class Operand {
     Operand(std::string op_str, OperandType type, int code, 
             float floatValue, long int intValue, uint32_t literalConstant);
     
-    std::string getOperand() const;
-    OperandType getOperandType() const;
-    int getOperandCode() const;
-    float getOperandFloatValue() const;
-    long int getOperandIntValue() const;
-    uint32_t getOperandLiteralConstant() const;
-    void printOp();
+    [[nodiscard]] std::string getOperand() const;
+    [[nodiscard]] OperandType getOperandType() const;
+    [[nodiscard]] int getOperandCode() const;
+    [[nodiscard]] float getOperandFloatValue() const;
+    [[nodiscard]] long int getOperandIntValue() const;
+    [[nodiscard]] uint32_t getOperandLiteralConstant() const;
+    friend std::ostream& operator<<(std::ostream& os, const Operand& op);
 
  private:
     std::string operand;
@@ -334,5 +335,8 @@ class Instr {
 };
 
 }// namespace luthier
+
+template <> struct fmt::formatter<luthier::Operand> : fmt::ostream_formatter {};
+
 
 #endif
