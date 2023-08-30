@@ -21,28 +21,29 @@ float luthier::Operand::getOperandFloatValue() const { return operandFloatVal; }
 long int luthier::Operand::getOperandIntValue() const { return operandIntVal; }
 uint32_t luthier::Operand::getOperandLiteralConstant() const { return operandConst; }
 
-void luthier::Operand::printOp() { // this function exists because I couldn't get overloaded << to work
-    std::cout << getOperand();
-    switch (getOperandType()) {
-        case RegOperand:
-        case SpecialRegOperand:
-            std::cout << "\t(Register Encoding: " << getOperandCode() << ")" << std::endl;
+std::ostream& operator<<(std::ostream& os, const luthier::Operand& op) {
+    os << op.getOperand();
+    switch (op.getOperandCode()) {
+        case luthier::OperandType::RegOperand:
+        case luthier::OperandType::SpecialRegOperand:
+            os << "\t(Register Encoding: " << op.getOperandCode() << ")" << std::endl;
             break;
-        case WaitCounter:
-            std::cout << "\t(Counter)" << std::endl;
+        case luthier::OperandType::WaitCounter:
+            os << "\t(Counter)" << std::endl;
             break;
-        case ImmOperand:
-            std::cout << "\t(Immediate)" << std::endl;
+        case luthier::OperandType::ImmOperand:
+            os << "\t(Immediate)" << std::endl;
             break;
-        case LiteralConstant:
-            std::cout << "\t(Literal Constant)" << std::endl;
+        case luthier::OperandType::LiteralConstant:
+            os << "\t(Literal Constant)" << std::endl;
             break;
-        case SpecialOperand:
-            std::cout << "\t(This one means I didn't know how to encode it)" << std::endl;
+        case luthier::OperandType::SpecialOperand:
+            os << "\t(This one means I didn't know how to encode it)" << std::endl;
             break;
         default:
-            std::cout << "\t(Invalid Operand)" << std::endl;
+            os << "\t(Invalid Operand)" << std::endl;
     }
+    return os;
 }
 
 luthier_address_t luthier::Instr::getHostAddress() {
