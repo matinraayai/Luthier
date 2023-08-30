@@ -184,23 +184,21 @@
 
 namespace luthier {
 
-// Might be good to move this into the operand class eventually
-enum OperandType { 
-    InvalidOperandType,
-    RegOperand,
-    SpecialRegOperand,
-    WaitCounter,
-	ImmOperand,
-	LiteralConstant,
-    SpecialOperand
-};
-
-// Should we move the operand stuff into an operand.cpp/hpp?
+// TODO: Should we move the operand stuff into an operand.cpp/hpp?
 /**
  * Describes a single operand in an instruction
  */
 class Operand {
  public:
+    enum OperandType {
+        InvalidOperandType,
+        RegOperand,
+        SpecialRegOperand,
+        WaitCounter,
+        ImmOperand,
+        LiteralConstant,
+        SpecialOperand
+    };
     Operand(std::string op_str, OperandType type, int code, 
             float floatValue, long int intValue, uint32_t literalConstant);
     
@@ -222,8 +220,8 @@ class Operand {
 };
 
 /**
- * Instr is an abstraction over ISA located in memory. If the Instr is located inside an executable,
- * it must be backed by an hsa_executable_symbol_t and a (frozen) hsa_executable_t.
+ * @class Instr is an abstraction over ISA located in memory. If the Instr is located inside an executable,
+ * it must be backed by an @struct hsa_executable_symbol_t and a (frozen) @struct hsa_executable_t.
  * It can also be backed by host memory only.
  * The human-readable string form of the instruction should only use the std::string class instead.
  */
@@ -306,7 +304,7 @@ class Instr {
     [[nodiscard]] hsa_executable_symbol_t getSymbol() const {return executableSymbol_;}
     [[nodiscard]] hsa_agent_t getAgent() const {return agent_;}
 
-    int getNumOperands();
+    unsigned int getNumOperands();
     int getNumRegsUsed();
     Operand getOperand(int op_num);
 
@@ -326,12 +324,12 @@ class Instr {
     luthier_address_t deviceAddress_;// Device-accessible address of the instruction
     std::string instStr_;
     size_t size_;
-    hsa_agent_t agent_;
+    hsa_agent_t agent_{};
     const hsa_executable_symbol_t executableSymbol_;
 
     std::vector<Operand> operands;
     void GetOperandsFromString();
-    Operand EncodeOperand(std::string op);
+    static Operand EncodeOperand(std::string op);
 };
 
 }// namespace luthier
