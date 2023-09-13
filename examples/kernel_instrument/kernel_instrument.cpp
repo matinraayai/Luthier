@@ -381,32 +381,22 @@ void luthier_at_hsa_event(hsa_api_args_t *args, luthier_api_phase_t phase, hsa_a
         }
     } else if (phase == LUTHIER_API_PHASE_ENTER) {
         if (api_id == HSA_API_ID_hsa_signal_store_screlease) {
-            fprintf(stdout, "<call to (%s)\t on %s> ",
-                    "hsa_signal_store_screlease",
-                    "entry");
-            instrumentKernelLaunchCallback(args->hsa_signal_store_screlease.signal,
-                                           args->hsa_signal_store_screlease.value);
-        } else if (api_id == HSA_API_ID_hsa_signal_store_relaxed) {
-            fprintf(stdout, "<call to (%s)\t on %s> ",
-                    "hsa_signal_store_relaxed",
-                    "entry");
+            fprintf(stdout, "<call to (%s)\t on %s> ", "hsa_signal_store_screlease", "entry");
 
-            instrumentKernelLaunchCallback(args->hsa_signal_store_relaxed.signal,
-                                           args->hsa_signal_store_relaxed.value);
+            instrumentKernelLaunchCallback(args->hsa_signal_store_screlease.signal, args->hsa_signal_store_screlease.value);
+        } else if (api_id == HSA_API_ID_hsa_signal_store_relaxed) {
+            fprintf(stdout, "<call to (%s)\t on %s> ", "hsa_signal_store_relaxed", "entry");
+
+            instrumentKernelLaunchCallback(args->hsa_signal_store_relaxed.signal, args->hsa_signal_store_relaxed.value);
         }
     }
 }
 
 void luthier_at_hip_event(void *args, luthier_api_phase_t phase, int hip_api_id) {
-    fprintf(stdout, "<call to (%s)\t on %s> ",
-            hip_api_name(hip_api_id),
-            phase == LUTHIER_API_PHASE_ENTER ? "entry" : "exit");
+    fprintf(stdout, "<call to (%s)\t on %s> ", hip_api_name(hip_api_id), phase == LUTHIER_API_PHASE_ENTER ? "entry" : "exit");
     if (hip_api_id == HIP_API_ID_hipLaunchKernel) {
         auto kern_args = reinterpret_cast<hip_hipLaunchKernel_api_args_t *>(args);
-        fprintf(stdout, "kernel(\"%s\") stream(%p)",
-                hipKernelNameRefByPtr(kern_args->function_address,
-                                      kern_args->stream),
-                kern_args->stream);
+        fprintf(stdout, "kernel(\"%s\") stream(%p)", hipKernelNameRefByPtr(kern_args->function_address, kern_args->stream), kern_args->stream);
     }
     fprintf(stdout, "\n");
     fflush(stdout);
