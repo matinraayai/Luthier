@@ -12,7 +12,7 @@
 #include <hsa/hsa_ext_amd.h>
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
-    const auto& coreHsaApiTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
+    const auto &coreHsaApiTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
     uint32_t nameSize;
     LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
     std::string name;
@@ -21,16 +21,14 @@ std::string getSymbolName(hsa_executable_symbol_t symbol) {
     return name;
 }
 
-hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executable,
-                                      const hsa_executable_symbol_t originalSymbol,
-                                      hsa_agent_t agent) {
+hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executable, const hsa_executable_symbol_t originalSymbol, hsa_agent_t agent) {
 
     hsa_status_t out = HSA_STATUS_ERROR;
-    auto iterCallback = [](hsa_executable_t executable, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data) {
+    auto iterCallback = [](hsa_executable_t executable, hsa_agent_t agent, hsa_executable_symbol_t symbol, void *data) {
         auto originalSymbol = reinterpret_cast<hsa_executable_symbol_t *>(data);
         auto originalSymbolName = getSymbolName(*originalSymbol);
 
-        auto& coreTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
+        auto &coreTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
         hsa_symbol_kind_t symbolKind;
         LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
@@ -49,16 +47,14 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
             luthier_address_t kernelObject;
             luthier_address_t originalKernelObject;
             LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
-            LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(*originalSymbol,
-                                                                        HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &originalKernelObject));
-            luthier::CodeObjectManager::Instance().registerKD(reinterpret_cast<luthier_address_t>(originalKernelObject),
-                                                            reinterpret_cast<luthier_address_t>(kernelObject)
-                                                            );
+            LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(*originalSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &originalKernelObject));
+            luthier::CodeObjectManager::Instance().registerKD(reinterpret_cast<luthier_address_t>(originalKernelObject), reinterpret_cast<luthier_address_t>(kernelObject));
+
             std::cout << "original kernel location: " << std::hex << originalKernelObject << std::dec << std::endl;
             std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
             std::vector<luthier::Instr> instList = luthier::Disassembler::Instance().disassemble(kernelObject);
             std::cout << "Disassembly of the KO: " << std::endl;
-            for (const auto& i : instList) {
+            for (const auto &i: instList) {
                 std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
             }
         }
@@ -74,13 +70,11 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
     return HSA_STATUS_SUCCESS;
 }
 
-
-hsa_executable_t createExecutable(const char* codeObjectPtr, size_t codeObjectSize, hsa_agent_t agent) {
+hsa_executable_t createExecutable(const char *codeObjectPtr, size_t codeObjectSize, hsa_agent_t agent) {
     auto coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_code_object_reader_t coReader;
     hsa_executable_t executable;
-    LUTHIER_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr,
-                                                                         codeObjectSize, &coReader));
+    LUTHIER_HSA_CHECK(coreApi.hsa_code_object_reader_create_from_memory_fn(codeObjectPtr, codeObjectSize, &coReader));
 
     LUTHIER_HSA_CHECK(coreApi.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT, nullptr, &executable));
 
@@ -94,26 +88,21 @@ luthier::elf::mem_backed_code_object_t getLoadedCodeObject(hsa_executable_t exec
     auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
-    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
-        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
+    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void *data) -> hsa_status_t {
+        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t> *>(data);
         out->push_back(lco);
         return HSA_STATUS_SUCCESS;
     };
-    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, &loadedCodeObjects);
 
     // Can be removed
     assert(loadedCodeObjects.size() == 1);
 
-
     uint64_t lcoBaseAddrDevice;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                             HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
-                                                             &lcoBaseAddrDevice);
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0], HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE, &lcoBaseAddrDevice);
     // Query the size of the loaded code object
     uint64_t lcoSizeDevice;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                             HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
-                                                             &lcoSizeDevice);
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0], HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE, &lcoSizeDevice);
     return {reinterpret_cast<luthier_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)};
 }
 
@@ -121,30 +110,25 @@ luthier::elf::mem_backed_code_object_t getCodeObject(hsa_executable_t executable
     auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
-    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
-        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
+    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void *data) -> hsa_status_t {
+        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t> *>(data);
         out->push_back(lco);
         return HSA_STATUS_SUCCESS;
     };
-    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+    amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, &loadedCodeObjects);
 
     // Can be removed
     assert(loadedCodeObjects.size() == 1);
 
-
     uint64_t lcoBaseAddr;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
-                                                            &lcoBaseAddr);
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0], HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE, &lcoBaseAddr);
     // Query the size of the loaded code object
     uint64_t lcoSize;
-    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
-                                                            &lcoSize);
+    amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0], HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE, &lcoSize);
     return {reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)};
 }
 
-std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
+std::string assemble(const std::string &instListStr, hsa_agent_t agent) {
 
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
@@ -160,12 +144,9 @@ std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
-                                                             luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName().c_str()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction, luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName().c_str()));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
-    LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE,
-                            dataAction, dataSetIn, dataSetOut));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE, dataAction, dataSetIn, dataSetOut));
     amd_comgr_data_t dataOut;
     size_t dataOutSize;
     amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_RELOCATABLE, 0, &dataOut);
@@ -181,12 +162,11 @@ std::string assemble(const std::string& instListStr, hsa_agent_t agent) {
     return {io.sections[".text"]->get_data(), io.sections[".text"]->get_size()};
 }
 
-std::string assemble(const std::vector<std::string>& instrVector, hsa_agent_t agent) {
+std::string assemble(const std::vector<std::string> &instrVector, hsa_agent_t agent) {
 
     std::string instString = fmt::format("{}", fmt::join(instrVector, "\n"));
     return assemble(instString, agent);
 }
-
 
 //void* allocateHsaKmtMemory(hsa_agent_t agent, size_t size, luthier::elf::mem_backed_code_object_t codeObject, luthier::elf::mem_backed_code_object_t hostCodeObject) {
 //    uint32_t hsaKmtAgentNodeId = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getAgentDriverNodeIdfromHsa();
@@ -408,35 +388,34 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
     // Load the instrumentation ELF into the agent, and get its location on the device
     auto instrumentationExecutable = createExecutable(instrumentationFunction.data(), instrumentationFunction.size(), agent);
 
-//    auto instrmntLoadedCodeObject = luthier::elf::mem_backed_code_object_t(
-//        reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable()))),
-//        instrumentationFunction.size()
-//        );
-//    auto instrmntTextSectionStart = reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
+    //    auto instrmntLoadedCodeObject = luthier::elf::mem_backed_code_object_t(
+    //        reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable()))),
+    //        instrumentationFunction.size()
+    //        );
+    //    auto instrmntTextSectionStart = reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
     auto instrmntLoadedCodeObject = getLoadedCodeObject(instrumentationExecutable);
-
-
 
     // Get a pointer to the beginning of the .text section of the instrumentation executable
     luthier_address_t instrmntTextSectionStart = instrmntLoadedCodeObject.data + 0x1000;
 
     // The instrumentation function is inserted first
-    std::string dummyInstrmnt = assemble(std::vector<std::string>
-        {"s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)", "s_setpc_b64 s[0:1]"}, agent);
+    std::string dummyInstrmnt = assemble(std::vector<std::string>{"s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)", "s_setpc_b64 s[0:1]"}, agent);
 
     // Padded with nop
     std::string nopInstr = assemble("s_nop 0", agent);
 
-    std::memcpy(reinterpret_cast<void*>(instrmntTextSectionStart), dummyInstrmnt.data(), dummyInstrmnt.size());
+    std::memcpy(reinterpret_cast<void *>(instrmntTextSectionStart), dummyInstrmnt.data(), dummyInstrmnt.size());
 
-    std::memcpy(reinterpret_cast<void*>(instrmntTextSectionStart + dummyInstrmnt.size()), nopInstr.data(), nopInstr.size());
+    std::memcpy(reinterpret_cast<void *>(instrmntTextSectionStart + dummyInstrmnt.size()), nopInstr.data(), nopInstr.size());
 
     // Trampoline starts after the nop
     luthier_address_t trampolineStartAddr = instrmntTextSectionStart + dummyInstrmnt.size() + nopInstr.size();
 
     // Trampoline is located within the short jump range
-    luthier_address_t trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineStartAddr - instDeviceAddress :
-                                                                                      instDeviceAddress - trampolineStartAddr;
+    luthier_address_t trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineStartAddr - instDeviceAddress : instDeviceAddress - trampolineStartAddr;
+
+    fmt::println(stdout, "trampolineStartAddr: {:#x}", trampolineStartAddr);
+    fmt::println(stdout, "instDeviceAddress: {:#x}", instDeviceAddress);
 
     std::string trampoline;
     if (false) {
@@ -445,19 +424,17 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         // Get the PC of the instruction after the get PC instruction
         luthier_address_t trampolinePcOffset = trampolineStartAddr + trampoline.size();
 
-
         int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
 
         fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
         fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
         fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
 
-
         trampoline += assemble({fmt::format("s_sub_u32 s2, s2, {:#x}", firstAddOffset),
                                 "s_subb_u32 s3, s3, 0x0",
                                 "s_swappc_b64 s[0:1], s[2:3]",
-                                instr.getInstr()}, agent);
-
+                                instr.getInstr()},
+                               agent);
 
         trampolinePcOffset = trampolineStartAddr + trampoline.size() + 4;
         //    hostCodeObjectTextSection->append_data(trampoline);
@@ -466,10 +443,9 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         if (trampolinePcOffset < instr.getDeviceAddress()) {
             lastBranchImmInt = (instr.getDeviceAddress() + 4 - trampolinePcOffset) / 4;
             lastBranchImm = (short) (lastBranchImmInt);
-        }
-        else {
+        } else {
             lastBranchImmInt = (trampolinePcOffset - (instr.getDeviceAddress() + 4)) / 4;
-            lastBranchImm = -(short)(lastBranchImmInt);
+            lastBranchImm = -(short) (lastBranchImmInt);
         }
 
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
@@ -481,20 +457,19 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
 
         trampoline += assemble(fmt::format("s_branch {:#x}", lastBranchImm), agent);
 
-        std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
+        std::memcpy(reinterpret_cast<void *>(trampolineStartAddr), trampoline.data(), trampoline.size());
 
-        const auto& amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+        const auto &amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
         hsa_amd_pointer_info_t instrPtrInfo;
         luthier_address_t address = instr.getDeviceAddress();
         fmt::println("Address to query: {:#x}", address);
-        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
-                                                          &instrPtrInfo, nullptr, nullptr, nullptr));
+        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void *>(address),
+                                                            &instrPtrInfo, nullptr, nullptr, nullptr));
         fmt::println("Instruction Info:");
         fmt::println("Type: {}", (uint32_t) instrPtrInfo.type);
         fmt::println("Agent base address: {:#x}", reinterpret_cast<luthier_address_t>(instrPtrInfo.agentBaseAddress));
         fmt::println("Host base address: {:#x}", reinterpret_cast<luthier_address_t>(instrPtrInfo.hostBaseAddress));
         fmt::println("size: {}", instrPtrInfo.sizeInBytes);
-
 
         // Overwrite the target instruction
         int firstBranchImmUnconverted;
@@ -502,8 +477,7 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         if (trampolineStartAddr < instr.getDeviceAddress()) {
             firstBranchImmUnconverted = (instr.getDeviceAddress() + 4 - trampolineStartAddr) / 4;
             firstBranchImm = -static_cast<short>(firstBranchImmUnconverted);
-        }
-        else {
+        } else {
             firstBranchImmUnconverted = (trampolineStartAddr - (instr.getDeviceAddress() + 4)) / 4;
             firstBranchImm = static_cast<short>(firstBranchImmUnconverted);
         }
@@ -531,24 +505,19 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         fmt::println("Upper diff: {:#x}\n", upperTrampolineInstrOffset);
         fmt::println("Lower diff: {:#x}\n", lowerTrampolineInstrOffset);
         fmt::println("Actual diff: {:#x}\n", trampolineInstrOffset);
-        std::string targetToTrampolineOffsetInstr = trampolineStartAddr > instDeviceAddress ? fmt::format("s_add_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset) :
-                                                                                            fmt::format("s_sub_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset);
-        std::string longJumpForTarget = assemble(std::vector<std::string>{"s_getpc_b64 s[6:7]",
-                                                                          targetToTrampolineOffsetInstr}, agent);
+        std::string targetToTrampolineOffsetInstr = trampolineStartAddr > instDeviceAddress ? fmt::format("s_add_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset) : fmt::format("s_sub_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset);
+        std::string longJumpForTarget = assemble(std::vector<std::string>{"s_getpc_b64 s[6:7]", targetToTrampolineOffsetInstr}, agent);
 
         if (upperTrampolineInstrOffset != 0) {
-            longJumpForTarget += trampolineStartAddr > instDeviceAddress ? assemble(fmt::format("s_addc_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent) :
-                                                                         assemble(fmt::format("s_subb_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent);
+            longJumpForTarget += trampolineStartAddr > instDeviceAddress ? assemble(fmt::format("s_addc_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent) : assemble(fmt::format("s_subb_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent);
         }
 
-       longJumpForTarget += assemble("s_swappc_b64 s[2:3], s[6:7]", agent);
+        longJumpForTarget += assemble("s_swappc_b64 s[2:3], s[6:7]", agent);
         fmt::println("Assembled!!!");
-        std::string displacedInstr = std::string(reinterpret_cast<const char*>(instr.getDeviceAddress()),
-                                                 longJumpForTarget.size());
+        std::string displacedInstr = std::string(reinterpret_cast<const char *>(instr.getDeviceAddress()), longJumpForTarget.size());
 
         // Get the PC of the instruction after the get PC instruction
         luthier_address_t trampolinePcOffset = trampolineStartAddr;
-
 
         int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
 
@@ -556,14 +525,14 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
         fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
 
-
         trampoline = assemble({fmt::format("s_sub_u32 s6, s6, {:#x}", firstAddOffset),
-                                "s_subb_u32 s7, s7, 0x0",
-                                "s_swappc_b64 s[0:1], s[6:7]"}, agent);
+                               "s_subb_u32 s7, s7, 0x0",
+                               "s_swappc_b64 s[0:1], s[6:7]"},
+                              agent);
         trampoline += displacedInstr;
         trampoline += assemble("s_setpc_b64 s[2:3]", agent);
 
-        std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
+        std::memcpy(reinterpret_cast<void *>(trampolineStartAddr), trampoline.data(), trampoline.size());
         std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), longJumpForTarget.data(), longJumpForTarget.size());
     }
 
@@ -572,17 +541,15 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         luthier::Disassembler::Instance().disassemble(reinterpret_cast<luthier_address_t>(instr.getKernelDescriptor()));
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instrumented Kernel Final View:\n");
 
-    for (const auto& i: finalTargetInstructions) {
-        auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
-                                                                                                                                                                    fmt::emphasis::underline :
-                                                                                                                                                                    fmt::emphasis::bold;
+    for (const auto &i: finalTargetInstructions) {
+        auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ? fmt::emphasis::underline : fmt::emphasis::bold;
         fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
     }
     auto finalInstrumentationInstructions =
         luthier::Disassembler::Instance().disassemble(agent, instrmntTextSectionStart,
-                                                    dummyInstrmnt.size() + nopInstr.size() + trampoline.size());
+                                                      dummyInstrmnt.size() + nopInstr.size() + trampoline.size());
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::orange_red), "Instrumented Kernel Final View:\n");
-    for (const auto& i: finalInstrumentationInstructions) {
+    for (const auto &i: finalInstrumentationInstructions) {
         fmt::print(stdout, fmt::emphasis::bold, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
     }
 #endif
@@ -592,17 +559,11 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         luthier::Disassembler::Instance().disassemble(agent, getCodeObject(instr.getExecutable()).data + 0x1000, 0x54);
     fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Host Executable:\n");
 
-    for (const auto& i: hostInstructions) {
-        auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
-                                                                                                                                                                    fmt::emphasis::underline :
-                                                                                                                                                                    fmt::emphasis::bold;
+    for (const auto &i: hostInstructions) {
+        auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ? fmt::emphasis::underline : fmt::emphasis::bold;
         fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
     }
 #endif
-
-
-
-
 
     LUTHIER_LOG_FUNCTION_CALL_END
 }

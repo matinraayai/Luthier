@@ -3,7 +3,11 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**"
+                "/opt/rocm/hsa/include",
+                "/opt/rocm/hip/include",
+                "/opt/rocm/roctracer/include",
+                "ext/elfio",
+                "ext/fmt/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",

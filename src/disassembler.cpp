@@ -8,7 +8,7 @@ typedef std::pair<std::string, bool> endPgmCallbackData;
 typedef std::pair<std::string, luthier_address_t> sizeCallbackData;
 
 uint64_t endPgmReadMemoryCallback(luthier_address_t from, char *to, size_t size, void *userData) {
-    bool isEndOfProgram = reinterpret_cast<endPgmCallbackData*>(userData)->second;
+    bool isEndOfProgram = reinterpret_cast<endPgmCallbackData *>(userData)->second;
     if (isEndOfProgram)
         return 0;
     else {
@@ -18,7 +18,7 @@ uint64_t endPgmReadMemoryCallback(luthier_address_t from, char *to, size_t size,
 }
 
 auto sizeReadMemoryCallback(luthier_address_t from, char *to, size_t size, void *userData) {
-    luthier_address_t progEndAddr = reinterpret_cast<sizeCallbackData*>(userData)->second;
+    luthier_address_t progEndAddr = reinterpret_cast<sizeCallbackData *>(userData)->second;
 
     if ((from + size) > progEndAddr) {
         if (from < progEndAddr) {
@@ -34,17 +34,16 @@ auto sizeReadMemoryCallback(luthier_address_t from, char *to, size_t size, void 
 };
 
 void endPgmPrintInstructionCallback(const char *instruction, void *userData) {
-    auto out = reinterpret_cast<endPgmCallbackData*>(userData);
+    auto out = reinterpret_cast<endPgmCallbackData *>(userData);
     out->first = std::string(instruction);
 }
 
 auto sizePrintInstructionCallback(const char *instruction, void *userData) {
-    auto out = reinterpret_cast<sizeCallbackData*>(userData);
+    auto out = reinterpret_cast<sizeCallbackData *>(userData);
     out->first = std::string(instruction);
 };
 
 void printAddressCallback(uint64_t Address, void *UserData) {}
-
 
 //[[nodiscard]] hsa_symbol_kind_t getSymbolKind(hsa_executable_symbol_t symbol) {
 //    auto coreHsaApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
@@ -114,22 +113,21 @@ void printAddressCallback(uint64_t Address, void *UserData) {}
 
 luthier_address_t getKdEntryPoint(luthier_address_t kernelObject) {
     const kernel_descriptor_t *kernelDescriptor{nullptr};
-    const auto& amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-    LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
-                                                                   reinterpret_cast<const void **>(&kernelDescriptor)));
+    const auto &amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject), reinterpret_cast<const void **>(&kernelDescriptor)));
     return reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 }
 
 std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObjectInfo(luthier_address_t kernelObject) {
-    const auto& amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-    const auto& coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
+    const auto &amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    const auto &coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
 
     // A way to backtrack from the kernel object to the symbol it belongs to (besides keeping track of a map)
     hsa_executable_t executable;
 
     // Check which executable this kernel object (address) belongs to
     LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_executable(reinterpret_cast<void *>(kernelObject),
-                                                                 &executable));
+                                                                   &executable));
 
     struct disassemble_callback_data_t {
         hsa_agent_t agent;
@@ -139,7 +137,7 @@ std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObje
     } findKoAgentCallbackData{{}, {}, {}, kernelObject};
 
     auto findKoAgentIterator = [](hsa_executable_t e, hsa_agent_t a, hsa_executable_symbol_t s, void *data) {
-        auto cbd = reinterpret_cast<disassemble_callback_data_t*>(data);
+        auto cbd = reinterpret_cast<disassemble_callback_data_t *>(data);
         uint64_t ko;
         auto &coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
         LUTHIER_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(s, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &ko));
@@ -156,7 +154,7 @@ std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObje
     auto agents = contextManager.getHsaAgents();
     for (const auto &agent: agents)
         LUTHIER_HSA_CHECK(coreApi.hsa_executable_iterate_agent_symbols_fn(executable, agent,
-                                                                        findKoAgentIterator, &findKoAgentCallbackData));
+                                                                          findKoAgentIterator, &findKoAgentCallbackData));
     assert(findKoAgentCallbackData.agent.handle != hsa_agent_t{}.handle);
     assert(findKoAgentCallbackData.symbol.handle != hsa_executable_symbol_t{}.handle);
     return std::make_tuple(findKoAgentCallbackData.agent, findKoAgentCallbackData.executable, findKoAgentCallbackData.symbol);
@@ -236,10 +234,10 @@ amd_comgr_disassembly_info_t luthier::Disassembler::getEndPgmDisassemblyInfo(con
     if (!endPgmDisassemblyInfoMap_.contains(isa)) {
         amd_comgr_disassembly_info_t disassemblyInfo;
         LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info(isa.c_str(),
-                                                                &endPgmReadMemoryCallback,
-                                                                &endPgmPrintInstructionCallback,
-                                                                &printAddressCallback,
-                                                                &disassemblyInfo));
+                                                                  &endPgmReadMemoryCallback,
+                                                                  &endPgmPrintInstructionCallback,
+                                                                  &printAddressCallback,
+                                                                  &disassemblyInfo));
         endPgmDisassemblyInfoMap_.insert({isa, disassemblyInfo});
     }
     return endPgmDisassemblyInfoMap_[isa];
@@ -249,10 +247,10 @@ amd_comgr_disassembly_info_t luthier::Disassembler::getSizeDisassemblyInfo(const
     if (!sizeDisassemblyInfoMap_.contains(isa)) {
         amd_comgr_disassembly_info_t disassemblyInfo;
         LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info(isa.c_str(),
-                                                                &sizeReadMemoryCallback,
-                                                                &sizePrintInstructionCallback,
-                                                                &printAddressCallback,
-                                                                &disassemblyInfo));
+                                                                  &sizeReadMemoryCallback,
+                                                                  &sizePrintInstructionCallback,
+                                                                  &printAddressCallback,
+                                                                  &disassemblyInfo));
         sizeDisassemblyInfoMap_.insert({isa, disassemblyInfo});
     }
     return sizeDisassemblyInfoMap_[isa];
