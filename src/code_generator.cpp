@@ -379,6 +379,9 @@ std::string assemble(const std::vector<std::string> &instrVector, hsa_agent_t ag
 ////    return deviceMemory;
 //}
 //
+void luthier::CodeGenerator::modify(luthier::Instr &instr, void *my_addr) {
+    auto kd = instr.getKernelDescriptor();
+}
 
 void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string &instrumentationFunction, luthier_ipoint_t point) {
     LUTHIER_LOG_FUNCTION_CALL_START
@@ -463,8 +466,7 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         hsa_amd_pointer_info_t instrPtrInfo;
         luthier_address_t address = instr.getDeviceAddress();
         fmt::println("Address to query: {:#x}", address);
-        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void *>(address),
-                                                            &instrPtrInfo, nullptr, nullptr, nullptr));
+        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void *>(address), &instrPtrInfo, nullptr, nullptr, nullptr));
         fmt::println("Instruction Info:");
         fmt::println("Type: {}", (uint32_t) instrPtrInfo.type);
         fmt::println("Agent base address: {:#x}", reinterpret_cast<luthier_address_t>(instrPtrInfo.agentBaseAddress));
@@ -499,7 +501,7 @@ void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string
         trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineInstrOffset - 4 : trampolineInstrOffset + 4;
         constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
         constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
-        uint32_t upperTrampolineInstrOffset = trampolineInstrOffset & upperMaskUint64_t >> 16;
+        uint32_t upperTrampolineInstrOffset = (uint32_t) ((trampolineInstrOffset & upperMaskUint64_t) >> 32);
         uint32_t lowerTrampolineInstrOffset = trampolineInstrOffset & lowerMaskUint64_t;
 
         fmt::println("Upper diff: {:#x}\n", upperTrampolineInstrOffset);

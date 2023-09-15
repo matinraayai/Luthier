@@ -19,6 +19,8 @@ std::mutex mutex;
 
 static std::unordered_map<decltype(hsa_kernel_dispatch_packet_t::kernel_object), hsa_executable_symbol_t> ko_symbol_map;
 
+static void *saved_register;
+
 static bool instrumented{false};
 
 __device__ int globalCounter = 0;
@@ -206,7 +208,10 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                 std::cout << "Dispatch packet's kernel arg address: " << dispatchPacket->kernarg_address << std::endl;
                 if (!instrumented) {
                     std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
-                    luthier_insert_call(&instrVec[0], "instrumentation_kernel", LUTHIER_IPOINT_AFTER);
+                    auto hipMallocFunc = reinterpret_cast<hipError_t (*)(void **, size_t)>(luthier_get_hip_function("hipMalloc"));
+                    (*hipMallocFunc)(&saved_register, 512);
+                    // luthier_insert_call(&instrVec[0], "instrumentation_kernel", LUTHIER_IPOINT_AFTER);
+                    luthier_insert_call(&instrVec[0], saved_register);
                     instrumented = true;
                     luthier_enable_instrumented(dispatchPacket, reinterpret_cast<luthier_address_t>(dispatchPacket->kernel_object),
                                                 true);

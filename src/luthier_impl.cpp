@@ -2,12 +2,12 @@
 #include "code_generator.hpp"
 #include "code_object_manager.hpp"
 #include "disassembler.hpp"
-#include "hsa_intercept.hpp"
 #include "hip_intercept.hpp"
-#include <roctracer/roctracer.h>
+#include "hsa_intercept.hpp"
+#include "log.hpp"
 #include "luthier.h"
 #include <fmt/color.h>
-#include "log.hpp"
+#include <roctracer/roctracer.h>
 
 void luthier::impl::hipStartupCallback(void *cb_data, luthier_api_phase_t phase, int api_id) {
     LUTHIER_LOG_FUNCTION_CALL_START
@@ -87,13 +87,17 @@ void luthier_insert_call(luthier::Instr *instr, const char *dev_func_name, luthi
     luthier::CodeGenerator::instrument(*instr, instrumentationFunc, point);
 }
 
-void luthier_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, const luthier_address_t func, bool flag) {
-//    if (flag) {
-//        auto instrumentedKd = luthier::CodeObjectManager::Instance().getInstrumentedFunctionOfKD(func);
-//        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
-//    }
-//    else
-//        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(func);
+void luthier_insert_call(luthier::Instr *instr, void *my_addr) {
+    luthier::CodeGenerator::modify(*instr, my_addr);
+}
+
+void luthier_enable_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet, const luthier_address_t func, bool flag) {
+    //    if (flag) {
+    //        auto instrumentedKd = luthier::CodeObjectManager::Instance().getInstrumentedFunctionOfKD(func);
+    //        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
+    //    }
+    //    else
+    //        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(func);
 }
 
 extern "C" {
