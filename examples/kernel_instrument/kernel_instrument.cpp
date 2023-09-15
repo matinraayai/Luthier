@@ -261,10 +261,16 @@ void luthier_at_init() {
 }
 
 void luthier_at_term() {
-    int counterHost;
+    // int counterHost;
+    // reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
+    //     &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost);
+    // std::cout << "Counter Value: " << counterHost << std::endl;
+    int savedRegisterHost[128];
     reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
-        &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost);
-    std::cout << "Counter Value: " << counterHost << std::endl;
+        savedRegisterHost, saved_register, 128 * 4, hipMemcpyDeviceToHost);
+    for (int i = 64; i < 128; i++) {
+        std::cout << "v0:wi " << i << " value " << savedRegisterHost[i] << std::endl;
+    }
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 

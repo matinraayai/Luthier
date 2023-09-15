@@ -406,7 +406,7 @@ void luthier::CodeGenerator::modify(luthier::Instr &instr, void *my_addr) {
     saveVgprCode += assemble("s_movk_i32 s9, 0", agent);
     saveVgprCode += assemble({fmt::format("s_add_u32 s2, s9, {:#x}", lowerBaseAddr)}, agent);
     saveVgprCode += assemble({fmt::format("s_add_u32 s3, s9, {:#x}", upperBaseAddr)}, agent);
-    saveVgprCode += assemble(std::vector<std::string>{"v_mov_b32_e32 v3, s3", "v_add_co_u32_e32 v2, vcc, s2, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_store_dword v[2:3], v0, off", "s_endpgm"}, agent);
+    saveVgprCode += assemble(std::vector<std::string>{"v_mov_b32_e32 v3, s3", "v_add_co_u32_e32 v2, vcc, s2, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_store_dword v[2:3], v1, off", "s_endpgm"}, agent);
     std::memcpy(reinterpret_cast<void *>(kernelCodeStartAddr), saveVgprCode.data(), saveVgprCode.size());
 }
 
