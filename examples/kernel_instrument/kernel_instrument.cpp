@@ -210,6 +210,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                     std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
                     auto hipMallocFunc = reinterpret_cast<hipError_t (*)(void **, size_t)>(luthier_get_hip_function("hipMalloc"));
                     (*hipMallocFunc)(&saved_register, 512);
+                    std::cout << "hip allocate address " << saved_register << " for me to save registers\n";
                     // luthier_insert_call(&instrVec[0], "instrumentation_kernel", LUTHIER_IPOINT_AFTER);
                     luthier_insert_call(&instrVec[0], saved_register);
                     instrumented = true;

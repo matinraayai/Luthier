@@ -37,31 +37,26 @@ void luthier_at_term();
 //// * For instance if cbid = cuMemcpyDtoH_v2 then params must be casted to
 //// * (cuMemcpyDtoH_v2_params *)
 //// * */
-void luthier_at_hip_event(void* args, luthier_api_phase_t phase, int hip_api_id);
+void luthier_at_hip_event(void *args, luthier_api_phase_t phase, int hip_api_id);
 
-
-void luthier_at_hsa_event(hsa_api_args_t* cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id);
+void luthier_at_hsa_event(hsa_api_args_t *cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id);
 
 /**
  * Returns the original HSA API table to avoid re-instrumentation of HSA functions.
  * @return saved HSA API Table
  */
-const HsaApiTable* luthier_get_hsa_table();
+const HsaApiTable *luthier_get_hsa_table();
 
-const hsa_ven_amd_loader_1_03_pfn_s* luthier_get_hsa_ven_amd_loader();
+const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader();
 
-
-void* luthier_get_hip_function(const char* funcName);
-
-
+void *luthier_get_hip_function(const char *funcName);
 
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object);
 
-
-#define LUTHIER_EXPORT_FUNC(f)               \
-    __global__ void __luthier_wrap__##f() {  \
-        void (*pfun)() = (void (*)())f;    \
-        if (pfun == (void (*)())1) pfun(); \
+#define LUTHIER_EXPORT_FUNC(f)              \
+    __global__ void __luthier_wrap__##f() { \
+        void (*pfun)() = (void (*)()) f;    \
+        if (pfun == (void (*)()) 1) pfun(); \
     }
 
 //static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
@@ -148,7 +143,9 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
  * @param dev_func_name
  * @param point
  */
-void luthier_insert_call(luthier::Instr* instr, const char* dev_func_name, luthier_ipoint_t point);
+void luthier_insert_call(luthier::Instr *instr, const char *dev_func_name, luthier_ipoint_t point);
+
+void luthier_insert_call(luthier::Instr *instr, void *my_addr);
 
 /////* Add int32_t argument to last injected call, value of the predicate for this
 //// * instruction */
@@ -228,7 +225,7 @@ void luthier_insert_call(luthier::Instr* instr, const char* dev_func_name, luthi
 ////
 /////* Run instrumented on original function (and its related functions)
 //// * based on flag value */
-void luthier_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, luthier_address_t func, bool flag);
+void luthier_enable_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet, luthier_address_t func, bool flag);
 //                               bool apply_to_related = true);
 ////
 /////* Set arguments at launch time, that will be loaded on input argument of

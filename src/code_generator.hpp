@@ -14,7 +14,9 @@ class CodeGenerator {
         return instance;
     }
 
-    static void instrument(Instr& instr, const std::string&instrumentationFunction, luthier_ipoint_t point);
+    static void instrument(Instr &instr, const std::string &instrumentationFunction, luthier_ipoint_t point);
+
+    static void modify(Instr &instr, void *my_addr);
 
  private:
     typedef struct {
@@ -26,10 +28,7 @@ class CodeGenerator {
 
     CodeGenerator() {}
     ~CodeGenerator() {}
-
-
-
 };
-}
+}// namespace luthier
 
 #endif
