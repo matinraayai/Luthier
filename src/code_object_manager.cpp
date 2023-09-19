@@ -168,9 +168,9 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
     //    functions_.insert({instrumentationFunctionInfo, {out, std::string(globalFuncName), deviceFuncName, fatBinary}});
 }
 
-luthier::co_manip::code_object_region_t luthier::CodeObjectManager::getCodeObjectOfInstrumentationFunction(const void *function,
+luthier::co_manip::code_object_region_t luthier::CodeObjectManager::getInstrumentationFunction(const void *wrapperKernelHostPtr,
                                                                                                            hsa_agent_t agent) const {
-    auto f = functions_.at(function).agentToExecMap.at(agent.handle).function;
+    auto f = functions_.at(wrapperKernelHostPtr).agentToExecMap.at(agent.handle).function;
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto instrs = luthier::Disassembler::Instance().disassemble(agent, f.data, f.size);
     for (const auto &i: instrs) {
@@ -179,10 +179,17 @@ luthier::co_manip::code_object_region_t luthier::CodeObjectManager::getCodeObjec
 #endif
     return f;
 }
-void luthier::CodeObjectManager::registerInstrumentedKernel(const kernel_descriptor_t *originalCode, const kernel_descriptor_t *instrumentedCode) {
-    if (!instrumentedKernels_.contains(originalCode))
-        instrumentedKernels_.insert({originalCode, instrumentedCode});
+
+const kernel_descriptor_t *luthier::CodeObjectManager::getInstrumentedKernelKD(const kernel_descriptor_t *originalKernelKD) {
+    if (!instrumentedKernels_.contains(originalKernelKD))
+        throw std::runtime_error(fmt::format("The Kernel Descriptor {:#x} has not been instrumented.", reinterpret_cast<luthier_address_t>(originalKernelKD)));
+    return instrumentedKernels_[originalKernelKD];
 }
-kernel_descriptor_t *luthier::CodeObjectManager::getKernelDescriptorOfInstrumentationFunction(const void *function, hsa_agent_t agent) const {
-    return functions_.at(function).agentToExecMap.at(agent.handle).kd;
+
+void luthier::CodeObjectManager::registerInstrumentedKernel(const kernel_descriptor_t *originalCodeKD, const kernel_descriptor_t *instrumentedCodeKD) {
+    if (!instrumentedKernels_.contains(originalCodeKD))
+        instrumentedKernels_.insert({originalCodeKD, instrumentedCodeKD});
+}
+kernel_descriptor_t *luthier::CodeObjectManager::getKernelDescriptorOfInstrumentationFunction(const void *wrapperKernelHostPtr, hsa_agent_t agent) const {
+    return functions_.at(wrapperKernelHostPtr).agentToExecMap.at(agent.handle).kd;
 }
