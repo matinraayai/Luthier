@@ -12,11 +12,10 @@
 
 namespace {
 
-
 luthier::co_manip::code_object_region_t stripOffKernelLaunch(luthier::co_manip::code_object_region_t codeObject,
-                                                             const std::string& demangledName) {
+                                                             const std::string &demangledName) {
     ELFIO::elfio reader;
-    std::stringstream loadedCodeObjectSS{std::string(reinterpret_cast<const char*>(codeObject.data), codeObject.size)};
+    std::stringstream loadedCodeObjectSS{std::string(reinterpret_cast<const char *>(codeObject.data), codeObject.size)};
     reader.load(loadedCodeObjectSS, true);
     auto numSymbols = luthier::co_manip::getSymbolNum(reader);
     std::cout << "Demangled name: " << demangledName << std::endl;
@@ -26,7 +25,7 @@ luthier::co_manip::code_object_region_t stripOffKernelLaunch(luthier::co_manip::
         std::string demangledSymName = luthier::co_manip::getDemangledName(info.sym_name.c_str());
         std::cout << "Symbol name: " << info.sym_name.c_str() << std::endl;
         std::cout << "Symbol size: " << info.size << std::endl;
-        std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
+        std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.address) << std::endl;
     }
     for (unsigned int i = 0; i < numSymbols; i++) {
         luthier::co_manip::SymbolInfo info;
@@ -34,30 +33,27 @@ luthier::co_manip::code_object_region_t stripOffKernelLaunch(luthier::co_manip::
         std::string demangledSymName = luthier::co_manip::getDemangledName(info.sym_name.c_str());
         std::cout << "Symbol name: " << info.sym_name.c_str() << std::endl;
         std::cout << "Symbol size: " << info.size << std::endl;
-        std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
+        std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.address) << std::endl;
         if (demangledSymName.find("__luthier_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
             std::cout << "Symbol name: " << luthier::co_manip::getDemangledName(info.sym_name.c_str()) << std::endl;
             std::cout << "Symbol size: " << info.size << std::endl;
-            std::cout << "Symbol Addr: " << reinterpret_cast<const void*>(info.address) << std::endl;
+            std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.address) << std::endl;
             return {codeObject.data + (luthier_address_t) info.address, info.size};
         }
-
     }
 
     return {};
 }
 
-
-
 }// namespace
 
-void luthier::CodeObjectManager::registerLuthierExecutables() {
-    const auto& loaderApi = HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-    auto findLuthierExecutable = [](hsa_executable_t exec, void* data){
-        const auto& coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
+    const auto &loaderApi = HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    auto findLuthierExecutable = [](hsa_executable_t exec, void *data) {
+        const auto &coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
         std::vector<hsa_agent_t> agents = ContextManager::Instance().getHsaAgents();
-        auto symbolIterator = [](hsa_executable_t exec, hsa_agent_t agent, hsa_executable_symbol_t symbol,void * data) {
-            const auto& coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
+        auto symbolIterator = [](hsa_executable_t exec, hsa_agent_t agent, hsa_executable_symbol_t symbol, void *data) {
+            const auto &coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
             hsa_symbol_kind_t symbolKind;
             LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
@@ -76,7 +72,7 @@ void luthier::CodeObjectManager::registerLuthierExecutables() {
             }
             return HSA_STATUS_SUCCESS;
         };
-        for (const auto& a: agents) {
+        for (const auto &a: agents) {
             coreApi.hsa_executable_iterate_agent_symbols_fn(exec, a, symbolIterator, data);
         }
         return HSA_STATUS_SUCCESS;
@@ -84,18 +80,17 @@ void luthier::CodeObjectManager::registerLuthierExecutables() {
     loaderApi.hsa_ven_amd_loader_iterate_executables(findLuthierExecutable, &executables_);
 
     LuthierLogDebug("Number of executables captured: {}", executables_.size());
-
 }
 
-void luthier::CodeObjectManager::registerFunctions(const std::vector<std::tuple<const void *, const char *>>& instrumentationFunctionInfo) {
-    registerLuthierExecutables();
+void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunctions(const std::vector<std::tuple<const void *, const char *>> &instrumentationFunctionInfo) {
+    registerLuthierHsaExecutables();
     // this holds the name of the actual device function, without the __luthier_wrap
     std::vector<std::string> instDeviceFuncNames;
     instDeviceFuncNames.reserve(instrumentationFunctionInfo.size());
     for (const auto &iFuncInfo: instrumentationFunctionInfo) {
-        std::string deviceFuncName = std::get<const char*>(iFuncInfo);
+        std::string deviceFuncName = std::get<const char *>(iFuncInfo);
         deviceFuncName = deviceFuncName.substr(deviceFuncName.find("__luthier_wrap__") + strlen("__luthier_wrap__"),
-                                                deviceFuncName.find('('));
+                                               deviceFuncName.find('('));
         if (deviceFuncName.empty())
             throw std::runtime_error("The requested instrumentation kernel doesn't have __luthier_wrap__ at its beginning.");
         instDeviceFuncNames.push_back(deviceFuncName);
@@ -103,47 +98,52 @@ void luthier::CodeObjectManager::registerFunctions(const std::vector<std::tuple<
 
     auto agents = ContextManager::Instance().getHsaAgents();
 
-    for (const auto& a: agents) {
-        for (const auto& e: executables_) {
+    for (const auto &a: agents) {
+        for (const auto &e: executables_) {
             auto hostCodeObjects = co_manip::getHostLoadedCodeObjectOfExecutable({e}, a);
             auto deviceCodeObjects = co_manip::getDeviceLoadedCodeObjectOfExecutable({e}, a);
             for (unsigned int i = 0; i < hostCodeObjects.size(); i++) {
                 auto hco = hostCodeObjects[i];
                 auto dco = deviceCodeObjects[i];
-                std::stringstream hcoSs{std::string(reinterpret_cast<const char*>(hco.data), hco.size)};
+                std::stringstream hcoSs{std::string(reinterpret_cast<const char *>(hco.data), hco.size)};
                 ELFIO::elfio reader;
                 reader.load(hcoSs, true);
                 for (unsigned int j = 0; j < co_manip::getSymbolNum(reader); j++) {
                     co_manip::SymbolInfo info;
                     co_manip::getSymbolInfo(reader, j, info);
+                    fmt::println("Name of symbol: {}", info.sym_name);
+                    fmt::println("Size of symbol: {}", info.size);
+                    fmt::println("Type of symbol: {}", (int) info.type);
+                    fmt::println("Symbol location: {:#x}", reinterpret_cast<luthier_address_t>(info.address));
+                    fmt::println("Section addr: {:#x}", reinterpret_cast<luthier_address_t>(info.sec_addr));
+                    fmt::println("Section Name: {}", info.sec_name);
                     for (unsigned int k = 0; k < instrumentationFunctionInfo.size(); k++) {
                         auto deviceFuncName = instDeviceFuncNames[k];
                         if (info.sym_name.find(deviceFuncName) != std::string::npos) {
                             luthier_address_t deviceAddress = dco.data + reinterpret_cast<luthier_address_t>(info.address);
-                            auto globalFuncPointer = std::get<const void*>(instrumentationFunctionInfo[k]);
+                            auto globalFuncPointer = std::get<const void *>(instrumentationFunctionInfo[k]);
 
-                            if (info.sym_name.find("__luthier_wrap__") != std::string::npos) {
-                                assert(info.size == sizeof(kernel_descriptor_t));
-                                auto* kd = reinterpret_cast<kernel_descriptor_t*>(deviceAddress);
+                            if (info.sym_name.find("__luthier_wrap__") != std::string::npos and info.sym_name.find(".kd") != std::string::npos) {
+                                //                                assert(info.size == sizeof(kernel_descriptor_t));
+                                auto *kd = reinterpret_cast<kernel_descriptor_t *>(deviceAddress);
                                 if (!functions_.contains(globalFuncPointer)) {
-                                    auto globalFunctionName = std::get<const char*>(instrumentationFunctionInfo[k]);
-                                        functions_.insert({globalFuncPointer, {{}, globalFunctionName, deviceFuncName}});
+                                    auto globalFunctionName = std::get<const char *>(instrumentationFunctionInfo[k]);
+                                    functions_.insert({globalFuncPointer, {{}, globalFunctionName, deviceFuncName}});
                                 }
-                                auto& agentToExecMap = functions_[globalFuncPointer].agentToExecMap;
+                                auto &agentToExecMap = functions_[globalFuncPointer].agentToExecMap;
                                 if (!agentToExecMap.contains(a.handle)) {
-                                        agentToExecMap.insert({a.handle, {}});
+                                    agentToExecMap.insert({a.handle, {}});
                                 }
                                 agentToExecMap[a.handle].kd = kd;
-                            }
-                            else {
+                            } else {
                                 co_manip::code_object_region_t function{reinterpret_cast<luthier_address_t>(info.address) + dco.data, info.size};
                                 if (!functions_.contains(globalFuncPointer)) {
-                                        auto globalFunctionName = std::get<const char*>(instrumentationFunctionInfo[k]);
-                                        functions_.insert({globalFuncPointer, {{}, globalFunctionName, deviceFuncName}});
+                                    auto globalFunctionName = std::get<const char *>(instrumentationFunctionInfo[k]);
+                                    functions_.insert({globalFuncPointer, {{}, globalFunctionName, deviceFuncName}});
                                 }
-                                auto& agentToExecMap = functions_[globalFuncPointer].agentToExecMap;
+                                auto &agentToExecMap = functions_[globalFuncPointer].agentToExecMap;
                                 if (!agentToExecMap.contains(a.handle)) {
-                                        agentToExecMap.insert({a.handle, {}});
+                                    agentToExecMap.insert({a.handle, {}});
                                 }
                                 agentToExecMap[a.handle].function = function;
                             }
@@ -154,19 +154,18 @@ void luthier::CodeObjectManager::registerFunctions(const std::vector<std::tuple<
         }
     }
     LuthierLogDebug("Number of functions registered: {}", functions_.size());
-//
-//            if (HSA_STATUS_SUCCESS == coreApi.hsa_executable_get_symbol_by_name_fn({e}, globalFuncName, &agent, &s)) {
-//                fmt::println("Executable {} with agent {} was found for function {}", e, a, globalFuncName);
-//                out.insert({a, {e}});
-//
-//            }
-//            else {
-//                fmt::println("Symbol was not found for function {}!", globalFuncName);
-//            }
-//        }
-//    }
-//    functions_.insert({instrumentationFunctionInfo, {out, std::string(globalFuncName), deviceFuncName, fatBinary}});
-
+    //
+    //            if (HSA_STATUS_SUCCESS == coreApi.hsa_executable_get_symbol_by_name_fn({e}, globalFuncName, &agent, &s)) {
+    //                fmt::println("Executable {} with agent {} was found for function {}", e, a, globalFuncName);
+    //                out.insert({a, {e}});
+    //
+    //            }
+    //            else {
+    //                fmt::println("Symbol was not found for function {}!", globalFuncName);
+    //            }
+    //        }
+    //    }
+    //    functions_.insert({instrumentationFunctionInfo, {out, std::string(globalFuncName), deviceFuncName, fatBinary}});
 }
 
 luthier::co_manip::code_object_region_t luthier::CodeObjectManager::getCodeObjectOfInstrumentationFunction(const void *function,
@@ -174,13 +173,13 @@ luthier::co_manip::code_object_region_t luthier::CodeObjectManager::getCodeObjec
     auto f = functions_.at(function).agentToExecMap.at(agent.handle).function;
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto instrs = luthier::Disassembler::Instance().disassemble(agent, f.data, f.size);
-    for (const auto& i: instrs) {
+    for (const auto &i: instrs) {
         LuthierLogDebug("{:#x}: {}", i.getHostAddress(), i.getInstr());
     }
 #endif
     return f;
 }
-void luthier::CodeObjectManager::registerKD(luthier_address_t originalCode, luthier_address_t instrumentedCode) {
+void luthier::CodeObjectManager::registerInstrumentedKernel(const kernel_descriptor_t *originalCode, const kernel_descriptor_t *instrumentedCode) {
     if (!instrumentedKernels_.contains(originalCode))
         instrumentedKernels_.insert({originalCode, instrumentedCode});
 }

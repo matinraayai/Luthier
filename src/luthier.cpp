@@ -13,12 +13,12 @@
 
 namespace luthier::impl {
 
-void resetHipRegistrationArgs(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFatBinArgs,
-                              std::vector<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
-                              std::vector<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
-                              std::vector<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
-                              std::vector<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
-                              std::vector<hip___hipRegisterVar_api_args_t>& rVarArgs) {
+void resetHipRegistrationArgs(std::optional<hip___hipRegisterFatBinary_api_args_t> &rFatBinArgs,
+                              std::vector<hip___hipRegisterFunction_api_args_t> &rFuncArgs,
+                              std::vector<hip___hipRegisterManagedVar_api_args_t> &rManagedVarArgs,
+                              std::vector<hip___hipRegisterSurface_api_args_t> &rSurfaceArgs,
+                              std::vector<hip___hipRegisterTexture_api_args_t> &rTextureArgs,
+                              std::vector<hip___hipRegisterVar_api_args_t> &rVarArgs) {
     rFatBinArgs = std::nullopt;
     rFuncArgs.clear();
     rManagedVarArgs.clear();
@@ -27,78 +27,77 @@ void resetHipRegistrationArgs(std::optional<hip___hipRegisterFatBinary_api_args_
     rVarArgs.clear();
 }
 
-void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFatBinArgs,
-                         std::vector<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
-                         std::vector<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
-                         std::vector<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
-                         std::vector<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
-                         std::vector<hip___hipRegisterVar_api_args_t>& rVarArgs) {
+void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t> &rFatBinArgs,
+                         std::vector<hip___hipRegisterFunction_api_args_t> &rFuncArgs,
+                         std::vector<hip___hipRegisterManagedVar_api_args_t> &rManagedVarArgs,
+                         std::vector<hip___hipRegisterSurface_api_args_t> &rSurfaceArgs,
+                         std::vector<hip___hipRegisterTexture_api_args_t> &rTextureArgs,
+                         std::vector<hip___hipRegisterVar_api_args_t> &rVarArgs) {
     const auto &hipInterceptor = HipInterceptor::Instance();
     auto rFatBinFunc = hipInterceptor.GetHipFunction<hip::FatBinaryInfo **(*) (const void *)>("__hipRegisterFatBinary");
     if (rFatBinArgs.has_value()) {
         auto fatBinaryInfo = rFatBinFunc(rFatBinArgs->data);
         if (!rManagedVarArgs.empty()) {
-            auto rManagedVarFunc = hipInterceptor.GetHipFunction<void(*)(void *, void * *, void *,
-                                                                          const char * , size_t , unsigned)>("__hipRegisterManagedVar");
-            for (const auto& arg: rManagedVarArgs) {
-                rManagedVarFunc(reinterpret_cast<void*>(fatBinaryInfo), arg.pointer, arg.init_value,
+            auto rManagedVarFunc = hipInterceptor.GetHipFunction<void (*)(void *, void **, void *,
+                                                                          const char *, size_t, unsigned)>("__hipRegisterManagedVar");
+            for (const auto &arg: rManagedVarArgs) {
+                rManagedVarFunc(reinterpret_cast<void *>(fatBinaryInfo), arg.pointer, arg.init_value,
                                 arg.name, arg.size, arg.align);
             }
-
         }
         if (!rSurfaceArgs.empty()) {
-            auto rSurfaceFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo * *, void *, char *,
+            auto rSurfaceFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo **, void *, char *,
                                                                        char *, int, int)>("__hipRegisterSurface");
-            for (const auto& arg: rSurfaceArgs) {
+            for (const auto &arg: rSurfaceArgs) {
                 rSurfaceFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar,
                              arg.type, arg.ext);
             }
-
         }
         if (!rVarArgs.empty()) {
-            auto rVarFunc = hipInterceptor.GetHipFunction<void(*)(hip::FatBinaryInfo * * modules,
-                                                                   void * var,
-                                                                   char * hostVar,
-                                                                   char * deviceVar,
+            auto rVarFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo **modules,
+                                                                   void *var,
+                                                                   char *hostVar,
+                                                                   char *deviceVar,
                                                                    int ext,
                                                                    size_t size,
                                                                    int constant,
                                                                    int global)>("__hipRegisterVar");
-            for (const auto& arg: rVarArgs) {
+            for (const auto &arg: rVarArgs) {
                 rVarFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar, arg.ext, arg.size,
                          arg.constant, arg.global);
             }
         }
     }
     if (!rFuncArgs.empty()) {
-        // Force the HIP runtime to freeze the executable associated with Luthier tool's code object (done per device)
-        // Luthier code objects should have at least one managed variable for this to work
-        // This will not trigger the launch of any kernels and should return quickly after checking the function argument
-        auto hipLaunchKernelFunc = hipInterceptor.GetHipFunction<hipError_t(*)(hipFunction_t f, uint32_t gridDimX, uint32_t gridDimY,
-                                                                                            uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY,
-                                                                                            uint32_t blockDimZ, uint32_t sharedMemBytes, hipStream_t hStream,
-                                                                                            void** kernelParams, void** extra)>("hipModuleLaunchKernel");
-        auto hipGetDeviceCountFunc = hipInterceptor.GetHipFunction<hipError_t(*)(int* count)>("hipGetDeviceCount");
-        auto hipSetDeviceFunc = hipInterceptor.GetHipFunction<hipError_t(*)(int deviceId)>("hipSetDevice");
+        // Force the HIP runtime to load the static HIP Modules containing the Luthier instrumentation code objects into HSA executables
+        // and freeze them by launching a nullptr hipFunction_t
+        // This has to be done once per HIP device
+        // For HIP to ignore lazy module loading, the tool's HIP FAT binary should have at least one static managed variable
+        // This will not trigger the launch of any kernels and should return quickly after checking that the hipFunction_t is nullptr
+        auto hipLaunchKernelFunc = hipInterceptor.GetHipFunction<hipError_t (*)(hipFunction_t f,
+                                                                                uint32_t gridDimX, uint32_t gridDimY,
+                                                                                uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY,
+                                                                                uint32_t blockDimZ, uint32_t sharedMemBytes, hipStream_t hStream,
+                                                                                void **kernelParams, void **extra)>("hipModuleLaunchKernel");
+        auto hipGetDeviceCountFunc = hipInterceptor.GetHipFunction<hipError_t (*)(int *count)>("hipGetDeviceCount");
+        auto hipSetDeviceFunc = hipInterceptor.GetHipFunction<hipError_t (*)(int deviceId)>("hipSetDevice");
         int deviceCount;
         LUTHIER_HIP_CHECK(hipGetDeviceCountFunc(&deviceCount));
         for (int i = 0; i < deviceCount; i++) {
             LUTHIER_HIP_CHECK(hipSetDeviceFunc(i));
-            assert(hipLaunchKernelFunc(nullptr, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, nullptr) == hipErrorInvalidImage);
+            auto status = hipLaunchKernelFunc(nullptr, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, nullptr);
+            // Check that the launch returned ONLY because the hipFunction_t was a nullptr, nothing else
+            assert(status == hipErrorInvalidResourceHandle || status == hipErrorInvalidImage);
         }
 
-        auto &coManager = CodeObjectManager::Instance();
-        std::vector<std::tuple<const void*, const char*>> coManagerArgs;
+        auto &coManager = CodeObjectManager::instance();
+        std::vector<std::tuple<const void *, const char *>> coManagerArgs;
         coManagerArgs.reserve(rFuncArgs.size());
-        for (const auto& arg: rFuncArgs) {
+        for (const auto &arg: rFuncArgs) {
             coManagerArgs.emplace_back(arg.hostFunction, arg.deviceFunction);
         }
-        coManager.registerFunctions(coManagerArgs);
+        coManager.registerHipWrapperKernelsOfInstrumentationFunctions(coManagerArgs);
     }
-
-
-
-
 
     resetHipRegistrationArgs(rFatBinArgs,
                              rFuncArgs,
@@ -108,58 +107,56 @@ void hijackedHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& r
                              rVarArgs);
 }
 
-void normalHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFatBinArgs,
-                       std::vector<hip___hipRegisterFunction_api_args_t>& rFuncArgs,
-                       std::vector<hip___hipRegisterManagedVar_api_args_t>& rManagedVarArgs,
-                       std::vector<hip___hipRegisterSurface_api_args_t>& rSurfaceArgs,
-                       std::vector<hip___hipRegisterTexture_api_args_t>& rTextureArgs,
-                       std::vector<hip___hipRegisterVar_api_args_t>& rVarArgs) {
+void normalHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t> &rFatBinArgs,
+                       std::vector<hip___hipRegisterFunction_api_args_t> &rFuncArgs,
+                       std::vector<hip___hipRegisterManagedVar_api_args_t> &rManagedVarArgs,
+                       std::vector<hip___hipRegisterSurface_api_args_t> &rSurfaceArgs,
+                       std::vector<hip___hipRegisterTexture_api_args_t> &rTextureArgs,
+                       std::vector<hip___hipRegisterVar_api_args_t> &rVarArgs) {
     const auto &hipInterceptor = HipInterceptor::Instance();
     auto rFatBinFunc = hipInterceptor.GetHipFunction<hip::FatBinaryInfo **(*) (const void *)>("__hipRegisterFatBinary");
     if (rFatBinArgs.has_value()) {
         auto fatBinaryInfo = rFatBinFunc(rFatBinArgs->data);
         if (!rFuncArgs.empty()) {
-            auto rMethodFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo * *,
+            auto rMethodFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo **,
                                                                       const void *,
                                                                       char *,
                                                                       const char *,
                                                                       unsigned int,
                                                                       uint3 *, uint3 *, dim3 *,
                                                                       dim3 *, int *)>("__hipRegisterFunction");
-            for (const auto& args: rFuncArgs) {
+            for (const auto &args: rFuncArgs) {
                 rMethodFunc(fatBinaryInfo, args.hostFunction, args.deviceFunction, args.deviceName,
                             args.threadLimit, args.tid, args.bid, args.blockDim,
                             args.gridDim, args.wSize);
             }
         }
         if (!rManagedVarArgs.empty()) {
-            auto rManagedVarFunc = hipInterceptor.GetHipFunction<void(*)(void *, void * *, void *,
-                                                                          const char * , size_t , unsigned)>("__hipRegisterManagedVar");
-            for (const auto& arg: rManagedVarArgs) {
-                rManagedVarFunc(reinterpret_cast<void*>(fatBinaryInfo), arg.pointer, arg.init_value,
+            auto rManagedVarFunc = hipInterceptor.GetHipFunction<void (*)(void *, void **, void *,
+                                                                          const char *, size_t, unsigned)>("__hipRegisterManagedVar");
+            for (const auto &arg: rManagedVarArgs) {
+                rManagedVarFunc(reinterpret_cast<void *>(fatBinaryInfo), arg.pointer, arg.init_value,
                                 arg.name, arg.size, arg.align);
             }
-
         }
         if (!rSurfaceArgs.empty()) {
-            auto rSurfaceFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo * *, void *, char *,
+            auto rSurfaceFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo **, void *, char *,
                                                                        char *, int, int)>("__hipRegisterSurface");
-            for (const auto& arg: rSurfaceArgs) {
+            for (const auto &arg: rSurfaceArgs) {
                 rSurfaceFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar,
                              arg.type, arg.ext);
             }
-
         }
         if (!rVarArgs.empty()) {
-            auto rVarFunc = hipInterceptor.GetHipFunction<void(*)(hip::FatBinaryInfo * * modules,
-                                                                   void * var,
-                                                                   char * hostVar,
-                                                                   char * deviceVar,
+            auto rVarFunc = hipInterceptor.GetHipFunction<void (*)(hip::FatBinaryInfo **modules,
+                                                                   void *var,
+                                                                   char *hostVar,
+                                                                   char *deviceVar,
                                                                    int ext,
                                                                    size_t size,
                                                                    int constant,
                                                                    int global)>("__hipRegisterVar");
-            for (const auto& arg: rVarArgs) {
+            for (const auto &arg: rVarArgs) {
                 rVarFunc(fatBinaryInfo, arg.var, arg.hostVar, arg.deviceVar, arg.ext, arg.size,
                          arg.constant, arg.global);
             }
@@ -173,32 +170,30 @@ void normalHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t>& rFa
                              rVarArgs);
 }
 
-
-
 void hipApiInternalCallback(void *cb_data, luthier_api_phase_t phase, int api_id, bool *skip_func) {
     LUTHIER_LOG_FUNCTION_CALL_START
     // Logic for intercepting the __hipRegister* functions
-    static bool isHipRegistrationOver{false}; //> indicates if the registration step of the HIP runtime is over. It is set when the
-                                              // current API ID is not a registration function anymore
-    static bool hijackRegistrationIterForLuthier{false}; //> indicates if the past/current arguments to the registration functions
-                                                         // contain luthier device code (functions wrapped in __luthier_wrap__).
-                                                         // Such scenarios require removal of the device code from the Fat binary
-                                                         // and loading the modified binary to the HIP runtime as a dynamic module.
-                                                         // This ensures that instrumentation functions can have a single copy of them
-                                                         // and have them as a call argument
+    static bool isHipRegistrationOver{false};           //> indicates if the registration step of the HIP runtime is over. It is set when the
+                                                        // current API ID is not a registration function anymore
+    static bool hijackRegistrationIterForLuthier{false};//> indicates if the past/current arguments to the registration functions
+                                                        // contain luthier device code (functions wrapped in __luthier_wrap__).
+                                                        // Such scenarios require removal of the device code from the Fat binary
+                                                        // and loading the modified binary to the HIP runtime as a dynamic module.
+                                                        // This ensures that instrumentation functions can have a single copy of them
+                                                        // and have them as a call argument
     static std::optional<hip___hipRegisterFatBinary_api_args_t>
-        lastRFatBinArgs{std::nullopt}; //> if __hipRegisterFatBinary was called, holds the arguments
-                                       // of the call; Otherwise holds std::nullopt
+        lastRFatBinArgs{std::nullopt};//> if __hipRegisterFatBinary was called, holds the arguments
+                                      // of the call; Otherwise holds std::nullopt
     static std::vector<hip___hipRegisterFunction_api_args_t>
-        lastRFuncArgs{}; //> list of functions to register for the last saved Fat Binary
+        lastRFuncArgs{};//> list of functions to register for the last saved Fat Binary
     static std::vector<hip___hipRegisterManagedVar_api_args_t>
-        lastRManagedVarArgs{}; //> list of managed variables to register for the last saved Fat Binary
+        lastRManagedVarArgs{};//> list of managed variables to register for the last saved Fat Binary
     static std::vector<hip___hipRegisterSurface_api_args_t>
-        lastRSurfaceArgs{}; //> list of surface variables to register for the last saved Fat Binary
+        lastRSurfaceArgs{};//> list of surface variables to register for the last saved Fat Binary
     static std::vector<hip___hipRegisterTexture_api_args_t>
-        lastRTextureArgs{}; //> list of texture variables to register for the last saved Fat Binary
+        lastRTextureArgs{};//> list of texture variables to register for the last saved Fat Binary
     static std::vector<hip___hipRegisterVar_api_args_t>
-        lastRVarArgs{}; //> list of global variables to register for the last Fat saved Binary
+        lastRVarArgs{};//> list of global variables to register for the last Fat saved Binary
 
     if (!isHipRegistrationOver && phase == LUTHIER_API_PHASE_ENTER) {
         if (api_id == HIP_PRIVATE_API_ID___hipRegisterFatBinary) {
@@ -246,10 +241,6 @@ void hipApiInternalCallback(void *cb_data, luthier_api_phase_t phase, int api_id
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-
-
-
-
 void hipApiUserCallback(void *cb_data, luthier_api_phase_t phase, int api_id) {
     ::luthier_at_hip_event(cb_data, phase, api_id);
 }
@@ -274,8 +265,7 @@ __attribute__((destructor)) void finalize() {
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-
-}
+}// namespace luthier::impl
 
 const HsaApiTable *luthier_get_hsa_table() {
     return &luthier::HsaInterceptor::Instance().getSavedHsaTables().root;
@@ -297,13 +287,11 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
     luthier::CodeGenerator::instrument(*instr, dev_func, point);
 }
 
-void luthier_enable_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet, const luthier_address_t func, bool flag) {
-    //    if (flag) {
-    //        auto instrumentedKd = luthier::CodeObjectManager::Instance().getInstrumentedFunctionOfKD(func);
-    //        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
-    //    }
-    //    else
-    //        dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(func);
+void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
+    const auto instrumentedKd = luthier::CodeObjectManager::instance().getInstrumentedFunctionOfKD(
+        reinterpret_cast<const kernel_descriptor_t *>(dispatch_packet->kernel_object));
+    dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
+    fmt::println("Kernel Object address: {:#x}", dispatch_packet->kernel_object);
 }
 
 extern "C" {
