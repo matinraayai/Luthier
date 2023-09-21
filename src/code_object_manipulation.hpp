@@ -53,19 +53,27 @@ class ElfView: public std::enable_shared_from_this<ElfView> {
  public:
     ElfView() = delete;
 
+    /**
+     * Factory method to construct a shared pointer of an ElfView
+     * To ensure correct passing of arguments of ElfView between different functions and scope management,
+     * only shared pointers of ElfViews are allowed for construction
+     * @param elf code view of the AMDGPU code object on host
+     * @return a shared pointer to the constructed ElfView
+     */
     static std::shared_ptr<ElfView> make_view(code_view_t elf) {
         return std::shared_ptr<ElfView>(new ElfView(elf));
     }
 
-    std::shared_ptr<ELFIO::elfio> &get_elfio() const {
-        if (io_ == nullptr) {
-            io_ = std::make_shared<ELFIO::elfio>();
-            io_->load(*dataStringStream_, false);
+    ELFIO::elfio &getElfIo() const {
+        if (io_ == std::nullopt) {
+            io_ = ELFIO::elfio();
+            // All elfio objects are loaded with lazy=true in ElfView
+            io_->load(*dataStringStream_, true);
         }
-        return io_;
+        return io_.value();
     }
 
-    code_view_t get_view() const {
+    code_view_t GetView() const {
         return data_;
     }
  private:
@@ -77,7 +85,7 @@ class ElfView: public std::enable_shared_from_this<ElfView> {
                                             std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).end())) {}
 
 
-    mutable std::shared_ptr<ELFIO::elfio> io_{nullptr};
+    mutable std::optional<ELFIO::elfio> io_{std::nullopt};
     const code_view_t data_;
     const std::unique_ptr<boost_ios::stream<boost_ios::basic_array_source<char>>> dataStringStream_;//! Used to construct the elfio object;
                                                                                                     //! Without keeping a reference to this stream,
@@ -95,32 +103,32 @@ class SymbolView {
  public:
     SymbolView() = delete;
 
-    SymbolView(std::shared_ptr<ElfView> elf, unsigned int symIndex);
+    SymbolView(const std::shared_ptr<ElfView>& elf, unsigned int symIndex);
 
-    [[nodiscard]] std::shared_ptr<ELFIO::elfio> get_elfio() const {
-        return elf_->get_elfio();
+    [[nodiscard]] std::shared_ptr<ElfView> getElfview() const {
+        return elf_;
     };
 
-    [[nodiscard]] const ELFIO::section *get_section() const {
+    [[nodiscard]] const ELFIO::section *getSection() const {
         return section_;
     };
 
-    [[nodiscard]] const std::string &get_name() const {
+    [[nodiscard]] const std::string &getName() const {
         return name_;
     };
-    [[nodiscard]] code_view_t get_view() const {
+    [[nodiscard]] code_view_t getView() const {
         return data_;
     }
 
-    [[nodiscard]] size_t get_value() const {
+    [[nodiscard]] size_t getValue() const {
         return value_;
     };
 
-    [[nodiscard]] unsigned char get_type() const {
+    [[nodiscard]] unsigned char getType() const {
         return type_;
     };
 
-    [[nodiscard]] const char *get_data() const {
+    [[nodiscard]] const char *getData() const {
         return section_->get_data() + (size_t) value_ - (size_t) section_->get_offset();
     }
 };

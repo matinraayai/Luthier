@@ -10,9 +10,7 @@
 #include <fmt/color.h>
 #include <fmt/core.h>
 #include <hsa/hsa_ext_amd.h>
-#include <elfio/elfio.hpp>
 #include <hsa/amd_hsa_common.h>
-#include <hsa/amd_hsa_kernel_code.h>
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
     const auto& coreHsaApiTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
@@ -334,7 +332,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
             const auto& amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
             LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
                                                                              reinterpret_cast<const void **>(&kernelDescriptor)));
-//            auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
+            auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 
 //            instList = luthier::Disassembler::Instance().disassemble(agent, entry_point - 0x14c, 0x500);
             instList = luthier::Disassembler::instance().disassemble(kernelObject);
@@ -419,19 +417,16 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
     hsa_agent_t agent = instr.getAgent();
     hsa_executable_t instrExecutable = instr.getExecutable();
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
-    auto instrElf = co_manip::ElfView::make_view(hco[0]);
+    co_manip::code_t newCodeObject(hco[0]);
+    auto instrElf = co_manip::ElfView::make_view(newCodeObject);
 
     for (unsigned int i = 0; i < co_manip::getSymbolNum(instrElf); i++) {
         co_manip::SymbolView info(instrElf, i);
-        fmt::println("Symbol Info: {}, {}, {:#x}", info.get_name(), info.get_view().size(),
-                     reinterpret_cast<luthier_address_t>(info.get_view().data()));
-        if (info.get_name().find(".kd") != std::string::npos) {
-            auto sym_data = reinterpret_cast<luthier_address_t>(info.get_view().data()) - reinterpret_cast<luthier_address_t>(info.get_section()->get_address()) +
-                            reinterpret_cast<luthier_address_t>(info.get_section()->get_data());
-            fmt::println("sym data addr: {:#x}, sym addr: {:#x}, ELF beginning addr: {:#x}", sym_data, reinterpret_cast<luthier_address_t>(info.get_view().data()),
-                         reinterpret_cast<luthier_address_t>(hco[0].data()));
-            fmt::println("sym sec addr: {:#x}", info.get_section()->get_address());
-            auto kd = reinterpret_cast<kernel_descriptor_t*>(sym_data);
+        fmt::println("Symbol Info: {}, {}, {:#x}", info.getName(), info.getView().size(),
+                     reinterpret_cast<luthier_address_t>(info.getView().data()));
+        if (info.getName().find(".kd") != std::string::npos) {
+            fmt::println("sym sec addr: {:#x}", info.getSection()->get_address());
+            auto kd = const_cast<kernel_descriptor_t*>(reinterpret_cast<const kernel_descriptor_t*>(info.getView().data()));
 //            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, );
             AMD_HSA_BITS_SET(kd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT, 8);
             AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_FLAT_SCRATCH_INIT, 1);
@@ -440,20 +435,20 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
         }
     }
 
-    for (const auto& sec: instrElf->get_elfio()->sections) {
+    for (const auto& sec: instrElf->getElfIo().sections) {
         fmt::println("Section name {}", sec->get_name());
         fmt::println("Section addr {:#x}", sec->get_address());
     }
     // save the ELF and create an executable
-    std::ostringstream ss;
-    instrElf->get_elfio()->save(ss);
+//    std::ostringstream ss;
+//    instrElf->getElfIo().save(ss);
     auto coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_code_object_reader_t reader;
     hsa_executable_t executable;
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
                                                              nullptr, &executable));
-    std::string elf = ss.str();
-    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(elf.data(), elf.size(), &reader));
+//    std::string elf = ss.str();
+    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(newCodeObject.data(), newCodeObject.size(), &reader));
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_load_agent_code_object_fn(executable, agent, reader, nullptr, nullptr));
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
     LUTHIER_HSA_CHECK(registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent));

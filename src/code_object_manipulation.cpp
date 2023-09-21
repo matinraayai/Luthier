@@ -156,14 +156,14 @@ constexpr ElfSectionsDesc ElfSecDesc[] =
 
 
 unsigned int getSymbolNum(const std::shared_ptr<co_manip::ElfView>& io) {
-    auto elfIo = io->get_elfio();
-    symbol_section_accessor symbol_reader(*elfIo, elfIo->sections[ElfSecDesc[SYMTAB].name]);
+    auto& elfIo = io->getElfIo();
+    symbol_section_accessor symbol_reader(elfIo, elfIo.sections[ElfSecDesc[SYMTAB].name]);
     return symbol_reader.get_symbols_num() - 1;// Exclude the first dummy symbol
 }
 
-SymbolView::SymbolView(std::shared_ptr<ElfView> elf, unsigned int index) : elf_(elf) {
-    auto elfIo = elf->get_elfio();
-    symbol_section_accessor symbol_reader(*elfIo, elfIo->sections[ElfSecDesc[SYMTAB].name]);
+SymbolView::SymbolView(const std::shared_ptr<ElfView>& elf, unsigned int index) : elf_(elf) {
+    auto& elfIo = elf_->getElfIo();
+    symbol_section_accessor symbol_reader(elfIo, elfIo.sections[ElfSecDesc[SYMTAB].name]);
 
     unsigned int num = getSymbolNum(elf);
 
@@ -182,13 +182,13 @@ SymbolView::SymbolView(std::shared_ptr<ElfView> elf, unsigned int index) : elf_(
     if (!ret) {
         throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", index));
     }
-    section_ = elfIo->sections[sec_index];
+    section_ = elfIo.sections[sec_index];
     if (section_ == nullptr) {
         throw std::runtime_error(fmt::format("Section for symbol index {} was "
                                              "reported as nullptr by the ELFIO library.", index));
     }
 
-    data_ = code_view_t{reinterpret_cast<std::byte*>(section_->get_address() + (size_t) value_ - (size_t) section_->get_offset()),
+    data_ = code_view_t{const_cast<std::byte*>(elf->GetView().data() + section_->get_address() + (size_t) value_ - (size_t) section_->get_offset()),
                         size};
 }
 
@@ -367,8 +367,8 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
 }
 
 code_view_t getFunctionFromSymbol(const std::shared_ptr<ElfView>& elfView, const std::string &functionName) {
-    auto elfIo = elfView->get_elfio();
-    symbol_section_accessor symbol_reader(*elfIo, elfIo->sections[ElfSecDesc[SYMTAB].name]);
+    auto& elfIo = elfView->getElfIo();
+    symbol_section_accessor symbol_reader(elfIo, elfIo.sections[ElfSecDesc[SYMTAB].name]);
 
     auto num = getSymbolNum(elfView);
 
@@ -381,21 +381,21 @@ code_view_t getFunctionFromSymbol(const std::shared_ptr<ElfView>& elfView, const
     Elf_Half sec_index = 0;
     unsigned char other = 0;
 
-    fmt::println("Number of sections: {}", elfIo->sections.size());
-    for (const auto& s: elfIo->sections) {
+    fmt::println("Number of sections: {}", elfIo.sections.size());
+    for (const auto& s: elfIo.sections) {
         fmt::println("Name of the section: {}", s->get_name());
         fmt::println("Address: {:#x}", s->get_address());
         fmt::println("Section size: {}", s->get_size());
     }
-    fmt::println("Number of sections: {}", elfIo->segments.size());
-    for (const auto& s: elfIo->segments) {
+    fmt::println("Number of sections: {}", elfIo.segments.size());
+    for (const auto& s: elfIo.segments) {
         fmt::println("Address: {:#x}", s->get_virtual_address());
     }
 
     for (unsigned int i = 1; i < num; i++) {
         bool ret = symbol_reader.get_symbol(i, sym_name, value, size, bind, type,
                                             sec_index, other);
-        section *sec = elfIo->sections[sec_index];
+        section *sec = elfIo.sections[sec_index];
         fmt::println("Section address: {:#x}", sec->get_address());
         fmt::println("Symbol name: {}", sym_name);
         fmt::println("Section name: {}", sec->get_name());
