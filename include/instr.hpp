@@ -239,12 +239,12 @@ class Instr {
     Instr(std::string instStr, hsa_agent_t agent, hsa_executable_t executable,
           hsa_executable_symbol_t symbol, luthier_address_t deviceAccessibleInstrAddress,
           luthier_address_t hostAccessibleInstrAddress, size_t instrSize) : executable_(executable),
-                                                                          hostAddress_(hostAccessibleInstrAddress),
-                                                                          deviceAddress_(deviceAccessibleInstrAddress),
-                                                                          instStr_(std::move(instStr)),
-                                                                          size_(instrSize),
-                                                                          agent_(agent),
-                                                                          executableSymbol_(symbol){};
+                                                                            hostAddress_(hostAccessibleInstrAddress),
+                                                                            deviceAddress_(deviceAccessibleInstrAddress),
+                                                                            instStr_(std::move(instStr)),
+                                                                            size_(instrSize),
+                                                                            agent_(agent),
+                                                                            executableSymbol_(symbol){};
 
     /**
      *
@@ -289,9 +289,9 @@ class Instr {
                               size_(instrSize),
                               executableSymbol_({0}){};
 
-    kernel_descriptor_t *getKernelDescriptor();
+    const kernel_descriptor_t *getKernelDescriptor();
 
-    luthier_address_t getHostAddress() const;
+    luthier_address_t getHostAddress();
 
     [[nodiscard]] hsa_executable_t getExecutable();
 
