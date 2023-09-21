@@ -49,41 +49,33 @@ typedef std::basic_string<std::byte> code_t;
 /**
  * \briefs a non-owning read-only view of an AMDGPU ELF Code object located on the host
  */
-class ElfView: public std::enable_shared_from_this<ElfView> {
+class ElfViewImpl : public std::enable_shared_from_this<ElfViewImpl> {
  public:
-    ElfView() = delete;
+    ElfViewImpl() = delete;
 
-    /**
-     * Factory method to construct a shared pointer of an ElfView
-     * To ensure correct passing of arguments of ElfView between different functions and scope management,
-     * only shared pointers of ElfViews are allowed for construction
-     * @param elf code view of the AMDGPU code object on host
-     * @return a shared pointer to the constructed ElfView
-     */
-    static std::shared_ptr<ElfView> make_view(code_view_t elf) {
-        return std::shared_ptr<ElfView>(new ElfView(elf));
+    static std::shared_ptr<ElfViewImpl> make_view(code_view_t elf) {
+        return std::shared_ptr<ElfViewImpl>(new ElfViewImpl(elf));
     }
 
     ELFIO::elfio &getElfIo() const {
         if (io_ == std::nullopt) {
             io_ = ELFIO::elfio();
-            // All elfio objects are loaded with lazy=true in ElfView
+            // All elfio objects are loaded with lazy=true in ElfViewImpl to prevent additional memory copy
             io_->load(*dataStringStream_, true);
         }
         return io_.value();
     }
 
-    code_view_t GetView() const {
+    code_view_t getView() const {
         return data_;
     }
+
  private:
-
-    explicit ElfView(code_view_t elf) : data_(elf),
-                                        // Convert the code_view_t to a string_view first, and then take its iterators to construct the dataStringStream_
-                                        dataStringStream_(std::make_unique<boost_ios::stream<boost_ios::basic_array_source<char>>>(
-                                            std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).begin(),
-                                            std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).end())) {}
-
+    explicit ElfViewImpl(code_view_t elf) : data_(elf),
+                                            // Convert the code_view_t to a string_view first, and then take its iterators to construct the dataStringStream_
+                                            dataStringStream_(std::make_unique<boost_ios::stream<boost_ios::basic_array_source<char>>>(
+                                                std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).begin(),
+                                                std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).end())) {}
 
     mutable std::optional<ELFIO::elfio> io_{std::nullopt};
     const code_view_t data_;
@@ -92,20 +84,32 @@ class ElfView: public std::enable_shared_from_this<ElfView> {
                                                                                                     //! we cannot use the elfio in lazy mode
 };
 
+typedef std::shared_ptr<ElfViewImpl> ElfView;
+
+/**
+ * Factory method to construct an ElfView
+ * To ensure correct passing of arguments of ElfView between different functions and scope management,
+ * only shared pointers of ElfViewImpls are allowed to be constructed
+ * \return an ElfView object, which is a std::shared_ptr of an ElfViewImpl
+ */
+ElfView makeElfView(code_view_t elf) {
+    return ElfViewImpl::make_view(elf);
+}
+
 class SymbolView {
  private:
-    const std::shared_ptr<ElfView> elf_;//!   section's parent elfio class
-    const ELFIO::section *section_;     //!   symbol's section
-    std::string name_;                  //!   symbol name
-    code_view_t data_;                  //!   symbol's raw data
-    size_t value_;                      //!   value of the symbol
-    unsigned char type_;                //!   type of the symbol
+    const ElfView elf_;//!   section's parent elfio class
+    const ELFIO::section *section_;         //!   symbol's section
+    std::string name_;                      //!   symbol name
+    code_view_t data_;                      //!   symbol's raw data
+    size_t value_;                          //!   value of the symbol
+    unsigned char type_;                    //!   type of the symbol
  public:
     SymbolView() = delete;
 
-    SymbolView(const std::shared_ptr<ElfView>& elf, unsigned int symIndex);
+    SymbolView(const ElfView &elf, unsigned int symIndex);
 
-    [[nodiscard]] std::shared_ptr<ElfView> getElfview() const {
+    [[nodiscard]] ElfView getElfview() const {
         return elf_;
     };
 
@@ -128,19 +132,24 @@ class SymbolView {
         return type_;
     };
 
-    [[nodiscard]] const char *getData() const {
-        return section_->get_data() + (size_t) value_ - (size_t) section_->get_offset();
+    [[nodiscard]] const std::byte *getData() const {
+        return reinterpret_cast<const std::byte *>(section_->get_data() + (size_t) value_ - (size_t) section_->get_offset());
     }
 };
 
 /**
- * Returns the number of symbols
- * @param io
- * @return
+ * Returns the number of symbols in the ElfView
+ * \param elfView a view of the AMDGPU ELF in host memory
+ * \return number of symbols in the ELF
  */
-unsigned int getSymbolNum(const std::shared_ptr<ElfView>& io);
+unsigned int getSymbolNum(const ElfView &elfView);
 
-std::string getDemangledName(const char *mangledName);
+/**
+ * Returns the demangled name of the input symbol name
+ * @param mangledName mangled name string
+ * @return demangled name as std::string
+ */
+std::string getDemangledName(const std::string &mangledName);
 
 amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<ELFIO::elfio> &fatBinaryElfs);
 
@@ -149,8 +158,6 @@ code_view_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functi
 std::vector<code_view_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
 std::vector<code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
-
-//std::shared_ptr<ELFIO::elfio> elfioFromMemory(const co_manip::code_view_t &elf, bool lazy = true);
 
 void printRSR1(const kernel_descriptor_t *kd);
 

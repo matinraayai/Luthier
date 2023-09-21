@@ -103,7 +103,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
             for (unsigned int i = 0; i < hostCodeObjects.size(); i++) {
                 auto hco = hostCodeObjects[i];
                 auto dco = deviceCodeObjects[i];
-                auto reader = co_manip::ElfView::make_view(hco);
+                auto reader = co_manip::makeElfView(hco);
                 auto& io = reader->getElfIo();
 //                ELFIO::elfio reader;
 //                reader.load(hcoSs, true);

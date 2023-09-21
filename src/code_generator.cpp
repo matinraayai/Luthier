@@ -418,7 +418,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
     hsa_executable_t instrExecutable = instr.getExecutable();
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
     co_manip::code_t newCodeObject(hco[0]);
-    auto instrElf = co_manip::ElfView::make_view(newCodeObject);
+    auto instrElf = co_manip::ElfViewImpl::make_view(newCodeObject);
 
     for (unsigned int i = 0; i < co_manip::getSymbolNum(instrElf); i++) {
         co_manip::SymbolView info(instrElf, i);

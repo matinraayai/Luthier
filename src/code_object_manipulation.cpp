@@ -155,13 +155,13 @@ constexpr ElfSectionsDesc ElfSecDesc[] =
 }// namespace
 
 
-unsigned int getSymbolNum(const std::shared_ptr<co_manip::ElfView>& io) {
-    auto& elfIo = io->getElfIo();
+unsigned int getSymbolNum(const ElfView&elfView) {
+    auto& elfIo = elfView->getElfIo();
     symbol_section_accessor symbol_reader(elfIo, elfIo.sections[ElfSecDesc[SYMTAB].name]);
     return symbol_reader.get_symbols_num() - 1;// Exclude the first dummy symbol
 }
 
-SymbolView::SymbolView(const std::shared_ptr<ElfView>& elf, unsigned int index) : elf_(elf) {
+SymbolView::SymbolView(const ElfView& elf, unsigned int index) : elf_(elf) {
     auto& elfIo = elf_->getElfIo();
     symbol_section_accessor symbol_reader(elfIo, elfIo.sections[ElfSecDesc[SYMTAB].name]);
 
@@ -188,7 +188,7 @@ SymbolView::SymbolView(const std::shared_ptr<ElfView>& elf, unsigned int index) 
                                              "reported as nullptr by the ELFIO library.", index));
     }
 
-    data_ = code_view_t{const_cast<std::byte*>(elf->GetView().data() + section_->get_address() + (size_t) value_ - (size_t) section_->get_offset()),
+    data_ = code_view_t{const_cast<std::byte*>(elf->getView().data() + section_->get_address() + (size_t) value_ - (size_t) section_->get_offset()),
                         size};
 }
 
@@ -366,7 +366,7 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
     return AMD_COMGR_STATUS_SUCCESS;
 }
 
-code_view_t getFunctionFromSymbol(const std::shared_ptr<ElfView>& elfView, const std::string &functionName) {
+code_view_t getFunctionFromSymbol(const ElfView& elfView, const std::string &functionName) {
     auto& elfIo = elfView->getElfIo();
     symbol_section_accessor symbol_reader(elfIo, elfIo.sections[ElfSecDesc[SYMTAB].name]);
 
@@ -413,15 +413,15 @@ code_view_t getFunctionFromSymbol(const std::shared_ptr<ElfView>& elfView, const
 }
 
 
-std::string getDemangledName(const char *mangledName) {
+std::string getDemangledName(const std::string &mangledName) {
     amd_comgr_data_t mangledNameData;
     amd_comgr_data_t demangledNameData;
     std::string out;
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangledNameData));
 
-    size_t size = strlen(mangledName);
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName));
+    size_t size = mangledName.size();
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(mangledNameData, size, mangledName.data()));
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_demangle_symbol_name(mangledNameData, &demangledNameData));
 
