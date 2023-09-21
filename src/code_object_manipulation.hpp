@@ -23,12 +23,12 @@
 
 #include "luthier_types.hpp"
 #include <amd_comgr/amd_comgr.h>
-#include <elfio/elfio.hpp>
-#include <map>
-#include <utility>
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/stream.hpp>
+#include <elfio/elfio.hpp>
+#include <map>
 #include <optional>
+#include <utility>
 
 namespace boost_ios = boost::iostreams;
 
@@ -52,25 +52,30 @@ typedef std::basic_string<std::byte> code_t;
 class ElfView {
  public:
     ElfView() = delete;
-    explicit ElfView(code_view_t elf): data_(elf)  {
-        std::string_view dataString(reinterpret_cast<const char*>(data_.data()), data_.size());
-        dataStringStream_ = std::make_unique<boost_ios::stream<boost_ios::basic_array_source<char>>>(dataString.begin(),
-                                                                                                     dataString.end());
-    }
-    ELFIO::elfio& get_elfio() const {
+    explicit ElfView(code_view_t elf) : data_(elf),
+                                        // Convert the code_view_t to a string_view first, and then take its iterators to construct the dataStringStream_
+                                        dataStringStream_(std::make_unique<boost_ios::stream<boost_ios::basic_array_source<char>>>(
+                                            std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).begin(),
+                                            std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).end())) {}
+
+    ELFIO::elfio &get_elfio() const {
         if (io_ == std::nullopt) {
             io_ = ELFIO::elfio();
             io_->load(*dataStringStream_, false);
         }
         return io_.value();
     }
+
     code_view_t get_data() const {
         return data_;
     }
+
  private:
     mutable std::optional<ELFIO::elfio> io_{std::nullopt};
     const code_view_t data_;
-    std::unique_ptr<boost_ios::stream<boost_ios::basic_array_source<char>>> dataStringStream_;
+    const std::unique_ptr<boost_ios::stream<boost_ios::basic_array_source<char>>> dataStringStream_;//! Used to construct the elfio object;
+                                                                                                    //! Without keeping a reference to this stream,
+                                                                                                    //! we cannot use the elfio in lazy mode
 };
 
 class SymbolInfo {
@@ -106,7 +111,6 @@ class SymbolInfo {
  * @return
  */
 unsigned int getSymbolNum(const ELFIO::elfio &io);
-
 
 std::string getDemangledName(const char *mangledName);
 
