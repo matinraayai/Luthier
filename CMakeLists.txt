@@ -5,7 +5,7 @@ project(luthier VERSION 0.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
-# Put results in the lib/ folder
+# Put the built libraries for all CMake projects under the lib/ folder
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # ======================================================================================================================
@@ -36,6 +36,8 @@ else ()
 endif ()
 
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
+
+set(BOOST_VERSION "1.83.0" CACHE STRING "C++ Boost library to download and build with Luthier")
 # ======================================================================================================================
 
 # External CXX Dependencies ============================================================================================
@@ -70,6 +72,23 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fmt)
 
 # ======================================================================================================================
+
+# Boost Configuration ==================================================================================================
+FetchContent_Declare(
+        boost
+        DOWNLOAD_EXTRACT_TIMESTAMP 1
+        URL "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}.tar.xz"
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/boost/
+        CONFIGURE_COMMAND "./bootstrap.sh --with-libraries=iostreams"
+        BUILD_COMMAND "./b2 link=static"
+        INSTALL_COMMAND ""
+)
+FetchContent_MakeAvailable(boost)
+
+set(Boost_USE_STATIC_LIBS ON)
+
+target_include_directories(luthier PRIVATE ${Boost_INCLUDE_DIRS})
+
 # ======================================================================================================================
 
 # ROCM Setup ===========================================================================================================
@@ -111,12 +130,12 @@ target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 
 target_link_libraries(luthier hip::host roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
-        hsa-runtime64::hsa-runtime64 ${llvm_libs} LLVMBitReader)
+        hsa-runtime64::hsa-runtime64 ${llvm_libs} LLVMBitReader ${Boost_LIBRARIES})
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-  set(SUB_DIRS examples/kernel_instrument)
+  set(SUB_DIRS examples/kernel_instrument examples/iterate_all_executable_symbols)
   foreach (DIR ${SUB_DIRS})
     add_subdirectory(${DIR})
   endforeach (DIR)
