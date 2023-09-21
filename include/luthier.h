@@ -238,9 +238,17 @@ void luthier_insert_call(luthier::Instr* instr, const void *dev_func, luthier_ip
 //// *
 //// **********************************************************************/
 ////
-/////* Run instrumented on original function (and its related functions)
-//// * based on flag value */
-void luthier_enable_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet, luthier_address_t func, bool flag);
+
+/**
+ * Overrides the kernel object field of the @param dispatch_packet with its instrumented version, forcing HSA to
+ * launch the instrumented version instead. Note that this function should be called every time an instrumented
+ * kernel needs to be launched, since the content of the dispatch packet will always be set by the target application to
+ * the original version.
+ * To launch the original version of the kernel, simply refrain from calling this function.
+ * @param dispatch_packet the HSA dispatch packet intercepted from an HSA queue, containing the kernel launch
+ * parameters/configuration
+ */
+void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet);
 //                               bool apply_to_related = true);
 ////
 /////* Set arguments at launch time, that will be loaded on input argument of

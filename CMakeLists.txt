@@ -42,6 +42,7 @@ set(BOOST_VERSION "1.83.0" CACHE STRING "C++ Boost library to download and build
 
 # External CXX Dependencies ============================================================================================
 include(FetchContent)
+include(ExternalProject)
 
 # ELFIO Configuration ==================================================================================================
 #TODO: Add an option to the user to set the path to these libraries if externally available
@@ -74,20 +75,23 @@ FetchContent_MakeAvailable(fmt)
 # ======================================================================================================================
 
 # Boost Configuration ==================================================================================================
-FetchContent_Declare(
-        boost
-        DOWNLOAD_EXTRACT_TIMESTAMP 1
-        URL "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}.tar.xz"
+ExternalProject_add(boost
+        DOWNLOAD_EXTRACT_TIMESTAMP 0
+        URL https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}.tar.xz
+        CONFIGURE_COMMAND ./bootstrap.sh --with-libraries=iostreams --prefix=./build
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/boost/
-        CONFIGURE_COMMAND "./bootstrap.sh --with-libraries=iostreams"
-        BUILD_COMMAND "./b2 link=static"
+        BUILD_COMMAND ./b2 install link=static
+        BUILD_IN_SOURCE 1
         INSTALL_COMMAND ""
 )
-FetchContent_MakeAvailable(boost)
 
-set(Boost_USE_STATIC_LIBS ON)
+ExternalProject_Get_Property(boost SOURCE_DIR)
 
-target_include_directories(luthier PRIVATE ${Boost_INCLUDE_DIRS})
+add_dependencies(luthier boost)
+
+target_include_directories(luthier PRIVATE ${SOURCE_DIR}/build/include)
+
+target_link_directories(luthier PUBLIC ${SOURCE_DIR}/build/lib)
 
 # ======================================================================================================================
 
@@ -130,7 +134,7 @@ target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 
 target_link_libraries(luthier hip::host roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
-        hsa-runtime64::hsa-runtime64 ${llvm_libs} LLVMBitReader ${Boost_LIBRARIES})
+        hsa-runtime64::hsa-runtime64 ${llvm_libs} LLVMBitReader boost_iostreams)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================

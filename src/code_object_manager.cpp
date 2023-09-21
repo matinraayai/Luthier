@@ -12,38 +12,36 @@
 
 namespace {
 
-luthier::co_manip::code_object_region_t stripOffKernelLaunch(luthier::co_manip::code_object_region_t codeObject,
-                                                             const std::string &demangledName) {
-    ELFIO::elfio reader;
-    std::stringstream loadedCodeObjectSS{std::string(reinterpret_cast<const char *>(codeObject.data), codeObject.size)};
-    reader.load(loadedCodeObjectSS, true);
-    auto numSymbols = luthier::co_manip::getSymbolNum(reader);
-    std::cout << "Demangled name: " << demangledName << std::endl;
-    for (unsigned int i = 0; i < numSymbols; i++) {
-        luthier::co_manip::SymbolInfo info;
-        luthier::co_manip::getSymbolInfo(reader, i, info);
-        std::string demangledSymName = luthier::co_manip::getDemangledName(info.sym_name.c_str());
-        std::cout << "Symbol name: " << info.sym_name.c_str() << std::endl;
-        std::cout << "Symbol size: " << info.size << std::endl;
-        std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.address) << std::endl;
-    }
-    for (unsigned int i = 0; i < numSymbols; i++) {
-        luthier::co_manip::SymbolInfo info;
-        luthier::co_manip::getSymbolInfo(reader, i, info);
-        std::string demangledSymName = luthier::co_manip::getDemangledName(info.sym_name.c_str());
-        std::cout << "Symbol name: " << info.sym_name.c_str() << std::endl;
-        std::cout << "Symbol size: " << info.size << std::endl;
-        std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.address) << std::endl;
-        if (demangledSymName.find("__luthier_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
-            std::cout << "Symbol name: " << luthier::co_manip::getDemangledName(info.sym_name.c_str()) << std::endl;
-            std::cout << "Symbol size: " << info.size << std::endl;
-            std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.address) << std::endl;
-            return {codeObject.data + (luthier_address_t) info.address, info.size};
-        }
-    }
-
-    return {};
-}
+//luthier::co_manip::code_view_t stripOffKernelLaunch(luthier::co_manip::code_view_t codeObject,
+//                                                    const std::string &demangledName) {
+//    ELFIO::elfio reader;
+//    std::stringstream loadedCodeObjectSS{std::string(reinterpret_cast<const char *>(codeObject.data), codeObject.size)};
+//    reader.load(loadedCodeObjectSS, true);
+//    auto numSymbols = luthier::co_manip::getSymbolNum(reader);
+//    std::cout << "Demangled name: " << demangledName << std::endl;
+//    for (unsigned int i = 0; i < numSymbols; i++) {
+//        auto info = luthier::co_manip::SymbolInfo(&reader, i);
+//        std::string demangledSymName = luthier::co_manip::getDemangledName(info.get_name().c_str());
+//        std::cout << "Symbol name: " << info.get_name().c_str() << std::endl;
+//        std::cout << "Symbol size: " << info.get_size() << std::endl;
+//        std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.get_address()) << std::endl;
+//    }
+//    for (unsigned int i = 0; i < numSymbols; i++) {
+//        auto info = luthier::co_manip::SymbolInfo(&reader, i);
+//        std::string demangledSymName = luthier::co_manip::getDemangledName(info.get_name().c_str());
+//        std::cout << "Symbol name: " << info.get_name().c_str() << std::endl;
+//        std::cout << "Symbol size: " << info.get_size() << std::endl;
+//        std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.get_address()) << std::endl;
+//        if (demangledSymName.find("__luthier_wrap__") == std::string::npos and demangledSymName.find(demangledName) != std::string::npos) {
+//            std::cout << "Symbol name: " << luthier::co_manip::getDemangledName(info.get_name().c_str()) << std::endl;
+//            std::cout << "Symbol size: " << info.get_size() << std::endl;
+//            std::cout << "Symbol Addr: " << reinterpret_cast<const void *>(info.get_address()) << std::endl;
+//            return {codeObject.data + (luthier_address_t) info.get_address(), info.get_size()};
+//        }
+//    }
+//
+//    return {};
+//}
 
 }// namespace
 
@@ -105,25 +103,25 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
             for (unsigned int i = 0; i < hostCodeObjects.size(); i++) {
                 auto hco = hostCodeObjects[i];
                 auto dco = deviceCodeObjects[i];
-                std::stringstream hcoSs{std::string(reinterpret_cast<const char *>(hco.data), hco.size)};
-                ELFIO::elfio reader;
-                reader.load(hcoSs, true);
-                for (unsigned int j = 0; j < co_manip::getSymbolNum(reader); j++) {
-                    co_manip::SymbolInfo info;
-                    co_manip::getSymbolInfo(reader, j, info);
-                    fmt::println("Name of symbol: {}", info.sym_name);
-                    fmt::println("Size of symbol: {}", info.size);
-                    fmt::println("Type of symbol: {}", (int) info.type);
-                    fmt::println("Symbol location: {:#x}", reinterpret_cast<luthier_address_t>(info.address));
-                    fmt::println("Section addr: {:#x}", reinterpret_cast<luthier_address_t>(info.sec_addr));
-                    fmt::println("Section Name: {}", info.sec_name);
+                co_manip::ElfView reader(hco);
+                auto& io = reader.get_elfio();
+//                ELFIO::elfio reader;
+//                reader.load(hcoSs, true);
+                for (unsigned int j = 0; j < co_manip::getSymbolNum(io); j++) {
+                    auto info = co_manip::SymbolInfo(&io, j);
+                    fmt::println("Name of symbol: {}", info.get_name());
+                    fmt::println("Size of symbol: {}", info.get_size());
+                    fmt::println("Type of symbol: {}", (int) info.get_type());
+                    fmt::println("Symbol location: {:#x}", reinterpret_cast<luthier_address_t>(info.get_address()));
+                    fmt::println("Section addr: {:#x}", reinterpret_cast<luthier_address_t>(info.get_section()->get_address()));
+                    fmt::println("Section Name: {}", info.get_section()->get_name());
                     for (unsigned int k = 0; k < instrumentationFunctionInfo.size(); k++) {
                         auto deviceFuncName = instDeviceFuncNames[k];
-                        if (info.sym_name.find(deviceFuncName) != std::string::npos) {
-                            luthier_address_t deviceAddress = dco.data + reinterpret_cast<luthier_address_t>(info.address);
+                        if (info.get_name().find(deviceFuncName) != std::string::npos) {
+                            luthier_address_t deviceAddress = reinterpret_cast<luthier_address_t>(dco.data()) + reinterpret_cast<luthier_address_t>(info.get_address());
                             auto globalFuncPointer = std::get<const void *>(instrumentationFunctionInfo[k]);
 
-                            if (info.sym_name.find("__luthier_wrap__") != std::string::npos and info.sym_name.find(".kd") != std::string::npos) {
+                            if (info.get_name().find("__luthier_wrap__") != std::string::npos and info.get_name().find(".kd") != std::string::npos) {
                                 //                                assert(info.size == sizeof(kernel_descriptor_t));
                                 auto *kd = reinterpret_cast<kernel_descriptor_t *>(deviceAddress);
                                 if (!functions_.contains(globalFuncPointer)) {
@@ -136,7 +134,8 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
                                 }
                                 agentToExecMap[a.handle].kd = kd;
                             } else {
-                                co_manip::code_object_region_t function{reinterpret_cast<luthier_address_t>(info.address) + dco.data, info.size};
+                                co_manip::code_view_t function{reinterpret_cast<std::byte*>(info.get_address() + reinterpret_cast<luthier_address_t>(dco.data())),
+                                                               info.get_size()};
                                 if (!functions_.contains(globalFuncPointer)) {
                                     auto globalFunctionName = std::get<const char *>(instrumentationFunctionInfo[k]);
                                     functions_.insert({globalFuncPointer, {{}, globalFunctionName, deviceFuncName}});
@@ -168,11 +167,11 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
     //    functions_.insert({instrumentationFunctionInfo, {out, std::string(globalFuncName), deviceFuncName, fatBinary}});
 }
 
-luthier::co_manip::code_object_region_t luthier::CodeObjectManager::getInstrumentationFunction(const void *wrapperKernelHostPtr,
+luthier::co_manip::code_view_t luthier::CodeObjectManager::getInstrumentationFunction(const void *wrapperKernelHostPtr,
                                                                                                            hsa_agent_t agent) const {
     auto f = functions_.at(wrapperKernelHostPtr).agentToExecMap.at(agent.handle).function;
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
-    auto instrs = luthier::Disassembler::Instance().disassemble(agent, f.data, f.size);
+    auto instrs = luthier::Disassembler::instance().disassemble(agent, f.data());
     for (const auto &i: instrs) {
         LuthierLogDebug("{:#x}: {}", i.getHostAddress(), i.getInstr());
     }

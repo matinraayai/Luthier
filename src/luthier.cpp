@@ -276,7 +276,7 @@ const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader() {
 }
 
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object) {
-    return luthier::Disassembler::Instance().disassemble(kernel_object);
+    return luthier::Disassembler::instance().disassemble(kernel_object);
 }
 
 void *luthier_get_hip_function(const char *funcName) {
@@ -288,7 +288,7 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
 }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
-    const auto instrumentedKd = luthier::CodeObjectManager::instance().getInstrumentedFunctionOfKD(
+    const auto instrumentedKd = luthier::CodeObjectManager::instance().getInstrumentedKernelKD(
         reinterpret_cast<const kernel_descriptor_t *>(dispatch_packet->kernel_object));
     dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
     fmt::println("Kernel Object address: {:#x}", dispatch_packet->kernel_object);

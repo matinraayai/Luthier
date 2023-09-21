@@ -41,7 +41,7 @@ class CodeObjectManager {
      * @param agent the GPU HSA agent where the instrumentation function is loaded on
      * @return the instrumentation function body
      */
-    co_manip::code_object_region_t getInstrumentationFunction(const void *wrapperKernelHostPtr, hsa_agent_t agent) const;
+    co_manip::code_view_t getInstrumentationFunction(const void *wrapperKernelHostPtr, hsa_agent_t agent) const;
 
     /**
      * Returns the kernel descriptor of the wrapper kernel associated with an instrumentation function, given its wrapper kernel
@@ -74,7 +74,7 @@ class CodeObjectManager {
 
  private:
     typedef struct {
-        luthier::co_manip::code_object_region_t function;
+        luthier::co_manip::code_view_t function;
         kernel_descriptor_t *kd;
     } per_agent_instrumentation_function_entry_t;
 

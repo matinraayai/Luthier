@@ -25,91 +25,109 @@
 #include <amd_comgr/amd_comgr.h>
 #include <elfio/elfio.hpp>
 #include <map>
+#include <utility>
+#include <boost/iostreams/device/array.hpp>
+#include <boost/iostreams/stream.hpp>
+#include <optional>
+
+namespace boost_ios = boost::iostreams;
 
 namespace luthier::co_manip {
 
-// Taken from the hipamd project
-struct CudaFatBinaryWrapper {
-    unsigned int magic;
-    unsigned int version;
-    void *binary;
-    void *dummy1;
+/**
+ * \brief a non-owning view of memory portion that contains device code
+ * Can be passed by value or reference and can be returned. Is trivially copyable.
+ */
+typedef std::basic_string_view<std::byte> code_view_t;
+
+/**
+ * \brief owns the memory portion that contains device code
+ * Can be passed by reference only. Cannot be returned. Is not trivially copyable.
+ */
+typedef std::basic_string<std::byte> code_t;
+
+/**
+ * \briefs a non-owning read-only view of an AMDGPU ELF Code object located on the host
+ */
+class ElfView {
+ public:
+    ElfView() = delete;
+    explicit ElfView(code_view_t elf): data_(elf)  {
+        std::string_view dataString(reinterpret_cast<const char*>(data_.data()), data_.size());
+        dataStringStream_ = std::make_unique<boost_ios::stream<boost_ios::basic_array_source<char>>>(dataString.begin(),
+                                                                                                     dataString.end());
+    }
+    ELFIO::elfio& get_elfio() const {
+        if (io_ == std::nullopt) {
+            io_ = ELFIO::elfio();
+            io_->load(*dataStringStream_, false);
+        }
+        return io_.value();
+    }
+    code_view_t get_data() const {
+        return data_;
+    }
+ private:
+    mutable std::optional<ELFIO::elfio> io_{std::nullopt};
+    const code_view_t data_;
+    std::unique_ptr<boost_ios::stream<boost_ios::basic_array_source<char>>> dataStringStream_;
 };
 
-// Taken from the hipamd project
-constexpr unsigned hipFatMAGIC2 = 0x48495046;
+class SymbolInfo {
+ private:
+    const ELFIO::elfio *elfio;    //!   section's parent elfio class
+    const ELFIO::section *section;//!   symbol's section
+    std::string name;             //!   symbol name
+    luthier_address_t address;    //!   symbol's offset from the beginning of the ELF
+    uint64_t size;                //!   size of data corresponding to symbol
+    size_t value;                 //!   value of the symbol
+    unsigned char type;           //!   type of the symbol
+ public:
+    SymbolInfo() = delete;
 
-typedef struct {
-    luthier_address_t data;
-    size_t size;
-} code_object_region_t;
+    SymbolInfo(const ELFIO::elfio *symELFIo, unsigned int symIndex);
 
-typedef enum {
-    LLVMIR = 0,
-    SOURCE,
-    ILTEXT,
-    ASTEXT,
-    CAL,
-    DLL,
-    STRTAB,
-    SYMTAB,
-    RODATA,
-    SHSTRTAB,
-    NOTES,
-    COMMENT,
-    ILDEBUG,
-    DEBUG_INFO,
-    DEBUG_ABBREV,
-    DEBUG_LINE,
-    DEBUG_PUBNAMES,
-    DEBUG_PUBTYPES,
-    DEBUG_LOC,
-    DEBUG_ARANGES,
-    DEBUG_RANGES,
-    DEBUG_MACINFO,
-    DEBUG_STR,
-    DEBUG_FRAME,
-    JITBINARY,
-    CODEGEN,
-    TEXT,
-    INTERNAL,
-    SPIR,
-    SPIRV,
-    RUNTIME_METADATA,
-    ELF_SECTIONS_LAST
-} ElfSections;
+    [[nodiscard]] const ELFIO::elfio *get_elfio() const;
+    [[nodiscard]] const ELFIO::section *get_section() const;
+    [[nodiscard]] const std::string &get_name() const;
+    [[nodiscard]] luthier_address_t get_address() const;
+    [[nodiscard]] uint64_t get_size() const;
+    [[nodiscard]] size_t get_value() const;
+    [[nodiscard]] unsigned char get_type() const;
 
-struct SymbolInfo {
-    std::string sec_name;//!   section name
-    const char *sec_addr;//!   section address
-    uint64_t sec_size;   //!   section size
-    std::string sym_name;//!   symbol name
-    const char *address; //!   address of corresponding to symbol data
-    uint64_t size;       //!   size of data corresponding to symbol
-    size_t value;        //!   value of the symbol
-    SymbolInfo() : sec_name(), sec_addr(nullptr), sec_size(0), sym_name(), address(nullptr), size(0), value(0) {}
-
-    SymbolInfo(const char *sename, const char *seaddr, uint64_t sesize, const char *syname,
-               const char *syaddr, uint64_t sysize, size_t syvalue) : sec_name(sename), sec_addr(seaddr),
-                                                                      sec_size(sesize), sym_name(syname), address(syaddr), size(sysize), value(syvalue) {}
+    [[nodiscard]] const char *get_data() const {
+        return section->get_data() + (size_t) value - (size_t) section->get_offset();
+    }
 };
 
+/**
+ * Returns the number of symbols
+ * @param io
+ * @return
+ */
 unsigned int getSymbolNum(const ELFIO::elfio &io);
-
-/* Return SymbolInfo of the index-th symbol in SYMTAB section */
-bool getSymbolInfo(const ELFIO::elfio &io, unsigned int index, SymbolInfo &symInfo);
 
 
 std::string getDemangledName(const char *mangledName);
 
-amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<ELFIO::elfio>& fatBinaryElfs);
+amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<ELFIO::elfio> &fatBinaryElfs);
 
-code_object_region_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName);
+code_view_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName);
 
-std::vector<luthier::co_manip::code_object_region_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
+std::vector<code_view_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
-std::vector<luthier::co_manip::code_object_region_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
+std::vector<code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
-}// namespace luthier::elf
+//std::shared_ptr<ELFIO::elfio> elfioFromMemory(const co_manip::code_view_t &elf, bool lazy = true);
+
+void printRSR1(const kernel_descriptor_t *kd);
+
+void printRSR2(const kernel_descriptor_t *kd);
+
+void printCodeProperties(const kernel_descriptor_t *kd);
+
+ELFIO::elfio createAuxilaryInstrumentationElf();
+
+}// namespace luthier::co_manip
 
 #endif

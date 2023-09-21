@@ -195,17 +195,17 @@ std::vector<luthier::Instr> luthier::Disassembler::disassemble(luthier_address_t
     return out;
 }
 
-std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_agent_t agent, luthier_address_t entry, size_t size) {
+std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_agent_t agent, co_manip::code_view_t code) {
 
     std::string isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
 
     auto disassemblyInfo = getSizeDisassemblyInfo(isaName);
 
-    uint64_t instrAddr = entry;
+    uint64_t instrAddr = reinterpret_cast<uint64_t>(code.data());
     uint64_t instrSize = 0;
-    std::pair<std::string, luthier_address_t> kdDisassemblyCallbackData{{}, entry + size};
+    std::pair<std::string, luthier_address_t> kdDisassemblyCallbackData{{}, reinterpret_cast<luthier_address_t>(code.data()) + code.size()};
     std::vector<Instr> out;
-    std::cout << "Entry + size: " << std::hex << entry + size << std::dec << std::endl;
+    std::cout << "Entry + size: " << std::hex << kdDisassemblyCallbackData.second << std::dec << std::endl;
     while (true) {
         auto Status = amd_comgr_disassemble_instruction(
             disassemblyInfo, instrAddr, (void *) &kdDisassemblyCallbackData, &instrSize);

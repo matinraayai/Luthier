@@ -24,6 +24,7 @@
 #include "log.hpp"
 #include <elfio/elfio_dump.hpp>
 
+
 #include <llvm/Support/BinaryStreamReader.h>
 
 #include <string>
@@ -32,6 +33,19 @@
 
 namespace luthier::co_manip {
 using namespace ELFIO;
+
+// Taken from the hipamd project
+struct CudaFatBinaryWrapper {
+    unsigned int magic;
+    unsigned int version;
+    void *binary;
+    void *dummy1;
+};
+
+// Taken from the hipamd project
+constexpr unsigned hipFatMAGIC2 = 0x48495046;
+
+
 
 static size_t constexpr strLiteralLength(char const *str) {
     size_t I = 0;
@@ -56,6 +70,41 @@ static constexpr size_t OffloadBundleMagicLen =
 #define SELFMAG 4
 #endif
 
+typedef enum {
+    LLVMIR = 0,
+    SOURCE,
+    ILTEXT,
+    ASTEXT,
+    CAL,
+    DLL,
+    STRTAB,
+    SYMTAB,
+    RODATA,
+    SHSTRTAB,
+    NOTES,
+    COMMENT,
+    ILDEBUG,
+    DEBUG_INFO,
+    DEBUG_ABBREV,
+    DEBUG_LINE,
+    DEBUG_PUBNAMES,
+    DEBUG_PUBTYPES,
+    DEBUG_LOC,
+    DEBUG_ARANGES,
+    DEBUG_RANGES,
+    DEBUG_MACINFO,
+    DEBUG_STR,
+    DEBUG_FRAME,
+    JITBINARY,
+    CODEGEN,
+    TEXT,
+    INTERNAL,
+    SPIR,
+    SPIRV,
+    RUNTIME_METADATA,
+    ELF_SECTIONS_LAST
+} ElfSections;
+
 typedef struct {
     ElfSections id;
     const char *name;
@@ -64,6 +113,8 @@ typedef struct {
     Elf32_Word sh_flags;// section flags
     const char *desc;
 } ElfSectionsDesc;
+
+
 
 namespace {
 // Objects that are visible only within this module
@@ -106,57 +157,91 @@ constexpr ElfSectionsDesc ElfSecDesc[] =
 
 unsigned int getSymbolNum(const elfio &io) {
     symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
-    auto num = symbol_reader.get_symbols_num() - 1;// Exclude the first dummy symbol
-    return num;
+    return symbol_reader.get_symbols_num() - 1;// Exclude the first dummy symbol
 }
 
-bool getSymbolInfo(const elfio &io, unsigned int index, SymbolInfo &symInfo) {
+SymbolInfo::SymbolInfo(const ELFIO::elfio *symELFIo, unsigned int index) : elfio(symELFIo) {
+    symbol_section_accessor symbol_reader(*elfio, symELFIo->sections[ElfSecDesc[SYMTAB].name]);
 
-    symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
-
-    auto num = getSymbolNum(io);
+    unsigned int num = getSymbolNum(*elfio);
 
     if (index >= num) {
-        LuthierErrorFmt(" failed: wrong index {} >= symbols num {}", index, num);
-        return false;
+        throw std::runtime_error(fmt::format("Failed to get symbol info: Index {} >= total number of symbols {}", index, num));
     }
 
-    std::string sym_name;
-    Elf64_Addr value = 0;
-    Elf_Xword size = 0;
     unsigned char bind = 0;
-    unsigned char type = 0;
     Elf_Half sec_index = 0;
     unsigned char other = 0;
 
     // index++ for real index on top of the first dummy symbol
-    bool ret = symbol_reader.get_symbol(++index, sym_name, value, size, bind, type,
+    bool ret = symbol_reader.get_symbol(++index, name, value, size, bind, type,
                                         sec_index, other);
     if (!ret) {
-        LuthierErrorFmt("failed to get_symbol({})", index);
-        return false;
+        throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", index));
     }
-    section *sec = io.sections[sec_index];
-    if (sec == nullptr) {
-        LuthierErrorFmt("failed: null section at {}", sec_index);
-        return false;
+    section = elfio->sections[sec_index];
+    if (section == nullptr) {
+        throw std::runtime_error(fmt::format("Section for symbol index {} was "
+                                             "reported as nullptr by the ELFIO library.", index));
     }
+    address = (luthier_address_t) section->get_address() + (size_t) value - (size_t) section->get_offset();
 
-    symInfo.sec_addr = reinterpret_cast<const char *>(sec->get_address());
-    symInfo.sec_size = sec->get_size();
-    //  std::cout << "Offset: " << sec->get_offset() << std::endl;
-    //  std::cout << "get Address: " << sec->get_address() << std::endl;
-    //  std::cout << "align address: " << sec->get_addr_align() << std::endl;
-    //  std::cout << "entry size: " << sec->get_entry_size() << std::endl;
-    symInfo.address = symInfo.sec_addr + (size_t) value - (size_t) sec->get_offset();
-    symInfo.size = (uint64_t) size;
-    symInfo.value = (size_t) value;
-
-    symInfo.sec_name = sec->get_name();
-    symInfo.sym_name = sym_name;
-
-    return true;
 }
+const elfio *SymbolInfo::get_elfio() const {
+    return elfio;
+}
+const section *SymbolInfo::get_section() const {
+    return section;
+}
+const std::string &SymbolInfo::get_name() const {
+    return name;
+}
+luthier_address_t SymbolInfo::get_address() const {
+    return address;
+}
+uint64_t SymbolInfo::get_size() const {
+    return size;
+}
+size_t SymbolInfo::get_value() const {
+    return value;
+}
+unsigned char SymbolInfo::get_type() const {
+    return type;
+}
+
+//SymbolInfo getSymbolInfo(const elfio &io, unsigned int index) {
+//    symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
+//
+//    unsigned int num = getSymbolNum(io);
+//
+//    if (index >= num) {
+//        throw std::runtime_error(fmt::format("Failed to get symbol info: Index {} >= total number of symbols {}", index, num));
+//    }
+//
+//    std::string name;
+//    Elf64_Addr value = 0;
+//    Elf_Xword size = 0;
+//    unsigned char bind = 0;
+//    unsigned char type = 0;
+//    Elf_Half sec_index = 0;
+//    unsigned char other = 0;
+//
+//    // index++ for real index on top of the first dummy symbol
+//    bool ret = symbol_reader.get_symbol(++index, name, value, size, bind, type,
+//                                        sec_index, other);
+//    if (!ret) {
+//        throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", index));
+//    }
+//    section *sec = io.sections[sec_index];
+//    if (sec == nullptr) {
+//        throw std::runtime_error(fmt::format("Section for symbol index {} was "
+//                                             "reported as nullptr by the ELFIO library.", index));
+//    }
+//
+//    luthier_address_t address = sec->get_address() + (size_t) value - (size_t) sec->get_offset();
+//
+//    return {sec, name, address, size, value, type};
+//}
 
 
 amd_comgr_status_t printEntryCo(amd_comgr_metadata_node_t key,
@@ -298,7 +383,7 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
     return AMD_COMGR_STATUS_SUCCESS;
 }
 
-code_object_region_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName) {
+code_view_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName) {
     symbol_section_accessor symbol_reader(elfio, elfio.sections[ElfSecDesc[SYMTAB].name]);
 
     auto num = getSymbolNum(elfio);
@@ -370,7 +455,7 @@ std::string getDemangledName(const char *mangledName) {
     return out;
 }
 
-std::vector<luthier::co_manip::code_object_region_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable,
+std::vector<luthier::co_manip::code_view_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable,
                                                                                            hsa_agent_t agent) {
     auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
@@ -382,7 +467,7 @@ std::vector<luthier::co_manip::code_object_region_t> getDeviceLoadedCodeObjectOf
     };
     amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
 
-    std::vector<luthier::co_manip::code_object_region_t> out;
+    std::vector<luthier::co_manip::code_view_t> out;
     for (const auto &lco: loadedCodeObjects) {
         hsa_ven_amd_loader_loaded_code_object_kind_t coKind;
         LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
@@ -403,13 +488,13 @@ std::vector<luthier::co_manip::code_object_region_t> getDeviceLoadedCodeObjectOf
             amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
                                                                     HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE,
                                                                     &lcoSizeDevice);
-            out.push_back({reinterpret_cast<luthier_address_t>(lcoBaseAddrDevice), static_cast<size_t>(lcoSizeDevice)});
+            out.emplace_back(reinterpret_cast<std::byte*>(lcoBaseAddrDevice), lcoSizeDevice);
         }
     }
     return out;
 }
 
-std::vector<luthier::co_manip::code_object_region_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent) {
+std::vector<co_manip::code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent) {
     auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
@@ -420,7 +505,7 @@ std::vector<luthier::co_manip::code_object_region_t> getHostLoadedCodeObjectOfEx
     };
     LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, &loadedCodeObjects));
 
-    std::vector<luthier::co_manip::code_object_region_t> out;
+    std::vector<luthier::co_manip::code_view_t> out;
     for (const auto &lco: loadedCodeObjects) {
         hsa_ven_amd_loader_loaded_code_object_kind_t coKind;
         LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
@@ -441,10 +526,108 @@ std::vector<luthier::co_manip::code_object_region_t> getHostLoadedCodeObjectOfEx
             amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
                                                                     HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
                                                                     &lcoSize);
-            out.push_back({reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)});
+            out.emplace_back(reinterpret_cast<std::byte*>(lcoBaseAddr), lcoSize);
+//            out.push_back({reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)});
         }
     }
     return out;
 }
+
+void printRSR1(const kernel_descriptor_t *kd) {
+    auto rsrc1 = kd->compute_pgm_rsrc1;
+#define PRINT_RSRC1(rsrc1, prop) fmt::println(#prop": {}", AMD_HSA_BITS_GET(rsrc1, prop));
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_PRIORITY)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_ROUND_MODE_32)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_ROUND_MODE_16_64)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_DENORM_MODE_32)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_FLOAT_DENORM_MODE_16_64)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_PRIV)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_ENABLE_DX10_CLAMP)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_DEBUG_MODE)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_ENABLE_IEEE_MODE)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_BULKY)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_CDBG_USER)
+    PRINT_RSRC1(rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_RESERVED1)
+#undef PRINT_RSRC1
+}
+
+void printRSR2(const kernel_descriptor_t *kd) {
+    auto rsrc2 = kd->compute_pgm_rsrc2;
+#define PRINT_RSRC2(rsrc2, prop) fmt::println(#prop": {}", AMD_HSA_BITS_GET(rsrc2, prop));
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_PRIVATE_SEGMENT_WAVE_BYTE_OFFSET)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_TRAP_HANDLER)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_WORKGROUP_ID_X)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_WORKGROUP_ID_Y)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_WORKGROUP_ID_Z)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_WORKGROUP_INFO)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_VGPR_WORKITEM_ID)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_ADDRESS_WATCH)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_MEMORY_VIOLATION)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_GRANULATED_LDS_SIZE)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_IEEE_754_FP_INVALID_OPERATION)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_FP_DENORMAL_SOURCE)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_IEEE_754_FP_DIVISION_BY_ZERO)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_IEEE_754_FP_OVERFLOW)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_IEEE_754_FP_UNDERFLOW)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_IEEE_754_FP_INEXACT)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_INT_DIVISION_BY_ZERO)
+        PRINT_RSRC2(rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_RESERVED1)
+#undef PRINT_RSRC2
+}
+
+void printCodeProperties(const kernel_descriptor_t *kd) {
+        auto codeProperties = kd->kernel_code_properties;
+#define PRINT_CODE_PROPERTIES(codeProperties, prop) fmt::println(#prop": {}", AMD_HSA_BITS_GET(codeProperties, prop));
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_PTR)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_QUEUE_PTR)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_ID)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_FLAT_SCRATCH_INIT)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_SIZE)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_GRID_WORKGROUP_COUNT_X)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Y)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_RESERVED1)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_ORDERED_APPEND_GDS)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_PRIVATE_ELEMENT_SIZE)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_IS_PTR64)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_IS_DYNAMIC_CALLSTACK)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_IS_DEBUG_ENABLED)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_IS_XNACK_ENABLED)
+        PRINT_CODE_PROPERTIES(codeProperties, AMD_KERNEL_CODE_PROPERTIES_RESERVED2)
+#undef PRINT_CODE_PROPERTIES
+}
+
+ELFIO::elfio createAuxilaryInstrumentationElf() {
+    elfio out;
+    out.create(ELFCLASS64, ELFDATA2LSB);
+    out.set_os_abi(ELFOSABI_AMDGPU_HSA);
+    out.set_flags(ET_DYN);
+    out.set_abi_version(ELFABIVERSION_AMDGPU_HSA_V4);
+    out.set_entry(0);
+    return out;
+}
+
+//std::shared_ptr<ELFIO::elfio> elfioFromMemory(const co_manip::code_object_region_t& elf, bool lazy) {
+//    std::string_view my_string{reinterpret_cast<const char*>(elf.data), elf.size};
+//    boost::iostreams::stream<boost::iostreams::basic_array_source<char>> ss(my_string.begin(), my_string.end());
+////    std::string a;
+////    std::basic_string<char> ss;
+//
+////    std::istringstream my_ss(std::string_view{my_string});
+////    fmt::println("String stream content before erase: {}", my_ss.str());
+////    my_string[1] = ' ';
+////    my_string[5] = ' ';
+////    fmt::println("String stream content after erase: {}", my_ss.str());
+//    auto out = std::make_shared<ELFIO::elfio>();
+////    auto ss = std::make_shared<std::istringstream>(std::string(reinterpret_cast<const char*>(elf.data), elf.size));
+//    out->load(ss, false);
+//    return out;
+//}
+
 
 }// namespace luthier::elf
