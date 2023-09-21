@@ -46,7 +46,7 @@ std::ostream& operator<<(std::ostream& os, const luthier::Operand& op) {
     return os;
 }
 
-luthier_address_t luthier::Instr::getHostAddress() {
+luthier_address_t luthier::Instr::getHostAddress() const {
     //    if (kd_ != nullptr && hostAddress_ == luthier_address_t{}) {
     //        LUTHIER_HSA_CHECK(
     //            LuthierHsaInterceptor::Instance().getHsaVenAmdLoaderTable().

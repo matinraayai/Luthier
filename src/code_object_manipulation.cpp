@@ -155,15 +155,17 @@ constexpr ElfSectionsDesc ElfSecDesc[] =
 }// namespace
 
 
-unsigned int getSymbolNum(const elfio &io) {
-    symbol_section_accessor symbol_reader(io, io.sections[ElfSecDesc[SYMTAB].name]);
+unsigned int getSymbolNum(const std::shared_ptr<co_manip::ElfView>& io) {
+    auto elfIo = io->get_elfio();
+    symbol_section_accessor symbol_reader(*elfIo, elfIo->sections[ElfSecDesc[SYMTAB].name]);
     return symbol_reader.get_symbols_num() - 1;// Exclude the first dummy symbol
 }
 
-SymbolInfo::SymbolInfo(const ELFIO::elfio *symELFIo, unsigned int index) : elfio(symELFIo) {
-    symbol_section_accessor symbol_reader(*elfio, symELFIo->sections[ElfSecDesc[SYMTAB].name]);
+SymbolView::SymbolView(std::shared_ptr<ElfView> elf, unsigned int index) : elf_(elf) {
+    auto elfIo = elf->get_elfio();
+    symbol_section_accessor symbol_reader(*elfIo, elfIo->sections[ElfSecDesc[SYMTAB].name]);
 
-    unsigned int num = getSymbolNum(*elfio);
+    unsigned int num = getSymbolNum(elf);
 
     if (index >= num) {
         throw std::runtime_error(fmt::format("Failed to get symbol info: Index {} >= total number of symbols {}", index, num));
@@ -172,41 +174,22 @@ SymbolInfo::SymbolInfo(const ELFIO::elfio *symELFIo, unsigned int index) : elfio
     unsigned char bind = 0;
     Elf_Half sec_index = 0;
     unsigned char other = 0;
+    size_t size = 0;
 
     // index++ for real index on top of the first dummy symbol
-    bool ret = symbol_reader.get_symbol(++index, name, value, size, bind, type,
+    bool ret = symbol_reader.get_symbol(++index, name_, value_, size, bind, type_,
                                         sec_index, other);
     if (!ret) {
         throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", index));
     }
-    section = elfio->sections[sec_index];
-    if (section == nullptr) {
+    section_ = elfIo->sections[sec_index];
+    if (section_ == nullptr) {
         throw std::runtime_error(fmt::format("Section for symbol index {} was "
                                              "reported as nullptr by the ELFIO library.", index));
     }
-    address = (luthier_address_t) section->get_address() + (size_t) value - (size_t) section->get_offset();
 
-}
-const elfio *SymbolInfo::get_elfio() const {
-    return elfio;
-}
-const section *SymbolInfo::get_section() const {
-    return section;
-}
-const std::string &SymbolInfo::get_name() const {
-    return name;
-}
-luthier_address_t SymbolInfo::get_address() const {
-    return address;
-}
-uint64_t SymbolInfo::get_size() const {
-    return size;
-}
-size_t SymbolInfo::get_value() const {
-    return value;
-}
-unsigned char SymbolInfo::get_type() const {
-    return type;
+    data_ = code_view_t{reinterpret_cast<std::byte*>(section_->get_address() + (size_t) value_ - (size_t) section_->get_offset()),
+                        size};
 }
 
 //SymbolInfo getSymbolInfo(const elfio &io, unsigned int index) {
@@ -383,10 +366,11 @@ amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<
     return AMD_COMGR_STATUS_SUCCESS;
 }
 
-code_view_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functionName) {
-    symbol_section_accessor symbol_reader(elfio, elfio.sections[ElfSecDesc[SYMTAB].name]);
+code_view_t getFunctionFromSymbol(const std::shared_ptr<ElfView>& elfView, const std::string &functionName) {
+    auto elfIo = elfView->get_elfio();
+    symbol_section_accessor symbol_reader(*elfIo, elfIo->sections[ElfSecDesc[SYMTAB].name]);
 
-    auto num = getSymbolNum(elfio);
+    auto num = getSymbolNum(elfView);
 
 //    symInfo.address = symInfo.sec_addr + (size_t) value - (size_t) sec->get_offset();
     std::string sym_name;
@@ -397,21 +381,21 @@ code_view_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functi
     Elf_Half sec_index = 0;
     unsigned char other = 0;
 
-    fmt::println("Number of sections: {}", elfio.sections.size());
-    for (const auto& s: elfio.sections) {
+    fmt::println("Number of sections: {}", elfIo->sections.size());
+    for (const auto& s: elfIo->sections) {
         fmt::println("Name of the section: {}", s->get_name());
         fmt::println("Address: {:#x}", s->get_address());
         fmt::println("Section size: {}", s->get_size());
     }
-    fmt::println("Number of sections: {}", elfio.segments.size());
-    for (const auto& s: elfio.segments) {
+    fmt::println("Number of sections: {}", elfIo->segments.size());
+    for (const auto& s: elfIo->segments) {
         fmt::println("Address: {:#x}", s->get_virtual_address());
     }
 
     for (unsigned int i = 1; i < num; i++) {
         bool ret = symbol_reader.get_symbol(i, sym_name, value, size, bind, type,
                                             sec_index, other);
-        section *sec = elfio.sections[sec_index];
+        section *sec = elfIo->sections[sec_index];
         fmt::println("Section address: {:#x}", sec->get_address());
         fmt::println("Symbol name: {}", sym_name);
         fmt::println("Section name: {}", sec->get_name());

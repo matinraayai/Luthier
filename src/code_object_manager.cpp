@@ -103,22 +103,22 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
             for (unsigned int i = 0; i < hostCodeObjects.size(); i++) {
                 auto hco = hostCodeObjects[i];
                 auto dco = deviceCodeObjects[i];
-                co_manip::ElfView reader(hco);
-                auto& io = reader.get_elfio();
+                auto reader = co_manip::ElfView::make_view(hco);
+                auto& io = reader->get_elfio();
 //                ELFIO::elfio reader;
 //                reader.load(hcoSs, true);
-                for (unsigned int j = 0; j < co_manip::getSymbolNum(io); j++) {
-                    auto info = co_manip::SymbolInfo(&io, j);
+                for (unsigned int j = 0; j < co_manip::getSymbolNum(reader); j++) {
+                    auto info = co_manip::SymbolView(reader, j);
                     fmt::println("Name of symbol: {}", info.get_name());
-                    fmt::println("Size of symbol: {}", info.get_size());
+                    fmt::println("Size of symbol: {}", info.get_view().size());
                     fmt::println("Type of symbol: {}", (int) info.get_type());
-                    fmt::println("Symbol location: {:#x}", reinterpret_cast<luthier_address_t>(info.get_address()));
+                    fmt::println("Symbol location: {:#x}", reinterpret_cast<luthier_address_t>(info.get_view().data()));
                     fmt::println("Section addr: {:#x}", reinterpret_cast<luthier_address_t>(info.get_section()->get_address()));
                     fmt::println("Section Name: {}", info.get_section()->get_name());
                     for (unsigned int k = 0; k < instrumentationFunctionInfo.size(); k++) {
                         auto deviceFuncName = instDeviceFuncNames[k];
                         if (info.get_name().find(deviceFuncName) != std::string::npos) {
-                            luthier_address_t deviceAddress = reinterpret_cast<luthier_address_t>(dco.data()) + reinterpret_cast<luthier_address_t>(info.get_address());
+                            luthier_address_t deviceAddress = reinterpret_cast<luthier_address_t>(dco.data()) + reinterpret_cast<luthier_address_t>(info.get_view().data());
                             auto globalFuncPointer = std::get<const void *>(instrumentationFunctionInfo[k]);
 
                             if (info.get_name().find("__luthier_wrap__") != std::string::npos and info.get_name().find(".kd") != std::string::npos) {
@@ -134,8 +134,8 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
                                 }
                                 agentToExecMap[a.handle].kd = kd;
                             } else {
-                                co_manip::code_view_t function{reinterpret_cast<std::byte*>(info.get_address() + reinterpret_cast<luthier_address_t>(dco.data())),
-                                                               info.get_size()};
+                                co_manip::code_view_t function{reinterpret_cast<const std::byte*>(info.get_view().data() + reinterpret_cast<luthier_address_t>(dco.data())),
+                                                               info.get_view().size()};
                                 if (!functions_.contains(globalFuncPointer)) {
                                     auto globalFunctionName = std::get<const char *>(instrumentationFunctionInfo[k]);
                                     functions_.insert({globalFuncPointer, {{}, globalFunctionName, deviceFuncName}});

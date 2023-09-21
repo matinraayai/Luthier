@@ -49,59 +49,79 @@ typedef std::basic_string<std::byte> code_t;
 /**
  * \briefs a non-owning read-only view of an AMDGPU ELF Code object located on the host
  */
-class ElfView {
+class ElfView: public std::enable_shared_from_this<ElfView> {
  public:
     ElfView() = delete;
+
+    static std::shared_ptr<ElfView> make_view(code_view_t elf) {
+        return std::shared_ptr<ElfView>(new ElfView(elf));
+    }
+
+    std::shared_ptr<ELFIO::elfio> &get_elfio() const {
+        if (io_ == nullptr) {
+            io_ = std::make_shared<ELFIO::elfio>();
+            io_->load(*dataStringStream_, false);
+        }
+        return io_;
+    }
+
+    code_view_t get_view() const {
+        return data_;
+    }
+ private:
+
     explicit ElfView(code_view_t elf) : data_(elf),
                                         // Convert the code_view_t to a string_view first, and then take its iterators to construct the dataStringStream_
                                         dataStringStream_(std::make_unique<boost_ios::stream<boost_ios::basic_array_source<char>>>(
                                             std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).begin(),
                                             std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).end())) {}
 
-    ELFIO::elfio &get_elfio() const {
-        if (io_ == std::nullopt) {
-            io_ = ELFIO::elfio();
-            io_->load(*dataStringStream_, false);
-        }
-        return io_.value();
-    }
 
-    code_view_t get_data() const {
-        return data_;
-    }
-
- private:
-    mutable std::optional<ELFIO::elfio> io_{std::nullopt};
+    mutable std::shared_ptr<ELFIO::elfio> io_{nullptr};
     const code_view_t data_;
     const std::unique_ptr<boost_ios::stream<boost_ios::basic_array_source<char>>> dataStringStream_;//! Used to construct the elfio object;
                                                                                                     //! Without keeping a reference to this stream,
                                                                                                     //! we cannot use the elfio in lazy mode
 };
 
-class SymbolInfo {
+class SymbolView {
  private:
-    const ELFIO::elfio *elfio;    //!   section's parent elfio class
-    const ELFIO::section *section;//!   symbol's section
-    std::string name;             //!   symbol name
-    luthier_address_t address;    //!   symbol's offset from the beginning of the ELF
-    uint64_t size;                //!   size of data corresponding to symbol
-    size_t value;                 //!   value of the symbol
-    unsigned char type;           //!   type of the symbol
+    const std::shared_ptr<ElfView> elf_;//!   section's parent elfio class
+    const ELFIO::section *section_;     //!   symbol's section
+    std::string name_;                  //!   symbol name
+    code_view_t data_;                  //!   symbol's raw data
+    size_t value_;                      //!   value of the symbol
+    unsigned char type_;                //!   type of the symbol
  public:
-    SymbolInfo() = delete;
+    SymbolView() = delete;
 
-    SymbolInfo(const ELFIO::elfio *symELFIo, unsigned int symIndex);
+    SymbolView(std::shared_ptr<ElfView> elf, unsigned int symIndex);
 
-    [[nodiscard]] const ELFIO::elfio *get_elfio() const;
-    [[nodiscard]] const ELFIO::section *get_section() const;
-    [[nodiscard]] const std::string &get_name() const;
-    [[nodiscard]] luthier_address_t get_address() const;
-    [[nodiscard]] uint64_t get_size() const;
-    [[nodiscard]] size_t get_value() const;
-    [[nodiscard]] unsigned char get_type() const;
+    [[nodiscard]] std::shared_ptr<ELFIO::elfio> get_elfio() const {
+        return elf_->get_elfio();
+    };
+
+    [[nodiscard]] const ELFIO::section *get_section() const {
+        return section_;
+    };
+
+    [[nodiscard]] const std::string &get_name() const {
+        return name_;
+    };
+    [[nodiscard]] code_view_t get_view() const {
+        return data_;
+    }
+
+    [[nodiscard]] size_t get_value() const {
+        return value_;
+    };
+
+    [[nodiscard]] unsigned char get_type() const {
+        return type_;
+    };
 
     [[nodiscard]] const char *get_data() const {
-        return section->get_data() + (size_t) value - (size_t) section->get_offset();
+        return section_->get_data() + (size_t) value_ - (size_t) section_->get_offset();
     }
 };
 
@@ -110,7 +130,7 @@ class SymbolInfo {
  * @param io
  * @return
  */
-unsigned int getSymbolNum(const ELFIO::elfio &io);
+unsigned int getSymbolNum(const std::shared_ptr<ElfView>& io);
 
 std::string getDemangledName(const char *mangledName);
 

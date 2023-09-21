@@ -419,16 +419,17 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
     hsa_agent_t agent = instr.getAgent();
     hsa_executable_t instrExecutable = instr.getExecutable();
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
-    co_manip::ElfView instrElf(hco[0]);
+    auto instrElf = co_manip::ElfView::make_view(hco[0]);
 
-    for (unsigned int i = 0; i < co_manip::getSymbolNum(instrElf.get_elfio()); i++) {
-        co_manip::SymbolInfo info(&instrElf.get_elfio(), i);
-        fmt::println("Symbol Info: {}, {}, {:#x}", info.get_name(), info.get_size(),
-                     reinterpret_cast<luthier_address_t>(info.get_address()));
+    for (unsigned int i = 0; i < co_manip::getSymbolNum(instrElf); i++) {
+        co_manip::SymbolView info(instrElf, i);
+        fmt::println("Symbol Info: {}, {}, {:#x}", info.get_name(), info.get_view().size(),
+                     reinterpret_cast<luthier_address_t>(info.get_view().data()));
         if (info.get_name().find(".kd") != std::string::npos) {
-            auto sym_data = reinterpret_cast<luthier_address_t>(info.get_address()) - reinterpret_cast<luthier_address_t>(info.get_section()->get_address()) +
+            auto sym_data = reinterpret_cast<luthier_address_t>(info.get_view().data()) - reinterpret_cast<luthier_address_t>(info.get_section()->get_address()) +
                             reinterpret_cast<luthier_address_t>(info.get_section()->get_data());
-            fmt::println("sym data addr: {:#x}, sym addr: {:#x}, ELF beginning addr: {:#x}", sym_data, info.get_address(), reinterpret_cast<luthier_address_t>(hco[0].data()));
+            fmt::println("sym data addr: {:#x}, sym addr: {:#x}, ELF beginning addr: {:#x}", sym_data, reinterpret_cast<luthier_address_t>(info.get_view().data()),
+                         reinterpret_cast<luthier_address_t>(hco[0].data()));
             fmt::println("sym sec addr: {:#x}", info.get_section()->get_address());
             auto kd = reinterpret_cast<kernel_descriptor_t*>(sym_data);
 //            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, );
@@ -439,13 +440,13 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
         }
     }
 
-    for (const auto& sec: instrElf.get_elfio().sections) {
+    for (const auto& sec: instrElf->get_elfio()->sections) {
         fmt::println("Section name {}", sec->get_name());
         fmt::println("Section addr {:#x}", sec->get_address());
     }
     // save the ELF and create an executable
     std::ostringstream ss;
-    instrElf.get_elfio().save(ss);
+    instrElf->get_elfio()->save(ss);
     auto coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_code_object_reader_t reader;
     hsa_executable_t executable;
