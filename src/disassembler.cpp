@@ -126,8 +126,7 @@ std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObje
     hsa_executable_t executable;
 
     // Check which executable this kernel object (address) belongs to
-    LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_executable(reinterpret_cast<void *>(kernelObject),
-                                                                   &executable));
+    LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_executable(reinterpret_cast<void *>(kernelObject), &executable));
 
     struct disassemble_callback_data_t {
         hsa_agent_t agent;
@@ -153,8 +152,7 @@ std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObje
 
     auto agents = contextManager.getHsaAgents();
     for (const auto &agent: agents)
-        LUTHIER_HSA_CHECK(coreApi.hsa_executable_iterate_agent_symbols_fn(executable, agent,
-                                                                          findKoAgentIterator, &findKoAgentCallbackData));
+        LUTHIER_HSA_CHECK(coreApi.hsa_executable_iterate_agent_symbols_fn(executable, agent, findKoAgentIterator, &findKoAgentCallbackData));
     assert(findKoAgentCallbackData.agent.handle != hsa_agent_t{}.handle);
     assert(findKoAgentCallbackData.symbol.handle != hsa_executable_symbol_t{}.handle);
     return std::make_tuple(findKoAgentCallbackData.agent, findKoAgentCallbackData.executable, findKoAgentCallbackData.symbol);
@@ -233,11 +231,7 @@ std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_executable_sy
 amd_comgr_disassembly_info_t luthier::Disassembler::getEndPgmDisassemblyInfo(const std::string &isa) {
     if (!endPgmDisassemblyInfoMap_.contains(isa)) {
         amd_comgr_disassembly_info_t disassemblyInfo;
-        LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info(isa.c_str(),
-                                                                  &endPgmReadMemoryCallback,
-                                                                  &endPgmPrintInstructionCallback,
-                                                                  &printAddressCallback,
-                                                                  &disassemblyInfo));
+        LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_disassembly_info(isa.c_str(), &endPgmReadMemoryCallback, &endPgmPrintInstructionCallback, &printAddressCallback, &disassemblyInfo));
         endPgmDisassemblyInfoMap_.insert({isa, disassemblyInfo});
     }
     return endPgmDisassemblyInfoMap_[isa];

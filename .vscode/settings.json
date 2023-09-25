@@ -55,6 +55,20 @@
 		"cinttypes": "cpp",
 		"typeinfo": "cpp",
 		"valarray": "cpp",
-		"thread": "cpp"
+		"thread": "cpp",
+		"any": "cpp",
+		"bitset": "cpp",
+		"complex": "cpp",
+		"condition_variable": "cpp",
+		"list": "cpp",
+		"unordered_set": "cpp",
+		"regex": "cpp",
+		"set": "cpp",
+		"mutex": "cpp",
+		"typeindex": "cpp",
+		"variant": "cpp"
+	},
+	"docker.environment": {
+		"DOCKER_HOST": "ssh://yuhui@cray.ece.neu.edu:27"
 	}
 }

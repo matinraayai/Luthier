@@ -214,8 +214,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                     // luthier_insert_call(&instrVec[0], "instrumentation_kernel", LUTHIER_IPOINT_AFTER);
                     luthier_insert_call(&instrVec[0], saved_register);
                     instrumented = true;
-                    luthier_enable_instrumented(dispatchPacket, reinterpret_cast<luthier_address_t>(dispatchPacket->kernel_object),
-                                                true);
+                    luthier_enable_instrumented(dispatchPacket, reinterpret_cast<luthier_address_t>(dispatchPacket->kernel_object), true);
                 }
 
                 //                iterateLoadedCodeObjects(executable);
@@ -269,7 +268,7 @@ void luthier_at_term() {
     reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
         savedRegisterHost, saved_register, 128 * 4, hipMemcpyDeviceToHost);
     for (int i = 64; i < 128; i++) {
-        std::cout << "v0:wi " << i << " value " << savedRegisterHost[i] << std::endl;
+        // std::cout << "v0:wi " << i << " value " << savedRegisterHost[i] << std::endl;
     }
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
@@ -400,6 +399,15 @@ void luthier_at_hsa_event(hsa_api_args_t *args, luthier_api_phase_t phase, hsa_a
             fprintf(stdout, "<call to (%s)\t on %s> ", "hsa_signal_store_relaxed", "entry");
 
             instrumentKernelLaunchCallback(args->hsa_signal_store_relaxed.signal, args->hsa_signal_store_relaxed.value);
+        } else if (api_id == HSA_API_ID_hsa_code_object_reader_create_from_memory) {
+            auto binary = reinterpret_cast<const char *>(args->hsa_code_object_reader_create_from_memory.code_object);
+            size_t size = args->hsa_code_object_reader_create_from_memory.size;
+            std::cout << "Dumping binary at " << args->hsa_code_object_reader_create_from_memory.code_object << std::endl;
+            std::string content = std::string(binary, size);
+            auto f = std::fstream("./" + std::to_string(number_of_dumped_elfs) + ".elf",
+                                  std::ios_base::out);
+            f << content << std::endl;
+            number_of_dumped_elfs++;
         }
     }
 }

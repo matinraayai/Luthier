@@ -1,4 +1,3 @@
-#include <luthier.h>
 #include <fstream>
 #include <functional>
 #include <hip/hip_runtime_api.h>
@@ -6,6 +5,7 @@
 #include <hsa/hsa_ext_amd.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <iostream>
+#include <luthier.h>
 #include <map>
 #include <mutex>
 #include <roctracer/roctracer.h>
@@ -20,7 +20,6 @@ void luthier_at_init() {
     std::cout << "Staring the ELF dump tool." << std::endl;
 }
 
-
 void luthier_at_term() {
     std::cout << "ELF dumping done." << std::endl;
 }
@@ -29,26 +28,21 @@ std::pair<luthier_address_t, size_t> getCodeObject(hsa_executable_t executable) 
     auto amdTable = luthier_get_hsa_ven_amd_loader();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
-    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void* data) -> hsa_status_t {
-        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t>*>(data);
+    auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void *data) -> hsa_status_t {
+        auto out = reinterpret_cast<std::vector<hsa_loaded_code_object_t> *>(data);
         out->push_back(lco);
         return HSA_STATUS_SUCCESS;
     };
-    amdTable->hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, & loadedCodeObjects);
+    amdTable->hsa_ven_amd_loader_executable_iterate_loaded_code_objects(executable, iterator, &loadedCodeObjects);
 
     // Can be removed
     assert(loadedCodeObjects.size() == 1);
 
-
     uint64_t lcoBaseAddr;
-    amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
-                                                            &lcoBaseAddr);
+    amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0], HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE, &lcoBaseAddr);
     // Query the size of the loaded code object
     uint64_t lcoSize;
-    amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
-                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
-                                                            &lcoSize);
+    amdTable->hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0], HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE, &lcoSize);
     return {reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)};
 }
 //
@@ -101,13 +95,13 @@ std::pair<luthier_address_t, size_t> getCodeObject(hsa_executable_t executable) 
 //    return HSA_STATUS_SUCCESS;
 //}
 
-void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
+void luthier_at_hsa_event(hsa_api_args_t *args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
     if (phase == SIBIR_API_PHASE_EXIT) {
         if (api_id == HSA_API_ID_hsa_executable_freeze) {
             auto executable = args->hsa_executable_freeze.executable;
             std::pair<luthier_address_t, size_t> execCodeObject = getCodeObject(executable);
             auto f = std::fstream("./executable-" + std::to_string(number_of_dumped_elfs) + ".elf", std::ios::out);
-            f << std::string(reinterpret_cast<const char*>(execCodeObject.first), execCodeObject.second);
+            f << std::string(reinterpret_cast<const char *>(execCodeObject.first), execCodeObject.second);
             number_of_dumped_elfs++;
             f.close();
         }

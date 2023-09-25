@@ -5,9 +5,9 @@
             "includePath": [
                 "/opt/rocm/hsa/include",
                 "/opt/rocm/hip/include",
-                "/opt/rocm/roctracer/include",
                 "ext/elfio",
-                "ext/fmt/include"
+                "ext/fmt/include",
+                "/opt/rocm/include",
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
