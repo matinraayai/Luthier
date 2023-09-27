@@ -267,8 +267,8 @@ void luthier_at_term() {
     int savedRegisterHost[128];
     reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
         savedRegisterHost, saved_register, 128 * 4, hipMemcpyDeviceToHost);
-    for (int i = 0; i < 64; i++) {
-        std::cout << "v0:wi " << i << " value 0x" << std::hex << savedRegisterHost[i] << std::endl;
+    for (int i = 64; i < 128; i++) {
+        std::cout << "v0:wi " << i << " value " << savedRegisterHost[i] << std::endl;
     }
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }

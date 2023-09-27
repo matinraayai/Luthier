@@ -405,20 +405,22 @@ void luthier::CodeGenerator::modify(luthier::Instr &instr, void *my_addr) {
     en = AMD_HSA_BITS_GET(kd_ptr->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_VGPR_WORKITEM_ID);
     std::cout << "enable vgpr wi id" << en << std ::endl;
 
-    std::string saveVgprCode = assemble(std::vector<std::string>{"s_load_dword s2, s[4:5], 0x4", "s_waitcnt lgkmcnt(0)", "s_and_b32 s2, s2, 0xffff", "s_mul_i32 s8, s8, s2", "v_add_u32_e32 v1, s8, v0", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v0, 0", "v_ashrrev_i64 v[0:1], 30, v[0:1]"}, agent);
+    // auto mytest = assemble("v_mov_b32 v4,v0",agent);
+
+    std::string saveVgprCode = assemble(std::vector<std::string>{"s_mov_b32 s12,s4","s_mov_b32 s13,s5","s_mov_b32 s11,s8","v_mov_b32 v4,v0","s_load_dword s14, s[12:13], 0x4", "s_waitcnt lgkmcnt(0)", "s_and_b32 s14, s14, 0xffff", "s_mul_i32 s11, s11, s14", "v_add_u32_e32 v7, s11, v4", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v6, 0", "v_ashrrev_i64 v[6:7], 30, v[6:7]"}, agent);
     constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
     constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
     uint64_t baseAddr = (uint64_t) my_addr;
     uint32_t upperBaseAddr = (uint32_t) ((baseAddr & upperMaskUint64_t) >> 32);
     uint32_t lowerBaseAddr = (uint32_t) (baseAddr & lowerMaskUint64_t);
 
-    fmt::println("s_add_u32 s2, 0, {:#x}", lowerBaseAddr);
-    fmt::println("s_add_u32 s3, 0, {:#x}", upperBaseAddr);
+    fmt::println("s_add_u32 s14, 0, {:#x}", lowerBaseAddr);
+    fmt::println("s_add_u32 s15, 0, {:#x}", upperBaseAddr);
 
-    // saveVgprCode += assemble("s_movk_i32 s9, 0", agent);
-    saveVgprCode += assemble({fmt::format("s_add_u32 s2, 0, {:#x}", lowerBaseAddr)}, agent);
-    saveVgprCode += assemble({fmt::format("s_add_u32 s3, 0, {:#x}", upperBaseAddr)}, agent);
-    saveVgprCode += assemble(std::vector<std::string>{"v_mov_b32_e32 v2, s3", "v_add_co_u32_e32 v0, vcc, s2, v0", "v_addc_co_u32_e32 v1, vcc, v2, v1, vcc", "global_store_dword v[0:1], v0, off", "s_endpgm"}, agent);
+    saveVgprCode += assemble("s_movk_i32 s9, 0", agent);
+    saveVgprCode += assemble({fmt::format("s_add_u32 s14, 0, {:#x}", lowerBaseAddr)}, agent);
+    saveVgprCode += assemble({fmt::format("s_add_u32 s15, 0, {:#x}", upperBaseAddr)}, agent);
+    saveVgprCode += assemble(std::vector<std::string>{"v_mov_b32_e32 v5, s15", "v_add_co_u32_e32 v6, vcc, s14, v6", "v_addc_co_u32_e32 v7, vcc, v5, v7, vcc", "global_store_dword v[6:7], v0, off", "s_endpgm"}, agent);
     std::memcpy(reinterpret_cast<void *>(kernelCodeStartAddr), saveVgprCode.data(), saveVgprCode.size());
 }
 
