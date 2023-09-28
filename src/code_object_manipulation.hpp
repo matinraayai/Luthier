@@ -174,11 +174,66 @@ void printRSR2(const kernel_descriptor_t *kd);
 
 void printCodeProperties(const kernel_descriptor_t *kd);
 
-ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn);
+typedef enum {
+    LLVMIR = 0,
+    SOURCE,
+    ILTEXT,
+    ASTEXT,
+    CAL,
+    DLL,
+    STRTAB,
+    SYMTAB,
+    RODATA,
+    SHSTRTAB,
+    NOTES,
+    COMMENT,
+    ILDEBUG,
+    DEBUG_INFO,
+    DEBUG_ABBREV,
+    DEBUG_LINE,
+    DEBUG_PUBNAMES,
+    DEBUG_PUBTYPES,
+    DEBUG_LOC,
+    DEBUG_ARANGES,
+    DEBUG_RANGES,
+    DEBUG_MACINFO,
+    DEBUG_STR,
+    DEBUG_FRAME,
+    JITBINARY,
+    CODEGEN,
+    TEXT,
+    INTERNAL,
+    SPIR,
+    SPIRV,
+    RUNTIME_METADATA,
+    ELF_SECTIONS_LAST = RUNTIME_METADATA
+} ElfSections;
+
+ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
+
+ELFIO::section *newSection(
+    ELFIO::elfio &elfIo,
+    ElfSections id,
+    co_manip::code_view_t data);
+
+bool addSection(
+    ELFIO::elfio &elfIo,
+    ElfSections id,
+    co_manip::code_view_t data);
+
+bool addSectionData(
+    ELFIO::elfio &elfIo,
+    ELFIO::Elf_Xword &outOffset,
+    ElfSections id,
+    co_manip::code_view_t data);
+
+bool addSymbol(
+    ELFIO::elfio &elfIo,
+    ElfSections id,
+    const char *symbolName,
+    code_view_t data);
 
 std::unordered_map<std::string, std::any> parseElfNoteSection(const co_manip::ElfView &elfView);
-
-//code_t createAuxilaryInstrumentationElf(const ElfView& elfView);
 
 }// namespace luthier::co_manip
 

@@ -19,6 +19,7 @@
  THE SOFTWARE. */
 
 #include "code_object_manipulation.hpp"
+#include "context_manager.hpp"
 #include "error.h"
 #include "hsa_intercept.hpp"
 #include "log.hpp"
@@ -64,41 +65,6 @@ static constexpr size_t OffloadBundleMagicLen =
 #define ELFMAG "\177ELF"
 #define SELFMAG 4
 #endif
-
-typedef enum {
-    LLVMIR = 0,
-    SOURCE,
-    ILTEXT,
-    ASTEXT,
-    CAL,
-    DLL,
-    STRTAB,
-    SYMTAB,
-    RODATA,
-    SHSTRTAB,
-    NOTES,
-    COMMENT,
-    ILDEBUG,
-    DEBUG_INFO,
-    DEBUG_ABBREV,
-    DEBUG_LINE,
-    DEBUG_PUBNAMES,
-    DEBUG_PUBTYPES,
-    DEBUG_LOC,
-    DEBUG_ARANGES,
-    DEBUG_RANGES,
-    DEBUG_MACINFO,
-    DEBUG_STR,
-    DEBUG_FRAME,
-    JITBINARY,
-    CODEGEN,
-    TEXT,
-    INTERNAL,
-    SPIR,
-    SPIRV,
-    RUNTIME_METADATA,
-    ELF_SECTIONS_LAST = RUNTIME_METADATA
-} ElfSections;
 
 typedef struct {
     ElfSections id;
@@ -547,8 +513,7 @@ void setupSHdr(
 section *newSection(
     ELFIO::elfio &elfIo,
     ElfSections id,
-    const char *d_buf,
-    size_t d_size) {
+    co_manip::code_view_t data) {
     assert(ElfSecDesc[id].id == id && "struct ElfSecDesc should be ordered by id same as enum Elf::ElfSections");
 
     section *sec = elfIo.sections[ElfSecDesc[id].name];
@@ -560,167 +525,113 @@ section *newSection(
         return sec;
     }
 
-    if (d_buf != nullptr && d_size > 0) {
-        sec->set_data(d_buf, d_size);
-    }
+    sec->set_data(reinterpret_cast<const char*>(data.data()), data.size());
 
     auto shlink = (id == SYMTAB) ? elfIo.sections[ElfSecDesc[SYMTAB].name]->get_index() : 0;
 
-    setupSHdr(elfIo, id, sec, 0);
+    setupSHdr(elfIo, id, sec, shlink);
 
-//    LuthierLogDebug(fmt::format("succeeded: name={:s}, d_buf={:p}, d_size={:zu}",
-//                    ElfSecDesc[id].name, d_buf, d_size));
     return sec;
 }
 
-//bool addSection(
-//    ELFIO::elfio &elfIo,
-//    ElfSections id,
-//    const void *d_buf,
-//    size_t d_size) {
-//    assert(ElfSecDesc[id].id == id && "struct ElfSecDesc should be ordered by id same as enum Elf::ElfSections");
-//
-//    section *sec = elfIo.sections[ElfSecDesc[id].name];
-//
-//    if (sec != nullptr) {
-//        Elf_Xword sec_offset = 0;
-//        if (!addSectionData(sec_offset, id, d_buf, d_size)) {
-//            return false;
-//        }
-//    } else {
-//        sec = newSection(elfIo, id, static_cast<const char *>(d_buf), d_size);
-//        if (sec == nullptr) {
-//            LogElfError("failed in newSection(name=%s, d_buf=%p, d_size=%zu)",
-//                        ElfSecDesc[id].name, d_buf, d_size);
-//            return false;
-//        }
-//    }
-//
-//    LogElfDebug("succeeded: name=%s, d_buf=%p, d_size=%zu", ElfSecDesc[id].name, d_buf, d_size);
-//    return true;
-//}
+bool addSectionData(
+    ELFIO::elfio& elfIo,
+    Elf_Xword &outOffset,
+    ElfSections id,
+    co_manip::code_view_t data) {
+    assert(ElfSecDesc[id].id == id && "struct ElfSecDesc should be ordered by id same as enum Elf::ElfSections");
 
-//bool Elf::addSectionData(
-//    Elf_Xword &outOffset,
-//    ElfSections id,
-//    const void *buffer,
-//    size_t size) {
-//    assert(ElfSecDesc[id].id == id && "struct ElfSecDesc should be ordered by id same as enum Elf::ElfSections");
-//
-//    outOffset = 0;
-//    section *sec = _elfio.sections[ElfSecDesc[id].name];
-//    if (sec == nullptr) {
-//        LogElfError("failed: null sections(%s)", ElfSecDesc[id].name);
-//        return false;
-//    }
-//
-//    outOffset = sec->get_size();
-//
-//    sec->append_data(static_cast<const char *>(buffer), size);
-//    LogElfInfo("succeeded: buffer=%p, size=%zu", buffer, size);
-//
-//    return true;
-//}
+    outOffset = 0;
+    section *sec = elfIo.sections[ElfSecDesc[id].name];
+    assert(sec != nullptr);
 
-//bool addSymbol(
-//    ELFIO::elfio& elfIo,
-//    ElfSections id,
-//    const char *symbolName,
-//    const void *buffer,
-//    size_t size) {
-//    assert(ElfSecDesc[id].id == id && "The order of ElfSecDesc[] and Elf::ElfSections mismatches.");
-//
-//    if (_symtab_ndx == SHN_UNDEF) {
-//        logElfError("failed: _symtab_ndx = SHN_UNDEF");
-//        return false;// No SYMTAB
-//    }
-//
-//    const char *sectionName = ElfSecDesc[id].name;
-//
-//    bool isFunction = ((id == Elf::CAL) || (id == Elf::DLL) || (id == Elf::JITBINARY)) ? true : false;
-//
-//    // Get section index
-//    section *sec = elfIo.sections[sectionName];
-//    if (sec == nullptr) {
-//        // Create a new section.
-//        if ((sec = newSection(id, nullptr, 0)) == NULL) {
-//            LogElfError("failed in newSection(name=%s)", sectionName);
-//            return false;
-//        }
-//    }
-//    size_t sec_ndx = sec->get_index();
-//    if (sec_ndx == SHN_UNDEF) {
-//        logElfError("failed: sec->get_index() = SHN_UNDEF");
-//        return false;
-//    }
-//
-//    // Put symbolName into .strtab section
-//    Elf_Xword strtab_offset = 0;
-//    if (!addSectionData(strtab_offset, STRTAB, symbolName,
-//                        strlen(symbolName) + 1)) {
-//        LogElfError("failed in addSectionData(name=%s, symbolName=%s, length=%zu)",
-//                    ElfSecDesc[STRTAB].name, symbolName, strlen(symbolName) + 1);
-//        return false;
-//    }
-//
-//    // Put buffer into section
-//    Elf_Xword sec_offset = 0;
-//    if ((buffer != nullptr) && (size != 0)) {
-//        if (!addSectionData(sec_offset, id, buffer, size)) {
+    outOffset = sec->get_size();
+
+    sec->append_data(reinterpret_cast<const char *>(data.data()), data.size());
+
+    return true;
+}
+
+bool addSection(
+    ELFIO::elfio &elfIo,
+    ElfSections id,
+    co_manip::code_view_t data) {
+    assert(ElfSecDesc[id].id == id && "struct ElfSecDesc should be ordered by id same as enum Elf::ElfSections");
+
+    section *sec = elfIo.sections[ElfSecDesc[id].name];
+
+    if (sec != nullptr) {
+        Elf_Xword sec_offset = 0;
+        addSectionData(elfIo, sec_offset, id, data);
+    } else {
+        sec = newSection(elfIo, id, data);
+        if (sec == nullptr) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+
+bool addSymbol(
+    ELFIO::elfio& elfIo,
+    ElfSections id,
+    const char *symbolName,
+    code_view_t data) {
+    assert(ElfSecDesc[id].id == id && "The order of ElfSecDesc[] and Elf::ElfSections mismatches.");
+
+    section* symTabSection = elfIo.sections[ElfSecDesc[SYMTAB].name];
+    assert(symTabSection != nullptr);
+
+    const char *sectionName = ElfSecDesc[id].name;
+
+    bool isFunction = ((id == CAL) || (id == DLL) || (id == JITBINARY) || (id == TEXT));
+
+    // Get section index
+    section *sec = elfIo.sections[sectionName];
+    if (sec == nullptr) {
+        // Create a new section.
+        if ((sec = newSection(elfIo, id, {})) == nullptr) {
+            LuthierErrorFmt("Failed in newSection(name={:s})", sectionName);
+            return false;
+        }
+    }
+    size_t sec_ndx = sec->get_index();
+    if (sec_ndx == SHN_UNDEF) {
+        LuthierErrorMsg("failed: sec->get_index() = SHN_UNDEF");
+        return false;
+    }
+
+    // Put symbolName into .strtab section
+    Elf_Xword strtab_offset = 0;
+    addSectionData(elfIo, strtab_offset, STRTAB, {reinterpret_cast<const std::byte*>(symbolName),
+                                                       strlen(symbolName) + 1});
+
+    // Put buffer into section
+    Elf_Xword sec_offset = 0;
+    if (not data.empty()) {
+        if (!addSectionData(elfIo, sec_offset, id, data)) {
 //            LogElfError("failed in addSectionData(name=%s, buffer=%p, size=%zu)",
 //                        sectionName, buffer, size);
-//            return false;
-//        }
-//    }
-//
-//    symbol_section_accessor symbol_writter(_elfio, _elfio.sections[_symtab_ndx]);
-//
-//    auto ret = symbol_writter.add_symbol(strtab_offset, sec_offset, size, 0,
-//                                         (isFunction) ? STT_FUNC : STT_OBJECT, 0, sec_ndx);
-//
-//    LogElfDebug("%s: sectionName=%s symbolName=%s strtab_offset=%lu, sec_offset=%lu, "
-//                "size=%zu, sec_ndx=%zu, ret=%d",
-//                ret >= 1 ? "succeeded" : "failed",
-//                sectionName, symbolName, strtab_offset, sec_offset, size, sec_ndx, ret);
-//    return ret >= 1;
-//}
-
-ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn) {
-    fmt::println("Number of sections: {}", elfIoIn.sections.size());
-    for (const auto& sec: elfIoIn.sections) {
-        fmt::println("Stream size: {:#x}", sec->get_stream_size());
-        fmt::println("Address: {:#x}", sec->get_address());
-        fmt::println("Name: {}", sec->get_name());
-        fmt::println("Size: {}", sec->get_size());
-        fmt::println("Name: {}", sec->get_name());
-        fmt::println("Index: {}", sec->get_index());
-        fmt::println("Offset: {:#x}", sec->get_offset());
-        fmt::println("Flags: {}", sec->get_flags());
-        fmt::println("Addr Align: {:#x}", sec->get_addr_align());
-        fmt::println("Info: {}", sec->get_info());
-        fmt::println("Link: {}", sec->get_link());
-        fmt::println("Name string offset: {:#x}", sec->get_name_string_offset());
-        fmt::println("Type: {}", sec->get_type());
-        fmt::println("------------");
-    }
-    fmt::println("Number of segments: {}", elfIoIn.segments.size());
-    for (const auto& seg: elfIoIn.segments) {
-        fmt::println("Section Num: {}", seg->get_sections_num());
-        for (unsigned int i = 0; i < seg->get_sections_num(); i++) {
-            fmt::println("Section name: {}", elfIoIn.sections[seg->get_section_index_at(i)]->get_name());
+            return false;
         }
-        fmt::println("Flags: {:#x}", seg->get_flags());
-        fmt::println("Offset: {:#x}", seg->get_offset());
-        fmt::println("Align: {:#x}", seg->get_align());
-        fmt::println("File size: {}", seg->get_file_size());
-        fmt::println("Index: {}", seg->get_index());
-        fmt::println("Memory size: {}", seg->get_memory_size());
-        fmt::println("Physical Address: {:#x}", seg->get_physical_address());
-        fmt::println("Type: {:#x}", seg->get_type());
-        fmt::println("Virtual Address: {:#x}", seg->get_virtual_address());
-        fmt::println("------");
     }
 
+    symbol_section_accessor symbolWriter(elfIo, symTabSection);
+
+    auto ret = symbolWriter.add_symbol(strtab_offset, sec_offset, data.size(), 0,
+                                         (isFunction) ? STT_FUNC : STT_OBJECT, 0, sec_ndx);
+
+//    LuthierLogDebug("{:s}: sectionName={:s} symbolName={:s} strtab_offset={:lu}, sec_offset={:lu}, "
+//                "size={:zu}, sec_ndx={:zu}, ret={:d}",
+//                ret >= 1 ? "succeeded" : "failed",
+//                sectionName, symbolName, strtab_offset, sec_offset, data.size(), sec_ndx, ret);
+    return ret >= 1;
+}
+
+ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
     ELFIO::elfio elfIo;
     elfIo.create(elfIoIn.get_class(), elfIoIn.get_encoding());
     elfIo.set_os_abi(elfIoIn.get_os_abi());
@@ -752,71 +663,15 @@ ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn) {
 
     // Create the first reserved dummy symbol (undefined symbol)
     size_t sym_sz = (elfIo.get_class() == ELFCLASS32) ? sizeof(Elf32_Sym) : sizeof(Elf64_Sym);
-    char *sym = static_cast<char *>(std::calloc(1, sym_sz));
+    auto sym = static_cast<std::byte*>(std::calloc(1, sym_sz));
     assert(sym != nullptr);
 
-    auto *symTabSec = newSection(elfIo, SYMTAB, sym, sym_sz);
+    auto *symTabSec = newSection(elfIo, SYMTAB, {sym, sym_sz});
     std::free(sym);
     assert(symTabSec != nullptr);
+
     return elfIo;
 }
-
-//code_t createAuxilaryInstrumentationElf(const ElfView &elfView) {
-//    auto elfClass = elfView->getElfIo().get_class();
-//    ELFIO::elfio elfIo;
-//    elfIo.create(elfClass, ELFDATA2LSB);
-//    elfIo.set_os_abi(ELFOSABI_AMDGPU_HSA);
-//    elfIo.set_flags(ET_DYN);
-//    elfIo.set_abi_version(ELFABIVERSION_AMDGPU_HSA_V4);
-//    elfIo.set_entry(0);
-//
-//    auto shStrTabSection = elfIo.sections[ElfSecDesc[SHSTRTAB].name];
-//    assert(shStrTabSection != nullptr);
-//
-//    setupSHdr(elfIo, SHSTRTAB, shStrTabSection);
-//
-//    // Save shstrtab section index
-////    _shstrtab_ndx = shstrtab_sec->get_index();
-//
-//    //
-//    // 3. Create .strtab section
-//    //
-//    auto *strTabSec = elfIo.sections.add(ElfSecDesc[STRTAB].name);
-//    assert(strTabSec != nullptr);
-//
-//    // adding null string data associated with section
-//    // index 0 is reserved and must be there (NULL name)
-//    constexpr char strtab[] = {
-//        /* index 0 */ '\0'};
-//    strTabSec->set_data(const_cast<char *>(strtab), sizeof(strtab));
-//
-//    setupSHdr(elfIo, STRTAB, strTabSec);
-//    //
-//    // Save strtab section index
-//    //    _strtab_ndx = strtab_sec->get_index();
-//    //
-//    //
-//    // 4. Create the symbol table
-//
-//    // Create the first reserved dummy symbol (undefined symbol)
-//    size_t sym_sz = (elfClass == ELFCLASS32) ? sizeof(Elf32_Sym) : sizeof(Elf64_Sym);
-//    char *sym = static_cast<char *>(std::calloc(1, sym_sz));
-//    if (sym == nullptr) {
-//        LuthierErrorMsg("failed to calloc memory for SYMTAB section");
-//        return false;
-//    }
-//
-//    auto *symtab_sec = newSection(elfIo, SYMTAB, sym, sym_sz);
-//    std::free(sym);
-//
-//    if (symtab_sec == nullptr) {
-//        logElfError("failed to create SYMTAB");
-//        return false;
-//    }
-//
-//    _symtab_ndx = symtab_sec->get_index();
-//
-//}
 
 amd_comgr_status_t extractCodeObjectMetaDataMap(amd_comgr_metadata_node_t key,
                                                 amd_comgr_metadata_node_t value, void *data) {
@@ -897,5 +752,41 @@ std::unordered_map<std::string, std::any> parseElfNoteSection(const co_manip::El
     return std::any_cast<std::unordered_map<std::string, std::any>>(out);
 
 }
+
+//    fmt::println("Number of sections: {}", elfIoIn.sections.size());
+//    for (const auto& sec: elfIoIn.sections) {
+//        fmt::println("Stream size: {:#x}", sec->get_stream_size());
+//        fmt::println("Address: {:#x}", sec->get_address());
+//        fmt::println("Name: {}", sec->get_name());
+//        fmt::println("Size: {}", sec->get_size());
+//        fmt::println("Name: {}", sec->get_name());
+//        fmt::println("Index: {}", sec->get_index());
+//        fmt::println("Offset: {:#x}", sec->get_offset());
+//        fmt::println("Flags: {}", sec->get_flags());
+//        fmt::println("Addr Align: {:#x}", sec->get_addr_align());
+//        fmt::println("Info: {}", sec->get_info());
+//        fmt::println("Link: {}", sec->get_link());
+//        fmt::println("Name string offset: {:#x}", sec->get_name_string_offset());
+//        fmt::println("Type: {}", sec->get_type());
+//        fmt::println("------------");
+//    }
+//    fmt::println("Number of segments: {}", elfIoIn.segments.size());
+//    for (const auto& seg: elfIoIn.segments) {
+//        fmt::println("Section Num: {}", seg->get_sections_num());
+//        for (unsigned int i = 0; i < seg->get_sections_num(); i++) {
+//            fmt::println("Section name: {}", elfIoIn.sections[seg->get_section_index_at(i)]->get_name());
+//        }
+//        fmt::println("Flags: {:#x}", seg->get_flags());
+//        fmt::println("Offset: {:#x}", seg->get_offset());
+//        fmt::println("Align: {:#x}", seg->get_align());
+//        fmt::println("File size: {}", seg->get_file_size());
+//        fmt::println("Index: {}", seg->get_index());
+//        fmt::println("Memory size: {}", seg->get_memory_size());
+//        fmt::println("Physical Address: {:#x}", seg->get_physical_address());
+//        fmt::println("Type: {:#x}", seg->get_type());
+//        fmt::println("Virtual Address: {:#x}", seg->get_virtual_address());
+//        fmt::println("------");
+//    }
+
 
 }// namespace luthier::co_manip
