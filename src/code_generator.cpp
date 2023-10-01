@@ -405,17 +405,17 @@ void luthier::CodeGenerator::modify(luthier::Instr &instr, void *my_addr) {
     en = AMD_HSA_BITS_GET(kd_ptr->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_VGPR_WORKITEM_ID);
     std::cout << "enable vgpr wi id" << en << std ::endl;
 
-    int distToFunc = (0x0A0 - 4)/4;
-    int returnTo = -(0xF8 - 4 + 4)/4;
-    printf("distToFunc is %d, returnTo is %d\n",distToFunc, returnTo);
+    int distToFunc = (0x0A0 - 4) / 4;
+    int returnTo = -(0xF8 - 4 + 4) / 4;
+    printf("distToFunc is %d, returnTo is %d\n", distToFunc, returnTo);
     fmt::println("s_branch {:#x}", distToFunc);
     fmt::println("s_branch {:#x}", returnTo);
     auto relu = assemble({fmt::format("s_branch {:#x}", distToFunc)}, agent);
 
-    relu += assemble(std::vector<std::string>{"s_load_dword s0, s[4:5], 0x4","s_load_dword s2, s[6:7], 0x0","v_mov_b32_e32 v1, 0","v_mov_b32_e32 v2, s8","s_waitcnt lgkmcnt(0)","s_and_b32 s0, s0, 0xffff","v_mad_u64_u32 v[0:1], s[0:1], s0, v2, v[0:1]","v_cmp_gt_i32_e32 vcc, s2, v0","s_and_saveexec_b64 s[0:1], vcc","s_cbranch_execz 20","s_load_dwordx4 s[0:3], s[6:7], 0x8","v_mov_b32_e32 v1, 0","v_mov_b32_e32 v2, v0","v_ashrrev_i64 v[0:1], 30, v[1:2]","s_waitcnt lgkmcnt(0)","v_mov_b32_e32 v3, s1","v_add_co_u32_e32 v2, vcc, s0, v0","v_addc_co_u32_e32 v3, vcc, v3, v1, vcc","global_load_dword v2, v[2:3], off","v_mov_b32_e32 v3, s3","v_add_co_u32_e32 v0, vcc, s2, v0","v_addc_co_u32_e32 v1, vcc, v3, v1, vcc","s_waitcnt vmcnt(0)","v_max_f32_e32 v2, v2, v2","v_max_f32_e32 v2, 0, v2","global_store_dword v[0:1], v2, off","s_endpgm"},agent);
+    relu += assemble(std::vector<std::string>{"s_load_dword s0, s[4:5], 0x4", "s_load_dword s2, s[6:7], 0x0", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, s8", "s_waitcnt lgkmcnt(0)", "s_and_b32 s0, s0, 0xffff", "v_mad_u64_u32 v[0:1], s[0:1], s0, v2, v[0:1]", "v_cmp_gt_i32_e32 vcc, s2, v0", "s_and_saveexec_b64 s[0:1], vcc", "s_cbranch_execz 20", "s_load_dwordx4 s[0:3], s[6:7], 0x8", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, v0", "v_ashrrev_i64 v[0:1], 30, v[1:2]", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v3, s1", "v_add_co_u32_e32 v2, vcc, s0, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_load_dword v2, v[2:3], off", "v_mov_b32_e32 v3, s3", "v_add_co_u32_e32 v0, vcc, s2, v0", "v_addc_co_u32_e32 v1, vcc, v3, v1, vcc", "s_waitcnt vmcnt(0)", "v_max_f32_e32 v2, v2, v2", "v_max_f32_e32 v2, 0, v2", "global_store_dword v[0:1], v2, off", "s_endpgm"}, agent);
     std::memcpy(reinterpret_cast<void *>(kernelCodeStartAddr), relu.data(), relu.size());
 
-    std::string saveVgprCode = assemble(std::vector<std::string>{"s_mov_b32 s12,s4","s_mov_b32 s13,s5","s_mov_b32 s11,s8","v_mov_b32 v4,v0","s_load_dword s14, s[12:13], 0x4", "s_waitcnt lgkmcnt(0)", "s_and_b32 s14, s14, 0xffff", "s_mul_i32 s11, s11, s14", "v_add_u32_e32 v7, s11, v4", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v6, 0", "v_ashrrev_i64 v[6:7], 30, v[6:7]"}, agent);
+    std::string saveVgprCode = assemble(std::vector<std::string>{"s_mov_b32 s12,s4", "s_mov_b32 s13,s5", "s_mov_b32 s11,s8", "v_mov_b32 v4,v0", "s_load_dword s14, s[12:13], 0x4", "s_waitcnt lgkmcnt(0)", "s_and_b32 s14, s14, 0xffff", "s_mul_i32 s11, s11, s14", "v_add_u32_e32 v7, s11, v4", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v6, 0", "v_ashrrev_i64 v[6:7], 30, v[6:7]"}, agent);
     constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
     constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
     uint64_t baseAddr = (uint64_t) my_addr;
@@ -429,7 +429,7 @@ void luthier::CodeGenerator::modify(luthier::Instr &instr, void *my_addr) {
     saveVgprCode += assemble({fmt::format("s_add_u32 s15, 0, {:#x}", upperBaseAddr)}, agent);
     saveVgprCode += assemble(std::vector<std::string>{"v_mov_b32_e32 v5, s15", "v_add_co_u32_e32 v6, vcc, s14, v6", "v_addc_co_u32_e32 v7, vcc, v5, v7, vcc", "global_store_dword v[6:7], v0, off"}, agent);
     saveVgprCode += assemble(fmt::format("s_branch {:#x}", returnTo), agent);
-    std::memcpy(reinterpret_cast<void *>(kernelCodeStartAddr+0x0A0), saveVgprCode.data(), saveVgprCode.size());
+    std::memcpy(reinterpret_cast<void *>(kernelCodeStartAddr + 0x0A0), saveVgprCode.data(), saveVgprCode.size());
 }
 
 void luthier::CodeGenerator::instrument(luthier::Instr &instr, const std::string &instrumentationFunction, luthier_ipoint_t point) {

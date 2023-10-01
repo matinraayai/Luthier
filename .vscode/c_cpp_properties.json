@@ -3,11 +3,12 @@
         {
             "name": "Linux",
             "includePath": [
+                "/opt/rocm/include",
                 "/opt/rocm/hsa/include",
                 "/opt/rocm/hip/include",
                 "ext/elfio",
                 "ext/fmt/include",
-                "/opt/rocm/include",
+                "${workspaceFolder}/include",
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",

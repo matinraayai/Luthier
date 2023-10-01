@@ -94,9 +94,10 @@ std::pair<luthier_address_t, size_t> getCodeObject(hsa_executable_t executable) 
 ////    free(ser_co);
 //    return HSA_STATUS_SUCCESS;
 //}
+void luthier_at_hip_event(void *args, luthier_api_phase_t phase, int hip_api_id) {}
 
 void luthier_at_hsa_event(hsa_api_args_t *args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
-    if (phase == SIBIR_API_PHASE_EXIT) {
+    if (phase == LUTHIER_API_PHASE_EXIT) {
         if (api_id == HSA_API_ID_hsa_executable_freeze) {
             auto executable = args->hsa_executable_freeze.executable;
             std::pair<luthier_address_t, size_t> execCodeObject = getCodeObject(executable);
