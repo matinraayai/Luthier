@@ -219,10 +219,9 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                 std::cout << "Dispatch packet's kernel arg address: " << dispatchPacket->kernarg_address << std::endl;
                 if (!instrumented) {
                 std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
-                    luthier_insert_call(&instrVec[0], LUTHIER_GET_EXPORT_FUNC(instrumentation_kernel), LUTHIER_IPOINT_AFTER);
+                    luthier_insert_call(&instrVec[0], LUTHIER_GET_EXPORTED_FUNC(instrumentation_kernel), LUTHIER_IPOINT_AFTER);
                     instrumented = true;
-                    luthier_enable_instrumented(dispatchPacket, reinterpret_cast<luthier_address_t>(dispatchPacket->kernel_object),
-                                              true);
+                    luthier_override_with_instrumented(dispatchPacket);
                 }
 
 

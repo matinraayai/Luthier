@@ -1,11 +1,8 @@
 #include "code_object_manager.hpp"
-#include "code_object_manipulation.hpp"
 #include "context_manager.hpp"
 #include "disassembler.hpp"
 #include "hsa_intercept.hpp"
 #include "log.hpp"
-#include <assert.h>
-#include <elfio/elfio.hpp>
 #include <hip/hip_runtime_api.h>
 #include <iostream>
 #include <vector>
@@ -103,7 +100,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
             for (unsigned int i = 0; i < hostCodeObjects.size(); i++) {
                 auto hco = hostCodeObjects[i];
                 auto dco = deviceCodeObjects[i];
-                auto reader = co_manip::makeElfView(hco);
+                auto reader = co_manip::ElfViewImpl::make_view(hco);
                 auto& io = reader->getElfIo();
 //                ELFIO::elfio reader;
 //                reader.load(hcoSs, true);
