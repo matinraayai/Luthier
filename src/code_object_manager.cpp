@@ -1,11 +1,8 @@
 #include "code_object_manager.hpp"
-#include "code_object_manipulation.hpp"
 #include "context_manager.hpp"
 #include "disassembler.hpp"
 #include "hsa_intercept.hpp"
 #include "log.hpp"
-#include <assert.h>
-#include <elfio/elfio.hpp>
 #include <hip/hip_runtime_api.h>
 #include <iostream>
 #include <vector>

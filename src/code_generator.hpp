@@ -15,6 +15,8 @@ class CodeGenerator {
         return instance;
     }
 
+//    static void assemble(const std::string &instListStr, hsa_agent_t agent, std::string &out);
+
     static void instrument(Instr &instr, const void* dev_func,
                            luthier_ipoint_t point);
 
