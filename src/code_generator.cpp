@@ -419,19 +419,27 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
     co_manip::code_t newCodeObject(hco[0]);
     auto instrElf = co_manip::ElfViewImpl::make_view(newCodeObject);
+    luthier_address_t kernelCodeStartAddr;
 
     for (unsigned int i = 0; i < co_manip::getSymbolNum(instrElf); i++) {
         co_manip::SymbolView info(instrElf, i);
         fmt::println("Symbol Info: {}, {}, {:#x}", info.getName(), info.getView().size(),
                      reinterpret_cast<luthier_address_t>(info.getView().data()));
+        // Symbol Info: _DYNAMIC, 0, 0xf3f410
+        // Symbol Info: _Z10relu_floatiPfS_, 140, 0xf3e410
+        // kernel starts at 0xf3e410 ends at 0xf3e49c to add jump instructions modified kernel ends at F3E4E4 
+        // Symbol Info: _Z10relu_floatiPfS_.kd, 64, 0xf3d910
         if (info.getName().find(".kd") != std::string::npos) {
             fmt::println("sym sec addr: {:#x}", info.getSection()->get_address());
             auto kd = const_cast<kernel_descriptor_t*>(reinterpret_cast<const kernel_descriptor_t*>(info.getView().data()));
-//            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, );
-            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT, 8);
+           AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 1);
+            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT, 8);
             AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_FLAT_SCRATCH_INIT, 1);
 //            AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER, 1);
 //            AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR, 0);
+            kernelCodeStartAddr = reinterpret_cast<luthier_address_t>(kd) + kd->kernel_code_entry_byte_offset;
+            std::cout<<"kernel code start "<<kernelCodeStartAddr<<std::endl;
+
         }
     }
 
@@ -452,6 +460,31 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_load_agent_code_object_fn(executable, agent, reader, nullptr, nullptr));
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
     LUTHIER_HSA_CHECK(registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent));
+
+//     Require dynamic info about the target kernel
+// 1. Num of threads to calculate memory size needed to store registers THD*4*NV + 4*NS
+// 2. Num of vgpr used NV = 4 available v4, v5, v6, v7 after set GRANULATED_WAVEFRONT_VGPR_COUNT as 1
+// 3. Num of sgpr used NS = 11 available s11, s12, s13, s14, s15
+// Use s12:13 to construct jump PC and s30:31 for return PC after set ENABLE_SGPR_FLAT_SCRATCH_INIT as 1
+// Use v4 to store global thread id
+// Three routines 1) get global thread id; 2) save all vgpr; 3) save all sgpr
+// extra gpr requirement: v s
+//                     1) 0 1    s can be discard and v is permenant global idx
+//                     2) 3 3
+//                     3)
+// put 1) at 0xf3e4e4 and its content is 
+// s_load_dword s14, s[4:5], 0x4
+// s_waitcnt lgkmcnt(0)
+// s_and_b32 s14, s14, 0xffff
+// s_mul_i32 s8, s8, s14
+// v_add_u32_e32 v4, s8, v0
+// s_setpc_b64 s[30:31]  
+//extra gpr requirement: v4 s14(next one after jump PC sgprs) 
+// jump to 1) needs these instructions !!!!!These will be part of trampoline but for now I have to make them part of the kernel which means reconstruct the kernel by inserting three occurance of this part: before kernel start, first call 2), second time call 2)!!!!!!! total 24bytes*3
+// s_getpc_b64 s[4:5] 4bytes
+// s_add_u32 s4, s4,  8bytes
+// s_addc_u32 s5, s5, -1  8bytes
+// s_swappc_b64 s[30:31], s[4:5] 4bytes
 //    fmt::println("Convertor: {}", instrElfIo.get_convertor());
 //    fmt::println("Type of ELF: {}", instrElfIo->get_type());
 //    fmt::println("Machine: {}", instrElfIo->get_machine());
