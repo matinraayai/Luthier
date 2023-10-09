@@ -310,10 +310,8 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
             luthier_address_t kernelObject;
             luthier_address_t originalKernelObject;
             LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernelObject));
-            LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(*originalSymbol,
-                                                                          HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &originalKernelObject));
-            luthier::CodeObjectManager::instance().registerInstrumentedKernel(reinterpret_cast<kernel_descriptor_t *>(originalKernelObject),
-                                                                              reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(*originalSymbol,HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &originalKernelObject));
+            luthier::CodeObjectManager::instance().registerInstrumentedKernel(reinterpret_cast<kernel_descriptor_t *>(originalKernelObject),reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             std::cout << "original kernel location: " << std::hex << originalKernelObject << std::dec << std::endl;
             std::cout << "Kernel location: " << std::hex << kernelObject << std::dec << std::endl;
             std::vector<luthier::Instr> instList = luthier::Disassembler::instance().disassemble(kernelObject);
@@ -330,8 +328,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t& executa
             luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t*>(kernelObject));
             const kernel_descriptor_t *kernelDescriptor{nullptr};
             const auto& amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
-            LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
-                                                                             reinterpret_cast<const void **>(&kernelDescriptor)));
+            LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),reinterpret_cast<const void **>(&kernelDescriptor)));
             auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 
 //            instList = luthier::Disassembler::Instance().disassemble(agent, entry_point - 0x14c, 0x500);
@@ -419,7 +416,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
     co_manip::code_t newCodeObject(hco[0]);
     auto instrElf = co_manip::ElfViewImpl::make_view(newCodeObject);
-    luthier_address_t kernelCodeStartAddr;
+    luthier_address_t kernelCodeStartAddr, func1StartAddr; 
 
     for (unsigned int i = 0; i < co_manip::getSymbolNum(instrElf); i++) {
         co_manip::SymbolView info(instrElf, i);
@@ -437,31 +434,18 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
             AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_FLAT_SCRATCH_INIT, 1);
 //            AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER, 1);
 //            AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR, 0);
-            kernelCodeStartAddr = reinterpret_cast<luthier_address_t>(kd) + kd->kernel_code_entry_byte_offset;
-            std::cout<<"kernel code start "<<kernelCodeStartAddr<<std::endl;
+            // kernelCodeStartAddr = reinterpret_cast<luthier_address_t>(kd) + kd->kernel_code_entry_byte_offset;
+            // std::cout<<"kernel code start "<<kernelCodeStartAddr<<std::endl;
 
+        }else if (info.getName() == "_Z10relu_floatiPfS_"){
+kernelCodeStartAddr = reinterpret_cast<luthier_address_t>(info.getView().data());
+auto kernelSize = info.getView().size();
+func1StartAddr = kernelCodeStartAddr + kernelSize + 24*3;
+fmt::println("kernel code start at address {:#x}",kernelCodeStartAddr);
+fmt::println("func1 start at address {:#x}",func1StartAddr);
         }
     }
-
-    for (const auto& sec: instrElf->getElfIo().sections) {
-        fmt::println("Section name {}", sec->get_name());
-        fmt::println("Section addr {:#x}", sec->get_address());
-    }
-    // save the ELF and create an executable
-//    std::ostringstream ss;
-//    instrElf->getElfIo().save(ss);
-    auto coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
-    hsa_code_object_reader_t reader;
-    hsa_executable_t executable;
-    LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
-                                                             nullptr, &executable));
-//    std::string elf = ss.str();
-    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(newCodeObject.data(), newCodeObject.size(), &reader));
-    LUTHIER_HSA_CHECK(coreTable.hsa_executable_load_agent_code_object_fn(executable, agent, reader, nullptr, nullptr));
-    LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
-    LUTHIER_HSA_CHECK(registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent));
-
-//     Require dynamic info about the target kernel
+    //     Require dynamic info about the target kernel
 // 1. Num of threads to calculate memory size needed to store registers THD*4*NV + 4*NS
 // 2. Num of vgpr used NV = 4 available v4, v5, v6, v7 after set GRANULATED_WAVEFRONT_VGPR_COUNT as 1
 // 3. Num of sgpr used NS = 11 available s11, s12, s13, s14, s15
@@ -479,12 +463,48 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void* device_func,
 // s_mul_i32 s8, s8, s14
 // v_add_u32_e32 v4, s8, v0
 // s_setpc_b64 s[30:31]  
+std::string Func1 = assemble(std::vector<std::string>{
+    "s_load_dword s14, s[4:5], 0x4",
+"s_waitcnt lgkmcnt(0)",
+"s_and_b32 s14, s14, 0xffff",
+"s_mul_i32 s8, s8, s14",
+"v_add_u32_e32 v4, s8, v0",
+"s_setpc_b64 s[30:31]"
+},agent);
+// std::memcpy(reinterpret_cast<void *>(func1StartAddr), Func1.data(), Func1.size());
+
 //extra gpr requirement: v4 s14(next one after jump PC sgprs) 
 // jump to 1) needs these instructions !!!!!These will be part of trampoline but for now I have to make them part of the kernel which means reconstruct the kernel by inserting three occurance of this part: before kernel start, first call 2), second time call 2)!!!!!!! total 24bytes*3
-// s_getpc_b64 s[4:5] 4bytes
-// s_add_u32 s4, s4,  8bytes
-// s_addc_u32 s5, s5, -1  8bytes
-// s_swappc_b64 s[30:31], s[4:5] 4bytes
+// s_getpc_b64 s[12:13] 4bytes
+// s_add_u32 s12, s12,  8bytes
+// s_addc_u32 s13, s13, 0  8bytes
+// s_swappc_b64 s[30:31], s[12:13] 4bytes
+
+int func1Offset = func1StartAddr - kernelCodeStartAddr - 4;
+std::string myReLU = assemble({"s_getpc_b64 s[12:13]",fmt::format("s_add_u32 s12, s12,{:#x}", func1Offset),"s_addc_u32 s13, s13, 0","s_swappc_b64 s[30:31], s[12:13]"},agent);
+myReLU += assemble(std::vector<std::string>{"s_load_dword s0, s[4:5], 0x4", "s_load_dword s2, s[6:7], 0x0", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, s8", "s_waitcnt lgkmcnt(0)", "s_and_b32 s0, s0, 0xffff", "v_mad_u64_u32 v[0:1], s[0:1], s0, v2, v[0:1]", "v_cmp_gt_i32_e32 vcc, s2, v0", "s_and_saveexec_b64 s[0:1], vcc", "s_cbranch_execz 20", "s_load_dwordx4 s[0:3], s[6:7], 0x8", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, v0", "v_ashrrev_i64 v[0:1], 30, v[1:2]", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v3, s1", "v_add_co_u32_e32 v2, vcc, s0, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_load_dword v2, v[2:3], off", "v_mov_b32_e32 v3, s3", "v_add_co_u32_e32 v0, vcc, s2, v0", "v_addc_co_u32_e32 v1, vcc, v3, v1, vcc", "s_waitcnt vmcnt(0)", "v_max_f32_e32 v2, v2, v2", "v_max_f32_e32 v2, 0, v2", "global_store_dword v[0:1], v2, off", "s_endpgm"}, agent);
+// std::memcpy(reinterpret_cast<void *>(kernelCodeStartAddr), myReLU.data(), myReLU.size());
+
+    // for (const auto& sec: instrElf->getElfIo().sections) {
+    //     fmt::println("Section name {}", sec->get_name());
+    //     fmt::println("Section addr {:#x}", sec->get_address());
+    // }
+    // save the ELF and create an executable
+//    std::ostringstream ss;
+//    instrElf->getElfIo().save(ss);
+    auto coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
+    hsa_code_object_reader_t reader;
+    hsa_executable_t executable;
+    LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
+                                                             nullptr, &executable));
+//    std::string elf = ss.str();
+    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(newCodeObject.data(), newCodeObject.size(), &reader));
+    LUTHIER_HSA_CHECK(coreTable.hsa_executable_load_agent_code_object_fn(executable, agent, reader, nullptr, nullptr));
+    LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
+    LUTHIER_HSA_CHECK(registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent));
+
+
+
 //    fmt::println("Convertor: {}", instrElfIo.get_convertor());
 //    fmt::println("Type of ELF: {}", instrElfIo->get_type());
 //    fmt::println("Machine: {}", instrElfIo->get_machine());
