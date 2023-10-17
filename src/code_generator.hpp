@@ -3,6 +3,7 @@
 #include "code_object_manipulation.hpp"
 #include "instr.hpp"
 #include "luthier_types.hpp"
+#include <unordered_map>
 
 namespace luthier {
 class CodeGenerator {
@@ -15,25 +16,29 @@ class CodeGenerator {
         return instance;
     }
 
-//    static void assemble(const std::string &instListStr, hsa_agent_t agent, std::string &out);
+    static luthier::co_manip::code_t assemble(const std::string &instList, hsa_agent_t agent);
 
-    static void instrument(Instr &instr, const void* dev_func,
-                           luthier_ipoint_t point);
+    static luthier::co_manip::code_t assemble(const std::vector<std::string> &instList, hsa_agent_t agent);
+
+    static luthier::co_manip::code_t assembleToRelocatable(const std::string &instList, hsa_agent_t agent);
+
+    static luthier::co_manip::code_t assembleToRelocatable(const std::vector<std::string> &instList, hsa_agent_t agent);
+
+    static luthier::co_manip::code_t compileRelocatableToExecutable(const luthier::co_manip::code_t &code, hsa_agent_t agent);
+
+    void instrument(Instr &instr, const void *dev_func,
+                    luthier_ipoint_t point);
 
  private:
-    typedef struct {
-        const std::string name;
-        const void *hostFunction;
-        const std::string deviceName;
-        const void *parentFatBinary;
-    } function_info_t;
+    /**
+     * A map of agent to its empty relocatable. Empty relocatables have only an s_nop instructions.
+     * The relocatables get assembled when the CodeGenerator first gets called
+     */
+    std::unordered_map<decltype(hsa_agent_t::handle), luthier::co_manip::code_t> emptyRelocatableMap_;
 
-    CodeGenerator() {}
+    CodeGenerator();
     ~CodeGenerator() {}
-
-
-
 };
-}
+}// namespace luthier
 
 #endif

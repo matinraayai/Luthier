@@ -84,7 +84,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
     instDeviceFuncNames.reserve(instrumentationFunctionInfo.size());
     for (const auto &iFuncInfo: instrumentationFunctionInfo) {
         std::string deviceFuncName = std::get<const char *>(iFuncInfo);
-        deviceFuncName = deviceFuncName.substr(deviceFuncName.find("__luthier_wrap__") + strlen("__luthier_wrap__"),
+        deviceFuncName = deviceFuncName.substr(deviceFuncName.find(LUTHIER_DEVICE_FUNCTION_WRAP) + strlen(LUTHIER_DEVICE_FUNCTION_WRAP),
                                                deviceFuncName.find('('));
         if (deviceFuncName.empty())
             throw std::runtime_error("The requested instrumentation kernel doesn't have __luthier_wrap__ at its beginning.");
@@ -100,7 +100,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
             for (unsigned int i = 0; i < hostCodeObjects.size(); i++) {
                 auto hco = hostCodeObjects[i];
                 auto dco = deviceCodeObjects[i];
-                auto reader = co_manip::ElfViewImpl::make_view(hco);
+                auto reader = co_manip::ElfViewImpl::makeView(hco);
                 auto &io = reader->getElfIo();
                 //                ELFIO::elfio reader;
                 //                reader.load(hcoSs, true);

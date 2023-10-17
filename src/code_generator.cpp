@@ -21,7 +21,8 @@ std::string getSymbolName(hsa_executable_symbol_t symbol) {
     return name;
 }
 
-void compileToExecutable(luthier::co_manip::code_view_t code, hsa_agent_t agent) {
+luthier::co_manip::code_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::co_manip::code_t &code,
+                                                                                 hsa_agent_t agent) {
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
@@ -31,7 +32,7 @@ void compileToExecutable(luthier::co_manip::code_view_t code, hsa_agent_t agent)
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_RELOCATABLE, &dataIn));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, code.size(), reinterpret_cast<const char*>(code.data())));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, code.size(), reinterpret_cast<const char *>(code.data())));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(dataIn, "source.o"));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(dataSetIn, dataIn));
 
@@ -44,44 +45,28 @@ void compileToExecutable(luthier::co_manip::code_view_t code, hsa_agent_t agent)
         amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
                             dataAction, dataSetIn, dataSetOut));
 
-
     amd_comgr_data_t dataOut;
     size_t dataOutSize;
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &dataOut));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, nullptr));
     luthier::co_manip::code_t executableOut;
     executableOut.resize(dataOutSize);
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char*>(executableOut.data())));
-    luthier::co_manip::ElfView executableView = luthier::co_manip::ElfViewImpl::make_view(executableOut);
-    fmt::println("Number of segments: {}", executableView->getElfIo().segments.size());
-    for (const auto& seg: executableView->getElfIo().segments) {
-        fmt::println("Section Num: {}", seg->get_sections_num());
-        for (unsigned int i = 0; i < seg->get_sections_num(); i++) {
-            fmt::println("\tSection name: {}", executableView->getElfIo().sections[seg->get_section_index_at(i)]->get_name());
-        }
-        fmt::println("Flags: {:#x}", seg->get_flags());
-        fmt::println("Offset: {:#x}", seg->get_offset());
-        fmt::println("Align: {:#x}", seg->get_align());
-        fmt::println("File size: {}", seg->get_file_size());
-        fmt::println("Index: {}", seg->get_index());
-        fmt::println("Memory size: {}", seg->get_memory_size());
-        fmt::println("Physical Address: {:#x}", seg->get_physical_address());
-        fmt::println("Type: {:#x}", seg->get_type());
-        fmt::println("Virtual Address: {:#x}", seg->get_virtual_address());
-        fmt::println("------");
-    }
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(executableOut.data())));
+    return executableOut;
 }
 
-luthier::co_manip::code_t assemble(const std::string &instListStr, hsa_agent_t agent) {
+luthier::co_manip::code_t luthier::CodeGenerator::assembleToRelocatable(const std::string &instList, hsa_agent_t agent) {
 
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
 
+    auto isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
+
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &dataIn));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, instListStr.size(), instListStr.data()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, instList.size(), instList.data()));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(dataIn, "my_source.s"));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(dataSetIn, dataIn));
 
@@ -89,7 +74,7 @@ luthier::co_manip::code_t assemble(const std::string &instListStr, hsa_agent_t a
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
-                                                               luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName().c_str()));
+                                                               isaName.c_str()));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
     LUTHIER_AMD_COMGR_CHECK(
         amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE,
@@ -108,51 +93,33 @@ luthier::co_manip::code_t assemble(const std::string &instListStr, hsa_agent_t a
     amd_comgr_get_data(dataOut, &dataOutSize, nullptr);
     luthier::co_manip::code_t outElf;
     outElf.resize(dataOutSize);
-    amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char*>(outElf.data()));
-    auto outView = luthier::co_manip::ElfViewImpl::make_view(outElf);
-    for (const auto& sec: outView->getElfIo().sections) {
-        fmt::println("Stream size: {:#x}", sec->get_stream_size());
-        fmt::println("Address: {:#x}", sec->get_address());
-        fmt::println("Name: {}", sec->get_name());
-        fmt::println("Size: {}", sec->get_size());
-        fmt::println("Name: {}", sec->get_name());
-        fmt::println("Index: {}", sec->get_index());
-        fmt::println("Offset: {:#x}", sec->get_offset());
-        fmt::println("Flags: {}", sec->get_flags());
-        fmt::println("Addr Align: {:#x}", sec->get_addr_align());
-        fmt::println("Info: {}", sec->get_info());
-        fmt::println("Link: {}", sec->get_link());
-        fmt::println("Name string offset: {:#x}", sec->get_name_string_offset());
-        fmt::println("Type: {}", sec->get_type());
-        fmt::println("------------");
-    }
-    fmt::println("Number of segments: {}", outView->getElfIo().segments.size());
-    for (const auto& seg: outView->getElfIo().segments) {
-        fmt::println("Section Num: {}", seg->get_sections_num());
-        for (unsigned int i = 0; i < seg->get_sections_num(); i++) {
-            fmt::println("Section name: {}", outView->getElfIo().sections[seg->get_section_index_at(i)]->get_name());
-        }
-        fmt::println("Flags: {:#x}", seg->get_flags());
-        fmt::println("Offset: {:#x}", seg->get_offset());
-        fmt::println("Align: {:#x}", seg->get_align());
-        fmt::println("File size: {}", seg->get_file_size());
-        fmt::println("Index: {}", seg->get_index());
-        fmt::println("Memory size: {}", seg->get_memory_size());
-        fmt::println("Physical Address: {:#x}", seg->get_physical_address());
-        fmt::println("Type: {:#x}", seg->get_type());
-        fmt::println("Virtual Address: {:#x}", seg->get_virtual_address());
-        fmt::println("------");
-    }
-    fmt::println("------");
-    compileToExecutable(outView->getView(), agent);
-
-    return {outView->getElfIo().sections[".text"]->get_address() + outView->getView().data(), outView->getElfIo().sections[".text"]->get_size()};
+    amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(outElf.data()));
+    auto outView = luthier::co_manip::ElfViewImpl::makeView(outElf);
+    return outElf;
 }
 
-luthier::co_manip::code_t assemble(const std::vector<std::string> &instrVector, hsa_agent_t agent) {
+luthier::co_manip::code_t luthier::CodeGenerator::assembleToRelocatable(const std::vector<std::string> &instList, hsa_agent_t agent) {
+    std::string instString = fmt::format("{}", fmt::join(instList, "\n"));
+    return assembleToRelocatable(instString, agent);
+}
 
-    std::string instString = fmt::format("{}", fmt::join(instrVector, "\n"));
-    return assemble(instString, agent);
+luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &instListStr, hsa_agent_t agent) {
+    auto relocatable = assembleToRelocatable(instListStr, agent);
+    auto textSection = co_manip::ElfViewImpl::makeView(relocatable)->getElfIo().sections[".text"];
+    return {reinterpret_cast<const std::byte *>(textSection->get_data()), textSection->get_size()};
+}
+
+luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, hsa_agent_t agent) {
+    return assembleToRelocatable(instrVector, agent);
+}
+
+luthier::CodeGenerator::CodeGenerator() {
+    const auto &contextManager = luthier::ContextManager::Instance();
+    const auto hsaAgents = contextManager.getHsaAgents();
+    for (const auto &agent: hsaAgents) {
+        auto emptyRelocatable = assembleToRelocatable("s_nop 0", agent);
+        emptyRelocatableMap_.insert({agent.handle, emptyRelocatable});
+    }
 }
 
 hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executable,
@@ -226,245 +193,53 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
     return HSA_STATUS_SUCCESS;
 }
 
-luthier::co_manip::code_view_t createExecutableMemoryRegion(size_t codeObjectSize, hsa_agent_t agent) {
-    auto coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
-    auto amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-    bool isSVMSupported{false};
-    coreApi.hsa_system_get_info_fn(HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED, &isSVMSupported);
-    //    assert(isSVMSupported == true);
-
-    auto callback = [](hsa_amd_memory_pool_t pool, void *data) {
-        auto out = reinterpret_cast<hsa_amd_memory_pool_t *>(data);
-        auto amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
-        if (data == nullptr) {
-            return HSA_STATUS_ERROR_INVALID_ARGUMENT;
-        }
-
-        hsa_region_segment_t segment_type{};
-        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment_type));
-
-        if (segment_type == HSA_REGION_SEGMENT_GLOBAL) {
-            uint32_t global_flag = 0;
-            LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_memory_pool_get_info_fn(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &global_flag));
-            if ((global_flag & HSA_REGION_GLOBAL_FLAG_COARSE_GRAINED) != 0) {
-                *out = pool;
-            }
-        }
-        return HSA_STATUS_SUCCESS;
-    };
-    void *ptr;
-    hsa_amd_memory_pool_t pool;
-    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_agent_iterate_memory_pools_fn(agent, callback, &pool));
-    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_memory_pool_allocate_fn(pool, codeObjectSize, HSA_AMD_MEMORY_POOL_STANDARD_FLAG, &ptr));
-
-    //    std::vector<hsa_agent_t> cpuAgents;
-    //    auto returnCpuAgentsCallback = [](hsa_agent_t agent, void* data) {
-    //        auto agentMap = reinterpret_cast<decltype(cpuAgents)*>(data);
-    //        hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
-    //
-    //        hsa_status_t stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
-    //
-    //        if (stat != HSA_STATUS_SUCCESS)
-    //            return stat;
-    //        if (dev_type == HSA_DEVICE_TYPE_GPU) {
-    //            agentMap->push_back(agent);
-    //        }
-    //
-    //        return stat;
-    //    };
-    //
-    //    LUTHIER_HSA_CHECK(coreApi.hsa_iterate_agents_fn(returnCpuAgentsCallback, &cpuAgents));
-    //
-    //    LuthierLogDebug("Number of CPU agents found: {}", cpuAgents.size());
-    //    std::vector<hsa_amd_svm_attribute_pair_t> attributeList {
-    //        {HSA_AMD_SVM_ATTRIB_GPU_EXEC, true},
-    //        {HSA_AMD_SVM_ATTRIB_AGENT_ACCESSIBLE_IN_PLACE, cpuAgents[0].handle},
-    //    };
-    //    LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_svm_attributes_set_fn(ptr, codeObjectSize, attributeList.data(), attributeList.size()));
-    return {reinterpret_cast<std::byte *>(ptr), codeObjectSize};
+kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target, kernel_descriptor_t *instrumentation) {
 }
-
-
-void printNoteSection(const std::unordered_map<std::string, std::any>& map, int indent = 0) {
-    fmt::println("Size of map: {}", map.size());
-    for (const auto& [k, v]: map) {
-        fmt::println("{}: ", k);
-        if (v.type() == typeid(std::string)) {
-            fmt::println("{}", std::any_cast<std::string>(v));
-        }
-        else if (v.type() == typeid(std::vector<std::any>)) {
-            for (const auto& el: std::any_cast<std::vector<std::any>>(v)) {
-                if (el.type() == typeid(std::string)) {
-                    fmt::println("{}", std::any_cast<std::string>(el));
-                }
-                else if (el.type() == typeid(std::unordered_map<std::string, std::any>)) {
-                    printNoteSection(std::any_cast<std::unordered_map<std::string, std::any>>(el));
-                }
-            }
-        }
-        else if (v.type() == typeid(std::unordered_map<std::string, std::any>)) {
-            fmt::println("MAP");
-            printNoteSection(std::any_cast<std::unordered_map<std::string, std::any>>(v));
-        }
-        else {
-            fmt::println("Cannot tell");
-        }
-    }
-}
-
 
 void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
                                         luthier_ipoint_t point) {
     LUTHIER_LOG_FUNCTION_CALL_START
     hsa_agent_t agent = instr.getAgent();
-    hsa_executable_t instrExecutable = instr.getExecutable();
-    auto coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
+    auto &codeObjectManager = luthier::CodeObjectManager::instance();
+    luthier::co_manip::code_view_t instrumentationFunc = codeObjectManager.getInstrumentationFunction(device_func, agent);
+    kernel_descriptor_t *instrumentationFuncKD = codeObjectManager.getKernelDescriptorOfInstrumentationFunction(device_func, agent);
+    hsa_executable_t targetExecutable = instr.getExecutable();
+
+    //    auto coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_executable_symbol_t symbol = instr.getSymbol();
     std::string symbolName = getSymbolName(symbol);
 
-    auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
-    // Make a copy of the original executable's host code object
-    co_manip::code_t newCodeObject(hco[0]);
-    auto instrumentedElf = co_manip::ElfViewImpl::make_view(hco[0]);
+    auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(targetExecutable, agent);
+    auto instrumentedElfView = co_manip::ElfViewImpl::makeView(hco[0]);
+
     // Find the symbol that requires instrumentation.
     bool foundKDSymbol{false};
-    for (unsigned int i = 0; i < co_manip::getSymbolNum(instrumentedElf) && !foundKDSymbol; i++) {
-        co_manip::SymbolView info(instrumentedElf, i);
+    for (unsigned int i = 0; i < co_manip::getSymbolNum(instrumentedElfView) && !foundKDSymbol; i++) {
+        co_manip::SymbolView info(instrumentedElfView, i);
         if (info.getName() == symbolName)
             foundKDSymbol = true;
     }
     if (not foundKDSymbol)
         throw std::runtime_error(fmt::format("Failed to find symbol {} in the copied executable", symbolName));
-
-    // Extract the exact amount of SGPRs/VGPRs used in the kernel from the note section
-//    auto metaMap = instrumentedElf->getKernelMetaDataMap();
-//    for (const auto&m: metaMap) {
-//        fmt::println("Meta key: {}", m.first);
-//        fmt::println("Symbol Name: {}", symbolName);
-//    }
-    auto meta = GetAttrCodePropMetadata(instrumentedElf, instrumentedElf->getKernelMetaDataMap(symbolName));
+    fmt::println("SGPR granularity: {}", luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getSGPRAllocGranulefromComgrMeta());
+    auto meta = GetAttrCodePropMetadata(instrumentedElfView, instrumentedElfView->getKernelMetaDataMap(symbolName));
     fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
-//    auto noteSection = parseElfNoteSection(instrumentedElf);
-//    auto kernelNotes = noteSection.getRoot().getMap()["amdhsa.kernels"].getArray();
-//    for (auto& k: kernelNotes) {
-//        auto& m = k.getMap();
-//        for (const auto& [i, j]: m) {
-//            fmt::println("Key: {}", i.getString().str());
-//        }
-//    }
+    auto myReloc = emptyRelocatableMap_[agent.handle];
+    auto out = compileRelocatableToExecutable(myReloc, agent);
 
-//    fmt::println("Does this have value: {}", kernelNoteSection.has_value());
-//    fmt::println("Kernel note section typeid is list: {}", kernelNoteSection.type() == typeid(co_manip::note_meta_list_t));
-//    fmt::println("Kernel note section typeid is string: {}", kernelNoteSection.type() == typeid(co_manip::note_meta_node_t));
-//    fmt::println("Kernel note section typeid is map: {}", kernelNoteSection.type() == typeid(co_manip::note_meta_map_t));
-//    assert(kernelNoteSection.type() == typeid(std::vector<std::any>));
-//    for (const auto& k: std::any_cast<std::vector<std::any>>(kernelNoteSection)) {
-//        assert(k.type() == typeid(std::unordered_map<std::string, std::any>));
-//        fmt::println("Key: {}", std::any_cast<std::string>(std::any_cast<std::unordered_map<std::string, std::any>>(k)["name"]));
-//        fmt::println("============");
-//    }
-//        if (info.getName().find(".kd") != std::string::npos) {
-//            fmt::println("sym sec addr: {:#x}", info.getSection()->get_address());
-//            auto kd = const_cast<kernel_descriptor_t *>(reinterpret_cast<const kernel_descriptor_t *>(info.getView().data()));
-//            //            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, );
-//            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT, 8);
-//            AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_FLAT_SCRATCH_INIT, 1);
-//            //            AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER, 1);
-//            //            AMD_HSA_BITS_SET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR, 0);
-//        }
-//    }
-//
-//    for (const auto &sec: instrElf->getElfIo().sections) {
-//        fmt::println("Section name {}", sec->get_name());
-//        fmt::println("Section addr {:#x}", sec->get_address());
-//    }
-//    std::ostringstream ss;
-//    outElf.save(ss);
-////
-//    std::string elf = ss.str();
-//
-//    auto outElfViewFinal = co_manip::ElfViewImpl::make_view(co_manip::code_view_t{reinterpret_cast<const std::byte*>(elf.data()), elf.size()});
-//
-//    fmt::println("Number of sections in my elf: {}", outElfViewFinal->getElfIo().sections.size());
-//    for (const auto& sec: outElfViewFinal->getElfIo().sections) {
-//        fmt::println("Stream size: {:#x}", sec->get_stream_size());
-//        fmt::println("Address: {:#x}", sec->get_address());
-//        fmt::println("Name: {}", sec->get_name());
-//        fmt::println("Size: {}", sec->get_size());
-//        fmt::println("Name: {}", sec->get_name());
-//        fmt::println("Index: {}", sec->get_index());
-//        fmt::println("Offset: {:#x}", sec->get_offset());
-//        fmt::println("Flags: {}", sec->get_flags());
-//        fmt::println("Addr Align: {:#x}", sec->get_addr_align());
-//        fmt::println("Info: {}", sec->get_info());
-//        fmt::println("Link: {}", sec->get_link());
-//        fmt::println("Name string offset: {:#x}", sec->get_name_string_offset());
-//        fmt::println("Type: {}", sec->get_type());
-//        fmt::println("------------");
-//    }
-//
-//    compileToExecutable(outElfViewFinal->getView(), agent);
-
-//    amd_comgr_data_t dataIn;
-//    amd_comgr_data_set_t dataSetIn, dataSetOut;
-//    amd_comgr_action_info_t dataAction;
-//
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
-//
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_RELOCATABLE, &dataIn));
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, elf.size(), elf.data()));
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(dataIn, "my_source.elf"));
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(dataSetIn, dataIn));
-//
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
-//
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
-//                                                               luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName().c_str()));
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
-//    LUTHIER_AMD_COMGR_CHECK(
-//        amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
-//                            dataAction, dataSetIn, dataSetOut));
-//
-//
-//    amd_comgr_data_t dataOut;
-//    size_t dataOutSize;
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &dataOut));
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, nullptr));
-//    co_manip::code_t executableOut;
-//    executableOut.resize(dataOutSize);
-//    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char*>(executableOut.data())));
-//    co_manip::ElfView executableView = co_manip::ElfViewImpl::make_view(executableOut);
-//    fmt::println("Number of segments: {}", executableView->getElfIo().segments.size());
-
-
-//    // save the ELF and create an executable
-//    //    std::ostringstream ss;
-//    //    instrElf->getElfIo().save(ss);
     auto coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_code_object_reader_t reader;
     hsa_executable_t executable;
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
                                                              nullptr, &executable));
-//    //    std::string elf = ss.str();
-    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(instrumentedElf->getView().data(),
-                                                                             instrumentedElf->getView().size(), &reader));
+    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(out.data(),
+                                                                             out.size(), &reader));
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_load_agent_code_object_fn(executable, agent, reader, nullptr, nullptr));
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
     LUTHIER_HSA_CHECK(registerSymbolWithCodeObjectManager(executable, instr.getSymbol(), agent));
-//    fmt::println("Convertor: {}", instrElf->getElfIo().get_convertor());
-//    fmt::println("Type of ELF: {}", instrElf->getElfIo()->get_type());
-//    fmt::println("Machine: {}", instrElf->getElfIo()->get_machine());
-//    fmt::println("ABI version: {}", instrElf->getElfIo()->get_abi_version());
-//    fmt::println("Encoding: {}", instrElf->getElfIo()->get_encoding());
-//    fmt::println("FLAGS: {}", instrElf->getElfIo()->get_flags());
-//    fmt::println("OS ABI: {}", instrElf->getElfIo()->get_os_abi());
-//    fmt::println("Class: {}", instrElf->getElfIo().get_class());
-//    fmt::println("Version: {}", instrElf->getElfIo()->get_version());
-//    fmt::println("ABI Version: {}", instrElf->getElfIo()->get_abi_version());
-//    fmt::println("Entry: {}", instrElfIo->get_entry());
 }
+
 //{
 //
 //    hsa_agent_t agent = instr.getAgent();

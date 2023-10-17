@@ -70,19 +70,21 @@ class ElfViewImpl : public std::enable_shared_from_this<ElfViewImpl> {
             amd_comgr_destroy_metadata(*kernelsMetadata_);
     }
 
-    static std::shared_ptr<ElfViewImpl> make_view(code_view_t elf) {
+    static std::shared_ptr<ElfViewImpl> makeView(code_view_t elf) {
         return std::shared_ptr<ElfViewImpl>(new ElfViewImpl(elf));
     }
 
-    static std::shared_ptr<ElfViewImpl> make_view(const code_t &elf) {
+    static std::shared_ptr<ElfViewImpl> makeView(const code_t &elf) {
         return std::shared_ptr<ElfViewImpl>(new ElfViewImpl(code_view_t(elf)));
     }
 
-    ELFIO::elfio &getElfIo() const {
+    const ELFIO::elfio &getElfIo() const {
         if (io_ == std::nullopt) {
-            io_ = ELFIO::elfio();
+            io_.emplace();
             // All elfio objects are loaded with lazy=true in ElfViewImpl to prevent additional memory copy
-            io_->load(*dataStringStream_, true);
+            if (not io_->load(*dataStringStream_, true)) {
+                throw std::runtime_error("Failed to load the ELF file.");
+            }
         }
         return io_.value();
     }
@@ -367,6 +369,9 @@ struct WorkGroupInfo {
 
 WorkGroupInfo GetAttrCodePropMetadata(const ElfView& elfView, amd_comgr_metadata_node_t kernelMetaNode);
 
+
+
+
 //struct Kernel {
 // public:
 //    typedef std::vector<KernelParameterDescriptor> parameters_t;
@@ -548,6 +553,27 @@ code_view_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functi
 std::vector<code_view_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
 std::vector<code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
+
+//struct kd_rsrc_1 {
+//    uint8_t granulated_vgpr_count;
+//    uint8_t granulated_sgpr_count;
+//    uint8_t priority;
+//    uint8_t float_round_mode_32;
+//    uint8_t float_denorm_mode_32;
+//    uint8_t float_denorm_mode_16_64;
+//    bool priv;
+//    bool enable_dx10_clamp;
+//    bool debug_mode;
+//    bool enable_ieee_mode;
+//    bool bulky;
+//    bool cdbg_user;
+//    uint8_t reserved1;
+//};
+
+
+#define AMD_HSA_BITS_GET_RSRC1(kd, prop) AMD_HSA_BITS_GET(kd->rsrc1, prop));
+
+#define AMD_HSA_BITS_GET_RSRC2(kd, prop) AMD_HSA_BITS_GET(kd->rsrc2, prop));
 
 void printRSR1(const kernel_descriptor_t *kd);
 

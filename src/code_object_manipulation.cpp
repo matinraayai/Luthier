@@ -636,6 +636,7 @@ ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
     elfIo.set_abi_version(elfIoIn.get_abi_version());
     elfIo.set_entry(elfIoIn.get_entry());
     elfIo.set_machine(elfIoIn.get_machine());
+    elfIo.set_type(ELFIO::ET_REL);
 
     auto shStrTabSection = elfIo.sections[ElfSecDesc[SHSTRTAB].name];
     assert(shStrTabSection != nullptr);
@@ -1281,6 +1282,7 @@ static amd_comgr_status_t populateArgsV3(const amd_comgr_metadata_node_t key,
     status = amd_comgr_get_metadata_kind(key, &kind);
     if (kind == AMD_COMGR_METADATA_KIND_STRING && status == AMD_COMGR_STATUS_SUCCESS) {
         status = getMetaBuf(key, buf);
+        fmt::println("KEY FOUND: {}", buf);
     }
 
     if (status != AMD_COMGR_STATUS_SUCCESS) {
@@ -1379,6 +1381,7 @@ static amd_comgr_status_t populateKernelMetaV3(const amd_comgr_metadata_node_t k
     status = amd_comgr_get_metadata_kind(key, &kind);
     if (kind == AMD_COMGR_METADATA_KIND_STRING && status == AMD_COMGR_STATUS_SUCCESS) {
         status = getMetaBuf(key, buf);
+        fmt::println("KEY FOUND: {}", buf);
     }
 
     if (status != AMD_COMGR_STATUS_SUCCESS) {
@@ -1697,7 +1700,7 @@ WorkGroupInfo GetAttrCodePropMetadata(const ElfView& elfView, amd_comgr_metadata
 
 amd_comgr_status_t ElfViewImpl::initializeComgrMetaData() const {
     getElfIo();
-    auto comgrDataKind = io_->segments.size() != 0 ? AMD_COMGR_DATA_KIND_EXECUTABLE : AMD_COMGR_DATA_KIND_RELOCATABLE;
+    auto comgrDataKind = io_->get_type() != ELFIO::ET_DYN ? AMD_COMGR_DATA_KIND_EXECUTABLE : AMD_COMGR_DATA_KIND_RELOCATABLE;
     comgrData_.emplace();
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(comgrDataKind, &*comgrData_));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(*comgrData_, data_.size(),
