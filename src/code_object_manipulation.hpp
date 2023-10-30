@@ -623,7 +623,8 @@ typedef enum {
     ELF_SECTIONS_LAST = RUNTIME_METADATA
 } ElfSections;
 
-ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
+// ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
+ElfView createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
 
 ELFIO::section *newSection(
     ELFIO::elfio &elfIo,

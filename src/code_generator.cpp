@@ -211,6 +211,8 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(targetExecutable, agent);
     auto instrumentedElfView = co_manip::ElfViewImpl::makeView(hco[0]);
 
+    auto newElfio = co_manip::createAMDGPUElf(instrumentedElfView->getElfIo(), agent);
+
     // Find the symbol that requires instrumentation.
     bool foundKDSymbol{false};
     for (unsigned int i = 0; i < co_manip::getSymbolNum(instrumentedElfView) && !foundKDSymbol; i++) {
