@@ -30,7 +30,7 @@
 
 /* block: CoreApi API */
 static hsa_status_t hsa_init_callback() {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(0) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_init_fn();
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(0) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_init_fn();
       hsa_api_args_t args;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_init);
       hsa_status_t out = luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_init_fn();
@@ -40,7 +40,7 @@ static hsa_status_t hsa_init_callback() {
 }
 
 static hsa_status_t hsa_shut_down_callback() {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(1) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_shut_down_fn();
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(1) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_shut_down_fn();
       hsa_api_args_t args;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_shut_down);
       hsa_status_t out = luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_shut_down_fn();
@@ -50,7 +50,7 @@ static hsa_status_t hsa_shut_down_callback() {
 }
 
 static hsa_status_t hsa_system_get_info_callback(hsa_system_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(2) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_get_info_fn(attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(2) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_get_info_fn(attribute, value);
       hsa_api_args_t args;
       args.hsa_system_get_info.attribute = attribute;
       args.hsa_system_get_info.value = value;
@@ -64,7 +64,7 @@ static hsa_status_t hsa_system_get_info_callback(hsa_system_info_t attribute, vo
 }
 
 static hsa_status_t hsa_system_extension_supported_callback(uint16_t extension, uint16_t version_major, uint16_t version_minor, bool* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(3) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_extension_supported_fn(extension, version_major, version_minor, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(3) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_extension_supported_fn(extension, version_major, version_minor, result);
       hsa_api_args_t args;
       args.hsa_system_extension_supported.extension = extension;
       args.hsa_system_extension_supported.version_major = version_major;
@@ -82,7 +82,7 @@ static hsa_status_t hsa_system_extension_supported_callback(uint16_t extension, 
 }
 
 static hsa_status_t hsa_system_get_extension_table_callback(uint16_t extension, uint16_t version_major, uint16_t version_minor, void* table) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(4) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_get_extension_table_fn(extension, version_major, version_minor, table);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(4) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_get_extension_table_fn(extension, version_major, version_minor, table);
       hsa_api_args_t args;
       args.hsa_system_get_extension_table.extension = extension;
       args.hsa_system_get_extension_table.version_major = version_major;
@@ -100,7 +100,7 @@ static hsa_status_t hsa_system_get_extension_table_callback(uint16_t extension, 
 }
 
 static hsa_status_t hsa_iterate_agents_callback(hsa_status_t (* callback)(hsa_agent_t agent, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(5) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_iterate_agents_fn(callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(5) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_iterate_agents_fn(callback, data);
       hsa_api_args_t args;
       args.hsa_iterate_agents.callback = callback;
       args.hsa_iterate_agents.data = data;
@@ -114,7 +114,7 @@ static hsa_status_t hsa_iterate_agents_callback(hsa_status_t (* callback)(hsa_ag
 }
 
 static hsa_status_t hsa_agent_get_info_callback(hsa_agent_t agent, hsa_agent_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(6) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_get_info_fn(agent, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(6) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_get_info_fn(agent, attribute, value);
       hsa_api_args_t args;
       args.hsa_agent_get_info.agent = agent;
       args.hsa_agent_get_info.attribute = attribute;
@@ -130,7 +130,7 @@ static hsa_status_t hsa_agent_get_info_callback(hsa_agent_t agent, hsa_agent_inf
 }
 
 static hsa_status_t hsa_queue_create_callback(hsa_agent_t agent, uint32_t size, hsa_queue_type32_t type, void (* callback)(hsa_status_t status, hsa_queue_t* source, void* data), void* data, uint32_t private_segment_size, uint32_t group_segment_size, hsa_queue_t** queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(7) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_create_fn(agent, size, type, callback, data, private_segment_size, group_segment_size, queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(7) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_create_fn(agent, size, type, callback, data, private_segment_size, group_segment_size, queue);
       hsa_api_args_t args;
       args.hsa_queue_create.agent = agent;
       args.hsa_queue_create.size = size;
@@ -156,7 +156,7 @@ static hsa_status_t hsa_queue_create_callback(hsa_agent_t agent, uint32_t size, 
 }
 
 static hsa_status_t hsa_soft_queue_create_callback(hsa_region_t region, uint32_t size, hsa_queue_type32_t type, uint32_t features, hsa_signal_t doorbell_signal, hsa_queue_t** queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(8) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_soft_queue_create_fn(region, size, type, features, doorbell_signal, queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(8) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_soft_queue_create_fn(region, size, type, features, doorbell_signal, queue);
       hsa_api_args_t args;
       args.hsa_soft_queue_create.region = region;
       args.hsa_soft_queue_create.size = size;
@@ -178,7 +178,7 @@ static hsa_status_t hsa_soft_queue_create_callback(hsa_region_t region, uint32_t
 }
 
 static hsa_status_t hsa_queue_destroy_callback(hsa_queue_t* queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(9) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_destroy_fn(queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(9) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_destroy_fn(queue);
       hsa_api_args_t args;
       args.hsa_queue_destroy.queue = queue;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_queue_destroy);
@@ -190,7 +190,7 @@ static hsa_status_t hsa_queue_destroy_callback(hsa_queue_t* queue) {
 }
 
 static hsa_status_t hsa_queue_inactivate_callback(hsa_queue_t* queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(10) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_inactivate_fn(queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(10) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_inactivate_fn(queue);
       hsa_api_args_t args;
       args.hsa_queue_inactivate.queue = queue;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_queue_inactivate);
@@ -202,7 +202,7 @@ static hsa_status_t hsa_queue_inactivate_callback(hsa_queue_t* queue) {
 }
 
 static uint64_t hsa_queue_load_read_index_scacquire_callback(const hsa_queue_t* queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(11) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_read_index_scacquire_fn(queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(11) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_read_index_scacquire_fn(queue);
       hsa_api_args_t args;
       args.hsa_queue_load_read_index_scacquire.queue = queue;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_queue_load_read_index_scacquire);
@@ -214,7 +214,7 @@ static uint64_t hsa_queue_load_read_index_scacquire_callback(const hsa_queue_t* 
 }
 
 static uint64_t hsa_queue_load_read_index_relaxed_callback(const hsa_queue_t* queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(12) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_read_index_relaxed_fn(queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(12) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_read_index_relaxed_fn(queue);
       hsa_api_args_t args;
       args.hsa_queue_load_read_index_relaxed.queue = queue;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_queue_load_read_index_relaxed);
@@ -226,7 +226,7 @@ static uint64_t hsa_queue_load_read_index_relaxed_callback(const hsa_queue_t* qu
 }
 
 static uint64_t hsa_queue_load_write_index_scacquire_callback(const hsa_queue_t* queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(13) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_write_index_scacquire_fn(queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(13) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_write_index_scacquire_fn(queue);
       hsa_api_args_t args;
       args.hsa_queue_load_write_index_scacquire.queue = queue;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_queue_load_write_index_scacquire);
@@ -238,7 +238,7 @@ static uint64_t hsa_queue_load_write_index_scacquire_callback(const hsa_queue_t*
 }
 
 static uint64_t hsa_queue_load_write_index_relaxed_callback(const hsa_queue_t* queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(14) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_write_index_relaxed_fn(queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(14) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_load_write_index_relaxed_fn(queue);
       hsa_api_args_t args;
       args.hsa_queue_load_write_index_relaxed.queue = queue;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_queue_load_write_index_relaxed);
@@ -250,7 +250,7 @@ static uint64_t hsa_queue_load_write_index_relaxed_callback(const hsa_queue_t* q
 }
 
 static void hsa_queue_store_write_index_relaxed_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(15) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_write_index_relaxed_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(15) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_write_index_relaxed_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_store_write_index_relaxed.queue = queue;
       args.hsa_queue_store_write_index_relaxed.value = value;
@@ -263,7 +263,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_wri
 }
 
 static void hsa_queue_store_write_index_screlease_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(16) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_write_index_screlease_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(16) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_write_index_screlease_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_store_write_index_screlease.queue = queue;
       args.hsa_queue_store_write_index_screlease.value = value;
@@ -276,7 +276,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_wri
 }
 
 static uint64_t hsa_queue_cas_write_index_scacq_screl_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(17) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_scacq_screl_fn(queue, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(17) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_scacq_screl_fn(queue, expected, value);
       hsa_api_args_t args;
       args.hsa_queue_cas_write_index_scacq_screl.queue = queue;
       args.hsa_queue_cas_write_index_scacq_screl.expected = expected;
@@ -292,7 +292,7 @@ static uint64_t hsa_queue_cas_write_index_scacq_screl_callback(const hsa_queue_t
 }
 
 static uint64_t hsa_queue_cas_write_index_scacquire_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(18) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_scacquire_fn(queue, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(18) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_scacquire_fn(queue, expected, value);
       hsa_api_args_t args;
       args.hsa_queue_cas_write_index_scacquire.queue = queue;
       args.hsa_queue_cas_write_index_scacquire.expected = expected;
@@ -308,7 +308,7 @@ static uint64_t hsa_queue_cas_write_index_scacquire_callback(const hsa_queue_t* 
 }
 
 static uint64_t hsa_queue_cas_write_index_relaxed_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(19) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_relaxed_fn(queue, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(19) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_relaxed_fn(queue, expected, value);
       hsa_api_args_t args;
       args.hsa_queue_cas_write_index_relaxed.queue = queue;
       args.hsa_queue_cas_write_index_relaxed.expected = expected;
@@ -324,7 +324,7 @@ static uint64_t hsa_queue_cas_write_index_relaxed_callback(const hsa_queue_t* qu
 }
 
 static uint64_t hsa_queue_cas_write_index_screlease_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(20) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_screlease_fn(queue, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(20) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_cas_write_index_screlease_fn(queue, expected, value);
       hsa_api_args_t args;
       args.hsa_queue_cas_write_index_screlease.queue = queue;
       args.hsa_queue_cas_write_index_screlease.expected = expected;
@@ -340,7 +340,7 @@ static uint64_t hsa_queue_cas_write_index_screlease_callback(const hsa_queue_t* 
 }
 
 static uint64_t hsa_queue_add_write_index_scacq_screl_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(21) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_scacq_screl_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(21) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_scacq_screl_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_add_write_index_scacq_screl.queue = queue;
       args.hsa_queue_add_write_index_scacq_screl.value = value;
@@ -354,7 +354,7 @@ static uint64_t hsa_queue_add_write_index_scacq_screl_callback(const hsa_queue_t
 }
 
 static uint64_t hsa_queue_add_write_index_scacquire_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(22) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_scacquire_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(22) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_scacquire_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_add_write_index_scacquire.queue = queue;
       args.hsa_queue_add_write_index_scacquire.value = value;
@@ -368,7 +368,7 @@ static uint64_t hsa_queue_add_write_index_scacquire_callback(const hsa_queue_t* 
 }
 
 static uint64_t hsa_queue_add_write_index_relaxed_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(23) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_relaxed_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(23) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_relaxed_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_add_write_index_relaxed.queue = queue;
       args.hsa_queue_add_write_index_relaxed.value = value;
@@ -382,7 +382,7 @@ static uint64_t hsa_queue_add_write_index_relaxed_callback(const hsa_queue_t* qu
 }
 
 static uint64_t hsa_queue_add_write_index_screlease_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(24) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_screlease_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(24) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_add_write_index_screlease_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_add_write_index_screlease.queue = queue;
       args.hsa_queue_add_write_index_screlease.value = value;
@@ -396,7 +396,7 @@ static uint64_t hsa_queue_add_write_index_screlease_callback(const hsa_queue_t* 
 }
 
 static void hsa_queue_store_read_index_relaxed_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(25) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_read_index_relaxed_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(25) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_read_index_relaxed_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_store_read_index_relaxed.queue = queue;
       args.hsa_queue_store_read_index_relaxed.value = value;
@@ -409,7 +409,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_rea
 }
 
 static void hsa_queue_store_read_index_screlease_callback(const hsa_queue_t* queue, uint64_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(26) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_read_index_screlease_fn(queue, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(26) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_read_index_screlease_fn(queue, value);
       hsa_api_args_t args;
       args.hsa_queue_store_read_index_screlease.queue = queue;
       args.hsa_queue_store_read_index_screlease.value = value;
@@ -422,7 +422,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_queue_store_rea
 }
 
 static hsa_status_t hsa_agent_iterate_regions_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_region_t region, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(27) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_iterate_regions_fn(agent, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(27) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_iterate_regions_fn(agent, callback, data);
       hsa_api_args_t args;
       args.hsa_agent_iterate_regions.agent = agent;
       args.hsa_agent_iterate_regions.callback = callback;
@@ -438,7 +438,7 @@ static hsa_status_t hsa_agent_iterate_regions_callback(hsa_agent_t agent, hsa_st
 }
 
 static hsa_status_t hsa_region_get_info_callback(hsa_region_t region, hsa_region_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(28) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_region_get_info_fn(region, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(28) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_region_get_info_fn(region, attribute, value);
       hsa_api_args_t args;
       args.hsa_region_get_info.region = region;
       args.hsa_region_get_info.attribute = attribute;
@@ -454,7 +454,7 @@ static hsa_status_t hsa_region_get_info_callback(hsa_region_t region, hsa_region
 }
 
 static hsa_status_t hsa_agent_get_exception_policies_callback(hsa_agent_t agent, hsa_profile_t profile, uint16_t* mask) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(29) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_get_exception_policies_fn(agent, profile, mask);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(29) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_get_exception_policies_fn(agent, profile, mask);
       hsa_api_args_t args;
       args.hsa_agent_get_exception_policies.agent = agent;
       args.hsa_agent_get_exception_policies.profile = profile;
@@ -470,7 +470,7 @@ static hsa_status_t hsa_agent_get_exception_policies_callback(hsa_agent_t agent,
 }
 
 static hsa_status_t hsa_agent_extension_supported_callback(uint16_t extension, hsa_agent_t agent, uint16_t version_major, uint16_t version_minor, bool* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(30) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_extension_supported_fn(extension, agent, version_major, version_minor, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(30) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_extension_supported_fn(extension, agent, version_major, version_minor, result);
       hsa_api_args_t args;
       args.hsa_agent_extension_supported.extension = extension;
       args.hsa_agent_extension_supported.agent = agent;
@@ -490,7 +490,7 @@ static hsa_status_t hsa_agent_extension_supported_callback(uint16_t extension, h
 }
 
 static hsa_status_t hsa_memory_register_callback(void* ptr, size_t size) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(31) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_register_fn(ptr, size);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(31) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_register_fn(ptr, size);
       hsa_api_args_t args;
       args.hsa_memory_register.ptr = ptr;
       args.hsa_memory_register.size = size;
@@ -504,7 +504,7 @@ static hsa_status_t hsa_memory_register_callback(void* ptr, size_t size) {
 }
 
 static hsa_status_t hsa_memory_deregister_callback(void* ptr, size_t size) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(32) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_deregister_fn(ptr, size);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(32) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_deregister_fn(ptr, size);
       hsa_api_args_t args;
       args.hsa_memory_deregister.ptr = ptr;
       args.hsa_memory_deregister.size = size;
@@ -518,7 +518,7 @@ static hsa_status_t hsa_memory_deregister_callback(void* ptr, size_t size) {
 }
 
 static hsa_status_t hsa_memory_allocate_callback(hsa_region_t region, size_t size, void** ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(33) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_allocate_fn(region, size, ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(33) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_allocate_fn(region, size, ptr);
       hsa_api_args_t args;
       args.hsa_memory_allocate.region = region;
       args.hsa_memory_allocate.size = size;
@@ -534,7 +534,7 @@ static hsa_status_t hsa_memory_allocate_callback(hsa_region_t region, size_t siz
 }
 
 static hsa_status_t hsa_memory_free_callback(void* ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(34) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_free_fn(ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(34) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_free_fn(ptr);
       hsa_api_args_t args;
       args.hsa_memory_free.ptr = ptr;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_memory_free);
@@ -546,7 +546,7 @@ static hsa_status_t hsa_memory_free_callback(void* ptr) {
 }
 
 static hsa_status_t hsa_memory_copy_callback(void* dst, const void* src, size_t size) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(35) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_copy_fn(dst, src, size);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(35) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_copy_fn(dst, src, size);
       hsa_api_args_t args;
       args.hsa_memory_copy.dst = dst;
       args.hsa_memory_copy.src = src;
@@ -562,7 +562,7 @@ static hsa_status_t hsa_memory_copy_callback(void* dst, const void* src, size_t 
 }
 
 static hsa_status_t hsa_memory_assign_agent_callback(void* ptr, hsa_agent_t agent, hsa_access_permission_t access) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(36) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_assign_agent_fn(ptr, agent, access);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(36) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_memory_assign_agent_fn(ptr, agent, access);
       hsa_api_args_t args;
       args.hsa_memory_assign_agent.ptr = ptr;
       args.hsa_memory_assign_agent.agent = agent;
@@ -578,7 +578,7 @@ static hsa_status_t hsa_memory_assign_agent_callback(void* ptr, hsa_agent_t agen
 }
 
 static hsa_status_t hsa_signal_create_callback(hsa_signal_value_t initial_value, uint32_t num_consumers, const hsa_agent_t* consumers, hsa_signal_t* signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(37) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_create_fn(initial_value, num_consumers, consumers, signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(37) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_create_fn(initial_value, num_consumers, consumers, signal);
       hsa_api_args_t args;
       args.hsa_signal_create.initial_value = initial_value;
       args.hsa_signal_create.num_consumers = num_consumers;
@@ -596,7 +596,7 @@ static hsa_status_t hsa_signal_create_callback(hsa_signal_value_t initial_value,
 }
 
 static hsa_status_t hsa_signal_destroy_callback(hsa_signal_t signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(38) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_destroy_fn(signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(38) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_destroy_fn(signal);
       hsa_api_args_t args;
       args.hsa_signal_destroy.signal = signal;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_signal_destroy);
@@ -608,7 +608,7 @@ static hsa_status_t hsa_signal_destroy_callback(hsa_signal_t signal) {
 }
 
 static hsa_signal_value_t hsa_signal_load_relaxed_callback(hsa_signal_t signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(39) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_load_relaxed_fn(signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(39) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_load_relaxed_fn(signal);
       hsa_api_args_t args;
       args.hsa_signal_load_relaxed.signal = signal;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_signal_load_relaxed);
@@ -620,7 +620,7 @@ static hsa_signal_value_t hsa_signal_load_relaxed_callback(hsa_signal_t signal) 
 }
 
 static hsa_signal_value_t hsa_signal_load_scacquire_callback(hsa_signal_t signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(40) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_load_scacquire_fn(signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(40) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_load_scacquire_fn(signal);
       hsa_api_args_t args;
       args.hsa_signal_load_scacquire.signal = signal;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_signal_load_scacquire);
@@ -632,7 +632,7 @@ static hsa_signal_value_t hsa_signal_load_scacquire_callback(hsa_signal_t signal
 }
 
 static void hsa_signal_store_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(41) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_store_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(41) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_store_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_store_relaxed.signal = signal;
       args.hsa_signal_store_relaxed.value = value;
@@ -645,7 +645,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_store_re
 }
 
 static void hsa_signal_store_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(42) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_store_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(42) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_store_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_store_screlease.signal = signal;
       args.hsa_signal_store_screlease.value = value;
@@ -658,7 +658,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_store_sc
 }
 
 static hsa_signal_value_t hsa_signal_wait_relaxed_callback(hsa_signal_t signal, hsa_signal_condition_t condition, hsa_signal_value_t compare_value, uint64_t timeout_hint, hsa_wait_state_t wait_state_hint) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(43) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_wait_relaxed_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(43) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_wait_relaxed_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
       hsa_api_args_t args;
       args.hsa_signal_wait_relaxed.signal = signal;
       args.hsa_signal_wait_relaxed.condition = condition;
@@ -678,7 +678,7 @@ static hsa_signal_value_t hsa_signal_wait_relaxed_callback(hsa_signal_t signal, 
 }
 
 static hsa_signal_value_t hsa_signal_wait_scacquire_callback(hsa_signal_t signal, hsa_signal_condition_t condition, hsa_signal_value_t compare_value, uint64_t timeout_hint, hsa_wait_state_t wait_state_hint) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(44) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_wait_scacquire_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(44) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_wait_scacquire_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
       hsa_api_args_t args;
       args.hsa_signal_wait_scacquire.signal = signal;
       args.hsa_signal_wait_scacquire.condition = condition;
@@ -698,7 +698,7 @@ static hsa_signal_value_t hsa_signal_wait_scacquire_callback(hsa_signal_t signal
 }
 
 static void hsa_signal_and_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(45) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(45) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_and_relaxed.signal = signal;
       args.hsa_signal_and_relaxed.value = value;
@@ -711,7 +711,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_rela
 }
 
 static void hsa_signal_and_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(46) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_scacquire_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(46) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_scacquire_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_and_scacquire.signal = signal;
       args.hsa_signal_and_scacquire.value = value;
@@ -724,7 +724,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_scac
 }
 
 static void hsa_signal_and_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(47) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(47) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_and_screlease.signal = signal;
       args.hsa_signal_and_screlease.value = value;
@@ -737,7 +737,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_scre
 }
 
 static void hsa_signal_and_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(48) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_scacq_screl_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(48) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_scacq_screl_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_and_scacq_screl.signal = signal;
       args.hsa_signal_and_scacq_screl.value = value;
@@ -750,7 +750,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_and_scac
 }
 
 static void hsa_signal_or_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(49) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(49) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_or_relaxed.signal = signal;
       args.hsa_signal_or_relaxed.value = value;
@@ -763,7 +763,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_relax
 }
 
 static void hsa_signal_or_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(50) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_scacquire_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(50) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_scacquire_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_or_scacquire.signal = signal;
       args.hsa_signal_or_scacquire.value = value;
@@ -776,7 +776,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_scacq
 }
 
 static void hsa_signal_or_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(51) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(51) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_or_screlease.signal = signal;
       args.hsa_signal_or_screlease.value = value;
@@ -789,7 +789,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_screl
 }
 
 static void hsa_signal_or_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(52) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_scacq_screl_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(52) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_scacq_screl_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_or_scacq_screl.signal = signal;
       args.hsa_signal_or_scacq_screl.value = value;
@@ -802,7 +802,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_or_scacq
 }
 
 static void hsa_signal_xor_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(53) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(53) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_xor_relaxed.signal = signal;
       args.hsa_signal_xor_relaxed.value = value;
@@ -815,7 +815,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_rela
 }
 
 static void hsa_signal_xor_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(54) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_scacquire_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(54) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_scacquire_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_xor_scacquire.signal = signal;
       args.hsa_signal_xor_scacquire.value = value;
@@ -828,7 +828,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_scac
 }
 
 static void hsa_signal_xor_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(55) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(55) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_xor_screlease.signal = signal;
       args.hsa_signal_xor_screlease.value = value;
@@ -841,7 +841,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_scre
 }
 
 static void hsa_signal_xor_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(56) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_scacq_screl_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(56) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_scacq_screl_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_xor_scacq_screl.signal = signal;
       args.hsa_signal_xor_scacq_screl.value = value;
@@ -854,7 +854,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_xor_scac
 }
 
 static hsa_signal_value_t hsa_signal_exchange_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(57) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(57) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_exchange_relaxed.signal = signal;
       args.hsa_signal_exchange_relaxed.value = value;
@@ -868,7 +868,7 @@ static hsa_signal_value_t hsa_signal_exchange_relaxed_callback(hsa_signal_t sign
 }
 
 static hsa_signal_value_t hsa_signal_exchange_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(58) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_scacquire_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(58) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_scacquire_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_exchange_scacquire.signal = signal;
       args.hsa_signal_exchange_scacquire.value = value;
@@ -882,7 +882,7 @@ static hsa_signal_value_t hsa_signal_exchange_scacquire_callback(hsa_signal_t si
 }
 
 static hsa_signal_value_t hsa_signal_exchange_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(59) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(59) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_exchange_screlease.signal = signal;
       args.hsa_signal_exchange_screlease.value = value;
@@ -896,7 +896,7 @@ static hsa_signal_value_t hsa_signal_exchange_screlease_callback(hsa_signal_t si
 }
 
 static hsa_signal_value_t hsa_signal_exchange_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(60) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_scacq_screl_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(60) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_exchange_scacq_screl_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_exchange_scacq_screl.signal = signal;
       args.hsa_signal_exchange_scacq_screl.value = value;
@@ -910,7 +910,7 @@ static hsa_signal_value_t hsa_signal_exchange_scacq_screl_callback(hsa_signal_t 
 }
 
 static void hsa_signal_add_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(61) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(61) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_add_relaxed.signal = signal;
       args.hsa_signal_add_relaxed.value = value;
@@ -923,7 +923,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_rela
 }
 
 static void hsa_signal_add_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(62) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_scacquire_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(62) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_scacquire_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_add_scacquire.signal = signal;
       args.hsa_signal_add_scacquire.value = value;
@@ -936,7 +936,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_scac
 }
 
 static void hsa_signal_add_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(63) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(63) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_add_screlease.signal = signal;
       args.hsa_signal_add_screlease.value = value;
@@ -949,7 +949,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_scre
 }
 
 static void hsa_signal_add_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(64) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_scacq_screl_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(64) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_scacq_screl_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_add_scacq_screl.signal = signal;
       args.hsa_signal_add_scacq_screl.value = value;
@@ -962,7 +962,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_add_scac
 }
 
 static void hsa_signal_subtract_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(65) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(65) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_subtract_relaxed.signal = signal;
       args.hsa_signal_subtract_relaxed.value = value;
@@ -975,7 +975,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract
 }
 
 static void hsa_signal_subtract_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(66) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_scacquire_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(66) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_scacquire_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_subtract_scacquire.signal = signal;
       args.hsa_signal_subtract_scacquire.value = value;
@@ -988,7 +988,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract
 }
 
 static void hsa_signal_subtract_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(67) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(67) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_subtract_screlease.signal = signal;
       args.hsa_signal_subtract_screlease.value = value;
@@ -1001,7 +1001,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract
 }
 
 static void hsa_signal_subtract_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(68) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_scacq_screl_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(68) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract_scacq_screl_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_subtract_scacq_screl.signal = signal;
       args.hsa_signal_subtract_scacq_screl.value = value;
@@ -1014,7 +1014,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_subtract
 }
 
 static hsa_signal_value_t hsa_signal_cas_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(69) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_relaxed_fn(signal, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(69) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_relaxed_fn(signal, expected, value);
       hsa_api_args_t args;
       args.hsa_signal_cas_relaxed.signal = signal;
       args.hsa_signal_cas_relaxed.expected = expected;
@@ -1030,7 +1030,7 @@ static hsa_signal_value_t hsa_signal_cas_relaxed_callback(hsa_signal_t signal, h
 }
 
 static hsa_signal_value_t hsa_signal_cas_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(70) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_scacquire_fn(signal, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(70) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_scacquire_fn(signal, expected, value);
       hsa_api_args_t args;
       args.hsa_signal_cas_scacquire.signal = signal;
       args.hsa_signal_cas_scacquire.expected = expected;
@@ -1046,7 +1046,7 @@ static hsa_signal_value_t hsa_signal_cas_scacquire_callback(hsa_signal_t signal,
 }
 
 static hsa_signal_value_t hsa_signal_cas_screlease_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(71) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_screlease_fn(signal, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(71) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_screlease_fn(signal, expected, value);
       hsa_api_args_t args;
       args.hsa_signal_cas_screlease.signal = signal;
       args.hsa_signal_cas_screlease.expected = expected;
@@ -1062,7 +1062,7 @@ static hsa_signal_value_t hsa_signal_cas_screlease_callback(hsa_signal_t signal,
 }
 
 static hsa_signal_value_t hsa_signal_cas_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(72) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_scacq_screl_fn(signal, expected, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(72) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_cas_scacq_screl_fn(signal, expected, value);
       hsa_api_args_t args;
       args.hsa_signal_cas_scacq_screl.signal = signal;
       args.hsa_signal_cas_scacq_screl.expected = expected;
@@ -1078,7 +1078,7 @@ static hsa_signal_value_t hsa_signal_cas_scacq_screl_callback(hsa_signal_t signa
 }
 
 static hsa_status_t hsa_isa_from_name_callback(const char* name, hsa_isa_t* isa) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(73) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_from_name_fn(name, isa);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(73) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_from_name_fn(name, isa);
       hsa_api_args_t args;
       args.hsa_isa_from_name.name = name;
       args.hsa_isa_from_name.isa = isa;
@@ -1092,7 +1092,7 @@ static hsa_status_t hsa_isa_from_name_callback(const char* name, hsa_isa_t* isa)
 }
 
 static hsa_status_t hsa_isa_get_info_callback(hsa_isa_t isa, hsa_isa_info_t attribute, uint32_t index, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(74) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_info_fn(isa, attribute, index, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(74) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_info_fn(isa, attribute, index, value);
       hsa_api_args_t args;
       args.hsa_isa_get_info.isa = isa;
       args.hsa_isa_get_info.attribute = attribute;
@@ -1110,7 +1110,7 @@ static hsa_status_t hsa_isa_get_info_callback(hsa_isa_t isa, hsa_isa_info_t attr
 }
 
 static hsa_status_t hsa_isa_compatible_callback(hsa_isa_t code_object_isa, hsa_isa_t agent_isa, bool* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(75) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_compatible_fn(code_object_isa, agent_isa, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(75) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_compatible_fn(code_object_isa, agent_isa, result);
       hsa_api_args_t args;
       args.hsa_isa_compatible.code_object_isa = code_object_isa;
       args.hsa_isa_compatible.agent_isa = agent_isa;
@@ -1126,7 +1126,7 @@ static hsa_status_t hsa_isa_compatible_callback(hsa_isa_t code_object_isa, hsa_i
 }
 
 static hsa_status_t hsa_code_object_serialize_callback(hsa_code_object_t code_object, hsa_status_t (* alloc_callback)(size_t size, hsa_callback_data_t data, void** address), hsa_callback_data_t callback_data, const char* options, void** serialized_code_object, size_t* serialized_code_object_size) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(76) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_serialize_fn(code_object, alloc_callback, callback_data, options, serialized_code_object, serialized_code_object_size);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(76) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_serialize_fn(code_object, alloc_callback, callback_data, options, serialized_code_object, serialized_code_object_size);
       hsa_api_args_t args;
       args.hsa_code_object_serialize.code_object = code_object;
       args.hsa_code_object_serialize.alloc_callback = alloc_callback;
@@ -1148,7 +1148,7 @@ static hsa_status_t hsa_code_object_serialize_callback(hsa_code_object_t code_ob
 }
 
 static hsa_status_t hsa_code_object_deserialize_callback(void* serialized_code_object, size_t serialized_code_object_size, const char* options, hsa_code_object_t* code_object) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(77) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_deserialize_fn(serialized_code_object, serialized_code_object_size, options, code_object);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(77) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_deserialize_fn(serialized_code_object, serialized_code_object_size, options, code_object);
       hsa_api_args_t args;
       args.hsa_code_object_deserialize.serialized_code_object = serialized_code_object;
       args.hsa_code_object_deserialize.serialized_code_object_size = serialized_code_object_size;
@@ -1166,7 +1166,7 @@ static hsa_status_t hsa_code_object_deserialize_callback(void* serialized_code_o
 }
 
 static hsa_status_t hsa_code_object_destroy_callback(hsa_code_object_t code_object) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(78) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_destroy_fn(code_object);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(78) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_destroy_fn(code_object);
       hsa_api_args_t args;
       args.hsa_code_object_destroy.code_object = code_object;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_code_object_destroy);
@@ -1178,7 +1178,7 @@ static hsa_status_t hsa_code_object_destroy_callback(hsa_code_object_t code_obje
 }
 
 static hsa_status_t hsa_code_object_get_info_callback(hsa_code_object_t code_object, hsa_code_object_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(79) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_get_info_fn(code_object, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(79) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_get_info_fn(code_object, attribute, value);
       hsa_api_args_t args;
       args.hsa_code_object_get_info.code_object = code_object;
       args.hsa_code_object_get_info.attribute = attribute;
@@ -1194,7 +1194,7 @@ static hsa_status_t hsa_code_object_get_info_callback(hsa_code_object_t code_obj
 }
 
 static hsa_status_t hsa_code_object_get_symbol_callback(hsa_code_object_t code_object, const char* symbol_name, hsa_code_symbol_t* symbol) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(80) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_get_symbol_fn(code_object, symbol_name, symbol);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(80) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_get_symbol_fn(code_object, symbol_name, symbol);
       hsa_api_args_t args;
       args.hsa_code_object_get_symbol.code_object = code_object;
       args.hsa_code_object_get_symbol.symbol_name = symbol_name;
@@ -1210,7 +1210,7 @@ static hsa_status_t hsa_code_object_get_symbol_callback(hsa_code_object_t code_o
 }
 
 static hsa_status_t hsa_code_symbol_get_info_callback(hsa_code_symbol_t code_symbol, hsa_code_symbol_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(81) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_symbol_get_info_fn(code_symbol, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(81) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_symbol_get_info_fn(code_symbol, attribute, value);
       hsa_api_args_t args;
       args.hsa_code_symbol_get_info.code_symbol = code_symbol;
       args.hsa_code_symbol_get_info.attribute = attribute;
@@ -1226,7 +1226,7 @@ static hsa_status_t hsa_code_symbol_get_info_callback(hsa_code_symbol_t code_sym
 }
 
 static hsa_status_t hsa_code_object_iterate_symbols_callback(hsa_code_object_t code_object, hsa_status_t (* callback)(hsa_code_object_t code_object, hsa_code_symbol_t symbol, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(82) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_iterate_symbols_fn(code_object, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(82) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_iterate_symbols_fn(code_object, callback, data);
       hsa_api_args_t args;
       args.hsa_code_object_iterate_symbols.code_object = code_object;
       args.hsa_code_object_iterate_symbols.callback = callback;
@@ -1242,7 +1242,7 @@ static hsa_status_t hsa_code_object_iterate_symbols_callback(hsa_code_object_t c
 }
 
 static hsa_status_t hsa_executable_create_callback(hsa_profile_t profile, hsa_executable_state_t executable_state, const char* options, hsa_executable_t* executable) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(83) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_create_fn(profile, executable_state, options, executable);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(83) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_create_fn(profile, executable_state, options, executable);
       hsa_api_args_t args;
       args.hsa_executable_create.profile = profile;
       args.hsa_executable_create.executable_state = executable_state;
@@ -1260,7 +1260,7 @@ static hsa_status_t hsa_executable_create_callback(hsa_profile_t profile, hsa_ex
 }
 
 static hsa_status_t hsa_executable_destroy_callback(hsa_executable_t executable) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(84) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_destroy_fn(executable);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(84) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_destroy_fn(executable);
       hsa_api_args_t args;
       args.hsa_executable_destroy.executable = executable;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_executable_destroy);
@@ -1272,7 +1272,7 @@ static hsa_status_t hsa_executable_destroy_callback(hsa_executable_t executable)
 }
 
 static hsa_status_t hsa_executable_load_code_object_callback(hsa_executable_t executable, hsa_agent_t agent, hsa_code_object_t code_object, const char* options) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(85) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_load_code_object_fn(executable, agent, code_object, options);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(85) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_load_code_object_fn(executable, agent, code_object, options);
       hsa_api_args_t args;
       args.hsa_executable_load_code_object.executable = executable;
       args.hsa_executable_load_code_object.agent = agent;
@@ -1290,7 +1290,7 @@ static hsa_status_t hsa_executable_load_code_object_callback(hsa_executable_t ex
 }
 
 static hsa_status_t hsa_executable_freeze_callback(hsa_executable_t executable, const char* options) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(86) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_freeze_fn(executable, options);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(86) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_freeze_fn(executable, options);
       hsa_api_args_t args;
       args.hsa_executable_freeze.executable = executable;
       args.hsa_executable_freeze.options = options;
@@ -1304,7 +1304,7 @@ static hsa_status_t hsa_executable_freeze_callback(hsa_executable_t executable, 
 }
 
 static hsa_status_t hsa_executable_get_info_callback(hsa_executable_t executable, hsa_executable_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(87) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_get_info_fn(executable, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(87) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_get_info_fn(executable, attribute, value);
       hsa_api_args_t args;
       args.hsa_executable_get_info.executable = executable;
       args.hsa_executable_get_info.attribute = attribute;
@@ -1320,7 +1320,7 @@ static hsa_status_t hsa_executable_get_info_callback(hsa_executable_t executable
 }
 
 static hsa_status_t hsa_executable_global_variable_define_callback(hsa_executable_t executable, const char* variable_name, void* address) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(88) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_global_variable_define_fn(executable, variable_name, address);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(88) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_global_variable_define_fn(executable, variable_name, address);
       hsa_api_args_t args;
       args.hsa_executable_global_variable_define.executable = executable;
       args.hsa_executable_global_variable_define.variable_name = variable_name;
@@ -1336,7 +1336,7 @@ static hsa_status_t hsa_executable_global_variable_define_callback(hsa_executabl
 }
 
 static hsa_status_t hsa_executable_agent_global_variable_define_callback(hsa_executable_t executable, hsa_agent_t agent, const char* variable_name, void* address) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(89) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_agent_global_variable_define_fn(executable, agent, variable_name, address);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(89) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_agent_global_variable_define_fn(executable, agent, variable_name, address);
       hsa_api_args_t args;
       args.hsa_executable_agent_global_variable_define.executable = executable;
       args.hsa_executable_agent_global_variable_define.agent = agent;
@@ -1354,7 +1354,7 @@ static hsa_status_t hsa_executable_agent_global_variable_define_callback(hsa_exe
 }
 
 static hsa_status_t hsa_executable_readonly_variable_define_callback(hsa_executable_t executable, hsa_agent_t agent, const char* variable_name, void* address) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(90) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_readonly_variable_define_fn(executable, agent, variable_name, address);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(90) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_readonly_variable_define_fn(executable, agent, variable_name, address);
       hsa_api_args_t args;
       args.hsa_executable_readonly_variable_define.executable = executable;
       args.hsa_executable_readonly_variable_define.agent = agent;
@@ -1372,7 +1372,7 @@ static hsa_status_t hsa_executable_readonly_variable_define_callback(hsa_executa
 }
 
 static hsa_status_t hsa_executable_validate_callback(hsa_executable_t executable, uint32_t* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(91) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_validate_fn(executable, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(91) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_validate_fn(executable, result);
       hsa_api_args_t args;
       args.hsa_executable_validate.executable = executable;
       args.hsa_executable_validate.result = result;
@@ -1386,7 +1386,7 @@ static hsa_status_t hsa_executable_validate_callback(hsa_executable_t executable
 }
 
 static hsa_status_t hsa_executable_get_symbol_callback(hsa_executable_t executable, const char* module_name, const char* symbol_name, hsa_agent_t agent, int32_t call_convention, hsa_executable_symbol_t* symbol) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(92) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_get_symbol_fn(executable, module_name, symbol_name, agent, call_convention, symbol);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(92) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_get_symbol_fn(executable, module_name, symbol_name, agent, call_convention, symbol);
       hsa_api_args_t args;
       args.hsa_executable_get_symbol.executable = executable;
       args.hsa_executable_get_symbol.module_name = module_name;
@@ -1408,7 +1408,7 @@ static hsa_status_t hsa_executable_get_symbol_callback(hsa_executable_t executab
 }
 
 static hsa_status_t hsa_executable_symbol_get_info_callback(hsa_executable_symbol_t executable_symbol, hsa_executable_symbol_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(93) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_symbol_get_info_fn(executable_symbol, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(93) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_symbol_get_info_fn(executable_symbol, attribute, value);
       hsa_api_args_t args;
       args.hsa_executable_symbol_get_info.executable_symbol = executable_symbol;
       args.hsa_executable_symbol_get_info.attribute = attribute;
@@ -1424,7 +1424,7 @@ static hsa_status_t hsa_executable_symbol_get_info_callback(hsa_executable_symbo
 }
 
 static hsa_status_t hsa_executable_iterate_symbols_callback(hsa_executable_t executable, hsa_status_t (* callback)(hsa_executable_t exec, hsa_executable_symbol_t symbol, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(94) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_iterate_symbols_fn(executable, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(94) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_iterate_symbols_fn(executable, callback, data);
       hsa_api_args_t args;
       args.hsa_executable_iterate_symbols.executable = executable;
       args.hsa_executable_iterate_symbols.callback = callback;
@@ -1440,7 +1440,7 @@ static hsa_status_t hsa_executable_iterate_symbols_callback(hsa_executable_t exe
 }
 
 static hsa_status_t hsa_status_string_callback(hsa_status_t status, const char** status_string) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(95) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_status_string_fn(status, status_string);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(95) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_status_string_fn(status, status_string);
       hsa_api_args_t args;
       args.hsa_status_string.status = status;
       args.hsa_status_string.status_string = status_string;
@@ -1454,7 +1454,7 @@ static hsa_status_t hsa_status_string_callback(hsa_status_t status, const char**
 }
 
 static hsa_status_t hsa_extension_get_name_callback(uint16_t extension, const char** name) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(96) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_extension_get_name_fn(extension, name);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(96) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_extension_get_name_fn(extension, name);
       hsa_api_args_t args;
       args.hsa_extension_get_name.extension = extension;
       args.hsa_extension_get_name.name = name;
@@ -1468,7 +1468,7 @@ static hsa_status_t hsa_extension_get_name_callback(uint16_t extension, const ch
 }
 
 static hsa_status_t hsa_system_major_extension_supported_callback(uint16_t extension, uint16_t version_major, uint16_t* version_minor, bool* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(97) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_major_extension_supported_fn(extension, version_major, version_minor, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(97) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_major_extension_supported_fn(extension, version_major, version_minor, result);
       hsa_api_args_t args;
       args.hsa_system_major_extension_supported.extension = extension;
       args.hsa_system_major_extension_supported.version_major = version_major;
@@ -1486,7 +1486,7 @@ static hsa_status_t hsa_system_major_extension_supported_callback(uint16_t exten
 }
 
 static hsa_status_t hsa_system_get_major_extension_table_callback(uint16_t extension, uint16_t version_major, size_t table_length, void* table) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(98) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_get_major_extension_table_fn(extension, version_major, table_length, table);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(98) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_system_get_major_extension_table_fn(extension, version_major, table_length, table);
       hsa_api_args_t args;
       args.hsa_system_get_major_extension_table.extension = extension;
       args.hsa_system_get_major_extension_table.version_major = version_major;
@@ -1504,7 +1504,7 @@ static hsa_status_t hsa_system_get_major_extension_table_callback(uint16_t exten
 }
 
 static hsa_status_t hsa_agent_major_extension_supported_callback(uint16_t extension, hsa_agent_t agent, uint16_t version_major, uint16_t* version_minor, bool* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(99) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_major_extension_supported_fn(extension, agent, version_major, version_minor, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(99) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_major_extension_supported_fn(extension, agent, version_major, version_minor, result);
       hsa_api_args_t args;
       args.hsa_agent_major_extension_supported.extension = extension;
       args.hsa_agent_major_extension_supported.agent = agent;
@@ -1524,7 +1524,7 @@ static hsa_status_t hsa_agent_major_extension_supported_callback(uint16_t extens
 }
 
 static hsa_status_t hsa_cache_get_info_callback(hsa_cache_t cache, hsa_cache_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(100) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_cache_get_info_fn(cache, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(100) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_cache_get_info_fn(cache, attribute, value);
       hsa_api_args_t args;
       args.hsa_cache_get_info.cache = cache;
       args.hsa_cache_get_info.attribute = attribute;
@@ -1540,7 +1540,7 @@ static hsa_status_t hsa_cache_get_info_callback(hsa_cache_t cache, hsa_cache_inf
 }
 
 static hsa_status_t hsa_agent_iterate_caches_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_cache_t cache, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(101) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_iterate_caches_fn(agent, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(101) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_iterate_caches_fn(agent, callback, data);
       hsa_api_args_t args;
       args.hsa_agent_iterate_caches.agent = agent;
       args.hsa_agent_iterate_caches.callback = callback;
@@ -1556,7 +1556,7 @@ static hsa_status_t hsa_agent_iterate_caches_callback(hsa_agent_t agent, hsa_sta
 }
 
 static void hsa_signal_silent_store_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(102) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_silent_store_relaxed_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(102) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_silent_store_relaxed_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_silent_store_relaxed.signal = signal;
       args.hsa_signal_silent_store_relaxed.value = value;
@@ -1569,7 +1569,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_silent_s
 }
 
 static void hsa_signal_silent_store_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(103) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_silent_store_screlease_fn(signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(103) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_silent_store_screlease_fn(signal, value);
       hsa_api_args_t args;
       args.hsa_signal_silent_store_screlease.signal = signal;
       args.hsa_signal_silent_store_screlease.value = value;
@@ -1582,7 +1582,7 @@ luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_silent_s
 }
 
 static hsa_status_t hsa_signal_group_create_callback(uint32_t num_signals, const hsa_signal_t* signals, uint32_t num_consumers, const hsa_agent_t* consumers, hsa_signal_group_t* signal_group) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(104) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_create_fn(num_signals, signals, num_consumers, consumers, signal_group);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(104) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_create_fn(num_signals, signals, num_consumers, consumers, signal_group);
       hsa_api_args_t args;
       args.hsa_signal_group_create.num_signals = num_signals;
       args.hsa_signal_group_create.signals = signals;
@@ -1602,7 +1602,7 @@ static hsa_status_t hsa_signal_group_create_callback(uint32_t num_signals, const
 }
 
 static hsa_status_t hsa_signal_group_destroy_callback(hsa_signal_group_t signal_group) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(105) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_destroy_fn(signal_group);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(105) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_destroy_fn(signal_group);
       hsa_api_args_t args;
       args.hsa_signal_group_destroy.signal_group = signal_group;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_signal_group_destroy);
@@ -1614,7 +1614,7 @@ static hsa_status_t hsa_signal_group_destroy_callback(hsa_signal_group_t signal_
 }
 
 static hsa_status_t hsa_signal_group_wait_any_scacquire_callback(hsa_signal_group_t signal_group, const hsa_signal_condition_t* conditions, const hsa_signal_value_t* compare_values, hsa_wait_state_t wait_state_hint, hsa_signal_t* signal, hsa_signal_value_t* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(106) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_wait_any_scacquire_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(106) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_wait_any_scacquire_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
       hsa_api_args_t args;
       args.hsa_signal_group_wait_any_scacquire.signal_group = signal_group;
       args.hsa_signal_group_wait_any_scacquire.conditions = conditions;
@@ -1636,7 +1636,7 @@ static hsa_status_t hsa_signal_group_wait_any_scacquire_callback(hsa_signal_grou
 }
 
 static hsa_status_t hsa_signal_group_wait_any_relaxed_callback(hsa_signal_group_t signal_group, const hsa_signal_condition_t* conditions, const hsa_signal_value_t* compare_values, hsa_wait_state_t wait_state_hint, hsa_signal_t* signal, hsa_signal_value_t* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(107) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_wait_any_relaxed_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(107) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_signal_group_wait_any_relaxed_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
       hsa_api_args_t args;
       args.hsa_signal_group_wait_any_relaxed.signal_group = signal_group;
       args.hsa_signal_group_wait_any_relaxed.conditions = conditions;
@@ -1658,7 +1658,7 @@ static hsa_status_t hsa_signal_group_wait_any_relaxed_callback(hsa_signal_group_
 }
 
 static hsa_status_t hsa_agent_iterate_isas_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_isa_t isa, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(108) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_iterate_isas_fn(agent, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(108) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_agent_iterate_isas_fn(agent, callback, data);
       hsa_api_args_t args;
       args.hsa_agent_iterate_isas.agent = agent;
       args.hsa_agent_iterate_isas.callback = callback;
@@ -1674,7 +1674,7 @@ static hsa_status_t hsa_agent_iterate_isas_callback(hsa_agent_t agent, hsa_statu
 }
 
 static hsa_status_t hsa_isa_get_info_alt_callback(hsa_isa_t isa, hsa_isa_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(109) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_info_alt_fn(isa, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(109) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_info_alt_fn(isa, attribute, value);
       hsa_api_args_t args;
       args.hsa_isa_get_info_alt.isa = isa;
       args.hsa_isa_get_info_alt.attribute = attribute;
@@ -1690,7 +1690,7 @@ static hsa_status_t hsa_isa_get_info_alt_callback(hsa_isa_t isa, hsa_isa_info_t 
 }
 
 static hsa_status_t hsa_isa_get_exception_policies_callback(hsa_isa_t isa, hsa_profile_t profile, uint16_t* mask) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(110) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_exception_policies_fn(isa, profile, mask);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(110) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_exception_policies_fn(isa, profile, mask);
       hsa_api_args_t args;
       args.hsa_isa_get_exception_policies.isa = isa;
       args.hsa_isa_get_exception_policies.profile = profile;
@@ -1706,7 +1706,7 @@ static hsa_status_t hsa_isa_get_exception_policies_callback(hsa_isa_t isa, hsa_p
 }
 
 static hsa_status_t hsa_isa_get_round_method_callback(hsa_isa_t isa, hsa_fp_type_t fp_type, hsa_flush_mode_t flush_mode, hsa_round_method_t* round_method) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(111) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_round_method_fn(isa, fp_type, flush_mode, round_method);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(111) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_get_round_method_fn(isa, fp_type, flush_mode, round_method);
       hsa_api_args_t args;
       args.hsa_isa_get_round_method.isa = isa;
       args.hsa_isa_get_round_method.fp_type = fp_type;
@@ -1724,7 +1724,7 @@ static hsa_status_t hsa_isa_get_round_method_callback(hsa_isa_t isa, hsa_fp_type
 }
 
 static hsa_status_t hsa_wavefront_get_info_callback(hsa_wavefront_t wavefront, hsa_wavefront_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(112) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_wavefront_get_info_fn(wavefront, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(112) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_wavefront_get_info_fn(wavefront, attribute, value);
       hsa_api_args_t args;
       args.hsa_wavefront_get_info.wavefront = wavefront;
       args.hsa_wavefront_get_info.attribute = attribute;
@@ -1740,7 +1740,7 @@ static hsa_status_t hsa_wavefront_get_info_callback(hsa_wavefront_t wavefront, h
 }
 
 static hsa_status_t hsa_isa_iterate_wavefronts_callback(hsa_isa_t isa, hsa_status_t (* callback)(hsa_wavefront_t wavefront, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(113) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_iterate_wavefronts_fn(isa, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(113) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_isa_iterate_wavefronts_fn(isa, callback, data);
       hsa_api_args_t args;
       args.hsa_isa_iterate_wavefronts.isa = isa;
       args.hsa_isa_iterate_wavefronts.callback = callback;
@@ -1756,7 +1756,7 @@ static hsa_status_t hsa_isa_iterate_wavefronts_callback(hsa_isa_t isa, hsa_statu
 }
 
 static hsa_status_t hsa_code_object_get_symbol_from_name_callback(hsa_code_object_t code_object, const char* module_name, const char* symbol_name, hsa_code_symbol_t* symbol) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(114) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_get_symbol_from_name_fn(code_object, module_name, symbol_name, symbol);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(114) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_get_symbol_from_name_fn(code_object, module_name, symbol_name, symbol);
       hsa_api_args_t args;
       args.hsa_code_object_get_symbol_from_name.code_object = code_object;
       args.hsa_code_object_get_symbol_from_name.module_name = module_name;
@@ -1774,7 +1774,7 @@ static hsa_status_t hsa_code_object_get_symbol_from_name_callback(hsa_code_objec
 }
 
 static hsa_status_t hsa_code_object_reader_create_from_file_callback(hsa_file_t file, hsa_code_object_reader_t* code_object_reader) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(115) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_reader_create_from_file_fn(file, code_object_reader);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(115) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_reader_create_from_file_fn(file, code_object_reader);
       hsa_api_args_t args;
       args.hsa_code_object_reader_create_from_file.file = file;
       args.hsa_code_object_reader_create_from_file.code_object_reader = code_object_reader;
@@ -1788,7 +1788,7 @@ static hsa_status_t hsa_code_object_reader_create_from_file_callback(hsa_file_t 
 }
 
 static hsa_status_t hsa_code_object_reader_create_from_memory_callback(const void* code_object, size_t size, hsa_code_object_reader_t* code_object_reader) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(116) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_reader_create_from_memory_fn(code_object, size, code_object_reader);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(116) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_reader_create_from_memory_fn(code_object, size, code_object_reader);
       hsa_api_args_t args;
       args.hsa_code_object_reader_create_from_memory.code_object = code_object;
       args.hsa_code_object_reader_create_from_memory.size = size;
@@ -1804,7 +1804,7 @@ static hsa_status_t hsa_code_object_reader_create_from_memory_callback(const voi
 }
 
 static hsa_status_t hsa_code_object_reader_destroy_callback(hsa_code_object_reader_t code_object_reader) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(117) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_reader_destroy_fn(code_object_reader);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(117) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_code_object_reader_destroy_fn(code_object_reader);
       hsa_api_args_t args;
       args.hsa_code_object_reader_destroy.code_object_reader = code_object_reader;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_code_object_reader_destroy);
@@ -1816,7 +1816,7 @@ static hsa_status_t hsa_code_object_reader_destroy_callback(hsa_code_object_read
 }
 
 static hsa_status_t hsa_executable_create_alt_callback(hsa_profile_t profile, hsa_default_float_rounding_mode_t default_float_rounding_mode, const char* options, hsa_executable_t* executable) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(118) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_create_alt_fn(profile, default_float_rounding_mode, options, executable);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(118) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_create_alt_fn(profile, default_float_rounding_mode, options, executable);
       hsa_api_args_t args;
       args.hsa_executable_create_alt.profile = profile;
       args.hsa_executable_create_alt.default_float_rounding_mode = default_float_rounding_mode;
@@ -1834,7 +1834,7 @@ static hsa_status_t hsa_executable_create_alt_callback(hsa_profile_t profile, hs
 }
 
 static hsa_status_t hsa_executable_load_program_code_object_callback(hsa_executable_t executable, hsa_code_object_reader_t code_object_reader, const char* options, hsa_loaded_code_object_t* loaded_code_object) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(119) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_load_program_code_object_fn(executable, code_object_reader, options, loaded_code_object);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(119) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_load_program_code_object_fn(executable, code_object_reader, options, loaded_code_object);
       hsa_api_args_t args;
       args.hsa_executable_load_program_code_object.executable = executable;
       args.hsa_executable_load_program_code_object.code_object_reader = code_object_reader;
@@ -1852,7 +1852,7 @@ static hsa_status_t hsa_executable_load_program_code_object_callback(hsa_executa
 }
 
 static hsa_status_t hsa_executable_load_agent_code_object_callback(hsa_executable_t executable, hsa_agent_t agent, hsa_code_object_reader_t code_object_reader, const char* options, hsa_loaded_code_object_t* loaded_code_object) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(120) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_load_agent_code_object_fn(executable, agent, code_object_reader, options, loaded_code_object);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(120) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_load_agent_code_object_fn(executable, agent, code_object_reader, options, loaded_code_object);
       hsa_api_args_t args;
       args.hsa_executable_load_agent_code_object.executable = executable;
       args.hsa_executable_load_agent_code_object.agent = agent;
@@ -1872,7 +1872,7 @@ static hsa_status_t hsa_executable_load_agent_code_object_callback(hsa_executabl
 }
 
 static hsa_status_t hsa_executable_validate_alt_callback(hsa_executable_t executable, const char* options, uint32_t* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(121) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_validate_alt_fn(executable, options, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(121) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_validate_alt_fn(executable, options, result);
       hsa_api_args_t args;
       args.hsa_executable_validate_alt.executable = executable;
       args.hsa_executable_validate_alt.options = options;
@@ -1888,7 +1888,7 @@ static hsa_status_t hsa_executable_validate_alt_callback(hsa_executable_t execut
 }
 
 static hsa_status_t hsa_executable_get_symbol_by_name_callback(hsa_executable_t executable, const char* symbol_name, const hsa_agent_t* agent, hsa_executable_symbol_t* symbol) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(122) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_get_symbol_by_name_fn(executable, symbol_name, agent, symbol);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(122) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_get_symbol_by_name_fn(executable, symbol_name, agent, symbol);
       hsa_api_args_t args;
       args.hsa_executable_get_symbol_by_name.executable = executable;
       args.hsa_executable_get_symbol_by_name.symbol_name = symbol_name;
@@ -1906,7 +1906,7 @@ static hsa_status_t hsa_executable_get_symbol_by_name_callback(hsa_executable_t 
 }
 
 static hsa_status_t hsa_executable_iterate_agent_symbols_callback(hsa_executable_t executable, hsa_agent_t agent, hsa_status_t (* callback)(hsa_executable_t exec, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(123) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_iterate_agent_symbols_fn(executable, agent, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(123) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_iterate_agent_symbols_fn(executable, agent, callback, data);
       hsa_api_args_t args;
       args.hsa_executable_iterate_agent_symbols.executable = executable;
       args.hsa_executable_iterate_agent_symbols.agent = agent;
@@ -1924,7 +1924,7 @@ static hsa_status_t hsa_executable_iterate_agent_symbols_callback(hsa_executable
 }
 
 static hsa_status_t hsa_executable_iterate_program_symbols_callback(hsa_executable_t executable, hsa_status_t (* callback)(hsa_executable_t exec, hsa_executable_symbol_t symbol, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(124) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_iterate_program_symbols_fn(executable, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(124) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().core.hsa_executable_iterate_program_symbols_fn(executable, callback, data);
       hsa_api_args_t args;
       args.hsa_executable_iterate_program_symbols.executable = executable;
       args.hsa_executable_iterate_program_symbols.callback = callback;
@@ -1942,7 +1942,7 @@ static hsa_status_t hsa_executable_iterate_program_symbols_callback(hsa_executab
 
 /* block: AmdExt API */
 static hsa_status_t hsa_amd_coherency_get_type_callback(hsa_agent_t agent, hsa_amd_coherency_type_t* type) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(125) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_coherency_get_type_fn(agent, type);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(125) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_coherency_get_type_fn(agent, type);
       hsa_api_args_t args;
       args.hsa_amd_coherency_get_type.agent = agent;
       args.hsa_amd_coherency_get_type.type = type;
@@ -1956,7 +1956,7 @@ static hsa_status_t hsa_amd_coherency_get_type_callback(hsa_agent_t agent, hsa_a
 }
 
 static hsa_status_t hsa_amd_coherency_set_type_callback(hsa_agent_t agent, hsa_amd_coherency_type_t type) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(126) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_coherency_set_type_fn(agent, type);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(126) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_coherency_set_type_fn(agent, type);
       hsa_api_args_t args;
       args.hsa_amd_coherency_set_type.agent = agent;
       args.hsa_amd_coherency_set_type.type = type;
@@ -1970,7 +1970,7 @@ static hsa_status_t hsa_amd_coherency_set_type_callback(hsa_agent_t agent, hsa_a
 }
 
 static hsa_status_t hsa_amd_profiling_set_profiler_enabled_callback(hsa_queue_t* queue, int enable) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(127) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_set_profiler_enabled_fn(queue, enable);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(127) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_set_profiler_enabled_fn(queue, enable);
       hsa_api_args_t args;
       args.hsa_amd_profiling_set_profiler_enabled.queue = queue;
       args.hsa_amd_profiling_set_profiler_enabled.enable = enable;
@@ -1984,7 +1984,7 @@ static hsa_status_t hsa_amd_profiling_set_profiler_enabled_callback(hsa_queue_t*
 }
 
 static hsa_status_t hsa_amd_profiling_async_copy_enable_callback(bool enable) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(128) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_async_copy_enable_fn(enable);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(128) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_async_copy_enable_fn(enable);
       hsa_api_args_t args;
       args.hsa_amd_profiling_async_copy_enable.enable = enable;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_amd_profiling_async_copy_enable);
@@ -1996,7 +1996,7 @@ static hsa_status_t hsa_amd_profiling_async_copy_enable_callback(bool enable) {
 }
 
 static hsa_status_t hsa_amd_profiling_get_dispatch_time_callback(hsa_agent_t agent, hsa_signal_t signal, hsa_amd_profiling_dispatch_time_t* time) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(129) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_get_dispatch_time_fn(agent, signal, time);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(129) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_get_dispatch_time_fn(agent, signal, time);
       hsa_api_args_t args;
       args.hsa_amd_profiling_get_dispatch_time.agent = agent;
       args.hsa_amd_profiling_get_dispatch_time.signal = signal;
@@ -2012,7 +2012,7 @@ static hsa_status_t hsa_amd_profiling_get_dispatch_time_callback(hsa_agent_t age
 }
 
 static hsa_status_t hsa_amd_profiling_get_async_copy_time_callback(hsa_signal_t signal, hsa_amd_profiling_async_copy_time_t* time) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(130) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_get_async_copy_time_fn(signal, time);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(130) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_get_async_copy_time_fn(signal, time);
       hsa_api_args_t args;
       args.hsa_amd_profiling_get_async_copy_time.signal = signal;
       args.hsa_amd_profiling_get_async_copy_time.time = time;
@@ -2026,7 +2026,7 @@ static hsa_status_t hsa_amd_profiling_get_async_copy_time_callback(hsa_signal_t 
 }
 
 static hsa_status_t hsa_amd_profiling_convert_tick_to_system_domain_callback(hsa_agent_t agent, uint64_t agent_tick, uint64_t* system_tick) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(131) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_convert_tick_to_system_domain_fn(agent, agent_tick, system_tick);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(131) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_profiling_convert_tick_to_system_domain_fn(agent, agent_tick, system_tick);
       hsa_api_args_t args;
       args.hsa_amd_profiling_convert_tick_to_system_domain.agent = agent;
       args.hsa_amd_profiling_convert_tick_to_system_domain.agent_tick = agent_tick;
@@ -2042,7 +2042,7 @@ static hsa_status_t hsa_amd_profiling_convert_tick_to_system_domain_callback(hsa
 }
 
 static hsa_status_t hsa_amd_signal_async_handler_callback(hsa_signal_t signal, hsa_signal_condition_t cond, hsa_signal_value_t value, hsa_amd_signal_handler handler, void* arg) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(132) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_async_handler_fn(signal, cond, value, handler, arg);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(132) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_async_handler_fn(signal, cond, value, handler, arg);
       hsa_api_args_t args;
       args.hsa_amd_signal_async_handler.signal = signal;
       args.hsa_amd_signal_async_handler.cond = cond;
@@ -2062,7 +2062,7 @@ static hsa_status_t hsa_amd_signal_async_handler_callback(hsa_signal_t signal, h
 }
 
 static hsa_status_t hsa_amd_async_function_callback(void (* callback)(void* arg), void* arg) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(133) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_async_function_fn(callback, arg);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(133) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_async_function_fn(callback, arg);
       hsa_api_args_t args;
       args.hsa_amd_async_function.callback = callback;
       args.hsa_amd_async_function.arg = arg;
@@ -2076,7 +2076,7 @@ static hsa_status_t hsa_amd_async_function_callback(void (* callback)(void* arg)
 }
 
 static uint32_t hsa_amd_signal_wait_any_callback(uint32_t signal_count, hsa_signal_t* signals, hsa_signal_condition_t* conds, hsa_signal_value_t* values, uint64_t timeout_hint, hsa_wait_state_t wait_hint, hsa_signal_value_t* satisfying_value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(134) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_wait_any_fn(signal_count, signals, conds, values, timeout_hint, wait_hint, satisfying_value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(134) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_wait_any_fn(signal_count, signals, conds, values, timeout_hint, wait_hint, satisfying_value);
       hsa_api_args_t args;
       args.hsa_amd_signal_wait_any.signal_count = signal_count;
       args.hsa_amd_signal_wait_any.signals = signals;
@@ -2100,7 +2100,7 @@ static uint32_t hsa_amd_signal_wait_any_callback(uint32_t signal_count, hsa_sign
 }
 
 static hsa_status_t hsa_amd_queue_cu_set_mask_callback(const hsa_queue_t* queue, uint32_t num_cu_mask_count, const uint32_t* cu_mask) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(135) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_cu_set_mask_fn(queue, num_cu_mask_count, cu_mask);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(135) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_cu_set_mask_fn(queue, num_cu_mask_count, cu_mask);
       hsa_api_args_t args;
       args.hsa_amd_queue_cu_set_mask.queue = queue;
       args.hsa_amd_queue_cu_set_mask.num_cu_mask_count = num_cu_mask_count;
@@ -2116,7 +2116,7 @@ static hsa_status_t hsa_amd_queue_cu_set_mask_callback(const hsa_queue_t* queue,
 }
 
 static hsa_status_t hsa_amd_memory_pool_get_info_callback(hsa_amd_memory_pool_t memory_pool, hsa_amd_memory_pool_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(136) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_get_info_fn(memory_pool, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(136) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_get_info_fn(memory_pool, attribute, value);
       hsa_api_args_t args;
       args.hsa_amd_memory_pool_get_info.memory_pool = memory_pool;
       args.hsa_amd_memory_pool_get_info.attribute = attribute;
@@ -2132,7 +2132,7 @@ static hsa_status_t hsa_amd_memory_pool_get_info_callback(hsa_amd_memory_pool_t 
 }
 
 static hsa_status_t hsa_amd_agent_iterate_memory_pools_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_amd_memory_pool_t memory_pool, void* data), void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(137) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_agent_iterate_memory_pools_fn(agent, callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(137) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_agent_iterate_memory_pools_fn(agent, callback, data);
       hsa_api_args_t args;
       args.hsa_amd_agent_iterate_memory_pools.agent = agent;
       args.hsa_amd_agent_iterate_memory_pools.callback = callback;
@@ -2148,7 +2148,7 @@ static hsa_status_t hsa_amd_agent_iterate_memory_pools_callback(hsa_agent_t agen
 }
 
 static hsa_status_t hsa_amd_memory_pool_allocate_callback(hsa_amd_memory_pool_t memory_pool, size_t size, uint32_t flags, void** ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(138) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_allocate_fn(memory_pool, size, flags, ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(138) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_allocate_fn(memory_pool, size, flags, ptr);
       hsa_api_args_t args;
       args.hsa_amd_memory_pool_allocate.memory_pool = memory_pool;
       args.hsa_amd_memory_pool_allocate.size = size;
@@ -2166,7 +2166,7 @@ static hsa_status_t hsa_amd_memory_pool_allocate_callback(hsa_amd_memory_pool_t 
 }
 
 static hsa_status_t hsa_amd_memory_pool_free_callback(void* ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(139) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_free_fn(ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(139) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_free_fn(ptr);
       hsa_api_args_t args;
       args.hsa_amd_memory_pool_free.ptr = ptr;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_amd_memory_pool_free);
@@ -2178,7 +2178,7 @@ static hsa_status_t hsa_amd_memory_pool_free_callback(void* ptr) {
 }
 
 static hsa_status_t hsa_amd_memory_async_copy_callback(void* dst, hsa_agent_t dst_agent, const void* src, hsa_agent_t src_agent, size_t size, uint32_t num_dep_signals, const hsa_signal_t* dep_signals, hsa_signal_t completion_signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(140) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_fn(dst, dst_agent, src, src_agent, size, num_dep_signals, dep_signals, completion_signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(140) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_fn(dst, dst_agent, src, src_agent, size, num_dep_signals, dep_signals, completion_signal);
       hsa_api_args_t args;
       args.hsa_amd_memory_async_copy.dst = dst;
       args.hsa_amd_memory_async_copy.dst_agent = dst_agent;
@@ -2204,7 +2204,7 @@ static hsa_status_t hsa_amd_memory_async_copy_callback(void* dst, hsa_agent_t ds
 }
 
 static hsa_status_t hsa_amd_memory_async_copy_on_engine_callback(void* dst, hsa_agent_t dst_agent, const void* src, hsa_agent_t src_agent, size_t size, uint32_t num_dep_signals, const hsa_signal_t* dep_signals, hsa_signal_t completion_signal, hsa_amd_sdma_engine_id_t engine_id, bool force_copy_on_sdma) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(141) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_on_engine_fn(dst, dst_agent, src, src_agent, size, num_dep_signals, dep_signals, completion_signal, engine_id, force_copy_on_sdma);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(141) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_on_engine_fn(dst, dst_agent, src, src_agent, size, num_dep_signals, dep_signals, completion_signal, engine_id, force_copy_on_sdma);
       hsa_api_args_t args;
       args.hsa_amd_memory_async_copy_on_engine.dst = dst;
       args.hsa_amd_memory_async_copy_on_engine.dst_agent = dst_agent;
@@ -2234,7 +2234,7 @@ static hsa_status_t hsa_amd_memory_async_copy_on_engine_callback(void* dst, hsa_
 }
 
 static hsa_status_t hsa_amd_memory_copy_engine_status_callback(hsa_agent_t dst_agent, hsa_agent_t src_agent, uint32_t* engine_ids_mask) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(142) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_copy_engine_status_fn(dst_agent, src_agent, engine_ids_mask);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(142) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_copy_engine_status_fn(dst_agent, src_agent, engine_ids_mask);
       hsa_api_args_t args;
       args.hsa_amd_memory_copy_engine_status.dst_agent = dst_agent;
       args.hsa_amd_memory_copy_engine_status.src_agent = src_agent;
@@ -2250,7 +2250,7 @@ static hsa_status_t hsa_amd_memory_copy_engine_status_callback(hsa_agent_t dst_a
 }
 
 static hsa_status_t hsa_amd_agent_memory_pool_get_info_callback(hsa_agent_t agent, hsa_amd_memory_pool_t memory_pool, hsa_amd_agent_memory_pool_info_t attribute, void* value) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(143) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_agent_memory_pool_get_info_fn(agent, memory_pool, attribute, value);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(143) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_agent_memory_pool_get_info_fn(agent, memory_pool, attribute, value);
       hsa_api_args_t args;
       args.hsa_amd_agent_memory_pool_get_info.agent = agent;
       args.hsa_amd_agent_memory_pool_get_info.memory_pool = memory_pool;
@@ -2268,7 +2268,7 @@ static hsa_status_t hsa_amd_agent_memory_pool_get_info_callback(hsa_agent_t agen
 }
 
 static hsa_status_t hsa_amd_agents_allow_access_callback(uint32_t num_agents, const hsa_agent_t* agents, const uint32_t* flags, const void* ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(144) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_agents_allow_access_fn(num_agents, agents, flags, ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(144) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_agents_allow_access_fn(num_agents, agents, flags, ptr);
       hsa_api_args_t args;
       args.hsa_amd_agents_allow_access.num_agents = num_agents;
       args.hsa_amd_agents_allow_access.agents = agents;
@@ -2286,7 +2286,7 @@ static hsa_status_t hsa_amd_agents_allow_access_callback(uint32_t num_agents, co
 }
 
 static hsa_status_t hsa_amd_memory_pool_can_migrate_callback(hsa_amd_memory_pool_t src_memory_pool, hsa_amd_memory_pool_t dst_memory_pool, bool* result) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(145) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_can_migrate_fn(src_memory_pool, dst_memory_pool, result);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(145) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_pool_can_migrate_fn(src_memory_pool, dst_memory_pool, result);
       hsa_api_args_t args;
       args.hsa_amd_memory_pool_can_migrate.src_memory_pool = src_memory_pool;
       args.hsa_amd_memory_pool_can_migrate.dst_memory_pool = dst_memory_pool;
@@ -2302,7 +2302,7 @@ static hsa_status_t hsa_amd_memory_pool_can_migrate_callback(hsa_amd_memory_pool
 }
 
 static hsa_status_t hsa_amd_memory_migrate_callback(const void* ptr, hsa_amd_memory_pool_t memory_pool, uint32_t flags) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(146) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_migrate_fn(ptr, memory_pool, flags);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(146) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_migrate_fn(ptr, memory_pool, flags);
       hsa_api_args_t args;
       args.hsa_amd_memory_migrate.ptr = ptr;
       args.hsa_amd_memory_migrate.memory_pool = memory_pool;
@@ -2318,7 +2318,7 @@ static hsa_status_t hsa_amd_memory_migrate_callback(const void* ptr, hsa_amd_mem
 }
 
 static hsa_status_t hsa_amd_memory_lock_callback(void* host_ptr, size_t size, hsa_agent_t* agents, int num_agent, void** agent_ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(147) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_lock_fn(host_ptr, size, agents, num_agent, agent_ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(147) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_lock_fn(host_ptr, size, agents, num_agent, agent_ptr);
       hsa_api_args_t args;
       args.hsa_amd_memory_lock.host_ptr = host_ptr;
       args.hsa_amd_memory_lock.size = size;
@@ -2338,7 +2338,7 @@ static hsa_status_t hsa_amd_memory_lock_callback(void* host_ptr, size_t size, hs
 }
 
 static hsa_status_t hsa_amd_memory_unlock_callback(void* host_ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(148) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_unlock_fn(host_ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(148) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_unlock_fn(host_ptr);
       hsa_api_args_t args;
       args.hsa_amd_memory_unlock.host_ptr = host_ptr;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_amd_memory_unlock);
@@ -2350,7 +2350,7 @@ static hsa_status_t hsa_amd_memory_unlock_callback(void* host_ptr) {
 }
 
 static hsa_status_t hsa_amd_memory_fill_callback(void* ptr, uint32_t value, size_t count) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(149) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_fill_fn(ptr, value, count);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(149) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_fill_fn(ptr, value, count);
       hsa_api_args_t args;
       args.hsa_amd_memory_fill.ptr = ptr;
       args.hsa_amd_memory_fill.value = value;
@@ -2366,7 +2366,7 @@ static hsa_status_t hsa_amd_memory_fill_callback(void* ptr, uint32_t value, size
 }
 
 static hsa_status_t hsa_amd_interop_map_buffer_callback(uint32_t num_agents, hsa_agent_t* agents, int interop_handle, uint32_t flags, size_t* size, void** ptr, size_t* metadata_size, const void** metadata) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(150) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_interop_map_buffer_fn(num_agents, agents, interop_handle, flags, size, ptr, metadata_size, metadata);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(150) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_interop_map_buffer_fn(num_agents, agents, interop_handle, flags, size, ptr, metadata_size, metadata);
       hsa_api_args_t args;
       args.hsa_amd_interop_map_buffer.num_agents = num_agents;
       args.hsa_amd_interop_map_buffer.agents = agents;
@@ -2392,7 +2392,7 @@ static hsa_status_t hsa_amd_interop_map_buffer_callback(uint32_t num_agents, hsa
 }
 
 static hsa_status_t hsa_amd_interop_unmap_buffer_callback(void* ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(151) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_interop_unmap_buffer_fn(ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(151) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_interop_unmap_buffer_fn(ptr);
       hsa_api_args_t args;
       args.hsa_amd_interop_unmap_buffer.ptr = ptr;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_amd_interop_unmap_buffer);
@@ -2404,7 +2404,7 @@ static hsa_status_t hsa_amd_interop_unmap_buffer_callback(void* ptr) {
 }
 
 static hsa_status_t hsa_amd_image_create_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, const hsa_amd_image_descriptor_t* image_layout, const void* image_data, hsa_access_permission_t access_permission, hsa_ext_image_t* image) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(152) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_image_create_fn(agent, image_descriptor, image_layout, image_data, access_permission, image);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(152) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_image_create_fn(agent, image_descriptor, image_layout, image_data, access_permission, image);
       hsa_api_args_t args;
       args.hsa_amd_image_create.agent = agent;
       args.hsa_amd_image_create.image_descriptor = image_descriptor;
@@ -2426,7 +2426,7 @@ static hsa_status_t hsa_amd_image_create_callback(hsa_agent_t agent, const hsa_e
 }
 
 static hsa_status_t hsa_amd_pointer_info_callback(const void* ptr, hsa_amd_pointer_info_t* info, void* (* alloc)(size_t), uint32_t* num_agents_accessible, hsa_agent_t** accessible) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(153) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_pointer_info_fn(ptr, info, alloc, num_agents_accessible, accessible);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(153) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_pointer_info_fn(ptr, info, alloc, num_agents_accessible, accessible);
       hsa_api_args_t args;
       args.hsa_amd_pointer_info.ptr = ptr;
       args.hsa_amd_pointer_info.info = info;
@@ -2446,7 +2446,7 @@ static hsa_status_t hsa_amd_pointer_info_callback(const void* ptr, hsa_amd_point
 }
 
 static hsa_status_t hsa_amd_pointer_info_set_userdata_callback(const void* ptr, void* userdata) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(154) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_pointer_info_set_userdata_fn(ptr, userdata);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(154) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_pointer_info_set_userdata_fn(ptr, userdata);
       hsa_api_args_t args;
       args.hsa_amd_pointer_info_set_userdata.ptr = ptr;
       args.hsa_amd_pointer_info_set_userdata.userdata = userdata;
@@ -2460,7 +2460,7 @@ static hsa_status_t hsa_amd_pointer_info_set_userdata_callback(const void* ptr, 
 }
 
 static hsa_status_t hsa_amd_ipc_memory_create_callback(void* ptr, size_t len, hsa_amd_ipc_memory_t* handle) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(155) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_create_fn(ptr, len, handle);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(155) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_create_fn(ptr, len, handle);
       hsa_api_args_t args;
       args.hsa_amd_ipc_memory_create.ptr = ptr;
       args.hsa_amd_ipc_memory_create.len = len;
@@ -2476,7 +2476,7 @@ static hsa_status_t hsa_amd_ipc_memory_create_callback(void* ptr, size_t len, hs
 }
 
 static hsa_status_t hsa_amd_ipc_memory_attach_callback(const hsa_amd_ipc_memory_t* handle, size_t len, uint32_t num_agents, const hsa_agent_t* mapping_agents, void** mapped_ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(156) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_attach_fn(handle, len, num_agents, mapping_agents, mapped_ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(156) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_attach_fn(handle, len, num_agents, mapping_agents, mapped_ptr);
       hsa_api_args_t args;
       args.hsa_amd_ipc_memory_attach.handle = handle;
       args.hsa_amd_ipc_memory_attach.len = len;
@@ -2496,7 +2496,7 @@ static hsa_status_t hsa_amd_ipc_memory_attach_callback(const hsa_amd_ipc_memory_
 }
 
 static hsa_status_t hsa_amd_ipc_memory_detach_callback(void* mapped_ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(157) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_detach_fn(mapped_ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(157) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_detach_fn(mapped_ptr);
       hsa_api_args_t args;
       args.hsa_amd_ipc_memory_detach.mapped_ptr = mapped_ptr;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_amd_ipc_memory_detach);
@@ -2508,7 +2508,7 @@ static hsa_status_t hsa_amd_ipc_memory_detach_callback(void* mapped_ptr) {
 }
 
 static hsa_status_t hsa_amd_signal_create_callback(hsa_signal_value_t initial_value, uint32_t num_consumers, const hsa_agent_t* consumers, uint64_t attributes, hsa_signal_t* signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(158) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_create_fn(initial_value, num_consumers, consumers, attributes, signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(158) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_create_fn(initial_value, num_consumers, consumers, attributes, signal);
       hsa_api_args_t args;
       args.hsa_amd_signal_create.initial_value = initial_value;
       args.hsa_amd_signal_create.num_consumers = num_consumers;
@@ -2528,7 +2528,7 @@ static hsa_status_t hsa_amd_signal_create_callback(hsa_signal_value_t initial_va
 }
 
 static hsa_status_t hsa_amd_ipc_signal_create_callback(hsa_signal_t signal, hsa_amd_ipc_signal_t* handle) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(159) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_create_fn(signal, handle);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(159) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_create_fn(signal, handle);
       hsa_api_args_t args;
       args.hsa_amd_ipc_signal_create.signal = signal;
       args.hsa_amd_ipc_signal_create.handle = handle;
@@ -2542,7 +2542,7 @@ static hsa_status_t hsa_amd_ipc_signal_create_callback(hsa_signal_t signal, hsa_
 }
 
 static hsa_status_t hsa_amd_ipc_signal_attach_callback(const hsa_amd_ipc_signal_t* handle, hsa_signal_t* signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(160) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_attach_fn(handle, signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(160) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_attach_fn(handle, signal);
       hsa_api_args_t args;
       args.hsa_amd_ipc_signal_attach.handle = handle;
       args.hsa_amd_ipc_signal_attach.signal = signal;
@@ -2556,7 +2556,7 @@ static hsa_status_t hsa_amd_ipc_signal_attach_callback(const hsa_amd_ipc_signal_
 }
 
 static hsa_status_t hsa_amd_register_system_event_handler_callback(hsa_amd_system_event_callback_t callback, void* data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(161) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_register_system_event_handler_fn(callback, data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(161) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_register_system_event_handler_fn(callback, data);
       hsa_api_args_t args;
       args.hsa_amd_register_system_event_handler.callback = callback;
       args.hsa_amd_register_system_event_handler.data = data;
@@ -2570,7 +2570,7 @@ static hsa_status_t hsa_amd_register_system_event_handler_callback(hsa_amd_syste
 }
 
 static hsa_status_t hsa_amd_queue_intercept_create_callback(hsa_agent_t agent_handle, uint32_t size, hsa_queue_type32_t type, void (* callback)(hsa_status_t status, hsa_queue_t* source, void* data), void* data, uint32_t private_segment_size, uint32_t group_segment_size, hsa_queue_t** queue) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(162) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_create_fn(agent_handle, size, type, callback, data, private_segment_size, group_segment_size, queue);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(162) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_create_fn(agent_handle, size, type, callback, data, private_segment_size, group_segment_size, queue);
       hsa_api_args_t args;
       args.hsa_amd_queue_intercept_create.agent_handle = agent_handle;
       args.hsa_amd_queue_intercept_create.size = size;
@@ -2596,7 +2596,7 @@ static hsa_status_t hsa_amd_queue_intercept_create_callback(hsa_agent_t agent_ha
 }
 
 static hsa_status_t hsa_amd_queue_intercept_register_callback(hsa_queue_t* queue, hsa_amd_queue_intercept_handler callback, void* user_data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(163) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_register_fn(queue, callback, user_data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(163) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_register_fn(queue, callback, user_data);
       hsa_api_args_t args;
       args.hsa_amd_queue_intercept_register.queue = queue;
       args.hsa_amd_queue_intercept_register.callback = callback;
@@ -2612,7 +2612,7 @@ static hsa_status_t hsa_amd_queue_intercept_register_callback(hsa_queue_t* queue
 }
 
 static hsa_status_t hsa_amd_queue_set_priority_callback(hsa_queue_t* queue, hsa_amd_queue_priority_t priority) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(164) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_set_priority_fn(queue, priority);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(164) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_set_priority_fn(queue, priority);
       hsa_api_args_t args;
       args.hsa_amd_queue_set_priority.queue = queue;
       args.hsa_amd_queue_set_priority.priority = priority;
@@ -2626,7 +2626,7 @@ static hsa_status_t hsa_amd_queue_set_priority_callback(hsa_queue_t* queue, hsa_
 }
 
 static hsa_status_t hsa_amd_memory_async_copy_rect_callback(const hsa_pitched_ptr_t* dst, const hsa_dim3_t* dst_offset, const hsa_pitched_ptr_t* src, const hsa_dim3_t* src_offset, const hsa_dim3_t* range, hsa_agent_t copy_agent, hsa_amd_copy_direction_t dir, uint32_t num_dep_signals, const hsa_signal_t* dep_signals, hsa_signal_t completion_signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(165) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_rect_fn(dst, dst_offset, src, src_offset, range, copy_agent, dir, num_dep_signals, dep_signals, completion_signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(165) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_rect_fn(dst, dst_offset, src, src_offset, range, copy_agent, dir, num_dep_signals, dep_signals, completion_signal);
       hsa_api_args_t args;
       args.hsa_amd_memory_async_copy_rect.dst = dst;
       args.hsa_amd_memory_async_copy_rect.dst_offset = dst_offset;
@@ -2656,7 +2656,7 @@ static hsa_status_t hsa_amd_memory_async_copy_rect_callback(const hsa_pitched_pt
 }
 
 static hsa_status_t hsa_amd_runtime_queue_create_register_callback(hsa_amd_runtime_queue_notifier callback, void* user_data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(166) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_runtime_queue_create_register_fn(callback, user_data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(166) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_runtime_queue_create_register_fn(callback, user_data);
       hsa_api_args_t args;
       args.hsa_amd_runtime_queue_create_register.callback = callback;
       args.hsa_amd_runtime_queue_create_register.user_data = user_data;
@@ -2670,7 +2670,7 @@ static hsa_status_t hsa_amd_runtime_queue_create_register_callback(hsa_amd_runti
 }
 
 static hsa_status_t hsa_amd_memory_lock_to_pool_callback(void* host_ptr, size_t size, hsa_agent_t* agents, int num_agent, hsa_amd_memory_pool_t pool, uint32_t flags, void** agent_ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(167) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_lock_to_pool_fn(host_ptr, size, agents, num_agent, pool, flags, agent_ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(167) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_memory_lock_to_pool_fn(host_ptr, size, agents, num_agent, pool, flags, agent_ptr);
       hsa_api_args_t args;
       args.hsa_amd_memory_lock_to_pool.host_ptr = host_ptr;
       args.hsa_amd_memory_lock_to_pool.size = size;
@@ -2694,7 +2694,7 @@ static hsa_status_t hsa_amd_memory_lock_to_pool_callback(void* host_ptr, size_t 
 }
 
 static hsa_status_t hsa_amd_register_deallocation_callback_callback(void* ptr, hsa_amd_deallocation_callback_t callback, void* user_data) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(168) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_register_deallocation_callback_fn(ptr, callback, user_data);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(168) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_register_deallocation_callback_fn(ptr, callback, user_data);
       hsa_api_args_t args;
       args.hsa_amd_register_deallocation_callback.ptr = ptr;
       args.hsa_amd_register_deallocation_callback.callback = callback;
@@ -2710,7 +2710,7 @@ static hsa_status_t hsa_amd_register_deallocation_callback_callback(void* ptr, h
 }
 
 static hsa_status_t hsa_amd_deregister_deallocation_callback_callback(void* ptr, hsa_amd_deallocation_callback_t callback) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(169) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_deregister_deallocation_callback_fn(ptr, callback);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(169) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_deregister_deallocation_callback_fn(ptr, callback);
       hsa_api_args_t args;
       args.hsa_amd_deregister_deallocation_callback.ptr = ptr;
       args.hsa_amd_deregister_deallocation_callback.callback = callback;
@@ -2724,7 +2724,7 @@ static hsa_status_t hsa_amd_deregister_deallocation_callback_callback(void* ptr,
 }
 
 static hsa_status_t hsa_amd_signal_value_pointer_callback(hsa_signal_t signal, volatile hsa_signal_value_t** value_ptr) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(170) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_value_pointer_fn(signal, value_ptr);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(170) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_signal_value_pointer_fn(signal, value_ptr);
       hsa_api_args_t args;
       args.hsa_amd_signal_value_pointer.signal = signal;
       args.hsa_amd_signal_value_pointer.value_ptr = value_ptr;
@@ -2738,7 +2738,7 @@ static hsa_status_t hsa_amd_signal_value_pointer_callback(hsa_signal_t signal, v
 }
 
 static hsa_status_t hsa_amd_svm_attributes_set_callback(void* ptr, size_t size, hsa_amd_svm_attribute_pair_t* attribute_list, size_t attribute_count) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(171) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_set_fn(ptr, size, attribute_list, attribute_count);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(171) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_set_fn(ptr, size, attribute_list, attribute_count);
       hsa_api_args_t args;
       args.hsa_amd_svm_attributes_set.ptr = ptr;
       args.hsa_amd_svm_attributes_set.size = size;
@@ -2756,7 +2756,7 @@ static hsa_status_t hsa_amd_svm_attributes_set_callback(void* ptr, size_t size, 
 }
 
 static hsa_status_t hsa_amd_svm_attributes_get_callback(void* ptr, size_t size, hsa_amd_svm_attribute_pair_t* attribute_list, size_t attribute_count) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(172) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_get_fn(ptr, size, attribute_list, attribute_count);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(172) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_get_fn(ptr, size, attribute_list, attribute_count);
       hsa_api_args_t args;
       args.hsa_amd_svm_attributes_get.ptr = ptr;
       args.hsa_amd_svm_attributes_get.size = size;
@@ -2774,7 +2774,7 @@ static hsa_status_t hsa_amd_svm_attributes_get_callback(void* ptr, size_t size, 
 }
 
 static hsa_status_t hsa_amd_svm_prefetch_async_callback(void* ptr, size_t size, hsa_agent_t agent, uint32_t num_dep_signals, const hsa_signal_t* dep_signals, hsa_signal_t completion_signal) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(173) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_svm_prefetch_async_fn(ptr, size, agent, num_dep_signals, dep_signals, completion_signal);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(173) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_svm_prefetch_async_fn(ptr, size, agent, num_dep_signals, dep_signals, completion_signal);
       hsa_api_args_t args;
       args.hsa_amd_svm_prefetch_async.ptr = ptr;
       args.hsa_amd_svm_prefetch_async.size = size;
@@ -2796,7 +2796,7 @@ static hsa_status_t hsa_amd_svm_prefetch_async_callback(void* ptr, size_t size, 
 }
 
 static hsa_status_t hsa_amd_spm_acquire_callback(hsa_agent_t preferred_agent) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(174) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_spm_acquire_fn(preferred_agent);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(174) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_spm_acquire_fn(preferred_agent);
       hsa_api_args_t args;
       args.hsa_amd_spm_acquire.preferred_agent = preferred_agent;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_amd_spm_acquire);
@@ -2808,7 +2808,7 @@ static hsa_status_t hsa_amd_spm_acquire_callback(hsa_agent_t preferred_agent) {
 }
 
 static hsa_status_t hsa_amd_spm_release_callback(hsa_agent_t preferred_agent) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(175) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_spm_release_fn(preferred_agent);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(175) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_spm_release_fn(preferred_agent);
       hsa_api_args_t args;
       args.hsa_amd_spm_release.preferred_agent = preferred_agent;
       luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, HSA_API_ID_hsa_amd_spm_release);
@@ -2820,7 +2820,7 @@ static hsa_status_t hsa_amd_spm_release_callback(hsa_agent_t preferred_agent) {
 }
 
 static hsa_status_t hsa_amd_spm_set_dest_buffer_callback(hsa_agent_t preferred_agent, size_t size_in_bytes, uint32_t* timeout, uint32_t* size_copied, void* dest, bool* is_data_loss) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(176) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_spm_set_dest_buffer_fn(preferred_agent, size_in_bytes, timeout, size_copied, dest, is_data_loss);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(176) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_spm_set_dest_buffer_fn(preferred_agent, size_in_bytes, timeout, size_copied, dest, is_data_loss);
       hsa_api_args_t args;
       args.hsa_amd_spm_set_dest_buffer.preferred_agent = preferred_agent;
       args.hsa_amd_spm_set_dest_buffer.size_in_bytes = size_in_bytes;
@@ -2842,7 +2842,7 @@ static hsa_status_t hsa_amd_spm_set_dest_buffer_callback(hsa_agent_t preferred_a
 }
 
 static hsa_status_t hsa_amd_queue_cu_get_mask_callback(const hsa_queue_t* queue, uint32_t num_cu_mask_count, uint32_t* cu_mask) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(177) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_cu_get_mask_fn(queue, num_cu_mask_count, cu_mask);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(177) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext.hsa_amd_queue_cu_get_mask_fn(queue, num_cu_mask_count, cu_mask);
       hsa_api_args_t args;
       args.hsa_amd_queue_cu_get_mask.queue = queue;
       args.hsa_amd_queue_cu_get_mask.num_cu_mask_count = num_cu_mask_count;
@@ -2860,7 +2860,7 @@ static hsa_status_t hsa_amd_queue_cu_get_mask_callback(const hsa_queue_t* queue,
 
 /* block: ImageExt API */
 static hsa_status_t hsa_ext_image_get_capability_callback(hsa_agent_t agent, hsa_ext_image_geometry_t geometry, const hsa_ext_image_format_t* image_format, uint32_t* capability_mask) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(180) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_get_capability_fn(agent, geometry, image_format, capability_mask);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(180) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_get_capability_fn(agent, geometry, image_format, capability_mask);
       hsa_api_args_t args;
       args.hsa_ext_image_get_capability.agent = agent;
       args.hsa_ext_image_get_capability.geometry = geometry;
@@ -2878,7 +2878,7 @@ static hsa_status_t hsa_ext_image_get_capability_callback(hsa_agent_t agent, hsa
 }
 
 static hsa_status_t hsa_ext_image_data_get_info_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, hsa_access_permission_t access_permission, hsa_ext_image_data_info_t* image_data_info) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(181) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_fn(agent, image_descriptor, access_permission, image_data_info);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(181) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_fn(agent, image_descriptor, access_permission, image_data_info);
       hsa_api_args_t args;
       args.hsa_ext_image_data_get_info.agent = agent;
       args.hsa_ext_image_data_get_info.image_descriptor = image_descriptor;
@@ -2896,7 +2896,7 @@ static hsa_status_t hsa_ext_image_data_get_info_callback(hsa_agent_t agent, cons
 }
 
 static hsa_status_t hsa_ext_image_create_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, const void* image_data, hsa_access_permission_t access_permission, hsa_ext_image_t* image) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(182) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_create_fn(agent, image_descriptor, image_data, access_permission, image);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(182) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_create_fn(agent, image_descriptor, image_data, access_permission, image);
       hsa_api_args_t args;
       args.hsa_ext_image_create.agent = agent;
       args.hsa_ext_image_create.image_descriptor = image_descriptor;
@@ -2916,7 +2916,7 @@ static hsa_status_t hsa_ext_image_create_callback(hsa_agent_t agent, const hsa_e
 }
 
 static hsa_status_t hsa_ext_image_import_callback(hsa_agent_t agent, const void* src_memory, size_t src_row_pitch, size_t src_slice_pitch, hsa_ext_image_t dst_image, const hsa_ext_image_region_t* image_region) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(183) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_import_fn(agent, src_memory, src_row_pitch, src_slice_pitch, dst_image, image_region);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(183) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_import_fn(agent, src_memory, src_row_pitch, src_slice_pitch, dst_image, image_region);
       hsa_api_args_t args;
       args.hsa_ext_image_import.agent = agent;
       args.hsa_ext_image_import.src_memory = src_memory;
@@ -2938,7 +2938,7 @@ static hsa_status_t hsa_ext_image_import_callback(hsa_agent_t agent, const void*
 }
 
 static hsa_status_t hsa_ext_image_export_callback(hsa_agent_t agent, hsa_ext_image_t src_image, void* dst_memory, size_t dst_row_pitch, size_t dst_slice_pitch, const hsa_ext_image_region_t* image_region) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(184) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_export_fn(agent, src_image, dst_memory, dst_row_pitch, dst_slice_pitch, image_region);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(184) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_export_fn(agent, src_image, dst_memory, dst_row_pitch, dst_slice_pitch, image_region);
       hsa_api_args_t args;
       args.hsa_ext_image_export.agent = agent;
       args.hsa_ext_image_export.src_image = src_image;
@@ -2960,7 +2960,7 @@ static hsa_status_t hsa_ext_image_export_callback(hsa_agent_t agent, hsa_ext_ima
 }
 
 static hsa_status_t hsa_ext_image_copy_callback(hsa_agent_t agent, hsa_ext_image_t src_image, const hsa_dim3_t* src_offset, hsa_ext_image_t dst_image, const hsa_dim3_t* dst_offset, const hsa_dim3_t* range) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(185) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_copy_fn(agent, src_image, src_offset, dst_image, dst_offset, range);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(185) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_copy_fn(agent, src_image, src_offset, dst_image, dst_offset, range);
       hsa_api_args_t args;
       args.hsa_ext_image_copy.agent = agent;
       args.hsa_ext_image_copy.src_image = src_image;
@@ -2982,7 +2982,7 @@ static hsa_status_t hsa_ext_image_copy_callback(hsa_agent_t agent, hsa_ext_image
 }
 
 static hsa_status_t hsa_ext_image_clear_callback(hsa_agent_t agent, hsa_ext_image_t image, const void* data, const hsa_ext_image_region_t* image_region) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(186) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_clear_fn(agent, image, data, image_region);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(186) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_clear_fn(agent, image, data, image_region);
       hsa_api_args_t args;
       args.hsa_ext_image_clear.agent = agent;
       args.hsa_ext_image_clear.image = image;
@@ -3000,7 +3000,7 @@ static hsa_status_t hsa_ext_image_clear_callback(hsa_agent_t agent, hsa_ext_imag
 }
 
 static hsa_status_t hsa_ext_image_destroy_callback(hsa_agent_t agent, hsa_ext_image_t image) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(187) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_destroy_fn(agent, image);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(187) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_destroy_fn(agent, image);
       hsa_api_args_t args;
       args.hsa_ext_image_destroy.agent = agent;
       args.hsa_ext_image_destroy.image = image;
@@ -3014,7 +3014,7 @@ static hsa_status_t hsa_ext_image_destroy_callback(hsa_agent_t agent, hsa_ext_im
 }
 
 static hsa_status_t hsa_ext_sampler_create_callback(hsa_agent_t agent, const hsa_ext_sampler_descriptor_t* sampler_descriptor, hsa_ext_sampler_t* sampler) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(188) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_sampler_create_fn(agent, sampler_descriptor, sampler);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(188) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_sampler_create_fn(agent, sampler_descriptor, sampler);
       hsa_api_args_t args;
       args.hsa_ext_sampler_create.agent = agent;
       args.hsa_ext_sampler_create.sampler_descriptor = sampler_descriptor;
@@ -3030,7 +3030,7 @@ static hsa_status_t hsa_ext_sampler_create_callback(hsa_agent_t agent, const hsa
 }
 
 static hsa_status_t hsa_ext_sampler_destroy_callback(hsa_agent_t agent, hsa_ext_sampler_t sampler) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(189) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_sampler_destroy_fn(agent, sampler);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(189) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_sampler_destroy_fn(agent, sampler);
       hsa_api_args_t args;
       args.hsa_ext_sampler_destroy.agent = agent;
       args.hsa_ext_sampler_destroy.sampler = sampler;
@@ -3044,7 +3044,7 @@ static hsa_status_t hsa_ext_sampler_destroy_callback(hsa_agent_t agent, hsa_ext_
 }
 
 static hsa_status_t hsa_ext_image_get_capability_with_layout_callback(hsa_agent_t agent, hsa_ext_image_geometry_t geometry, const hsa_ext_image_format_t* image_format, hsa_ext_image_data_layout_t image_data_layout, uint32_t* capability_mask) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(190) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_get_capability_with_layout_fn(agent, geometry, image_format, image_data_layout, capability_mask);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(190) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_get_capability_with_layout_fn(agent, geometry, image_format, image_data_layout, capability_mask);
       hsa_api_args_t args;
       args.hsa_ext_image_get_capability_with_layout.agent = agent;
       args.hsa_ext_image_get_capability_with_layout.geometry = geometry;
@@ -3064,7 +3064,7 @@ static hsa_status_t hsa_ext_image_get_capability_with_layout_callback(hsa_agent_
 }
 
 static hsa_status_t hsa_ext_image_data_get_info_with_layout_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, hsa_access_permission_t access_permission, hsa_ext_image_data_layout_t image_data_layout, size_t image_data_row_pitch, size_t image_data_slice_pitch, hsa_ext_image_data_info_t* image_data_info) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(191) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_with_layout_fn(agent, image_descriptor, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image_data_info);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(191) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_with_layout_fn(agent, image_descriptor, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image_data_info);
       hsa_api_args_t args;
       args.hsa_ext_image_data_get_info_with_layout.agent = agent;
       args.hsa_ext_image_data_get_info_with_layout.image_descriptor = image_descriptor;
@@ -3088,7 +3088,7 @@ static hsa_status_t hsa_ext_image_data_get_info_with_layout_callback(hsa_agent_t
 }
 
 static hsa_status_t hsa_ext_image_create_with_layout_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, const void* image_data, hsa_access_permission_t access_permission, hsa_ext_image_data_layout_t image_data_layout, size_t image_data_row_pitch, size_t image_data_slice_pitch, hsa_ext_image_t* image) {
-      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find(192) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_create_with_layout_fn(agent, image_descriptor, image_data, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image);
+      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find(192) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().image_ext.hsa_ext_image_create_with_layout_fn(agent, image_descriptor, image_data, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image);
       hsa_api_args_t args;
       args.hsa_ext_image_create_with_layout.agent = agent;
       args.hsa_ext_image_create_with_layout.image_descriptor = image_descriptor;

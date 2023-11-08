@@ -59,7 +59,11 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
 
 void luthier_enable_hip_op_callback(uint32_t op);
 
+void luthier_disable_hip_op_callback(uint32_t op);
+
 void luthier_enable_hsa_op_callback(uint32_t op);
+
+void luthier_disable_hsa_op_callback(uint32_t op);
 
 
 #define LUTHIER_EXPORT_FUNC(f)               \

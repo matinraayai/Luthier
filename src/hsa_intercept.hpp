@@ -59,6 +59,11 @@ class HsaInterceptor {
         op_filters_.insert(op);
     }
 
+    void disable_callback_impl(uint32_t op) {
+        if (op < 0 || op > 192) throw std::invalid_argument("Op not in range [0, 192]");
+        op_filters_.erase(op);
+    }
+
     bool captureHsaApiTable(HsaApiTable *table) {
         installCoreApiWrappers(table->core_);
         installAmdExtWrappers(table->amd_ext_);

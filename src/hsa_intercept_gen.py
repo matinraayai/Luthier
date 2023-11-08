@@ -366,7 +366,7 @@ class ApiDescrParser:
 
             actual_params = ", ".join([el for i, el in enumerate(struct["alst"])])
             table = 'core' if (count >= 0 and count <= 124) else 'amd_ext' if (count >= 125 and count <= 179) else 'image_ext'
-            content += f'      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find({count}) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().{table}.{call}_fn({actual_params});\n'
+            content += f'      if (!luthier::HsaInterceptor::Instance().getOpFiltersSet().empty() && luthier::HsaInterceptor::Instance().getOpFiltersSet().find({count}) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().{table}.{call}_fn({actual_params});\n'
 
             content += "      hsa_api_args_t args;\n"
             for var in struct['alst']:
