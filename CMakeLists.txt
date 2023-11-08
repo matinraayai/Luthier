@@ -70,7 +70,21 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fmt)
 
 # ======================================================================================================================
+# GOTCHA Configuration ====================================================================================================
+FetchContent_Declare(
+        gotcha
+        DOWNLOAD_EXTRACT_TIMESTAMP 0
+        URL "https://github.com/LLNL/GOTCHA/archive/refs/heads/develop.zip"
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/gotcha/
+        CONFIGURE_COMMAND "cmake -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE ..."
+        INSTALL_COMMAND ""
+)
+
+FetchContent_MakeAvailable(gotcha)
+
 # ======================================================================================================================
+# ======================================================================================================================
+
 
 # ROCM Setup ===========================================================================================================
 
@@ -108,7 +122,7 @@ target_link_libraries(luthier hip::host roctracer64 elfio::elfio stdc++fs amd_co
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-  set(SUB_DIRS examples/kernel_instrument)
+  set(SUB_DIRS examples/intercept)
   foreach (DIR ${SUB_DIRS})
     add_subdirectory(${DIR})
   endforeach (DIR)

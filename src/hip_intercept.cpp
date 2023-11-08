@@ -7652,4 +7652,3 @@ hipError_t hip_init() {
 
 	return out;
 }
-

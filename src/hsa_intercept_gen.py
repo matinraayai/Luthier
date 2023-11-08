@@ -48,7 +48,7 @@ LICENSE = """/* Copyright (c) 2018-2023 Advanced Micro Devices, Inc.
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
 
@@ -282,6 +282,7 @@ class ApiDescrParser:
         self.api_calls = {}
         self.api_rettypes = set()
         self.api_id = {}
+        self.count = 0
 
         api_data = {}
         api_list = []
@@ -323,7 +324,7 @@ class ApiDescrParser:
 
         self.cpp_content += '#include <hsa/hsa_api_trace.h>\n'
         self.cpp_content += '#include "hsa_intercept.hpp"\n'
-        self.cpp_content += '#include "luthier_types.h"\n'
+        self.cpp_content += '#include "luthier_types.hpp"\n'
 
         self.cpp_content += self.add_section('API callback functions', '', self.gen_callbacks)
         self.cpp_content += self.add_section('API intercepting code', '', self.gen_intercept)
@@ -356,22 +357,28 @@ class ApiDescrParser:
         if n == -1:
             content += '/* section: Static declarations */\n'
             content += '\n'
-        if call != '-':
+        if call != '-' and call not in ['hsa_amd_portable_close_dmabuf', 'hsa_amd_portable_export_dmabuf']:
+            count = self.count
+            self.count += 1
             call_id = self.api_id[call]
             ret_type = struct['ret']
             content += f'static {ret_type} {call}_callback({struct["args"]}) {{\n'
+
+            actual_params = ", ".join([el for i, el in enumerate(struct["alst"])])
+            table = 'core' if (count >= 0 and count <= 124) else 'amd_ext' if (count >= 125 and count <= 179) else 'image_ext'
+            content += f'      if (luthier::HsaInterceptor::Instance().getOpFiltersSet().find({count}) == luthier::HsaInterceptor::Instance().getOpFiltersSet().end()) return luthier::HsaInterceptor::Instance().getSavedHsaTables().{table}.{call}_fn({actual_params});\n'
 
             content += "      hsa_api_args_t args;\n"
             for var in struct['alst']:
                 item = struct['astr'][var]
                 content += f'      args.{call}.{var} = {var};\n'
 
-            content += f'      luthier::HsaInterceptor::instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, '\
+            content += f'      luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, '\
                        f'HSA_API_ID_{call});\n'
 
             if ret_type != 'void':
                 content += f'      {ret_type} out = '
-            content += f'luthier::HsaInterceptor::instance().getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
+            content += f'luthier::HsaInterceptor::Instance().getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
             for i, var in enumerate(struct['alst']):
                 content += f'args.{call}.{var}'
                 if i != len(struct['alst']) - 1:
@@ -379,7 +386,7 @@ class ApiDescrParser:
             content += ');\n'
             content += '\n'
 
-            content += f'      luthier::HsaInterceptor::instance().GetCallback()(&args, LUTHIER_API_PHASE_EXIT, ' \
+            content += f'      luthier::HsaInterceptor::Instance().GetCallback()(&args, LUTHIER_API_PHASE_EXIT, ' \
                        f'HSA_API_ID_{call});\n'
             for var in struct['alst']:
                 content += f'      {var} = args.{call}.{var};\n'
@@ -388,6 +395,9 @@ class ApiDescrParser:
                 content += "      return out;\n"
 
             content += '}\n\n'
+
+        if call in ['hsa_amd_portable_close_dmabuf', 'hsa_amd_portable_export_dmabuf']:
+            self.count += 1
 
         return content
 

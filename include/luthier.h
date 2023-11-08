@@ -54,8 +54,12 @@ const hsa_ven_amd_loader_1_03_pfn_s* luthier_get_hsa_ven_amd_loader();
 void* luthier_get_hip_function(const char* funcName);
 
 
-
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object);
+
+
+void luthier_enable_hip_op_callback(uint32_t op);
+
+void luthier_enable_hsa_op_callback(uint32_t op);
 
 
 #define LUTHIER_EXPORT_FUNC(f)               \
