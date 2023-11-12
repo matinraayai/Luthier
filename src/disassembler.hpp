@@ -12,7 +12,7 @@
 namespace luthier {
 
 /**
- * @brief a singleton class in charge of disassembling device instructions and returning them as an std::vector of @class Instr
+ * \brief a singleton class in charge of disassembling device instructions and returning them as an std::vector of \class Instr
  * It uses the AMD COMGR library internally
  */
 class Disassembler {
@@ -41,6 +41,8 @@ class Disassembler {
     std::vector<Instr> disassemble(hsa_agent_t agent, luthier_address_t address);
 
     std::vector<Instr> disassemble(hsa_agent_t agent, co_manip::code_view_t code);
+
+    std::vector<Instr> disassemble(co_manip::SymbolView symbolView);
 
  private:
     Disassembler() = default;

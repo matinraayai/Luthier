@@ -84,7 +84,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
     instDeviceFuncNames.reserve(instrumentationFunctionInfo.size());
     for (const auto &iFuncInfo: instrumentationFunctionInfo) {
         std::string deviceFuncName = std::get<const char *>(iFuncInfo);
-        deviceFuncName = deviceFuncName.substr(deviceFuncName.find("__luthier_wrap__") + strlen("__luthier_wrap__"),
+        deviceFuncName = deviceFuncName.substr(deviceFuncName.find(LUTHIER_DEVICE_FUNCTION_WRAP) + strlen(LUTHIER_DEVICE_FUNCTION_WRAP),
                                                deviceFuncName.find('('));
         if (deviceFuncName.empty())
             throw std::runtime_error("The requested instrumentation kernel doesn't have __luthier_wrap__ at its beginning.");
@@ -100,10 +100,10 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
             for (unsigned int i = 0; i < hostCodeObjects.size(); i++) {
                 auto hco = hostCodeObjects[i];
                 auto dco = deviceCodeObjects[i];
-                auto reader = co_manip::ElfViewImpl::make_view(hco);
-                auto& io = reader->getElfIo();
-//                ELFIO::elfio reader;
-//                reader.load(hcoSs, true);
+                auto reader = co_manip::ElfViewImpl::makeView(hco);
+                auto &io = reader->getElfIo();
+                //                ELFIO::elfio reader;
+                //                reader.load(hcoSs, true);
                 for (unsigned int j = 0; j < co_manip::getSymbolNum(reader); j++) {
                     auto info = co_manip::SymbolView(reader, j);
                     fmt::println("Name of symbol: {}", info.getName());
@@ -131,7 +131,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
                                 }
                                 agentToExecMap[a.handle].kd = kd;
                             } else {
-                                co_manip::code_view_t function{reinterpret_cast<const std::byte*>(info.getView().data() + reinterpret_cast<luthier_address_t>(dco.data())),
+                                co_manip::code_view_t function{reinterpret_cast<const std::byte *>(info.getView().data() + reinterpret_cast<luthier_address_t>(dco.data())),
                                                                info.getView().size()};
                                 if (!functions_.contains(globalFuncPointer)) {
                                     auto globalFunctionName = std::get<const char *>(instrumentationFunctionInfo[k]);
@@ -165,7 +165,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
 }
 
 luthier::co_manip::code_view_t luthier::CodeObjectManager::getInstrumentationFunction(const void *wrapperKernelHostPtr,
-                                                                                                           hsa_agent_t agent) const {
+                                                                                      hsa_agent_t agent) const {
     auto f = functions_.at(wrapperKernelHostPtr).agentToExecMap.at(agent.handle).function;
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto instrs = luthier::Disassembler::instance().disassemble(agent, f.data());
