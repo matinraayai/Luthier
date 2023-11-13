@@ -52,6 +52,10 @@ typedef std::basic_string_view<std::byte> code_view_t;
  */
 typedef std::basic_string<std::byte> code_t;
 
+/**
+ * \brief input/output stream for code_t and code_view_t
+ */
+typedef boost_ios::stream<boost_ios::basic_array_source<char>> codestream;
 
 inline std::string convertToString(const code_t& code) {
     return {reinterpret_cast<const char*>(code.data()), code.size()};
@@ -623,8 +627,7 @@ typedef enum {
     ELF_SECTIONS_LAST = RUNTIME_METADATA
 } ElfSections;
 
-// ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
-ElfView createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
+ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
 
 ELFIO::section *newSection(
     ELFIO::elfio &elfIo,

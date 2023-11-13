@@ -642,29 +642,26 @@ bool addSymbol(
     return ret >= 1;
 }
 
-// ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
-ElfView createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
-
-    std::cout << "================================================" << std::endl
-              << "           Here in " << __FUNCTION__              << std::endl
-              << "================================================" << std::endl;
-
-    // Create empty ELF
+ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
+    // Create relocatable stored in a code_t
     const std::string code = "s_nop 0";
     std::string isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
 
-    amd_comgr_data_t relocDataIn, relocDataOut, execDataIn, execDataOut;
-    size_t relocOutSize, execOutSize;
+    amd_comgr_data_t relocIn, relocOut;
 
-    amd_comgr_data_set_t relocDataSetIn, relocDataSetOut, execDataSetIn, execDataSetOut;
-    amd_comgr_action_info_t relocDataAction, execDataAction;
+    std::string relocName;
+    size_t relocNameSize;
+
+    amd_comgr_data_set_t relocDataSetIn, relocDataSetOut;
+    amd_comgr_action_info_t relocDataAction;
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&relocDataSetIn));
 
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &relocDataIn));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(relocDataIn, code.size(), code.data()));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(relocDataIn, "test_relocatable.s"));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(relocDataSetIn, relocDataIn));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &relocIn));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(relocIn, code.size(), code.data()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(relocIn, "test_relocatable.s"));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(relocDataSetIn, relocIn));
+
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&relocDataSetOut));
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&relocDataAction));
@@ -673,103 +670,65 @@ ElfView createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
     LUTHIER_AMD_COMGR_CHECK(
         amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE,
                             relocDataAction, relocDataSetIn, relocDataSetOut));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_data_get_data(relocDataSetOut, AMD_COMGR_DATA_KIND_RELOCATABLE, 0, &relocDataOut));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(relocDataOut, &relocOutSize, nullptr));
+    amd_comgr_action_data_get_data(relocDataSetOut, AMD_COMGR_DATA_KIND_RELOCATABLE, 0, &relocOut);
 
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&execDataSetOut));
+    amd_comgr_get_data_name(relocOut, &relocNameSize, nullptr);
+    relocName.resize(relocNameSize);
+    amd_comgr_get_data_name(relocOut, &relocNameSize, relocName.data());
 
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&execDataAction));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(execDataAction, isaName.c_str()));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(execDataAction, nullptr, 0));
-    LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
-                            execDataAction, relocDataSetOut, execDataSetOut));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_data_get_data(execDataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &execDataOut));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(execDataOut, &execOutSize, nullptr));
+    luthier::co_manip::code_t relocElf;
+    size_t relocOutSize;
 
+    amd_comgr_get_data(relocOut, &relocOutSize, nullptr);
+    relocElf.resize(relocOutSize);
+    amd_comgr_get_data(relocOut, &relocOutSize, reinterpret_cast<char *>(relocElf.data()));
 
-    luthier::co_manip::code_t execCodeOut;
-    execCodeOut.resize(execOutSize);
+    // Load elfio from code_t
+    ELFIO::elfio elfIo;
 
-    LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_get_data(execDataOut, &execOutSize, reinterpret_cast<char *>(execCodeOut.data())));
+    luthier::co_manip::codestream relocElfStream(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+        std::string_view(reinterpret_cast<const char *>(relocElf.data()), relocElf.size()).begin(),
+        std::string_view(reinterpret_cast<const char *>(relocElf.data()), relocElf.size()).end()));
 
-    luthier::co_manip::ElfView execView = co_manip::ElfViewImpl::makeView(execCodeOut);
-    return execView;
+    elfIo.load(relocElfStream, false);
+    elfIo.set_os_abi(elfIoIn.get_os_abi());
+    elfIo.set_flags(elfIoIn.get_flags());
+    elfIo.set_abi_version(elfIoIn.get_abi_version());
+    elfIo.set_entry(elfIoIn.get_entry());
+    elfIo.set_machine(elfIoIn.get_machine());
+    elfIo.set_type(ELFIO::ET_REL);
 
-    // const ELFIO::elfio &elfIo = execView->getElfIo();
+    // Create empty ELF sections in elfIo
+    std::vector<ELFIO::section*> relocElfSections;
+    // fmt::println("Initial ELF has {} Sections", elfIo.sections.size());
+    for (int i = 0; i < elfIo.sections.size(); i++) {
+        const ELFIO::section* psec = elfIo.sections[i];
+        // fmt::println(" [{}] {}\t{}", i, psec->get_name(), psec->get_size());
+        relocElfSections.emplace_back(elfIo.sections[i]);
+    }
+    // fmt::println("\nLine {}: Create sections for relocatable", __LINE__);
+    // fmt::println("\nOriginal ELF has {} sections", elfIoIn.sections.size());
+    for (int i = 0; i < elfIoIn.sections.size(); i++) {
+        const ELFIO::section* psec = elfIoIn.sections[i];
 
-    // const ELFIO::elfio elfIo = execView->getElfIo();
-
-    // elfIo.create(elfIoIn.get_class(), elfIoIn.get_encoding());
-    // elfIo.set_os_abi(elfIoIn.get_os_abi());
-    // elfIo.set_flags(elfIoIn.get_flags());
-    // elfIo.set_abi_version(elfIoIn.get_abi_version());
-    // elfIo.set_entry(elfIoIn.get_entry());
-    // elfIo.set_machine(elfIoIn.get_machine());
-    // elfIo.set_type(ELFIO::ET_REL);
-
-    // std::ostringstream ss;
-    // elfIo.save(ss);
-    // auto code = code_t(ss.str().begin(), ss.str().end());
-
-
-
-
-
-    // auto shStrTabSection = elfIo.sections[ElfSecDesc[SHSTRTAB].name];
-    // assert(shStrTabSection != nullptr);
-
-    // setupSHdr(elfIo, SHSTRTAB, shStrTabSection);
-
-    // //
-    // // 3. Create .strtab section
-    // //
-    // auto *strTabSec = elfIo.sections.add(ElfSecDesc[STRTAB].name);
-    // assert(strTabSec != nullptr);
-
-    // // adding null string data associated with section
-    // // index 0 is reserved and must be there (NULL name)
-    // constexpr char strtab[] = {
-    //     /* index 0 */ '\0'};
-    // strTabSec->set_data(const_cast<char *>(strtab), sizeof(strtab));
-
-    // setupSHdr(elfIo, STRTAB, strTabSec);
-
-    // // 4. Create the symbol table
-
-    // // Create the first reserved dummy symbol (undefined symbol)
-    // size_t sym_sz = (elfIo.get_class() == ELFCLASS32) ? sizeof(Elf32_Sym) : sizeof(Elf64_Sym);
-    // auto sym = static_cast<std::byte *>(std::calloc(1, sym_sz));
-    // assert(sym != nullptr);
-
-    // auto *symTabSec = newSection(elfIo, SYMTAB, {sym, sym_sz});
-    // std::free(sym);
-    // assert(symTabSec != nullptr);
-
-    // // print new elfio's sections to verify
-    // std::cout << "New ELF:" << std::endl;
-    // Elf_Half sec_num = elfIo.sections.size();
-    // for (int i = 0; i < sec_num; i++) {
-    //     const section* psec = elfIo.sections[i];
-    //     std::cout << " [" << i << "] "
-    //               << psec->get_name()
-    //               << "\t"
-    //               << psec->get_size()
-    //               << std::endl;
-    // }   std::cout << std::endl;
-
-
-
-
-    // std::cout << "================================================" << std::endl;
-
-
-
-    // return elfIo;
-
-
-
+        bool section_in_reloc = false;
+        // fmt::println(" [{}] {}\t{}", i, psec->get_name(), psec->get_size());
+        for (auto reloc_sec : relocElfSections) {
+            if (!psec->get_name().compare(reloc_sec->get_name())) {
+                section_in_reloc = true;
+                break;
+            }
+        }
+        if (!section_in_reloc)
+            elfIo.sections.add(psec->get_name());
+    }   //fmt::print("\n");
+    // fmt::println("Final ELF has {} Sections", elfIo.sections.size());
+    // for (int i = 0; i < elfIo.sections.size(); i++) {
+    //     const ELFIO::section* psec = elfIo.sections[i];
+    //     fmt::println(" [{}] {}\t{}", i, psec->get_name(), psec->get_size());
+    // }
+    return elfIo;
 }
 
 ElfViewImpl::ElfViewImpl(code_view_t elf) : data_(elf),
