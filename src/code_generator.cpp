@@ -201,7 +201,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     hsa_executable_t instrExecutable = instr.getExecutable();
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
     co_manip::code_t newCodeObject(hco[0]);
-    auto instrElf = co_manip::ElfViewImpl::make_view(hco[0]);
+    auto instrElf = co_manip::ElfViewImpl::makeView(hco[0]);
 
     luthier_address_t kernelCodeStartAddr, func1StartAddr;
 
@@ -267,16 +267,16 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     // s_addc_u32 s13, s13, 0  8bytes
     // s_swappc_b64 s[30:31], s[12:13] 4bytes
 
-    myReLU = assemble(std::vector<std::string>{
-                          "s_load_dword s14, s[4:5], 0x4",
-                          "s_waitcnt lgkmcnt(0)",
-                          "s_and_b32 s14, s14, 0xffff",
-                          "s_mul_i32 s8, s8, s14",
-                          "v_add_u32_e32 v4, s8, v0",
-                          "s_endpgm"},
-                      agent);
+    co_manip::code_t myReLU = assemble(std::vector<std::string>{
+                                           "s_load_dword s14, s[4:5], 0x4",
+                                           "s_waitcnt lgkmcnt(0)",
+                                           "s_and_b32 s14, s14, 0xffff",
+                                           "s_mul_i32 s8, s8, s14",
+                                           "v_add_u32_e32 v4, s8, v0",
+                                           "s_endpgm"},
+                                       agent);
 
-    instrElf->getElfIo().sections[".text"]->set_data(myReLU.data(), myReLU.size());
+    instrElf->getElfIo().sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
 
     // for (const auto& sec: instrElf->getElfIo().sections) {
     //     fmt::println("Section name {}", sec->get_name());
