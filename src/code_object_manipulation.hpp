@@ -52,6 +52,10 @@ typedef std::basic_string_view<std::byte> code_view_t;
  */
 typedef std::basic_string<std::byte> code_t;
 
+/**
+ * \brief input/output stream for code_t and code_view_t
+ */
+typedef boost_ios::stream<boost_ios::basic_array_source<char>> codestream;
 
 
 /**

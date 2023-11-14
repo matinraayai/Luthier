@@ -201,9 +201,16 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     hsa_executable_t instrExecutable = instr.getExecutable();
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
     co_manip::code_t newCodeObject(hco[0]);
-    auto instrElf = co_manip::ElfViewImpl::makeView(hco[0]);
 
-    luthier_address_t kernelCodeStartAddr, func1StartAddr;
+    co_manip::codestream newCOStream(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).begin(),
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).end()));
+    ELFIO::elfio elfio;
+    elfio.load(newCOStream, false);
+    std::cout << "Create a elfio object using codestream\n";
+
+    /*luthier_address_t kernelCodeStartAddr, func1StartAddr;
 
     for (unsigned int i = 0; i < co_manip::getSymbolNum(instrElf); i++) {
         co_manip::SymbolView info(instrElf, i);
@@ -231,7 +238,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
             fmt::println("kernel code start at address {:#x}", kernelCodeStartAddr);
             fmt::println("func1 start at address {:#x}", func1StartAddr);
         }
-    }
+    }*/
     //     Require dynamic info about the target kernel
     // 1. Num of threads to calculate memory size needed to store registers THD*4*NV + 4*NS
     // 2. Num of vgpr used NV = 4 available v4, v5, v6, v7 after set GRANULATED_WAVEFRONT_VGPR_COUNT as 1
@@ -267,16 +274,16 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     // s_addc_u32 s13, s13, 0  8bytes
     // s_swappc_b64 s[30:31], s[12:13] 4bytes
 
-    co_manip::code_t myReLU = assemble(std::vector<std::string>{
-                                           "s_load_dword s14, s[4:5], 0x4",
-                                           "s_waitcnt lgkmcnt(0)",
-                                           "s_and_b32 s14, s14, 0xffff",
-                                           "s_mul_i32 s8, s8, s14",
-                                           "v_add_u32_e32 v4, s8, v0",
-                                           "s_endpgm"},
-                                       agent);
+    // co_manip::code_t myReLU = assemble(std::vector<std::string>{
+    //                                        "s_load_dword s14, s[4:5], 0x4",
+    //                                        "s_waitcnt lgkmcnt(0)",
+    //                                        "s_and_b32 s14, s14, 0xffff",
+    //                                        "s_mul_i32 s8, s8, s14",
+    //                                        "v_add_u32_e32 v4, s8, v0",
+    //                                        "s_endpgm"},
+    //                                    agent);
 
-    instrElf->getElfIo().sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
+    // elfio.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
 
     // for (const auto& sec: instrElf->getElfIo().sections) {
     //     fmt::println("Section name {}", sec->get_name());
@@ -284,7 +291,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     // }
     // save the ELF and create an executable
     std::ostringstream ss;
-    instrElf->getElfIo().save(ss);
+    elfio.save(ss);
     std::string elf = ss.str();
     std::cout << elf << std::endl;
 
