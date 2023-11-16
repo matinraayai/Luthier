@@ -105,7 +105,15 @@ luthier::co_manip::code_t luthier::CodeGenerator::assembleToRelocatable(const st
 
 luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &instListStr, hsa_agent_t agent) {
     auto relocatable = assembleToRelocatable(instListStr, agent);
-    auto textSection = co_manip::ElfViewImpl::makeView(relocatable)->getElfIo().sections[".text"];
+    co_manip::codestream coStream(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+            std::string_view(reinterpret_cast<const char *>(relocatable.data()), relocatable.size()).begin(),
+            std::string_view(reinterpret_cast<const char *>(relocatable.data()), relocatable.size()).end()));
+    ELFIO::elfio elfio;
+    elfio.load(coStream, false);
+    //auto &elfio = co_manip::ElfViewImpl::makeView(relocatable)->getElfIo();
+    auto textSection = elfio.sections[".text"];
+
     return {reinterpret_cast<const std::byte *>(textSection->get_data()), textSection->get_size()};
 }
 
@@ -173,11 +181,11 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
             auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 
             //            instList = luthier::Disassembler::Instance().disassemble(agent, entry_point - 0x14c, 0x500);
-            instList = luthier::Disassembler::instance().disassemble(kernelObject);
-            std::cout << "Disassembly of the KO: " << std::endl;
-            for (const auto &i: instList) {
-                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
-            }
+            // instList = luthier::Disassembler::instance().disassemble(kernelObject);
+            // std::cout << "Disassembly of the KO: " << std::endl;
+            // for (const auto &i: instList) {
+            //     std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
+            // }
         }
 
         //            symbolVec->push_back(symbol);
@@ -279,11 +287,14 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     //                                        "s_waitcnt lgkmcnt(0)",
     //                                        "s_and_b32 s14, s14, 0xffff",
     //                                        "s_mul_i32 s8, s8, s14",
-    //                                        "v_add_u32_e32 v4, s8, v0",
+    //                                        "v_add_u32_e32 v0, s8, v0",
     //                                        "s_endpgm"},
     //                                    agent);
+    co_manip::code_t myReLU = assemble("s_endpgm", agent);
 
-    // elfio.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
+    elfio.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
+    // std::cout << myReLU.size() << std::endl;
+    // std::cout << elfio.sections[".text"]->get_size() << std::endl;
 
     // for (const auto& sec: instrElf->getElfIo().sections) {
     //     fmt::println("Section name {}", sec->get_name());
