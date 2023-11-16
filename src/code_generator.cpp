@@ -118,7 +118,17 @@ luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &in
 }
 
 luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, hsa_agent_t agent) {
-    return assembleToRelocatable(instrVector, agent);
+    auto relocatable = assembleToRelocatable(instrVector, agent);
+
+    co_manip::codestream coStream(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+            std::string_view(reinterpret_cast<const char *>(relocatable.data()), relocatable.size()).begin(),
+            std::string_view(reinterpret_cast<const char *>(relocatable.data()), relocatable.size()).end()));
+    ELFIO::elfio elfio;
+    elfio.load(coStream, false);
+    auto textSection = elfio.sections[".text"];
+
+    return {reinterpret_cast<const std::byte *>(textSection->get_data()), textSection->get_size()};
 }
 
 luthier::CodeGenerator::CodeGenerator() {
@@ -171,9 +181,9 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
                     //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
                 }
             }
-            luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
-            luthier::co_manip::printRSR2(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
-            luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            // luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            // luthier::co_manip::printRSR2(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            // luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             const kernel_descriptor_t *kernelDescriptor{nullptr};
             const auto &amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
             LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
@@ -282,15 +292,15 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     // s_addc_u32 s13, s13, 0  8bytes
     // s_swappc_b64 s[30:31], s[12:13] 4bytes
 
-    // co_manip::code_t myReLU = assemble(std::vector<std::string>{
-    //                                        "s_load_dword s14, s[4:5], 0x4",
-    //                                        "s_waitcnt lgkmcnt(0)",
-    //                                        "s_and_b32 s14, s14, 0xffff",
-    //                                        "s_mul_i32 s8, s8, s14",
-    //                                        "v_add_u32_e32 v0, s8, v0",
-    //                                        "s_endpgm"},
-    //                                    agent);
-    co_manip::code_t myReLU = assemble("s_endpgm", agent);
+    co_manip::code_t myReLU = assemble(std::vector<std::string>{
+                                           "s_load_dword s14, s[4:5], 0x4",
+                                           "s_waitcnt lgkmcnt(0)",
+                                           "s_and_b32 s14, s14, 0xffff",
+                                           "s_mul_i32 s8, s8, s14",
+                                           "v_add_u32_e32 v0, s8, v0",
+                                           "s_endpgm"},
+                                       agent);
+    // co_manip::code_t myReLU = assemble("s_endpgm", agent);
 
     elfio.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
     // std::cout << myReLU.size() << std::endl;
