@@ -287,6 +287,10 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
     luthier::CodeGenerator::instance().instrument(*instr, dev_func, point);
 }
 
+void luthier_insert_call(luthier::Instr *instr, void *my_addr) {
+    luthier::CodeGenerator::instance().modify(*instr, my_addr);
+}
+
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
     const auto instrumentedKd = luthier::CodeObjectManager::instance().getInstrumentedKernelKD(
         reinterpret_cast<const kernel_descriptor_t *>(dispatch_packet->kernel_object));

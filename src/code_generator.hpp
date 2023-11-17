@@ -28,6 +28,7 @@ class CodeGenerator {
 
     void instrument(Instr &instr, const void *dev_func,
                     luthier_ipoint_t point);
+    void modify(Instr &instr, void *my_addr);
 
  private:
     /**

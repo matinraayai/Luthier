@@ -37,26 +37,21 @@ void luthier_at_term();
 //// * For instance if cbid = cuMemcpyDtoH_v2 then params must be casted to
 //// * (cuMemcpyDtoH_v2_params *)
 //// * */
-void luthier_at_hip_event(void* args, luthier_api_phase_t phase, int hip_api_id);
+void luthier_at_hip_event(void *args, luthier_api_phase_t phase, int hip_api_id);
 
-
-void luthier_at_hsa_event(hsa_api_args_t* cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id);
+void luthier_at_hsa_event(hsa_api_args_t *cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id);
 
 /**
  * Returns the original HSA API table to avoid re-instrumentation of HSA functions.
  * @return saved HSA API Table
  */
-const HsaApiTable* luthier_get_hsa_table();
+const HsaApiTable *luthier_get_hsa_table();
 
-const hsa_ven_amd_loader_1_03_pfn_s* luthier_get_hsa_ven_amd_loader();
+const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader();
 
-
-void* luthier_get_hip_function(const char* funcName);
-
-
+void *luthier_get_hip_function(const char *funcName);
 
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object);
-
 
 // If the tool requires device code it needs to call this macro once
 // Managed variables force the HIP runtime to eagerly load Luthier modules statically so that Luthier can access it for
@@ -65,12 +60,12 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
 // part of the instrumented application
 #define MARK_LUTHIER_DEVICE_MODULE __managed__ char __luthier_reserved = 0;
 
-#define LUTHIER_DECLARE_FUNC  __device__ __noinline__ extern "C" void
+#define LUTHIER_DECLARE_FUNC __device__ __noinline__ extern "C" void
 
-#define LUTHIER_EXPORT_FUNC(f)               \
-    extern "C" __global__ void __luthier_wrap__##f() {  \
-        void (*pfun)() = (void (*)())f;    \
-        if (pfun == (void (*)())1) pfun(); \
+#define LUTHIER_EXPORT_FUNC(f)                         \
+    extern "C" __global__ void __luthier_wrap__##f() { \
+        void (*pfun)() = (void (*)()) f;               \
+        if (pfun == (void (*)()) 1) pfun();            \
     }
 
 // Luthier uses the pointer to the dummy global wrapper to each function as its unique identifier
@@ -160,7 +155,14 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
  * @param dev_func
  * @param point
  */
-void luthier_insert_call(luthier::Instr* instr, const void *dev_func, luthier_ipoint_t point);
+void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ipoint_t point);
+
+/**
+ *
+ * @param instr
+ * @param my_addr
+ */
+void luthier_insert_call(luthier::Instr *instr, void *my_addr);
 
 /////* Add int32_t argument to last injected call, value of the predicate for this
 //// * instruction */

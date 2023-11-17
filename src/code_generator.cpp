@@ -212,8 +212,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
 kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target, kernel_descriptor_t *instrumentation) {
 }
 
-void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
-                                        luthier_ipoint_t point) {
+void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
     LUTHIER_LOG_FUNCTION_CALL_START
     hsa_agent_t agent = instr.getAgent();
     hsa_executable_t instrExecutable = instr.getExecutable();
@@ -297,11 +296,24 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
                                            "s_waitcnt lgkmcnt(0)",
                                            "s_and_b32 s14, s14, 0xffff",
                                            "s_mul_i32 s8, s8, s14",
-                                           "v_add_u32_e32 v0, s8, v0",
-                                           "s_endpgm"},
+                                           "v_add_u32_e32 v1, s8, v0",
+                                           "v_mov_b32_e32 v0, 0",
+                                           "v_ashrrev_i64 v[0:1], 30, v[0:1]",
+                                       },
                                        agent);
     // co_manip::code_t myReLU = assemble("s_endpgm", agent);
+    constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
+    constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
+    uint64_t baseAddr = (uint64_t) my_addr;
+    uint32_t upperBaseAddr = (uint32_t) ((baseAddr & upperMaskUint64_t) >> 32);
+    uint32_t lowerBaseAddr = (uint32_t) (baseAddr & lowerMaskUint64_t);
 
+    fmt::println("s_add_u32 s14, 0, {:#x}", lowerBaseAddr);
+    fmt::println("s_add_u32 s15, 0, {:#x}", upperBaseAddr);
+
+    myReLU += assemble({fmt::format("s_add_u32 s14, 0, {:#x}", lowerBaseAddr)}, agent);
+    myReLU += assemble({fmt::format("s_add_u32 s15, 0, {:#x}", upperBaseAddr)}, agent);
+    myReLU += assemble(std::vector<std::string>{"v_mov_b32_e32 v3, s15", "v_add_co_u32_e32 v2, vcc, s14, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_store_dword v[2:3], v0, off", "s_endpgm"}, agent);
     elfio.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
     // std::cout << myReLU.size() << std::endl;
     // std::cout << elfio.sections[".text"]->get_size() << std::endl;
@@ -314,7 +326,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     std::ostringstream ss;
     elfio.save(ss);
     std::string elf = ss.str();
-    std::cout << elf << std::endl;
+    //std::cout << elf << std::endl;
 
     auto coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_code_object_reader_t reader;
