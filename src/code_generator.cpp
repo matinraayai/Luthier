@@ -250,6 +250,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
             auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
             fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
             AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 1);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
             co_manip::printRSR1(kd);
         }
     }
@@ -335,7 +336,8 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
                                            "v_ashrrev_i64 v[4:5], 30, v[4:5]",
                                        },
                                        agent);
-    int vCount = 4;// from note .vgpr_count
+
+        int vCount = 4;// from note .vgpr_count
     for (int i = 0; i < vCount; i++) {
         uint64_t offset = i * gridSize * 4;
         std::cout << "offset is " << offset << std::endl;
@@ -355,7 +357,21 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
         myReLU += assemble(std::vector<std::string>{"v_mov_b32_e32 v7, s15", "v_add_co_u32_e32 v6, vcc, s14, v4", "v_addc_co_u32_e32 v7, vcc, v7, v5, vcc"}, agent);
         myReLU += assemble({fmt::format("global_store_dword v[6:7], v{}, off", i)}, agent);
     }
-    myReLU += assemble("s_endpgm", agent);
+    myReLU += assemble("s_setpc_b64 s[16:17]", agent);
+
+    auto part1 = assemble(std::vector<std::string>{"s_load_dword s0, s[4:5], 0x4", "s_load_dword s2, s[6:7], 0x0", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, s8", "s_waitcnt lgkmcnt(0)", "s_and_b32 s0, s0, 0xffff", "v_mad_u64_u32 v[0:1], s[0:1], s0, v2, v[0:1]", "v_cmp_gt_i32_e32 vcc, s2, v0", "s_and_saveexec_b64 s[0:1], vcc", "s_cbranch_execz 20", "s_load_dwordx4 s[0:3], s[6:7], 0x8", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, v0", "v_ashrrev_i64 v[0:1], 30, v[1:2]", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v3, s1", "v_add_co_u32_e32 v2, vcc, s0, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_load_dword v2, v[2:3], off"}, agent);
+    auto part2 = assemble(std::vector<std::string>{"v_mov_b32_e32 v3, s3", "v_add_co_u32_e32 v0, vcc, s2, v0", "v_addc_co_u32_e32 v1, vcc, v3, v1, vcc", "s_waitcnt vmcnt(0)", "v_max_f32_e32 v2, v2, v2", "v_max_f32_e32 v2, 0, v2", "global_store_dword v[0:1], v2, off", "s_endpgm"}, agent);
+
+    //bring back original relu code part1
+    myReLU += part1;
+
+    //jump
+    int pcOff = 0x90 + 4 + 0x68 + 4;// 0x68 bytes for part1
+    fmt::println("s_sub_u32 s12, s12, {:#x}", pcOff);
+    myReLU += assemble(std::vector<std::string>{"s_getpc_b64 s[12:13]", fmt::format("s_sub_u32 s12, s12, {:#}", pcOff), "s_addc_u32 s13, s13, 0", "s_swappc_b64 s[16:17], s[12:13]"}, agent);
+
+    //bring back original relu code part2
+    myReLU += part2;
 
     elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
     // std::cout << myReLU.size() << std::endl;
