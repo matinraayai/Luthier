@@ -181,7 +181,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
                     //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
                 }
             }
-            // luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             // luthier::co_manip::printRSR2(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             // luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             const kernel_descriptor_t *kernelDescriptor{nullptr};
@@ -215,6 +215,7 @@ kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *ta
 void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
     LUTHIER_LOG_FUNCTION_CALL_START
     hsa_agent_t agent = instr.getAgent();
+    auto kd_ptr = const_cast<kernel_descriptor_t *>(instr.getKernelDescriptor());
     hsa_executable_t instrExecutable = instr.getExecutable();
     auto hco = co_manip::getHostLoadedCodeObjectOfExecutable(instrExecutable, agent);
     co_manip::code_t newCodeObject(hco[0]);
@@ -226,6 +227,39 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
     ELFIO::elfio elfio;
     elfio.load(newCOStream, false);
     std::cout << "Create a elfio object using codestream\n";
+
+    ELFIO::symbol_section_accessor symbols(elfio, elfio.sections[".symtab"]);
+    for (unsigned int i = 0; i < symbols.get_symbols_num(); i++) {
+        std::string name;
+        ELFIO::Elf64_Addr value;
+        size_t size;
+        unsigned char bind;
+        unsigned char type;
+        ELFIO::Elf_Half sec_index;
+        unsigned char other;
+
+        bool ret = symbols.get_symbol(++i, name, value, size, bind, type,
+                                      sec_index, other);
+        if (!ret) {
+            throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", i));
+        }
+        if (name.find("kd") != std::string::npos) {
+            auto kd = reinterpret_cast<kernel_descriptor_t *>(newCodeObject.data() + (size_t) value);
+            fmt::println("Symbol Info: {}, {}, {:#x}, {:#x}", name, size,
+                         reinterpret_cast<luthier_address_t>(kd), reinterpret_cast<luthier_address_t>(kd_ptr));
+            auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
+            fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 1);
+            co_manip::printRSR1(kd);
+        }
+    }
+    co_manip::codestream newCOStream_mkd(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).begin(),
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).end()));
+    ELFIO::elfio elfio_mkd;
+    elfio_mkd.load(newCOStream_mkd, false);
+    std::cout << "Create a elfio object using codestream after modifying kd\n";
 
     /*luthier_address_t kernelCodeStartAddr, func1StartAddr;
 
@@ -296,9 +330,9 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
                                            "s_waitcnt lgkmcnt(0)",
                                            "s_and_b32 s14, s14, 0xffff",
                                            "s_mul_i32 s8, s8, s14",
-                                           "v_add_u32_e32 v1, s8, v0",
-                                           "v_mov_b32_e32 v0, 0",
-                                           "v_ashrrev_i64 v[0:1], 30, v[0:1]",
+                                           "v_add_u32_e32 v5, s8, v0",
+                                           "v_mov_b32_e32 v4, 0",
+                                           "v_ashrrev_i64 v[4:5], 30, v[4:5]",
                                        },
                                        agent);
     // co_manip::code_t myReLU = assemble("s_endpgm", agent);
@@ -313,8 +347,8 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
 
     myReLU += assemble({fmt::format("s_add_u32 s14, 0, {:#x}", lowerBaseAddr)}, agent);
     myReLU += assemble({fmt::format("s_add_u32 s15, 0, {:#x}", upperBaseAddr)}, agent);
-    myReLU += assemble(std::vector<std::string>{"v_mov_b32_e32 v3, s15", "v_add_co_u32_e32 v2, vcc, s14, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_store_dword v[2:3], v0, off", "s_endpgm"}, agent);
-    elfio.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
+    myReLU += assemble(std::vector<std::string>{"v_mov_b32_e32 v7, s15", "v_add_co_u32_e32 v6, vcc, s14, v4", "v_addc_co_u32_e32 v7, vcc, v7, v5, vcc", "global_store_dword v[6:7], v4, off", "s_endpgm"}, agent);
+    elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
     // std::cout << myReLU.size() << std::endl;
     // std::cout << elfio.sections[".text"]->get_size() << std::endl;
 
@@ -324,7 +358,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
     // }
     // save the ELF and create an executable
     std::ostringstream ss;
-    elfio.save(ss);
+    elfio_mkd.save(ss);
     std::string elf = ss.str();
     //std::cout << elf << std::endl;
 
