@@ -161,8 +161,9 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
  *
  * @param instr
  * @param my_addr
+ * @param grid_size_x
  */
-void luthier_insert_call(luthier::Instr *instr, void *my_addr);
+void luthier_insert_call(luthier::Instr *instr, void *my_addr, uint32_t grid_size_x);
 
 /////* Add int32_t argument to last injected call, value of the predicate for this
 //// * instruction */

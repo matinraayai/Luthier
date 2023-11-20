@@ -287,8 +287,8 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
     luthier::CodeGenerator::instance().instrument(*instr, dev_func, point);
 }
 
-void luthier_insert_call(luthier::Instr *instr, void *my_addr) {
-    luthier::CodeGenerator::instance().modify(*instr, my_addr);
+void luthier_insert_call(luthier::Instr *instr, void *my_addr, uint32_t grid_size_x) {
+    luthier::CodeGenerator::instance().modify(*instr, my_addr, grid_size_x);
 }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {

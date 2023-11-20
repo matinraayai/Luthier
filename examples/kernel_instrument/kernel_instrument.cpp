@@ -213,9 +213,9 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                 if (!instrumented) {
                     std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
                     auto hipMallocFunc = reinterpret_cast<hipError_t (*)(void **, size_t)>(luthier_get_hip_function("hipMalloc"));
-                    (*hipMallocFunc)(&saved_register, 512);
+                    (*hipMallocFunc)(&saved_register, dispatchPacket->grid_size_x * 4 * 4);// second 4 is from note .vgpr_count
                     std::cout << "hip allocate address " << saved_register << " for me to save registers\n";
-                    luthier_insert_call(&instrVec[0], saved_register);
+                    luthier_insert_call(&instrVec[0], saved_register, dispatchPacket->grid_size_x);
                     instrumented = true;
                     luthier_override_with_instrumented(dispatchPacket);
                 }
@@ -267,12 +267,16 @@ void luthier_at_term() {
     //    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
     //        &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost
     //    );
-    int savedRegisterHost[128];
+    int savedRegisterHost[128 * 4];//save 4 vgpr v0-v3
     reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
-        savedRegisterHost, saved_register, 128 * 4, hipMemcpyDeviceToHost);
-    for (int i = 64; i < 128; i++) {
-        std::cout << "v0:wi " << i << " value " << savedRegisterHost[i] << std::endl;
+        savedRegisterHost, saved_register, 128 * 4 * 4, hipMemcpyDeviceToHost);
+    for (int vindex = 0; vindex < 4; vindex++) {
+        int offset = vindex * 128;
+        for (int i = 64; i < 128; i++) {
+            std::cout << "v" << vindex << ":wi " << i << " value " << savedRegisterHost[i + offset] << std::endl;
+        }
     }
+
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
     std::cout << "Counter Value: " << globalCounter << std::endl;
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;

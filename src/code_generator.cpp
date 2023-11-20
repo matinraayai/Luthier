@@ -212,7 +212,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
 kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target, kernel_descriptor_t *instrumentation) {
 }
 
-void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
+void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSize) {
     LUTHIER_LOG_FUNCTION_CALL_START
     hsa_agent_t agent = instr.getAgent();
     auto kd_ptr = const_cast<kernel_descriptor_t *>(instr.getKernelDescriptor());
@@ -295,8 +295,8 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
     // 2. Num of vgpr used NV = 4 available v4, v5, v6, v7 after set GRANULATED_WAVEFRONT_VGPR_COUNT as 1
     // 3. Num of sgpr used NS = 11 available s11, s12, s13, s14, s15
     // Use s12:13 to construct jump PC and s30:31 for return PC after set ENABLE_SGPR_FLAT_SCRATCH_INIT as 1
-    // Use v4 to store global thread id
-    // Three routines 1) get global thread id; 2) save all vgpr; 3) save all sgpr
+    // Use v4:5 to store global thread id offset
+    // Three routines 1) get global thread id X4 as offset for each thread from global addr; 2) save all vgpr; 3) save all sgpr
     // extra gpr requirement: v s
     //                     1) 0 1    s can be discard and v is permenant global idx
     //                     2) 3 3
@@ -335,19 +335,28 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr) {
                                            "v_ashrrev_i64 v[4:5], 30, v[4:5]",
                                        },
                                        agent);
-    // co_manip::code_t myReLU = assemble("s_endpgm", agent);
-    constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
-    constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
-    uint64_t baseAddr = (uint64_t) my_addr;
-    uint32_t upperBaseAddr = (uint32_t) ((baseAddr & upperMaskUint64_t) >> 32);
-    uint32_t lowerBaseAddr = (uint32_t) (baseAddr & lowerMaskUint64_t);
+    int vCount = 4;// from note .vgpr_count
+    for (int i = 0; i < vCount; i++) {
+        uint64_t offset = i * gridSize * 4;
+        std::cout << "offset is " << offset << std::endl;
 
-    fmt::println("s_add_u32 s14, 0, {:#x}", lowerBaseAddr);
-    fmt::println("s_add_u32 s15, 0, {:#x}", upperBaseAddr);
+        constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
+        constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
+        uint64_t baseAddr = (uint64_t) my_addr + offset;
+        uint32_t upperBaseAddr = (uint32_t) ((baseAddr & upperMaskUint64_t) >> 32);
+        uint32_t lowerBaseAddr = (uint32_t) (baseAddr & lowerMaskUint64_t);
 
-    myReLU += assemble({fmt::format("s_add_u32 s14, 0, {:#x}", lowerBaseAddr)}, agent);
-    myReLU += assemble({fmt::format("s_add_u32 s15, 0, {:#x}", upperBaseAddr)}, agent);
-    myReLU += assemble(std::vector<std::string>{"v_mov_b32_e32 v7, s15", "v_add_co_u32_e32 v6, vcc, s14, v4", "v_addc_co_u32_e32 v7, vcc, v7, v5, vcc", "global_store_dword v[6:7], v4, off", "s_endpgm"}, agent);
+        fmt::println("s_add_u32 s14, 0, {:#x}", lowerBaseAddr);
+        fmt::println("s_add_u32 s15, 0, {:#x}", upperBaseAddr);
+        fmt::println("global_store_dword v[6:7], v{}, off", i);
+
+        myReLU += assemble({fmt::format("s_add_u32 s14, 0, {:#x}", lowerBaseAddr)}, agent);
+        myReLU += assemble({fmt::format("s_add_u32 s15, 0, {:#x}", upperBaseAddr)}, agent);
+        myReLU += assemble(std::vector<std::string>{"v_mov_b32_e32 v7, s15", "v_add_co_u32_e32 v6, vcc, s14, v4", "v_addc_co_u32_e32 v7, vcc, v7, v5, vcc"}, agent);
+        myReLU += assemble({fmt::format("global_store_dword v[6:7], v{}, off", i)}, agent);
+    }
+    myReLU += assemble("s_endpgm", agent);
+
     elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
     // std::cout << myReLU.size() << std::endl;
     // std::cout << elfio.sections[".text"]->get_size() << std::endl;
