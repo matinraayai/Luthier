@@ -30,7 +30,7 @@
 #define AGENT_HSA_META_ACCESSOR(metaName, metaReturnType, hsaInfoType) \
     metaReturnType getAgent##metaName##fromHsa() { \
         if (!hsaMetaDataMap_.contains((hsa_agent_info_t) hsaInfoType)) {                  \
-            const auto &coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core; \
+            const auto &coreApi = luthier::HsaInterceptor::instance().getSavedHsaTables().core; \
             metaReturnType out;                                        \
             LUTHIER_HSA_CHECK(coreApi.hsa_agent_get_info_fn(agent_, (hsa_agent_info_t) hsaInfoType, &out)); \
             hsaMetaDataMap_.insert({(hsa_agent_info_t) hsaInfoType, out});\
