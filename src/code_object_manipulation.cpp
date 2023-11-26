@@ -686,10 +686,7 @@ ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
     // Load elfio from code_t
     ELFIO::elfio elfIo;
 
-    luthier::co_manip::codestream relocElfStream(
-        boost_ios::stream<boost_ios::basic_array_source<char>>(
-        std::string_view(reinterpret_cast<const char *>(relocElf.data()), relocElf.size()).begin(),
-        std::string_view(reinterpret_cast<const char *>(relocElf.data()), relocElf.size()).end()));
+    luthier::co_manip::code_char_stream_t relocElfStream = makeCodeCharStream(relocElf);
 
     elfIo.load(relocElfStream, false);
     elfIo.set_os_abi(elfIoIn.get_os_abi());
