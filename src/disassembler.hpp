@@ -13,7 +13,7 @@ namespace luthier {
 
 /**
  * \brief a singleton class in charge of disassembling device instructions and returning them as an std::vector of \class Instr
- * It uses the AMD COMGR library internally
+ * Uses the AMD COMGR library internally
  */
 class Disassembler {
  public:
@@ -33,6 +33,7 @@ class Disassembler {
      * @return
      */
     std::vector<Instr> disassemble(hsa_executable_symbol_t symbol);
+
 
     std::vector<Instr> disassemble(luthier_address_t kernelObject);
 

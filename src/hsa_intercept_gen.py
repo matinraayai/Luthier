@@ -323,7 +323,7 @@ class ApiDescrParser:
 
         self.cpp_content += '#include <hsa/hsa_api_trace.h>\n'
         self.cpp_content += '#include "hsa_intercept.hpp"\n'
-        self.cpp_content += '#include "luthier_types.h"\n'
+        self.cpp_content += '#include "luthier_types.hpp"\n'
 
         self.cpp_content += self.add_section('API callback functions', '', self.gen_callbacks)
         self.cpp_content += self.add_section('API intercepting code', '', self.gen_intercept)
@@ -360,27 +360,36 @@ class ApiDescrParser:
             call_id = self.api_id[call]
             ret_type = struct['ret']
             content += f'static {ret_type} {call}_callback({struct["args"]}) {{\n'
-
-            content += "      hsa_api_args_t args;\n"
+            content += "\tauto& hsaInterceptor = luthier::HsaInterceptor::instance();\n" + \
+                       "\tauto& hsaUserCallback = hsaInterceptor.getUserCallback();\n" + \
+                       "\tauto& hsaInternalCallback = hsaInterceptor.getInternalCallback();\n" + \
+                       f"\tauto apiId = HSA_API_ID_{call};\n" + \
+                       "\tbool skipFunction{false};\n"
+            content += "\thsa_api_args_t args;\n"
             for var in struct['alst']:
                 item = struct['astr'][var]
-                content += f'      args.{call}.{var} = {var};\n'
+                content += f'\targs.{call}.{var} = {var};\n'
 
-            content += f'      luthier::HsaInterceptor::instance().GetCallback()(&args, LUTHIER_API_PHASE_ENTER, '\
+            content += f'\thsaUserCallback(&args, LUTHIER_API_PHASE_ENTER, '\
                        f'HSA_API_ID_{call});\n'
+            content += f'\thsaInternalCallback(&args, LUTHIER_API_PHASE_ENTER, ' \
+                       f'HSA_API_ID_{call}, &skipFunction);\n'
 
             if ret_type != 'void':
-                content += f'      {ret_type} out = '
-            content += f'luthier::HsaInterceptor::instance().getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
+                content += f'\t{ret_type} out{{}};\n'
+            content += "\tif (!skipFunction) {\n"
+            content += f'\t\thsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
             for i, var in enumerate(struct['alst']):
                 content += f'args.{call}.{var}'
                 if i != len(struct['alst']) - 1:
                     content += ", "
-            content += ');\n'
+            content += ');\n\t}'
             content += '\n'
 
-            content += f'      luthier::HsaInterceptor::instance().GetCallback()(&args, LUTHIER_API_PHASE_EXIT, ' \
+            content += f'      hsaUserCallback(&args, LUTHIER_API_PHASE_EXIT, ' \
                        f'HSA_API_ID_{call});\n'
+            content += f'      hsaInternalCallback(&args, LUTHIER_API_PHASE_EXIT, ' \
+                       f'HSA_API_ID_{call}, &skipFunction);\n'
             for var in struct['alst']:
                 content += f'      {var} = args.{call}.{var};\n'
 

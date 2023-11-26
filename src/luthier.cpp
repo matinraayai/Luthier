@@ -9,7 +9,6 @@
 #include "log.hpp"
 #include "luthier_types.hpp"
 #include <optional>
-#include <roctracer/roctracer.h>
 
 namespace luthier::impl {
 
@@ -245,8 +244,11 @@ void hipApiUserCallback(void *cb_data, luthier_api_phase_t phase, int api_id) {
     ::luthier_at_hip_event(cb_data, phase, api_id);
 }
 
-void hsaApiCallback(hsa_api_args_t *cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id) {
+void hsaApiUserCallback(hsa_api_args_t *cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id) {
     ::luthier_at_hsa_event(cb_data, phase, api_id);
+}
+
+void hsaApiInternalCallback(hsa_api_args_t *cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id, bool* skipFunction) {
 }
 
 __attribute__((constructor)) void init() {
@@ -255,7 +257,8 @@ __attribute__((constructor)) void init() {
     luthier_at_init();
     HipInterceptor::Instance().SetInternalCallback(luthier::impl::hipApiInternalCallback);
     HipInterceptor::Instance().SetUserCallback(luthier::impl::hipApiUserCallback);
-    HsaInterceptor::Instance().SetCallback(luthier::impl::hsaApiCallback);
+    HsaInterceptor::instance().setInternalCallback(luthier::impl::hsaApiInternalCallback);
+    HsaInterceptor::instance().setUserCallback(luthier::impl::hsaApiUserCallback);
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
@@ -268,11 +271,11 @@ __attribute__((destructor)) void finalize() {
 }// namespace luthier::impl
 
 const HsaApiTable *luthier_get_hsa_table() {
-    return &luthier::HsaInterceptor::Instance().getSavedHsaTables().root;
+    return &luthier::HsaInterceptor::instance().getSavedHsaTables().root;
 }
 
 const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader() {
-    return &luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    return &luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
 }
 
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object) {
@@ -296,13 +299,13 @@ void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_p
 
 extern "C" {
 
-ROCTRACER_EXPORT extern const uint32_t HSA_AMD_TOOL_PRIORITY = 49;
+__attribute__((visibility("default"))) extern const uint32_t HSA_AMD_TOOL_PRIORITY = 49;
 
-ROCTRACER_EXPORT bool OnLoad(HsaApiTable *table, uint64_t runtime_version,
+__attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t runtime_version,
                              uint64_t failed_tool_count, const char *const *failed_tool_names) {
     [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
-    return luthier::HsaInterceptor::Instance().captureHsaApiTable(table);
+    return luthier::HsaInterceptor::instance().captureHsaApiTable(table);
 }
 
-ROCTRACER_EXPORT void OnUnload() {}
+__attribute__((visibility("default"))) void OnUnload() {}
 }

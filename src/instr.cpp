@@ -49,7 +49,7 @@ std::ostream& operator<<(std::ostream& os, const luthier::Operand& op) {
 luthier_address_t luthier::Instr::getHostAddress() const {
     //    if (kd_ != nullptr && hostAddress_ == luthier_address_t{}) {
     //        LUTHIER_HSA_CHECK(
-    //            LuthierHsaInterceptor::Instance().getHsaVenAmdLoaderTable().
+    //            LuthierHsaInterceptor::instance().getHsaVenAmdLoaderTable().
     //            hsa_ven_amd_loader_query_host_address(
     //                reinterpret_cast<const void*>(deviceAddress_),
     //                reinterpret_cast<const void**>(&hostAddress_)
@@ -64,7 +64,7 @@ hsa_executable_t luthier::Instr::getExecutable() {
 const kernel_descriptor_t *luthier::Instr::getKernelDescriptor() {
     const kernel_descriptor_t *kernelDescriptor{nullptr};
 
-    auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+    auto coreApi = HsaInterceptor::instance().getSavedHsaTables().core;
     LUTHIER_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(executableSymbol_,
                                                                 HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
                                                                 reinterpret_cast<luthier_address_t*>(&kernelDescriptor)));
@@ -79,7 +79,7 @@ luthier::Instr::Instr(std::string instStr, hsa_agent_t agent,
                                           instStr_(std::move(instStr)), size_(instrSize),
                                           agent_(agent),
                                           executableSymbol_(symbol) {
-    HsaInterceptor::Instance().getHsaVenAmdLoaderTable().hsa_ven_amd_loader_query_host_address(
+    HsaInterceptor::instance().getHsaVenAmdLoaderTable().hsa_ven_amd_loader_query_host_address(
         reinterpret_cast<const void*>(DeviceAccessibleInstrAddress),
         reinterpret_cast<const void**>(&hostAddress_)
     );
