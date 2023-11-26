@@ -336,7 +336,7 @@ std::string getDemangledName(const std::string &mangledName) {
 
 std::vector<luthier::co_manip::code_view_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable,
                                                                                   hsa_agent_t agent) {
-    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    auto amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
     auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void *data) -> hsa_status_t {
@@ -374,7 +374,7 @@ std::vector<luthier::co_manip::code_view_t> getDeviceLoadedCodeObjectOfExecutabl
 }
 
 std::vector<co_manip::code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent) {
-    auto amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    auto amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
     auto iterator = [](hsa_executable_t e, hsa_loaded_code_object_t lco, void *data) -> hsa_status_t {
@@ -397,14 +397,28 @@ std::vector<co_manip::code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_execu
                                                                                   &coAgent));
         if (coAgent.handle == agent.handle) {
             uint64_t lcoBaseAddr;
-            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
                                                                     HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
                                                                     &lcoBaseAddr);
             // Query the size of the loaded code object
             uint64_t lcoSize;
-            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
                                                                     HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
                                                                     &lcoSize);
+            int64_t lcoDelta;
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(lco,
+                                                                    HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_DELTA,
+                                                                    &lcoDelta);
+
+            uint64_t lcoBaseAddrDevice;
+            amdTable.hsa_ven_amd_loader_loaded_code_object_get_info(loadedCodeObjects[0],
+                                                                    HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
+                                                                    &lcoBaseAddrDevice);
+
+            fmt::println("Code object Delta: {:#x}", lcoDelta);
+            fmt::println("Base storage: {:#x}", lcoBaseAddr);
+            fmt::println("Base Device: {:#x}", lcoBaseAddrDevice);
+
             out.emplace_back(reinterpret_cast<std::byte *>(lcoBaseAddr), lcoSize);
             //            out.push_back({reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)});
         }

@@ -41,7 +41,7 @@ namespace boost_ios = boost::iostreams;
 namespace luthier::co_manip {
 
 /**
- * \brief a non-owning view of memory portion that contains device code
+ * \brief a non-owning view of memory portion that contains AMDGPU code object bytes
  * Can be passed by value or reference and can be returned. Is trivially copyable.
  */
 typedef std::basic_string_view<std::byte> code_view_t;
@@ -52,6 +52,14 @@ typedef std::basic_string_view<std::byte> code_view_t;
  */
 typedef std::basic_string<std::byte> code_t;
 
+
+inline std::string convertToString(const code_t& code) {
+    return {reinterpret_cast<const char*>(code.data()), code.size()};
+}
+
+inline std::string_view convertToStringView(code_view_t code) {
+    return {reinterpret_cast<const char*>(code.data()), code.size()};
+}
 
 
 /**
@@ -77,7 +85,6 @@ class ElfViewImpl : public std::enable_shared_from_this<ElfViewImpl> {
     static std::shared_ptr<ElfViewImpl> makeView(const code_t &elf) {
         return std::shared_ptr<ElfViewImpl>(new ElfViewImpl(code_view_t(elf)));
     }
-
     const ELFIO::elfio &getElfIo() const {
         if (io_ == std::nullopt) {
             io_.emplace();
