@@ -5,7 +5,7 @@
 
 
 luthier::Operand::Operand(std::string op_str, OperandType type, int code,
-        float floatValue, long int intValue, uint32_t literalConstant) {
+                          float floatValue, long int intValue, uint32_t literalConstant) {
     operand         = std::move(op_str);
     operandType     = type;
     operandCode     = code;
@@ -46,16 +46,16 @@ std::ostream& operator<<(std::ostream& os, const luthier::Operand& op) {
     return os;
 }
 
-luthier_address_t luthier::Instr::getHostAddress() {
-//    if (kd_ != nullptr && hostAddress_ == luthier_address_t{}) {
-//        LUTHIER_HSA_CHECK(
-//            LuthierHsaInterceptor::Instance().getHsaVenAmdLoaderTable().
-//            hsa_ven_amd_loader_query_host_address(
-//                reinterpret_cast<const void*>(deviceAddress_),
-//                reinterpret_cast<const void**>(&hostAddress_)
-//            )
-//        );
-//    }
+luthier_address_t luthier::Instr::getHostAddress() const {
+    //    if (kd_ != nullptr && hostAddress_ == luthier_address_t{}) {
+    //        LUTHIER_HSA_CHECK(
+    //            LuthierHsaInterceptor::instance().getHsaVenAmdLoaderTable().
+    //            hsa_ven_amd_loader_query_host_address(
+    //                reinterpret_cast<const void*>(deviceAddress_),
+    //                reinterpret_cast<const void**>(&hostAddress_)
+    //            )
+    //        );
+    //    }
     return hostAddress_;
 }
 hsa_executable_t luthier::Instr::getExecutable() {
@@ -64,25 +64,25 @@ hsa_executable_t luthier::Instr::getExecutable() {
 const kernel_descriptor_t *luthier::Instr::getKernelDescriptor() {
     const kernel_descriptor_t *kernelDescriptor{nullptr};
 
-    auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+    auto coreApi = HsaInterceptor::instance().getSavedHsaTables().core;
     LUTHIER_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(executableSymbol_,
-                                                              HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
-                                                              reinterpret_cast<luthier_address_t*>(&kernelDescriptor)));
+                                                                HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
+                                                                reinterpret_cast<luthier_address_t*>(&kernelDescriptor)));
     return kernelDescriptor;
 }
 
 luthier::Instr::Instr(std::string instStr, hsa_agent_t agent,
-                    hsa_executable_t executable,
-                    hsa_executable_symbol_t symbol,
-                    luthier_address_t DeviceAccessibleInstrAddress,
-                    size_t instrSize): executable_(executable), deviceAddress_(DeviceAccessibleInstrAddress),
-                                       instStr_(std::move(instStr)), size_(instrSize),
-                                       agent_(agent),
-                                       executableSymbol_(symbol) {
-    HsaInterceptor::Instance().getHsaVenAmdLoaderTable().hsa_ven_amd_loader_query_host_address(
-                                                reinterpret_cast<const void*>(DeviceAccessibleInstrAddress),
-                                                reinterpret_cast<const void**>(&hostAddress_)
-                                                );
+                      hsa_executable_t executable,
+                      hsa_executable_symbol_t symbol,
+                      luthier_address_t DeviceAccessibleInstrAddress,
+                      size_t instrSize): executable_(executable), deviceAddress_(DeviceAccessibleInstrAddress),
+                                          instStr_(std::move(instStr)), size_(instrSize),
+                                          agent_(agent),
+                                          executableSymbol_(symbol) {
+    HsaInterceptor::instance().getHsaVenAmdLoaderTable().hsa_ven_amd_loader_query_host_address(
+        reinterpret_cast<const void*>(DeviceAccessibleInstrAddress),
+        reinterpret_cast<const void**>(&hostAddress_)
+    );
     GetOperandsFromString();
 };
 
@@ -165,7 +165,7 @@ luthier::Operand luthier::Instr::EncodeOperand(std::string op) {
         return {opstr, Operand::RegOperand, code, -1, -1, 0};
     }
 
-    // Inline Constants     
+    // Inline Constants
     // This probably doesn't count as an inline constant. The ISA literally says NOTHING about this operand
     // It also ONLY appears with Flat, Scratch, and Global instructions to tell you that the instruction is
     // using an offset
@@ -179,7 +179,7 @@ luthier::Operand luthier::Instr::EncodeOperand(std::string op) {
         op.erase(0, 2);
         code = -1;
         return {opstr, Operand::ImmOperand, code, -1, stoi(op, nullptr, 16), 0};
-    } 
+    }
     // Imm in Decimal
     else {
         code = -1;
@@ -223,7 +223,7 @@ std::vector<luthier::Operand> luthier::Instr::getRegOperands() {
 // Edit operand instructions - implement later, as needed
 // bool luthier::Instr::changeRegNum(int reg_op_num, int new_reg_code){
 //     luthier::operand op = operands.at(reg_op_num);
-    
+
 //     if (op.type != RegOperand || op.type != SpecialRegOperand){
 //         return false;
 //     }
@@ -232,7 +232,7 @@ std::vector<luthier::Operand> luthier::Instr::getRegOperands() {
 
 //     // If we want to change the operand string:
 //     // if (new_reg_code < 102) {
-        
+
 //     // }
 //     operands.at(reg_op_num) = op;
 //     return true;
@@ -240,7 +240,7 @@ std::vector<luthier::Operand> luthier::Instr::getRegOperands() {
 
 // bool luthier::Instr::changeImmVal(int imm_op_num, int new_imm_val) {
 //     luthier::operand op = operands.at(reg_op_num);
-    
+
 //     if (op.type != ImmOperand){
 //         return false;
 //     }

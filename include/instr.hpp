@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+// TODO: Make Instruction an opaque object
+// TODO: Make Instr's constructor protected. Make Disassembler a friend of the Instr class
 /////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
 ////class Instr {
 //// public:
@@ -239,12 +241,12 @@ class Instr {
     Instr(std::string instStr, hsa_agent_t agent, hsa_executable_t executable,
           hsa_executable_symbol_t symbol, luthier_address_t deviceAccessibleInstrAddress,
           luthier_address_t hostAccessibleInstrAddress, size_t instrSize) : executable_(executable),
-                                                                          hostAddress_(hostAccessibleInstrAddress),
-                                                                          deviceAddress_(deviceAccessibleInstrAddress),
-                                                                          instStr_(std::move(instStr)),
-                                                                          size_(instrSize),
-                                                                          agent_(agent),
-                                                                          executableSymbol_(symbol){};
+                                                                            hostAddress_(hostAccessibleInstrAddress),
+                                                                            deviceAddress_(deviceAccessibleInstrAddress),
+                                                                            instStr_(std::move(instStr)),
+                                                                            size_(instrSize),
+                                                                            agent_(agent),
+                                                                            executableSymbol_(symbol){};
 
     /**
      *
@@ -291,7 +293,7 @@ class Instr {
 
     const kernel_descriptor_t *getKernelDescriptor();
 
-    luthier_address_t getHostAddress();
+    luthier_address_t getHostAddress() const;
 
     [[nodiscard]] hsa_executable_t getExecutable();
 

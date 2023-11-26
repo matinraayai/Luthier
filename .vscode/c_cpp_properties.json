@@ -1,14 +1,22 @@
 {
     "configurations": [
         {
-            "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**"
+                "/opt/rocm/include",
+                "/opt/rocm/llvm/include",
+                "${workspaceRoot}/include",
+                "${workspaceRoot}/ext/fmt/include",
+                "${workspaceRoot}/ext/elfio",
+                "${workspaceRoot}/ext/boost",
+                "${workspaceRoot}/ext/boost/libs/utility/include",
+                "${workspaceRoot}/ext/boost/libs/detail/include"
             ],
-            "defines": [],
-            "compilerPath": "/usr/bin/clang",
-            "intelliSenseMode": "linux-clang-x64",
-            "configurationProvider": "ms-vscode.cmake-tools"
+            "defines": ["AMD_INTERNAL_BUILD", "FMT_HEADER_ONLY",
+                        "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1",
+                        "LUTHIER_LOG_ENABLE_DEBUG", "_GLIBCXX_DEBUG"],
+            "cppStandard": "c++20",
+            "name": "Linux",
+            "compileCommands": "${workspaceRoot}/.vscode/compile_commands.json"
         }
     ],
     "version": 4

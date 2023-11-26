@@ -63,7 +63,7 @@ amd_comgr_status_t iterateComgrMetaDataCallback(amd_comgr_metadata_node_t keyMet
 
 
 hsa_status_t luthier::ContextManager::initGpuAgentsMap() {
-    auto& coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
+    auto& coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
 
     auto returnGpuAgentsCallback = [](hsa_agent_t agent, void* data) {
         auto agentMap = reinterpret_cast<agent_meta_map_t*>(data);
@@ -111,12 +111,12 @@ std::string luthier::ContextManager::getDemangledName(const char *mangledName) {
 }
 
 luthier::AgentMetaData::AgentMetaData(hsa_agent_t agent) : agent_(agent) {
-        const auto& coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+        const auto& coreApi = HsaInterceptor::instance().getSavedHsaTables().core;
         // Get the Isa name of the agent
         std::vector<std::string> supportedAgentIsaNames;
         auto getIsaNameCallback = [](hsa_isa_t isa, void* data) {
             auto out = reinterpret_cast<std::vector<std::string>*>(data);
-            auto coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+            auto coreApi = HsaInterceptor::instance().getSavedHsaTables().core;
             uint32_t isaNameSize;
             LUTHIER_HSA_CHECK(coreApi.hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaNameSize));
             std::string isaName;

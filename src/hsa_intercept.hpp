@@ -13,11 +13,13 @@
 namespace luthier {
 class HsaInterceptor {
  private:
+    HsaApiTable* internalHsaApiTable_;
     HsaApiTableContainer savedTables_;
     HsaApiTableContainer interceptTables_;
     hsa_ven_amd_loader_1_03_pfn_s amdTable_;
 
-    std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> callback_;
+    std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> userCallback_{};
+    std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t, bool*)> internalCallback_{};
 
     void installCoreApiWrappers(CoreApiTable *table);
 
@@ -44,11 +46,24 @@ class HsaInterceptor {
         return amdTable_;
     }
 
-    void SetCallback(const std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> &callback) {
-        callback_ = callback;
+    void setUserCallback(const std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> &callback) {
+        userCallback_ = callback;
+    }
+
+    void setInternalCallback(const std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t, bool*)> &callback) {
+        internalCallback_ = callback;
+    }
+
+    [[nodiscard]] const inline std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> &getUserCallback() const {
+        return userCallback_;
+    }
+
+    [[nodiscard]] const inline std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t, bool*)> &getInternalCallback() const {
+        return internalCallback_;
     }
 
     bool captureHsaApiTable(HsaApiTable *table) {
+        internalHsaApiTable_ = table;
         installCoreApiWrappers(table->core_);
         installAmdExtWrappers(table->amd_ext_);
         installImageExtWrappers(table->image_ext_);
@@ -58,14 +73,12 @@ class HsaInterceptor {
         return true;
     }
 
-    static inline HsaInterceptor &Instance() {
+    static inline HsaInterceptor &instance() {
         static HsaInterceptor instance;
         return instance;
     }
 
-    [[nodiscard]] const inline std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> &GetCallback() const {
-        return callback_;
-    }
+
 };
 }
 

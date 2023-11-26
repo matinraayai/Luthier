@@ -12,6 +12,11 @@
 
 typedef uint64_t luthier_address_t;
 
+
+constexpr const char* LUTHIER_DEVICE_FUNCTION_WRAP = "__luthier_wrap__";
+
+constexpr const char* LUTHIER_RESERVED_MANAGED_VAR = "__luthier_reserved";
+
 enum luthier_api_phase_t {
     LUTHIER_API_PHASE_ENTER,
     LUTHIER_API_PHASE_EXIT
@@ -21,17 +26,6 @@ enum luthier_ipoint_t {
     LUTHIER_IPOINT_BEFORE,
     LUTHIER_IPOINT_AFTER
 };
-
-//struct kernel_descriptor_t {
-//    uint8_t reserved0[16];
-//    int64_t kernel_code_entry_byte_offset;
-//    uint8_t reserved1[20];
-//    uint32_t compute_pgm_rsrc3;
-//    amd_compute_pgm_rsrc_one32_t compute_pgm_rsrc1;
-//    amd_compute_pgm_rsrc_two32_t compute_pgm_rsrc2;
-//    uint16_t kernel_code_properties;
-//    uint8_t reserved2[6];
-//};
 
 struct kernel_descriptor_t {
     uint32_t group_segment_fixed_size;
