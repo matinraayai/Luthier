@@ -12,7 +12,7 @@
 #include <hsa/hsa_ext_amd.h>
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
-    const auto &coreHsaApiTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
+    const auto &coreHsaApiTable = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
     uint32_t nameSize;
     LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
     std::string name;
@@ -131,7 +131,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
         auto originalSymbol = reinterpret_cast<hsa_executable_symbol_t *>(data);
         auto originalSymbolName = getSymbolName(*originalSymbol);
 
-        auto &coreTable = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
+        auto &coreTable = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
         hsa_symbol_kind_t symbolKind;
         LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
@@ -169,7 +169,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
             luthier::co_manip::printRSR2(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             const kernel_descriptor_t *kernelDescriptor{nullptr};
-            const auto &amdTable = luthier::HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+            const auto &amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
             LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
                                                                              reinterpret_cast<const void **>(&kernelDescriptor)));
             auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
@@ -205,7 +205,6 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     kernel_descriptor_t *instrumentationFuncKD = codeObjectManager.getKernelDescriptorOfInstrumentationFunction(device_func, agent);
     hsa_executable_t targetExecutable = instr.getExecutable();
 
-    //    auto coreApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().core;
     hsa_executable_symbol_t symbol = instr.getSymbol();
     std::string symbolName = getSymbolName(symbol);
 
@@ -384,7 +383,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
 //
 //        std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
 //
-//        const auto& amdExtApi = luthier::HsaInterceptor::Instance().getSavedHsaTables().amd_ext;
+//        const auto& amdExtApi = luthier::HsaInterceptor::instance()().getSavedHsaTables().amd_ext;
 //        hsa_amd_pointer_info_t instrPtrInfo;
 //        luthier_address_t address = instr.getDeviceAddress();
 //        fmt::println("Address to query: {:#x}", address);
