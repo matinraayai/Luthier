@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+// TODO: Make Instruction an opaque object
+// TODO: Make Instr's constructor protected. Make Disassembler a friend of the Instr class
 /////* Instruction class returned by the NVBit inspection API nvbit_get_instrs */
 ////class Instr {
 //// public:
