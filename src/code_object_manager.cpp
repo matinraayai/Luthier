@@ -43,12 +43,12 @@ namespace {
 }// namespace
 
 void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
-    const auto &loaderApi = HsaInterceptor::Instance().getHsaVenAmdLoaderTable();
+    const auto &loaderApi = HsaInterceptor::instance().getHsaVenAmdLoaderTable();
     auto findLuthierExecutable = [](hsa_executable_t exec, void *data) {
-        const auto &coreApi = HsaInterceptor::Instance().getSavedHsaTables().core;
+        const auto &coreApi = HsaInterceptor::instance().getSavedHsaTables().core;
         std::vector<hsa_agent_t> agents = ContextManager::Instance().getHsaAgents();
         auto symbolIterator = [](hsa_executable_t exec, hsa_agent_t agent, hsa_executable_symbol_t symbol, void *data) {
-            const auto &coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
+            const auto &coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
             hsa_symbol_kind_t symbolKind;
             LUTHIER_HSA_CHECK(coreTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &symbolKind));
 
