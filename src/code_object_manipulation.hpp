@@ -162,7 +162,7 @@ class ElfViewImpl : public std::enable_shared_from_this<ElfViewImpl> {
     mutable std::optional<amd_comgr_metadata_node_t> kernelsMetadata_{std::nullopt};
     mutable std::optional<std::unordered_map<std::string, amd_comgr_metadata_node_t>> kernelMetadataMap_{std::nullopt};
     const code_view_t data_;
-    const std::unique_ptr<boost_ios::stream<boost_ios::basic_array_source<char>>> dataStringStream_;//! Used to construct the elfio object;
+    const std::unique_ptr<code_char_stream_t> dataStringStream_;//! Used to construct the elfio object;
                                                                                                     //! Without keeping a reference to this stream,
                                                                                                     //! we cannot use the elfio in lazy mode
 };

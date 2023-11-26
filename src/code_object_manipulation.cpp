@@ -730,7 +730,7 @@ ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
 
 ElfViewImpl::ElfViewImpl(code_view_t elf) : data_(elf),
                                             // Convert the code_view_t to a string_view first, and then take its iterators to construct the dataStringStream_
-                                            dataStringStream_(std::make_unique<boost_ios::stream<boost_ios::basic_array_source<char>>>(
+                                            dataStringStream_(std::make_unique<code_char_stream_t>(
                                                 std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).begin(),
                                                 std::string_view(reinterpret_cast<const char *>(data_.data()), data_.size()).end())) {
 }
