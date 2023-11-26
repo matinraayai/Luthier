@@ -52,6 +52,35 @@ typedef std::basic_string_view<std::byte> code_view_t;
  */
 typedef std::basic_string<std::byte> code_t;
 
+/**
+ * \brief input/output char stream for code_t and code_view_t
+ */
+typedef boost_ios::stream<boost_ios::basic_array_source<char>> code_char_stream_t;
+
+
+/**
+ * \brief input/output byte stream for code_t and code_view_t
+ */
+typedef boost_ios::stream<boost_ios::basic_array_source<std::byte>> code_byte_stream_t;
+
+
+code_char_stream_t makeCodeCharStream(const code_t& code) {
+    std::string_view view(reinterpret_cast<const char *>(code.data()), code.size());
+    return {view.begin(), view.end()};
+}
+code_char_stream_t makeCodeCharStream(const code_view_t code) {
+    std::string_view view(reinterpret_cast<const char *>(code.data()), code.size());
+    return {view.begin(), view.end()};
+}
+
+code_byte_stream_t makeCodeByteStream(const code_t& code) {
+    std::basic_string_view<std::byte> view(code.data(), code.size());
+    return {view.begin(), view.end()};
+}
+code_byte_stream_t makeCodeByteStream(const code_view_t code) {
+    return {code.begin(), code.end()};
+}
+
 
 inline std::string convertToString(const code_t& code) {
     return {reinterpret_cast<const char*>(code.data()), code.size()};
@@ -133,7 +162,7 @@ class ElfViewImpl : public std::enable_shared_from_this<ElfViewImpl> {
     mutable std::optional<amd_comgr_metadata_node_t> kernelsMetadata_{std::nullopt};
     mutable std::optional<std::unordered_map<std::string, amd_comgr_metadata_node_t>> kernelMetadataMap_{std::nullopt};
     const code_view_t data_;
-    const std::unique_ptr<boost_ios::stream<boost_ios::basic_array_source<char>>> dataStringStream_;//! Used to construct the elfio object;
+    const std::unique_ptr<code_char_stream_t> dataStringStream_;//! Used to construct the elfio object;
                                                                                                     //! Without keeping a reference to this stream,
                                                                                                     //! we cannot use the elfio in lazy mode
 };
