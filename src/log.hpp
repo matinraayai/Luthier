@@ -8,7 +8,7 @@
 
 #ifdef LUTHIER_LOG_ENABLE_INFO
 
-#define LUTHIER_LOG_FUNCTION_CALL_START fmt::print(stdout, fmt::emphasis::underline | fg(fmt::color::burly_wood), "<< Luthier function call to {} >>\n", __PRETTY_FUNCTION__);
+#define LUTHIER_LOG_FUNCTION_CALL_START fmt::print(stdout, fmt::emphasis::underline | fg(fmt::color::burly_wood), "<< Function call to {} >>\n", __PRETTY_FUNCTION__);
 #define LUTHIER_LOG_FUNCTION_CALL_END fmt::print(stdout, fmt::emphasis::underline | fg(fmt::color::burly_wood), "<< Return from function {}>>\n", __PRETTY_FUNCTION__);
 
 #else
