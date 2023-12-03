@@ -212,7 +212,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
 kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target, kernel_descriptor_t *instrumentation) {
 }
 
-void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSize) {
+void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privateSegmentFixedSize) {
     LUTHIER_LOG_FUNCTION_CALL_START
     hsa_agent_t agent = instr.getAgent();
     auto kd_ptr = const_cast<kernel_descriptor_t *>(instr.getKernelDescriptor());
@@ -249,9 +249,9 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
                          reinterpret_cast<luthier_address_t>(kd), reinterpret_cast<luthier_address_t>(kd_ptr));
             // auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
             // fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
-            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 1);
-            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
-            co_manip::printRSR1(kd);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 5);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
+            // co_manip::printRSR1(kd);
         }
     }
     co_manip::codestream newCOStream_mkd(
@@ -297,7 +297,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
     // 3. Num of sgpr used NS = 11 available s11, s12, s13, s14, s15
     // Use s12:13 to construct jump PC and s30:31 for return PC after set ENABLE_SGPR_FLAT_SCRATCH_INIT as 1
     // Use v4:5 to store global thread id offset
-    // Three routines 1) get global thread id X4 as offset for each thread from global addr; 2) save all vgpr; 3) save all sgpr
+    // Three routines 1) get global thread id x4 as offset for each thread from global addr; 2) save all vgpr; 3) save all sgpr
     // extra gpr requirement: v s
     //                     1) 0 1    s can be discard and v is permenant global idx
     //                     2) 3 3
@@ -326,17 +326,37 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
     // s_addc_u32 s13, s13, 0  8bytes
     // s_swappc_b64 s[30:31], s[12:13] 4bytes
 
-    co_manip::code_t myReLU = assemble(std::vector<std::string>{
-                                           "s_load_dword s14, s[4:5], 0x4",
-                                           "s_waitcnt lgkmcnt(0)",
-                                           "s_and_b32 s14, s14, 0xffff",
-                                           "s_mul_i32 s8, s8, s14",
-                                           "v_add_u32_e32 v5, s8, v0",
-                                           "v_mov_b32_e32 v4, 0",
-                                           "v_ashrrev_i64 v[4:5], 30, v[4:5]",
-                                       },
-                                       agent);
+    // co_manip::code_t myReLU = assemble(std::vector<std::string>{
+    //                                        "s_load_dword s14, s[4:5], 0x4",
+    //                                        "s_waitcnt lgkmcnt(0)",
+    //                                        "s_and_b32 s14, s14, 0xffff",
+    //                                        "s_mul_i32 s8, s8, s14",
+    //                                        "v_add_u32_e32 v5, s8, v0",
+    //                                        "v_mov_b32_e32 v4, 0",
+    //                                        "v_ashrrev_i64 v[4:5], 30, v[4:5]",
+    //                                    },
+    //                                    agent);
+    co_manip::code_t myNewProg = assemble(std::vector<std::string>{
+                                              "s_add_u32 s0, s0, s11",
+                                              "s_addc_u32 s1, s1, 0",
+                                          },
+                                          agent);
+    uint32_t offsetNeeded = privateSegmentFixedSize;
+    fmt::println("s_add_u32 s18, 0, {}", offsetNeeded);
+    myNewProg += assemble({fmt::format("s_add_u32 s18, 0, {}", offsetNeeded)}, agent);
 
+    // myNewProg += assemble(std::vector<std::string>{
+    //                           "buffer_store_dwordx4 v[1:4], v0, s[0:3], 0 offen"},
+    //                       agent);
+
+    myNewProg += assemble(std::vector<std::string>{"buffer_store_dwordx4 v[0:3], off, s[0:3], s18", "buffer_store_dwordx4 v[4:7], off, s[0:3], s18 offset:16", "buffer_store_dwordx4 v[8:11], off, s[0:3], s18 offset:32", "buffer_store_dwordx4 v[12:15], off, s[0:3], s18 offset:48", "buffer_store_dword v16, off, s[0:3], s18 offset:64", "buffer_store_dword v17, off, s[0:3], s18 offset:68", "buffer_store_dword v18, off, s[0:3], s18 offset:72", "v_writelane_b32 v19, s0, 0", "v_writelane_b32 v19, s1, 1", "v_writelane_b32 v19, s2, 2", "v_writelane_b32 v19, s3, 3", "v_writelane_b32 v19, s4, 4", "v_writelane_b32 v19, s5, 5", "v_writelane_b32 v19, s6, 6", "v_writelane_b32 v19, s7, 7", "v_writelane_b32 v19, s8, 8", "v_writelane_b32 v19, s9, 9", "v_writelane_b32 v19, s10, 10", "v_writelane_b32 v19, s11, 11", "v_writelane_b32 v19, s12, 12", "v_writelane_b32 v19, s13, 13", "buffer_store_dword v19, off, s[0:3], s18 offset:76"}, agent);
+
+    // myNewProg += assemble(std::vector<std::string>{
+    //                           "v_mov_b32_e32 v19, s18",
+    //                           "buffer_store_dwordx4 v[0:3], v19, s[0:3], 0 offen"},
+    //                       agent);
+    myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[20:23], off, s[0:3], s18"});
+    /*
     int vCount = 4;// from note .vgpr_count
     for (int i = 0; i < vCount; i++) {
         uint64_t offset = i * gridSize * 4;
@@ -356,8 +376,8 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
         myReLU += assemble({fmt::format("s_add_u32 s15, 0, {:#x}", upperBaseAddr)}, agent);
         myReLU += assemble(std::vector<std::string>{"v_mov_b32_e32 v7, s15", "v_add_co_u32_e32 v6, vcc, s14, v4", "v_addc_co_u32_e32 v7, vcc, v7, v5, vcc"}, agent);
         myReLU += assemble({fmt::format("global_store_dword v[6:7], v{}, off", i)}, agent);
-    }
-    myReLU += assemble("s_endpgm", agent);
+    }*/
+    myNewProg += assemble("s_endpgm", agent);
     /*myReLU += assemble("s_setpc_b64 s[30:31]", agent);
 
     auto part1 = assemble(std::vector<std::string>{"s_load_dword s0, s[4:5], 0x4", "s_load_dword s2, s[6:7], 0x0", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, s8", "s_waitcnt lgkmcnt(0)", "s_and_b32 s0, s0, 0xffff", "v_mad_u64_u32 v[0:1], s[0:1], s0, v2, v[0:1]", "v_cmp_gt_i32_e32 vcc, s2, v0", "s_and_saveexec_b64 s[0:1], vcc", "s_cbranch_execz 20", "s_load_dwordx4 s[0:3], s[6:7], 0x8", "v_mov_b32_e32 v1, 0", "v_mov_b32_e32 v2, v0", "v_ashrrev_i64 v[0:1], 30, v[1:2]", "s_waitcnt lgkmcnt(0)", "v_mov_b32_e32 v3, s1", "v_add_co_u32_e32 v2, vcc, s0, v0", "v_addc_co_u32_e32 v3, vcc, v3, v1, vcc", "global_load_dword v2, v[2:3], off"}, agent);
@@ -374,7 +394,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
     //bring back original relu code part2
     myReLU += part2;*/
 
-    // elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
+    //elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
     // std::cout << myReLU.size() << std::endl;
     // std::cout << elfio.sections[".text"]->get_size() << std::endl;
 

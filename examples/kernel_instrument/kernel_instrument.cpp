@@ -216,7 +216,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
                     auto hipMallocFunc = reinterpret_cast<hipError_t (*)(void **, size_t)>(luthier_get_hip_function("hipMalloc"));
                     (*hipMallocFunc)(&saved_register, dispatchPacket->grid_size_x * 4 * 4);// second 4 is from note .vgpr_count
                     std::cout << "hip allocate address " << saved_register << " for me to save registers\n";
-                    luthier_insert_call(&instrVec[0], saved_register, dispatchPacket->grid_size_x);
+                    luthier_insert_call(&instrVec[0], saved_register, dispatchPacket->private_segment_size);
                     instrumented = true;
                     luthier_override_with_instrumented(dispatchPacket);
                 }
