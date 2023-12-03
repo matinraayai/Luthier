@@ -238,7 +238,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
         ELFIO::Elf_Half sec_index;
         unsigned char other;
 
-        bool ret = symbols.get_symbol(++i, name, value, size, bind, type,
+        bool ret = symbols.get_symbol(i, name, value, size, bind, type,
                                       sec_index, other);
         if (!ret) {
             throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", i));
@@ -247,10 +247,10 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
             auto kd = reinterpret_cast<kernel_descriptor_t *>(newCodeObject.data() + (size_t) value);
             fmt::println("Symbol Info: {}, {}, {:#x}, {:#x}", name, size,
                          reinterpret_cast<luthier_address_t>(kd), reinterpret_cast<luthier_address_t>(kd_ptr));
-            auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
-            fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
-            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 1);
-            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
+            // auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
+            // fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
+            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 1);
+            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
             co_manip::printRSR1(kd);
         }
     }
@@ -374,7 +374,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t gridSi
     //bring back original relu code part2
     myReLU += part2;*/
 
-    elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
+    // elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myReLU.data()), myReLU.size());
     // std::cout << myReLU.size() << std::endl;
     // std::cout << elfio.sections[".text"]->get_size() << std::endl;
 

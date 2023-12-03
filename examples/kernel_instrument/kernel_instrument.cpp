@@ -210,6 +210,7 @@ void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t valu
             if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
                 auto *dispatchPacket = reinterpret_cast<hsa_kernel_dispatch_packet_t *>(packet);
                 std::cout << "Dispatch packet's kernel arg address: " << dispatchPacket->kernarg_address << std::endl;
+                std::cout << "Dispatch packet's Private Segment Byte Size: " << dispatchPacket->private_segment_size << std::endl;
                 if (!instrumented) {
                     std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
                     auto hipMallocFunc = reinterpret_cast<hipError_t (*)(void **, size_t)>(luthier_get_hip_function("hipMalloc"));
@@ -267,15 +268,15 @@ void luthier_at_term() {
     //    reinterpret_cast<hipError_t(*)(void*, void*, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
     //        &counterHost, &globalCounter, 4, hipMemcpyDeviceToHost
     //    );
-    int savedRegisterHost[128 * 4];//save 4 vgpr v0-v3
-    reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
-        savedRegisterHost, saved_register, 128 * 4 * 4, hipMemcpyDeviceToHost);
-    for (int vindex = 0; vindex < 4; vindex++) {
-        int offset = vindex * 128;
-        for (int i = 64; i < 128; i++) {
-            std::cout << "v" << vindex << ":wi " << i << " value " << savedRegisterHost[i + offset] << std::endl;
-        }
-    }
+    // int savedRegisterHost[128 * 4];//save 4 vgpr v0-v3
+    // reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
+    //     savedRegisterHost, saved_register, 128 * 4 * 4, hipMemcpyDeviceToHost);
+    // for (int vindex = 0; vindex < 4; vindex++) {
+    //     int offset = vindex * 128;
+    //     for (int i = 64; i < 128; i++) {
+    //         std::cout << "v" << vindex << ":wi " << i << " value " << savedRegisterHost[i + offset] << std::endl;
+    //     }
+    // }
 
     std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
     std::cout << "Counter Value: " << globalCounter << std::endl;
@@ -301,7 +302,7 @@ void luthier_at_hsa_event(hsa_api_args_t *args, luthier_api_phase_t phase, hsa_a
             auto &coreTable = luthier_get_hsa_table()->core_;
             fprintf(stdout, "Executable handle: %lX\n", executable.handle);
             std::vector<hsa_executable_symbol_t> symbols;
-            getAllExecutableSymbols(executable, symbols);
+            //getAllExecutableSymbols(executable, symbols);
             //
             //            std::vector<hsa_agent_t> agentList;
             ////            getGpuAgents(agentList);

@@ -42,3 +42,6 @@ hip_clang.cpp
 oldext/
 .devcontainer/
 generated_files/
+new_prog.cpp
+relu_hip.cpp
+simple_hip.cpp
