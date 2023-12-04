@@ -249,7 +249,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
                          reinterpret_cast<luthier_address_t>(kd), reinterpret_cast<luthier_address_t>(kd_ptr));
             // auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
             // fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
-            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 5);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 9);
             AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
             // co_manip::printRSR1(kd);
         }
@@ -355,7 +355,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
     //                           "v_mov_b32_e32 v19, s18",
     //                           "buffer_store_dwordx4 v[0:3], v19, s[0:3], 0 offen"},
     //                       agent);
-    myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[20:23], off, s[0:3], s18"});
+    myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[20:23], off, s[0:3], s18", "buffer_load_dwordx4 v[24:27], off, s[0:3], s18 offset:16", "buffer_load_dwordx4 v[28:31], off, s[0:3], s18 offset:32", "buffer_load_dwordx4 v[32:35], off, s[0:3], s18 offset:48", "buffer_load_dwordx4 v[36:39], off, s[0:3], s18 offset:64"}, agent);
     /*
     int vCount = 4;// from note .vgpr_count
     for (int i = 0; i < vCount; i++) {
@@ -394,7 +394,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
     //bring back original relu code part2
     myReLU += part2;*/
 
-    //elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
+    elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
     // std::cout << myReLU.size() << std::endl;
     // std::cout << elfio.sections[".text"]->get_size() << std::endl;
 
