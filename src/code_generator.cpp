@@ -229,7 +229,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     auto myReloc = emptyRelocatableMap_[agent.handle];
     auto out = compileRelocatableToExecutable(myReloc, agent);
 
-    auto coreTable = HsaInterceptor::Instance().getSavedHsaTables().core;
+    auto coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
     hsa_code_object_reader_t reader;
     hsa_executable_t executable;
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
