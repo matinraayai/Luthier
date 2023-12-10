@@ -181,7 +181,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
                     //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
                 }
             }
-            luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            // luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             // luthier::co_manip::printRSR2(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             // luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             const kernel_descriptor_t *kernelDescriptor{nullptr};
@@ -249,9 +249,10 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
                          reinterpret_cast<luthier_address_t>(kd), reinterpret_cast<luthier_address_t>(kd_ptr));
             // auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
             // fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
-            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 9);
-            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
-            // co_manip::printRSR1(kd);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 2);
+            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
+            co_manip::printRSR1(kd);
+            // luthier::co_manip::printCodeProperties(kd);
         }
     }
     co_manip::codestream newCOStream_mkd(
@@ -342,20 +343,20 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
                                           },
                                           agent);
     uint32_t offsetNeeded = privateSegmentFixedSize;
-    fmt::println("s_add_u32 s18, 0, {}", offsetNeeded);
-    myNewProg += assemble({fmt::format("s_add_u32 s18, 0, {}", offsetNeeded)}, agent);
+    fmt::println("s_add_u32 s39, 0, {}", offsetNeeded);
+    myNewProg += assemble({fmt::format("s_add_u32 s39, 0, {}", offsetNeeded)}, agent);
+
+    myNewProg += assemble(std::vector<std::string>{
+                              "buffer_store_dwordx4 v[1:4], off, s[0:3], s39"},
+                          agent);
+
+    // myNewProg += assemble(std::vector<std::string>{"buffer_store_dwordx4 v[0:3], off, s[0:3], s39", "buffer_store_dword v4, off, s[0:3], s39 offset:16", "v_writelane_b32 v5, s0, 0", "v_writelane_b32 v5, s1, 1", "v_writelane_b32 v5, s2, 2", "v_writelane_b32 v5, s3, 3", "v_writelane_b32 v5, s4, 4", "v_writelane_b32 v5, s5, 5", "v_writelane_b32 v5, s6, 6", "v_writelane_b32 v5, s7, 7", "v_writelane_b32 v5, s8, 8", "v_writelane_b32 v5, s9, 9", "v_writelane_b32 v5, s10, 10", "v_writelane_b32 v5, s11, 11", "v_writelane_b32 v5, s12, 12", "v_writelane_b32 v5, s13, 13", "buffer_store_dword v5, off, s[0:3], s39 offset:20"}, agent);
 
     // myNewProg += assemble(std::vector<std::string>{
-    //                           "buffer_store_dwordx4 v[1:4], v0, s[0:3], 0 offen"},
+    //                           "v_mov_b32_e32 v5, s39",
+    //                           "buffer_store_dwordx4 v[0:3], v5, s[0:3], 0 offen"},
     //                       agent);
-
-    myNewProg += assemble(std::vector<std::string>{"buffer_store_dwordx4 v[0:3], off, s[0:3], s18", "buffer_store_dwordx4 v[4:7], off, s[0:3], s18 offset:16", "buffer_store_dwordx4 v[8:11], off, s[0:3], s18 offset:32", "buffer_store_dwordx4 v[12:15], off, s[0:3], s18 offset:48", "buffer_store_dword v16, off, s[0:3], s18 offset:64", "buffer_store_dword v17, off, s[0:3], s18 offset:68", "buffer_store_dword v18, off, s[0:3], s18 offset:72", "v_writelane_b32 v19, s0, 0", "v_writelane_b32 v19, s1, 1", "v_writelane_b32 v19, s2, 2", "v_writelane_b32 v19, s3, 3", "v_writelane_b32 v19, s4, 4", "v_writelane_b32 v19, s5, 5", "v_writelane_b32 v19, s6, 6", "v_writelane_b32 v19, s7, 7", "v_writelane_b32 v19, s8, 8", "v_writelane_b32 v19, s9, 9", "v_writelane_b32 v19, s10, 10", "v_writelane_b32 v19, s11, 11", "v_writelane_b32 v19, s12, 12", "v_writelane_b32 v19, s13, 13", "buffer_store_dword v19, off, s[0:3], s18 offset:76"}, agent);
-
-    // myNewProg += assemble(std::vector<std::string>{
-    //                           "v_mov_b32_e32 v19, s18",
-    //                           "buffer_store_dwordx4 v[0:3], v19, s[0:3], 0 offen"},
-    //                       agent);
-    myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[20:23], off, s[0:3], s18", "buffer_load_dwordx4 v[24:27], off, s[0:3], s18 offset:16", "buffer_load_dwordx4 v[28:31], off, s[0:3], s18 offset:32", "buffer_load_dwordx4 v[32:35], off, s[0:3], s18 offset:48", "buffer_load_dwordx4 v[36:39], off, s[0:3], s18 offset:64"}, agent);
+    // myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[6:9], off, s[0:3], s39", "buffer_load_dword v10, off, s[0:3], s39 offset:16", "buffer_load_dword v11, off, s[0:3], s39 offset:20"}, agent);
     /*
     int vCount = 4;// from note .vgpr_count
     for (int i = 0; i < vCount; i++) {
@@ -394,9 +395,9 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
     //bring back original relu code part2
     myReLU += part2;*/
 
-    elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
-    // std::cout << myReLU.size() << std::endl;
-    // std::cout << elfio.sections[".text"]->get_size() << std::endl;
+    elfio_mkd.sections[".text"]->insert_data(0x100, reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
+    std::cout << myNewProg.size() << std::endl;
+    std::cout << elfio_mkd.sections[".text"]->get_offset() << std::endl;
 
     // for (const auto& sec: instrElf->getElfIo().sections) {
     //     fmt::println("Section name {}", sec->get_name());
