@@ -10,6 +10,26 @@
 #include <fmt/core.h>
 #include <hsa/amd_hsa_common.h>
 #include <hsa/hsa_ext_amd.h>
+#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
+#include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrAnalysis.h"
+#include "llvm/MC/MCInstrDesc.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/TargetRegistry.h"
+
+struct TargetIdentifier {
+    llvm::StringRef Arch;
+    llvm::StringRef Vendor;
+    llvm::StringRef OS;
+    llvm::StringRef Environ;
+    llvm::StringRef Processor;
+    llvm::SmallVector<llvm::StringRef, 2> Features;
+};
 
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
     const auto &coreHsaApiTable = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
@@ -104,9 +124,40 @@ luthier::co_manip::code_t luthier::CodeGenerator::assembleToRelocatable(const st
 }
 
 luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &instListStr, hsa_agent_t agent) {
-    auto relocatable = assembleToRelocatable(instListStr, agent);
-    auto textSection = co_manip::ElfViewImpl::makeView(relocatable)->getElfIo().sections[".text"];
-    return {reinterpret_cast<const std::byte *>(textSection->get_data()), textSection->get_size()};
+
+    auto isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
+
+    std::string Error;
+    const llvm::Target *TheTarget = llvm::TargetRegistry::lookupTarget(isaName, Error);
+    assert(TheTarget);
+
+    std::unique_ptr<const llvm::MCRegisterInfo> MRI(TheTarget->createMCRegInfo(llvm::StringRef(isaName)));
+    assert(MRI);
+
+
+    llvm::MCTargetOptions MCOptions;
+    std::unique_ptr<const llvm::MCAsmInfo> MAI(
+        TheTarget->createMCAsmInfo(*MRI, isaName, MCOptions));
+
+    assert(MAI);
+
+    std::unique_ptr<const llvm::MCInstrInfo> MII(TheTarget->createMCInstrInfo());
+    assert(MII);
+
+    std::unique_ptr<const llvm::MCSubtargetInfo> STI(
+        TheTarget->createMCSubtargetInfo(isaName, "gfx908", "+sramecc-xnack"));
+    assert(STI);
+
+
+    std::unique_ptr<llvm::MCContext> Ctx(new (std::nothrow)
+                                       llvm::MCContext(llvm::Triple(isaName), MAI.get(), MRI.get(),
+                                                 STI.get()));
+    assert(Ctx);
+
+
+    std::unique_ptr<llvm::MCCodeEmitter> MCE(TheTarget->createMCCodeEmitter(*MII, *Ctx));
+
+
 }
 
 luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, hsa_agent_t agent) {
