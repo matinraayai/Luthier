@@ -17,9 +17,8 @@
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE. */
-
-#ifndef AMDGPU_CODE_OBJECT_MANIPULATION_HPP
-#define AMDGPU_CODE_OBJECT_MANIPULATION_HPP
+#ifndef CODE_OBJECT_MANIPULATION_HPP
+#define CODE_OBJECT_MANIPULATION_HPP
 
 #include "luthier_types.hpp"
 #include <amd_comgr/amd_comgr.h>
@@ -64,20 +63,22 @@ typedef boost_ios::stream<boost_ios::basic_array_source<char>> code_char_stream_
 typedef boost_ios::stream<boost_ios::basic_array_source<std::byte>> code_byte_stream_t;
 
 
-code_char_stream_t makeCodeCharStream(const code_t& code) {
-    std::string_view view(reinterpret_cast<const char *>(code.data()), code.size());
-    return {view.begin(), view.end()};
-}
-code_char_stream_t makeCodeCharStream(const code_view_t code) {
+inline code_char_stream_t makeCodeCharStream(const code_t& code) {
     std::string_view view(reinterpret_cast<const char *>(code.data()), code.size());
     return {view.begin(), view.end()};
 }
 
-code_byte_stream_t makeCodeByteStream(const code_t& code) {
+inline code_char_stream_t makeCodeCharStream(const code_view_t code) {
+    std::string_view view(reinterpret_cast<const char *>(code.data()), code.size());
+    return {view.begin(), view.end()};
+}
+
+inline code_byte_stream_t makeCodeByteStream(const code_t& code) {
     std::basic_string_view<std::byte> view(code.data(), code.size());
     return {view.begin(), view.end()};
 }
-code_byte_stream_t makeCodeByteStream(const code_view_t code) {
+
+inline code_byte_stream_t makeCodeByteStream(const code_view_t code) {
     return {code.begin(), code.end()};
 }
 
