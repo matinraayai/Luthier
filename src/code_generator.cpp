@@ -21,6 +21,13 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/SourceMgr.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCObjectWriter.h"
+#include "llvm/MC/MCParser/MCAsmParser.h"
+#include "llvm/MC/MCParser/MCTargetAsmParser.h"
+#include "llvm/MC/MCParser/MCAsmLexer.h"
 
 struct TargetIdentifier {
     llvm::StringRef Arch;
@@ -148,16 +155,92 @@ luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &in
         TheTarget->createMCSubtargetInfo(isaName, "gfx908", "+sramecc-xnack"));
     assert(STI);
 
-
-    std::unique_ptr<llvm::MCContext> Ctx(new (std::nothrow)
-                                       llvm::MCContext(llvm::Triple(isaName), MAI.get(), MRI.get(),
-                                                 STI.get()));
-    assert(Ctx);
+    // MatchAndEmitInstruction in MCTargetAsmParser.h
 
 
-    std::unique_ptr<llvm::MCCodeEmitter> MCE(TheTarget->createMCCodeEmitter(*MII, *Ctx));
+    // Now that GetTarget() has (potentially) replaced TripleName, it's safe to
+    // construct the Triple object.
+    llvm::Triple TheTriple(isaName);
 
+    std::unique_ptr<llvm::MemoryBuffer> BufferPtr = llvm::MemoryBuffer::getMemBuffer(instListStr);
 
+    llvm::SourceMgr SrcMgr;
+
+    // Tell SrcMgr about this buffer, which is what the parser will pick up.
+    SrcMgr.AddNewSourceBuffer(std::move(BufferPtr), llvm::SMLoc());
+
+    // Package up features to be passed to target/subtarget
+    std::string FeaturesStr;
+//    if (MAttrs.size()) {
+//        SubtargetFeatures Features;
+//        for (unsigned i = 0; i != MAttrs.size(); ++i)
+//            Features.AddFeature(MAttrs[i]);
+//        FeaturesStr = Features.getString();
+//    }
+
+//    std::unique_ptr<llvm::MCContext> Ctx(new (std::nothrow)
+//                                             llvm::MCContext(llvm::Triple(isaName), MAI.get(), MRI.get(),
+//                                                             &SrcMgr,
+//                                                             &MCOptions,
+//                                                             STI.get()));
+//    assert(Ctx);
+
+    // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
+    // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
+    llvm::MCContext Ctx(TheTriple, MAI.get(), MRI.get(), STI.get(), &SrcMgr,
+                  &MCOptions);
+    std::unique_ptr<llvm::MCObjectFileInfo> MOFI(
+        TheTarget->createMCObjectFileInfo(Ctx, /*PIC*/ true, /*large code model*/ false));
+    Ctx.setObjectFileInfo(MOFI.get());
+
+    Ctx.setAllowTemporaryLabels(false);
+
+    Ctx.setGenDwarfForAssembly(false);
+
+    llvm::SmallVector<char> out;
+
+    llvm::raw_svector_ostream VOS(out);
+
+    std::unique_ptr<llvm::buffer_ostream> BOS;
+
+    std::unique_ptr<llvm::MCStreamer> Str;
+
+    std::unique_ptr<llvm::MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
+    assert(MCII && "Unable to create instruction info!");
+
+    llvm::MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, Ctx);
+    llvm::MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*STI, *MRI, MCOptions);
+    Str.reset(TheTarget->createMCObjectStreamer(
+        TheTriple, Ctx, std::unique_ptr<llvm::MCAsmBackend>(MAB),
+        MAB->createObjectWriter(VOS),
+        std::unique_ptr<llvm::MCCodeEmitter>(CE), *STI, MCOptions.MCRelaxAll,
+        MCOptions.MCIncrementalLinkerCompatible,
+        /*DWARFMustBeAtTheEnd*/ false));
+
+//    Str->initSections(true, *STI);
+
+    // Use Assembler information for parsing.
+    Str->setUseAssemblerInfoForParsing(true);
+
+    std::unique_ptr<llvm::MCAsmParser> Parser(
+        llvm::createMCAsmParser(SrcMgr, Ctx, *Str, *MAI));
+    std::unique_ptr<llvm::MCTargetAsmParser> TAP(
+        TheTarget->createMCAsmParser(*STI, *Parser, *MCII, MCOptions));
+
+    assert(TAP && "this target does not support assembly parsing.\n");
+
+//    int SymbolResult = fillCommandLineSymbols(*Parser);
+//    if(SymbolResult)
+//        return SymbolResult;
+    Parser->setShowParsedOperands(true);
+    Parser->setTargetParser(*TAP);
+    Parser->getLexer().setLexMasmIntegers(true);
+    Parser->getLexer().setLexMasmHexFloats(true);
+    Parser->getLexer().setLexMotorolaIntegers(true);
+
+    int Res = Parser->Run(false);
+
+    return {reinterpret_cast<std::byte*>(out.data()), out.size()};
 }
 
 luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, hsa_agent_t agent) {
