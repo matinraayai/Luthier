@@ -252,7 +252,7 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
             AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 2);
             // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
             co_manip::printRSR1(kd);
-            // luthier::co_manip::printCodeProperties(kd);
+            luthier::co_manip::printCodeProperties(kd);
         }
     }
     co_manip::codestream newCOStream_mkd(
@@ -346,9 +346,9 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
     fmt::println("s_add_u32 s39, 0, {}", offsetNeeded);
     myNewProg += assemble({fmt::format("s_add_u32 s39, 0, {}", offsetNeeded)}, agent);
 
-    myNewProg += assemble(std::vector<std::string>{
-                              "buffer_store_dwordx4 v[1:4], off, s[0:3], s39"},
-                          agent);
+    // myNewProg += assemble(std::vector<std::string>{
+    //                           "buffer_store_dwordx4 v[1:4], off, s[0:3], s39"},
+    //                       agent);
 
     // myNewProg += assemble(std::vector<std::string>{"buffer_store_dwordx4 v[0:3], off, s[0:3], s39", "buffer_store_dword v4, off, s[0:3], s39 offset:16", "v_writelane_b32 v5, s0, 0", "v_writelane_b32 v5, s1, 1", "v_writelane_b32 v5, s2, 2", "v_writelane_b32 v5, s3, 3", "v_writelane_b32 v5, s4, 4", "v_writelane_b32 v5, s5, 5", "v_writelane_b32 v5, s6, 6", "v_writelane_b32 v5, s7, 7", "v_writelane_b32 v5, s8, 8", "v_writelane_b32 v5, s9, 9", "v_writelane_b32 v5, s10, 10", "v_writelane_b32 v5, s11, 11", "v_writelane_b32 v5, s12, 12", "v_writelane_b32 v5, s13, 13", "buffer_store_dword v5, off, s[0:3], s39 offset:20"}, agent);
 
@@ -395,7 +395,8 @@ void luthier::CodeGenerator::modify(Instr &instr, void *my_addr, uint32_t privat
     //bring back original relu code part2
     myReLU += part2;*/
 
-    elfio_mkd.sections[".text"]->insert_data(0x100, reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
+    // elfio_mkd.sections[".text"]->insert_data(0x100, reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
+    elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
     std::cout << myNewProg.size() << std::endl;
     std::cout << elfio_mkd.sections[".text"]->get_offset() << std::endl;
 
