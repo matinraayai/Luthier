@@ -249,7 +249,6 @@ void hsaApiUserCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t pha
 
 void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount, uint64_t userPktIndex, void *data,
                                  hsa_amd_queue_intercept_packet_writer writer) {
-    fmt::println("Queue handle: {:#x}", reinterpret_cast<int64_t>(data));
     auto &hsaInterceptor = luthier::HsaInterceptor::instance();
     auto &hsaUserCallback = hsaInterceptor.getUserCallback();
     auto &hsaInternalCallback = hsaInterceptor.getInternalCallback();
@@ -269,7 +268,7 @@ void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount, uint64_
 
     // Write the packets to hardware queue
     // Even if the packets are not modified, this call has to be made to ensure the packets are copied to the hardware queue
-    writer(reinterpret_cast<void*>(modifiedPackets.data()), pktCount);
+    writer(modifiedPackets.data(), pktCount);
 }
 
 void hsaApiInternalCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id, bool *skipFunction) {
