@@ -2,7 +2,7 @@
 #define CODE_GENERATOR_HPP
 #include "code_object_manipulation.hpp"
 #include "instr.hpp"
-#include "luthier_types.hpp"
+#include "luthier_types.h"
 #include <unordered_map>
 
 namespace luthier {

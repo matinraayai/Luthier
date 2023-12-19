@@ -1,23 +1,12 @@
-#include <luthier.h>
 #include <fstream>
 #include <functional>
 #include <hip/hip_runtime_api.h>
 #include <hsa/hsa.h>
+#include <hsa/hsa_ven_amd_aqlprofile.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <iostream>
-#include <map>
-#include <mutex>
-#include <roctracer/roctracer_hip.h>
-#include <roctracer/roctracer_hsa.h>
+#include <luthier.h>
 #include <string>
-
-// Since the kernel launch doesn't give us access to the queue the signal is associated with, we need to save the relationship in a map
-static std::unordered_map<decltype(hsa_signal_t::handle), hsa_queue_t*> queue_map;
-// This is for preventing the queue content to be modified during our interception. Might not be necessary.
-// Might use the HSA variants that locks a mutex when reading the queue index.
-std::mutex mutex;
-
-static std::unordered_map<decltype(hsa_kernel_dispatch_packet_t::kernel_object), hsa_executable_symbol_t> ko_symbol_map;
 
 static bool instrumented{false};
 
@@ -199,70 +188,6 @@ static unsigned extractAqlBits(unsigned v, unsigned pos, unsigned width) {
 //    }
 //}
 
-void instrumentKernelLaunchCallback(hsa_signal_t signal, hsa_signal_value_t value) {
-    auto amdTable = luthier_get_hsa_ven_amd_loader();
-    std:: cout << "was found in map? " << queue_map.contains(signal.handle) << std::endl;
-    if (queue_map.contains(signal.handle)) {
-        hsa_queue_t *queue = queue_map[signal.handle];
-        mutex.lock();
-        const uint64_t begin = luthier_get_hsa_table()->core_->hsa_queue_load_read_index_relaxed_fn(queue);
-        const uint64_t end = value + 1;
-        mutex.unlock();
-        uint32_t mask = queue->size - 1;
-        for (uint64_t j = begin; j < end; ++j) {
-            const unsigned int idx = j & (queue->size - 1);
-            hsa_barrier_or_packet_t *packet = reinterpret_cast<hsa_barrier_or_packet_t *>(queue->base_address) + idx;
-
-            unsigned int packetType = extractAqlBits(packet->header, HSA_PACKET_HEADER_TYPE, HSA_PACKET_HEADER_WIDTH_TYPE);
-            if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
-                auto *dispatchPacket = reinterpret_cast<hsa_kernel_dispatch_packet_t *>(packet);
-                std::cout << "Dispatch packet's kernel arg address: " << dispatchPacket->kernarg_address << std::endl;
-                if (!instrumented) {
-                    std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(dispatchPacket->kernel_object);
-                    luthier_insert_call(&instrVec[0], LUTHIER_GET_EXPORTED_FUNC(instrumentation_kernel), LUTHIER_IPOINT_AFTER);
-                    instrumented = true;
-                    luthier_override_with_instrumented(dispatchPacket);
-                }
-
-
-//                iterateLoadedCodeObjects(executable);
-//                std::vector<hsa_executable_symbol_t> symbols;
-//                getAllExecutableSymbols(executable, symbols);
-
-//
-//                std::vector<hsa_isa_t> supportedIsas;
-//                auto agentIsaCallback = [](hsa_isa_t isa, void* data){
-//                    std::cout << "Here!" << std::endl;
-//                    reinterpret_cast<std::vector<hsa_isa_t>*>(data)->push_back(isa);
-//                    size_t nameLen;
-//                    auto& coreApi = luthier_get_hsa_table()->core_;
-//                    CHECK_HSA_CALL(coreApi->hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &nameLen));
-//                    auto isaName = new char[nameLen];
-//                    CHECK_HSA_CALL(coreApi->hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaName));
-//                    std::cout << "ISA supported by the executable: " << isaName << std::endl;
-//                    delete[] isaName;
-//                    return HSA_STATUS_SUCCESS;
-//                };
-
-//                coreApi->hsa_agent_iterate_isas_fn(agent, agentIsaCallback, &supportedIsas);
-//                std::cout << "Length of supported Isas: " << supportedIsas.size() << std::endl;
-//                for (auto isa: supportedIsas) {
-//                    size_t nameLen;
-//                    coreApi->hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &nameLen);
-//                    auto isaName = new char[nameLen];
-//                    coreApi->hsa_isa_get_info_alt_fn(isa, HSA_ISA_INFO_NAME_LENGTH, &isaName);
-//                    std::cout << "ISA supported by the executable: " << isaName << std::endl;
-//                    delete[] isaName;
-//                }
-//                instrumentKernel(kernelEntryPoint);
-            }
-        }
-    }
-//    else {
-//        throw std::invalid_argument("Signal handle " + std::to_string(signal.handle) + "'s queue was not found in the map.");
-//    }
-}
-
 
 
 
@@ -282,16 +207,21 @@ void luthier_at_term() {
 }
 
 
-void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
-    if (phase == LUTHIER_API_PHASE_EXIT) {
-        // Save the doorbell signal handles in the map whenever a queue is created.
+void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id) {
+    if (phase == LUTHIER_API_EVT_PHASE_EXIT) {
         if (api_id == HSA_API_ID_hsa_queue_create) {
-            auto queue = args->hsa_queue_create.queue;
-            queue_map[(*queue)->doorbell_signal.handle] = *queue;
+            std::cout << "Queue created called!" << std::endl;
+            std::cout << "Signal handle: " << (*(args->api_args.hsa_queue_create.queue))->doorbell_signal.handle << std::endl;
         }
+        else if (api_id == HSA_API_ID_hsa_signal_store_screlease) {
+            fprintf(stdout, "<call to (%s)\t on %s> ",
+                    "hsa_signal_store_relaxed",
+                    "entry");
+            std::cout << "Signal handle" << args->api_args.hsa_signal_store_relaxed.signal.handle << std::endl;
 
+        }
         else if (api_id == HSA_API_ID_hsa_executable_freeze) {
-            auto executable = args->hsa_executable_freeze.executable;
+            auto executable = args->api_args.hsa_executable_freeze.executable;
             fprintf(stdout, "HSA Executable Freeze Callback\n");
             // Get the state of the executable (frozen or not frozen)
             hsa_executable_state_t e_state;
@@ -300,8 +230,8 @@ void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_a
             fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
             auto& coreTable = luthier_get_hsa_table()->core_;
             fprintf(stdout, "Executable handle: %lX\n", executable.handle);
-            std::vector<hsa_executable_symbol_t> symbols;
-            getAllExecutableSymbols(executable, symbols);
+//            std::vector<hsa_executable_symbol_t> symbols;
+//            getAllExecutableSymbols(executable, symbols);
 //
 //            std::vector<hsa_agent_t> agentList;
 ////            getGpuAgents(agentList);
@@ -403,29 +333,24 @@ void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_a
             fprintf(stdout, "");
         }
     }
-    else if (phase == LUTHIER_API_PHASE_ENTER) {
-        if (api_id == HSA_API_ID_hsa_signal_store_screlease) {
-            fprintf(stdout, "<call to (%s)\t on %s> ",
-                    "hsa_signal_store_screlease",
-                    "entry");
-            instrumentKernelLaunchCallback(args->hsa_signal_store_screlease.signal,
-                                           args->hsa_signal_store_screlease.value);
-            }
-        else if (api_id == HSA_API_ID_hsa_signal_store_relaxed) {
-            fprintf(stdout, "<call to (%s)\t on %s> ",
-                    "hsa_signal_store_relaxed",
-                    "entry");
 
-            instrumentKernelLaunchCallback(args->hsa_signal_store_relaxed.signal,
-                                           args->hsa_signal_store_relaxed.value);
+    if (api_id == HSA_EVT_ID_hsa_queue_packet_submit) {
+        std::cout << "In packet submission callback" << std::endl;
+        auto packets = reinterpret_cast<const hsa_ext_amd_aql_pm4_packet_t*>(args->evt_args.hsa_queue_packet_submit.packets);
+        for (unsigned int i = 0; i < args->evt_args.hsa_queue_packet_submit.pkt_count; i++) {
+            unsigned int packetType = extractAqlBits(packets[i].header, HSA_PACKET_HEADER_TYPE, HSA_PACKET_HEADER_WIDTH_TYPE);
+            if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
+                std::cout << "Dispatch packet found!" << std::endl;
+            }
         }
+        std::cout << "End of callback" << std::endl;
     }
 }
 
-void luthier_at_hip_event(void* args, luthier_api_phase_t phase, int hip_api_id) {
+void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id) {
     fprintf(stdout, "<call to (%s)\t on %s> ",
             hip_api_name(hip_api_id),
-            phase == LUTHIER_API_PHASE_ENTER ? "entry" : "exit"
+            phase == LUTHIER_API_EVT_PHASE_ENTER ? "entry" : "exit"
             );
     if (hip_api_id == HIP_API_ID_hipLaunchKernel) {
         auto kern_args = reinterpret_cast<hip_hipLaunchKernel_api_args_t*>(args);

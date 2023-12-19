@@ -1,7 +1,7 @@
 #ifndef CODE_OBJECT_MANAGER_HPP
 #define CODE_OBJECT_MANAGER_HPP
 #include "code_object_manipulation.hpp"
-#include "luthier_types.hpp"
+#include "luthier_types.h"
 #include <amd_comgr/amd_comgr.h>
 #include <hsa/hsa.h>
 #include <memory>

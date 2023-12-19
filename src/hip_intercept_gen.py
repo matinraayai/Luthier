@@ -282,8 +282,8 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                     f.write(', ')
             f.write("};\n")
         callback_args = "static_cast<void*>(&hip_func_args)" if are_args_non_empty else "nullptr"
-        f.write(f"\thipUserCallback({callback_args}, LUTHIER_API_PHASE_ENTER, api_id);\n")
-        f.write(f"\thipInternalCallback({callback_args}, LUTHIER_API_PHASE_ENTER, api_id, &skipFunction);\n")
+        f.write(f"\thipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, api_id);\n")
+        f.write(f"\thipInternalCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, api_id, &skipFunction);\n")
         if output_type != "void":
             f.write(f"\t{output_type} out{{}};\n")
         f.write("\tif (!skipFunction) {\n")
@@ -309,8 +309,8 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                     f.write(', ')
         f.write(");\n\t};")
         f.write("\t// Exit Callback\n")
-        f.write(f"\thipUserCallback({callback_args}, LUTHIER_API_PHASE_EXIT, api_id);\n")
-        f.write(f"\thipInternalCallback({callback_args}, LUTHIER_API_PHASE_EXIT, api_id, &skipFunction);\n")
+        f.write(f"\thipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_EXIT, api_id);\n")
+        f.write(f"\thipInternalCallback({callback_args}, LUTHIER_API_EVT_PHASE_EXIT, api_id, &skipFunction);\n")
         if are_args_non_empty:
             f.write("\t// Copy the modified arguments back to the original arguments (if non-const)\n")
             for i, arg in enumerate(args):

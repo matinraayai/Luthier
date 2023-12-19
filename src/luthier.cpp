@@ -7,7 +7,6 @@
 #include "hip_intercept.hpp"
 #include "hsa_intercept.hpp"
 #include "log.hpp"
-#include "luthier_types.hpp"
 #include <optional>
 
 namespace luthier::impl {
@@ -169,7 +168,7 @@ void normalHipRegister(std::optional<hip___hipRegisterFatBinary_api_args_t> &rFa
                              rVarArgs);
 }
 
-void hipApiInternalCallback(void *cb_data, luthier_api_phase_t phase, int api_id, bool *skip_func) {
+void hipApiInternalCallback(void *cb_data, luthier_api_evt_phase_t phase, int api_id, bool *skip_func) {
     LUTHIER_LOG_FUNCTION_CALL_START
     // Logic for intercepting the __hipRegister* functions
     static bool isHipRegistrationOver{false};           //> indicates if the registration step of the HIP runtime is over. It is set when the
@@ -194,7 +193,7 @@ void hipApiInternalCallback(void *cb_data, luthier_api_phase_t phase, int api_id
     static std::vector<hip___hipRegisterVar_api_args_t>
         lastRVarArgs{};//> list of global variables to register for the last Fat saved Binary
 
-    if (!isHipRegistrationOver && phase == LUTHIER_API_PHASE_ENTER) {
+    if (!isHipRegistrationOver && phase == LUTHIER_API_EVT_PHASE_ENTER) {
         if (api_id == HIP_PRIVATE_API_ID___hipRegisterFatBinary) {
             if (hijackRegistrationIterForLuthier) {
                 hijackedHipRegister(lastRFatBinArgs, lastRFuncArgs, lastRManagedVarArgs,
@@ -240,15 +239,58 @@ void hipApiInternalCallback(void *cb_data, luthier_api_phase_t phase, int api_id
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-void hipApiUserCallback(void *cb_data, luthier_api_phase_t phase, int api_id) {
+void hipApiUserCallback(void *cb_data, luthier_api_evt_phase_t phase, int api_id) {
     ::luthier_at_hip_event(cb_data, phase, api_id);
 }
 
-void hsaApiUserCallback(hsa_api_args_t *cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id) {
+void hsaApiUserCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id) {
     ::luthier_at_hsa_event(cb_data, phase, api_id);
 }
 
-void hsaApiInternalCallback(hsa_api_args_t *cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id, bool* skipFunction) {
+void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount, uint64_t userPktIndex, void *data,
+                                 hsa_amd_queue_intercept_packet_writer writer) {
+    fmt::println("Queue handle: {:#x}", reinterpret_cast<int64_t>(data));
+    auto &hsaInterceptor = luthier::HsaInterceptor::instance();
+    auto &hsaUserCallback = hsaInterceptor.getUserCallback();
+    auto &hsaInternalCallback = hsaInterceptor.getInternalCallback();
+    auto apiId = HSA_EVT_ID_hsa_queue_packet_submit;
+    hsa_api_evt_args_t args;
+
+    // Copy the packets to a non-const buffer
+    std::vector<luthier_hsa_aql_packet_t> modifiedPackets(reinterpret_cast<const luthier_hsa_aql_packet_t*>(packets),
+                                                          reinterpret_cast<const luthier_hsa_aql_packet_t*>(packets) + pktCount);
+
+    args.evt_args.hsa_queue_packet_submit.packets = modifiedPackets.data();
+    args.evt_args.hsa_queue_packet_submit.pkt_count = pktCount;
+    args.evt_args.hsa_queue_packet_submit.user_pkt_index = userPktIndex;
+
+    hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+    hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, nullptr);
+
+    // Write the packets to hardware queue
+    // Even if the packets are not modified, this call has to be made to ensure the packets are copied to the hardware queue
+    writer(reinterpret_cast<void*>(modifiedPackets.data()), pktCount);
+}
+
+void hsaApiInternalCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id, bool *skipFunction) {
+    if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
+        if (api_id == HSA_API_ID_hsa_queue_create) {
+            auto args = cb_data->api_args.hsa_queue_create;
+            LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_create_fn(
+                args.agent, args.size, args.type, args.callback,
+                args.data,
+                args.private_segment_size,
+                args.group_segment_size,
+                args.queue));
+            LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_profiling_set_profiler_enabled_fn(*args.queue,
+                                                                        true));
+            LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_register_fn(
+                *args.queue,
+                queueSubmitWriteInterceptor,
+                *args.queue));
+            *skipFunction = true;
+        }
+    }
 }
 
 __attribute__((constructor)) void init() {
@@ -302,7 +344,7 @@ extern "C" {
 __attribute__((visibility("default"))) extern const uint32_t HSA_AMD_TOOL_PRIORITY = 49;
 
 __attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t runtime_version,
-                             uint64_t failed_tool_count, const char *const *failed_tool_names) {
+                                                   uint64_t failed_tool_count, const char *const *failed_tool_names) {
     [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
     return luthier::HsaInterceptor::instance().captureHsaApiTable(table);
 }
