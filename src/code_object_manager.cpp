@@ -106,12 +106,12 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
                 //                reader.load(hcoSs, true);
                 for (unsigned int j = 0; j < co_manip::getSymbolNum(reader); j++) {
                     auto info = co_manip::SymbolView(reader, j);
-                    fmt::println("Name of symbol: {}", info.getName());
-                    fmt::println("Size of symbol: {}", info.getView().size());
-                    fmt::println("Type of symbol: {}", (int) info.getType());
-                    fmt::println("Symbol location: {:#x}", reinterpret_cast<luthier_address_t>(info.getView().data()));
-                    fmt::println("Section addr: {:#x}", reinterpret_cast<luthier_address_t>(info.getSection()->get_address()));
-                    fmt::println("Section Name: {}", info.getSection()->get_name());
+//                    fmt::println("Name of symbol: {}", info.getName());
+//                    fmt::println("Size of symbol: {}", info.getView().size());
+//                    fmt::println("Type of symbol: {}", (int) info.getType());
+//                    fmt::println("Symbol location: {:#x}", reinterpret_cast<luthier_address_t>(info.getView().data()));
+//                    fmt::println("Section addr: {:#x}", reinterpret_cast<luthier_address_t>(info.getSection()->get_address()));
+//                    fmt::println("Section Name: {}", info.getSection()->get_name());
                     for (unsigned int k = 0; k < instrumentationFunctionInfo.size(); k++) {
                         auto deviceFuncName = instDeviceFuncNames[k];
                         if (info.getName().find(deviceFuncName) != std::string::npos) {

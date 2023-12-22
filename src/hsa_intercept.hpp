@@ -2,9 +2,7 @@
 #define HSA_INTERCEPT_HPP
 
 #include "error.h"
-#include "luthier_types.hpp"
-#include <roctracer/roctracer.h>
-#include <roctracer/roctracer_hsa.h>
+#include "luthier_types.h"
 
 #include <functional>
 #include <hsa/hsa_api_trace.h>
@@ -18,8 +16,8 @@ class HsaInterceptor {
     HsaApiTableContainer interceptTables_;
     hsa_ven_amd_loader_1_03_pfn_s amdTable_;
 
-    std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> userCallback_{};
-    std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t, bool*)> internalCallback_{};
+    std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> userCallback_{};
+    std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t, bool*)> internalCallback_{};
 
     void installCoreApiWrappers(CoreApiTable *table);
 
@@ -46,19 +44,19 @@ class HsaInterceptor {
         return amdTable_;
     }
 
-    void setUserCallback(const std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> &callback) {
+    void setUserCallback(const std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> &callback) {
         userCallback_ = callback;
     }
 
-    void setInternalCallback(const std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t, bool*)> &callback) {
+    void setInternalCallback(const std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t, bool*)> &callback) {
         internalCallback_ = callback;
     }
 
-    [[nodiscard]] const inline std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t)> &getUserCallback() const {
+    [[nodiscard]] const inline std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> &getUserCallback() const {
         return userCallback_;
     }
 
-    [[nodiscard]] const inline std::function<void(hsa_api_args_t *, const luthier_api_phase_t, const hsa_api_id_t, bool*)> &getInternalCallback() const {
+    [[nodiscard]] const inline std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t, bool*)> &getInternalCallback() const {
         return internalCallback_;
     }
 

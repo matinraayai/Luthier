@@ -2,11 +2,9 @@
 #define LUTHIER_H
 #include "error.h"
 #include "instr.hpp"
-#include "luthier_types.hpp"
+#include "luthier_types.h"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
-#include <roctracer/roctracer_hip.h>
-#include <roctracer/roctracer_hsa.h>
 
 //extern "C" {
 
@@ -37,10 +35,10 @@ void luthier_at_term();
 //// * For instance if cbid = cuMemcpyDtoH_v2 then params must be casted to
 //// * (cuMemcpyDtoH_v2_params *)
 //// * */
-void luthier_at_hip_event(void* args, luthier_api_phase_t phase, int hip_api_id);
+void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id);
 
 
-void luthier_at_hsa_event(hsa_api_args_t* cb_data, luthier_api_phase_t phase, hsa_api_id_t api_id);
+void luthier_at_hsa_event(hsa_api_evt_args_t* cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id);
 
 /**
  * Returns the original HSA API table to avoid re-instrumentation of HSA functions.
@@ -75,6 +73,23 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
 
 // Luthier uses the pointer to the dummy global wrapper to each function as its unique identifier
 #define LUTHIER_GET_EXPORTED_FUNC(f) reinterpret_cast<const void *>(__luthier_wrap__##f)
+
+
+
+
+/**
+ * Returns the HSA packet type of the AQL packet
+ */
+static hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_packet) {
+    return static_cast<hsa_packet_type_t>((aql_packet.packet.header >> HSA_PACKET_HEADER_TYPE) & ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
+}
+
+//// Determine if a packet is valid. The caller is responsible for loading the
+//// header using an atomic or ordinary load as appropriate.
+//static bool isValid(uint16_t header) {
+//    return ((luthier_get_packet_type(header) <= HSA_PACKET_TYPE_BARRIER_OR) &&
+//            (luthier_get_packet_type(header) != HSA_PACKET_TYPE_INVALID));
+//}
 
 //static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
 //    if (hip_api_id < 1000)

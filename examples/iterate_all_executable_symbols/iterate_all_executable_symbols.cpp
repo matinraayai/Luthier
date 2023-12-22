@@ -126,10 +126,10 @@ void printSymbolAttributes(hsa_executable_symbol_t symbol) {
     fprintf(stdout, "|__\n");
 }
 
-void luthier_at_hsa_event(hsa_api_args_t *args, luthier_api_phase_t phase, hsa_api_id_t api_id) {
-    if (phase == LUTHIER_API_PHASE_EXIT) {
+void luthier_at_hsa_event(hsa_api_evt_args_t *args, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id) {
+    if (phase == LUTHIER_API_EVT_PHASE_EXIT) {
         if (api_id == HSA_API_ID_hsa_executable_freeze) {
-            auto executable = args->hsa_executable_freeze.executable;
+            auto executable = args->api_args.hsa_executable_freeze.executable;
             fprintf(stdout, "Frozen executable with handle 0x%lx was captured.\n", executable.handle);
             std::vector<hsa_agent_t> agentList;
             std::vector<hsa_executable_symbol_t> symbols;
@@ -142,5 +142,5 @@ void luthier_at_hsa_event(hsa_api_args_t *args, luthier_api_phase_t phase, hsa_a
     }
 }
 
-void luthier_at_hip_event(void *args, luthier_api_phase_t phase, int api_id) {
+void luthier_at_hip_event(void *args, luthier_api_evt_phase_t phase, int api_id) {
 }

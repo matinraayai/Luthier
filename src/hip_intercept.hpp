@@ -1,13 +1,15 @@
 #ifndef HIP_INTERCEPT_HPP
 #define HIP_INTERCEPT_HPP
 
-#include "luthier_types.hpp"
+#include "luthier_types.h"
 #include <dlfcn.h>
 #include <experimental/filesystem>
 #include <functional>
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <fmt/core.h>
+#include <any>
+#include <optional>
 
 namespace fs = std::experimental::filesystem;
 
@@ -16,8 +18,8 @@ namespace luthier {
 class HipInterceptor {
  private:
     void *handle_{nullptr};
-    std::function<void(void *, const luthier_api_phase_t, const int)> userCallback_{};
-    std::function<void(void *, const luthier_api_phase_t, const int, bool*)> internalCallback_{};
+    std::function<void(void *, const luthier_api_evt_phase_t, const int)> userCallback_{};
+    std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> internalCallback_{};
 
     HipInterceptor();
 
@@ -31,18 +33,18 @@ class HipInterceptor {
 
     [[nodiscard]] bool IsEnabled() const { return handle_ != nullptr; }
 
-    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int)> &getUserCallback() const {
+    [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &getUserCallback() const {
         return userCallback_;
     }
 
-    void SetUserCallback(const std::function<void(void *, const luthier_api_phase_t, const int)> &callback) {
+    void SetUserCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &callback) {
         userCallback_ = callback;
     }
 
-    [[nodiscard]] const std::function<void(void *, const luthier_api_phase_t, const int, bool*)> &getInternalCallback() const {
+    [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> &getInternalCallback() const {
         return internalCallback_;
     }
-    void SetInternalCallback(const std::function<void(void *, const luthier_api_phase_t, const int, bool*)> &internal_callback) {
+    void SetInternalCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> &internal_callback) {
         internalCallback_ = internal_callback;
     }
 

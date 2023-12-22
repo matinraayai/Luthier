@@ -1,8 +1,8 @@
 #ifndef INSTR_H
 #define INSTR_H
-#include "luthier_types.hpp"
-#include <hsa/hsa.h>
+#include "luthier_types.h"
 #include <fmt/ostream.h>
+#include <hsa/hsa.h>
 
 #include <string>
 #include <vector>
@@ -201,16 +201,16 @@ class Operand {
         LiteralConstant,
         SpecialOperand
     };
-    Operand(std::string op_str, OperandType type, int code, 
+    Operand(std::string op_str, OperandType type, int code,
             float floatValue, long int intValue, uint32_t literalConstant);
-    
+
     [[nodiscard]] std::string getOperand() const;
     [[nodiscard]] OperandType getOperandType() const;
     [[nodiscard]] int getOperandCode() const;
     [[nodiscard]] float getOperandFloatValue() const;
     [[nodiscard]] long int getOperandIntValue() const;
     [[nodiscard]] uint32_t getOperandLiteralConstant() const;
-    friend std::ostream& operator<<(std::ostream& os, const Operand& op);
+    friend std::ostream &operator<<(std::ostream &os, const Operand &op);
 
  private:
     std::string operand;
@@ -303,8 +303,8 @@ class Instr {
 
     [[nodiscard]] std::string getInstr() const { return instStr_; };
 
-    [[nodiscard]] hsa_executable_symbol_t getSymbol() const {return executableSymbol_;}
-    [[nodiscard]] hsa_agent_t getAgent() const {return agent_;}
+    [[nodiscard]] hsa_executable_symbol_t getSymbol() const { return executableSymbol_; }
+    [[nodiscard]] hsa_agent_t getAgent() const { return agent_; }
 
     unsigned int getNumOperands();
     int getNumRegsUsed();
@@ -314,14 +314,14 @@ class Instr {
     std::vector<Operand> getImmOperands();
     std::vector<Operand> getRegOperands();
 
-    // Functions that edit operands, reutrn TRUE/FALSE on success/fail 
+    // Functions that edit operands, reutrn TRUE/FALSE on success/fail
     // These will need to have corresponding functions in the operand class as well
     // reg code has to match what's in the ISA
     // bool changeRegNum(int reg_op_num, int new_reg_code);
     // bool changeImmVal(int imm_op_num, int new_imm_val);
 
  private:
-    hsa_executable_t executable_{};//
+    hsa_executable_t executable_{};  //
     luthier_address_t hostAddress_{};// Host-accessible address of the instruction
     luthier_address_t deviceAddress_;// Device-accessible address of the instruction
     std::string instStr_;
@@ -336,7 +336,7 @@ class Instr {
 
 }// namespace luthier
 
-template <> struct fmt::formatter<luthier::Operand> : fmt::ostream_formatter {};
-
+template<>
+struct fmt::formatter<luthier::Operand> : fmt::ostream_formatter {};
 
 #endif

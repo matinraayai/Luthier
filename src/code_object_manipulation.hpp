@@ -20,7 +20,7 @@
 #ifndef CODE_OBJECT_MANIPULATION_HPP
 #define CODE_OBJECT_MANIPULATION_HPP
 
-#include "luthier_types.hpp"
+#include "luthier_types.h"
 #include <amd_comgr/amd_comgr.h>
 #include <any>
 #include <boost/iostreams/device/array.hpp>

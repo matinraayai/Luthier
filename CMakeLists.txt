@@ -13,7 +13,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # Library Declaration ==================================================================================================
 add_library(luthier SHARED
         src/luthier.cpp include/luthier.h src/hip_intercept.hpp src/hip_intercept.cpp
-        include/luthier_types.hpp src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
+        include/luthier_types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
         src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h include/error.h
         src/disassembler.hpp src/disassembler.cpp src/code_object_manipulation.hpp src/code_object_manipulation.cpp
         src/context_manager.hpp src/context_manager.cpp src/code_generator.hpp src/code_generator.cpp include/instr.hpp
@@ -108,7 +108,7 @@ find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/roc
 find_package(LLVM REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/llvm/)
 target_compile_definitions(luthier PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
 
-llvm_map_components_to_libnames(support bitreader core)
+llvm_map_components_to_libnames(support bitreader core mc)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
@@ -134,7 +134,7 @@ target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 
 target_link_libraries(luthier hip::host roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
-        hsa-runtime64::hsa-runtime64 LLVMCore LLVMBitReader LLVMSupport  boost_iostreams)
+        hsa-runtime64::hsa-runtime64 LLVMCore LLVMBitReader LLVMSupport LLVMMC boost_iostreams)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================

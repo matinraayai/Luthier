@@ -2,7 +2,7 @@
 #define DISASSEMBLER_HPP
 #include "code_object_manipulation.hpp"
 #include "instr.hpp"
-#include "luthier_types.hpp"
+#include "luthier_types.h"
 #include <amd_comgr/amd_comgr.h>
 #include <functional>
 #include <hsa/hsa.h>
