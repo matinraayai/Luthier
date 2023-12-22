@@ -16,6 +16,10 @@
 				{
 					"name": "LD_PRELOAD",
 					"value": "${workspaceFolder}/build_main/lib/libluthier.so:${workspaceFolder}/build_main/lib/libkernel_instrument.so",
+				},
+				{
+					"name": "HIP_ENABLE_DEFERRED_LOADING",
+					"value": "0"
 				}
 			],
 			"externalConsole": false,
