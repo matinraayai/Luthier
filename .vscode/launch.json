@@ -5,6 +5,36 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "modify_elf",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/relu_hip.exe",
+			"args": [],
+			"stopAtEntry": false,
+			"cwd": "${fileDirname}",
+			"environment": [
+				{
+					"name": "LD_PRELOAD",
+					"value": "${workspaceFolder}/build_main/lib/libluthier.so:${workspaceFolder}/build_main/lib/libkernel_instrument.so",
+				}
+			],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"miDebuggerPath": "/opt/rocm/bin//rocgdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
 			"name": "editelf",
 			"type": "cppdbg",
 			"request": "launch",

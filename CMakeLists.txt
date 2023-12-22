@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.21)
 project(luthier VERSION 0.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-
+set(CMAKE_BUILD_TYPE Debug)
 # Put the built libraries for all CMake projects under the lib/ folder
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
@@ -145,6 +145,3 @@ if (${LUTHIER_BUILD_EXAMPLES})
   endforeach (DIR)
 endif()
 # ======================================================================================================================
-
-
-
