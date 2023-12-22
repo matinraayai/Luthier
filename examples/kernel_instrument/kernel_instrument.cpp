@@ -147,7 +147,7 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phas
                     std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(packet.dispatch.kernel_object);
                     luthier_insert_call(&instrVec[0], LUTHIER_GET_EXPORTED_FUNC(instrumentation_kernel), LUTHIER_IPOINT_AFTER);
                     instrumented = true;
-                    luthier_override_with_instrumented(&packet.dispatch);
+//                    luthier_override_with_instrumented(&packet.dispatch);
                 }
             }
         }

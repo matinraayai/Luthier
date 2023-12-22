@@ -8,6 +8,8 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <fmt/core.h>
+#include <any>
+#include <optional>
 
 namespace fs = std::experimental::filesystem;
 
@@ -17,7 +19,7 @@ class HipInterceptor {
  private:
     void *handle_{nullptr};
     std::function<void(void *, const luthier_api_evt_phase_t, const int)> userCallback_{};
-    std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*)> internalCallback_{};
+    std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> internalCallback_{};
 
     HipInterceptor();
 
@@ -39,10 +41,10 @@ class HipInterceptor {
         userCallback_ = callback;
     }
 
-    [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*)> &getInternalCallback() const {
+    [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> &getInternalCallback() const {
         return internalCallback_;
     }
-    void SetInternalCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*)> &internal_callback) {
+    void SetInternalCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> &internal_callback) {
         internalCallback_ = internal_callback;
     }
 
