@@ -21,6 +21,7 @@
 #define CODE_OBJECT_MANIPULATION_HPP
 
 #include "luthier_types.h"
+#include "hsa_agent.hpp"
 #include <amd_comgr/amd_comgr.h>
 #include <any>
 #include <boost/iostreams/device/array.hpp>
@@ -589,7 +590,7 @@ code_view_t getFunctionFromSymbol(ELFIO::elfio &elfio, const std::string &functi
 
 std::vector<code_view_t> getDeviceLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
-std::vector<code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
+std::vector<code_view_t> getHostCodeObjectsOfExecutable(hsa_executable_t executable, hsa_agent_t agent);
 
 //struct kd_rsrc_1 {
 //    uint8_t granulated_vgpr_count;
@@ -653,7 +654,7 @@ typedef enum {
     ELF_SECTIONS_LAST = RUNTIME_METADATA
 } ElfSections;
 
-ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent);
+ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, const hsa::GpuAgent &agent);
 
 ELFIO::section *newSection(
     ELFIO::elfio &elfIo,

@@ -22,6 +22,8 @@
 #include "context_manager.hpp"
 #include "error.h"
 #include "hsa_intercept.hpp"
+#include "hsa_agent.hpp"
+#include "hsa_isa.hpp"
 #include "log.hpp"
 #include <elfio/elfio_dump.hpp>
 
@@ -373,7 +375,7 @@ std::vector<luthier::co_manip::code_view_t> getDeviceLoadedCodeObjectOfExecutabl
     return out;
 }
 
-std::vector<co_manip::code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_executable_t executable, hsa_agent_t agent) {
+std::vector<co_manip::code_view_t> getHostCodeObjectsOfExecutable(hsa_executable_t executable, hsa_agent_t agent) {
     auto amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
     // Get a list of loaded code objects inside the executable
     std::vector<hsa_loaded_code_object_t> loadedCodeObjects;
@@ -420,7 +422,6 @@ std::vector<co_manip::code_view_t> getHostLoadedCodeObjectOfExecutable(hsa_execu
             fmt::println("Base Device: {:#x}", lcoBaseAddrDevice);
 
             out.emplace_back(reinterpret_cast<std::byte *>(lcoBaseAddr), lcoSize);
-            //            out.push_back({reinterpret_cast<luthier_address_t>(lcoBaseAddr), static_cast<size_t>(lcoSize)});
         }
     }
     return out;
@@ -642,10 +643,10 @@ bool addSymbol(
     return ret >= 1;
 }
 
-ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
+ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, const hsa::GpuAgent &agent) {
     // Create relocatable stored in a code_t
     const std::string code = "s_nop 0";
-    std::string isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
+    std::string isaName = agent.getIsa()[0].getName();
 
     amd_comgr_data_t relocIn, relocOut;
 
@@ -697,21 +698,21 @@ ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
     elfIo.set_type(ELFIO::ET_REL);
 
     // Create empty ELF sections in elfIo
-    std::vector<ELFIO::section*> relocElfSections;
+    std::vector<ELFIO::section *> relocElfSections;
     // fmt::println("Initial ELF has {} Sections", elfIo.sections.size());
     for (int i = 0; i < elfIo.sections.size(); i++) {
-        const ELFIO::section* psec = elfIo.sections[i];
+        const ELFIO::section *psec = elfIo.sections[i];
         // fmt::println(" [{}] {}\t{}", i, psec->get_name(), psec->get_size());
         relocElfSections.emplace_back(elfIo.sections[i]);
     }
     // fmt::println("\nLine {}: Create sections for relocatable", __LINE__);
     // fmt::println("\nOriginal ELF has {} sections", elfIoIn.sections.size());
     for (int i = 0; i < elfIoIn.sections.size(); i++) {
-        const ELFIO::section* psec = elfIoIn.sections[i];
+        const ELFIO::section *psec = elfIoIn.sections[i];
 
         bool section_in_reloc = false;
         // fmt::println(" [{}] {}\t{}", i, psec->get_name(), psec->get_size());
-        for (auto reloc_sec : relocElfSections) {
+        for (auto reloc_sec: relocElfSections) {
             if (!psec->get_name().compare(reloc_sec->get_name())) {
                 section_in_reloc = true;
                 break;
@@ -719,7 +720,7 @@ ELFIO::elfio createAMDGPUElf(const ELFIO::elfio &elfIoIn, hsa_agent_t agent) {
         }
         if (!section_in_reloc)
             elfIo.sections.add(psec->get_name());
-    }   //fmt::print("\n");
+    }//fmt::print("\n");
     // fmt::println("Final ELF has {} Sections", elfIo.sections.size());
     // for (int i = 0; i < elfIo.sections.size(); i++) {
     //     const ELFIO::section* psec = elfIo.sections[i];
@@ -834,9 +835,6 @@ amd_comgr_status_t extractCodeObjectMetaDataMap(amd_comgr_metadata_node_t key,
 //        fmt::println("Virtual Address: {:#x}", seg->get_virtual_address());
 //        fmt::println("------");
 //    }
-
-
-
 
 //  for Code Object V3
 enum class ArgField : uint8_t {
@@ -1197,7 +1195,7 @@ static amd_comgr_status_t populateAttrs(const amd_comgr_metadata_node_t key,
         return AMD_COMGR_STATUS_ERROR;
     }
 
-    auto kernelMetaData = static_cast<WorkGroupInfo*>(data);
+    auto kernelMetaData = static_cast<WorkGroupInfo *>(data);
     switch (itAttrField->second) {
         case AttrField::ReqdWorkGroupSize: {
             status = amd_comgr_get_metadata_list_size(value, &size);
@@ -1551,20 +1549,22 @@ static amd_comgr_status_t populateKernelMetaV3(const amd_comgr_metadata_node_t k
     return status;
 }
 
-template <typename T> inline T alignDown(T value, size_t alignment) {
-    return (T)(value & ~(alignment - 1));
+template<typename T>
+inline T alignDown(T value, size_t alignment) {
+    return (T) (value & ~(alignment - 1));
 }
 
-template <typename T> inline T* alignDown(T* value, size_t alignment) {
-    return (T*)alignDown((intptr_t)value, alignment);
+template<typename T>
+inline T *alignDown(T *value, size_t alignment) {
+    return (T *) alignDown((intptr_t) value, alignment);
 }
 
-
-template <typename T> inline T alignUp(T value, size_t alignment) {
-    return alignDown((T)(value + alignment - 1), alignment);
+template<typename T>
+inline T alignUp(T value, size_t alignment) {
+    return alignDown((T) (value + alignment - 1), alignment);
 }
 
-void InitParameters(const ElfView& elfView, const amd_comgr_metadata_node_t kernelMD, WorkGroupInfo& workGroupInfo) {
+void InitParameters(const ElfView &elfView, const amd_comgr_metadata_node_t kernelMD, WorkGroupInfo &workGroupInfo) {
     // Iterate through the arguments and insert into parameterList
     size_t offset = 0;
 
@@ -1572,7 +1572,7 @@ void InitParameters(const ElfView& elfView, const amd_comgr_metadata_node_t kern
     bool hsaArgsMeta = false;
     size_t argsSize = 0;
 
-    amd_comgr_status_t status =  amd_comgr_metadata_lookup(
+    amd_comgr_status_t status = amd_comgr_metadata_lookup(
         kernelMD,
         (elfView->getCodeObjectVersion() == 2) ? "Args" : ".args",
         &argsMeta);
@@ -1599,11 +1599,10 @@ void InitParameters(const ElfView& elfView, const amd_comgr_metadata_node_t kern
             status = AMD_COMGR_STATUS_ERROR;
         }
         if (status == AMD_COMGR_STATUS_SUCCESS) {
-            void *data = static_cast<void*>(&desc);
+            void *data = static_cast<void *>(&desc);
             if (elfView->getCodeObjectVersion() == 2) {
                 status = amd_comgr_iterate_map_metadata(argsNode, populateArgs, data);
-            }
-            else if (elfView->getCodeObjectVersion() >= 3) {
+            } else if (elfView->getCodeObjectVersion() >= 3) {
                 status = amd_comgr_iterate_map_metadata(argsNode, populateArgsV3, data);
             }
         }
@@ -1650,10 +1649,8 @@ void InitParameters(const ElfView& elfView, const amd_comgr_metadata_node_t kern
 
         // LC doesn't report correct address qualifier for images and pipes,
         // hence overwrite it
-        if ((desc.info_.oclObject_ == KernelParameterDescriptor::ImageObject) ||
-            (desc.typeQualifier_  & CL_KERNEL_ARG_TYPE_PIPE)) {
+        if ((desc.info_.oclObject_ == KernelParameterDescriptor::ImageObject) || (desc.typeQualifier_ & CL_KERNEL_ARG_TYPE_PIPE)) {
             desc.addressQualifier_ = CL_KERNEL_ARG_ADDRESS_GLOBAL;
-
         }
         size_t size = desc.size_;
 
@@ -1672,14 +1669,11 @@ void InitParameters(const ElfView& elfView, const amd_comgr_metadata_node_t kern
 
         // These objects have forced data size to uint64_t
         if (elfView->getCodeObjectVersion() == 2) {
-            if ((desc.info_.oclObject_ == KernelParameterDescriptor::ImageObject) ||
-                (desc.info_.oclObject_ == KernelParameterDescriptor::SamplerObject) ||
-                (desc.info_.oclObject_ == KernelParameterDescriptor::QueueObject)) {
+            if ((desc.info_.oclObject_ == KernelParameterDescriptor::ImageObject) || (desc.info_.oclObject_ == KernelParameterDescriptor::SamplerObject) || (desc.info_.oclObject_ == KernelParameterDescriptor::QueueObject)) {
                 offset = alignUp(offset, sizeof(uint64_t));
                 desc.offset_ = offset;
                 offset += sizeof(uint64_t);
-            }
-            else {
+            } else {
                 offset = alignUp(offset, desc.alignment_);
                 desc.offset_ = offset;
                 offset += size;
@@ -1701,11 +1695,10 @@ void InitParameters(const ElfView& elfView, const amd_comgr_metadata_node_t kern
     }
 }
 
-
-WorkGroupInfo GetAttrCodePropMetadata(const ElfView& elfView, amd_comgr_metadata_node_t kernelMetaNode) {
+WorkGroupInfo GetAttrCodePropMetadata(const ElfView &elfView, amd_comgr_metadata_node_t kernelMetaNode) {
     WorkGroupInfo workGroupInfo;
-//     Set the workgroup information for the kernel
-//    workGroupInfo.availableLDSSize_ = device().info().localMemSizePerCU_;
+    //     Set the workgroup information for the kernel
+    //    workGroupInfo.availableLDSSize_ = device().info().localMemSizePerCU_;
     workGroupInfo.availableSGPRs_ = 104;
     workGroupInfo.availableVGPRs_ = 256;
 
@@ -1727,7 +1720,7 @@ WorkGroupInfo GetAttrCodePropMetadata(const ElfView& elfView, amd_comgr_metadata
             if (status == AMD_COMGR_STATUS_SUCCESS) {
                 if (amd_comgr_metadata_lookup(kernelMetaNode, "Attrs", &attrMeta) == AMD_COMGR_STATUS_SUCCESS) {
                     status = amd_comgr_iterate_map_metadata(attrMeta, populateAttrs,
-                                                              static_cast<void *>(&workGroupInfo));
+                                                            static_cast<void *>(&workGroupInfo));
                     amd_comgr_destroy_metadata(attrMeta);
                 }
             }
@@ -1740,13 +1733,13 @@ WorkGroupInfo GetAttrCodePropMetadata(const ElfView& elfView, amd_comgr_metadata
 
             if (status == AMD_COMGR_STATUS_SUCCESS) {
                 status = amd_comgr_iterate_map_metadata(codePropsMeta, populateCodeProps,
-                                                          static_cast<void *>(&workGroupInfo));
+                                                        static_cast<void *>(&workGroupInfo));
                 amd_comgr_destroy_metadata(codePropsMeta);
             }
         } break;
         default:
             status = amd_comgr_iterate_map_metadata(kernelMetaNode, populateKernelMetaV3,
-                                                      static_cast<void *>(&workGroupInfo));
+                                                    static_cast<void *>(&workGroupInfo));
     }
 
     assert(status == AMD_COMGR_STATUS_SUCCESS);
@@ -1762,7 +1755,6 @@ amd_comgr_status_t ElfViewImpl::initializeComgrMetaData() const {
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(comgrDataKind, &*comgrData_));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(*comgrData_, data_.size(),
                                                reinterpret_cast<const char *>(data_.data())));
-
 
     amd_comgr_status_t status;
 

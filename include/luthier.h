@@ -84,12 +84,6 @@ static hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_pa
     return static_cast<hsa_packet_type_t>((aql_packet.packet.header >> HSA_PACKET_HEADER_TYPE) & ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
 }
 
-//// Determine if a packet is valid. The caller is responsible for loading the
-//// header using an atomic or ordinary load as appropriate.
-//static bool isValid(uint16_t header) {
-//    return ((luthier_get_packet_type(header) <= HSA_PACKET_TYPE_BARRIER_OR) &&
-//            (luthier_get_packet_type(header) != HSA_PACKET_TYPE_INVALID));
-//}
 
 //static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
 //    if (hip_api_id < 1000)

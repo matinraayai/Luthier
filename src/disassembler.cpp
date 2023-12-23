@@ -1,6 +1,6 @@
 #include "disassembler.hpp"
-#include "context_manager.hpp"
-#include "hsa_intercept.hpp"
+#include "hsa_isa.hpp"
+#include "hsa_executable.hpp"
 
 namespace {
 
@@ -54,60 +54,14 @@ luthier_address_t getKdEntryPoint(luthier_address_t kernelObject) {
     return reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 }
 
-std::tuple<hsa_agent_t, hsa_executable_t, hsa_executable_symbol_t> getKernelObjectInfo(luthier_address_t kernelObject) {
-    const auto& amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
-    const auto& coreApi = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
-
-    // A way to backtrack from the kernel object to the symbol it belongs to (besides keeping track of a map)
-    hsa_executable_t executable;
-
-    // Check which executable this kernel object (address) belongs to
-    LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_executable(reinterpret_cast<void *>(kernelObject),
-                                                                 &executable));
-
-    struct disassemble_callback_data_t {
-        hsa_agent_t agent;
-        hsa_executable_t executable;
-        hsa_executable_symbol_t symbol;
-        luthier_address_t ko;
-    } findKoAgentCallbackData{{}, {}, {}, kernelObject};
-
-    auto findKoAgentIterator = [](hsa_executable_t e, hsa_agent_t a, hsa_executable_symbol_t s, void *data) {
-        auto cbd = reinterpret_cast<disassemble_callback_data_t*>(data);
-        uint64_t ko;
-        auto &coreApi = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
-        LUTHIER_HSA_CHECK(coreApi.hsa_executable_symbol_get_info_fn(s, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &ko));
-        if (ko == cbd->ko) {
-            cbd->executable = e;
-            cbd->agent = a;
-            cbd->symbol = s;
-        }
-        return HSA_STATUS_SUCCESS;
-    };
-
-    const auto &contextManager = luthier::ContextManager::Instance();
-
-    auto agents = contextManager.getHsaAgents();
-    for (const auto &agent: agents)
-        LUTHIER_HSA_CHECK(coreApi.hsa_executable_iterate_agent_symbols_fn(executable, agent,
-                                                                        findKoAgentIterator, &findKoAgentCallbackData));
-    assert(findKoAgentCallbackData.agent.handle != hsa_agent_t{}.handle);
-    assert(findKoAgentCallbackData.symbol.handle != hsa_executable_symbol_t{}.handle);
-    return std::make_tuple(findKoAgentCallbackData.agent, findKoAgentCallbackData.executable, findKoAgentCallbackData.symbol);
-}
-
 }// namespace
 
 std::vector<luthier::Instr> luthier::Disassembler::disassemble(luthier_address_t kernelObject) {
-    hsa_agent_t symbolAgent;
-    hsa_executable_t executable;
-    hsa_executable_symbol_t executableSymbol;
-    const auto &contextManager = luthier::ContextManager::Instance();
+    auto symbol = hsa::ExecutableSymbol::fromKernelDescriptor(reinterpret_cast<const kernel_descriptor_t*>(kernelObject));
+    std::string isaName = symbol.getAgent().getIsa()[0].getName();
 
     luthier_address_t kernelEntryPoint = getKdEntryPoint(kernelObject);
-    std::tie(symbolAgent, executable, executableSymbol) = getKernelObjectInfo(kernelObject);
 
-    std::string isaName = contextManager.getHsaAgentInfo(symbolAgent)->getIsaName();
 
     // Disassemble using AMD_COMGR
 
@@ -122,16 +76,16 @@ std::vector<luthier::Instr> luthier::Disassembler::disassemble(luthier_address_t
     while (status == AMD_COMGR_STATUS_SUCCESS && !kdDisassemblyCallbackData.second) {
         status = amd_comgr_disassemble_instruction(
             disassemblyInfo, instrAddr, (void *) &kdDisassemblyCallbackData, &instrSize);
-        out.emplace_back(kdDisassemblyCallbackData.first, symbolAgent, executable, executableSymbol, instrAddr, instrSize);
+        out.emplace_back(kdDisassemblyCallbackData.first, symbol.getAgent().asHsaType(), symbol.getExecutable().asHsaType(), symbol.asHsaType(), instrAddr, instrSize);
         kdDisassemblyCallbackData.second = kdDisassemblyCallbackData.first.find("s_endpgm") != std::string::npos;
         instrAddr += instrSize;
     }
     return out;
 }
 
-std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_agent_t agent, co_manip::code_view_t code) {
+std::vector<luthier::Instr> luthier::Disassembler::disassemble(const hsa::GpuAgent& agent, co_manip::code_view_t code) {
 
-    std::string isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
+    std::string isaName = agent.getIsa()[0].getName();
 
     auto disassemblyInfo = getSizeDisassemblyInfo(isaName);
 
@@ -156,13 +110,13 @@ std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_agent_t agent
 std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_executable_symbol_t symbol) {
     return std::vector<luthier::Instr>();
 }
-std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_agent_t agent, luthier_address_t address) {
+std::vector<luthier::Instr> luthier::Disassembler::disassemble(const hsa::GpuAgent& agent, luthier_address_t address) {
     return std::vector<Instr>();
 }
 std::vector<luthier::Instr> luthier::Disassembler::disassemble(luthier_address_t kernelObject, size_t size) {
     return std::vector<Instr>();
 }
-std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa_executable_symbol_t symbol, size_t size) {
+std::vector<luthier::Instr> luthier::Disassembler::disassemble(hsa::ExecutableSymbol symbol, size_t size) {
     return std::vector<Instr>();
 }
 

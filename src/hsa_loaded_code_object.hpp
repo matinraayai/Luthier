@@ -9,8 +9,6 @@ class Executable;
 class GpuAgent;
 
 class LoadedCodeObject : public HandleType<hsa_loaded_code_object_t> {
- private:
-    const hsa_ven_amd_loader_1_03_pfn_t& loaderApi_;
  public:
     explicit LoadedCodeObject(hsa_loaded_code_object_t lco);
 

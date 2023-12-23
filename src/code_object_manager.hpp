@@ -2,11 +2,14 @@
 #define CODE_OBJECT_MANAGER_HPP
 #include "code_object_manipulation.hpp"
 #include "luthier_types.h"
+#include "hsa_primitive.hpp"
+#include "hsa_executable.hpp"
+#include "hsa_executable_symbol.hpp"
+#include "hsa_agent.hpp"
 #include <amd_comgr/amd_comgr.h>
 #include <hsa/hsa.h>
 #include <memory>
 #include <set>
-#include <unordered_map>
 #include <vector>
 
 namespace luthier {
@@ -41,7 +44,7 @@ class CodeObjectManager {
      * @param agent the GPU HSA agent where the instrumentation function is loaded on
      * @return the instrumentation function body
      */
-    co_manip::code_view_t getInstrumentationFunction(const void *wrapperKernelHostPtr, hsa_agent_t agent) const;
+    co_manip::code_view_t getInstrumentationFunction(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
 
     /**
      * Returns the kernel descriptor of the wrapper kernel associated with an instrumentation function, given its wrapper kernel
@@ -51,7 +54,7 @@ class CodeObjectManager {
      * @param agent the HSA GPU Agent the wrapper kernel is loaded on
      * @return a pointer to the kernel descriptor located in host-accessible device memory
      */
-    kernel_descriptor_t *getKernelDescriptorOfInstrumentationFunction(const void *wrapperKernelHostPtr, hsa_agent_t agent) const;
+    kernel_descriptor_t *getKernelDescriptorOfInstrumentationFunction(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
 
     /**
      * Registers an instrumented version of a target application kernel. \class CodeObjectManager keeps track of instrumented kernels
@@ -79,7 +82,7 @@ class CodeObjectManager {
     } per_agent_instrumentation_function_entry_t;
 
     typedef struct {
-        std::unordered_map<decltype(hsa_agent_t::handle), per_agent_instrumentation_function_entry_t> agentToExecMap;
+        std::unordered_map<hsa::GpuAgent, per_agent_instrumentation_function_entry_t> agentToExecMap;
         const std::string globalFunctionName;
         const std::string deviceFunctionName;
     } instrumentation_function_info_t;
@@ -97,7 +100,7 @@ class CodeObjectManager {
      * A set of all hsa_executable_t handles that belong to the Luthier tool, containing the instrumentation function
      * and their wrapper kernels
      */
-    std::set<decltype(hsa_executable_t::handle)> executables_{};
+    std::set<hsa::Executable> toolExecutables_{};
 
     std::unordered_map<const void *, instrumentation_function_info_t> functions_{};
 

@@ -6,9 +6,9 @@
 
 namespace luthier::hsa {
 
-class Cache : public HsaPrimitive<hsa_cache_t> {
+class Cache : public HandleType<hsa_cache_t> {
  private:
-    explicit Cache(hsa_cache_t cache) : HsaPrimitive<hsa_cache_t>(cache) {};
+    explicit Cache(hsa_cache_t cache) : HandleType<hsa_cache_t>(cache) {};
 
  public:
     std::string getName();
