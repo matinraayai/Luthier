@@ -140,6 +140,22 @@ void luthier_insert_call(luthier_instruction_t instr, const void *dev_func, luth
     luthier::CodeGenerator::instance().instrument(*luthier::hsa::Instr::fromHandle(instr), dev_func, point);
 }
 
+void luthier_enable_hsa_op_callback(uint32_t op) {
+    luthier::HsaInterceptor::instance().enable_callback_impl(op);
+}
+
+void luthier_disable_hsa_op_callback(uint32_t op) {
+    luthier::HsaInterceptor::instance().disable_callback_impl(op);
+}
+
+void luthier_enable_hip_op_callback(uint32_t op) {
+    luthier::HipInterceptor::Instance().enable_callback_impl(op);
+}
+
+void luthier_disable_hip_op_callback(uint32_t op) {
+    luthier::HipInterceptor::Instance().disable_callback_impl(op);
+}
+
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
     const auto instrumentedKernel = luthier::CodeObjectManager::instance().getInstrumentedKernel(
         luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
@@ -166,7 +182,6 @@ __attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t 
 
 __attribute__((visibility("default"))) void OnUnload() {
     LUTHIER_LOG_FUNCTION_CALL_START
-    fmt::println("This is when the unload method is called");
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 }

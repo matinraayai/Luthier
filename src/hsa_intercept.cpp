@@ -7,7 +7,7 @@
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
 
@@ -35,6 +35,7 @@ static hsa_status_t hsa_init_callback() {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_init;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_init_fn();
 	hsa_api_evt_args_t args;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
 	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
@@ -53,6 +54,7 @@ static hsa_status_t hsa_shut_down_callback() {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_shut_down;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_shut_down_fn();
 	hsa_api_evt_args_t args;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
 	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
@@ -71,6 +73,7 @@ static hsa_status_t hsa_system_get_info_callback(hsa_system_info_t attribute, vo
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_system_get_info_fn(attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_system_get_info.attribute = attribute;
 	args.api_args.hsa_system_get_info.value = value;
@@ -93,6 +96,7 @@ static hsa_status_t hsa_system_extension_supported_callback(uint16_t extension, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_extension_supported;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_system_extension_supported_fn(extension, version_major, version_minor, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_system_extension_supported.extension = extension;
 	args.api_args.hsa_system_extension_supported.version_major = version_major;
@@ -119,6 +123,7 @@ static hsa_status_t hsa_system_get_extension_table_callback(uint16_t extension, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_get_extension_table;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_system_get_extension_table_fn(extension, version_major, version_minor, table);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_system_get_extension_table.extension = extension;
 	args.api_args.hsa_system_get_extension_table.version_major = version_major;
@@ -145,6 +150,7 @@ static hsa_status_t hsa_iterate_agents_callback(hsa_status_t (* callback)(hsa_ag
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_iterate_agents;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_iterate_agents_fn(callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_iterate_agents.callback = callback;
 	args.api_args.hsa_iterate_agents.data = data;
@@ -167,6 +173,7 @@ static hsa_status_t hsa_agent_get_info_callback(hsa_agent_t agent, hsa_agent_inf
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_info_fn(agent, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_agent_get_info.agent = agent;
 	args.api_args.hsa_agent_get_info.attribute = attribute;
@@ -191,6 +198,7 @@ static hsa_status_t hsa_queue_create_callback(hsa_agent_t agent, uint32_t size, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_create_fn(agent, size, type, callback, data, private_segment_size, group_segment_size, queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_create.agent = agent;
 	args.api_args.hsa_queue_create.size = size;
@@ -225,6 +233,7 @@ static hsa_status_t hsa_soft_queue_create_callback(hsa_region_t region, uint32_t
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_soft_queue_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_soft_queue_create_fn(region, size, type, features, doorbell_signal, queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_soft_queue_create.region = region;
 	args.api_args.hsa_soft_queue_create.size = size;
@@ -255,6 +264,7 @@ static hsa_status_t hsa_queue_destroy_callback(hsa_queue_t* queue) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_destroy_fn(queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_destroy.queue = queue;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -275,6 +285,7 @@ static hsa_status_t hsa_queue_inactivate_callback(hsa_queue_t* queue) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_inactivate;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_inactivate_fn(queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_inactivate.queue = queue;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -295,6 +306,7 @@ static uint64_t hsa_queue_load_read_index_scacquire_callback(const hsa_queue_t* 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_read_index_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_scacquire_fn(queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_load_read_index_scacquire.queue = queue;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -315,6 +327,7 @@ static uint64_t hsa_queue_load_read_index_relaxed_callback(const hsa_queue_t* qu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_read_index_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_relaxed_fn(queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_load_read_index_relaxed.queue = queue;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -335,6 +348,7 @@ static uint64_t hsa_queue_load_write_index_scacquire_callback(const hsa_queue_t*
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_write_index_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_scacquire_fn(queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_load_write_index_scacquire.queue = queue;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -355,6 +369,7 @@ static uint64_t hsa_queue_load_write_index_relaxed_callback(const hsa_queue_t* q
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_write_index_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_relaxed_fn(queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_load_write_index_relaxed.queue = queue;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -375,6 +390,7 @@ static void hsa_queue_store_write_index_relaxed_callback(const hsa_queue_t* queu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_write_index_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_relaxed_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_store_write_index_relaxed.queue = queue;
 	args.api_args.hsa_queue_store_write_index_relaxed.value = value;
@@ -395,6 +411,7 @@ static void hsa_queue_store_write_index_screlease_callback(const hsa_queue_t* qu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_write_index_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_screlease_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_store_write_index_screlease.queue = queue;
 	args.api_args.hsa_queue_store_write_index_screlease.value = value;
@@ -415,6 +432,7 @@ static uint64_t hsa_queue_cas_write_index_scacq_screl_callback(const hsa_queue_t
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacq_screl_fn(queue, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_cas_write_index_scacq_screl.queue = queue;
 	args.api_args.hsa_queue_cas_write_index_scacq_screl.expected = expected;
@@ -439,6 +457,7 @@ static uint64_t hsa_queue_cas_write_index_scacquire_callback(const hsa_queue_t* 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacquire_fn(queue, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_cas_write_index_scacquire.queue = queue;
 	args.api_args.hsa_queue_cas_write_index_scacquire.expected = expected;
@@ -463,6 +482,7 @@ static uint64_t hsa_queue_cas_write_index_relaxed_callback(const hsa_queue_t* qu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_relaxed_fn(queue, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_cas_write_index_relaxed.queue = queue;
 	args.api_args.hsa_queue_cas_write_index_relaxed.expected = expected;
@@ -487,6 +507,7 @@ static uint64_t hsa_queue_cas_write_index_screlease_callback(const hsa_queue_t* 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_screlease_fn(queue, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_cas_write_index_screlease.queue = queue;
 	args.api_args.hsa_queue_cas_write_index_screlease.expected = expected;
@@ -511,6 +532,7 @@ static uint64_t hsa_queue_add_write_index_scacq_screl_callback(const hsa_queue_t
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacq_screl_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_add_write_index_scacq_screl.queue = queue;
 	args.api_args.hsa_queue_add_write_index_scacq_screl.value = value;
@@ -533,6 +555,7 @@ static uint64_t hsa_queue_add_write_index_scacquire_callback(const hsa_queue_t* 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacquire_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_add_write_index_scacquire.queue = queue;
 	args.api_args.hsa_queue_add_write_index_scacquire.value = value;
@@ -555,6 +578,7 @@ static uint64_t hsa_queue_add_write_index_relaxed_callback(const hsa_queue_t* qu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_relaxed_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_add_write_index_relaxed.queue = queue;
 	args.api_args.hsa_queue_add_write_index_relaxed.value = value;
@@ -577,6 +601,7 @@ static uint64_t hsa_queue_add_write_index_screlease_callback(const hsa_queue_t* 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_screlease_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_add_write_index_screlease.queue = queue;
 	args.api_args.hsa_queue_add_write_index_screlease.value = value;
@@ -599,6 +624,7 @@ static void hsa_queue_store_read_index_relaxed_callback(const hsa_queue_t* queue
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_read_index_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_relaxed_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_store_read_index_relaxed.queue = queue;
 	args.api_args.hsa_queue_store_read_index_relaxed.value = value;
@@ -619,6 +645,7 @@ static void hsa_queue_store_read_index_screlease_callback(const hsa_queue_t* que
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_read_index_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_screlease_fn(queue, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_queue_store_read_index_screlease.queue = queue;
 	args.api_args.hsa_queue_store_read_index_screlease.value = value;
@@ -639,6 +666,7 @@ static hsa_status_t hsa_agent_iterate_regions_callback(hsa_agent_t agent, hsa_st
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_iterate_regions;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_regions_fn(agent, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_agent_iterate_regions.agent = agent;
 	args.api_args.hsa_agent_iterate_regions.callback = callback;
@@ -663,6 +691,7 @@ static hsa_status_t hsa_region_get_info_callback(hsa_region_t region, hsa_region
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_region_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_region_get_info_fn(region, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_region_get_info.region = region;
 	args.api_args.hsa_region_get_info.attribute = attribute;
@@ -687,6 +716,7 @@ static hsa_status_t hsa_agent_get_exception_policies_callback(hsa_agent_t agent,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_get_exception_policies;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_exception_policies_fn(agent, profile, mask);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_agent_get_exception_policies.agent = agent;
 	args.api_args.hsa_agent_get_exception_policies.profile = profile;
@@ -711,6 +741,7 @@ static hsa_status_t hsa_agent_extension_supported_callback(uint16_t extension, h
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_extension_supported;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_agent_extension_supported_fn(extension, agent, version_major, version_minor, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_agent_extension_supported.extension = extension;
 	args.api_args.hsa_agent_extension_supported.agent = agent;
@@ -739,6 +770,7 @@ static hsa_status_t hsa_memory_register_callback(void* ptr, size_t size) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_register;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_memory_register_fn(ptr, size);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_memory_register.ptr = ptr;
 	args.api_args.hsa_memory_register.size = size;
@@ -761,6 +793,7 @@ static hsa_status_t hsa_memory_deregister_callback(void* ptr, size_t size) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_deregister;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_memory_deregister_fn(ptr, size);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_memory_deregister.ptr = ptr;
 	args.api_args.hsa_memory_deregister.size = size;
@@ -783,6 +816,7 @@ static hsa_status_t hsa_memory_allocate_callback(hsa_region_t region, size_t siz
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_allocate;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_memory_allocate_fn(region, size, ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_memory_allocate.region = region;
 	args.api_args.hsa_memory_allocate.size = size;
@@ -807,6 +841,7 @@ static hsa_status_t hsa_memory_free_callback(void* ptr) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_free;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_memory_free_fn(ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_memory_free.ptr = ptr;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -827,6 +862,7 @@ static hsa_status_t hsa_memory_copy_callback(void* dst, const void* src, size_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_copy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_memory_copy_fn(dst, src, size);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_memory_copy.dst = dst;
 	args.api_args.hsa_memory_copy.src = src;
@@ -851,6 +887,7 @@ static hsa_status_t hsa_memory_assign_agent_callback(void* ptr, hsa_agent_t agen
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_assign_agent;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_memory_assign_agent_fn(ptr, agent, access);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_memory_assign_agent.ptr = ptr;
 	args.api_args.hsa_memory_assign_agent.agent = agent;
@@ -875,6 +912,7 @@ static hsa_status_t hsa_signal_create_callback(hsa_signal_value_t initial_value,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_create_fn(initial_value, num_consumers, consumers, signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_create.initial_value = initial_value;
 	args.api_args.hsa_signal_create.num_consumers = num_consumers;
@@ -901,6 +939,7 @@ static hsa_status_t hsa_signal_destroy_callback(hsa_signal_t signal) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_destroy_fn(signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_destroy.signal = signal;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -921,6 +960,7 @@ static hsa_signal_value_t hsa_signal_load_relaxed_callback(hsa_signal_t signal) 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_load_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_relaxed_fn(signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_load_relaxed.signal = signal;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -941,6 +981,7 @@ static hsa_signal_value_t hsa_signal_load_scacquire_callback(hsa_signal_t signal
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_load_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_scacquire_fn(signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_load_scacquire.signal = signal;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -961,6 +1002,7 @@ static void hsa_signal_store_relaxed_callback(hsa_signal_t signal, hsa_signal_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_store_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_store_relaxed.signal = signal;
 	args.api_args.hsa_signal_store_relaxed.value = value;
@@ -981,6 +1023,7 @@ static void hsa_signal_store_screlease_callback(hsa_signal_t signal, hsa_signal_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_store_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_store_screlease.signal = signal;
 	args.api_args.hsa_signal_store_screlease.value = value;
@@ -1001,6 +1044,7 @@ static hsa_signal_value_t hsa_signal_wait_relaxed_callback(hsa_signal_t signal, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_wait_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_relaxed_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_wait_relaxed.signal = signal;
 	args.api_args.hsa_signal_wait_relaxed.condition = condition;
@@ -1029,6 +1073,7 @@ static hsa_signal_value_t hsa_signal_wait_scacquire_callback(hsa_signal_t signal
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_wait_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_scacquire_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_wait_scacquire.signal = signal;
 	args.api_args.hsa_signal_wait_scacquire.condition = condition;
@@ -1057,6 +1102,7 @@ static void hsa_signal_and_relaxed_callback(hsa_signal_t signal, hsa_signal_valu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_and_relaxed.signal = signal;
 	args.api_args.hsa_signal_and_relaxed.value = value;
@@ -1077,6 +1123,7 @@ static void hsa_signal_and_scacquire_callback(hsa_signal_t signal, hsa_signal_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacquire_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_and_scacquire.signal = signal;
 	args.api_args.hsa_signal_and_scacquire.value = value;
@@ -1097,6 +1144,7 @@ static void hsa_signal_and_screlease_callback(hsa_signal_t signal, hsa_signal_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_and_screlease.signal = signal;
 	args.api_args.hsa_signal_and_screlease.value = value;
@@ -1117,6 +1165,7 @@ static void hsa_signal_and_scacq_screl_callback(hsa_signal_t signal, hsa_signal_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacq_screl_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_and_scacq_screl.signal = signal;
 	args.api_args.hsa_signal_and_scacq_screl.value = value;
@@ -1137,6 +1186,7 @@ static void hsa_signal_or_relaxed_callback(hsa_signal_t signal, hsa_signal_value
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_or_relaxed.signal = signal;
 	args.api_args.hsa_signal_or_relaxed.value = value;
@@ -1157,6 +1207,7 @@ static void hsa_signal_or_scacquire_callback(hsa_signal_t signal, hsa_signal_val
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacquire_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_or_scacquire.signal = signal;
 	args.api_args.hsa_signal_or_scacquire.value = value;
@@ -1177,6 +1228,7 @@ static void hsa_signal_or_screlease_callback(hsa_signal_t signal, hsa_signal_val
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_or_screlease.signal = signal;
 	args.api_args.hsa_signal_or_screlease.value = value;
@@ -1197,6 +1249,7 @@ static void hsa_signal_or_scacq_screl_callback(hsa_signal_t signal, hsa_signal_v
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacq_screl_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_or_scacq_screl.signal = signal;
 	args.api_args.hsa_signal_or_scacq_screl.value = value;
@@ -1217,6 +1270,7 @@ static void hsa_signal_xor_relaxed_callback(hsa_signal_t signal, hsa_signal_valu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_xor_relaxed.signal = signal;
 	args.api_args.hsa_signal_xor_relaxed.value = value;
@@ -1237,6 +1291,7 @@ static void hsa_signal_xor_scacquire_callback(hsa_signal_t signal, hsa_signal_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacquire_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_xor_scacquire.signal = signal;
 	args.api_args.hsa_signal_xor_scacquire.value = value;
@@ -1257,6 +1312,7 @@ static void hsa_signal_xor_screlease_callback(hsa_signal_t signal, hsa_signal_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_xor_screlease.signal = signal;
 	args.api_args.hsa_signal_xor_screlease.value = value;
@@ -1277,6 +1333,7 @@ static void hsa_signal_xor_scacq_screl_callback(hsa_signal_t signal, hsa_signal_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacq_screl_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_xor_scacq_screl.signal = signal;
 	args.api_args.hsa_signal_xor_scacq_screl.value = value;
@@ -1297,6 +1354,7 @@ static hsa_signal_value_t hsa_signal_exchange_relaxed_callback(hsa_signal_t sign
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_exchange_relaxed.signal = signal;
 	args.api_args.hsa_signal_exchange_relaxed.value = value;
@@ -1319,6 +1377,7 @@ static hsa_signal_value_t hsa_signal_exchange_scacquire_callback(hsa_signal_t si
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacquire_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_exchange_scacquire.signal = signal;
 	args.api_args.hsa_signal_exchange_scacquire.value = value;
@@ -1341,6 +1400,7 @@ static hsa_signal_value_t hsa_signal_exchange_screlease_callback(hsa_signal_t si
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_exchange_screlease.signal = signal;
 	args.api_args.hsa_signal_exchange_screlease.value = value;
@@ -1363,6 +1423,7 @@ static hsa_signal_value_t hsa_signal_exchange_scacq_screl_callback(hsa_signal_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacq_screl_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_exchange_scacq_screl.signal = signal;
 	args.api_args.hsa_signal_exchange_scacq_screl.value = value;
@@ -1385,6 +1446,7 @@ static void hsa_signal_add_relaxed_callback(hsa_signal_t signal, hsa_signal_valu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_add_relaxed.signal = signal;
 	args.api_args.hsa_signal_add_relaxed.value = value;
@@ -1405,6 +1467,7 @@ static void hsa_signal_add_scacquire_callback(hsa_signal_t signal, hsa_signal_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacquire_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_add_scacquire.signal = signal;
 	args.api_args.hsa_signal_add_scacquire.value = value;
@@ -1425,6 +1488,7 @@ static void hsa_signal_add_screlease_callback(hsa_signal_t signal, hsa_signal_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_add_screlease.signal = signal;
 	args.api_args.hsa_signal_add_screlease.value = value;
@@ -1445,6 +1509,7 @@ static void hsa_signal_add_scacq_screl_callback(hsa_signal_t signal, hsa_signal_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacq_screl_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_add_scacq_screl.signal = signal;
 	args.api_args.hsa_signal_add_scacq_screl.value = value;
@@ -1465,6 +1530,7 @@ static void hsa_signal_subtract_relaxed_callback(hsa_signal_t signal, hsa_signal
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_subtract_relaxed.signal = signal;
 	args.api_args.hsa_signal_subtract_relaxed.value = value;
@@ -1485,6 +1551,7 @@ static void hsa_signal_subtract_scacquire_callback(hsa_signal_t signal, hsa_sign
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacquire_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_subtract_scacquire.signal = signal;
 	args.api_args.hsa_signal_subtract_scacquire.value = value;
@@ -1505,6 +1572,7 @@ static void hsa_signal_subtract_screlease_callback(hsa_signal_t signal, hsa_sign
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_subtract_screlease.signal = signal;
 	args.api_args.hsa_signal_subtract_screlease.value = value;
@@ -1525,6 +1593,7 @@ static void hsa_signal_subtract_scacq_screl_callback(hsa_signal_t signal, hsa_si
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacq_screl_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_subtract_scacq_screl.signal = signal;
 	args.api_args.hsa_signal_subtract_scacq_screl.value = value;
@@ -1545,6 +1614,7 @@ static hsa_signal_value_t hsa_signal_cas_relaxed_callback(hsa_signal_t signal, h
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_relaxed_fn(signal, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_cas_relaxed.signal = signal;
 	args.api_args.hsa_signal_cas_relaxed.expected = expected;
@@ -1569,6 +1639,7 @@ static hsa_signal_value_t hsa_signal_cas_scacquire_callback(hsa_signal_t signal,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacquire_fn(signal, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_cas_scacquire.signal = signal;
 	args.api_args.hsa_signal_cas_scacquire.expected = expected;
@@ -1593,6 +1664,7 @@ static hsa_signal_value_t hsa_signal_cas_screlease_callback(hsa_signal_t signal,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_screlease_fn(signal, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_cas_screlease.signal = signal;
 	args.api_args.hsa_signal_cas_screlease.expected = expected;
@@ -1617,6 +1689,7 @@ static hsa_signal_value_t hsa_signal_cas_scacq_screl_callback(hsa_signal_t signa
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_scacq_screl;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacq_screl_fn(signal, expected, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_cas_scacq_screl.signal = signal;
 	args.api_args.hsa_signal_cas_scacq_screl.expected = expected;
@@ -1641,6 +1714,7 @@ static hsa_status_t hsa_isa_from_name_callback(const char* name, hsa_isa_t* isa)
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_from_name;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_isa_from_name_fn(name, isa);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_isa_from_name.name = name;
 	args.api_args.hsa_isa_from_name.isa = isa;
@@ -1663,6 +1737,7 @@ static hsa_status_t hsa_isa_get_info_callback(hsa_isa_t isa, hsa_isa_info_t attr
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_fn(isa, attribute, index, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_isa_get_info.isa = isa;
 	args.api_args.hsa_isa_get_info.attribute = attribute;
@@ -1689,6 +1764,7 @@ static hsa_status_t hsa_isa_compatible_callback(hsa_isa_t code_object_isa, hsa_i
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_compatible;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_isa_compatible_fn(code_object_isa, agent_isa, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_isa_compatible.code_object_isa = code_object_isa;
 	args.api_args.hsa_isa_compatible.agent_isa = agent_isa;
@@ -1713,6 +1789,7 @@ static hsa_status_t hsa_code_object_serialize_callback(hsa_code_object_t code_ob
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_serialize;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_serialize_fn(code_object, alloc_callback, callback_data, options, serialized_code_object, serialized_code_object_size);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_serialize.code_object = code_object;
 	args.api_args.hsa_code_object_serialize.alloc_callback = alloc_callback;
@@ -1743,6 +1820,7 @@ static hsa_status_t hsa_code_object_deserialize_callback(void* serialized_code_o
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_deserialize;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_deserialize_fn(serialized_code_object, serialized_code_object_size, options, code_object);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_deserialize.serialized_code_object = serialized_code_object;
 	args.api_args.hsa_code_object_deserialize.serialized_code_object_size = serialized_code_object_size;
@@ -1769,6 +1847,7 @@ static hsa_status_t hsa_code_object_destroy_callback(hsa_code_object_t code_obje
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_destroy_fn(code_object);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_destroy.code_object = code_object;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -1789,6 +1868,7 @@ static hsa_status_t hsa_code_object_get_info_callback(hsa_code_object_t code_obj
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_info_fn(code_object, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_get_info.code_object = code_object;
 	args.api_args.hsa_code_object_get_info.attribute = attribute;
@@ -1813,6 +1893,7 @@ static hsa_status_t hsa_code_object_get_symbol_callback(hsa_code_object_t code_o
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_get_symbol;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_fn(code_object, symbol_name, symbol);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_get_symbol.code_object = code_object;
 	args.api_args.hsa_code_object_get_symbol.symbol_name = symbol_name;
@@ -1837,6 +1918,7 @@ static hsa_status_t hsa_code_symbol_get_info_callback(hsa_code_symbol_t code_sym
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_symbol_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_symbol_get_info_fn(code_symbol, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_symbol_get_info.code_symbol = code_symbol;
 	args.api_args.hsa_code_symbol_get_info.attribute = attribute;
@@ -1861,6 +1943,7 @@ static hsa_status_t hsa_code_object_iterate_symbols_callback(hsa_code_object_t c
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_iterate_symbols;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_iterate_symbols_fn(code_object, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_iterate_symbols.code_object = code_object;
 	args.api_args.hsa_code_object_iterate_symbols.callback = callback;
@@ -1885,6 +1968,7 @@ static hsa_status_t hsa_executable_create_callback(hsa_profile_t profile, hsa_ex
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_fn(profile, executable_state, options, executable);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_create.profile = profile;
 	args.api_args.hsa_executable_create.executable_state = executable_state;
@@ -1911,6 +1995,7 @@ static hsa_status_t hsa_executable_destroy_callback(hsa_executable_t executable)
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_destroy_fn(executable);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_destroy.executable = executable;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -1931,6 +2016,7 @@ static hsa_status_t hsa_executable_load_code_object_callback(hsa_executable_t ex
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_load_code_object;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_code_object_fn(executable, agent, code_object, options);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_load_code_object.executable = executable;
 	args.api_args.hsa_executable_load_code_object.agent = agent;
@@ -1957,6 +2043,7 @@ static hsa_status_t hsa_executable_freeze_callback(hsa_executable_t executable, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_freeze;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_freeze_fn(executable, options);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_freeze.executable = executable;
 	args.api_args.hsa_executable_freeze.options = options;
@@ -1979,6 +2066,7 @@ static hsa_status_t hsa_executable_get_info_callback(hsa_executable_t executable
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_info_fn(executable, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_get_info.executable = executable;
 	args.api_args.hsa_executable_get_info.attribute = attribute;
@@ -2003,6 +2091,7 @@ static hsa_status_t hsa_executable_global_variable_define_callback(hsa_executabl
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_global_variable_define;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_global_variable_define_fn(executable, variable_name, address);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_global_variable_define.executable = executable;
 	args.api_args.hsa_executable_global_variable_define.variable_name = variable_name;
@@ -2027,6 +2116,7 @@ static hsa_status_t hsa_executable_agent_global_variable_define_callback(hsa_exe
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_agent_global_variable_define;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_agent_global_variable_define_fn(executable, agent, variable_name, address);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_agent_global_variable_define.executable = executable;
 	args.api_args.hsa_executable_agent_global_variable_define.agent = agent;
@@ -2053,6 +2143,7 @@ static hsa_status_t hsa_executable_readonly_variable_define_callback(hsa_executa
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_readonly_variable_define;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_readonly_variable_define_fn(executable, agent, variable_name, address);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_readonly_variable_define.executable = executable;
 	args.api_args.hsa_executable_readonly_variable_define.agent = agent;
@@ -2079,6 +2170,7 @@ static hsa_status_t hsa_executable_validate_callback(hsa_executable_t executable
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_validate;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_fn(executable, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_validate.executable = executable;
 	args.api_args.hsa_executable_validate.result = result;
@@ -2101,6 +2193,7 @@ static hsa_status_t hsa_executable_get_symbol_callback(hsa_executable_t executab
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_get_symbol;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_fn(executable, module_name, symbol_name, agent, call_convention, symbol);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_get_symbol.executable = executable;
 	args.api_args.hsa_executable_get_symbol.module_name = module_name;
@@ -2131,6 +2224,7 @@ static hsa_status_t hsa_executable_symbol_get_info_callback(hsa_executable_symbo
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_symbol_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_symbol_get_info_fn(executable_symbol, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_symbol_get_info.executable_symbol = executable_symbol;
 	args.api_args.hsa_executable_symbol_get_info.attribute = attribute;
@@ -2155,6 +2249,7 @@ static hsa_status_t hsa_executable_iterate_symbols_callback(hsa_executable_t exe
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_iterate_symbols;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_symbols_fn(executable, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_iterate_symbols.executable = executable;
 	args.api_args.hsa_executable_iterate_symbols.callback = callback;
@@ -2179,6 +2274,7 @@ static hsa_status_t hsa_status_string_callback(hsa_status_t status, const char**
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_status_string;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_status_string_fn(status, status_string);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_status_string.status = status;
 	args.api_args.hsa_status_string.status_string = status_string;
@@ -2201,6 +2297,7 @@ static hsa_status_t hsa_extension_get_name_callback(uint16_t extension, const ch
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_extension_get_name;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_extension_get_name_fn(extension, name);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_extension_get_name.extension = extension;
 	args.api_args.hsa_extension_get_name.name = name;
@@ -2223,6 +2320,7 @@ static hsa_status_t hsa_system_major_extension_supported_callback(uint16_t exten
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_major_extension_supported;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_system_major_extension_supported_fn(extension, version_major, version_minor, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_system_major_extension_supported.extension = extension;
 	args.api_args.hsa_system_major_extension_supported.version_major = version_major;
@@ -2249,6 +2347,7 @@ static hsa_status_t hsa_system_get_major_extension_table_callback(uint16_t exten
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_get_major_extension_table;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_system_get_major_extension_table_fn(extension, version_major, table_length, table);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_system_get_major_extension_table.extension = extension;
 	args.api_args.hsa_system_get_major_extension_table.version_major = version_major;
@@ -2275,6 +2374,7 @@ static hsa_status_t hsa_agent_major_extension_supported_callback(uint16_t extens
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_major_extension_supported;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_agent_major_extension_supported_fn(extension, agent, version_major, version_minor, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_agent_major_extension_supported.extension = extension;
 	args.api_args.hsa_agent_major_extension_supported.agent = agent;
@@ -2303,6 +2403,7 @@ static hsa_status_t hsa_cache_get_info_callback(hsa_cache_t cache, hsa_cache_inf
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_cache_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_cache_get_info_fn(cache, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_cache_get_info.cache = cache;
 	args.api_args.hsa_cache_get_info.attribute = attribute;
@@ -2327,6 +2428,7 @@ static hsa_status_t hsa_agent_iterate_caches_callback(hsa_agent_t agent, hsa_sta
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_iterate_caches;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_caches_fn(agent, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_agent_iterate_caches.agent = agent;
 	args.api_args.hsa_agent_iterate_caches.callback = callback;
@@ -2351,6 +2453,7 @@ static void hsa_signal_silent_store_relaxed_callback(hsa_signal_t signal, hsa_si
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_silent_store_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_relaxed_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_silent_store_relaxed.signal = signal;
 	args.api_args.hsa_signal_silent_store_relaxed.value = value;
@@ -2371,6 +2474,7 @@ static void hsa_signal_silent_store_screlease_callback(hsa_signal_t signal, hsa_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_silent_store_screlease;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_screlease_fn(signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_silent_store_screlease.signal = signal;
 	args.api_args.hsa_signal_silent_store_screlease.value = value;
@@ -2391,6 +2495,7 @@ static hsa_status_t hsa_signal_group_create_callback(uint32_t num_signals, const
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_create_fn(num_signals, signals, num_consumers, consumers, signal_group);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_group_create.num_signals = num_signals;
 	args.api_args.hsa_signal_group_create.signals = signals;
@@ -2419,6 +2524,7 @@ static hsa_status_t hsa_signal_group_destroy_callback(hsa_signal_group_t signal_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_destroy_fn(signal_group);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_group_destroy.signal_group = signal_group;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -2439,6 +2545,7 @@ static hsa_status_t hsa_signal_group_wait_any_scacquire_callback(hsa_signal_grou
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_wait_any_scacquire;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_scacquire_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_group_wait_any_scacquire.signal_group = signal_group;
 	args.api_args.hsa_signal_group_wait_any_scacquire.conditions = conditions;
@@ -2469,6 +2576,7 @@ static hsa_status_t hsa_signal_group_wait_any_relaxed_callback(hsa_signal_group_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_wait_any_relaxed;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_relaxed_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_signal_group_wait_any_relaxed.signal_group = signal_group;
 	args.api_args.hsa_signal_group_wait_any_relaxed.conditions = conditions;
@@ -2499,6 +2607,7 @@ static hsa_status_t hsa_agent_iterate_isas_callback(hsa_agent_t agent, hsa_statu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_iterate_isas;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_isas_fn(agent, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_agent_iterate_isas.agent = agent;
 	args.api_args.hsa_agent_iterate_isas.callback = callback;
@@ -2523,6 +2632,7 @@ static hsa_status_t hsa_isa_get_info_alt_callback(hsa_isa_t isa, hsa_isa_info_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_info_alt;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_alt_fn(isa, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_isa_get_info_alt.isa = isa;
 	args.api_args.hsa_isa_get_info_alt.attribute = attribute;
@@ -2547,6 +2657,7 @@ static hsa_status_t hsa_isa_get_exception_policies_callback(hsa_isa_t isa, hsa_p
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_exception_policies;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_exception_policies_fn(isa, profile, mask);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_isa_get_exception_policies.isa = isa;
 	args.api_args.hsa_isa_get_exception_policies.profile = profile;
@@ -2571,6 +2682,7 @@ static hsa_status_t hsa_isa_get_round_method_callback(hsa_isa_t isa, hsa_fp_type
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_round_method;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_round_method_fn(isa, fp_type, flush_mode, round_method);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_isa_get_round_method.isa = isa;
 	args.api_args.hsa_isa_get_round_method.fp_type = fp_type;
@@ -2597,6 +2709,7 @@ static hsa_status_t hsa_wavefront_get_info_callback(hsa_wavefront_t wavefront, h
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_wavefront_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_wavefront_get_info_fn(wavefront, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_wavefront_get_info.wavefront = wavefront;
 	args.api_args.hsa_wavefront_get_info.attribute = attribute;
@@ -2621,6 +2734,7 @@ static hsa_status_t hsa_isa_iterate_wavefronts_callback(hsa_isa_t isa, hsa_statu
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_iterate_wavefronts;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_isa_iterate_wavefronts_fn(isa, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_isa_iterate_wavefronts.isa = isa;
 	args.api_args.hsa_isa_iterate_wavefronts.callback = callback;
@@ -2645,6 +2759,7 @@ static hsa_status_t hsa_code_object_get_symbol_from_name_callback(hsa_code_objec
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_get_symbol_from_name;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_from_name_fn(code_object, module_name, symbol_name, symbol);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_get_symbol_from_name.code_object = code_object;
 	args.api_args.hsa_code_object_get_symbol_from_name.module_name = module_name;
@@ -2671,6 +2786,7 @@ static hsa_status_t hsa_code_object_reader_create_from_file_callback(hsa_file_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_reader_create_from_file;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_file_fn(file, code_object_reader);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_reader_create_from_file.file = file;
 	args.api_args.hsa_code_object_reader_create_from_file.code_object_reader = code_object_reader;
@@ -2693,6 +2809,7 @@ static hsa_status_t hsa_code_object_reader_create_from_memory_callback(const voi
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_reader_create_from_memory;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_memory_fn(code_object, size, code_object_reader);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_reader_create_from_memory.code_object = code_object;
 	args.api_args.hsa_code_object_reader_create_from_memory.size = size;
@@ -2717,6 +2834,7 @@ static hsa_status_t hsa_code_object_reader_destroy_callback(hsa_code_object_read
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_reader_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_destroy_fn(code_object_reader);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_code_object_reader_destroy.code_object_reader = code_object_reader;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -2737,6 +2855,7 @@ static hsa_status_t hsa_executable_create_alt_callback(hsa_profile_t profile, hs
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_create_alt;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_alt_fn(profile, default_float_rounding_mode, options, executable);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_create_alt.profile = profile;
 	args.api_args.hsa_executable_create_alt.default_float_rounding_mode = default_float_rounding_mode;
@@ -2763,6 +2882,7 @@ static hsa_status_t hsa_executable_load_program_code_object_callback(hsa_executa
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_load_program_code_object;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_program_code_object_fn(executable, code_object_reader, options, loaded_code_object);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_load_program_code_object.executable = executable;
 	args.api_args.hsa_executable_load_program_code_object.code_object_reader = code_object_reader;
@@ -2789,6 +2909,7 @@ static hsa_status_t hsa_executable_load_agent_code_object_callback(hsa_executabl
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_load_agent_code_object;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_agent_code_object_fn(executable, agent, code_object_reader, options, loaded_code_object);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_load_agent_code_object.executable = executable;
 	args.api_args.hsa_executable_load_agent_code_object.agent = agent;
@@ -2817,6 +2938,7 @@ static hsa_status_t hsa_executable_validate_alt_callback(hsa_executable_t execut
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_validate_alt;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_alt_fn(executable, options, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_validate_alt.executable = executable;
 	args.api_args.hsa_executable_validate_alt.options = options;
@@ -2841,6 +2963,7 @@ static hsa_status_t hsa_executable_get_symbol_by_name_callback(hsa_executable_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_get_symbol_by_name;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_by_name_fn(executable, symbol_name, agent, symbol);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_get_symbol_by_name.executable = executable;
 	args.api_args.hsa_executable_get_symbol_by_name.symbol_name = symbol_name;
@@ -2867,6 +2990,7 @@ static hsa_status_t hsa_executable_iterate_agent_symbols_callback(hsa_executable
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_iterate_agent_symbols;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_agent_symbols_fn(executable, agent, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_iterate_agent_symbols.executable = executable;
 	args.api_args.hsa_executable_iterate_agent_symbols.agent = agent;
@@ -2893,6 +3017,7 @@ static hsa_status_t hsa_executable_iterate_program_symbols_callback(hsa_executab
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_iterate_program_symbols;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_program_symbols_fn(executable, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_executable_iterate_program_symbols.executable = executable;
 	args.api_args.hsa_executable_iterate_program_symbols.callback = callback;
@@ -2919,6 +3044,7 @@ static hsa_status_t hsa_amd_coherency_get_type_callback(hsa_agent_t agent, hsa_a
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_coherency_get_type;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_get_type_fn(agent, type);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_coherency_get_type.agent = agent;
 	args.api_args.hsa_amd_coherency_get_type.type = type;
@@ -2941,6 +3067,7 @@ static hsa_status_t hsa_amd_coherency_set_type_callback(hsa_agent_t agent, hsa_a
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_coherency_set_type;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_set_type_fn(agent, type);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_coherency_set_type.agent = agent;
 	args.api_args.hsa_amd_coherency_set_type.type = type;
@@ -2963,6 +3090,7 @@ static hsa_status_t hsa_amd_profiling_set_profiler_enabled_callback(hsa_queue_t*
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_set_profiler_enabled;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_set_profiler_enabled_fn(queue, enable);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_profiling_set_profiler_enabled.queue = queue;
 	args.api_args.hsa_amd_profiling_set_profiler_enabled.enable = enable;
@@ -2985,6 +3113,7 @@ static hsa_status_t hsa_amd_profiling_async_copy_enable_callback(bool enable) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_async_copy_enable;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_async_copy_enable_fn(enable);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_profiling_async_copy_enable.enable = enable;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -3005,6 +3134,7 @@ static hsa_status_t hsa_amd_profiling_get_dispatch_time_callback(hsa_agent_t age
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_get_dispatch_time;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_dispatch_time_fn(agent, signal, time);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_profiling_get_dispatch_time.agent = agent;
 	args.api_args.hsa_amd_profiling_get_dispatch_time.signal = signal;
@@ -3029,6 +3159,7 @@ static hsa_status_t hsa_amd_profiling_get_async_copy_time_callback(hsa_signal_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_get_async_copy_time;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_async_copy_time_fn(signal, time);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_profiling_get_async_copy_time.signal = signal;
 	args.api_args.hsa_amd_profiling_get_async_copy_time.time = time;
@@ -3051,6 +3182,7 @@ static hsa_status_t hsa_amd_profiling_convert_tick_to_system_domain_callback(hsa
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_convert_tick_to_system_domain;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_convert_tick_to_system_domain_fn(agent, agent_tick, system_tick);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent = agent;
 	args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent_tick = agent_tick;
@@ -3075,6 +3207,7 @@ static hsa_status_t hsa_amd_signal_async_handler_callback(hsa_signal_t signal, h
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_async_handler;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_async_handler_fn(signal, cond, value, handler, arg);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_signal_async_handler.signal = signal;
 	args.api_args.hsa_amd_signal_async_handler.cond = cond;
@@ -3103,6 +3236,7 @@ static hsa_status_t hsa_amd_async_function_callback(void (* callback)(void* arg)
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_async_function;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_async_function_fn(callback, arg);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_async_function.callback = callback;
 	args.api_args.hsa_amd_async_function.arg = arg;
@@ -3125,6 +3259,7 @@ static uint32_t hsa_amd_signal_wait_any_callback(uint32_t signal_count, hsa_sign
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_wait_any;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_wait_any_fn(signal_count, signals, conds, values, timeout_hint, wait_hint, satisfying_value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_signal_wait_any.signal_count = signal_count;
 	args.api_args.hsa_amd_signal_wait_any.signals = signals;
@@ -3157,6 +3292,7 @@ static hsa_status_t hsa_amd_queue_cu_set_mask_callback(const hsa_queue_t* queue,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_cu_set_mask;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_set_mask_fn(queue, num_cu_mask_count, cu_mask);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_queue_cu_set_mask.queue = queue;
 	args.api_args.hsa_amd_queue_cu_set_mask.num_cu_mask_count = num_cu_mask_count;
@@ -3181,6 +3317,7 @@ static hsa_status_t hsa_amd_memory_pool_get_info_callback(hsa_amd_memory_pool_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_get_info_fn(memory_pool, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_pool_get_info.memory_pool = memory_pool;
 	args.api_args.hsa_amd_memory_pool_get_info.attribute = attribute;
@@ -3205,6 +3342,7 @@ static hsa_status_t hsa_amd_agent_iterate_memory_pools_callback(hsa_agent_t agen
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_agent_iterate_memory_pools;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_iterate_memory_pools_fn(agent, callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_agent_iterate_memory_pools.agent = agent;
 	args.api_args.hsa_amd_agent_iterate_memory_pools.callback = callback;
@@ -3229,6 +3367,7 @@ static hsa_status_t hsa_amd_memory_pool_allocate_callback(hsa_amd_memory_pool_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_allocate;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_allocate_fn(memory_pool, size, flags, ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_pool_allocate.memory_pool = memory_pool;
 	args.api_args.hsa_amd_memory_pool_allocate.size = size;
@@ -3255,6 +3394,7 @@ static hsa_status_t hsa_amd_memory_pool_free_callback(void* ptr) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_free;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_free_fn(ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_pool_free.ptr = ptr;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -3275,6 +3415,7 @@ static hsa_status_t hsa_amd_memory_async_copy_callback(void* dst, hsa_agent_t ds
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_async_copy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_fn(dst, dst_agent, src, src_agent, size, num_dep_signals, dep_signals, completion_signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_async_copy.dst = dst;
 	args.api_args.hsa_amd_memory_async_copy.dst_agent = dst_agent;
@@ -3309,6 +3450,7 @@ static hsa_status_t hsa_amd_agent_memory_pool_get_info_callback(hsa_agent_t agen
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_agent_memory_pool_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_memory_pool_get_info_fn(agent, memory_pool, attribute, value);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_agent_memory_pool_get_info.agent = agent;
 	args.api_args.hsa_amd_agent_memory_pool_get_info.memory_pool = memory_pool;
@@ -3335,6 +3477,7 @@ static hsa_status_t hsa_amd_agents_allow_access_callback(uint32_t num_agents, co
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_agents_allow_access;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agents_allow_access_fn(num_agents, agents, flags, ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_agents_allow_access.num_agents = num_agents;
 	args.api_args.hsa_amd_agents_allow_access.agents = agents;
@@ -3361,6 +3504,7 @@ static hsa_status_t hsa_amd_memory_pool_can_migrate_callback(hsa_amd_memory_pool
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_can_migrate;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_can_migrate_fn(src_memory_pool, dst_memory_pool, result);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_pool_can_migrate.src_memory_pool = src_memory_pool;
 	args.api_args.hsa_amd_memory_pool_can_migrate.dst_memory_pool = dst_memory_pool;
@@ -3385,6 +3529,7 @@ static hsa_status_t hsa_amd_memory_migrate_callback(const void* ptr, hsa_amd_mem
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_migrate;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_migrate_fn(ptr, memory_pool, flags);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_migrate.ptr = ptr;
 	args.api_args.hsa_amd_memory_migrate.memory_pool = memory_pool;
@@ -3409,6 +3554,7 @@ static hsa_status_t hsa_amd_memory_lock_callback(void* host_ptr, size_t size, hs
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_lock;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_fn(host_ptr, size, agents, num_agent, agent_ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_lock.host_ptr = host_ptr;
 	args.api_args.hsa_amd_memory_lock.size = size;
@@ -3437,6 +3583,7 @@ static hsa_status_t hsa_amd_memory_unlock_callback(void* host_ptr) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_unlock;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_unlock_fn(host_ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_unlock.host_ptr = host_ptr;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -3457,6 +3604,7 @@ static hsa_status_t hsa_amd_memory_fill_callback(void* ptr, uint32_t value, size
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_fill;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_fill_fn(ptr, value, count);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_fill.ptr = ptr;
 	args.api_args.hsa_amd_memory_fill.value = value;
@@ -3481,6 +3629,7 @@ static hsa_status_t hsa_amd_interop_map_buffer_callback(uint32_t num_agents, hsa
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_interop_map_buffer;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_map_buffer_fn(num_agents, agents, interop_handle, flags, size, ptr, metadata_size, metadata);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_interop_map_buffer.num_agents = num_agents;
 	args.api_args.hsa_amd_interop_map_buffer.agents = agents;
@@ -3515,6 +3664,7 @@ static hsa_status_t hsa_amd_interop_unmap_buffer_callback(void* ptr) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_interop_unmap_buffer;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_unmap_buffer_fn(ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_interop_unmap_buffer.ptr = ptr;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -3535,6 +3685,7 @@ static hsa_status_t hsa_amd_image_create_callback(hsa_agent_t agent, const hsa_e
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_image_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_image_create_fn(agent, image_descriptor, image_layout, image_data, access_permission, image);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_image_create.agent = agent;
 	args.api_args.hsa_amd_image_create.image_descriptor = image_descriptor;
@@ -3565,6 +3716,7 @@ static hsa_status_t hsa_amd_pointer_info_callback(const void* ptr, hsa_amd_point
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_pointer_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_fn(ptr, info, alloc, num_agents_accessible, accessible);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_pointer_info.ptr = ptr;
 	args.api_args.hsa_amd_pointer_info.info = info;
@@ -3593,6 +3745,7 @@ static hsa_status_t hsa_amd_pointer_info_set_userdata_callback(const void* ptr, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_pointer_info_set_userdata;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_set_userdata_fn(ptr, userdata);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_pointer_info_set_userdata.ptr = ptr;
 	args.api_args.hsa_amd_pointer_info_set_userdata.userdata = userdata;
@@ -3615,6 +3768,7 @@ static hsa_status_t hsa_amd_ipc_memory_create_callback(void* ptr, size_t len, hs
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_memory_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_create_fn(ptr, len, handle);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_ipc_memory_create.ptr = ptr;
 	args.api_args.hsa_amd_ipc_memory_create.len = len;
@@ -3639,6 +3793,7 @@ static hsa_status_t hsa_amd_ipc_memory_attach_callback(const hsa_amd_ipc_memory_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_memory_attach;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_attach_fn(handle, len, num_agents, mapping_agents, mapped_ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_ipc_memory_attach.handle = handle;
 	args.api_args.hsa_amd_ipc_memory_attach.len = len;
@@ -3667,6 +3822,7 @@ static hsa_status_t hsa_amd_ipc_memory_detach_callback(void* mapped_ptr) {
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_memory_detach;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_detach_fn(mapped_ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_ipc_memory_detach.mapped_ptr = mapped_ptr;
 	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
@@ -3687,6 +3843,7 @@ static hsa_status_t hsa_amd_signal_create_callback(hsa_signal_value_t initial_va
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_create_fn(initial_value, num_consumers, consumers, attributes, signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_signal_create.initial_value = initial_value;
 	args.api_args.hsa_amd_signal_create.num_consumers = num_consumers;
@@ -3715,6 +3872,7 @@ static hsa_status_t hsa_amd_ipc_signal_create_callback(hsa_signal_t signal, hsa_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_signal_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_create_fn(signal, handle);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_ipc_signal_create.signal = signal;
 	args.api_args.hsa_amd_ipc_signal_create.handle = handle;
@@ -3737,6 +3895,7 @@ static hsa_status_t hsa_amd_ipc_signal_attach_callback(const hsa_amd_ipc_signal_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_signal_attach;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_attach_fn(handle, signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_ipc_signal_attach.handle = handle;
 	args.api_args.hsa_amd_ipc_signal_attach.signal = signal;
@@ -3759,6 +3918,7 @@ static hsa_status_t hsa_amd_register_system_event_handler_callback(hsa_amd_syste
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_register_system_event_handler;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_system_event_handler_fn(callback, data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_register_system_event_handler.callback = callback;
 	args.api_args.hsa_amd_register_system_event_handler.data = data;
@@ -3781,6 +3941,7 @@ static hsa_status_t hsa_amd_queue_intercept_create_callback(hsa_agent_t agent_ha
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_intercept_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_create_fn(agent_handle, size, type, callback, data, private_segment_size, group_segment_size, queue);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_queue_intercept_create.agent_handle = agent_handle;
 	args.api_args.hsa_amd_queue_intercept_create.size = size;
@@ -3815,6 +3976,7 @@ static hsa_status_t hsa_amd_queue_intercept_register_callback(hsa_queue_t* queue
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_intercept_register;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_register_fn(queue, callback, user_data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_queue_intercept_register.queue = queue;
 	args.api_args.hsa_amd_queue_intercept_register.callback = callback;
@@ -3839,6 +4001,7 @@ static hsa_status_t hsa_amd_queue_set_priority_callback(hsa_queue_t* queue, hsa_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_set_priority;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_set_priority_fn(queue, priority);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_queue_set_priority.queue = queue;
 	args.api_args.hsa_amd_queue_set_priority.priority = priority;
@@ -3861,6 +4024,7 @@ static hsa_status_t hsa_amd_memory_async_copy_rect_callback(const hsa_pitched_pt
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_async_copy_rect;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_rect_fn(dst, dst_offset, src, src_offset, range, copy_agent, dir, num_dep_signals, dep_signals, completion_signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_async_copy_rect.dst = dst;
 	args.api_args.hsa_amd_memory_async_copy_rect.dst_offset = dst_offset;
@@ -3899,6 +4063,7 @@ static hsa_status_t hsa_amd_runtime_queue_create_register_callback(hsa_amd_runti
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_runtime_queue_create_register;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_runtime_queue_create_register_fn(callback, user_data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_runtime_queue_create_register.callback = callback;
 	args.api_args.hsa_amd_runtime_queue_create_register.user_data = user_data;
@@ -3921,6 +4086,7 @@ static hsa_status_t hsa_amd_memory_lock_to_pool_callback(void* host_ptr, size_t 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_lock_to_pool;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_to_pool_fn(host_ptr, size, agents, num_agent, pool, flags, agent_ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_memory_lock_to_pool.host_ptr = host_ptr;
 	args.api_args.hsa_amd_memory_lock_to_pool.size = size;
@@ -3953,6 +4119,7 @@ static hsa_status_t hsa_amd_register_deallocation_callback_callback(void* ptr, h
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_register_deallocation_callback;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_deallocation_callback_fn(ptr, callback, user_data);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_register_deallocation_callback.ptr = ptr;
 	args.api_args.hsa_amd_register_deallocation_callback.callback = callback;
@@ -3977,6 +4144,7 @@ static hsa_status_t hsa_amd_deregister_deallocation_callback_callback(void* ptr,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_deregister_deallocation_callback;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_deregister_deallocation_callback_fn(ptr, callback);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_deregister_deallocation_callback.ptr = ptr;
 	args.api_args.hsa_amd_deregister_deallocation_callback.callback = callback;
@@ -3999,6 +4167,7 @@ static hsa_status_t hsa_amd_signal_value_pointer_callback(hsa_signal_t signal, v
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_value_pointer;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_value_pointer_fn(signal, value_ptr);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_signal_value_pointer.signal = signal;
 	args.api_args.hsa_amd_signal_value_pointer.value_ptr = value_ptr;
@@ -4021,6 +4190,7 @@ static hsa_status_t hsa_amd_svm_attributes_set_callback(void* ptr, size_t size, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_svm_attributes_set;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_set_fn(ptr, size, attribute_list, attribute_count);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_svm_attributes_set.ptr = ptr;
 	args.api_args.hsa_amd_svm_attributes_set.size = size;
@@ -4047,6 +4217,7 @@ static hsa_status_t hsa_amd_svm_attributes_get_callback(void* ptr, size_t size, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_svm_attributes_get;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_get_fn(ptr, size, attribute_list, attribute_count);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_svm_attributes_get.ptr = ptr;
 	args.api_args.hsa_amd_svm_attributes_get.size = size;
@@ -4073,6 +4244,7 @@ static hsa_status_t hsa_amd_svm_prefetch_async_callback(void* ptr, size_t size, 
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_svm_prefetch_async;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_prefetch_async_fn(ptr, size, agent, num_dep_signals, dep_signals, completion_signal);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_svm_prefetch_async.ptr = ptr;
 	args.api_args.hsa_amd_svm_prefetch_async.size = size;
@@ -4103,6 +4275,7 @@ static hsa_status_t hsa_amd_queue_cu_get_mask_callback(const hsa_queue_t* queue,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_cu_get_mask;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_get_mask_fn(queue, num_cu_mask_count, cu_mask);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_amd_queue_cu_get_mask.queue = queue;
 	args.api_args.hsa_amd_queue_cu_get_mask.num_cu_mask_count = num_cu_mask_count;
@@ -4129,6 +4302,7 @@ static hsa_status_t hsa_ext_image_get_capability_callback(hsa_agent_t agent, hsa
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_get_capability;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_fn(agent, geometry, image_format, capability_mask);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_get_capability.agent = agent;
 	args.api_args.hsa_ext_image_get_capability.geometry = geometry;
@@ -4155,6 +4329,7 @@ static hsa_status_t hsa_ext_image_data_get_info_callback(hsa_agent_t agent, cons
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_data_get_info;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_fn(agent, image_descriptor, access_permission, image_data_info);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_data_get_info.agent = agent;
 	args.api_args.hsa_ext_image_data_get_info.image_descriptor = image_descriptor;
@@ -4181,6 +4356,7 @@ static hsa_status_t hsa_ext_image_create_callback(hsa_agent_t agent, const hsa_e
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_fn(agent, image_descriptor, image_data, access_permission, image);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_create.agent = agent;
 	args.api_args.hsa_ext_image_create.image_descriptor = image_descriptor;
@@ -4209,6 +4385,7 @@ static hsa_status_t hsa_ext_image_import_callback(hsa_agent_t agent, const void*
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_import;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_import_fn(agent, src_memory, src_row_pitch, src_slice_pitch, dst_image, image_region);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_import.agent = agent;
 	args.api_args.hsa_ext_image_import.src_memory = src_memory;
@@ -4239,6 +4416,7 @@ static hsa_status_t hsa_ext_image_export_callback(hsa_agent_t agent, hsa_ext_ima
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_export;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_export_fn(agent, src_image, dst_memory, dst_row_pitch, dst_slice_pitch, image_region);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_export.agent = agent;
 	args.api_args.hsa_ext_image_export.src_image = src_image;
@@ -4269,6 +4447,7 @@ static hsa_status_t hsa_ext_image_copy_callback(hsa_agent_t agent, hsa_ext_image
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_copy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_copy_fn(agent, src_image, src_offset, dst_image, dst_offset, range);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_copy.agent = agent;
 	args.api_args.hsa_ext_image_copy.src_image = src_image;
@@ -4299,6 +4478,7 @@ static hsa_status_t hsa_ext_image_clear_callback(hsa_agent_t agent, hsa_ext_imag
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_clear;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_clear_fn(agent, image, data, image_region);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_clear.agent = agent;
 	args.api_args.hsa_ext_image_clear.image = image;
@@ -4325,6 +4505,7 @@ static hsa_status_t hsa_ext_image_destroy_callback(hsa_agent_t agent, hsa_ext_im
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_destroy_fn(agent, image);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_destroy.agent = agent;
 	args.api_args.hsa_ext_image_destroy.image = image;
@@ -4347,6 +4528,7 @@ static hsa_status_t hsa_ext_sampler_create_callback(hsa_agent_t agent, const hsa
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_sampler_create;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_create_fn(agent, sampler_descriptor, sampler);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_sampler_create.agent = agent;
 	args.api_args.hsa_ext_sampler_create.sampler_descriptor = sampler_descriptor;
@@ -4371,6 +4553,7 @@ static hsa_status_t hsa_ext_sampler_destroy_callback(hsa_agent_t agent, hsa_ext_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_sampler_destroy;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_destroy_fn(agent, sampler);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_sampler_destroy.agent = agent;
 	args.api_args.hsa_ext_sampler_destroy.sampler = sampler;
@@ -4393,6 +4576,7 @@ static hsa_status_t hsa_ext_image_get_capability_with_layout_callback(hsa_agent_
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_get_capability_with_layout;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_with_layout_fn(agent, geometry, image_format, image_data_layout, capability_mask);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_get_capability_with_layout.agent = agent;
 	args.api_args.hsa_ext_image_get_capability_with_layout.geometry = geometry;
@@ -4421,6 +4605,7 @@ static hsa_status_t hsa_ext_image_data_get_info_with_layout_callback(hsa_agent_t
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_data_get_info_with_layout;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_with_layout_fn(agent, image_descriptor, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image_data_info);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_data_get_info_with_layout.agent = agent;
 	args.api_args.hsa_ext_image_data_get_info_with_layout.image_descriptor = image_descriptor;
@@ -4453,6 +4638,7 @@ static hsa_status_t hsa_ext_image_create_with_layout_callback(hsa_agent_t agent,
 	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_create_with_layout;
 	bool skipFunction{false};
+    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_with_layout_fn(agent, image_descriptor, image_data, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image);
 	hsa_api_evt_args_t args;
 	args.api_args.hsa_ext_image_create_with_layout.agent = agent;
 	args.api_args.hsa_ext_image_create_with_layout.image_descriptor = image_descriptor;
@@ -4613,6 +4799,7 @@ void luthier::HsaInterceptor::installCoreApiWrappers(CoreApiTable* table) {
   table->hsa_executable_iterate_agent_symbols_fn = hsa_executable_iterate_agent_symbols_callback;
   table->hsa_executable_iterate_program_symbols_fn = hsa_executable_iterate_program_symbols_callback;
 };
+
 void luthier::HsaInterceptor::installAmdExtWrappers(AmdExtTable* table) {
   savedTables_.amd_ext = *table;
 

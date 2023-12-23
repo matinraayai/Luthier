@@ -48,7 +48,7 @@ LICENSE = """/* Copyright (c) 2018-2023 Advanced Micro Devices, Inc.
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
 
@@ -282,6 +282,7 @@ class ApiDescrParser:
         self.api_calls = {}
         self.api_rettypes = set()
         self.api_id = {}
+        self.count = 0
 
         api_data = {}
         api_list = []
@@ -353,10 +354,19 @@ class ApiDescrParser:
     # generate API callbacks
     def gen_callbacks(self, n, name, call, struct):
         content = ''
+        bad_callbacks = ['hsa_amd_portable_close_dmabuf',
+                         'hsa_amd_portable_export_dmabuf',
+                         'hsa_amd_memory_async_copy_on_engine',
+                         'hsa_amd_memory_copy_engine_status',
+                         'hsa_amd_spm_acquire',
+                         'hsa_amd_spm_release',
+                         'hsa_amd_spm_set_dest_buffer']
         if n == -1:
             content += '/* section: Static declarations */\n'
             content += '\n'
-        if call != '-':
+        if call != '-' and call not in bad_callbacks:
+            count = self.count
+            self.count += 1
             call_id = self.api_id[call]
             ret_type = struct['ret']
             content += f'static {ret_type} {call}_callback({struct["args"]}) {{\n'
@@ -365,6 +375,9 @@ class ApiDescrParser:
                        "\tauto& hsaInternalCallback = hsaInterceptor.getInternalCallback();\n" + \
                        f"\tauto apiId = HSA_API_ID_{call};\n" + \
                        "\tbool skipFunction{false};\n"
+            actual_params = ", ".join([el for i, el in enumerate(struct["alst"])])
+            table = 'core' if (count >= 0 and count <= 124) else 'amd_ext' if (count >= 125 and count <= 179) else 'image_ext'
+            content += f'    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().{table}.{call}_fn({actual_params});\n'
             content += "\thsa_api_evt_args_t args;\n"
             for var in struct['alst']:
                 item = struct['astr'][var]
@@ -401,6 +414,9 @@ class ApiDescrParser:
                 content += "      return out;\n"
 
             content += '}\n\n'
+
+        if call in bad_callbacks:
+            self.count += 1
 
         return content
 
