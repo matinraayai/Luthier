@@ -55,6 +55,14 @@ void* luthier_get_hip_function(const char* funcName);
 
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object);
 
+void luthier_enable_hsa_op_callback(uint32_t op);
+
+void luthier_disable_hsa_op_callback(uint32_t op);
+
+void luthier_enable_hip_op_callback(uint32_t op);
+
+void luthier_disable_hip_op_callback(uint32_t op);
+
 
 // If the tool requires device code it needs to call this macro once
 // Managed variables force the HIP runtime to eagerly load Luthier modules statically so that Luthier can access it for

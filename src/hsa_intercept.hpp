@@ -7,6 +7,7 @@
 #include <functional>
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
+#include <unordered_set>
 
 namespace luthier {
 class HsaInterceptor {
@@ -15,6 +16,7 @@ class HsaInterceptor {
     HsaApiTableContainer savedTables_;
     HsaApiTableContainer interceptTables_;
     hsa_ven_amd_loader_1_03_pfn_s amdTable_;
+    std::unordered_set<uint32_t> op_filters_;
 
     std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> userCallback_{};
     std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t, bool*)> internalCallback_{};
@@ -44,12 +46,26 @@ class HsaInterceptor {
         return amdTable_;
     }
 
+    [[nodiscard]] const std::unordered_set<uint32_t> &getOpFiltersSet() const {
+        return op_filters_;
+    }
+
     void setUserCallback(const std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> &callback) {
         userCallback_ = callback;
     }
 
     void setInternalCallback(const std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t, bool*)> &callback) {
         internalCallback_ = callback;
+    }
+
+    void enable_callback_impl(uint32_t op) {
+        if (op < 0 || op > 192) throw std::invalid_argument("Op not in range [0, 192]");
+        op_filters_.insert(op);
+    }
+
+    void disable_callback_impl(uint32_t op) {
+        if (op < 0 || op > 192) throw std::invalid_argument("Op not in range [0, 192]");
+        op_filters_.erase(op);
     }
 
     [[nodiscard]] const inline std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> &getUserCallback() const {
