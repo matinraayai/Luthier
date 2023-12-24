@@ -283,6 +283,35 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                     f.write(', ')
             f.write("};\n")
         callback_args = "static_cast<void*>(&hip_func_args)" if are_args_non_empty else "nullptr"
+
+        f.write('\tif (!hipInterceptor.getOpFiltersSet().empty() && hipInterceptor.getOpFiltersSet().find(api_id) == hipInterceptor.getOpFiltersSet().end()) { ')
+        f.write(f'\n\t\tstatic auto hip_func = hipInterceptor.GetHipFunction<{output_type}(*)(')
+        if are_args_non_empty:
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                arg_name = arg['name']
+                f.write(arg_type)
+                if i != len(args) - 1:
+                    f.write(',')
+        f.write(f')>("{name}");\n')
+        f.write("\t\t")
+        if output_type != "void":
+            f.write(f"out = ")
+        f.write('hip_func(')
+        if are_args_non_empty:
+            for i, arg in enumerate(args):
+                arg_type = arg['type']
+                arg_name = arg['name']
+                f.write(f"hip_func_args.{arg_name}")
+                if i != len(args) - 1:
+                    f.write(', ')
+        f.write(");\n\t")
+        f.write("\treturn")
+        if (output_type != "void"):
+            f.write(f' std::any_cast<{output_type}>(*out)')
+        f.write(";\n")
+        f.write("\t};\n")
+
         f.write(f"\thipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, api_id);\n")
         f.write(f"\thipInternalCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, api_id, &skipFunction, &out);\n")
         f.write("\tif (!skipFunction && !out.has_value()) {\n")
