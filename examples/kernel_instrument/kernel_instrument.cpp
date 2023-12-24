@@ -143,8 +143,10 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phas
 
             if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
                 std::cout << "Dispatch packet's kernel arg address: " << packet.dispatch.kernarg_address << std::endl;
+                std::cout << "Dispatch packet's Private Segment Byte Size: " << packet.dispatch.private_segment_size << std::endl;
                 if (!instrumented) {
                     std::vector<luthier::Instr> instrVec = luthier_disassemble_kernel_object(packet.dispatch.kernel_object);
+                    (&args->evt_args.hsa_queue_packet_submit.packets[i])->dispatch.private_segment_size += 24;// 5 vgpr +39sgpr
                     luthier_insert_call(&instrVec[0], LUTHIER_GET_EXPORTED_FUNC(instrumentation_kernel), LUTHIER_IPOINT_AFTER);
                     instrumented = true;
 //                    luthier_override_with_instrumented(&packet.dispatch);
