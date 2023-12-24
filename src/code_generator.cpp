@@ -313,8 +313,7 @@ hsa_status_t registerSymbolWithCodeObjectManager(const luthier::hsa::Executable 
             fmt::println(stdout, "Variable Location: {:#x}", s.getVariableAddress());
         else if (sType == HSA_SYMBOL_KIND_KERNEL && sName == originalSymbolName) {
             auto sKd = s.getKernelDescriptor();
-            luthier::CodeObjectManager::instance().registerInstrumentedKernel(originalKd,
-                                                                              sKd);
+            luthier::CodeObjectManager::instance().registerInstrumentedKernel(originalSymbol, s);
 
 //            std::vector<luthier::Instr> instList = luthier::Disassembler::instance().disassemble(sKd);
 //            std::cout << "Disassembly of the KO: " << std::endl;
@@ -353,8 +352,8 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     LUTHIER_LOG_FUNCTION_CALL_START
     auto agent = hsa::GpuAgent(instr.getAgent());
     auto &codeObjectManager = luthier::CodeObjectManager::instance();
-    luthier::co_manip::code_view_t instrumentationFunc = codeObjectManager.getInstrumentationFunction(device_func, agent);
-    kernel_descriptor_t *instrumentationFuncKD = codeObjectManager.getKernelDescriptorOfInstrumentationFunction(device_func, agent);
+    hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationFunction(device_func, agent);
+    const kernel_descriptor_t *instrumentationFuncKD = codeObjectManager.getInstrumentationKernel(device_func, agent).getKernelDescriptor();
     auto targetExecutable = hsa::Executable(instr.getExecutable());
 
     auto symbol = hsa::ExecutableSymbol(instr.getSymbol(), instr.getAgent(), instr.getExecutable());

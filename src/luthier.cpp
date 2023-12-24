@@ -4,6 +4,7 @@
 #include "disassembler.hpp"
 #include "error.h"
 #include "hip_intercept.hpp"
+#include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
 #include "log.hpp"
 #include <optional>
@@ -13,9 +14,9 @@ namespace luthier::impl {
 void hipApiInternalCallback(void *cb_data, luthier_api_evt_phase_t phase, int api_id, bool *skip_func, std::optional<std::any> *out) {
     LUTHIER_LOG_FUNCTION_CALL_START
     // Logic for intercepting the __hipRegister* functions
-    static bool isHipRegistrationOver{false};           //> indicates if the registration step of the HIP runtime is over. It is set when the
-                                                        // current API ID is not a registration function anymore
-    static std::vector<std::tuple<const void *, const char *>> coManagerArgs; //> List of device functions to be managed by CodeObjectManager
+    static bool isHipRegistrationOver{false};                                //> indicates if the registration step of the HIP runtime is over. It is set when the
+                                                                             // current API ID is not a registration function anymore
+    static std::vector<std::tuple<const void *, const char *>> coManagerArgs;//> List of device functions to be managed by CodeObjectManager
 
     if (!isHipRegistrationOver && phase == LUTHIER_API_EVT_PHASE_ENTER) {
         if (api_id == HIP_PRIVATE_API_ID___hipRegisterFunction) {
@@ -25,9 +26,7 @@ void hipApiInternalCallback(void *cb_data, luthier_api_evt_phase_t phase, int ap
             if (std::string(lastRFuncArgs->deviceFunction).find(LUTHIER_DEVICE_FUNCTION_WRAP) != std::string::npos) {
                 coManagerArgs.emplace_back(lastRFuncArgs->hostFunction, lastRFuncArgs->deviceFunction);
             }
-        } else if(api_id != HIP_PRIVATE_API_ID___hipRegisterFatBinary && api_id != HIP_PRIVATE_API_ID___hipRegisterManagedVar &&
-                   api_id != HIP_PRIVATE_API_ID___hipRegisterVar && api_id != HIP_PRIVATE_API_ID___hipRegisterSurface &&
-                   api_id != HIP_PRIVATE_API_ID___hipRegisterTexture) {
+        } else if (api_id != HIP_PRIVATE_API_ID___hipRegisterFatBinary && api_id != HIP_PRIVATE_API_ID___hipRegisterManagedVar && api_id != HIP_PRIVATE_API_ID___hipRegisterVar && api_id != HIP_PRIVATE_API_ID___hipRegisterSurface && api_id != HIP_PRIVATE_API_ID___hipRegisterTexture) {
             auto &coManager = CodeObjectManager::instance();
             if (!coManagerArgs.empty()) {
                 coManager.registerHipWrapperKernelsOfInstrumentationFunctions(coManagerArgs);
@@ -71,24 +70,24 @@ void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount, uint64_
 }
 
 void hsaApiInternalCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id, bool *skipFunction) {
-        if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
-            if (api_id == HSA_API_ID_hsa_queue_create) {
-                auto args = cb_data->api_args.hsa_queue_create;
-                LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_create_fn(
-                    args.agent, args.size, args.type, args.callback,
-                    args.data,
-                    args.private_segment_size,
-                    args.group_segment_size,
-                    args.queue));
-                LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_profiling_set_profiler_enabled_fn(*args.queue,
-                                                                            true));
-                LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_register_fn(
-                    *args.queue,
-                    queueSubmitWriteInterceptor,
-                    *args.queue));
-                *skipFunction = true;
-            }
+    if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
+        if (api_id == HSA_API_ID_hsa_queue_create) {
+            auto args = cb_data->api_args.hsa_queue_create;
+            LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_create_fn(
+                args.agent, args.size, args.type, args.callback,
+                args.data,
+                args.private_segment_size,
+                args.group_segment_size,
+                args.queue));
+            LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_profiling_set_profiler_enabled_fn(*args.queue,
+                                                                                                           true));
+            LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_register_fn(
+                *args.queue,
+                queueSubmitWriteInterceptor,
+                *args.queue));
+            *skipFunction = true;
         }
+    }
 }
 
 __attribute__((constructor)) void init() {
@@ -131,9 +130,12 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
 }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
-    const auto instrumentedKd = luthier::CodeObjectManager::instance().getInstrumentedKernelKD(
-        reinterpret_cast<const kernel_descriptor_t *>(dispatch_packet->kernel_object));
-    dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKd);
+    const auto instrumentedKernel = luthier::CodeObjectManager::instance().getInstrumentedKernel(
+        luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
+            reinterpret_cast<const kernel_descriptor_t *>(dispatch_packet->kernel_object)
+            )
+        );
+    dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKernel.getKernelDescriptor());
     fmt::println("Kernel Object address: {:#x}", dispatch_packet->kernel_object);
 }
 

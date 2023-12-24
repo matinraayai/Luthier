@@ -34,6 +34,8 @@ class Executable : public HandleType<hsa_executable_t> {
 
     [[nodiscard]] std::vector<ExecutableSymbol> getSymbols(const luthier::hsa::GpuAgent &agent) const;
 
+    [[nodiscard]] ExecutableSymbol getSymbolByName(const luthier::hsa::GpuAgent& agent, const std::string& name) const;
+
     [[nodiscard]] std::vector<LoadedCodeObject> getLoadedCodeObjects() const;
 
     [[nodiscard]] std::vector<hsa::GpuAgent> getAgents() const;

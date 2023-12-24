@@ -13,9 +13,6 @@ class HandleType : public Type<HT> {
  public:
     [[nodiscard]] uint64_t hsaHandle() const { return this->asHsaType().handle; }
 
-    bool operator==(const luthier::hsa::HandleType<HT> &rhs) {
-        return this->hsaHandle() == rhs.hsaHandle();
-    }
 };
 
 }// namespace luthier::hsa

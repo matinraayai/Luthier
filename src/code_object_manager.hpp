@@ -4,6 +4,7 @@
 #include "luthier_types.h"
 #include "hsa_primitive.hpp"
 #include "hsa_executable.hpp"
+#include "instrumentation_function.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_agent.hpp"
 #include <amd_comgr/amd_comgr.h>
@@ -38,13 +39,13 @@ class CodeObjectManager {
                                                                  &instrumentationFunctionInfo);
 
     /**
-     * Returns the content of the instrumentation function, given its HSA agent and wrapper kernel host ptr
+     * Returns the hsa::ExecutableSymbol of the instrumentation function, given its HSA agent and wrapper kernel host ptr
      * @param wrapperKernelHostPtr shadow host pointer of the wrapper kernel used to force compilation of the
      * instrumentation function
      * @param agent the GPU HSA agent where the instrumentation function is loaded on
-     * @return the instrumentation function body
+     * @return the instrumentation function symbol
      */
-    co_manip::code_view_t getInstrumentationFunction(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
+    const hsa::ExecutableSymbol& getInstrumentationFunction(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
 
     /**
      * Returns the kernel descriptor of the wrapper kernel associated with an instrumentation function, given its wrapper kernel
@@ -54,7 +55,8 @@ class CodeObjectManager {
      * @param agent the HSA GPU Agent the wrapper kernel is loaded on
      * @return a pointer to the kernel descriptor located in host-accessible device memory
      */
-    kernel_descriptor_t *getKernelDescriptorOfInstrumentationFunction(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
+    const hsa::ExecutableSymbol& getInstrumentationKernel(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
+
 
     /**
      * Registers an instrumented version of a target application kernel. \class CodeObjectManager keeps track of instrumented kernels
@@ -64,8 +66,8 @@ class CodeObjectManager {
      * @param originalCodeKD device address of the target application kernel's descriptor
      * @param instrumentedCodeKD device address of the instrumented kernel's descriptor
      */
-    void registerInstrumentedKernel(const kernel_descriptor_t *originalCodeKD,
-                                    const kernel_descriptor_t *instrumentedCodeKD);
+    void registerInstrumentedKernel(const hsa::ExecutableSymbol& originalKernel,
+                                    const hsa::ExecutableSymbol& instrumentedKernel);
 
     /**
      * Returns the instrumented kernel's KD given its original un-instrumented version's KD
@@ -73,19 +75,9 @@ class CodeObjectManager {
      * @return pointer to the KD of the instrumented kernel, which should be located on the same device
      * @throws std::runtime_error if the originalKernelKD is not found internally
      */
-    const kernel_descriptor_t *getInstrumentedKernelKD(const kernel_descriptor_t *originalKernelKD);
+    const hsa::ExecutableSymbol& getInstrumentedKernel(const hsa::ExecutableSymbol& originalKernel) const;
 
  private:
-    typedef struct {
-        luthier::co_manip::code_view_t function;
-        kernel_descriptor_t *kd;
-    } per_agent_instrumentation_function_entry_t;
-
-    typedef struct {
-        std::unordered_map<hsa::GpuAgent, per_agent_instrumentation_function_entry_t> agentToExecMap;
-        const std::string globalFunctionName;
-        const std::string deviceFunctionName;
-    } instrumentation_function_info_t;
 
     CodeObjectManager() {}
     ~CodeObjectManager() {
@@ -102,9 +94,9 @@ class CodeObjectManager {
      */
     std::set<hsa::Executable> toolExecutables_{};
 
-    std::unordered_map<const void *, instrumentation_function_info_t> functions_{};
+    std::unordered_map<const void*, std::unordered_map<hsa::GpuAgent, luthier::InstrumentationFunction>> functions_{};
 
-    std::unordered_map<const kernel_descriptor_t *, const kernel_descriptor_t *> instrumentedKernels_{};
+    std::unordered_map<hsa::ExecutableSymbol, hsa::ExecutableSymbol> instrumentedKernels_{};
 };
 };// namespace luthier
 
