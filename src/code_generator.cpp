@@ -28,6 +28,7 @@
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCParser/MCAsmLexer.h"
+#include <sstream>
 
 struct TargetIdentifier {
     llvm::StringRef Arch;
@@ -282,7 +283,16 @@ luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &in
 }
 
 luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, hsa_agent_t agent) {
-    return assembleToRelocatable(instrVector, agent);
+    auto relocatable = assembleToRelocatable(instrVector, agent);
+    co_manip::code_char_stream_t coStream(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+            std::string_view(reinterpret_cast<const char *>(relocatable.data()), relocatable.size()).begin(),
+            std::string_view(reinterpret_cast<const char *>(relocatable.data()), relocatable.size()).end()));
+    ELFIO::elfio elfio;
+    elfio.load(coStream, false);
+    auto textSection = elfio.sections[".text"];
+
+    return {reinterpret_cast<const std::byte *>(textSection->get_data()), textSection->get_size()};
 }
 
 luthier::CodeGenerator::CodeGenerator() {
@@ -337,9 +347,9 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
                     //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
                 }
             }
-            luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
-            luthier::co_manip::printRSR2(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
-            luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            // luthier::co_manip::printRSR1(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            // luthier::co_manip::printRSR2(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
+            // luthier::co_manip::printCodeProperties(reinterpret_cast<kernel_descriptor_t *>(kernelObject));
             const kernel_descriptor_t *kernelDescriptor{nullptr};
             const auto &amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
             LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
@@ -347,11 +357,11 @@ hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executa
             auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
 
             //            instList = luthier::Disassembler::Instance().disassemble(agent, entry_point - 0x14c, 0x500);
-            instList = luthier::Disassembler::instance().disassemble(kernelObject);
-            std::cout << "Disassembly of the KO: " << std::endl;
-            for (const auto &i: instList) {
-                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
-            }
+            // instList = luthier::Disassembler::instance().disassemble(kernelObject);
+            // std::cout << "Disassembly of the KO: " << std::endl;
+            // for (const auto &i: instList) {
+            //     std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
+            // }
         }
 
         //            symbolVec->push_back(symbol);
@@ -400,6 +410,78 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
     auto myReloc = emptyRelocatableMap_[agent.handle];
     auto out = compileRelocatableToExecutable(myReloc, agent);
+
+    co_manip::code_t newCodeObject(hco[0]);
+
+    co_manip::code_char_stream_t newCOStream(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).begin(),
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).end()));
+    ELFIO::elfio elfio;
+    elfio.load(newCOStream, false);
+    std::cout << "Create a elfio object using code_char_stream_t\n";
+
+    ELFIO::symbol_section_accessor symbols(elfio, elfio.sections[".symtab"]);
+    for (unsigned int i = 0; i < symbols.get_symbols_num(); i++) {
+        std::string name;
+        ELFIO::Elf64_Addr value;
+        size_t size;
+        unsigned char bind;
+        unsigned char type;
+        ELFIO::Elf_Half sec_index;
+        unsigned char other;
+
+        bool ret = symbols.get_symbol(i, name, value, size, bind, type,
+                                      sec_index, other);
+        if (!ret) {
+            throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", i));
+        }
+        if (name.find("kd") != std::string::npos) {
+            auto kd = reinterpret_cast<kernel_descriptor_t *>(newCodeObject.data() + (size_t) value);
+            fmt::println("Symbol Info: {}, {}, {:#x}", name, size,
+                         reinterpret_cast<luthier_address_t>(kd));
+            // auto VgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
+            // fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 2);
+            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
+            // co_manip::printRSR1(kd);
+            // luthier::co_manip::printCodeProperties(kd);
+        }
+    }
+    co_manip::code_char_stream_t newCOStream_mkd(
+        boost_ios::stream<boost_ios::basic_array_source<char>>(
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).begin(),
+            std::string_view(reinterpret_cast<const char *>(newCodeObject.data()), newCodeObject.size()).end()));
+    ELFIO::elfio elfio_mkd;
+    elfio_mkd.load(newCOStream_mkd, false);
+    std::cout << "Create a elfio object using code_char_stream_t after modifying kd\n";
+
+    co_manip::code_t myNewProg = assemble(std::vector<std::string>{
+                                              "s_add_u32 s0, s0, s11",
+                                              "s_addc_u32 s1, s1, 0",
+                                          },
+                                          agent);
+    // uint32_t offsetNeeded = privateSegmentFixedSize;
+    // fmt::println("s_add_u32 s39, 0, {}", offsetNeeded);
+    // myNewProg = assemble({fmt::format("s_add_u32 s39, 0, {}", offsetNeeded)}, agent);
+
+    // myNewProg = assemble(std::vector<std::string>{
+    //                           "buffer_store_dwordx4 v[1:4], off, s[0:3], s39"},
+    //                       agent);
+
+    myNewProg += assemble(std::vector<std::string>{"s_endpgm"}, agent);
+
+    // elfio_mkd.sections[".text"]->insert_data(0x100, reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
+    elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
+    std::cout << myNewProg.size() << std::endl;
+    std::cout << elfio_mkd.sections[".text"]->get_offset() << std::endl;
+
+    // save the ELF and create an executable
+    std::ostringstream ss;
+    elfio_mkd.save(ss);
+    std::string elf = ss.str();
+    out = co_manip::code_t{reinterpret_cast<std::byte*>(elf.data()),elf.size()};
+
 
     auto coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
     hsa_code_object_reader_t reader;
