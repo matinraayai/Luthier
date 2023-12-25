@@ -318,7 +318,7 @@ luthier::CodeGenerator::~CodeGenerator(){
     reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
         savedRegisterHost, saved_register, allocatedSize, hipMemcpyDeviceToHost);
     int gridSize = allocatedSize / (4*numRegisters);
-    for (int vindex = 0; vindex <= numRegisters; vindex++) {
+    for (int vindex = 0; vindex <= 0; vindex++) {
         int offset = vindex * gridSize;
         for (int i = 0; i < gridSize; i++) {
             std::cout << "v" << vindex << ":wi " << i << " value " << savedRegisterHost[i + offset] << std::endl;
@@ -470,7 +470,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
             fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT: {}", SgprCount);
             AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 3);
             AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 5);
-            // co_manip::printRSR1(kd);
+            co_manip::printRSR1(kd);
             // luthier::co_manip::printCodeProperties(kd);
         }
     }
@@ -500,9 +500,9 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
 
     myNewProg += assemble(std::vector<std::string>{
                               "buffer_store_dwordx4 v[0:3], off, s[0:3], s39",
-                              "buffer_store_dword v4, off, s[0:3], s39 offset:16","v_writelane_b32 v5, s0, 0", "v_writelane_b32 v5, s1, 1", "v_writelane_b32 v5, s2, 2", "v_writelane_b32 v5, s3, 3", "v_writelane_b32 v5, s4, 4", "v_writelane_b32 v5, s5, 5", "v_writelane_b32 v5, s6, 6", "v_writelane_b32 v5, s7, 7", "v_writelane_b32 v5, s8, 8", "v_writelane_b32 v5, s9, 9", "v_writelane_b32 v5, s10, 10", "v_writelane_b32 v5, s11, 11", "v_writelane_b32 v5, s12, 12", "v_writelane_b32 v5, s13, 13", "buffer_store_dword v5, off, s[0:3], s39 offset:20"},
+                              "buffer_store_dword v4, off, s[0:3], s39 offset:16","v_writelane_b32 v5, s0, 0", "v_writelane_b32 v5, s1, 1", "v_writelane_b32 v5, s2, 2", "v_writelane_b32 v5, s3, 3", "v_writelane_b32 v5, s4, 4", "v_writelane_b32 v5, s5, 5", "v_writelane_b32 v5, s6, 6", "v_writelane_b32 v5, s7, 7", "v_writelane_b32 v5, s8, 8", "v_writelane_b32 v5, s9, 9", "v_writelane_b32 v5, s10, 10", "v_writelane_b32 v5, s11, 11", "v_writelane_b32 v5, s12, 12", "v_writelane_b32 v5, s13, 13", "buffer_store_dword v5, off, s[0:3], s39 offset:20","s_waitcnt vmcnt(0)"},
                           agent);
-    myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[6:9], off, s[0:3], s39", "buffer_load_dword v10, off, s[0:3], s39 offset:16", "buffer_load_dword v11, off, s[0:3], s39 offset:20"}, agent);
+    myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[6:9], off, s[0:3], s39", "buffer_load_dword v10, off, s[0:3], s39 offset:16", "buffer_load_dword v11, off, s[0:3], s39 offset:20","s_waitcnt vmcnt(0)"}, agent);
 
     int vCount = 6;// num
     int start = 6, end = 11;
