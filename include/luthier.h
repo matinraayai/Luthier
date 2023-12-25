@@ -177,6 +177,9 @@ static hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_pa
  */
 void luthier_insert_call(luthier::Instr* instr, const void *dev_func, luthier_ipoint_t point);
 
+
+void luthier_inner_prepare(int num, hsa_kernel_dispatch_packet_t dispatch);
+
 /////* Add int32_t argument to last injected call, value of the predicate for this
 //// * instruction */
 ////void nvbit_add_call_arg_pred_val(const Instr* instr,

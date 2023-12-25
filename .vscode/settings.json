@@ -218,5 +218,6 @@
     "C_Cpp_Runner.cppStandard": "c++20",
     "C_Cpp_Runner.cStandard": "c11",
     "C_Cpp_Runner.enableWarnings": true,
-    "C_Cpp_Runner.warningsAsError": false
+    "C_Cpp_Runner.warningsAsError": false,
+    "cmake.configureOnOpen": false
 }

@@ -29,6 +29,7 @@
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include <sstream>
+#include "luthier.h"
 
 struct TargetIdentifier {
     llvm::StringRef Arch;
@@ -302,6 +303,12 @@ luthier::CodeGenerator::CodeGenerator() {
         auto emptyRelocatable = assembleToRelocatable("s_nop 0", agent);
         emptyRelocatableMap_.insert({agent.handle, emptyRelocatable});
     }
+}
+
+uint64_t luthier::CodeGenerator::allocateGlobalSpace(size_t size){
+    auto hipMallocFunc = reinterpret_cast<hipError_t (*)(void **, size_t)>(luthier_get_hip_function("hipMalloc"));
+    (*hipMallocFunc)(&saved_register, size);
+    std::cout << "hip allocate " << size << " bytes at address " << saved_register << " for me to save registers\n";
 }
 
 hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executable,

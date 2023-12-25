@@ -130,6 +130,10 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
     luthier::CodeGenerator::instance().instrument(*instr, dev_func, point);
 }
 
+void luthier_inner_prepare(int num,hsa_kernel_dispatch_packet_t dispatch){
+    luthier::CodeGenerator::instance().allocateGlobalSpace(dispatch.grid_size_x * 4 * num);
+}
+
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
     const auto instrumentedKd = luthier::CodeObjectManager::instance().getInstrumentedKernelKD(
         reinterpret_cast<const kernel_descriptor_t *>(dispatch_packet->kernel_object));

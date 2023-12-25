@@ -28,6 +28,7 @@ class CodeGenerator {
 
     void instrument(Instr &instr, const void *dev_func,
                     luthier_ipoint_t point);
+    uint64_t allocateGlobalSpace(size_t size);
 
  private:
     /**
@@ -35,6 +36,9 @@ class CodeGenerator {
      * The relocatables get assembled when the CodeGenerator first gets called
      */
     std::unordered_map<decltype(hsa_agent_t::handle), luthier::co_manip::code_t> emptyRelocatableMap_;
+
+    //global memory space to save registers
+    void *saved_register;
 
     CodeGenerator();
     ~CodeGenerator() {}
