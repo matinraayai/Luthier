@@ -36,15 +36,15 @@ luthier_address_t luthier::hsa::ExecutableSymbol::getVariableAddress() const {
         getApiTable().core.hsa_executable_symbol_get_info_fn(asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &out));
     return out;
 }
-const kernel_descriptor_t *luthier::hsa::ExecutableSymbol::getKernelDescriptor() const {
+const luthier::hsa::KernelDescriptor *luthier::hsa::ExecutableSymbol::getKernelDescriptor() const {
     luthier_address_t kernelObject;
     LUTHIER_HSA_CHECK(
         getApiTable().core.hsa_executable_symbol_get_info_fn(this->asHsaType(),
                                                              HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
                                                              &kernelObject));
-    return reinterpret_cast<const kernel_descriptor_t *>(kernelObject);
+    return reinterpret_cast<const luthier::hsa::KernelDescriptor*>(kernelObject);
 }
-luthier::hsa::ExecutableSymbol luthier::hsa::ExecutableSymbol::fromKernelDescriptor(const kernel_descriptor_t *kd) {
+luthier::hsa::ExecutableSymbol luthier::hsa::ExecutableSymbol::fromKernelDescriptor(const hsa::KernelDescriptor *kd) {
     hsa_executable_t executable;
     const auto &loaderTable = HsaInterceptor::instance().getHsaVenAmdLoaderTable();
 
@@ -57,6 +57,7 @@ luthier::hsa::ExecutableSymbol luthier::hsa::ExecutableSymbol::fromKernelDescrip
                 return s;
         }
     }
+    LUTHIER_HSA_CHECK(HSA_STATUS_ERROR_INVALID_CODE_OBJECT);
 }
 luthier::hsa::GpuAgent luthier::hsa::ExecutableSymbol::getAgent() const {
     return luthier::hsa::GpuAgent(agent_);
@@ -64,6 +65,6 @@ luthier::hsa::GpuAgent luthier::hsa::ExecutableSymbol::getAgent() const {
 luthier::hsa::Executable luthier::hsa::ExecutableSymbol::getExecutable() const {
     return luthier::hsa::Executable(executable_);
 }
-const luthier::co_manip::code_view_t luthier::hsa::ExecutableSymbol::getIndirectFunctionCode() const {
+luthier::byte_string_view luthier::hsa::ExecutableSymbol::getIndirectFunctionCode() const {
     return *indirectFunctionCode_;
 }

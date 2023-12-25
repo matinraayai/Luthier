@@ -1,8 +1,6 @@
 #ifndef HSA_EXECUTABLE_HPP
 #define HSA_EXECUTABLE_HPP
-#include "hsa_executable_symbol.hpp"
-#include "hsa_loaded_code_object.hpp"
-#include "hsa_primitive.hpp"
+#include "hsa_handle_type.hpp"
 #include <hsa/hsa.h>
 #include <hsa/hsa_api_trace.h>
 #include <vector>
@@ -11,12 +9,11 @@ namespace luthier::hsa {
 
 class GpuAgent;
 
-class Executable : public HandleType<hsa_executable_t> {
- private:
-    Executable(hsa_profile_t profile,
-               hsa_default_float_rounding_mode_t default_float_rounding_mode,
-               const char *options);
+class ExecutableSymbol;
 
+class LoadedCodeObject;
+
+class Executable : public HandleType<hsa_executable_t> {
  public:
     explicit Executable(hsa_executable_t executable);
 

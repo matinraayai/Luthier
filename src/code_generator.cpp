@@ -7,6 +7,7 @@
 #include "instr.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_executable.hpp"
+#include "hsa_loaded_code_object.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_agent.hpp"
 #include "log.hpp"
@@ -52,7 +53,7 @@ std::string getSymbolName(hsa_executable_symbol_t symbol) {
     return name;
 }
 
-luthier::co_manip::code_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::co_manip::code_t &code,
+luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::byte_string_t &code,
                                                                                  const hsa::GpuAgent& agent) {
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
@@ -80,13 +81,13 @@ luthier::co_manip::code_t luthier::CodeGenerator::compileRelocatableToExecutable
     size_t dataOutSize;
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &dataOut));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, nullptr));
-    luthier::co_manip::code_t executableOut;
+    luthier::byte_string_t executableOut;
     executableOut.resize(dataOutSize);
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(executableOut.data())));
     return executableOut;
 }
 
-luthier::co_manip::code_t luthier::CodeGenerator::assembleToRelocatable(const std::string &instList, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::string &instList, const hsa::GpuAgent& agent) {
 
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
@@ -122,19 +123,19 @@ luthier::co_manip::code_t luthier::CodeGenerator::assembleToRelocatable(const st
     fmt::print(stderr, "Name of the data: {}\n", name);
 
     amd_comgr_get_data(dataOut, &dataOutSize, nullptr);
-    luthier::co_manip::code_t outElf;
+    luthier::byte_string_t outElf;
     outElf.resize(dataOutSize);
     amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(outElf.data()));
-    auto outView = luthier::co_manip::ElfViewImpl::makeView(outElf);
+    auto outView = code::ElfView::makeView(outElf);
     return outElf;
 }
 
-luthier::co_manip::code_t luthier::CodeGenerator::assembleToRelocatable(const std::vector<std::string> &instList, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::vector<std::string> &instList, const hsa::GpuAgent& agent) {
     std::string instString = fmt::format("{}", fmt::join(instList, "\n"));
     return assembleToRelocatable(instString, agent);
 }
 
-luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &instList, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instList, const hsa::GpuAgent& agent) {
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
@@ -169,10 +170,10 @@ luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &in
     fmt::print(stderr, "Name of the data: {}\n", name);
 
     amd_comgr_get_data(dataOut, &dataOutSize, nullptr);
-    luthier::co_manip::code_t outElf;
+    luthier::byte_string_t outElf;
     outElf.resize(dataOutSize);
     amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(outElf.data()));
-    auto outView = luthier::co_manip::ElfViewImpl::makeView(outElf);
+    auto outView = code::ElfView::makeView(outElf);
     return outElf;
 //    auto isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
 //
@@ -285,7 +286,7 @@ luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::string &in
 //    return {reinterpret_cast<std::byte*>(out.data()), out.size()};
 }
 
-luthier::co_manip::code_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, const hsa::GpuAgent& agent) {
     return assembleToRelocatable(instrVector, agent);
 }
 
@@ -324,10 +325,9 @@ hsa_status_t registerSymbolWithCodeObjectManager(const luthier::hsa::Executable 
 //                    //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
 //                }
 //            }
-            luthier::co_manip::printRSR1(sKd);
-            luthier::co_manip::printRSR2(sKd);
-            luthier::co_manip::printCodeProperties(sKd);
-            const kernel_descriptor_t *kernelDescriptor{nullptr};
+//            luthier::co_manip::printRSR1(sKd);
+//            luthier::co_manip::printRSR2(sKd);
+//            luthier::co_manip::printCodeProperties(sKd);
 //            const auto &amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
 //            LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
 //                                                                             reinterpret_cast<const void **>(&kernelDescriptor)));
@@ -353,28 +353,28 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     auto agent = hsa::GpuAgent(instr.getAgent());
     auto &codeObjectManager = luthier::CodeObjectManager::instance();
     hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationFunction(device_func, agent);
-    const kernel_descriptor_t *instrumentationFuncKD = codeObjectManager.getInstrumentationKernel(device_func, agent).getKernelDescriptor();
+    const hsa::KernelDescriptor *instrumentationFuncKD = codeObjectManager.getInstrumentationKernel(device_func, agent).getKernelDescriptor();
     auto targetExecutable = hsa::Executable(instr.getExecutable());
 
     auto symbol = hsa::ExecutableSymbol(instr.getSymbol(), instr.getAgent(), instr.getExecutable());
     std::string symbolName = symbol.getName();
 
     auto storage = targetExecutable.getLoadedCodeObjects()[0].getStorageMemory();
-    auto instrumentedElfView = co_manip::ElfViewImpl::makeView(storage);
+    auto instrumentedElfView = code::ElfView::makeView(storage);
 
     auto newElfio = co_manip::createAMDGPUElf(instrumentedElfView->getElfIo(), agent);
 
     // Find the symbol that requires instrumentation.
     bool foundKDSymbol{false};
-    for (unsigned int i = 0; i < co_manip::getSymbolNum(instrumentedElfView) && !foundKDSymbol; i++) {
-        co_manip::SymbolView info(instrumentedElfView, i);
+    for (unsigned int i = 0; i < instrumentedElfView->getNumSymbols() && !foundKDSymbol; i++) {
+        code::SymbolView info = instrumentedElfView->getSymbol(i);
         if (info.getName() == symbolName)
             foundKDSymbol = true;
     }
     if (not foundKDSymbol)
         throw std::runtime_error(fmt::format("Failed to find symbol {} in the copied executable", symbolName));
 //    fmt::println("SGPR granularity: {}", luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getSGPRAllocGranulefromComgrMeta());
-    auto meta = GetAttrCodePropMetadata(instrumentedElfView, instrumentedElfView->getKernelMetaDataMap(symbolName));
+    auto meta = code::GetAttrCodePropMetadata(instrumentedElfView, instrumentedElfView->getKernelMetaDataMap(symbolName));
     fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
     auto myReloc = emptyRelocatableMap_[agent];

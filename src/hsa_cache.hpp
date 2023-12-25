@@ -1,8 +1,8 @@
 #ifndef HSA_CACHE_HPP
 #define HSA_CACHE_HPP
+#include "hsa_handle_type.hpp"
 #include <hsa/hsa.h>
 #include <string>
-#include "hsa_primitive.hpp"
 
 namespace luthier::hsa {
 

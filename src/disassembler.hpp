@@ -1,6 +1,6 @@
 #ifndef DISASSEMBLER_HPP
 #define DISASSEMBLER_HPP
-#include "code_object_manipulation.hpp"
+#include "code_view.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_agent.hpp"
 #include "instr.hpp"
@@ -43,9 +43,9 @@ class Disassembler {
 
     std::vector<Instr> disassemble(const hsa::GpuAgent& agent, luthier_address_t address);
 
-    std::vector<Instr> disassemble(const hsa::GpuAgent& agent, co_manip::code_view_t code);
+    std::vector<Instr> disassemble(const hsa::GpuAgent& agent, byte_string_view code);
 
-    std::vector<Instr> disassemble(co_manip::SymbolView symbolView);
+    std::vector<Instr> disassemble(code::SymbolView symbolView);
 
  private:
     Disassembler() = default;

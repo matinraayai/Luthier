@@ -57,7 +57,7 @@ luthier_address_t getKdEntryPoint(luthier_address_t kernelObject) {
 }// namespace
 
 std::vector<luthier::Instr> luthier::Disassembler::disassemble(luthier_address_t kernelObject) {
-    auto symbol = hsa::ExecutableSymbol::fromKernelDescriptor(reinterpret_cast<const kernel_descriptor_t*>(kernelObject));
+    auto symbol = hsa::ExecutableSymbol::fromKernelDescriptor(reinterpret_cast<const hsa::KernelDescriptor*>(kernelObject));
     std::string isaName = symbol.getAgent().getIsa()[0].getName();
 
     luthier_address_t kernelEntryPoint = getKdEntryPoint(kernelObject);
@@ -83,7 +83,7 @@ std::vector<luthier::Instr> luthier::Disassembler::disassemble(luthier_address_t
     return out;
 }
 
-std::vector<luthier::Instr> luthier::Disassembler::disassemble(const hsa::GpuAgent& agent, co_manip::code_view_t code) {
+std::vector<luthier::Instr> luthier::Disassembler::disassemble(const hsa::GpuAgent& agent, luthier::byte_string_view code) {
 
     std::string isaName = agent.getIsa()[0].getName();
 

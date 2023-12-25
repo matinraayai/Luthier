@@ -1,6 +1,6 @@
 #ifndef HSA_ISA_HPP
 #define HSA_ISA_HPP
-#include "hsa_primitive.hpp"
+#include "hsa_handle_type.hpp"
 #include "hsa_intercept.hpp"
 
 namespace luthier::hsa {

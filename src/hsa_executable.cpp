@@ -1,26 +1,20 @@
 #include "hsa_executable.hpp"
 #include "error.h"
 #include "hsa_agent.hpp"
-#include <unordered_set>
+#include "hsa_executable_symbol.hpp"
+#include "hsa_loaded_code_object.hpp"
+#include "code_view.hpp"
 #include <elfio/elf_types.hpp>
+#include <unordered_set>
 
 namespace luthier::hsa {
-
-Executable::Executable(hsa_profile_t profile,
-                       hsa_default_float_rounding_mode_t default_float_rounding_mode,
-                       const char *options) : HandleType<hsa_executable_t>(([&]() {
-                                                  hsa_executable_t executable;
-                                                  LUTHIER_HSA_CHECK(hsa_executable_create_alt(profile,
-                                                                                              default_float_rounding_mode,
-                                                                                              options,
-                                                                                              &executable));
-                                                  return executable;
-                                              })()) {}
 
 Executable Executable::create(hsa_profile_t profile,
                               hsa_default_float_rounding_mode_t default_float_rounding_mode,
                               const char *options) {
-    return {profile, default_float_rounding_mode, options};
+    hsa_executable_t executable;
+    LUTHIER_HSA_CHECK(hsa_executable_create_alt(profile, default_float_rounding_mode, options, &executable));
+    return Executable{executable};
 }
 
 hsa_status_t Executable::freeze(const char *options) {
@@ -59,21 +53,21 @@ std::vector<ExecutableSymbol> Executable::getSymbols(const GpuAgent &agent) cons
         getApiTable().core.hsa_executable_iterate_agent_symbols_fn(asHsaType(), agent.asHsaType(), iterator, &out));
 
     std::unordered_set<std::string> kernelNames;
-    for (const auto& s: out) {
+    for (const auto &s: out) {
         if (s.getType() == HSA_SYMBOL_KIND_KERNEL) {
             std::string sName = s.getName();
             kernelNames.insert(sName);
             kernelNames.insert(sName.substr(0, sName.find(".kd")));
         }
     }
-    for (const auto& lco: this->getLoadedCodeObjects()) {
+    for (const auto &lco: this->getLoadedCodeObjects()) {
         if (lco.getAgent() == agent) {
             if (lco.getStorageType() == HSA_VEN_AMD_LOADER_CODE_OBJECT_STORAGE_TYPE_MEMORY) {
                 auto storageMemory = lco.getStorageMemory();
                 auto loadedMemory = lco.getLoadedMemory();
-                auto reader = co_manip::ElfViewImpl::makeView(storageMemory);
-                for (unsigned int j = 0; j < co_manip::getSymbolNum(reader); j++) {
-                    auto info = co_manip::SymbolView(reader, j);
+                auto reader = code::ElfView::makeView(storageMemory);
+                for (unsigned int j = 0; j <reader->getNumSymbols(); j++) {
+                    auto info = reader->getSymbol(j);
                     if (info.getType() == ELFIO::STT_FUNC && !kernelNames.contains(info.getName())) {
                         auto storageAddressOffset = info.getSection()->get_address();
                         out.emplace_back(info.getName(), loadedMemory.substr(storageAddressOffset), agent.asHsaType(), this->asHsaType());
@@ -88,12 +82,16 @@ std::vector<ExecutableSymbol> Executable::getSymbols(const GpuAgent &agent) cons
 ExecutableSymbol Executable::getSymbolByName(const GpuAgent &agent, const std::string &name) const {
     hsa_executable_symbol_t symbol;
     hsa_agent_t hsa_agent = agent.asHsaType();
-    LUTHIER_HSA_CHECK(
-        getApiTable().core.hsa_executable_get_symbol_by_name_fn(
-            this->asHsaType(), name.c_str(), &hsa_agent, &symbol
-            )
-        );
-    return ExecutableSymbol(symbol, hsa_agent_s(), hsa_executable_s());
+
+    auto status = getApiTable().core.hsa_executable_get_symbol_by_name_fn(
+        this->asHsaType(), name.c_str(), &hsa_agent, &symbol);
+    if (status == HSA_STATUS_SUCCESS)
+        return {symbol, agent.asHsaType(), this->asHsaType()};
+    else if (status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME) {
+
+    } else {
+        LUTHIER_HSA_CHECK(HSA_STATUS_ERROR_INVALID_SYMBOL_NAME);
+    }
 }
 
 std::vector<LoadedCodeObject> Executable::getLoadedCodeObjects() const {

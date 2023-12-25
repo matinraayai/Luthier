@@ -132,7 +132,7 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
     const auto instrumentedKernel = luthier::CodeObjectManager::instance().getInstrumentedKernel(
         luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
-            reinterpret_cast<const kernel_descriptor_t *>(dispatch_packet->kernel_object)
+            reinterpret_cast<const luthier::hsa::KernelDescriptor *>(dispatch_packet->kernel_object)
             )
         );
     dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKernel.getKernelDescriptor());

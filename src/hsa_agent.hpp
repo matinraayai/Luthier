@@ -1,7 +1,7 @@
 #ifndef HSA_AGENT_HPP
 #define HSA_AGENT_HPP
+#include "hsa_handle_type.hpp"
 #include "hsa_intercept.hpp"
-#include "hsa_primitive.hpp"
 #include <hsa/hsa.h>
 #include <string>
 

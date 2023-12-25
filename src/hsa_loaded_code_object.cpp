@@ -1,6 +1,7 @@
 #include "hsa_loaded_code_object.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_intercept.hpp"
+#include "hsa_agent.hpp"
 
 namespace luthier::hsa {
 
@@ -33,7 +34,7 @@ hsa_ven_amd_loader_code_object_storage_type_t LoadedCodeObject::getStorageType()
     return storageType;
 }
 
-luthier::co_manip::code_view_t LoadedCodeObject::getStorageMemory() const {
+luthier::byte_string_view LoadedCodeObject::getStorageMemory() const {
     luthier_address_t storageBase;
     LUTHIER_HSA_CHECK(getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(this->asHsaType(),
                                                                                       HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
@@ -63,7 +64,7 @@ long LoadedCodeObject::getLoadDelta() const {
     return loadDelta;
 }
 
-luthier::co_manip::code_view_t LoadedCodeObject::getLoadedMemory() const {
+luthier::byte_string_view LoadedCodeObject::getLoadedMemory() const {
     luthier_address_t loadBase;
     LUTHIER_HSA_CHECK(getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(this->asHsaType(),
                                                                                       HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,

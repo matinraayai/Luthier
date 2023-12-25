@@ -24,7 +24,7 @@ add_library(luthier SHARED
         src/hsa_executable_symbol.hpp
         src/hsa_agent.hpp
         src/hsa_cache.hpp
-        src/hsa_primitive.hpp
+        src/hsa_handle_type.hpp
         src/hsa_cache.cpp
         src/hsa_type.hpp
         src/hsa_agent.cpp
@@ -32,7 +32,10 @@ add_library(luthier SHARED
         src/hsa_loaded_code_object.hpp
         src/hsa_loaded_code_object.cpp
         src/hsa_isa.hpp
-        src/hsa_isa.cpp)
+        src/hsa_isa.cpp
+        src/code_view.hpp
+        src/code_view.cpp
+        src/hsa_kernel_descriptor.hpp)
 # ======================================================================================================================
 
 # User Options =========================================================================================================

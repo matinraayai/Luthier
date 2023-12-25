@@ -1,12 +1,12 @@
 #ifndef CODE_OBJECT_MANAGER_HPP
 #define CODE_OBJECT_MANAGER_HPP
 #include "code_object_manipulation.hpp"
-#include "luthier_types.h"
-#include "hsa_primitive.hpp"
-#include "hsa_executable.hpp"
-#include "instrumentation_function.hpp"
-#include "hsa_executable_symbol.hpp"
 #include "hsa_agent.hpp"
+#include "hsa_executable.hpp"
+#include "hsa_executable_symbol.hpp"
+#include "hsa_handle_type.hpp"
+#include "instrumentation_function.hpp"
+#include "luthier_types.h"
 #include <amd_comgr/amd_comgr.h>
 #include <hsa/hsa.h>
 #include <memory>

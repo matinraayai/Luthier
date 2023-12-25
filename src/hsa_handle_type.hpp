@@ -1,5 +1,5 @@
-#ifndef HSA_PRIMITIVE_HPP
-#define HSA_PRIMITIVE_HPP
+#ifndef HSA_HANDLE_TYPE_HPP
+#define HSA_HANDLE_TYPE_HPP
 #include "hsa_intercept.hpp"
 #include "hsa_type.hpp"
 
