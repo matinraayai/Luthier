@@ -131,7 +131,7 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
 }
 
 void luthier_inner_prepare(int num,hsa_kernel_dispatch_packet_t dispatch){
-    luthier::CodeGenerator::instance().allocateGlobalSpace(dispatch.grid_size_x * 4 * num);
+    luthier::CodeGenerator::instance().allocateGlobalSpace(num,dispatch.grid_size_x);
 }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {

@@ -28,7 +28,7 @@ class CodeGenerator {
 
     void instrument(Instr &instr, const void *dev_func,
                     luthier_ipoint_t point);
-    uint64_t allocateGlobalSpace(size_t size);
+    uint64_t allocateGlobalSpace(int numGPRToSave,uint32_t gridSize);
 
  private:
     /**
@@ -39,9 +39,11 @@ class CodeGenerator {
 
     //global memory space to save registers
     void *saved_register;
+    size_t allocatedSize;
+    int numRegisters;
 
     CodeGenerator();
-    ~CodeGenerator() {}
+    ~CodeGenerator();
 };
 }// namespace luthier
 

@@ -305,10 +305,27 @@ luthier::CodeGenerator::CodeGenerator() {
     }
 }
 
-uint64_t luthier::CodeGenerator::allocateGlobalSpace(size_t size){
+uint64_t luthier::CodeGenerator::allocateGlobalSpace(int numGPRToSave,uint32_t gridSize){
+    numRegisters = numGPRToSave;
+    allocatedSize = gridSize * numRegisters * 4;
     auto hipMallocFunc = reinterpret_cast<hipError_t (*)(void **, size_t)>(luthier_get_hip_function("hipMalloc"));
-    (*hipMallocFunc)(&saved_register, size);
-    std::cout << "hip allocate " << size << " bytes at address " << saved_register << " for me to save registers\n";
+    (*hipMallocFunc)(&saved_register, allocatedSize);
+    std::cout << "hip allocate " << allocatedSize << " bytes at address " << saved_register << " for me to save registers\n";
+}
+
+luthier::CodeGenerator::~CodeGenerator(){
+    int savedRegisterHost[allocatedSize];
+    reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
+        savedRegisterHost, saved_register, allocatedSize, hipMemcpyDeviceToHost);
+    int gridSize = allocatedSize / (4*numRegisters);
+    for (int vindex = 0; vindex <= numRegisters; vindex++) {
+        int offset = vindex * gridSize;
+        for (int i = 0; i < gridSize; i++) {
+            std::cout << "v" << vindex << ":wi " << i << " value " << savedRegisterHost[i + offset] << std::endl;
+        }
+    }
+    auto hipFreeFunc = reinterpret_cast<hipError_t (*)(void **)>(luthier_get_hip_function("hipFree"));
+    (*hipFreeFunc)(&saved_register);
 }
 
 hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executable,
@@ -451,8 +468,8 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
             fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT: {}", VgprCount);
             auto SgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT);
             fmt::println("AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT: {}", SgprCount);
-            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 2);
-            // AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 2);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 3);
+            AMD_HSA_BITS_SET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 5);
             // co_manip::printRSR1(kd);
             // luthier::co_manip::printCodeProperties(kd);
         }
@@ -468,6 +485,13 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     co_manip::code_t myNewProg = assemble(std::vector<std::string>{
                                               "s_add_u32 s0, s0, s11",
                                               "s_addc_u32 s1, s1, 0",
+                                              "s_load_dword s40, s[4:5], 0x4",
+                                           "s_waitcnt lgkmcnt(0)",
+                                           "s_and_b32 s40, s40, 0xffff",
+                                           "s_mul_i32 s8, s8, s40",
+                                           "v_add_u32_e32 v5, s8, v0",
+                                           "v_mov_b32_e32 v4, 0",
+                                           "v_ashrrev_i64 v[4:5], 30, v[4:5]",
                                           },
                                           agent);
     uint32_t offsetNeeded = 0;
@@ -478,7 +502,30 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
                               "buffer_store_dwordx4 v[0:3], off, s[0:3], s39",
                               "buffer_store_dword v4, off, s[0:3], s39 offset:16","v_writelane_b32 v5, s0, 0", "v_writelane_b32 v5, s1, 1", "v_writelane_b32 v5, s2, 2", "v_writelane_b32 v5, s3, 3", "v_writelane_b32 v5, s4, 4", "v_writelane_b32 v5, s5, 5", "v_writelane_b32 v5, s6, 6", "v_writelane_b32 v5, s7, 7", "v_writelane_b32 v5, s8, 8", "v_writelane_b32 v5, s9, 9", "v_writelane_b32 v5, s10, 10", "v_writelane_b32 v5, s11, 11", "v_writelane_b32 v5, s12, 12", "v_writelane_b32 v5, s13, 13", "buffer_store_dword v5, off, s[0:3], s39 offset:20"},
                           agent);
+    myNewProg += assemble(std::vector<std::string>{"buffer_load_dwordx4 v[6:9], off, s[0:3], s39", "buffer_load_dword v10, off, s[0:3], s39 offset:16", "buffer_load_dword v11, off, s[0:3], s39 offset:20"}, agent);
 
+    int vCount = 6;// num
+    int start = 6, end = 11;
+    int gridSize = 128; // dispatch.grid_size_x
+    for (int i = start; i <= end; i++) {
+        uint64_t offset = (i-start) * gridSize * 4;
+        std::cout << "offset is " << offset << std::endl;
+
+        constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
+        constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
+        uint64_t baseAddr = (uint64_t) saved_register + offset;
+        uint32_t upperBaseAddr = (uint32_t) ((baseAddr & upperMaskUint64_t) >> 32);
+        uint32_t lowerBaseAddr = (uint32_t) (baseAddr & lowerMaskUint64_t);
+
+        fmt::println("s_add_u32 s40, 0, {:#x}", lowerBaseAddr);
+        fmt::println("s_add_u32 s41, 0, {:#x}", upperBaseAddr);
+        fmt::println("global_store_dword v[12:13], v{}, off", i);
+
+        myNewProg += assemble(std::vector<std::string>{fmt::format("s_add_u32 s40, 0, {:#x}", lowerBaseAddr)}, agent);
+        myNewProg += assemble(std::vector<std::string>{fmt::format("s_add_u32 s41, 0, {:#x}", upperBaseAddr)}, agent);
+        myNewProg += assemble(std::vector<std::string>{"v_mov_b32_e32 v13, s41", "v_add_co_u32_e32 v12, vcc, s40, v4", "v_addc_co_u32_e32 v13, vcc, v13, v5, vcc"}, agent);
+        myNewProg += assemble(std::vector<std::string>{fmt::format("global_store_dword v[12:13], v{}, off", i)}, agent);
+    }
     myNewProg += assemble(std::vector<std::string>{"s_endpgm"}, agent);
 
     elfio_mkd.sections[".text"]->insert_data(0x100, reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
