@@ -282,7 +282,6 @@ class ApiDescrParser:
         self.api_calls = {}
         self.api_rettypes = set()
         self.api_id = {}
-        self.count = 0
 
         api_data = {}
         api_list = []
@@ -365,8 +364,6 @@ class ApiDescrParser:
             content += '/* section: Static declarations */\n'
             content += '\n'
         if call != '-' and call not in bad_callbacks:
-            count = self.count
-            self.count += 1
             call_id = self.api_id[call]
             ret_type = struct['ret']
             content += f'static {ret_type} {call}_callback({struct["args"]}) {{\n'
@@ -376,8 +373,7 @@ class ApiDescrParser:
                        f"\tauto apiId = HSA_API_ID_{call};\n" + \
                        "\tbool skipFunction{false};\n"
             actual_params = ", ".join([el for i, el in enumerate(struct["alst"])])
-            table = 'core' if (count >= 0 and count <= 124) else 'amd_ext' if (count >= 125 and count <= 179) else 'image_ext'
-            content += f'    if (!hsaInterceptor.getOpFiltersSet().empty() && hsaInterceptor.getOpFiltersSet().find(apiId) == hsaInterceptor.getOpFiltersSet().end()) return hsaInterceptor.getSavedHsaTables().{table}.{call}_fn({actual_params});\n'
+            content += f'    if (!hsaInterceptor.getEnabledOps().empty() && hsaInterceptor.getEnabledOps().find(apiId) == hsaInterceptor.getEnabledOps().end()) return hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn({actual_params});\n'
             content += "\thsa_api_evt_args_t args;\n"
             for var in struct['alst']:
                 item = struct['astr'][var]
@@ -414,9 +410,6 @@ class ApiDescrParser:
                 content += "      return out;\n"
 
             content += '}\n\n'
-
-        if call in bad_callbacks:
-            self.count += 1
 
         return content
 

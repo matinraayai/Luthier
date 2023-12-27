@@ -130,24 +130,21 @@ void luthier_insert_call(luthier::Instr *instr, const void *dev_func, luthier_ip
     luthier::CodeGenerator::instance().instrument(*instr, dev_func, point);
 }
 
-void luthier_enable_hsa_op_callback(uint32_t op) {
-    std::cout << "Enabling " << op << std::endl;
-    luthier::HsaInterceptor::instance().enable_callback_impl(op);
+void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op) {
+    luthier::HsaInterceptor::instance().enableCallback(op);
 }
 
-void luthier_disable_hsa_op_callback(uint32_t op) {
-    std::cout << "Disabling " << op << std::endl;
-    luthier::HsaInterceptor::instance().disable_callback_impl(op);
+void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op) {
+    luthier::HsaInterceptor::instance().disableCallback(op);
 }
+
 
 void luthier_enable_hip_op_callback(uint32_t op) {
-    std::cout << "Enabling " << op << std::endl;
-    luthier::HipInterceptor::Instance().enable_callback_impl(op);
+    luthier::HipInterceptor::Instance().enableCallback(op);
 }
 
 void luthier_disable_hip_op_callback(uint32_t op) {
-    std::cout << "Disabling " << op << std::endl;
-    luthier::HipInterceptor::Instance().disable_callback_impl(op);
+    luthier::HipInterceptor::Instance().disableCallback(op);
 }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {

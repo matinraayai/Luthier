@@ -21,7 +21,7 @@ class HipInterceptor {
     void *handle_{nullptr};
     std::function<void(void *, const luthier_api_evt_phase_t, const int)> userCallback_{};
     std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> internalCallback_{};
-    std::unordered_set<uint32_t> op_filters_;
+    std::unordered_set<uint32_t> enabledOps_;
 
     HipInterceptor();
 
@@ -39,8 +39,8 @@ class HipInterceptor {
         return userCallback_;
     }
 
-    [[nodiscard]] const std::unordered_set<uint32_t> &getOpFiltersSet() const {
-        return op_filters_;
+    [[nodiscard]] const std::unordered_set<uint32_t> &getEnabledOps() const {
+        return enabledOps_;
     }
 
     void SetUserCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &callback) {
@@ -54,14 +54,14 @@ class HipInterceptor {
         internalCallback_ = internal_callback;
     }
 
-    void enable_callback_impl(uint32_t op) {
+    void enableCallback(uint32_t op) {
         //if (op < 0 || op > 192) throw std::invalid_argument("Op not in range [0, 192]");
-        op_filters_.insert(op);
+        enabledOps_.insert(op);
     }
 
-    void disable_callback_impl(uint32_t op) {
+    void disableCallback(uint32_t op) {
         //if (op < 0 || op > 192) throw std::invalid_argument("Op not in range [0, 192]");
-        op_filters_.erase(op);
+        enabledOps_.erase(op);
     }
 
     void *GetHipFunction(const char *symbol) const {

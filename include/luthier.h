@@ -55,9 +55,11 @@ void* luthier_get_hip_function(const char* funcName);
 
 std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object);
 
-void luthier_enable_hsa_op_callback(uint32_t op);
 
-void luthier_disable_hsa_op_callback(uint32_t op);
+void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op);
+
+void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op);
+
 
 void luthier_enable_hip_op_callback(uint32_t op);
 
