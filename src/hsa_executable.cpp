@@ -1,16 +1,17 @@
 #include "hsa_executable.hpp"
+
+#include <elfio/elf_types.hpp>
+#include <unordered_set>
+
+#include "code_view.hpp"
 #include "error.h"
 #include "hsa_agent.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "code_view.hpp"
-#include <elfio/elf_types.hpp>
-#include <unordered_set>
 
 namespace luthier::hsa {
 
-Executable Executable::create(hsa_profile_t profile,
-                              hsa_default_float_rounding_mode_t default_float_rounding_mode,
+Executable Executable::create(hsa_profile_t profile, hsa_default_float_rounding_mode_t default_float_rounding_mode,
                               const char *options) {
     hsa_executable_t executable;
     LUTHIER_HSA_CHECK(hsa_executable_create_alt(profile, default_float_rounding_mode, options, &executable));
@@ -37,8 +38,8 @@ hsa_executable_state_t Executable::getState() {
 
 hsa_default_float_rounding_mode_t Executable::getRoundingMode() {
     hsa_default_float_rounding_mode_t out;
-    LUTHIER_HSA_CHECK(getApiTable().core.hsa_executable_get_info_fn(asHsaType(),
-                                                                    HSA_EXECUTABLE_INFO_DEFAULT_FLOAT_ROUNDING_MODE, &out));
+    LUTHIER_HSA_CHECK(getApiTable().core.hsa_executable_get_info_fn(
+        asHsaType(), HSA_EXECUTABLE_INFO_DEFAULT_FLOAT_ROUNDING_MODE, &out));
     return out;
 }
 
@@ -66,11 +67,15 @@ std::vector<ExecutableSymbol> Executable::getSymbols(const GpuAgent &agent) cons
                 auto storageMemory = lco.getStorageMemory();
                 auto loadedMemory = lco.getLoadedMemory();
                 auto reader = code::ElfView::makeView(storageMemory);
-                for (unsigned int j = 0; j <reader->getNumSymbols(); j++) {
+                for (unsigned int j = 0; j < reader->getNumSymbols(); j++) {
                     auto info = reader->getSymbol(j);
-                    if (info.getType() == ELFIO::STT_FUNC && !kernelNames.contains(info.getName())) {
-                        auto storageAddressOffset = info.getSection()->get_address();
-                        out.emplace_back(info.getName(), loadedMemory.substr(storageAddressOffset), agent.asHsaType(), this->asHsaType());
+                    if (info->getType() == ELFIO::STT_FUNC && !kernelNames.contains(info->getName())) {
+                        auto storageAddressOffset = info->getAddress()
+                            - reinterpret_cast<luthier_address_t>(storageMemory.data());
+                        auto symbolSize = info->getSize();
+                        out.emplace_back(info->getName(),
+                                         loadedMemory.substr(storageAddressOffset, symbolSize),
+                                         agent.asHsaType(), this->asHsaType());
                     }
                 }
             }
@@ -79,18 +84,30 @@ std::vector<ExecutableSymbol> Executable::getSymbols(const GpuAgent &agent) cons
     return out;
 }
 
-ExecutableSymbol Executable::getSymbolByName(const GpuAgent &agent, const std::string &name) const {
+std::optional<ExecutableSymbol> Executable::getSymbolByName(const luthier::hsa::GpuAgent &agent,
+                                                            const std::string &name) const {
     hsa_executable_symbol_t symbol;
-    hsa_agent_t hsa_agent = agent.asHsaType();
+    hsa_agent_t hsaAgent = agent.asHsaType();
 
-    auto status = getApiTable().core.hsa_executable_get_symbol_by_name_fn(
-        this->asHsaType(), name.c_str(), &hsa_agent, &symbol);
-    if (status == HSA_STATUS_SUCCESS)
-        return {symbol, agent.asHsaType(), this->asHsaType()};
+    auto status =
+        getApiTable().core.hsa_executable_get_symbol_by_name_fn(this->asHsaType(), name.c_str(), &hsaAgent, &symbol);
+    if (status == HSA_STATUS_SUCCESS) return ExecutableSymbol{symbol, agent.asHsaType(), this->asHsaType()};
     else if (status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME) {
-
+        for (const auto &lco: getLoadedCodeObjects()) {
+            auto storageMemory = lco.getStorageMemory();
+            auto s = code::ElfView::makeView(storageMemory)->getSymbol(name);
+            if (s.has_value()) {
+                auto loadedMemory = lco.getLoadedMemory();
+                auto storageAddressOffset = s->getSection()->get_address();
+                auto symbolSize = s->getSection()->get_size();
+                return ExecutableSymbol{s->getName(),
+                                        loadedMemory.substr(storageAddressOffset, storageAddressOffset),
+                                        agent.asHsaType(), this->asHsaType()};
+            }
+        }
+        return std::nullopt;
     } else {
-        LUTHIER_HSA_CHECK(HSA_STATUS_ERROR_INVALID_SYMBOL_NAME);
+        return std::nullopt;
     }
 }
 
@@ -101,9 +118,8 @@ std::vector<LoadedCodeObject> Executable::getLoadedCodeObjects() const {
         out->emplace_back(lco);
         return HSA_STATUS_SUCCESS;
     };
-    LUTHIER_HSA_CHECK(getLoaderTable().hsa_ven_amd_loader_executable_iterate_loaded_code_objects(this->asHsaType(),
-                                                                                                 iterator,
-                                                                                                 &loadedCodeObjects));
+    LUTHIER_HSA_CHECK(getLoaderTable().hsa_ven_amd_loader_executable_iterate_loaded_code_objects(
+        this->asHsaType(), iterator, &loadedCodeObjects));
     return loadedCodeObjects;
 }
 std::vector<hsa::GpuAgent> Executable::getAgents() const {
@@ -111,10 +127,8 @@ std::vector<hsa::GpuAgent> Executable::getAgents() const {
     std::vector<hsa::GpuAgent> agents;
     for (const auto &lco: loadedCodeObjects) {
         hsa_agent_t agent;
-        LUTHIER_HSA_CHECK(
-            getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(lco.asHsaType(),
-                                                                            HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT,
-                                                                            &agent));
+        LUTHIER_HSA_CHECK(getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
+            lco.asHsaType(), HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT, &agent));
         agents.emplace_back(agent);
     }
     return agents;

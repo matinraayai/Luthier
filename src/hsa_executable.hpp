@@ -1,9 +1,12 @@
 #ifndef HSA_EXECUTABLE_HPP
 #define HSA_EXECUTABLE_HPP
-#include "hsa_handle_type.hpp"
 #include <hsa/hsa.h>
 #include <hsa/hsa_api_trace.h>
+
+#include <optional>
 #include <vector>
+
+#include "hsa_handle_type.hpp"
 
 namespace luthier::hsa {
 
@@ -17,9 +20,10 @@ class Executable : public HandleType<hsa_executable_t> {
  public:
     explicit Executable(hsa_executable_t executable);
 
-    static Executable create(hsa_profile_t profile = HSA_PROFILE_FULL,
-                             hsa_default_float_rounding_mode_t default_float_rounding_mode = HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
-                             const char *options = "");
+    static Executable create(
+        hsa_profile_t profile = HSA_PROFILE_FULL,
+        hsa_default_float_rounding_mode_t defaultFloatRoundingMode = HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
+        const char *options = "");
 
     hsa_status_t freeze(const char *options = "");
 
@@ -31,7 +35,8 @@ class Executable : public HandleType<hsa_executable_t> {
 
     [[nodiscard]] std::vector<ExecutableSymbol> getSymbols(const luthier::hsa::GpuAgent &agent) const;
 
-    [[nodiscard]] ExecutableSymbol getSymbolByName(const luthier::hsa::GpuAgent& agent, const std::string& name) const;
+    [[nodiscard]] std::optional<ExecutableSymbol> getSymbolByName(const luthier::hsa::GpuAgent &agent,
+                                                                  const std::string &name) const;
 
     [[nodiscard]] std::vector<LoadedCodeObject> getLoadedCodeObjects() const;
 
@@ -44,9 +49,7 @@ namespace std {
 
 template<>
 struct hash<luthier::hsa::Executable> {
-    size_t operator()(const luthier::hsa::Executable &obj) const {
-        return hash<unsigned long>()(obj.hsaHandle());
-    }
+    size_t operator()(const luthier::hsa::Executable &obj) const { return hash<unsigned long>()(obj.hsaHandle()); }
 };
 
 template<>

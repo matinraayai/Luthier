@@ -1,60 +1,83 @@
 #ifndef CONTEXT_MANAGER_HPP
 #define CONTEXT_MANAGER_HPP
-#include "error.h"
-#include "hsa_agent.hpp"
-#include "hsa_executable.hpp"
-#include "hsa_intercept.hpp"
-#include <hsa/hsa.h>
+#include "hsa_isa.hpp"
+#include <unordered_map>
 #include <vector>
 
+namespace llvm {
+
+class Target;
+
+class MCRegisterInfo;
+
+class MCTargetOptions;
+
+class MCAsmInfo;
+
+class MCInstrInfo;
+
+class MCInstrAnalysis;
+
+class MCSubtargetInfo;
+}// namespace llvm
+
 namespace luthier {
+
+namespace hsa {
+
+class GpuAgent;
+
+class Isa;
+
+class Executable;
+}// namespace hsa
+
+struct LLVMMCTargetInfo {
+    friend class ContextManager;
+
+ public:
+    const llvm::Target *target_;
+    std::unique_ptr<const llvm::MCRegisterInfo> MRI_;
+    std::unique_ptr<const llvm::MCTargetOptions> MCOptions_;
+    std::unique_ptr<const llvm::MCAsmInfo> MAI_;
+    std::unique_ptr<const llvm::MCInstrInfo> MII_;
+    std::unique_ptr<const llvm::MCInstrAnalysis> MIA_;
+    std::unique_ptr<const llvm::MCSubtargetInfo> STI_;
+
+    LLVMMCTargetInfo() = delete;
+
+ private:
+    LLVMMCTargetInfo(const llvm::Target *target, std::unique_ptr<const llvm::MCRegisterInfo> mri,
+                     std::unique_ptr<const llvm::MCTargetOptions> mcOptions, std::unique_ptr<const llvm::MCAsmInfo> mai,
+                     std::unique_ptr<const llvm::MCInstrInfo> mii, std::unique_ptr<const llvm::MCInstrAnalysis> mia,
+                     std::unique_ptr<const llvm::MCSubtargetInfo> sti);
+};
+
 class ContextManager {
+ public:
  private:
     std::vector<luthier::hsa::GpuAgent> agents_;
+    std::unordered_map<hsa::Isa, LLVMMCTargetInfo> llvmContexts_;
 
-    ContextManager() {
-        auto &coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
+    hsa_status_t initGpuAgentList();
 
-        auto returnGpuAgentsCallback = [](hsa_agent_t agent, void *data) {
-            auto agentMap = reinterpret_cast<std::vector<hsa::GpuAgent> *>(data);
-            hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
-
-            hsa_status_t stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
-
-            if (stat != HSA_STATUS_SUCCESS)
-                return stat;
-            if (dev_type == HSA_DEVICE_TYPE_GPU) {
-                agentMap->push_back(luthier::hsa::GpuAgent(agent));
-            }
-            return stat;
-        };
-
-        LUTHIER_HSA_CHECK(coreTable.hsa_iterate_agents_fn(returnGpuAgentsCallback, &agents_));
-    }
-    ~ContextManager() = default;
+    ContextManager();
+    ~ContextManager();
 
  public:
     ContextManager(const ContextManager &) = delete;
     ContextManager &operator=(const ContextManager &) = delete;
 
-    static inline ContextManager &Instance() {
+    static inline ContextManager &instance() {
         static ContextManager instance;
         return instance;
     }
 
-    const std::vector<luthier::hsa::GpuAgent> &getHsaAgents() const { return agents_; };
+    const std::vector<hsa::GpuAgent> &getHsaAgents() const { return agents_; };
 
-    std::vector<luthier::hsa::Executable> getHsaExecutables() const {
-        const auto &loaderApi = HsaInterceptor::instance().getHsaVenAmdLoaderTable();
-        std::vector<luthier::hsa::Executable> out;
-        auto iterator = [](hsa_executable_t exec, void *data) {
-            auto out = reinterpret_cast<std::vector<luthier::hsa::Executable>*>(data);
-            out->emplace_back(exec);
-            return HSA_STATUS_SUCCESS;
-        };
-        LUTHIER_HSA_CHECK(loaderApi.hsa_ven_amd_loader_iterate_executables(iterator, &out));
-        return out;
-    }
+    std::vector<luthier::hsa::Executable> getHsaExecutables() const;
+
+    LLVMMCTargetInfo& getLLVMTargetInfo(const hsa::Isa& isa) {return llvmContexts_.at(isa);}
 };
 
 }// namespace luthier

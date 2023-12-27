@@ -1,11 +1,15 @@
 #ifndef AMDGPU_ELF_HPP
 #define AMDGPU_ELF_HPP
 #include <amd_comgr/amd_comgr.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <elfio/elfio.hpp>
 #include <map>
 #include <optional>
+#include <utility>
+
+#include "luthier_types.h"
 #define CL_TARGET_OPENCL_VERSION 220
 #include <CL/cl.h>
 
@@ -66,6 +70,16 @@ inline std::string toString(const byte_string_t &code) {
 
 inline std::string_view toStringView(byte_string_view code) {
     return {reinterpret_cast<const char *>(code.data()), code.size()};
+}
+
+template<typename T>
+inline llvm::ArrayRef<T> toArrayRef(byte_string_view code) {
+    return {reinterpret_cast<const T*>(code.data()), code.size() * sizeof(T)};
+}
+
+template<typename T>
+inline llvm::ArrayRef<T> toArrayRef(const byte_string_t& code) {
+    return {reinterpret_cast<const T*>(code.data()), code.size() * sizeof(T)};
 }
 
 typedef enum {
@@ -372,9 +386,9 @@ class ElfView : public std::enable_shared_from_this<ElfView> {
 
     unsigned int getNumSymbols();
 
-    SymbolView getSymbol(unsigned int index);
+    std::optional<SymbolView> getSymbol(unsigned int index);
 
-    SymbolView getSymbol(const std::string &name);
+    std::optional<SymbolView> getSymbol(const std::string &name);
 
     uint32_t getCodeObjectVersion() const {
         if (not codeObjectVer_.has_value())
@@ -423,14 +437,14 @@ class SymbolView {
     ELFIO::Elf64_Addr value_;           //!   value of the symbol
     unsigned char type_;                //!   type of the symbol
 
-    SymbolView(const std::shared_ptr<ElfView> elf,
+    SymbolView(const std::shared_ptr<ElfView>& elf,
                const ELFIO::section *section,
-               const std::string& name,
+               std::string name,
                byte_string_view data,
                size_t value,
                unsigned char type) : elf_(elf),
                                      section_(section),
-                                     name_(name),
+                                     name_(std::move(name)),
                                      data_(data),
                                      value_(value),
                                      type_(type){};
@@ -449,6 +463,11 @@ class SymbolView {
     [[nodiscard]] const std::string &getName() const {
         return name_;
     };
+
+    [[nodiscard]] luthier_address_t getAddress() const {
+        return reinterpret_cast<luthier_address_t>(data_.data());
+    }
+
     [[nodiscard]] byte_string_view getView() const {
         return data_;
     }
@@ -470,7 +489,7 @@ class SymbolView {
     }
 };
 
-WorkGroupInfo GetAttrCodePropMetadata(const std::shared_ptr<ElfView> elfView, amd_comgr_metadata_node_t kernelMetaNode);
+WorkGroupInfo GetAttrCodePropMetadata(const std::shared_ptr<ElfView>& elfView, amd_comgr_metadata_node_t kernelMetaNode);
 
 /**
  * Returns the demangled name of the input symbol name

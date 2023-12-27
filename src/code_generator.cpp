@@ -48,8 +48,8 @@ std::string getSymbolName(hsa_executable_symbol_t symbol) {
     uint32_t nameSize;
     LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
     std::string name;
-    name.resize(nameSize);
-    LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, name.data()));
+    name.resize(nameSize, '\0');
+    LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, &name.front()));
     return name;
 }
 
@@ -291,7 +291,7 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::s
 }
 
 luthier::CodeGenerator::CodeGenerator() {
-    const auto &contextManager = luthier::ContextManager::Instance();
+    const auto &contextManager = luthier::ContextManager::instance();
     const auto hsaAgents = contextManager.getHsaAgents();
     for (const auto &agent: hsaAgents) {
         auto emptyRelocatable = assembleToRelocatable("s_nop 0", agent);
@@ -300,7 +300,7 @@ luthier::CodeGenerator::CodeGenerator() {
 }
 
 hsa_status_t registerSymbolWithCodeObjectManager(const luthier::hsa::Executable &executable,
-                                                 const luthier::hsa::ExecutableSymbol originalSymbol,
+                                                 const luthier::hsa::ExecutableSymbol& originalSymbol,
                                                  const luthier::hsa::GpuAgent& agent) {
     auto originalSymbolName = originalSymbol.getName();
     auto originalKd = originalSymbol.getKernelDescriptor();
@@ -367,7 +367,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     // Find the symbol that requires instrumentation.
     bool foundKDSymbol{false};
     for (unsigned int i = 0; i < instrumentedElfView->getNumSymbols() && !foundKDSymbol; i++) {
-        code::SymbolView info = instrumentedElfView->getSymbol(i);
+        code::SymbolView info = *instrumentedElfView->getSymbol(i);
         if (info.getName() == symbolName)
             foundKDSymbol = true;
     }

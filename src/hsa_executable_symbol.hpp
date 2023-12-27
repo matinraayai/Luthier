@@ -1,13 +1,15 @@
 #ifndef HSA_EXECUTABLE_SYMBOL_HPP
 #define HSA_EXECUTABLE_SYMBOL_HPP
+#include <hsa/hsa.h>
+
+#include <optional>
+#include <string>
+
 #include "code_object_manipulation.hpp"
 #include "code_view.hpp"
 #include "hsa_handle_type.hpp"
 #include "hsa_kernel_descriptor.hpp"
 #include "luthier_types.h"
-#include <hsa/hsa.h>
-#include <optional>
-#include <string>
 
 namespace luthier::hsa {
 
@@ -23,15 +25,18 @@ class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
     std::optional<luthier::byte_string_view> indirectFunctionCode_{std::nullopt};
 
  public:
-    ExecutableSymbol(hsa_executable_symbol_t symbol, hsa_agent_t agent, hsa_executable_t executable) : HandleType<hsa_executable_symbol_t>(symbol),
-                                                                                                       agent_(agent),
-                                                                                                       executable_(executable){};
+    ExecutableSymbol(hsa_executable_symbol_t symbol, hsa_agent_t agent, hsa_executable_t executable)
+        : HandleType<hsa_executable_symbol_t>(symbol),
+          agent_(agent),
+          executable_(executable){};
 
-    ExecutableSymbol(std::string indirectFunctionName, luthier::byte_string_view indirectFunctionCode, hsa_agent_t agent, hsa_executable_t executable) : HandleType<hsa_executable_symbol_t>({0}),
-                                                                                                                                                         agent_(agent),
-                                                                                                                                                         executable_(executable),
-                                                                                                                                                         indirectFunctionCode_(indirectFunctionCode),
-                                                                                                                                                         indirectFunctionName_(std::move(indirectFunctionName)){};
+    ExecutableSymbol(std::string indirectFunctionName, luthier::byte_string_view indirectFunctionCode,
+                     hsa_agent_t agent, hsa_executable_t executable)
+        : HandleType<hsa_executable_symbol_t>({0}),
+          agent_(agent),
+          executable_(executable),
+          indirectFunctionCode_(indirectFunctionCode),
+          indirectFunctionName_(std::move(indirectFunctionName)){};
 
     static ExecutableSymbol fromKernelDescriptor(const hsa::KernelDescriptor *kd);
 
@@ -50,6 +55,8 @@ class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
     [[nodiscard]] Executable getExecutable() const;
 
     [[nodiscard]] luthier::byte_string_view getIndirectFunctionCode() const;
+
+    [[nodiscard]] luthier::byte_string_view getKernelCode() const;
 };
 
 }// namespace luthier::hsa
@@ -59,8 +66,7 @@ namespace std {
 template<>
 struct hash<luthier::hsa::ExecutableSymbol> {
     size_t operator()(const luthier::hsa::ExecutableSymbol &obj) const {
-        if (obj.getType() != HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
-            return hash<unsigned long>()(obj.hsaHandle());
+        if (obj.getType() != HSA_SYMBOL_KIND_INDIRECT_FUNCTION) return hash<unsigned long>()(obj.hsaHandle());
         else
             return hash<unsigned long>()(reinterpret_cast<luthier_address_t>(obj.getIndirectFunctionCode().data()));
     }
@@ -69,8 +75,12 @@ struct hash<luthier::hsa::ExecutableSymbol> {
 template<>
 struct less<luthier::hsa::ExecutableSymbol> {
     bool operator()(const luthier::hsa::ExecutableSymbol &lhs, const luthier::hsa::ExecutableSymbol &rhs) const {
-        auto lhsHandle = lhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION ? reinterpret_cast<luthier_address_t>(lhs.getIndirectFunctionCode().data()) : lhs.hsaHandle();
-        auto rhsHandle = rhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION ? reinterpret_cast<luthier_address_t>(rhs.getIndirectFunctionCode().data()) : rhs.hsaHandle();
+        auto lhsHandle = lhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
+            ? reinterpret_cast<luthier_address_t>(lhs.getIndirectFunctionCode().data())
+            : lhs.hsaHandle();
+        auto rhsHandle = rhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
+            ? reinterpret_cast<luthier_address_t>(rhs.getIndirectFunctionCode().data())
+            : rhs.hsaHandle();
         return lhsHandle < rhsHandle;
     }
 };
@@ -78,8 +88,12 @@ struct less<luthier::hsa::ExecutableSymbol> {
 template<>
 struct equal_to<luthier::hsa::ExecutableSymbol> {
     bool operator()(const luthier::hsa::ExecutableSymbol &lhs, const luthier::hsa::ExecutableSymbol &rhs) const {
-        auto lhsHandle = lhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION ? reinterpret_cast<luthier_address_t>(lhs.getIndirectFunctionCode().data()) : lhs.hsaHandle();
-        auto rhsHandle = rhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION ? reinterpret_cast<luthier_address_t>(rhs.getIndirectFunctionCode().data()) : rhs.hsaHandle();
+        auto lhsHandle = lhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
+            ? reinterpret_cast<luthier_address_t>(lhs.getIndirectFunctionCode().data())
+            : lhs.hsaHandle();
+        auto rhsHandle = rhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
+            ? reinterpret_cast<luthier_address_t>(rhs.getIndirectFunctionCode().data())
+            : rhs.hsaHandle();
         return lhsHandle == rhsHandle;
     }
 };

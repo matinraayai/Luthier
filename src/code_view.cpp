@@ -20,16 +20,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE. */
 
-#include "context_manager.hpp"
 #include "error.h"
-#include "hsa_agent.hpp"
-#include "hsa_intercept.hpp"
-#include "hsa_isa.hpp"
 #include "log.hpp"
 #include <elfio/elfio.hpp>
 
-#include <llvm/Object/ObjectFile.h>
-#include <llvm/Support/BinaryStreamReader.h>
 #include <llvm/Support/Error.h>
 
 #include <string>
@@ -384,13 +378,13 @@ static const std::map<std::string, uint32_t> ArgValueKind = {
     {"HiddenMultigridSyncArg", KernelParameterDescriptor::HiddenMultiGridSync},
     {"HiddenHostcallBuffer", KernelParameterDescriptor::HiddenHostcallBuffer}};
 
-static const std::map<std::string, cl_kernel_arg_access_qualifier> ArgAccQual = {
+static const std::map<std::string, cl_kernel_arg_access_qualifier> argAccQual = {
     {"Default", CL_KERNEL_ARG_ACCESS_NONE},
     {"ReadOnly", CL_KERNEL_ARG_ACCESS_READ_ONLY},
     {"WriteOnly", CL_KERNEL_ARG_ACCESS_WRITE_ONLY},
     {"ReadWrite", CL_KERNEL_ARG_ACCESS_READ_WRITE}};
 
-static const std::map<std::string, cl_kernel_arg_address_qualifier> ArgAddrSpaceQual = {
+static const std::map<std::string, cl_kernel_arg_address_qualifier> argAddrSpaceQual = {
     {"Private", CL_KERNEL_ARG_ADDRESS_PRIVATE},
     {"Global", CL_KERNEL_ARG_ADDRESS_GLOBAL},
     {"Constant", CL_KERNEL_ARG_ADDRESS_CONSTANT},
@@ -398,14 +392,14 @@ static const std::map<std::string, cl_kernel_arg_address_qualifier> ArgAddrSpace
     {"Generic", CL_KERNEL_ARG_ADDRESS_GLOBAL},
     {"Region", CL_KERNEL_ARG_ADDRESS_PRIVATE}};
 
-static const std::map<std::string, AttrField> AttrFieldMap =
+static const std::map<std::string, AttrField> attrFieldMap =
     {
         {"ReqdWorkGroupSize", AttrField::ReqdWorkGroupSize},
         {"WorkGroupSizeHint", AttrField::WorkGroupSizeHint},
         {"VecTypeHint", AttrField::VecTypeHint},
         {"RuntimeHandle", AttrField::RuntimeHandle}};
 
-static const std::map<std::string, CodePropField> CodePropFieldMap =
+static const std::map<std::string, CodePropField> codePropFieldMap =
     {
         {"KernargSegmentSize", CodePropField::KernargSegmentSize},
         {"GroupSegmentFixedSize", CodePropField::GroupSegmentFixedSize},
@@ -441,7 +435,7 @@ enum class KernelField : uint8_t {
     WgpMode = 16
 };
 
-static const std::map<std::string, ArgField> ArgFieldMapV3 =
+static const std::map<std::string, ArgField> argFieldMapV3 =
     {
         {".name", ArgField::Name},
         {".type_name", ArgField::TypeName},
@@ -457,7 +451,7 @@ static const std::map<std::string, ArgField> ArgFieldMapV3 =
         {".is_volatile", ArgField::IsVolatile},
         {".is_pipe", ArgField::IsPipe}};
 
-static const std::map<std::string, uint32_t> ArgValueKindV3 = {
+static const std::map<std::string, uint32_t> argValueKindV3 = {
     {"by_value", KernelParameterDescriptor::ValueObject},
     {"global_buffer", KernelParameterDescriptor::MemoryObject},
     {"dynamic_shared_pointer", KernelParameterDescriptor::MemoryObject},
@@ -489,13 +483,13 @@ static const std::map<std::string, uint32_t> ArgValueKindV3 = {
     {"hidden_shared_base", KernelParameterDescriptor::HiddenSharedBase},
     {"hidden_queue_ptr", KernelParameterDescriptor::HiddenQueuePtr}};
 
-static const std::map<std::string, cl_kernel_arg_access_qualifier> ArgAccQualV3 = {
+static const std::map<std::string, cl_kernel_arg_access_qualifier> argAccQualV3 = {
     {"default", CL_KERNEL_ARG_ACCESS_NONE},
     {"read_only", CL_KERNEL_ARG_ACCESS_READ_ONLY},
     {"write_only", CL_KERNEL_ARG_ACCESS_WRITE_ONLY},
     {"read_write", CL_KERNEL_ARG_ACCESS_READ_WRITE}};
 
-static const std::map<std::string, cl_kernel_arg_address_qualifier> ArgAddrSpaceQualV3 = {
+static const std::map<std::string, cl_kernel_arg_address_qualifier> argAddrSpaceQualV3 = {
     {"private", CL_KERNEL_ARG_ADDRESS_PRIVATE},
     {"global", CL_KERNEL_ARG_ADDRESS_GLOBAL},
     {"constant", CL_KERNEL_ARG_ADDRESS_CONSTANT},
@@ -503,7 +497,7 @@ static const std::map<std::string, cl_kernel_arg_address_qualifier> ArgAddrSpace
     {"generic", CL_KERNEL_ARG_ADDRESS_GLOBAL},
     {"region", CL_KERNEL_ARG_ADDRESS_PRIVATE}};
 
-static const std::map<std::string, KernelField> KernelFieldMapV3 =
+static const std::map<std::string, KernelField> kernelFieldMapV3 =
     {
         {".symbol", KernelField::SymbolName},
         {".reqd_workgroup_size", KernelField::ReqdWorkGroupSize},
@@ -606,39 +600,39 @@ static amd_comgr_status_t populateArgs(const amd_comgr_metadata_node_t key,
             lcArg->info_.arrayIndex_ = atoi(buf.c_str());
             break;
         case ArgField::AddrSpaceQual: {
-            auto itAddrSpaceQual = ArgAddrSpaceQual.find(buf);
-            if (itAddrSpaceQual == ArgAddrSpaceQual.end()) {
+            auto itAddrSpaceQual = argAddrSpaceQual.find(buf);
+            if (itAddrSpaceQual == argAddrSpaceQual.end()) {
                 return AMD_COMGR_STATUS_ERROR;
             }
             lcArg->addressQualifier_ = itAddrSpaceQual->second;
         } break;
         case ArgField::AccQual: {
-            auto itAccQual = ArgAccQual.find(buf);
-            if (itAccQual == ArgAccQual.end()) {
+            auto itAccQual = argAccQual.find(buf);
+            if (itAccQual == argAccQual.end()) {
                 return AMD_COMGR_STATUS_ERROR;
             }
             lcArg->accessQualifier_ = itAccQual->second;
             lcArg->info_.readOnly_ =
-                (lcArg->accessQualifier_ == CL_KERNEL_ARG_ACCESS_READ_ONLY) ? true : false;
+                (lcArg->accessQualifier_ == CL_KERNEL_ARG_ACCESS_READ_ONLY);
         } break;
         case ArgField::ActualAccQual: {
-            auto itAccQual = ArgAccQual.find(buf);
-            if (itAccQual == ArgAccQual.end()) {
+            auto itAccQual = argAccQual.find(buf);
+            if (itAccQual == argAccQual.end()) {
                 return AMD_COMGR_STATUS_ERROR;
             }
             // lcArg->mActualAccQual = itAccQual->second;
         } break;
         case ArgField::IsConst:
-            lcArg->typeQualifier_ |= (buf.compare("true") == 0) ? CL_KERNEL_ARG_TYPE_CONST : 0;
+            lcArg->typeQualifier_ |= (buf == "true") ? CL_KERNEL_ARG_TYPE_CONST : 0;
             break;
         case ArgField::IsRestrict:
-            lcArg->typeQualifier_ |= (buf.compare("true") == 0) ? CL_KERNEL_ARG_TYPE_RESTRICT : 0;
+            lcArg->typeQualifier_ |= (buf == "true") ? CL_KERNEL_ARG_TYPE_RESTRICT : 0;
             break;
         case ArgField::IsVolatile:
-            lcArg->typeQualifier_ |= (buf.compare("true") == 0) ? CL_KERNEL_ARG_TYPE_VOLATILE : 0;
+            lcArg->typeQualifier_ |= (buf == "true") ? CL_KERNEL_ARG_TYPE_VOLATILE : 0;
             break;
         case ArgField::IsPipe:
-            lcArg->typeQualifier_ |= (buf.compare("true") == 0) ? CL_KERNEL_ARG_TYPE_PIPE : 0;
+            lcArg->typeQualifier_ |= (buf == "true") ? CL_KERNEL_ARG_TYPE_PIPE : 0;
             break;
         default:
             return AMD_COMGR_STATUS_ERROR;
@@ -664,8 +658,8 @@ static amd_comgr_status_t populateAttrs(const amd_comgr_metadata_node_t key,
         return AMD_COMGR_STATUS_ERROR;
     }
 
-    auto itAttrField = AttrFieldMap.find(buf);
-    if (itAttrField == AttrFieldMap.end()) {
+    auto itAttrField = attrFieldMap.find(buf);
+    if (itAttrField == attrFieldMap.end()) {
         return AMD_COMGR_STATUS_ERROR;
     }
 
@@ -745,8 +739,8 @@ static amd_comgr_status_t populateCodeProps(const amd_comgr_metadata_node_t key,
         return AMD_COMGR_STATUS_ERROR;
     }
 
-    auto itCodePropField = CodePropFieldMap.find(buf);
-    if (itCodePropField == CodePropFieldMap.end()) {
+    auto itCodePropField = codePropFieldMap.find(buf);
+    if (itCodePropField == codePropFieldMap.end()) {
         return AMD_COMGR_STATUS_ERROR;
     }
 
@@ -818,8 +812,8 @@ static amd_comgr_status_t populateArgsV3(const amd_comgr_metadata_node_t key,
         return AMD_COMGR_STATUS_ERROR;
     }
 
-    auto itArgField = ArgFieldMapV3.find(buf);
-    if (itArgField == ArgFieldMapV3.end()) {
+    auto itArgField = argFieldMapV3.find(buf);
+    if (itArgField == argFieldMapV3.end()) {
         return AMD_COMGR_STATUS_ERROR;
     }
 
@@ -842,8 +836,8 @@ static amd_comgr_status_t populateArgsV3(const amd_comgr_metadata_node_t key,
             lcArg->offset_ = atoi(buf.c_str());
             break;
         case ArgField::ValueKind: {
-            auto itValueKind = ArgValueKindV3.find(buf);
-            if (itValueKind == ArgValueKindV3.end()) {
+            auto itValueKind = argValueKindV3.find(buf);
+            if (itValueKind == argValueKindV3.end()) {
                 return AMD_COMGR_STATUS_ERROR;
             }
             lcArg->info_.oclObject_ = itValueKind->second;
@@ -859,15 +853,15 @@ static amd_comgr_status_t populateArgsV3(const amd_comgr_metadata_node_t key,
             lcArg->info_.arrayIndex_ = atoi(buf.c_str());
             break;
         case ArgField::AddrSpaceQual: {
-            auto itAddrSpaceQual = ArgAddrSpaceQualV3.find(buf);
-            if (itAddrSpaceQual == ArgAddrSpaceQualV3.end()) {
+            auto itAddrSpaceQual = argAddrSpaceQualV3.find(buf);
+            if (itAddrSpaceQual == argAddrSpaceQualV3.end()) {
                 return AMD_COMGR_STATUS_ERROR;
             }
             lcArg->addressQualifier_ = itAddrSpaceQual->second;
         } break;
         case ArgField::AccQual: {
-            auto itAccQual = ArgAccQualV3.find(buf);
-            if (itAccQual == ArgAccQualV3.end()) {
+            auto itAccQual = argAccQualV3.find(buf);
+            if (itAccQual == argAccQualV3.end()) {
                 return AMD_COMGR_STATUS_ERROR;
             }
             lcArg->accessQualifier_ = itAccQual->second;
@@ -875,8 +869,8 @@ static amd_comgr_status_t populateArgsV3(const amd_comgr_metadata_node_t key,
                 (lcArg->accessQualifier_ == CL_KERNEL_ARG_ACCESS_READ_ONLY) ? true : false;
         } break;
         case ArgField::ActualAccQual: {
-            auto itAccQual = ArgAccQualV3.find(buf);
-            if (itAccQual == ArgAccQualV3.end()) {
+            auto itAccQual = argAccQualV3.find(buf);
+            if (itAccQual == argAccQualV3.end()) {
                 return AMD_COMGR_STATUS_ERROR;
             }
             //lcArg->mActualAccQual = itAccQual->second;
@@ -917,8 +911,8 @@ static amd_comgr_status_t populateKernelMetaV3(const amd_comgr_metadata_node_t k
         return AMD_COMGR_STATUS_ERROR;
     }
 
-    auto itKernelField = KernelFieldMapV3.find(buf);
-    if (itKernelField == KernelFieldMapV3.end()) {
+    auto itKernelField = kernelFieldMapV3.find(buf);
+    if (itKernelField == kernelFieldMapV3.end()) {
         return AMD_COMGR_STATUS_ERROR;
     }
 
@@ -1169,7 +1163,7 @@ void InitParameters(const std::shared_ptr<ElfView> &elfView, const amd_comgr_met
     }
 }
 
-WorkGroupInfo GetAttrCodePropMetadata(const std::shared_ptr<ElfView> elfView, amd_comgr_metadata_node_t kernelMetaNode) {
+WorkGroupInfo GetAttrCodePropMetadata(const std::shared_ptr<ElfView>& elfView, amd_comgr_metadata_node_t kernelMetaNode) {
     WorkGroupInfo workGroupInfo;
     //     Set the workgroup information for the kernel
     //    workGroupInfo.availableLDSSize_ = device().info().localMemSizePerCU_;
@@ -1354,18 +1348,18 @@ amd_comgr_status_t ElfView::initializeComgrMetaData() const {
 
 unsigned int ElfView::getNumSymbols() {
     getElfIo();
-    symbol_section_accessor symbol_reader(*io_, io_->sections[ElfSecDesc[SYMTAB].name]);
-    return symbol_reader.get_symbols_num() - 1;// Exclude the first dummy symbol
+    symbol_section_accessor symbolReader(*io_, io_->sections[ElfSecDesc[SYMTAB].name]);
+    return symbolReader.get_symbols_num() - 1;// Exclude the first dummy symbol
 }
 
-SymbolView ElfView::getSymbol(unsigned int index) {
+std::optional<SymbolView> ElfView::getSymbol(unsigned int index) {
     getElfIo();
-    symbol_section_accessor symbol_reader(*io_, io_->sections[ElfSecDesc[SYMTAB].name]);
+    symbol_section_accessor symbolReader(*io_, io_->sections[ElfSecDesc[SYMTAB].name]);
 
-    unsigned int num = symbol_reader.get_symbols_num();
+    unsigned int num = symbolReader.get_symbols_num();
 
     if (index >= num) {
-        throw std::runtime_error(fmt::format("Failed to get symbol info: Index {} >= total number of symbols {}", index, num));
+        return std::nullopt;
     }
 
     unsigned char bind = 0;
@@ -1379,11 +1373,11 @@ SymbolView ElfView::getSymbol(unsigned int index) {
     unsigned char symbolType;
 
     // index++ for real index on top of the first dummy symbol
-    bool ret = symbol_reader.get_symbol(++index, symbolName, symbolValue, symbolSize, bind, symbolType,
+    bool ret = symbolReader.get_symbol(++index, symbolName, symbolValue, symbolSize, bind, symbolType,
                                         sectionIndex, other);
 
     if (!ret) {
-        throw std::runtime_error(fmt::format("Failed to get symbol info for index {}.", index));
+        return std::nullopt;
     }
     symbolSection = io_->sections[sectionIndex];
     if (symbolSection == nullptr) {
@@ -1393,13 +1387,13 @@ SymbolView ElfView::getSymbol(unsigned int index) {
     }
 
     uint64_t symbolDataStart = symbolSection->get_address() + (size_t) symbolValue - (size_t) symbolSection->get_offset();
-    symbolData = data_.substr(symbolDataStart, symbolDataStart + symbolSize);
-    return {shared_from_this(), symbolSection, symbolName, symbolData, symbolValue, symbolType};
+    symbolData = data_.substr(symbolDataStart, symbolSize);
+    return SymbolView{shared_from_this(), symbolSection, symbolName, symbolData, symbolValue, symbolType};
 }
 
-SymbolView ElfView::getSymbol(const std::string &symbolName) {
+std::optional<SymbolView> ElfView::getSymbol(const std::string &symbolName) {
     getElfIo();
-    symbol_section_accessor symbol_reader(*io_, io_->sections[ElfSecDesc[SYMTAB].name]);
+    symbol_section_accessor symbolReader(*io_, io_->sections[ElfSecDesc[SYMTAB].name]);
 
     unsigned char bind = 0;
     Elf_Half sectionIndex = 0;
@@ -1410,12 +1404,11 @@ SymbolView ElfView::getSymbol(const std::string &symbolName) {
     Elf64_Addr symbolValue;
     unsigned char symbolType;
 
-    // index++ for real index on top of the first dummy symbol
-    bool ret = symbol_reader.get_symbol(symbolName, symbolValue, symbolSize, bind, symbolType,
+    bool ret = symbolReader.get_symbol(symbolName, symbolValue, symbolSize, bind, symbolType,
                                         sectionIndex, other);
 
     if (!ret) {
-        throw std::runtime_error(fmt::format("Failed to get symbol info for {}.", symbolName));
+        return std::nullopt;
     }
     symbolSection = io_->sections[sectionIndex];
     if (symbolSection == nullptr) {
@@ -1425,8 +1418,8 @@ SymbolView ElfView::getSymbol(const std::string &symbolName) {
     }
 
     uint64_t symbolDataStart = symbolSection->get_address() + (size_t) symbolValue - (size_t) symbolSection->get_offset();
-    symbolData = data_.substr(symbolDataStart, symbolDataStart + symbolSize);
-    return {shared_from_this(), symbolSection, symbolName, symbolData, symbolValue, symbolType};
+    symbolData = data_.substr(symbolDataStart, symbolSize);
+    return SymbolView{shared_from_this(), symbolSection, symbolName, symbolData, symbolValue, symbolType};
 }
 
 }// namespace luthier::code

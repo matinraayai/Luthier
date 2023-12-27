@@ -121,7 +121,7 @@ class GpuAgent : public HandleType<hsa_agent_t> {
  public:
     explicit GpuAgent(hsa_agent_t agent) : HandleType<hsa_agent_t>(agent){};
 
-    std::vector<Isa> getIsa() const;
+    [[nodiscard]] std::vector<Isa> getIsa() const;
 };
 
 }// namespace luthier::hsa
@@ -143,11 +143,40 @@ struct less<luthier::hsa::GpuAgent> {
 };
 
 template<>
+struct less_equal<luthier::hsa::GpuAgent> {
+    bool operator()(const luthier::hsa::GpuAgent &lhs, const luthier::hsa::GpuAgent &rhs) const {
+        return lhs.hsaHandle() <= rhs.hsaHandle();
+    }
+};
+
+template<>
 struct equal_to<luthier::hsa::GpuAgent> {
     bool operator()(const luthier::hsa::GpuAgent &lhs, const luthier::hsa::GpuAgent &rhs) const {
         return lhs.hsaHandle() == rhs.hsaHandle();
     }
 };
+
+template<>
+struct not_equal_to<luthier::hsa::GpuAgent> {
+    bool operator()(const luthier::hsa::GpuAgent &lhs, const luthier::hsa::GpuAgent &rhs) const {
+        return lhs.hsaHandle() != rhs.hsaHandle();
+    }
+};
+
+template<>
+struct greater<luthier::hsa::GpuAgent> {
+    bool operator()(const luthier::hsa::GpuAgent &lhs, const luthier::hsa::GpuAgent &rhs) const {
+        return lhs.hsaHandle() > rhs.hsaHandle();
+    }
+};
+
+template<>
+struct greater_equal<luthier::hsa::GpuAgent> {
+    bool operator()(const luthier::hsa::GpuAgent &lhs, const luthier::hsa::GpuAgent &rhs) const {
+        return lhs.hsaHandle() >= rhs.hsaHandle();
+    }
+};
+
 
 }// namespace std
 

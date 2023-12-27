@@ -2,12 +2,11 @@
 #define DISASSEMBLER_HPP
 #include "code_view.hpp"
 #include "hsa_executable_symbol.hpp"
-#include "hsa_agent.hpp"
+#include "hsa_isa.hpp"
 #include "instr.hpp"
 #include "luthier_types.h"
 #include <amd_comgr/amd_comgr.h>
 #include <functional>
-#include <hsa/hsa.h>
 #include <unordered_map>
 #include <vector>
 
@@ -18,35 +17,6 @@ namespace luthier {
  * Uses the AMD COMGR library internally
  */
 class Disassembler {
- public:
-    Disassembler(const Disassembler &) = delete;
-    Disassembler &operator=(const Disassembler &) = delete;
-
-    static inline Disassembler &instance() {
-        static Disassembler instance;
-        return instance;
-    }
-
-    std::vector<Instr> disassemble(hsa::ExecutableSymbol symbol, size_t size);
-
-    /**
-     *
-     * @param symbol
-     * @return
-     */
-    std::vector<Instr> disassemble(hsa_executable_symbol_t symbol);
-
-
-    std::vector<Instr> disassemble(luthier_address_t kernelObject);
-
-    std::vector<Instr> disassemble(luthier_address_t kernelObject, size_t size);
-
-    std::vector<Instr> disassemble(const hsa::GpuAgent& agent, luthier_address_t address);
-
-    std::vector<Instr> disassemble(const hsa::GpuAgent& agent, byte_string_view code);
-
-    std::vector<Instr> disassemble(code::SymbolView symbolView);
-
  private:
     Disassembler() = default;
     ~Disassembler() {
@@ -56,12 +26,33 @@ class Disassembler {
             amd_comgr_destroy_disassembly_info(i.second);
     };
 
-    amd_comgr_disassembly_info_t getEndPgmDisassemblyInfo(const std::string &isa);
+    amd_comgr_disassembly_info_t getEndPgmDisassemblyInfo(const hsa::Isa &isa);
 
-    amd_comgr_disassembly_info_t getSizeDisassemblyInfo(const std::string &isa);
+    amd_comgr_disassembly_info_t getSizeDisassemblyInfo(const hsa::Isa &isa);
 
-    std::unordered_map<std::string, amd_comgr_disassembly_info_t> sizeDisassemblyInfoMap_;
-    std::unordered_map<std::string, amd_comgr_disassembly_info_t> endPgmDisassemblyInfoMap_;
+    std::unordered_map<hsa::Isa, amd_comgr_disassembly_info_t> sizeDisassemblyInfoMap_;
+    std::unordered_map<hsa::Isa, amd_comgr_disassembly_info_t> endPgmDisassemblyInfoMap_;
+
+ public:
+    Disassembler(const Disassembler &) = delete;
+    Disassembler &operator=(const Disassembler &) = delete;
+
+    static inline Disassembler &instance() {
+        static Disassembler instance;
+        return instance;
+    }
+
+    std::vector<Instr> disassemble(const hsa::ExecutableSymbol &symbol, size_t size);
+
+    std::vector<Instr> disassemble(const hsa::ExecutableSymbol &symbol);
+
+    std::vector<Instr> disassemble(const code::SymbolView &symbol);
+
+    std::vector<Instr> disassemble(const code::SymbolView &symbol, size_t size);
+
+    std::vector<Instr> disassemble(const hsa::Isa &isa, luthier_address_t address);
+
+    std::vector<Instr> disassemble(const hsa::Isa &isa, byte_string_view code);
 };
 
 }// namespace luthier
