@@ -1,4 +1,7 @@
 #include "hsa_isa.hpp"
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/StringExtras.h>
 
 namespace luthier::hsa {
 
@@ -16,12 +19,78 @@ std::string Isa::getName() const {
     LUTHIER_HSA_CHECK(getApiTable().core.hsa_isa_get_info_alt_fn(this->asHsaType(),
                                                                  HSA_ISA_INFO_NAME_LENGTH,
                                                                  &isaNameSize));
-    std::string isaName;
-    isaName.resize(isaNameSize);
+    std::string isaName(isaNameSize, '\0');
     LUTHIER_HSA_CHECK(getApiTable().core.hsa_isa_get_info_alt_fn(this->asHsaType(),
                                                                  HSA_ISA_INFO_NAME,
-                                                                 isaName.data()));
+                                                                 &isaName.front()));
     return isaName;
+}
+
+inline llvm::SmallVector<llvm::StringRef, 5> parseIsaName(llvm::StringRef isaName) {
+    llvm::SmallVector<llvm::StringRef, 5> isaNameComponents;
+    isaName.split(isaNameComponents, '-', 4);
+    assert(isaNameComponents.size() == 5);
+    return isaNameComponents;
+}
+
+std::string Isa::getArchitecture() const {
+    std::string isaName = getName();
+    llvm::SmallVector<llvm::StringRef, 5> isaNameComponents = parseIsaName(isaName);
+    return isaNameComponents[0].str();
+}
+std::string Isa::getVendor() const {
+    std::string isaName = getName();
+    llvm::SmallVector<llvm::StringRef, 5> isaNameComponents = parseIsaName(isaName);
+    return isaNameComponents[1].str();
+}
+std::string Isa::getOS() const {
+    std::string isaName = getName();
+    llvm::SmallVector<llvm::StringRef, 5> isaNameComponents = parseIsaName(isaName);
+    return isaNameComponents[2].str();
+}
+std::string Isa::getEnvironment() const {
+    std::string isaName = getName();
+    llvm::SmallVector<llvm::StringRef, 5> isaNameComponents = parseIsaName(isaName);
+    return isaNameComponents[3].str();
+}
+
+std::string Isa::getProcessor() const {
+    std::string isaName = getName();
+    llvm::SmallVector<llvm::StringRef, 5> isaNameComponents = parseIsaName(isaName);
+
+    llvm::SmallVector<llvm::StringRef> features;
+    features.clear();
+    isaNameComponents[4].split(features, ':');
+
+    return features[0].str();
+}
+bool Isa::isXnacSupported() const {
+    std::string isaName = getName();
+    auto sRamECC = isaName.find("xnack");
+    if (sRamECC == std::string::npos)
+        return false;
+    else {
+        return isaName[sRamECC + strlen("xnack")] == '+';
+    }
+}
+bool Isa::isSRamECCSupported() const {
+    std::string isaName = getName();
+    auto sRamECC = isaName.find("sramecc");
+    if (sRamECC == std::string::npos)
+        return false;
+    else {
+        return isaName[sRamECC + strlen("sramecc")] == '+';
+    }
+}
+std::string Isa::getTargetString() const {
+    std::string isaName = getName();
+    return isaName.substr(0, isaName.find_first_of(':'));
+}
+std::string Isa::getFeatureString() const {
+    std::string isaName = getName();
+    llvm::SmallVector<llvm::StringRef> features;
+    llvm::StringRef(isaName).substr(isaName.find_first_of(':')).split(features, ":");
+    return llvm::join(features, ",");
 }
 
 }// namespace luthier::hsa
