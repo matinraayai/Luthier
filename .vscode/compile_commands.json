@@ -1,0 +1,62 @@
+[
+{
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/luthier.cpp",
+  "file": "${workspaceRoot}/src/luthier.cpp"
+},
+{
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/hip_intercept.cpp",
+  "file": "${workspaceRoot}/src/hip_intercept.cpp"
+},
+{
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/hsa_intercept.cpp",
+  "file": "${workspaceRoot}/src/hsa_intercept.cpp"
+},
+{
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/code_object_manager.cpp",
+  "file": "${workspaceRoot}/src/code_object_manager.cpp"
+},
+{
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/disassembler.cpp",
+  "file": "${workspaceRoot}/src/disassembler.cpp"
+},
+{
+  "directory": "${workspaceRoot}/build",
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/code_object_manipulation.cpp",
+  "file": "${workspaceRoot}/src/code_object_manipulation.cpp"
+},
+{
+  "directory": "${workspaceRoot}/build",
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/context_manager.cpp",
+  "file": "${workspaceRoot}/src/context_manager.cpp"
+},
+{
+  "directory": "${workspaceRoot}/build",
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/code_generator.cpp",
+  "file": "${workspaceRoot}/src/code_generator.cpp"
+},
+{
+  "directory": "${workspaceRoot}/build",
+  "command": "/usr/bin/g++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -Dluthier_EXPORTS -I${workspaceRoot}/ext/boost/build/include -I/opt/rocm/llvm/include -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/include -isystem /opt/rocm/include -isystem /opt/rocm/hsa/include/hsa -g -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -std=gnu++20 -c ${workspaceRoot}/src/instr.cpp",
+  "file": "${workspaceRoot}/src/instr.cpp"
+},
+{
+  "directory": "${workspaceRoot}/build/_deps/fmt-build",
+  "command": "/usr/bin/g++  -I${workspaceRoot}/ext/fmt/include -g -std=gnu++20 -o CMakeFiles/fmt.dir/src/format.cc.o -c ${workspaceRoot}/ext/fmt/src/format.cc",
+  "file": "${workspaceRoot}/ext/fmt/src/format.cc"
+},
+{
+  "directory": "${workspaceRoot}/build/_deps/fmt-build",
+  "command": "/usr/bin/g++  -I${workspaceRoot}/ext/fmt/include -g -std=gnu++20 -o CMakeFiles/fmt.dir/src/os.cc.o -c ${workspaceRoot}/ext/fmt/src/os.cc",
+  "file": "${workspaceRoot}/ext/fmt/src/os.cc"
+},
+{
+  "directory": "${workspaceRoot}/build/examples/kernel_instrument",
+  "command": "/opt/rocm/llvm/bin/clang++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -D__HIP_ROCclr__=1 -Dkernel_instrument_EXPORTS -I/opt/rocm/llvm/include -I${workspaceRoot}/examples/kernel_instrument/../../src/luthier -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/hsa/include/hsa -isystem /opt/rocm/llvm/lib/clang/15.0.0/.. -g -O --offload-arch=gfx803 -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -fPIC -mllvm -amdgpu-early-inline-all=true -mllvm -amdgpu-function-calls=false -fPIC -std=gnu++20 -o CMakeFiles/kernel_instrument.dir/kernel_instrument.cpp.o -x hip -c ${workspaceRoot}/examples/kernel_instrument/kernel_instrument.cpp",
+  "file": "${workspaceRoot}/examples/kernel_instrument/kernel_instrument.cpp"
+},
+{
+  "directory": "${workspaceRoot}/build/examples/iterate_all_executable_symbols",
+  "command": "/opt/rocm/llvm/bin/clang++ -DAMD_INTERNAL_BUILD -DFMT_HEADER_ONLY=1 -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1 -DLUTHIER_LOG_ENABLE_ERROR -D_GLIBCXX_DEBUG -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1 -D__HIP_ROCclr__=1 -Diterate_all_executable_symbols_EXPORTS -I/opt/rocm/llvm/include -I${workspaceRoot}/examples/iterate_all_executable_symbols/../../src/luthier -I${workspaceRoot}/include -I${workspaceRoot}/ext/elfio -I${workspaceRoot}/ext/fmt/include -isystem /opt/rocm/hsa/include/hsa -isystem /opt/rocm/llvm/lib/clang/15.0.0/.. -g -O --offload-arch=gfx803 -fPIC   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -fPIC -mllvm -amdgpu-early-inline-all=true -mllvm -amdgpu-function-calls=false -fPIC -std=gnu++20 -o CMakeFiles/iterate_all_executable_symbols.dir/iterate_all_executable_symbols.cpp.o -x hip -c ${workspaceRoot}/examples/iterate_all_executable_symbols/iterate_all_executable_symbols.cpp",
+  "file": "${workspaceRoot}/examples/iterate_all_executable_symbols/iterate_all_executable_symbols.cpp"
+}
+]

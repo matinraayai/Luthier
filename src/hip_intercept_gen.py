@@ -284,7 +284,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
             f.write("};\n")
         callback_args = "static_cast<void*>(&hip_func_args)" if are_args_non_empty else "nullptr"
 
-        f.write('\tif (!hipInterceptor.getOpFiltersSet().empty() && hipInterceptor.getOpFiltersSet().find(api_id) == hipInterceptor.getOpFiltersSet().end()) { ')
+        f.write('\tif (!hipInterceptor.getEnabledOps().empty() && hipInterceptor.getEnabledOps().find(api_id) == hipInterceptor.getEnabledOps().end()) { ')
         f.write(f'\n\t\tstatic auto hip_func = hipInterceptor.GetHipFunction<{output_type}(*)(')
         if are_args_non_empty:
             for i, arg in enumerate(args):

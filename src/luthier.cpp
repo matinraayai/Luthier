@@ -140,20 +140,20 @@ void luthier_insert_call(luthier_instruction_t instr, const void *dev_func, luth
     luthier::CodeGenerator::instance().instrument(*luthier::hsa::Instr::fromHandle(instr), dev_func, point);
 }
 
-void luthier_enable_hsa_op_callback(uint32_t op) {
-    luthier::HsaInterceptor::instance().enable_callback_impl(op);
+void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op) {
+    luthier::HsaInterceptor::instance().enableCallback(op);
 }
 
-void luthier_disable_hsa_op_callback(uint32_t op) {
-    luthier::HsaInterceptor::instance().disable_callback_impl(op);
+void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op) {
+    luthier::HsaInterceptor::instance().disableCallback(op);
 }
 
 void luthier_enable_hip_op_callback(uint32_t op) {
-    luthier::HipInterceptor::Instance().enable_callback_impl(op);
+    luthier::HipInterceptor::Instance().enableCallback(op);
 }
 
 void luthier_disable_hip_op_callback(uint32_t op) {
-    luthier::HipInterceptor::Instance().disable_callback_impl(op);
+    luthier::HipInterceptor::Instance().disableCallback(op);
 }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
