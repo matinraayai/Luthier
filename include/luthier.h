@@ -1,12 +1,15 @@
 #ifndef LUTHIER_H
 #define LUTHIER_H
-#include "error.h"
-#include "instr.hpp"
-#include "luthier_types.h"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 
-//extern "C" {
+#include "error.h"
+#include "instr.hpp"
+#include "luthier_types.h"
+
+#ifdef __cplusplus
+
+extern "C" {
 
 //
 ///*********************************************************************
@@ -37,7 +40,6 @@ void luthier_at_term();
 //// * */
 void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id);
 
-
 void luthier_at_hsa_event(hsa_api_evt_args_t* cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id);
 
 /**
@@ -48,13 +50,12 @@ const HsaApiTable* luthier_get_hsa_table();
 
 const hsa_ven_amd_loader_1_03_pfn_s* luthier_get_hsa_ven_amd_loader();
 
-
 void* luthier_get_hip_function(const char* funcName);
 
+luthier_instruction_t* luthier_disassemble_kernel_object(uint64_t kernel_object, void* (*alloc_callback)(size_t size),
+                                                         size_t* size);
 
-
-std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_object);
-
+void luthier_instructions_handles_destroy(luthier_instruction_t* instrs, size_t size);
 
 // If the tool requires device code it needs to call this macro once
 // Managed variables force the HIP runtime to eagerly load Luthier modules statically so that Luthier can access it for
@@ -63,27 +64,24 @@ std::vector<luthier::Instr> luthier_disassemble_kernel_object(uint64_t kernel_ob
 // part of the instrumented application
 #define MARK_LUTHIER_DEVICE_MODULE __managed__ char __luthier_reserved = 0;
 
-#define LUTHIER_DECLARE_FUNC  __device__ __noinline__ extern "C" void
+#define LUTHIER_DECLARE_FUNC __device__ __noinline__ extern "C" void
 
-#define LUTHIER_EXPORT_FUNC(f)               \
-    extern "C" __global__ void __luthier_wrap__##f() {  \
-        void (*pfun)() = (void (*)())f;    \
-        if (pfun == (void (*)())1) pfun(); \
+#define LUTHIER_EXPORT_FUNC(f)                         \
+    extern "C" __global__ void __luthier_wrap__##f() { \
+        void (*pfun)() = (void (*)()) f;               \
+        if (pfun == (void (*)()) 1) pfun();            \
     }
 
 // Luthier uses the pointer to the dummy global wrapper to each function as its unique identifier
-#define LUTHIER_GET_EXPORTED_FUNC(f) reinterpret_cast<const void *>(__luthier_wrap__##f)
-
-
-
+#define LUTHIER_GET_EXPORTED_FUNC(f) reinterpret_cast<const void*>(__luthier_wrap__##f)
 
 /**
  * Returns the HSA packet type of the AQL packet
  */
 static hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_packet) {
-    return static_cast<hsa_packet_type_t>((aql_packet.packet.header >> HSA_PACKET_HEADER_TYPE) & ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
+    return static_cast<hsa_packet_type_t>((aql_packet.packet.header >> HSA_PACKET_HEADER_TYPE)
+                                          & ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
 }
-
 
 //static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
 //    if (hip_api_id < 1000)
@@ -169,7 +167,7 @@ static hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_pa
  * @param dev_func
  * @param point
  */
-void luthier_insert_call(luthier::Instr* instr, const void *dev_func, luthier_ipoint_t point);
+void luthier_insert_call(luthier_instruction_t instr, const void* dev_func, luthier_ipoint_t point);
 
 /////* Add int32_t argument to last injected call, value of the predicate for this
 //// * instruction */
@@ -257,7 +255,7 @@ void luthier_insert_call(luthier::Instr* instr, const void *dev_func, luthier_ip
  * @param dispatch_packet the HSA dispatch packet intercepted from an HSA queue, containing the kernel launch
  * parameters/configuration
  */
-void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet);
+void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet);
 //                               bool apply_to_related = true);
 ////
 /////* Set arguments at launch time, that will be loaded on input argument of
@@ -271,6 +269,8 @@ void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_p
 ////void nvbit_set_tool_pthread(pthread_t tool_pthread);
 ////void nvbit_unset_tool_pthread(pthread_t tool_pthread);
 ////
+}
+#endif
 
 #endif
 ////

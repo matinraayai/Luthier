@@ -1,37 +1,56 @@
 #ifndef DISASSEMBLER_HPP
 #define DISASSEMBLER_HPP
-#include "code_view.hpp"
-#include "hsa_executable_symbol.hpp"
-#include "hsa_isa.hpp"
-#include "instr.hpp"
-#include "luthier_types.h"
 #include <amd_comgr/amd_comgr.h>
+#include <llvm/MC/MCContext.h>
+#include <llvm/MC/MCDisassembler/MCDisassembler.h>
+#include <llvm/MC/MCInst.h>
+
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+#include "code_view.hpp"
+#include "hsa_executable_symbol.hpp"
+#include "hsa_instr.hpp"
+#include "hsa_isa.hpp"
+#include "luthier_types.h"
 
 namespace luthier {
 
 /**
- * \brief a singleton class in charge of disassembling device instructions and returning them as an std::vector of \class Instr
+ * \brief a singleton class in charge of disassembling device instructions and returning them as an
+ * std::vector of \class Instr
  * Uses the AMD COMGR library internally
  */
 class Disassembler {
  private:
-    Disassembler() = default;
-    ~Disassembler() {
-        for (const auto &i: sizeDisassemblyInfoMap_)
-            amd_comgr_destroy_disassembly_info(i.second);
-        for (const auto &i: endPgmDisassemblyInfoMap_)
-            amd_comgr_destroy_disassembly_info(i.second);
+    struct DisassemblyInfo {
+        std::unique_ptr<const llvm::MCContext> context_;
+        std::unique_ptr<const llvm::MCDisassembler> disAsm_;
+
+        DisassemblyInfo() = delete;
+
+        DisassemblyInfo(std::unique_ptr<const llvm::MCContext> context,
+                        std::unique_ptr<const llvm::MCDisassembler> disAsm)
+            : context_(std::move(context)),
+              disAsm_(std::move(disAsm)) {
+            assert(context_);
+            assert(disAsm_);
+        };
     };
 
-    amd_comgr_disassembly_info_t getEndPgmDisassemblyInfo(const hsa::Isa &isa);
+    Disassembler() = default;
 
-    amd_comgr_disassembly_info_t getSizeDisassemblyInfo(const hsa::Isa &isa);
+    ~Disassembler();
 
-    std::unordered_map<hsa::Isa, amd_comgr_disassembly_info_t> sizeDisassemblyInfoMap_;
-    std::unordered_map<hsa::Isa, amd_comgr_disassembly_info_t> endPgmDisassemblyInfoMap_;
+    const DisassemblyInfo &getDisassemblyInfo(const hsa::Isa &isa);
+
+    std::unordered_map<hsa::Isa, DisassemblyInfo> disassemblyInfoMap_;
+
+    std::unordered_set<hsa::Instr *> instrHandles_;
+
+    hsa::Instr *createInstr(llvm::MCInst inst, hsa::ExecutableSymbol symbol);
 
  public:
     Disassembler(const Disassembler &) = delete;
@@ -42,17 +61,16 @@ class Disassembler {
         return instance;
     }
 
-    std::vector<Instr> disassemble(const hsa::ExecutableSymbol &symbol, size_t size);
+    void destroyInstr(hsa::Instr *instr);
 
-    std::vector<Instr> disassemble(const hsa::ExecutableSymbol &symbol);
+    std::vector<hsa::Instr *> disassemble(const hsa::ExecutableSymbol &symbol,
+                                          std::optional<size_t> size = std::nullopt);
 
-    std::vector<Instr> disassemble(const code::SymbolView &symbol);
+    //TODO: ISA has to be detected from the ELF, not passed manually
+    std::vector<llvm::MCInst> disassemble(const code::SymbolView &symbol, const hsa::Isa &isa,
+                                          std::optional<size_t> size = std::nullopt);
 
-    std::vector<Instr> disassemble(const code::SymbolView &symbol, size_t size);
-
-    std::vector<Instr> disassemble(const hsa::Isa &isa, luthier_address_t address);
-
-    std::vector<Instr> disassemble(const hsa::Isa &isa, byte_string_view code);
+    std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, byte_string_view code);
 };
 
 }// namespace luthier

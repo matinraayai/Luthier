@@ -1,38 +1,40 @@
 #include "code_generator.hpp"
-#include "code_object_manager.hpp"
-#include "context_manager.hpp"
-#include "disassembler.hpp"
-#include "elfio/elfio.hpp"
-#include "hsa_intercept.hpp"
-#include "instr.hpp"
-#include "hsa_isa.hpp"
-#include "hsa_executable.hpp"
-#include "hsa_loaded_code_object.hpp"
-#include "hsa_executable_symbol.hpp"
-#include "hsa_agent.hpp"
-#include "log.hpp"
+
 #include <fmt/color.h>
 #include <fmt/core.h>
 #include <hsa/amd_hsa_common.h>
 #include <hsa/hsa_ext_amd.h>
+
+#include "code_object_manager.hpp"
+#include "context_manager.hpp"
+#include "disassembler.hpp"
+#include "elfio/elfio.hpp"
+#include "hsa_agent.hpp"
+#include "hsa_executable.hpp"
+#include "hsa_executable_symbol.hpp"
+#include "hsa_intercept.hpp"
+#include "hsa_isa.hpp"
+#include "hsa_loaded_code_object.hpp"
+#include "instr.hpp"
+#include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrDesc.h"
 #include "llvm/MC/MCInstrInfo.h"
-#include "llvm/MC/MCRegisterInfo.h"
-#include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/MC/MCCodeEmitter.h"
-#include "llvm/MC/TargetRegistry.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCObjectWriter.h"
+#include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
-#include "llvm/MC/MCParser/MCAsmLexer.h"
+#include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/SourceMgr.h"
+#include "log.hpp"
 
 struct TargetIdentifier {
     llvm::StringRef Arch;
@@ -46,15 +48,17 @@ struct TargetIdentifier {
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
     const auto &coreHsaApiTable = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
     uint32_t nameSize;
-    LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
+    LUTHIER_HSA_CHECK(
+        coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
     std::string name;
     name.resize(nameSize, '\0');
-    LUTHIER_HSA_CHECK(coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, &name.front()));
+    LUTHIER_HSA_CHECK(
+        coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, &name.front()));
     return name;
 }
 
 luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::byte_string_t &code,
-                                                                                 const hsa::GpuAgent& agent) {
+                                                                              const hsa::GpuAgent &agent) {
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
@@ -74,8 +78,7 @@ luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(co
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction, isaName.c_str()));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
     LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
-                            dataAction, dataSetIn, dataSetOut));
+        amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE, dataAction, dataSetIn, dataSetOut));
 
     amd_comgr_data_t dataOut;
     size_t dataOutSize;
@@ -87,7 +90,8 @@ luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(co
     return executableOut;
 }
 
-luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::string &instList, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::string &instList,
+                                                                     const hsa::GpuAgent &agent) {
 
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
@@ -105,12 +109,10 @@ luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
-                                                               isaName.c_str()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction, isaName.c_str()));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
     LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE,
-                            dataAction, dataSetIn, dataSetOut));
+        amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE, dataAction, dataSetIn, dataSetOut));
     amd_comgr_data_t dataOut;
     size_t dataOutSize;
     amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_RELOCATABLE, 0, &dataOut);
@@ -130,12 +132,13 @@ luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::
     return outElf;
 }
 
-luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::vector<std::string> &instList, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::vector<std::string> &instList,
+                                                                     const hsa::GpuAgent &agent) {
     std::string instString = fmt::format("{}", fmt::join(instList, "\n"));
     return assembleToRelocatable(instString, agent);
 }
 
-luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instList, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instList, const hsa::GpuAgent &agent) {
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
@@ -152,12 +155,10 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instL
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction,
-                                                               isaName.c_str()));
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction, isaName.c_str()));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
     LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE,
-                            dataAction, dataSetIn, dataSetOut));
+        amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE, dataAction, dataSetIn, dataSetOut));
     amd_comgr_data_t dataOut;
     size_t dataOutSize;
     amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_RELOCATABLE, 0, &dataOut);
@@ -175,118 +176,119 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instL
     amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(outElf.data()));
     auto outView = code::ElfView::makeView(outElf);
     return outElf;
-//    auto isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
-//
-//    std::string Error;
-//    const llvm::Target *TheTarget = llvm::TargetRegistry::lookupTarget(isaName, Error);
-//    assert(TheTarget);
-//
-//    std::unique_ptr<const llvm::MCRegisterInfo> MRI(TheTarget->createMCRegInfo(llvm::StringRef(isaName)));
-//    assert(MRI);
-//
-//
-//    llvm::MCTargetOptions MCOptions;
-//    std::unique_ptr<const llvm::MCAsmInfo> MAI(
-//        TheTarget->createMCAsmInfo(*MRI, isaName, MCOptions));
-//
-//    assert(MAI);
-//
-//    std::unique_ptr<const llvm::MCInstrInfo> MII(TheTarget->createMCInstrInfo());
-//    assert(MII);
-//
-//    std::unique_ptr<const llvm::MCSubtargetInfo> STI(
-//        TheTarget->createMCSubtargetInfo(isaName, "gfx908", "+sramecc-xnack"));
-//    assert(STI);
-//
-//    // MatchAndEmitInstruction in MCTargetAsmParser.h
-//
-//
-//    // Now that GetTarget() has (potentially) replaced TripleName, it's safe to
-//    // construct the Triple object.
-//    llvm::Triple TheTriple(isaName);
-//
-//    std::unique_ptr<llvm::MemoryBuffer> BufferPtr = llvm::MemoryBuffer::getMemBuffer(instListStr);
-//
-//    llvm::SourceMgr SrcMgr;
-//
-//    // Tell SrcMgr about this buffer, which is what the parser will pick up.
-//    SrcMgr.AddNewSourceBuffer(std::move(BufferPtr), llvm::SMLoc());
-//
-//    // Package up features to be passed to target/subtarget
-//    std::string FeaturesStr;
-////    if (MAttrs.size()) {
-////        SubtargetFeatures Features;
-////        for (unsigned i = 0; i != MAttrs.size(); ++i)
-////            Features.AddFeature(MAttrs[i]);
-////        FeaturesStr = Features.getString();
-////    }
-//
-////    std::unique_ptr<llvm::MCContext> Ctx(new (std::nothrow)
-////                                             llvm::MCContext(llvm::Triple(isaName), MAI.get(), MRI.get(),
-////                                                             &SrcMgr,
-////                                                             &MCOptions,
-////                                                             STI.get()));
-////    assert(Ctx);
-//
-//    // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
-//    // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
-//    llvm::MCContext Ctx(TheTriple, MAI.get(), MRI.get(), STI.get(), &SrcMgr,
-//                  &MCOptions);
-//    std::unique_ptr<llvm::MCObjectFileInfo> MOFI(
-//        TheTarget->createMCObjectFileInfo(Ctx, /*PIC*/ true, /*large code model*/ false));
-//    Ctx.setObjectFileInfo(MOFI.get());
-//
-//    Ctx.setAllowTemporaryLabels(false);
-//
-//    Ctx.setGenDwarfForAssembly(false);
-//
-//    llvm::SmallVector<char> out;
-//
-//    llvm::raw_svector_ostream VOS(out);
-//
-//    std::unique_ptr<llvm::buffer_ostream> BOS;
-//
-//    std::unique_ptr<llvm::MCStreamer> Str;
-//
-//    std::unique_ptr<llvm::MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
-//    assert(MCII && "Unable to create instruction info!");
-//
-//    llvm::MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, Ctx);
-//    llvm::MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*STI, *MRI, MCOptions);
-//    Str.reset(TheTarget->createMCObjectStreamer(
-//        TheTriple, Ctx, std::unique_ptr<llvm::MCAsmBackend>(MAB),
-//        MAB->createObjectWriter(VOS),
-//        std::unique_ptr<llvm::MCCodeEmitter>(CE), *STI, MCOptions.MCRelaxAll,
-//        MCOptions.MCIncrementalLinkerCompatible,
-//        /*DWARFMustBeAtTheEnd*/ false));
-//
-////    Str->initSections(true, *STI);
-//
-//    // Use Assembler information for parsing.
-//    Str->setUseAssemblerInfoForParsing(true);
-//
-//    std::unique_ptr<llvm::MCAsmParser> Parser(
-//        llvm::createMCAsmParser(SrcMgr, Ctx, *Str, *MAI));
-//    std::unique_ptr<llvm::MCTargetAsmParser> TAP(
-//        TheTarget->createMCAsmParser(*STI, *Parser, *MCII, MCOptions));
-//
-//    assert(TAP && "this target does not support assembly parsing.\n");
-//
-////    int SymbolResult = fillCommandLineSymbols(*Parser);
-////    if(SymbolResult)
-////        return SymbolResult;
-//    Parser->setShowParsedOperands(true);
-//    Parser->setTargetParser(*TAP);
-//    Parser->getLexer().setLexMasmIntegers(true);
-//    Parser->getLexer().setLexMasmHexFloats(true);
-//    Parser->getLexer().setLexMotorolaIntegers(true);
-//
-//    int Res = Parser->Run(false);
-//
-//    return {reinterpret_cast<std::byte*>(out.data()), out.size()};
+    //    auto isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
+    //
+    //    std::string Error;
+    //    const llvm::Target *TheTarget = llvm::TargetRegistry::lookupTarget(isaName, Error);
+    //    assert(TheTarget);
+    //
+    //    std::unique_ptr<const llvm::MCRegisterInfo> MRI(TheTarget->createMCRegInfo(llvm::StringRef(isaName)));
+    //    assert(MRI);
+    //
+    //
+    //    llvm::MCTargetOptions MCOptions;
+    //    std::unique_ptr<const llvm::MCAsmInfo> MAI(
+    //        TheTarget->createMCAsmInfo(*MRI, isaName, MCOptions));
+    //
+    //    assert(MAI);
+    //
+    //    std::unique_ptr<const llvm::MCInstrInfo> MII(TheTarget->createMCInstrInfo());
+    //    assert(MII);
+    //
+    //    std::unique_ptr<const llvm::MCSubtargetInfo> STI(
+    //        TheTarget->createMCSubtargetInfo(isaName, "gfx908", "+sramecc-xnack"));
+    //    assert(STI);
+    //
+    //    // MatchAndEmitInstruction in MCTargetAsmParser.h
+    //
+    //
+    //    // Now that GetTarget() has (potentially) replaced TripleName, it's safe to
+    //    // construct the Triple object.
+    //    llvm::Triple TheTriple(isaName);
+    //
+    //    std::unique_ptr<llvm::MemoryBuffer> BufferPtr = llvm::MemoryBuffer::getMemBuffer(instListStr);
+    //
+    //    llvm::SourceMgr SrcMgr;
+    //
+    //    // Tell SrcMgr about this buffer, which is what the parser will pick up.
+    //    SrcMgr.AddNewSourceBuffer(std::move(BufferPtr), llvm::SMLoc());
+    //
+    //    // Package up features to be passed to target/subtarget
+    //    std::string FeaturesStr;
+    ////    if (MAttrs.size()) {
+    ////        SubtargetFeatures Features;
+    ////        for (unsigned i = 0; i != MAttrs.size(); ++i)
+    ////            Features.AddFeature(MAttrs[i]);
+    ////        FeaturesStr = Features.getString();
+    ////    }
+    //
+    ////    std::unique_ptr<llvm::MCContext> Ctx(new (std::nothrow)
+    ////                                             llvm::MCContext(llvm::Triple(isaName), MAI.get(), MRI.get(),
+    ////                                                             &SrcMgr,
+    ////                                                             &MCOptions,
+    ////                                                             STI.get()));
+    ////    assert(Ctx);
+    //
+    //    // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
+    //    // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
+    //    llvm::MCContext Ctx(TheTriple, MAI.get(), MRI.get(), STI.get(), &SrcMgr,
+    //                  &MCOptions);
+    //    std::unique_ptr<llvm::MCObjectFileInfo> MOFI(
+    //        TheTarget->createMCObjectFileInfo(Ctx, /*PIC*/ true, /*large code model*/ false));
+    //    Ctx.setObjectFileInfo(MOFI.get());
+    //
+    //    Ctx.setAllowTemporaryLabels(false);
+    //
+    //    Ctx.setGenDwarfForAssembly(false);
+    //
+    //    llvm::SmallVector<char> out;
+    //
+    //    llvm::raw_svector_ostream VOS(out);
+    //
+    //    std::unique_ptr<llvm::buffer_ostream> BOS;
+    //
+    //    std::unique_ptr<llvm::MCStreamer> Str;
+    //
+    //    std::unique_ptr<llvm::MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
+    //    assert(MCII && "Unable to create instruction info!");
+    //
+    //    llvm::MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, Ctx);
+    //    llvm::MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*STI, *MRI, MCOptions);
+    //    Str.reset(TheTarget->createMCObjectStreamer(
+    //        TheTriple, Ctx, std::unique_ptr<llvm::MCAsmBackend>(MAB),
+    //        MAB->createObjectWriter(VOS),
+    //        std::unique_ptr<llvm::MCCodeEmitter>(CE), *STI, MCOptions.MCRelaxAll,
+    //        MCOptions.MCIncrementalLinkerCompatible,
+    //        /*DWARFMustBeAtTheEnd*/ false));
+    //
+    ////    Str->initSections(true, *STI);
+    //
+    //    // Use Assembler information for parsing.
+    //    Str->setUseAssemblerInfoForParsing(true);
+    //
+    //    std::unique_ptr<llvm::MCAsmParser> Parser(
+    //        llvm::createMCAsmParser(SrcMgr, Ctx, *Str, *MAI));
+    //    std::unique_ptr<llvm::MCTargetAsmParser> TAP(
+    //        TheTarget->createMCAsmParser(*STI, *Parser, *MCII, MCOptions));
+    //
+    //    assert(TAP && "this target does not support assembly parsing.\n");
+    //
+    ////    int SymbolResult = fillCommandLineSymbols(*Parser);
+    ////    if(SymbolResult)
+    ////        return SymbolResult;
+    //    Parser->setShowParsedOperands(true);
+    //    Parser->setTargetParser(*TAP);
+    //    Parser->getLexer().setLexMasmIntegers(true);
+    //    Parser->getLexer().setLexMasmHexFloats(true);
+    //    Parser->getLexer().setLexMotorolaIntegers(true);
+    //
+    //    int Res = Parser->Run(false);
+    //
+    //    return {reinterpret_cast<std::byte*>(out.data()), out.size()};
 }
 
-luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector, const hsa::GpuAgent& agent) {
+luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector,
+                                                        const hsa::GpuAgent &agent) {
     return assembleToRelocatable(instrVector, agent);
 }
 
@@ -300,63 +302,62 @@ luthier::CodeGenerator::CodeGenerator() {
 }
 
 hsa_status_t registerSymbolWithCodeObjectManager(const luthier::hsa::Executable &executable,
-                                                 const luthier::hsa::ExecutableSymbol& originalSymbol,
-                                                 const luthier::hsa::GpuAgent& agent) {
+                                                 const luthier::hsa::ExecutableSymbol &originalSymbol,
+                                                 const luthier::hsa::GpuAgent &agent) {
     auto originalSymbolName = originalSymbol.getName();
     auto originalKd = originalSymbol.getKernelDescriptor();
-    for (const auto& s: executable.getSymbols(agent)) {
+    for (const auto &s: executable.getSymbols(agent)) {
         auto sName = s.getName();
         auto sType = s.getType();
         fmt::println(stdout, "Symbol name: {}.", sName);
         fmt::println(stdout, "Symbol type: {}.", static_cast<int>(sType));
 
-        if (sType == HSA_SYMBOL_KIND_VARIABLE)
-            fmt::println(stdout, "Variable Location: {:#x}", s.getVariableAddress());
+        if (sType == HSA_SYMBOL_KIND_VARIABLE) fmt::println(stdout, "Variable Location: {:#x}", s.getVariableAddress());
         else if (sType == HSA_SYMBOL_KIND_KERNEL && sName == originalSymbolName) {
             auto sKd = s.getKernelDescriptor();
             luthier::CodeObjectManager::instance().registerInstrumentedKernel(originalSymbol, s);
 
-//            std::vector<luthier::Instr> instList = luthier::Disassembler::instance().disassemble(sKd);
-//            std::cout << "Disassembly of the KO: " << std::endl;
-//            for (const auto &i: instList) {
-//                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
-//                if (i.getInstr().find("s_add_u32") != std::string::npos) {
-//                    //                    std::string out = assemble("s_add_u32 s2 s100 0", agent);
-//                    //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
-//                }
-//            }
-//            luthier::co_manip::printRSR1(sKd);
-//            luthier::co_manip::printRSR2(sKd);
-//            luthier::co_manip::printCodeProperties(sKd);
-//            const auto &amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
-//            LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
-//                                                                             reinterpret_cast<const void **>(&kernelDescriptor)));
-//            auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
-//
-//            //            instList = luthier::Disassembler::Instance().disassemble(agent, entry_point - 0x14c, 0x500);
-//            instList = luthier::Disassembler::instance().disassemble(kernelObject);
-//            std::cout << "Disassembly of the KO: " << std::endl;
-//            for (const auto &i: instList) {
-//                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
-//            }
+            //            std::vector<luthier::Instr> instList = luthier::Disassembler::instance().disassemble(sKd);
+            //            std::cout << "Disassembly of the KO: " << std::endl;
+            //            for (const auto &i: instList) {
+            //                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
+            //                if (i.getInstr().find("s_add_u32") != std::string::npos) {
+            //                    //                    std::string out = assemble("s_add_u32 s2 s100 0", agent);
+            //                    //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
+            //                }
+            //            }
+            //            luthier::co_manip::printRSR1(sKd);
+            //            luthier::co_manip::printRSR2(sKd);
+            //            luthier::co_manip::printCodeProperties(sKd);
+            //            const auto &amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
+            //            LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
+            //                                                                             reinterpret_cast<const void **>(&kernelDescriptor)));
+            //            auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
+            //
+            //            //            instList = luthier::Disassembler::Instance().disassemble(agent, entry_point - 0x14c, 0x500);
+            //            instList = luthier::Disassembler::instance().disassemble(kernelObject);
+            //            std::cout << "Disassembly of the KO: " << std::endl;
+            //            for (const auto &i: instList) {
+            //                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
+            //            }
         }
     }
     return HSA_STATUS_SUCCESS;
 }
 
-kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target, kernel_descriptor_t *instrumentation) {
-}
+kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target,
+                                                         kernel_descriptor_t *instrumentation) {}
 
-void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
-                                        luthier_ipoint_t point) {
+void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *device_func, luthier_ipoint_t point) {
     LUTHIER_LOG_FUNCTION_CALL_START
-    auto agent = hsa::GpuAgent(instr.getAgent());
+    auto agent = instr.getAgent();
     auto &codeObjectManager = luthier::CodeObjectManager::instance();
     hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationFunction(device_func, agent);
-    const hsa::KernelDescriptor *instrumentationFuncKD = codeObjectManager.getInstrumentationKernel(device_func, agent).getKernelDescriptor();
+    const hsa::KernelDescriptor *instrumentationFuncKD =
+        codeObjectManager.getInstrumentationKernel(device_func, agent).getKernelDescriptor();
     auto targetExecutable = hsa::Executable(instr.getExecutable());
 
-    auto symbol = hsa::ExecutableSymbol(instr.getSymbol(), instr.getAgent(), instr.getExecutable());
+    auto symbol = instr.getExecutableSymbol();
     std::string symbolName = symbol.getName();
 
     auto storage = targetExecutable.getLoadedCodeObjects()[0].getStorageMemory();
@@ -368,13 +369,13 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     bool foundKDSymbol{false};
     for (unsigned int i = 0; i < instrumentedElfView->getNumSymbols() && !foundKDSymbol; i++) {
         code::SymbolView info = *instrumentedElfView->getSymbol(i);
-        if (info.getName() == symbolName)
-            foundKDSymbol = true;
+        if (info.getName() == symbolName) foundKDSymbol = true;
     }
     if (not foundKDSymbol)
         throw std::runtime_error(fmt::format("Failed to find symbol {} in the copied executable", symbolName));
-//    fmt::println("SGPR granularity: {}", luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getSGPRAllocGranulefromComgrMeta());
-    auto meta = code::GetAttrCodePropMetadata(instrumentedElfView, instrumentedElfView->getKernelMetaDataMap(symbolName));
+    //    fmt::println("SGPR granularity: {}", luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getSGPRAllocGranulefromComgrMeta());
+    auto meta =
+        code::GetAttrCodePropMetadata(instrumentedElfView, instrumentedElfView->getKernelMetaDataMap(symbolName));
     fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
     auto myReloc = emptyRelocatableMap_[agent];
@@ -385,11 +386,12 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     hsa_executable_t executable;
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
                                                              nullptr, &executable));
-    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(out.data(),
-                                                                             out.size(), &reader));
-    LUTHIER_HSA_CHECK(coreTable.hsa_executable_load_agent_code_object_fn(executable, agent.asHsaType(), reader, nullptr, nullptr));
+    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(out.data(), out.size(), &reader));
+    LUTHIER_HSA_CHECK(
+        coreTable.hsa_executable_load_agent_code_object_fn(executable, agent.asHsaType(), reader, nullptr, nullptr));
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
-    LUTHIER_HSA_CHECK(registerSymbolWithCodeObjectManager(hsa::Executable(executable), hsa::ExecutableSymbol(instr.getSymbol(), instr.getAgent(), instr.getExecutable()), agent));
+    LUTHIER_HSA_CHECK(
+        registerSymbolWithCodeObjectManager(hsa::Executable(executable), instr.getExecutableSymbol(), agent));
 }
 
 //{

@@ -6,6 +6,8 @@
 
 namespace luthier::hsa {
 
+//TODO: Make this work with KDs in executables not created with the FULL profile
+
 struct KernelDescriptor {
     uint32_t groupSegmentFixedSize;
     uint32_t privateSegmentFixedSize;
@@ -20,7 +22,7 @@ struct KernelDescriptor {
     uint8_t reserved2[6];
 
 #define REG_BIT_GETTER(registerName, registerVar, propName, prop) \
-    uint32_t get##registerName##propName() {                      \
+    uint32_t get##registerName##propName() const {                \
         return AMD_HSA_BITS_GET(registerVar, prop);               \
     }
 
@@ -139,6 +141,13 @@ struct KernelDescriptor {
 
 #undef REG_BIT_SETTER
 #undef REG_BIT_GETTER
+
+    [[nodiscard]] luthier_address_t getEntryPoint() const {
+        return reinterpret_cast<luthier_address_t>(this) + this->kernelCodeEntryByteOffset;
+        //        const auto& amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
+        //        LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
+        //                                                                         reinterpret_cast<const void **>(&kernelDescriptor)));
+    }
 };
 }// namespace luthier::hsa
 

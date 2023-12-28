@@ -35,22 +35,27 @@ add_library(luthier SHARED
         src/hsa_isa.cpp
         src/code_view.hpp
         src/code_view.cpp
-        src/hsa_kernel_descriptor.hpp)
+        src/hsa_kernel_descriptor.hpp
+        src/llvm_mc.hpp
+        src/llvm_mc.cpp
+        src/context_manager.cpp
+        src/hsa_instr.hpp
+        src/hsa_instr.cpp)
 # ======================================================================================================================
 
 # User Options =========================================================================================================
 set(LUTHIER_LOG_LEVEL "ERROR" CACHE STRING "Sets the LUTHIER log level; Options: ERROR, INFO, DEBUG")
-if(${LUTHIER_LOG_LEVEL} STREQUAL "ERROR")
-  target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
+if (${LUTHIER_LOG_LEVEL} STREQUAL "ERROR")
+    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
 elseif (${LUTHIER_LOG_LEVEL} STREQUAL "INFO")
-  target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
-  target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_INFO")
+    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
+    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_INFO")
 elseif (${LUTHIER_LOG_LEVEL} STREQUAL "DEBUG")
-  target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
-  target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_INFO")
-  target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_DEBUG")
+    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
+    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_INFO")
+    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_DEBUG")
 else ()
-  message(FATAL_ERROR "Invalid LUTHIER_LOG_LEVEL passed: ${LUTHIER_LOG_LEVEL}")
+    message(FATAL_ERROR "Invalid LUTHIER_LOG_LEVEL passed: ${LUTHIER_LOG_LEVEL}")
 endif ()
 
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
@@ -144,7 +149,6 @@ target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
 target_compile_options(luthier INTERFACE "-fPIC")
 
 
-
 # For LD_PRELOAD-ing the hip intercept functions
 target_compile_definitions(luthier PUBLIC "-D_GLIBCXX_DEBUG")
 
@@ -152,16 +156,18 @@ target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 
 target_link_libraries(luthier hip::host roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
-        hsa-runtime64::hsa-runtime64 LLVMCore LLVMBitReader LLVMSupport LLVMMC boost_iostreams)
+        hsa-runtime64::hsa-runtime64 LLVMCore LLVMBitReader LLVMSupport LLVMMC LLVMAMDGPUTargetMCA LLVMAMDGPUInfo
+        LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUInfo LLVMAMDGPUDisassembler LLVMAMDGPUAsmParser
+        boost_iostreams)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-  set(SUB_DIRS examples/kernel_instrument examples/iterate_all_executable_symbols)
-  foreach (DIR ${SUB_DIRS})
-    add_subdirectory(${DIR})
-  endforeach (DIR)
-endif()
+    set(SUB_DIRS examples/kernel_instrument examples/iterate_all_executable_symbols)
+    foreach (DIR ${SUB_DIRS})
+        add_subdirectory(${DIR})
+    endforeach (DIR)
+endif ()
 # ======================================================================================================================
 
 

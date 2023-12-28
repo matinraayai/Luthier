@@ -1,7 +1,7 @@
 #include "hsa_isa.hpp"
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/StringExtras.h>
+#include <llvm/ADT/StringRef.h>
 
 namespace luthier::hsa {
 
@@ -19,7 +19,7 @@ std::string Isa::getName() const {
     LUTHIER_HSA_CHECK(getApiTable().core.hsa_isa_get_info_alt_fn(this->asHsaType(),
                                                                  HSA_ISA_INFO_NAME_LENGTH,
                                                                  &isaNameSize));
-    std::string isaName(isaNameSize, '\0');
+    std::string isaName(isaNameSize - 1, '\0');
     LUTHIER_HSA_CHECK(getApiTable().core.hsa_isa_get_info_alt_fn(this->asHsaType(),
                                                                  HSA_ISA_INFO_NAME,
                                                                  &isaName.front()));
@@ -82,15 +82,30 @@ bool Isa::isSRamECCSupported() const {
         return isaName[sRamECC + strlen("sramecc")] == '+';
     }
 }
-std::string Isa::getTargetString() const {
+std::string Isa::getLLVMTarget() const {
     std::string isaName = getName();
     return isaName.substr(0, isaName.find_first_of(':'));
 }
+
+std::string Isa::getLLVMTargetTriple() const {
+    std::string isaName = getName();
+    llvm::SmallVector<llvm::StringRef, 5> isaNameComponents = parseIsaName(isaName);
+    return (llvm::Twine(isaNameComponents[0]) + "-" + llvm::Twine(isaNameComponents[1]) + "-" +
+            llvm::Twine(isaNameComponents[2]) + "-" + llvm::Twine(isaNameComponents[3])).str();
+}
+
 std::string Isa::getFeatureString() const {
     std::string isaName = getName();
     llvm::SmallVector<llvm::StringRef> features;
     llvm::StringRef(isaName).substr(isaName.find_first_of(':')).split(features, ":");
-    return llvm::join(features, ",");
+    // The +/- must be before the feature code for LLVM, not after
+    llvm::SmallVector<std::string> featuresOut;
+    for (auto& feat: features) {
+        auto featureToggle = feat.substr(feat.size() - 1);
+        auto featureName = feat.substr(0, feat.size() - 1);
+        featuresOut.push_back((featureToggle + featureName).str());
+    }
+    return llvm::join(featuresOut, ",");
 }
 
 }// namespace luthier::hsa

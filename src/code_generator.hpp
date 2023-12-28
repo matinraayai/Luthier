@@ -2,7 +2,7 @@
 #define CODE_GENERATOR_HPP
 #include "code_view.hpp"
 #include "hsa_agent.hpp"
-#include "instr.hpp"
+#include "hsa_instr.hpp"
 #include "luthier_types.h"
 #include <unordered_map>
 
@@ -27,7 +27,7 @@ class CodeGenerator {
 
     static luthier::byte_string_t compileRelocatableToExecutable(const luthier::byte_string_t &code, const hsa::GpuAgent&  agent);
 
-    void instrument(Instr &instr, const void *dev_func,
+    void instrument(hsa::Instr &instr, const void *dev_func,
                     luthier_ipoint_t point);
 
  private:

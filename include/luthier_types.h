@@ -75,6 +75,15 @@ THE SOFTWARE.
 
 typedef uint64_t luthier_address_t;
 
+typedef struct {
+    uint64_t handle;
+} luthier_instruction_t;
+
+typedef struct {
+    luthier_instruction_t* instructions;
+    size_t num_instructions;
+} luthier_instruction_list_t;
+
 constexpr const char *LUTHIER_DEVICE_FUNCTION_WRAP = "__luthier_wrap__";
 
 constexpr const char *LUTHIER_RESERVED_MANAGED_VAR = "__luthier_reserved";

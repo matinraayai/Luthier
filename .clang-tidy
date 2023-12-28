@@ -1,5 +1,3 @@
-# Generated from CLion Inspection settings
----
 Checks: '-*,
 bugprone-argument-comment,
 bugprone-assert-side-effect,
@@ -129,6 +127,7 @@ readability-container-size-empty,
 readability-convert-member-functions-to-static,
 readability-delete-null-pointer,
 readability-deleted-default,
+readability-identifier-naming,
 readability-inconsistent-declaration-parameter-name,
 readability-make-member-function-const,
 readability-misleading-indentation,
@@ -146,3 +145,18 @@ readability-static-definition-in-anonymous-namespace,
 readability-string-compare,
 readability-uniqueptr-delete-release,
 readability-use-anyofallof'
+CheckOptions:
+  - key:             readability-identifier-naming.ClassCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.FunctionCase
+    value:           camelBack
+  - key:             readability-identifier-naming.MemberCase
+    value:           camelBack_
+  - key:             readability-identifier-naming.ParameterCase
+    value:           camelBack
+  - key:             readability-identifier-naming.UnionCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.VariableCase
+    value:           camelBack

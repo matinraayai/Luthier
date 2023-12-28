@@ -65,7 +65,7 @@ const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumenta
     const auto &f = functions_.at(wrapperKernelHostPtr).at(agent).getInstrumentationFunction();
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto instrs = luthier::Disassembler::instance().disassemble(f);
-    for (const auto &i: instrs) { LuthierLogDebug("{:#x}: {}", i.getHostAddress(), i.getInstr()); }
+//    for (const auto &i: instrs) { LuthierLogDebug("{:#x}: {}", i.getHostAddress(), i.getInstr()); }
 #endif
     return f;
 }

@@ -3,6 +3,7 @@
 #include "hsa_isa.hpp"
 #include <unordered_map>
 #include <vector>
+#include <optional>
 
 namespace llvm {
 
@@ -19,6 +20,8 @@ class MCInstrInfo;
 class MCInstrAnalysis;
 
 class MCSubtargetInfo;
+
+class MCInstPrinter;
 }// namespace llvm
 
 namespace luthier {
@@ -43,18 +46,18 @@ struct LLVMMCTargetInfo {
     std::unique_ptr<const llvm::MCInstrInfo> MII_;
     std::unique_ptr<const llvm::MCInstrAnalysis> MIA_;
     std::unique_ptr<const llvm::MCSubtargetInfo> STI_;
-
+    std::unique_ptr<llvm::MCInstPrinter> IP_;
     LLVMMCTargetInfo() = delete;
 
  private:
     LLVMMCTargetInfo(const llvm::Target *target, std::unique_ptr<const llvm::MCRegisterInfo> mri,
                      std::unique_ptr<const llvm::MCTargetOptions> mcOptions, std::unique_ptr<const llvm::MCAsmInfo> mai,
                      std::unique_ptr<const llvm::MCInstrInfo> mii, std::unique_ptr<const llvm::MCInstrAnalysis> mia,
-                     std::unique_ptr<const llvm::MCSubtargetInfo> sti);
+                     std::unique_ptr<const llvm::MCSubtargetInfo> sti,
+                     std::unique_ptr<llvm::MCInstPrinter> ip);
 };
 
 class ContextManager {
- public:
  private:
     std::vector<luthier::hsa::GpuAgent> agents_;
     std::unordered_map<hsa::Isa, LLVMMCTargetInfo> llvmContexts_;

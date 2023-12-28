@@ -1,8 +1,5 @@
 #include "context_manager.hpp"
-#include "error.h"
-#include "hsa_agent.hpp"
-#include "hsa_executable.hpp"
-#include "hsa_isa.hpp"
+
 #include <llvm/MC/MCAsmBackend.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCCodeEmitter.h>
@@ -21,6 +18,11 @@
 #include <llvm/MC/MCSubtargetInfo.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
+
+#include "error.h"
+#include "hsa_agent.hpp"
+#include "hsa_executable.hpp"
+#include "hsa_isa.hpp"
 
 namespace luthier {
 
@@ -52,7 +54,7 @@ ContextManager::ContextManager() {
     LLVMInitializeAMDGPUAsmPrinter();
 
     for (const auto &agent: getHsaAgents()) {
-        for (const auto& isa: agent.getIsa()) {
+        for (const auto &isa: agent.getIsa()) {
 
             std::string targetTriple = isa.getLLVMTargetTriple();
             std::string targetIsa = isa.getLLVMTarget();
@@ -76,9 +78,13 @@ ContextManager::ContextManager() {
                 theTarget->createMCSubtargetInfo(targetTriple, isa.getProcessor(), isa.getFeatureString()));
             assert(sti);
 
+            std::unique_ptr<llvm::MCInstPrinter> ip(theTarget->createMCInstPrinter(
+                llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri));
+            assert(ip);
+
             llvmContexts_.insert({isa,
-                                  LLVMMCTargetInfo{theTarget, std::move(mri), std::move(mcOptions), std::move(mai),
-                                                   std::move(mii), std::move(mia), std::move(sti)}});
+                                  LLVMMCTargetInfo(theTarget, std::move(mri), std::move(mcOptions), std::move(mai),
+                                                   std::move(mii), std::move(mia), std::move(sti), std::move(ip))});
         }
     }
 }
@@ -96,11 +102,27 @@ std::vector<hsa::Executable> ContextManager::getHsaExecutables() const {
 }
 ContextManager::~ContextManager() = default;
 
-LLVMMCTargetInfo::LLVMMCTargetInfo(const llvm::Target *target, std::unique_ptr<const llvm::MCRegisterInfo> MRI,
-                                   std::unique_ptr<const llvm::MCTargetOptions> MCOptions,
-                                   std::unique_ptr<const llvm::MCAsmInfo> MAI, std::unique_ptr<const llvm::MCInstrInfo> MII,
-                                   std::unique_ptr<const llvm::MCInstrAnalysis> MIA,
-                                   std::unique_ptr<const llvm::MCSubtargetInfo> STI)
-    : target_(target), MRI_(std::move(MRI)), MCOptions_(std::move(MCOptions)), MAI_(std::move(MAI)), MII_(std::move(MII)), MIA_(std::move(MIA)),
-      STI_(std::move(STI)){};
+LLVMMCTargetInfo::LLVMMCTargetInfo(const llvm::Target *target, std::unique_ptr<const llvm::MCRegisterInfo> mri,
+                                   std::unique_ptr<const llvm::MCTargetOptions> mcOptions,
+                                   std::unique_ptr<const llvm::MCAsmInfo> mai,
+                                   std::unique_ptr<const llvm::MCInstrInfo> mii,
+                                   std::unique_ptr<const llvm::MCInstrAnalysis> mia,
+                                   std::unique_ptr<const llvm::MCSubtargetInfo> sti,
+                                   std::unique_ptr<llvm::MCInstPrinter> ip)
+    : target_(target),
+      MRI_(std::move(mri)),
+      MCOptions_(std::move(mcOptions)),
+      MAI_(std::move(mai)),
+      MII_(std::move(mii)),
+      MIA_(std::move(mia)),
+      STI_(std::move(sti)),
+      IP_(std::move(ip)) {
+    assert(target_);
+    assert(MRI_);
+    assert(MCOptions_);
+    assert(MAI_);
+    assert(MII_);
+    assert(MIA_);
+    assert(STI_);
+};
 }// namespace luthier

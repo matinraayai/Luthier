@@ -1,7 +1,6 @@
 #ifndef HSA_ISA_HPP
 #define HSA_ISA_HPP
 #include "hsa_handle_type.hpp"
-#include "hsa_intercept.hpp"
 
 namespace luthier::hsa {
 
@@ -27,7 +26,9 @@ class Isa : public HandleType<hsa_isa_t> {
 
     [[nodiscard]] bool isSRamECCSupported() const;
 
-    [[nodiscard]] std::string getTargetString() const;
+    [[nodiscard]] std::string getLLVMTarget() const;
+
+    [[nodiscard]] std::string getLLVMTargetTriple() const;
 
     [[nodiscard]] std::string getFeatureString() const;
 };
