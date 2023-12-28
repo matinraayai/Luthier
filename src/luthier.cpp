@@ -99,11 +99,8 @@ void hsaApiInternalCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t
 __attribute__((constructor)) void init() {
     LUTHIER_LOG_FUNCTION_CALL_START
     assert(HipInterceptor::Instance().IsEnabled());
-    luthier_at_init();
     HipInterceptor::Instance().SetInternalCallback(luthier::impl::hipApiInternalCallback);
     HipInterceptor::Instance().SetUserCallback(luthier::impl::hipApiUserCallback);
-    HsaInterceptor::instance().setInternalCallback(luthier::impl::hsaApiInternalCallback);
-    HsaInterceptor::instance().setUserCallback(luthier::impl::hsaApiUserCallback);
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
@@ -115,6 +112,7 @@ __attribute__((destructor)) void finalize() {
 
 }// namespace luthier::impl
 
+extern "C" {
 const HsaApiTable *luthier_get_hsa_table() { return &luthier::HsaInterceptor::instance().getSavedHsaTables().root; }
 
 const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader() {
@@ -130,13 +128,11 @@ luthier_instruction_t *luthier_disassemble_kernel_object(uint64_t kernel_object,
     auto *out =
         reinterpret_cast<luthier_instruction_t *>(alloc_callback(instructions.size() * sizeof(luthier_instruction_t)));
     assert(out);
-    for (int i = 0; i < *size; i++) {
-        out[i] = luthier::hsa::Instr::toHandle(instructions[i]);
-    }
+    for (int i = 0; i < *size; i++) { out[i] = luthier::hsa::Instr::toHandle(instructions[i]); }
     return out;
 }
 
-void luthier_instructions_handles_destroy(luthier_instruction_t* instrs, size_t size) {
+void luthier_instructions_handles_destroy(luthier_instruction_t *instrs, size_t size) {
     for (int i = 0; i < size; i++) {
         auto inst = luthier::hsa::Instr::fromHandle(instrs[i]);
         luthier::Disassembler::instance().destroyInstr(inst);
@@ -159,15 +155,26 @@ void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_p
     fmt::println("Kernel Object address: {:#x}", dispatch_packet->kernel_object);
 }
 
-extern "C" {
+// NOLINTBEGIN
 
 __attribute__((visibility("default"))) extern const uint32_t HSA_AMD_TOOL_PRIORITY = 49;
 
 __attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t runtime_version,
                                                    uint64_t failed_tool_count, const char *const *failed_tool_names) {
+    LUTHIER_LOG_FUNCTION_CALL_START
     [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
-    return luthier::HsaInterceptor::instance().captureHsaApiTable(table);
+    bool res = luthier::HsaInterceptor::instance().captureHsaApiTable(table);
+    luthier_at_init();
+    luthier::HsaInterceptor::instance().setInternalCallback(luthier::impl::hsaApiInternalCallback);
+    luthier::HsaInterceptor::instance().setUserCallback(luthier::impl::hsaApiUserCallback);
+    return res;
+    LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-__attribute__((visibility("default"))) void OnUnload() {}
+__attribute__((visibility("default"))) void OnUnload() {
+    LUTHIER_LOG_FUNCTION_CALL_START
+    fmt::println("This is when the unload method is called");
+    LUTHIER_LOG_FUNCTION_CALL_END
 }
+}
+// NOLINTEND

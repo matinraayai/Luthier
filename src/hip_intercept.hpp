@@ -1,15 +1,17 @@
 #ifndef HIP_INTERCEPT_HPP
 #define HIP_INTERCEPT_HPP
 
-#include "luthier_types.h"
 #include <dlfcn.h>
-#include <experimental/filesystem>
-#include <functional>
+#include <fmt/core.h>
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
-#include <fmt/core.h>
+
 #include <any>
+#include <experimental/filesystem>
+#include <functional>
 #include <optional>
+
+#include "luthier_types.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -18,8 +20,10 @@ namespace luthier {
 class HipInterceptor {
  private:
     void *handle_{nullptr};
-    std::function<void(void *, const luthier_api_evt_phase_t, const int)> userCallback_{};
-    std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> internalCallback_{};
+    std::function<void(void *, const luthier_api_evt_phase_t, const int)> userCallback_{
+        [](void *, const luthier_api_evt_phase_t, const int) {}};
+    std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *, std::optional<std::any> *)>
+        internalCallback_{[](void *, const luthier_api_evt_phase_t, const int, bool *, std::optional<std::any> *) {}};
 
     HipInterceptor();
 
@@ -41,10 +45,13 @@ class HipInterceptor {
         userCallback_ = callback;
     }
 
-    [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> &getInternalCallback() const {
+    [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *,
+                                           std::optional<std::any> *)> &
+    getInternalCallback() const {
         return internalCallback_;
     }
-    void SetInternalCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool*, std::optional<std::any>*)> &internal_callback) {
+    void SetInternalCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *,
+                                                      std::optional<std::any> *)> &internal_callback) {
         internalCallback_ = internal_callback;
     }
 
@@ -53,7 +60,8 @@ class HipInterceptor {
 
         void *function_ptr = ::dlsym(handle_, symbol);
         if (function_ptr == nullptr)
-            throw std::runtime_error(fmt::format("symbol lookup '{:s}' failed: {:s}", std::string(symbol), std::string(::dlerror())));
+            throw std::runtime_error(
+                fmt::format("symbol lookup '{:s}' failed: {:s}", std::string(symbol), std::string(::dlerror())));
         return function_ptr;
     }
 

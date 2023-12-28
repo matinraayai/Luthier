@@ -9,36 +9,30 @@
 
 #ifdef __cplusplus
 
+// NOLINTBEGIN
 extern "C" {
 
-//
-///*********************************************************************
-// *
-// *                  NVBit tool callbacks
-// *     (implement these functions to get a callback from NVBit)
-// *
-// **********************************************************************/
-///* This function is called as soon as the program starts, no GPU calls
-// * should be made at this moment */
+/**
+ * A callback made by Luthier during its initialization, after the HSA API tables are captured.
+ * */
 void luthier_at_init();
-//
-///* This function is called just before the program terminates, no GPU calls
-// * should be made at this moment */
+
+
+/**
+ * A callback made by Luthier during its finalization.
+ * */
 void luthier_at_term();
-//
-////
-/////* This is the function called every beginning (is_exit = 0) and
-//// * end (is_exit = 1) of a CUDA driver call.
-//// * cbid identifies the CUDA driver call as specified by the enum
-//// * nvbit_api_cuda_t, see tools_cuda_api_meta.h for the list of cbid.
-//// * Name is its the driver call name.
-//// * params is pointer to* one of the structures defined in the
-//// * generated_cuda_meta.h.
-//// * Params must be casted to the correct struct based on the cbid.
-//// * For instance if cbid = cuMemcpyDtoH_v2 then params must be casted to
-//// * (cuMemcpyDtoH_v2_params *)
-//// * */
+
+
 void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id);
+
+//static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
+//    if (hip_api_id < 1000)
+//        return hip_api_name(hip_api_id);
+//    else
+//        return
+//}
+
 
 void luthier_at_hsa_event(hsa_api_evt_args_t* cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id);
 
@@ -57,14 +51,14 @@ luthier_instruction_t* luthier_disassemble_kernel_object(uint64_t kernel_object,
 
 void luthier_instructions_handles_destroy(luthier_instruction_t* instrs, size_t size);
 
-// If the tool requires device code it needs to call this macro once
-// Managed variables force the HIP runtime to eagerly load Luthier modules statically so that Luthier can access it for
-// instrumentation
-// The __luthier_reserved symbol is how Luthier knows which module needs to be managed internally and which modules are
-// part of the instrumented application
+/**
+ * \brief If the tool is compiled with HIP device code it needs to call this macro once
+ * This macro will define a managed variable in the tool's code object
+ * Internally, Luthier looks for this variable to find the code objects that belong to the tool
+ */
 #define MARK_LUTHIER_DEVICE_MODULE __managed__ char __luthier_reserved = 0;
 
-#define LUTHIER_DECLARE_FUNC __device__ __noinline__ extern "C" void
+#define LUTHIER_DECLARE_FUNC __device__ __noinline__ extern "C"
 
 #define LUTHIER_EXPORT_FUNC(f)                         \
     extern "C" __global__ void __luthier_wrap__##f() { \
@@ -78,19 +72,12 @@ void luthier_instructions_handles_destroy(luthier_instruction_t* instrs, size_t 
 /**
  * Returns the HSA packet type of the AQL packet
  */
-static hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_packet) {
+hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_packet) {
     return static_cast<hsa_packet_type_t>((aql_packet.packet.header >> HSA_PACKET_HEADER_TYPE)
                                           & ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
 }
 
-//static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
-//    if (hip_api_id < 1000)
-//        return hip_api_name(hip_api_id);
-//    else
-//        return
-//}
 
-//void print_instructions(const std::vector<Inst>& isa);
 ////
 /////*********************************************************************
 //// *
@@ -270,6 +257,7 @@ void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t* dispatch_p
 ////void nvbit_unset_tool_pthread(pthread_t tool_pthread);
 ////
 }
+// NOLINTEND
 #endif
 
 #endif

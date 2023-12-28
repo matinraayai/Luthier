@@ -15,7 +15,7 @@ MARK_LUTHIER_DEVICE_MODULE
 
 __managed__ int globalCounter = 20;
 
-__device__ __noinline__ extern "C" void instrumentation_kernel(int* counter) {
+LUTHIER_DECLARE_FUNC void instrumentation_kernel(int* counter) {
     //    int i = 0;
     //    i = i + 4;
     //    i = i * 40;
