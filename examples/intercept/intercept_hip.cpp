@@ -21,6 +21,7 @@ void luthier_at_term() {
 
 
 void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id) {
+    if (hip_api_id == 125) luthier_enable_hip_all_callback();
     fprintf(stdout, "<call to %d (%s)\t on %s> ",
             hip_api_id,
             hip_api_name(hip_api_id),

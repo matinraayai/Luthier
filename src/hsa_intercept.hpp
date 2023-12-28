@@ -66,6 +66,17 @@ class HsaInterceptor {
         enabledOps_.erase(op);
     }
 
+    void enableAllCallback() {
+        for (int i = static_cast<int>(HSA_API_ID_FIRST); i < static_cast<int>(HSA_API_ID_LAST); ++i) {
+            hsa_api_evt_id_t currCallback =static_cast<hsa_api_evt_id_t>(i);
+            enableCallback(currCallback);
+        }
+    }
+
+    void disableAllCallback() {
+        enabledOps_.clear();
+    }
+
     [[nodiscard]] const inline std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> &getUserCallback() const {
         return userCallback_;
     }

@@ -64,6 +64,19 @@ class HipInterceptor {
         enabledOps_.erase(op);
     }
 
+    void enableAllCallback() {
+        for (int i = static_cast<int>(HIP_API_ID_FIRST); i <= static_cast<int>(HIP_API_ID_LAST); ++i) {
+            enableCallback(i);
+        }
+        for (int i = static_cast<int>(HIP_PRIVATE_API_ID_FIRST); i <= static_cast<int>(HIP_PRIVATE_API_ID_LAST); ++i) {
+            enableCallback(i);
+        }
+    }
+
+    void disableAllCallback() {
+        enabledOps_.clear();
+    }
+
     void *GetHipFunction(const char *symbol) const {
         assert(IsEnabled());
 

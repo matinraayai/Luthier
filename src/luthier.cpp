@@ -138,6 +138,14 @@ void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op) {
     luthier::HsaInterceptor::instance().disableCallback(op);
 }
 
+void luthier_enable_hsa_all_callback() {
+    luthier::HsaInterceptor::instance().enableAllCallback();
+}
+
+void luthier_disable_hsa_all_callback() {
+    luthier::HsaInterceptor::instance().disableAllCallback();
+}
+
 
 void luthier_enable_hip_op_callback(uint32_t op) {
     luthier::HipInterceptor::Instance().enableCallback(op);
@@ -145,6 +153,14 @@ void luthier_enable_hip_op_callback(uint32_t op) {
 
 void luthier_disable_hip_op_callback(uint32_t op) {
     luthier::HipInterceptor::Instance().disableCallback(op);
+}
+
+void luthier_enable_hip_all_callback() {
+    luthier::HipInterceptor::Instance().enableAllCallback();
+}
+
+void luthier_disable_hip_all_callback() {
+    luthier::HipInterceptor::Instance().disableAllCallback();
 }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
