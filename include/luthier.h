@@ -40,11 +40,18 @@ void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op);
 
 void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op);
 
+void luthier_enable_hsa_all_callback();
+
+void luthier_disable_hsa_all_callback();
+
 
 void luthier_enable_hip_op_callback(uint32_t op);
 
 void luthier_disable_hip_op_callback(uint32_t op);
 
+void luthier_enable_hip_all_callback();
+
+void luthier_disable_hip_all_callback();
 /**
  * Returns the original HSA API table to avoid re-instrumentation of HSA functions.
  * @return saved HSA API Table
