@@ -332,9 +332,9 @@ enum hsa_api_evt_id_t {
     HSA_API_ID_hsa_ext_image_get_capability_with_layout = 183,
     HSA_API_ID_hsa_ext_image_data_get_info_with_layout = 184,
     HSA_API_ID_hsa_ext_image_create_with_layout = 185,
+    HSA_API_ID_LAST,
     /* HSA Events */
     HSA_EVT_ID_hsa_queue_packet_submit = 1000,
-    HSA_API_ID_LAST
 };
 
 typedef union {
