@@ -16,8 +16,8 @@ add_library(luthier SHARED
         include/luthier_types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
         src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h include/error.h
         src/disassembler.hpp src/disassembler.cpp src/code_object_manipulation.hpp src/code_object_manipulation.cpp
-        src/context_manager.hpp src/code_generator.hpp src/code_generator.cpp include/instr.hpp
-        src/instr.cpp src/log.hpp
+        src/context_manager.hpp src/code_generator.hpp src/code_generator.cpp
+        src/log.hpp
         src/instrumentation_function.hpp
         src/hsa_executable.hpp
         src/hsa_executable.cpp

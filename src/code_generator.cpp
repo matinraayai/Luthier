@@ -36,15 +36,6 @@
 #include "llvm/Support/SourceMgr.h"
 #include "log.hpp"
 
-struct TargetIdentifier {
-    llvm::StringRef Arch;
-    llvm::StringRef Vendor;
-    llvm::StringRef OS;
-    llvm::StringRef Environ;
-    llvm::StringRef Processor;
-    llvm::SmallVector<llvm::StringRef, 2> Features;
-};
-
 std::string getSymbolName(hsa_executable_symbol_t symbol) {
     const auto &coreHsaApiTable = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
     uint32_t nameSize;
@@ -304,6 +295,7 @@ luthier::CodeGenerator::CodeGenerator() {
 hsa_status_t registerSymbolWithCodeObjectManager(const luthier::hsa::Executable &executable,
                                                  const luthier::hsa::ExecutableSymbol &originalSymbol,
                                                  const luthier::hsa::GpuAgent &agent) {
+    fmt::println("Symbol Handle: {:#x}", originalSymbol.hsaHandle());
     auto originalSymbolName = originalSymbol.getName();
     auto originalKd = originalSymbol.getKernelDescriptor();
     for (const auto &s: executable.getSymbols(agent)) {

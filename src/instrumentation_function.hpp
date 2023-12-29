@@ -1,6 +1,8 @@
 #ifndef INSTRUMENTATION_FUNCTION_HPP
 #define INSTRUMENTATION_FUNCTION_HPP
 
+#include <utility>
+
 #include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "luthier_types.h"
@@ -16,24 +18,20 @@ class InstrumentationFunction {
     const hsa::ExecutableSymbol instrumentationKernel_;
 
  public:
-    InstrumentationFunction(const hsa::ExecutableSymbol &instrumentationFunction,
-                            const hsa::ExecutableSymbol &instrumentationKernel) : instrumentationFunction_(instrumentationFunction),
-                                                                                  instrumentationKernel_(instrumentationKernel) {
+    InstrumentationFunction(hsa::ExecutableSymbol instrumentationFunction, hsa::ExecutableSymbol instrumentationKernel)
+        : instrumentationFunction_(std::move(instrumentationFunction)),
+          instrumentationKernel_(std::move(instrumentationKernel)) {
         assert(instrumentationKernel_.getAgent() == instrumentationFunction_.getAgent());
         assert(instrumentationKernel_.getExecutable() == instrumentationFunction_.getExecutable());
     };
 
-    [[nodiscard]] hsa::GpuAgent getAgent() const {
-        return instrumentationFunction_.getAgent();
-    }
+    [[nodiscard]] hsa::GpuAgent getAgent() const { return instrumentationFunction_.getAgent(); }
 
-    [[nodiscard]] hsa::Executable getExecutable() const {
-        return instrumentationFunction_.getExecutable();
-    }
+    [[nodiscard]] hsa::Executable getExecutable() const { return instrumentationFunction_.getExecutable(); }
 
-    [[nodiscard]] const hsa::ExecutableSymbol& getInstrumentationFunction() const { return instrumentationFunction_;};
+    [[nodiscard]] const hsa::ExecutableSymbol& getInstrumentationFunction() const { return instrumentationFunction_; };
 
-    [[nodiscard]] const hsa::ExecutableSymbol& getInstrumentationKernel() const { return instrumentationKernel_;};
+    [[nodiscard]] const hsa::ExecutableSymbol& getInstrumentationKernel() const { return instrumentationKernel_; };
 };
 }// namespace luthier
 

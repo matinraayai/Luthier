@@ -14,18 +14,6 @@
 
 namespace luthier {
 
-hsa::Instr *Disassembler::createInstr(llvm::MCInst inst, luthier::hsa::ExecutableSymbol symbol) {
-    auto instr = new hsa::Instr(std::move(inst), std::move(symbol));
-    instrHandles_.insert(instr);
-    return instr;
-}
-
-void luthier::Disassembler::destroyInstr(luthier::hsa::Instr *instr) {
-    assert(instrHandles_.contains(instr));
-    instrHandles_.erase(instr);
-    delete instr;
-}
-
 const Disassembler::DisassemblyInfo &luthier::Disassembler::getDisassemblyInfo(const luthier::hsa::Isa &isa) {
     if (!disassemblyInfoMap_.contains(isa)) {
         const auto &targetInfo = ContextManager::instance().getLLVMTargetInfo(isa);
@@ -61,6 +49,7 @@ std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, luthier
             != llvm::MCDisassembler::Success) {
             break;
         }
+        inst.setLoc(llvm::SMLoc::getFromPointer(reinterpret_cast<const char *>(currentAddress)));
 
         std::string instStr;
         llvm::raw_string_ostream instStream(instStr);
@@ -76,23 +65,25 @@ std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, luthier
     return instructions;
 }
 
-std::vector<hsa::Instr *> luthier::Disassembler::disassemble(const hsa::ExecutableSymbol &symbol,
-                                                             std::optional<size_t> size) {
-    const auto symbolType = symbol.getType();
-    assert(symbolType != HSA_SYMBOL_KIND_VARIABLE);
-    const auto isa = symbol.getAgent().getIsa()[0];
+const std::vector<hsa::Instr>* luthier::Disassembler::disassemble(const hsa::ExecutableSymbol &symbol,
+                                                                                std::optional<size_t> size) {
+    if (!disassembledSymbols_.contains(symbol)) {
+        const auto symbolType = symbol.getType();
+        assert(symbolType != HSA_SYMBOL_KIND_VARIABLE);
+        const auto isa = symbol.getAgent().getIsa()[0];
 
-    luthier::byte_string_view code =
-        symbol.getType() == HSA_SYMBOL_KIND_KERNEL ? symbol.getKernelCode() : symbol.getIndirectFunctionCode();
+        luthier::byte_string_view code =
+            symbol.getType() == HSA_SYMBOL_KIND_KERNEL ? symbol.getKernelCode() : symbol.getIndirectFunctionCode();
 
-    if (size.has_value()) code = code.substr(0, *size > code.size() ? code.size() : *size);
+        if (size.has_value()) code = code.substr(0, *size > code.size() ? code.size() : *size);
 
-    std::vector<llvm::MCInst> instructions = disassemble(isa, code);
-    std::vector<hsa::Instr *> out;
-    out.reserve(instructions.size());
-    for (const auto &inst: instructions) { out.push_back(createInstr(inst, symbol)); }
-
-    return out;
+        std::vector<llvm::MCInst> instructions = disassemble(isa, code);
+        disassembledSymbols_.insert({symbol, std::make_unique<std::vector<hsa::Instr>>()});
+        auto &out = disassembledSymbols_.at(symbol);
+        out->reserve(instructions.size());
+        for (const auto &inst: instructions) { out->push_back(hsa::Instr(inst, symbol)); }
+    }
+    return disassembledSymbols_.at(symbol).get();
 }
 
 std::vector<llvm::MCInst> luthier::Disassembler::disassemble(const code::SymbolView &symbol, const hsa::Isa &isa,
@@ -118,8 +109,7 @@ std::vector<llvm::MCInst> luthier::Disassembler::disassemble(const code::SymbolV
 
 luthier::Disassembler::~Disassembler() {
     disassemblyInfoMap_.clear();
-    for (auto inst: instrHandles_) { delete inst; }
-    instrHandles_.clear();
+    disassembledSymbols_.clear();
 }
 
 }// namespace luthier

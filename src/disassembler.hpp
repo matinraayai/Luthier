@@ -48,9 +48,9 @@ class Disassembler {
 
     std::unordered_map<hsa::Isa, DisassemblyInfo> disassemblyInfoMap_;
 
-    std::unordered_set<hsa::Instr *> instrHandles_;
-
-    hsa::Instr *createInstr(llvm::MCInst inst, hsa::ExecutableSymbol symbol);
+    // The vectors have to be allocated as a smart pointer to stop it from calling its destructor prematurely
+    // The disassembler is in charge of destroying the disassembled symbols
+    std::unordered_map<hsa::ExecutableSymbol, std::unique_ptr<std::vector<hsa::Instr>>> disassembledSymbols_;
 
  public:
     Disassembler(const Disassembler &) = delete;
@@ -61,10 +61,8 @@ class Disassembler {
         return instance;
     }
 
-    void destroyInstr(hsa::Instr *instr);
-
-    std::vector<hsa::Instr *> disassemble(const hsa::ExecutableSymbol &symbol,
-                                          std::optional<size_t> size = std::nullopt);
+    const std::vector<hsa::Instr> *disassemble(const hsa::ExecutableSymbol &symbol,
+                                               std::optional<size_t> size = std::nullopt);
 
     //TODO: ISA has to be detected from the ELF, not passed manually
     std::vector<llvm::MCInst> disassemble(const code::SymbolView &symbol, const hsa::Isa &isa,

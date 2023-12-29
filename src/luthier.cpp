@@ -119,23 +119,16 @@ const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader() {
     return &luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
 }
 
-luthier_instruction_t *luthier_disassemble_kernel_object(uint64_t kernel_object, void *(*alloc_callback)(size_t size),
-                                                         size_t *size) {
+void luthier_disassemble_kernel_object(uint64_t kernel_object, size_t *size, luthier_instruction_t *instructions) {
     auto kdSymbol = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
         reinterpret_cast<const luthier::hsa::KernelDescriptor *>(kernel_object));
-    auto instructions = luthier::Disassembler::instance().disassemble(kdSymbol);
-    *size = instructions.size();
-    auto *out =
-        reinterpret_cast<luthier_instruction_t *>(alloc_callback(instructions.size() * sizeof(luthier_instruction_t)));
-    assert(out);
-    for (int i = 0; i < *size; i++) { out[i] = luthier::hsa::Instr::toHandle(instructions[i]); }
-    return out;
-}
-
-void luthier_instructions_handles_destroy(luthier_instruction_t *instrs, size_t size) {
-    for (int i = 0; i < size; i++) {
-        auto inst = luthier::hsa::Instr::fromHandle(instrs[i]);
-        luthier::Disassembler::instance().destroyInstr(inst);
+    auto hsaInstructions = luthier::Disassembler::instance().disassemble(kdSymbol);
+    if (instructions == nullptr) {
+        *size = hsaInstructions->size();
+    } else {
+        for (unsigned int i = 0; i < *size; i++) {
+            instructions[i] = luthier::hsa::Instr::toHandle(&(*hsaInstructions)[i]);
+        }
     }
 }
 

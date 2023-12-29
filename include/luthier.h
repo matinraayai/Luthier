@@ -46,10 +46,20 @@ const hsa_ven_amd_loader_1_03_pfn_s* luthier_get_hsa_ven_amd_loader();
 
 void* luthier_get_hip_function(const char* funcName);
 
-luthier_instruction_t* luthier_disassemble_kernel_object(uint64_t kernel_object, void* (*alloc_callback)(size_t size),
-                                                         size_t* size);
-
-void luthier_instructions_handles_destroy(luthier_instruction_t* instrs, size_t size);
+/**
+ * Disassembles the passed kernel object. If instructions is NULL, then the number of instructions disassembled
+ * is returned. If size is equal to n, then the first n-instruction handles are copied over to the instructions pointer.
+ * The user is responsible for allocating the instructions pointer.
+ * Disassembly only occurs when this function is called for the first time to query the number of instructions in the
+ * kernel object. Subsequent calls will use a result cached internally.
+ * @param [in] kernel_object the kernel object to be disassembled
+ * @param [in, out] size if instructions is NULL, returns the number of instructions in the kernel object, else it will
+ * be the number of instructions copied over
+ * @param [in, out] instructions if NULL, queries the number of instructions in the kernel object, else it will contain
+ * the handles to the first "size" instructions in the kernel object. The user is responsible for allocating the
+ * underlying memory for this pointer
+ */
+void luthier_disassemble_kernel_object(uint64_t kernel_object, size_t* size, luthier_instruction_t* instructions);
 
 /**
  * \brief If the tool is compiled with HIP device code it needs to call this macro once

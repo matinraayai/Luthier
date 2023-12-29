@@ -51,6 +51,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
                     if (functions_.contains(instKerShadowPtr)) {
                         functions_.at(instKerShadowPtr).insert({a, {functionSymbol, kernelSymbol}});
                     } else {
+                        fmt::println("Function: {:#x}", reinterpret_cast<luthier_address_t>(instKerShadowPtr));
                         functions_.insert({instKerShadowPtr, {{a, {functionSymbol, kernelSymbol}}}});
                     }
                 }

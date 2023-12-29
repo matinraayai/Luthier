@@ -88,6 +88,12 @@ constexpr const char *LUTHIER_DEVICE_FUNCTION_WRAP = "__luthier_wrap__";
 
 constexpr const char *LUTHIER_RESERVED_MANAGED_VAR = "__luthier_reserved";
 
+enum luthier_status_t {
+    LUTHIER_STATUS_SUCCESS = 0,
+    LUTHIER_STATUS_ERROR = 1,
+    LUTHIER_STATUS_INVALID_ARGUMENT = 2
+};
+
 enum luthier_api_evt_phase_t {
     LUTHIER_API_EVT_PHASE_ENTER,
     LUTHIER_API_EVT_PHASE_EXIT
