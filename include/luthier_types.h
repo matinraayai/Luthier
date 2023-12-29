@@ -125,7 +125,7 @@ struct luthier_hsa_aql_packet_t {
 };
 
 enum hsa_api_evt_id_t {
-    HSA_API_ID_FIRST,
+    HSA_API_ID_FIRST = 0,
     /* block: CoreApi API */
     HSA_API_ID_hsa_init = 0,
     HSA_API_ID_hsa_shut_down = 1,
@@ -317,9 +317,12 @@ enum hsa_api_evt_id_t {
     HSA_API_ID_hsa_ext_image_get_capability_with_layout = 183,
     HSA_API_ID_hsa_ext_image_data_get_info_with_layout = 184,
     HSA_API_ID_hsa_ext_image_create_with_layout = 185,
-    HSA_API_ID_LAST,
+    HSA_API_ID_LAST = hsa_api_evt_id_t::HSA_API_ID_hsa_ext_image_create_with_layout,
+
     /* HSA Events */
+    HSA_EVT_ID_FIRST = 1000,
     HSA_EVT_ID_hsa_queue_packet_submit = 1000,
+    HSA_EVT_ID_LAST = HSA_EVT_ID_hsa_queue_packet_submit
 };
 
 typedef union {
