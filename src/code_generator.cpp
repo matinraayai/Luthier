@@ -295,46 +295,15 @@ luthier::CodeGenerator::CodeGenerator() {
 hsa_status_t registerSymbolWithCodeObjectManager(const luthier::hsa::Executable &executable,
                                                  const luthier::hsa::ExecutableSymbol &originalSymbol,
                                                  const luthier::hsa::GpuAgent &agent) {
-    fmt::println("Symbol Handle: {:#x}", originalSymbol.hsaHandle());
     auto originalSymbolName = originalSymbol.getName();
-    auto originalKd = originalSymbol.getKernelDescriptor();
-    for (const auto &s: executable.getSymbols(agent)) {
-        auto sName = s.getName();
-        auto sType = s.getType();
-        fmt::println(stdout, "Symbol name: {}.", sName);
-        fmt::println(stdout, "Symbol type: {}.", static_cast<int>(sType));
-
-        if (sType == HSA_SYMBOL_KIND_VARIABLE) fmt::println(stdout, "Variable Location: {:#x}", s.getVariableAddress());
-        else if (sType == HSA_SYMBOL_KIND_KERNEL && sName == originalSymbolName) {
-            auto sKd = s.getKernelDescriptor();
-            luthier::CodeObjectManager::instance().registerInstrumentedKernel(originalSymbol, s);
-
-            //            std::vector<luthier::Instr> instList = luthier::Disassembler::instance().disassemble(sKd);
-            //            std::cout << "Disassembly of the KO: " << std::endl;
-            //            for (const auto &i: instList) {
-            //                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
-            //                if (i.getInstr().find("s_add_u32") != std::string::npos) {
-            //                    //                    std::string out = assemble("s_add_u32 s2 s100 0", agent);
-            //                    //                    std::memcpy(reinterpret_cast<void*>(i.getDeviceAddress()), out.data(), out.size());
-            //                }
-            //            }
-            //            luthier::co_manip::printRSR1(sKd);
-            //            luthier::co_manip::printRSR2(sKd);
-            //            luthier::co_manip::printCodeProperties(sKd);
-            //            const auto &amdTable = luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
-            //            LUTHIER_HSA_CHECK(amdTable.hsa_ven_amd_loader_query_host_address(reinterpret_cast<const void *>(kernelObject),
-            //                                                                             reinterpret_cast<const void **>(&kernelDescriptor)));
-            //            auto entry_point = reinterpret_cast<luthier_address_t>(kernelObject) + kernelDescriptor->kernel_code_entry_byte_offset;
-            //
-            //            //            instList = luthier::Disassembler::Instance().disassemble(agent, entry_point - 0x14c, 0x500);
-            //            instList = luthier::Disassembler::instance().disassemble(kernelObject);
-            //            std::cout << "Disassembly of the KO: " << std::endl;
-            //            for (const auto &i: instList) {
-            //                std::cout << std::hex << i.getDeviceAddress() << std::dec << ": " << i.getInstr() << std::endl;
-            //            }
-        }
+    auto instrumentedSymbol = executable.getSymbolByName(agent, originalSymbolName);
+    if (!instrumentedSymbol.has_value())
+        return HSA_STATUS_ERROR_INVALID_SYMBOL_NAME;
+    else {
+        assert(instrumentedSymbol->getType() == HSA_SYMBOL_KIND_KERNEL);
+        luthier::CodeObjectManager::instance().registerInstrumentedKernel(originalSymbol, *instrumentedSymbol);
+        return HSA_STATUS_SUCCESS;
     }
-    return HSA_STATUS_SUCCESS;
 }
 
 kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target,
@@ -355,30 +324,21 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *device_fu
     auto storage = targetExecutable.getLoadedCodeObjects()[0].getStorageMemory();
     auto instrumentedElfView = code::ElfView::makeView(storage);
 
-    auto newElfio = co_manip::createAMDGPUElf(instrumentedElfView->getElfIo(), agent);
-
     // Find the symbol that requires instrumentation.
-    bool foundKDSymbol{false};
-    for (unsigned int i = 0; i < instrumentedElfView->getNumSymbols() && !foundKDSymbol; i++) {
-        code::SymbolView info = *instrumentedElfView->getSymbol(i);
-        if (info.getName() == symbolName) foundKDSymbol = true;
-    }
-    if (not foundKDSymbol)
+    std::optional<code::SymbolView> storageSymbol = instrumentedElfView->getSymbol(symbolName);
+    if (!storageSymbol.has_value())
         throw std::runtime_error(fmt::format("Failed to find symbol {} in the copied executable", symbolName));
-    //    fmt::println("SGPR granularity: {}", luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getSGPRAllocGranulefromComgrMeta());
     auto meta =
         code::GetAttrCodePropMetadata(instrumentedElfView, instrumentedElfView->getKernelMetaDataMap(symbolName));
     fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
-    auto myReloc = emptyRelocatableMap_[agent];
-    auto out = compileRelocatableToExecutable(myReloc, agent);
 
     auto coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
     hsa_code_object_reader_t reader;
     hsa_executable_t executable;
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
                                                              nullptr, &executable));
-    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(out.data(), out.size(), &reader));
+    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(storage.data(), storage.size(), &reader));
     LUTHIER_HSA_CHECK(
         coreTable.hsa_executable_load_agent_code_object_fn(executable, agent.asHsaType(), reader, nullptr, nullptr));
     LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
