@@ -11,7 +11,7 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* cb_data, luthier_api_evt_phase_t p
 
 void luthier_at_init() {
     std::cout << "Calling luthier_enable_hip_op_callback" << std::endl;
-    luthier_enable_hip_op_callback(125);
+    luthier_enable_hip_op_callback(108);
 }
 
 
@@ -21,7 +21,7 @@ void luthier_at_term() {
 
 
 void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id) {
-    if (hip_api_id == 125) luthier_enable_hip_all_callback();
+    //if (hip_api_id == 108) luthier_enable_hip_all_callback();
     fprintf(stdout, "<call to %d (%s)\t on %s> ",
             hip_api_id,
             hip_api_name(hip_api_id),

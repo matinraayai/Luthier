@@ -46,8 +46,12 @@ class HsaInterceptor {
         return amdTable_;
     }
 
-    [[nodiscard]] const std::unordered_set<hsa_api_evt_id_t> &getEnabledOps() const {
-        return enabledOps_;
+    [[nodiscard]] bool IsEnabledOps(hsa_api_evt_id_t op) const {
+        return enabledOps_.find(op) != enabledOps_.end();
+    }
+
+    [[nodiscard]] bool IsEnabledOpsEmpty() const {
+        return enabledOps_.empty();
     }
 
     void setUserCallback(const std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> &callback) {
@@ -67,7 +71,11 @@ class HsaInterceptor {
     }
 
     void enableAllCallback() {
-        for (int i = static_cast<int>(HSA_API_ID_FIRST); i < static_cast<int>(HSA_API_ID_LAST); ++i) {
+        for (int i = static_cast<int>(HSA_API_ID_FIRST); i <= static_cast<int>(HSA_API_ID_LAST); ++i) {
+            hsa_api_evt_id_t currCallback =static_cast<hsa_api_evt_id_t>(i);
+            enableCallback(currCallback);
+        }
+        for (int i = static_cast<int>(HSA_EVT_ID_FIRST); i <= static_cast<int>(HSA_EVT_ID_LAST); ++i) {
             hsa_api_evt_id_t currCallback =static_cast<hsa_api_evt_id_t>(i);
             enableCallback(currCallback);
         }

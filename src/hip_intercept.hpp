@@ -39,8 +39,12 @@ class HipInterceptor {
         return userCallback_;
     }
 
-    [[nodiscard]] const std::unordered_set<uint32_t> &getEnabledOps() const {
-        return enabledOps_;
+    [[nodiscard]] bool IsEnabledOps(uint32_t op) const {
+        return enabledOps_.find(op) != enabledOps_.end();
+    }
+
+    [[nodiscard]] bool IsEnabledOpsEmpty() const {
+        return enabledOps_.empty();
     }
 
     void SetUserCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &callback) {
@@ -55,12 +59,16 @@ class HipInterceptor {
     }
 
     void enableCallback(uint32_t op) {
-        //if (op < 0 || op > 192) throw std::invalid_argument("Op not in range [0, 192]");
+        if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
+              || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
+            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
         enabledOps_.insert(op);
     }
 
     void disableCallback(uint32_t op) {
-        //if (op < 0 || op > 192) throw std::invalid_argument("Op not in range [0, 192]");
+        if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
+              || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
+            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
         enabledOps_.erase(op);
     }
 

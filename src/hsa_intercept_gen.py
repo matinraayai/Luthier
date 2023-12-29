@@ -373,7 +373,7 @@ class ApiDescrParser:
                        f"\tauto apiId = HSA_API_ID_{call};\n" + \
                        "\tbool skipFunction{false};\n"
             actual_params = ", ".join([el for i, el in enumerate(struct["alst"])])
-            content += f'    if (!hsaInterceptor.getEnabledOps().empty() && hsaInterceptor.getEnabledOps().find(apiId) == hsaInterceptor.getEnabledOps().end()) return hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn({actual_params});\n'
+            content += f'    if (!hsaInterceptor.IsEnabledOpsEmpty() && !hsaInterceptor.IsEnabledOps(apiId)) return hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn({actual_params});\n'
             content += "\thsa_api_evt_args_t args;\n"
             for var in struct['alst']:
                 item = struct['astr'][var]
