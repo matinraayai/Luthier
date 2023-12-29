@@ -15,8 +15,8 @@ namespace hsa {
 class Instr {
  private:
     friend class luthier::Disassembler;
-    llvm::MCInst inst_;
-    ExecutableSymbol symbol_;
+    const llvm::MCInst inst_;
+    const ExecutableSymbol symbol_;
 
     Instr(llvm::MCInst inst, hsa::ExecutableSymbol symbol);
 
@@ -26,7 +26,12 @@ class Instr {
     static luthier_instruction_t toHandle(Instr* instr) {
         return {reinterpret_cast<decltype(luthier_instruction_t::handle)>(instr)};
     }
-    static Instr* fromHandle(luthier_instruction_t instr) { return reinterpret_cast<Instr*>(instr.handle); }
+
+    static luthier_instruction_t toHandle(const Instr* instr) {
+        return {reinterpret_cast<const decltype(luthier_instruction_t::handle)>(instr)};
+    }
+
+    static Instr* fromHandle(luthier_instruction_t instr) { return reinterpret_cast<Instr*>(instr.handle);}
 
     [[nodiscard]] hsa::GpuAgent getAgent() const;
 
