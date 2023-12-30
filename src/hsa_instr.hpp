@@ -38,6 +38,8 @@ class Instr {
     [[nodiscard]] hsa::Executable getExecutable() const;
 
     [[nodiscard]] hsa::ExecutableSymbol getExecutableSymbol() const;
+
+    [[nodiscard]] llvm::MCInst getInstr() const;
 };
 }// namespace hsa
 }// namespace luthier

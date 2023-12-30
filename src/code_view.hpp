@@ -2,6 +2,7 @@
 #define AMDGPU_ELF_HPP
 #include <amd_comgr/amd_comgr.h>
 #include <llvm/ADT/ArrayRef.h>
+
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <elfio/elfio.hpp>
@@ -12,8 +13,6 @@
 #include "luthier_types.h"
 #define CL_TARGET_OPENCL_VERSION 220
 #include <CL/cl.h>
-
-
 
 namespace boost_ios = boost::iostreams;
 
@@ -60,9 +59,7 @@ inline byte_stream_t byteStream(const byte_string_t &code) {
     return {view.begin(), view.end()};
 }
 
-inline byte_stream_t byteStream(const byte_string_view code) {
-    return {code.begin(), code.end()};
-}
+inline byte_stream_t byteStream(const byte_string_view code) { return {code.begin(), code.end()}; }
 
 inline std::string toString(const byte_string_t &code) {
     return {reinterpret_cast<const char *>(code.data()), code.size()};
@@ -74,13 +71,20 @@ inline std::string_view toStringView(byte_string_view code) {
 
 template<typename T>
 inline llvm::ArrayRef<T> toArrayRef(byte_string_view code) {
-    return {reinterpret_cast<const T*>(code.data()), code.size() * sizeof(T)};
+    return {reinterpret_cast<const T *>(code.data()), code.size() * sizeof(T)};
 }
 
 template<typename T>
-inline llvm::ArrayRef<T> toArrayRef(const byte_string_t& code) {
-    return {reinterpret_cast<const T*>(code.data()), code.size() * sizeof(T)};
+inline llvm::ArrayRef<T> toArrayRef(const byte_string_t &code) {
+    return {reinterpret_cast<const T *>(code.data()), code.size() * sizeof(T)};
 }
+
+/**
+ * Returns the demangled name of the input symbol name
+ * @param mangledName mangled name string
+ * @return demangled name as std::string
+ */
+std::string getDemangledName(const std::string &mangledName);
 
 typedef enum {
     LLVMIR = 0,
@@ -117,8 +121,6 @@ typedef enum {
     ELF_SECTIONS_LAST = RUNTIME_METADATA
 } ElfSections;
 
-
-
 typedef struct {
     ElfSections id;
     const char *name;
@@ -130,39 +132,38 @@ typedef struct {
 
 namespace {
 // Objects that are visible only within this module
-constexpr ElfSectionsDesc ElfSecDesc[] =
-    {
-        {LLVMIR, ".llvmir", 1, SHT_PROGBITS, 0, "ASIC-independent LLVM IR"},
-        {SOURCE, ".source", 1, SHT_PROGBITS, 0, "OpenCL source"},
-        {ILTEXT, ".amdil", 1, SHT_PROGBITS, 0, "AMD IL text"},
-        {ASTEXT, ".astext", 1, SHT_PROGBITS, 0, "X86 assembly text"},
-        {CAL, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "AMD CalImage"},
-        {DLL, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 dll"},
-        {STRTAB, ".strtab", 1, SHT_STRTAB, SHF_STRINGS, "String table"},
-        {SYMTAB, ".symtab", sizeof(Elf_Xword), SHT_SYMTAB, 0, "Symbol table"},
-        {RODATA, ".rodata", 1, SHT_PROGBITS, SHF_ALLOC, "Read-only data"},
-        {SHSTRTAB, ".shstrtab", 1, SHT_STRTAB, SHF_STRINGS, "Section names"},
-        {NOTES, ".note", 1, SHT_NOTE, 0, "used by loader for notes"},
-        {COMMENT, ".comment", 1, SHT_PROGBITS, 0, "Version string"},
-        {ILDEBUG, ".debugil", 1, SHT_PROGBITS, 0, "AMD Debug IL"},
-        {DEBUG_INFO, ".debug_info", 1, SHT_PROGBITS, 0, "Dwarf debug info"},
-        {DEBUG_ABBREV, ".debug_abbrev", 1, SHT_PROGBITS, 0, "Dwarf debug abbrev"},
-        {DEBUG_LINE, ".debug_line", 1, SHT_PROGBITS, 0, "Dwarf debug line"},
-        {DEBUG_PUBNAMES, ".debug_pubnames", 1, SHT_PROGBITS, 0, "Dwarf debug pubnames"},
-        {DEBUG_PUBTYPES, ".debug_pubtypes", 1, SHT_PROGBITS, 0, "Dwarf debug pubtypes"},
-        {DEBUG_LOC, ".debug_loc", 1, SHT_PROGBITS, 0, "Dwarf debug loc"},
-        {DEBUG_ARANGES, ".debug_aranges", 1, SHT_PROGBITS, 0, "Dwarf debug aranges"},
-        {DEBUG_RANGES, ".debug_ranges", 1, SHT_PROGBITS, 0, "Dwarf debug ranges"},
-        {DEBUG_MACINFO, ".debug_macinfo", 1, SHT_PROGBITS, 0, "Dwarf debug macinfo"},
-        {DEBUG_STR, ".debug_str", 1, SHT_PROGBITS, 0, "Dwarf debug str"},
-        {DEBUG_FRAME, ".debug_frame", 1, SHT_PROGBITS, 0, "Dwarf debug frame"},
-        {JITBINARY, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 JIT Binary"},
-        {CODEGEN, ".cg", 1, SHT_PROGBITS, 0, "Target dependent IL"},
-        {TEXT, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "Device specific ISA"},
-        {INTERNAL, ".internal", 1, SHT_PROGBITS, 0, "Internal usage"},
-        {SPIR, ".spir", 1, SHT_PROGBITS, 0, "Vendor/Device-independent LLVM IR"},
-        {SPIRV, ".spirv", 1, SHT_PROGBITS, 0, "SPIR-V Binary"},
-        {RUNTIME_METADATA, ".AMDGPU.runtime_metadata", 1, SHT_PROGBITS, 0, "AMDGPU runtime metadata"},
+constexpr ElfSectionsDesc ElfSecDesc[] = {
+    {LLVMIR, ".llvmir", 1, SHT_PROGBITS, 0, "ASIC-independent LLVM IR"},
+    {SOURCE, ".source", 1, SHT_PROGBITS, 0, "OpenCL source"},
+    {ILTEXT, ".amdil", 1, SHT_PROGBITS, 0, "AMD IL text"},
+    {ASTEXT, ".astext", 1, SHT_PROGBITS, 0, "X86 assembly text"},
+    {CAL, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "AMD CalImage"},
+    {DLL, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 dll"},
+    {STRTAB, ".strtab", 1, SHT_STRTAB, SHF_STRINGS, "String table"},
+    {SYMTAB, ".symtab", sizeof(Elf_Xword), SHT_SYMTAB, 0, "Symbol table"},
+    {RODATA, ".rodata", 1, SHT_PROGBITS, SHF_ALLOC, "Read-only data"},
+    {SHSTRTAB, ".shstrtab", 1, SHT_STRTAB, SHF_STRINGS, "Section names"},
+    {NOTES, ".note", 1, SHT_NOTE, 0, "used by loader for notes"},
+    {COMMENT, ".comment", 1, SHT_PROGBITS, 0, "Version string"},
+    {ILDEBUG, ".debugil", 1, SHT_PROGBITS, 0, "AMD Debug IL"},
+    {DEBUG_INFO, ".debug_info", 1, SHT_PROGBITS, 0, "Dwarf debug info"},
+    {DEBUG_ABBREV, ".debug_abbrev", 1, SHT_PROGBITS, 0, "Dwarf debug abbrev"},
+    {DEBUG_LINE, ".debug_line", 1, SHT_PROGBITS, 0, "Dwarf debug line"},
+    {DEBUG_PUBNAMES, ".debug_pubnames", 1, SHT_PROGBITS, 0, "Dwarf debug pubnames"},
+    {DEBUG_PUBTYPES, ".debug_pubtypes", 1, SHT_PROGBITS, 0, "Dwarf debug pubtypes"},
+    {DEBUG_LOC, ".debug_loc", 1, SHT_PROGBITS, 0, "Dwarf debug loc"},
+    {DEBUG_ARANGES, ".debug_aranges", 1, SHT_PROGBITS, 0, "Dwarf debug aranges"},
+    {DEBUG_RANGES, ".debug_ranges", 1, SHT_PROGBITS, 0, "Dwarf debug ranges"},
+    {DEBUG_MACINFO, ".debug_macinfo", 1, SHT_PROGBITS, 0, "Dwarf debug macinfo"},
+    {DEBUG_STR, ".debug_str", 1, SHT_PROGBITS, 0, "Dwarf debug str"},
+    {DEBUG_FRAME, ".debug_frame", 1, SHT_PROGBITS, 0, "Dwarf debug frame"},
+    {JITBINARY, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "x86 JIT Binary"},
+    {CODEGEN, ".cg", 1, SHT_PROGBITS, 0, "Target dependent IL"},
+    {TEXT, ".text", 1, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR, "Device specific ISA"},
+    {INTERNAL, ".internal", 1, SHT_PROGBITS, 0, "Internal usage"},
+    {SPIR, ".spir", 1, SHT_PROGBITS, 0, "Vendor/Device-independent LLVM IR"},
+    {SPIRV, ".spirv", 1, SHT_PROGBITS, 0, "SPIR-V Binary"},
+    {RUNTIME_METADATA, ".AMDGPU.runtime_metadata", 1, SHT_PROGBITS, 0, "AMDGPU runtime metadata"},
 };
 }// namespace
 
@@ -264,11 +265,9 @@ struct KernelParameterDescriptor {
         InfoData() : allValues_(0) {}
     } info_;
 
-    cl_kernel_arg_address_qualifier addressQualifier_ =
-        CL_KERNEL_ARG_ADDRESS_PRIVATE;//!< Argument's address qualifier
-    cl_kernel_arg_access_qualifier accessQualifier_ =
-        CL_KERNEL_ARG_ACCESS_NONE;              //!< Argument's access qualifier
-    cl_kernel_arg_type_qualifier typeQualifier_;//!< Argument's type qualifier
+    cl_kernel_arg_address_qualifier addressQualifier_ = CL_KERNEL_ARG_ADDRESS_PRIVATE;//!< Argument's address qualifier
+    cl_kernel_arg_access_qualifier accessQualifier_ = CL_KERNEL_ARG_ACCESS_NONE;      //!< Argument's access qualifier
+    cl_kernel_arg_type_qualifier typeQualifier_;                                      //!< Argument's type qualifier
 
     std::string name_;    //!< The parameter's name in the source
     std::string typeName_;//!< Argument's type name
@@ -279,70 +278,60 @@ struct WorkGroupInfo {
     std::string symbolName_;
     std::vector<KernelParameterDescriptor> parameters_;
     std::vector<KernelParameterDescriptor> hiddenParameters_;
-    uint32_t kernargSegmentByteSize_ = 0;   //!< Size of kernel argument buffer
-    size_t size_;                     //!< kernel workgroup size
-    size_t compileSize_[3];           //!< kernel compiled workgroup size
-    uint64_t localMemSize_;           //!< amount of used local memory
-    size_t preferredSizeMultiple_;    //!< preferred multiple for launch
-    uint64_t privateMemSize_;         //!< amount of used private memory
-    size_t scratchRegs_;              //!< amount of used scratch registers
-    size_t wavefrontPerSIMD_;         //!< number of wavefronts per SIMD
-    size_t wavefrontSize_;            //!< number of threads per wavefront
-    size_t availableGPRs_;            //!< GPRs available to the program
-    size_t usedGPRs_;                 //!< GPRs used by the program
-    size_t availableSGPRs_;           //!< SGPRs available to the program
-    size_t usedSGPRs_;                //!< SGPRs used by the program
-    size_t availableVGPRs_;           //!< VGPRs available to the program
-    size_t usedVGPRs_;                //!< VGPRs used by the program
-    size_t availableLDSSize_;         //!< available LDS size
-    size_t usedLDSSize_;              //!< used LDS size
-    size_t availableStackSize_;       //!< available stack size
-    size_t usedStackSize_;            //!< used stack size
-    size_t compileSizeHint_[3];       //!< kernel compiled workgroup size hint
-    std::string compileVecTypeHint_;  //!< kernel compiled vector type hint
-    bool uniformWorkGroupSize_;       //!< uniform work group size option
-    size_t wavesPerSimdHint_;         //!< waves per simd hit
-    int maxOccupancyPerCu_;           //!< Max occupancy per compute unit in threads
-    size_t constMemSize_;           //!< size of user-allocated constant memory
-    bool isWGPMode_;                  //!< kernel compiled in WGP/cumode
+    uint32_t kernargSegmentByteSize_ = 0;//!< Size of kernel argument buffer
+    size_t size_;                        //!< kernel workgroup size
+    size_t compileSize_[3];              //!< kernel compiled workgroup size
+    uint64_t localMemSize_;              //!< amount of used local memory
+    size_t preferredSizeMultiple_;       //!< preferred multiple for launch
+    uint64_t privateMemSize_;            //!< amount of used private memory
+    size_t scratchRegs_;                 //!< amount of used scratch registers
+    size_t wavefrontPerSIMD_;            //!< number of wavefronts per SIMD
+    size_t wavefrontSize_;               //!< number of threads per wavefront
+    size_t availableGPRs_;               //!< GPRs available to the program
+    size_t usedGPRs_;                    //!< GPRs used by the program
+    size_t availableSGPRs_;              //!< SGPRs available to the program
+    size_t usedSGPRs_;                   //!< SGPRs used by the program
+    size_t availableVGPRs_;              //!< VGPRs available to the program
+    size_t usedVGPRs_;                   //!< VGPRs used by the program
+    size_t availableLDSSize_;            //!< available LDS size
+    size_t usedLDSSize_;                 //!< used LDS size
+    size_t availableStackSize_;          //!< available stack size
+    size_t usedStackSize_;               //!< used stack size
+    size_t compileSizeHint_[3];          //!< kernel compiled workgroup size hint
+    std::string compileVecTypeHint_;     //!< kernel compiled vector type hint
+    bool uniformWorkGroupSize_;          //!< uniform work group size option
+    size_t wavesPerSimdHint_;            //!< waves per simd hit
+    int maxOccupancyPerCu_;              //!< Max occupancy per compute unit in threads
+    size_t constMemSize_;                //!< size of user-allocated constant memory
+    bool isWGPMode_;                     //!< kernel compiled in WGP/cumode
     uint32_t workgroupGroupSegmentByteSize_ = 0;
     uint32_t workitemPrivateSegmentByteSize_ = 0;
     uint32_t kernargSegmentAlignment_ = 0;
-    std::string runtimeHandle_;       //!< Runtime handle for context loader
+    std::string runtimeHandle_;//!< Runtime handle for context loader
     bool isDynamicCallStack_;
     bool isXNACKEnabled_;
     size_t numSpilledSGPRs_;
     size_t numSpilledVGPRs_;
 
-    enum KernelKind{
-        Normal = 0,
-        Init   = 1,
-        Fini   = 2
-    };
+    enum KernelKind { Normal = 0, Init = 1, Fini = 2 };
 
-    KernelKind kind_{Normal};  //!< Kernel kind, is normal unless specified otherwise
+    KernelKind kind_{Normal};//!< Kernel kind, is normal unless specified otherwise
     union Flags {
         struct {
-            uint imageEna_ : 1;           //!< Kernel uses images
-            uint imageWriteEna_ : 1;      //!< Kernel uses image writes
-            uint dynamicParallelism_ : 1; //!< Dynamic parallelism enabled
-            uint internalKernel_ : 1;     //!< True: internal kernel
-            uint hsa_ : 1;                //!< HSA kernel
+            uint imageEna_ : 1;          //!< Kernel uses images
+            uint imageWriteEna_ : 1;     //!< Kernel uses image writes
+            uint dynamicParallelism_ : 1;//!< Dynamic parallelism enabled
+            uint internalKernel_ : 1;    //!< True: internal kernel
+            uint hsa_ : 1;               //!< HSA kernel
         };
         uint value_;
         Flags() : value_(0) {}
     } flags_;
 
-
-
-
-    void SetKernelKind(const std::string& kind) {
+    void SetKernelKind(const std::string &kind) {
         kind_ = (kind == "init") ? Init : ((kind == "fini") ? Fini : Normal);
     }
-
-
 };
-
 
 class SymbolView;
 
@@ -355,11 +344,9 @@ class ElfView : public std::enable_shared_from_this<ElfView> {
 
     ~ElfView() {
         if (kernelMetadataMap_.has_value()) {
-            for (auto &kMap: *kernelMetadataMap_)
-                amd_comgr_destroy_metadata(kMap.second);
+            for (auto &kMap: *kernelMetadataMap_) amd_comgr_destroy_metadata(kMap.second);
         }
-        if (kernelsMetadata_.has_value())
-            amd_comgr_destroy_metadata(*kernelsMetadata_);
+        if (kernelsMetadata_.has_value()) amd_comgr_destroy_metadata(*kernelsMetadata_);
     }
 
     static std::shared_ptr<ElfView> makeView(byte_string_view elf) {
@@ -373,16 +360,12 @@ class ElfView : public std::enable_shared_from_this<ElfView> {
         if (io_ == std::nullopt) {
             io_.emplace();
             // All elfio objects are loaded with lazy=true in ElfViewImpl to prevent additional memory copy
-            if (not io_->load(*dataStringStream_, true)) {
-                throw std::runtime_error("Failed to load the ELF file.");
-            }
+            if (not io_->load(*dataStringStream_, true)) { throw std::runtime_error("Failed to load the ELF file."); }
         }
         return io_.value();
     }
 
-    byte_string_view getView() const {
-        return data_;
-    }
+    byte_string_view getView() const { return data_; }
 
     unsigned int getNumSymbols();
 
@@ -391,24 +374,23 @@ class ElfView : public std::enable_shared_from_this<ElfView> {
     std::optional<SymbolView> getSymbol(const std::string &name);
 
     uint32_t getCodeObjectVersion() const {
-        if (not codeObjectVer_.has_value())
-            initializeComgrMetaData();
+        if (not codeObjectVer_.has_value()) initializeComgrMetaData();
         return codeObjectVer_.value();
     }
 
     amd_comgr_metadata_node_t getComgrMetaData() const {
-        if (not metadata_.has_value())
-            initializeComgrMetaData();
+        if (not metadata_.has_value()) initializeComgrMetaData();
         return metadata_.value();
     }
 
     amd_comgr_metadata_node_t getKernelMetaDataMap(const std::string &kernelSymbolName) const {
-        if (not kernelMetadataMap_.has_value())
-            initializeComgrMetaData();
+        if (not kernelMetadataMap_.has_value()) initializeComgrMetaData();
         auto kdInSymbolName = kernelSymbolName.find(".kd");
         auto key = kdInSymbolName != std::string::npos ? kernelSymbolName.substr(0, kdInSymbolName) : kernelSymbolName;
         return kernelMetadataMap_.value().at(key);
     }
+
+    WorkGroupInfo getAttrCodePropMetadata(amd_comgr_metadata_node_t kernelMetaNode);
 
  private:
     explicit ElfView(byte_string_view elf);
@@ -437,66 +419,44 @@ class SymbolView {
     ELFIO::Elf64_Addr value_;           //!   value of the symbol
     unsigned char type_;                //!   type of the symbol
 
-    SymbolView(const std::shared_ptr<ElfView>& elf,
-               const ELFIO::section *section,
-               std::string name,
-               byte_string_view data,
-               size_t value,
-               unsigned char type) : elf_(elf),
-                                     section_(section),
-                                     name_(std::move(name)),
-                                     data_(data),
-                                     value_(value),
-                                     type_(type){};
+    SymbolView(const std::shared_ptr<ElfView> &elf, const ELFIO::section *section, std::string name,
+               byte_string_view data, size_t value, unsigned char type)
+        : elf_(elf),
+          section_(section),
+          name_(std::move(name)),
+          data_(data),
+          value_(value),
+          type_(type){};
 
  public:
     SymbolView() = delete;
 
-    [[nodiscard]] std::shared_ptr<ElfView> getElfView() const {
-        return elf_;
-    };
+    [[nodiscard]] std::shared_ptr<ElfView> getElfView() const { return elf_; };
 
-    [[nodiscard]] const ELFIO::section *getSection() const {
-        return section_;
-    };
+    [[nodiscard]] const ELFIO::section *getSection() const { return section_; };
 
-    [[nodiscard]] const std::string &getName() const {
-        return name_;
-    };
+    [[nodiscard]] const std::string &getName() const { return name_; };
 
-    [[nodiscard]] luthier_address_t getAddress() const {
-        return reinterpret_cast<luthier_address_t>(data_.data());
-    }
+    [[nodiscard]] luthier_address_t getAddress() const { return reinterpret_cast<luthier_address_t>(data_.data()); }
 
-    [[nodiscard]] byte_string_view getView() const {
-        return data_;
-    }
+    [[nodiscard]] byte_string_view getView() const { return data_; }
 
-    [[nodiscard]] size_t getSize() const {
-        return data_.size();
-    }
+    [[nodiscard]] size_t getSize() const { return data_.size(); }
 
-    [[nodiscard]] ELFIO::Elf64_Addr getValue() const {
-        return value_;
-    };
+    [[nodiscard]] ELFIO::Elf64_Addr getValue() const { return value_; };
 
-    [[nodiscard]] unsigned char getType() const {
-        return type_;
-    };
+    [[nodiscard]] unsigned char getType() const { return type_; };
 
     [[nodiscard]] const std::byte *getData() const {
-        return reinterpret_cast<const std::byte *>(section_->get_data() + (size_t) value_ - (size_t) section_->get_offset());
+        return reinterpret_cast<const std::byte *>(section_->get_data() + (size_t) value_
+                                                   - (size_t) section_->get_offset());
+    }
+
+    [[nodiscard]] WorkGroupInfo getMetaData() const {
+        auto metadata = elf_->getKernelMetaDataMap(name_);
+        return elf_->getAttrCodePropMetadata(metadata);
     }
 };
-
-WorkGroupInfo GetAttrCodePropMetadata(const std::shared_ptr<ElfView>& elfView, amd_comgr_metadata_node_t kernelMetaNode);
-
-/**
- * Returns the demangled name of the input symbol name
- * @param mangledName mangled name string
- * @return demangled name as std::string
- */
-std::string getDemangledName(const std::string &mangledName);
 
 }// namespace luthier::code
 
