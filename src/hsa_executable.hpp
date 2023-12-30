@@ -6,9 +6,15 @@
 #include <optional>
 #include <vector>
 
+#include "code_view.hpp"
+#include "hsa_code_object_reader.hpp"
 #include "hsa_handle_type.hpp"
 
-namespace luthier::hsa {
+namespace luthier {
+
+class CodeObjectManager;
+
+namespace hsa {
 
 class GpuAgent;
 
@@ -17,15 +23,22 @@ class ExecutableSymbol;
 class LoadedCodeObject;
 
 class Executable : public HandleType<hsa_executable_t> {
- public:
-    explicit Executable(hsa_executable_t executable);
+    friend class luthier::CodeObjectManager;
 
+ private:
     static Executable create(
         hsa_profile_t profile = HSA_PROFILE_FULL,
         hsa_default_float_rounding_mode_t defaultFloatRoundingMode = HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
         const char *options = "");
 
-    hsa_status_t freeze(const char *options = "");
+    hsa::LoadedCodeObject loadCodeObject(hsa::CodeObjectReader reader, hsa::GpuAgent agent);
+
+    void freeze(const char *options = "");
+
+    void destroy();
+
+ public:
+    explicit Executable(hsa_executable_t executable);
 
     hsa_profile_t getProfile();
 
@@ -43,7 +56,9 @@ class Executable : public HandleType<hsa_executable_t> {
     [[nodiscard]] std::vector<hsa::GpuAgent> getAgents() const;
 };
 
-}// namespace luthier::hsa
+}// namespace hsa
+
+}// namespace luthier
 
 namespace std {
 

@@ -36,18 +36,6 @@
 #include "llvm/Support/SourceMgr.h"
 #include "log.hpp"
 
-std::string getSymbolName(hsa_executable_symbol_t symbol) {
-    const auto &coreHsaApiTable = luthier::HsaInterceptor::instance().getSavedHsaTables().core;
-    uint32_t nameSize;
-    LUTHIER_HSA_CHECK(
-        coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &nameSize));
-    std::string name;
-    name.resize(nameSize, '\0');
-    LUTHIER_HSA_CHECK(
-        coreHsaApiTable.hsa_executable_symbol_get_info_fn(symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, &name.front()));
-    return name;
-}
-
 luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::byte_string_t &code,
                                                                               const hsa::GpuAgent &agent) {
     amd_comgr_data_t dataIn;
@@ -292,20 +280,6 @@ luthier::CodeGenerator::CodeGenerator() {
     }
 }
 
-hsa_status_t registerSymbolWithCodeObjectManager(const luthier::hsa::Executable &executable,
-                                                 const luthier::hsa::ExecutableSymbol &originalSymbol,
-                                                 const luthier::hsa::GpuAgent &agent) {
-    auto originalSymbolName = originalSymbol.getName();
-    auto instrumentedSymbol = executable.getSymbolByName(agent, originalSymbolName);
-    if (!instrumentedSymbol.has_value())
-        return HSA_STATUS_ERROR_INVALID_SYMBOL_NAME;
-    else {
-        assert(instrumentedSymbol->getType() == HSA_SYMBOL_KIND_KERNEL);
-        luthier::CodeObjectManager::instance().registerInstrumentedKernel(originalSymbol, *instrumentedSymbol);
-        return HSA_STATUS_SUCCESS;
-    }
-}
-
 kernel_descriptor_t normalizeTargetAndInstrumentationKDs(kernel_descriptor_t *target,
                                                          kernel_descriptor_t *instrumentation) {}
 
@@ -314,9 +288,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *device_fu
     auto agent = instr.getAgent();
     auto &codeObjectManager = luthier::CodeObjectManager::instance();
     hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationFunction(device_func, agent);
-    const hsa::KernelDescriptor *instrumentationFuncKD =
-        codeObjectManager.getInstrumentationKernel(device_func, agent).getKernelDescriptor();
-    auto targetExecutable = hsa::Executable(instr.getExecutable());
+    auto targetExecutable = instr.getExecutable();
 
     auto symbol = instr.getExecutableSymbol();
     std::string symbolName = symbol.getName();
@@ -333,17 +305,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *device_fu
     fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
 
-    auto coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
-    hsa_code_object_reader_t reader;
-    hsa_executable_t executable;
-    LUTHIER_HSA_CHECK(coreTable.hsa_executable_create_alt_fn(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
-                                                             nullptr, &executable));
-    LUTHIER_HSA_CHECK(coreTable.hsa_code_object_reader_create_from_memory_fn(storage.data(), storage.size(), &reader));
-    LUTHIER_HSA_CHECK(
-        coreTable.hsa_executable_load_agent_code_object_fn(executable, agent.asHsaType(), reader, nullptr, nullptr));
-    LUTHIER_HSA_CHECK(coreTable.hsa_executable_freeze_fn(executable, nullptr));
-    LUTHIER_HSA_CHECK(
-        registerSymbolWithCodeObjectManager(hsa::Executable(executable), instr.getExecutableSymbol(), agent));
+    CodeObjectManager::instance().loadInstrumentedKernel(luthier::byte_string_t(storage), instr.getExecutableSymbol());
 }
 
 //{
