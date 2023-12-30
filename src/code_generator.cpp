@@ -300,8 +300,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *device_fu
     std::optional<code::SymbolView> storageSymbol = instrumentedElfView->getSymbol(symbolName);
     if (!storageSymbol.has_value())
         throw std::runtime_error(fmt::format("Failed to find symbol {} in the copied executable", symbolName));
-    auto meta =
-        code::GetAttrCodePropMetadata(instrumentedElfView, instrumentedElfView->getKernelMetaDataMap(symbolName));
+    auto meta = storageSymbol->getMetaData();
     fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
 

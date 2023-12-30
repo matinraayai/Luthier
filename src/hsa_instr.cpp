@@ -15,4 +15,6 @@ hsa::Executable Instr::getExecutable() const { return symbol_.getExecutable(); }
 hsa::GpuAgent Instr::getAgent() const { return symbol_.getAgent(); }
 
 hsa::ExecutableSymbol Instr::getExecutableSymbol() const { return symbol_; }
+
+llvm::MCInst Instr::getInstr() const { return inst_; }
 }// namespace luthier::hsa
