@@ -50,10 +50,6 @@ class HsaInterceptor {
         return enabledOps_.find(op) != enabledOps_.end();
     }
 
-    [[nodiscard]] bool IsEnabledOpsEmpty() const {
-        return enabledOps_.empty();
-    }
-
     void setUserCallback(const std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> &callback) {
         userCallback_ = callback;
     }

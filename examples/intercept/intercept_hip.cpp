@@ -11,7 +11,8 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* cb_data, luthier_api_evt_phase_t p
 
 void luthier_at_init() {
     std::cout << "Calling luthier_enable_hip_op_callback" << std::endl;
-    luthier_enable_hip_op_callback(108);
+    //luthier_enable_hip_op_callback(108);
+    luthier_enable_hip_all_callback();
 }
 
 

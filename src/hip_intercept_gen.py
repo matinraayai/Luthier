@@ -272,6 +272,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
 
         f.write("\t// Flag to skip calling the original function\n")
         f.write("\tbool skipFunction{false};\n")
+        f.write("\tbool enabledOp = hipInterceptor.IsEnabledOps(api_id);\n")
         f.write("\tstd::optional<std::any> out{std::nullopt};\n")
         if are_args_non_empty:
             f.write(f'\thip_{name}_api_args_t hip_func_args{{')
@@ -283,38 +284,9 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                     f.write(', ')
             f.write("};\n")
         callback_args = "static_cast<void*>(&hip_func_args)" if are_args_non_empty else "nullptr"
-
-        f.write('\tif (!hipInterceptor.IsEnabledOpsEmpty() && !hipInterceptor.IsEnabledOps(api_id)) {')
-        f.write(f'\n\t\tstatic auto hip_func = hipInterceptor.GetHipFunction<{output_type}(*)(')
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(arg_type)
-                if i != len(args) - 1:
-                    f.write(',')
-        f.write(f')>("{name}");\n')
-        f.write("\t\t")
-        if output_type != "void":
-            f.write(f"out = ")
-        f.write('hip_func(')
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(f"hip_func_args.{arg_name}")
-                if i != len(args) - 1:
-                    f.write(', ')
-        f.write(");\n\t")
-        f.write("\treturn")
-        if (output_type != "void"):
-            f.write(f' std::any_cast<{output_type}>(*out)')
-        f.write(";\n")
-        f.write("\t};\n")
-
-        f.write(f"\thipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, api_id);\n")
+        f.write(f"\tif (enabledOp) hipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, api_id);\n")
         f.write(f"\thipInternalCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, api_id, &skipFunction, &out);\n")
-        f.write("\tif (!skipFunction && !out.has_value()) {\n")
+        f.write("\tif ((!skipFunction && !out.has_value()) || !enabledOp) {\n")
         f.write(f"\t\tstatic auto hip_func = hipInterceptor.GetHipFunction<{output_type}(*)(")
         if are_args_non_empty:
             for i, arg in enumerate(args):
@@ -337,7 +309,7 @@ def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict
                     f.write(', ')
         f.write(");\n\t};")
         f.write("\t// Exit Callback\n")
-        f.write(f"\thipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_EXIT, api_id);\n")
+        f.write(f"\tif (enabledOp) hipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_EXIT, api_id);\n")
         f.write(f"\thipInternalCallback({callback_args}, LUTHIER_API_EVT_PHASE_EXIT, api_id, &skipFunction, &out);\n")
         if are_args_non_empty:
             f.write("\t// Copy the modified arguments back to the original arguments (if non-const)\n")
