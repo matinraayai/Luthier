@@ -43,10 +43,6 @@ class HipInterceptor {
         return enabledOps_.find(op) != enabledOps_.end();
     }
 
-    [[nodiscard]] bool IsEnabledOpsEmpty() const {
-        return enabledOps_.empty();
-    }
-
     void SetUserCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &callback) {
         userCallback_ = callback;
     }

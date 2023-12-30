@@ -373,20 +373,20 @@ class ApiDescrParser:
                        f"\tauto apiId = HSA_API_ID_{call};\n" + \
                        "\tbool skipFunction{false};\n"
             actual_params = ", ".join([el for i, el in enumerate(struct["alst"])])
-            content += f'    if (!hsaInterceptor.IsEnabledOpsEmpty() && !hsaInterceptor.IsEnabledOps(apiId)) return hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn({actual_params});\n'
+            content += f'    bool enabledOp = hsaInterceptor.IsEnabledOps(apiId);\n'
             content += "\thsa_api_evt_args_t args;\n"
             for var in struct['alst']:
                 item = struct['astr'][var]
                 content += f'\targs.api_args.{call}.{var} = {var};\n'
 
-            content += f'\thsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, '\
+            content += f'\tif (enabledOp) hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, '\
                        f'apiId);\n'
             content += f'\thsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, ' \
                        f'apiId, &skipFunction);\n'
 
             if ret_type != 'void':
                 content += f'\t{ret_type} out{{}};\n'
-            content += "\tif (!skipFunction) {\n"
+            content += "\tif (!skipFunction || !enabledOp) {\n"
             if ret_type != 'void':
                 content += f'\t\tout = '
             else:
@@ -399,15 +399,15 @@ class ApiDescrParser:
             content += ');\n\t}'
             content += '\n'
 
-            content += f'      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, ' \
+            content += f'    if (enabledOp) hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, ' \
                        f'HSA_API_ID_{call});\n'
-            content += f'      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, ' \
+            content += f'    hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, ' \
                        f'HSA_API_ID_{call}, &skipFunction);\n'
             for var in struct['alst']:
-                content += f'      {var} = args.api_args.{call}.{var};\n'
+                content += f'    {var} = args.api_args.{call}.{var};\n'
 
             if ret_type != 'void':
-                content += "      return out;\n"
+                content += "    return out;\n"
 
             content += '}\n\n'
 
