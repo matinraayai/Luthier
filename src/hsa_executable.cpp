@@ -6,6 +6,7 @@
 #include "code_view.hpp"
 #include "error.h"
 #include "hsa_agent.hpp"
+#include "hsa_code_object_reader.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_loaded_code_object.hpp"
 
@@ -15,11 +16,12 @@ Executable Executable::create(hsa_profile_t profile, hsa_default_float_rounding_
                               const char *options) {
     hsa_executable_t executable;
     LUTHIER_HSA_CHECK(hsa_executable_create_alt(profile, default_float_rounding_mode, options, &executable));
+
     return Executable{executable};
 }
 
-hsa_status_t Executable::freeze(const char *options) {
-    return getApiTable().core.hsa_executable_freeze_fn(asHsaType(), options);
+void Executable::freeze(const char *options) {
+    LUTHIER_HSA_CHECK(getApiTable().core.hsa_executable_freeze_fn(asHsaType(), options));
 }
 
 Executable::Executable(hsa_executable_t executable) : HandleType<hsa_executable_t>(executable) {}
@@ -70,11 +72,10 @@ std::vector<ExecutableSymbol> Executable::getSymbols(const GpuAgent &agent) cons
                 for (unsigned int j = 0; j < reader->getNumSymbols(); j++) {
                     auto info = reader->getSymbol(j);
                     if (info->getType() == ELFIO::STT_FUNC && !kernelNames.contains(info->getName())) {
-                        auto storageAddressOffset = info->getAddress()
-                            - reinterpret_cast<luthier_address_t>(storageMemory.data());
+                        auto storageAddressOffset =
+                            info->getAddress() - reinterpret_cast<luthier_address_t>(storageMemory.data());
                         auto symbolSize = info->getSize();
-                        out.emplace_back(info->getName(),
-                                         loadedMemory.substr(storageAddressOffset, symbolSize),
+                        out.emplace_back(info->getName(), loadedMemory.substr(storageAddressOffset, symbolSize),
                                          agent.asHsaType(), this->asHsaType());
                     }
                 }
@@ -99,9 +100,7 @@ std::optional<ExecutableSymbol> Executable::getSymbolByName(const luthier::hsa::
             if (s.has_value()) {
                 auto loadedMemory = lco.getLoadedMemory();
                 auto storageAddressOffset = s->getSection()->get_address();
-                auto symbolSize = s->getSection()->get_size();
-                return ExecutableSymbol{s->getName(),
-                                        loadedMemory.substr(storageAddressOffset, storageAddressOffset),
+                return ExecutableSymbol{s->getName(), loadedMemory.substr(storageAddressOffset, storageAddressOffset),
                                         agent.asHsaType(), this->asHsaType()};
             }
         }
@@ -133,5 +132,12 @@ std::vector<hsa::GpuAgent> Executable::getAgents() const {
     }
     return agents;
 }
+hsa::LoadedCodeObject Executable::loadCodeObject(hsa::CodeObjectReader reader, hsa::GpuAgent agent) {
+    hsa_loaded_code_object_t lco;
+    LUTHIER_HSA_CHECK(getApiTable().core.hsa_executable_load_agent_code_object_fn(asHsaType(), agent.asHsaType(),
+                                                                                  reader.asHsaType(), nullptr, &lco));
+    return hsa::LoadedCodeObject(lco);
+}
+void Executable::destroy() { LUTHIER_HSA_CHECK(getApiTable().core.hsa_executable_destroy_fn(asHsaType())); }
 
 }// namespace luthier::hsa

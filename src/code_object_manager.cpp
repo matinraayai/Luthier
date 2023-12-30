@@ -7,6 +7,7 @@
 #include "hsa_agent.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
+#include "hsa_loaded_code_object.hpp"
 #include "instrumentation_function.hpp"
 #include "log.hpp"
 
@@ -18,12 +19,6 @@ void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
                 || e.getSymbolByName(a, std::string(LUTHIER_RESERVED_MANAGED_VAR) + ".managed")) {
                 toolExecutables_.insert(e);
             }
-//            for (const auto &s: e.getSymbols(a)) {
-//                if (s.getName().find(LUTHIER_RESERVED_MANAGED_VAR) != std::string::npos
-//                    && s.getType() == HSA_SYMBOL_KIND_VARIABLE) {
-//
-//                }
-//            }
         }
     }
     LuthierLogDebug("Number of executables captured: {}", toolExecutables_.size());
@@ -77,15 +72,37 @@ const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumente
         throw std::runtime_error(
             fmt::format("The Kernel Descriptor {:#x} has not been instrumented.",
                         reinterpret_cast<luthier_address_t>(originalKernel.getKernelDescriptor())));
-    return instrumentedKernels_.at(originalKernel);
+    return std::get<hsa::ExecutableSymbol>(instrumentedKernels_.at(originalKernel));
 }
 
-void luthier::CodeObjectManager::registerInstrumentedKernel(const hsa::ExecutableSymbol &originalCodeKD,
-                                                            const hsa::ExecutableSymbol &instrumentedCodeKD) {
-    if (!instrumentedKernels_.contains(originalCodeKD))
-        instrumentedKernels_.insert({originalCodeKD, instrumentedCodeKD});
+void luthier::CodeObjectManager::loadInstrumentedKernel(const luthier::byte_string_t &instrumentedElf,
+                                                        const hsa::ExecutableSymbol &originalKernel) {
+    if (!instrumentedKernels_.contains(originalKernel)) {
+        auto executable = hsa::Executable::create();
+        auto agent = originalKernel.getAgent();
+        auto reader = hsa::CodeObjectReader::createFromMemory(instrumentedElf);
+        executable.loadCodeObject(reader, agent);
+        executable.freeze();
+
+        auto originalSymbolName = originalKernel.getName();
+        auto instrumentedKernel = executable.getSymbolByName(agent, originalSymbolName);
+        assert(instrumentedKernel.has_value());
+        assert(instrumentedKernel->getType() == HSA_SYMBOL_KIND_KERNEL);
+        instrumentedKernels_.insert({originalKernel, std::make_tuple(*instrumentedKernel, executable, reader)});
+    }
 }
+
 const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumentationKernel(
     const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const {
     return functions_.at(wrapperKernelHostPtr).at(agent).getInstrumentationKernel();
+}
+luthier::CodeObjectManager::~CodeObjectManager() {
+    for (auto &[origSymbol, instInfo]: instrumentedKernels_) {
+        auto &[s, e, r] = instInfo;
+        e.destroy();
+        r.destroy();
+    }
+    instrumentedKernels_.clear();
+    toolExecutables_.clear();
+    functions_.clear();
 }

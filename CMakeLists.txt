@@ -40,7 +40,10 @@ add_library(luthier SHARED
         src/llvm_mc.cpp
         src/context_manager.cpp
         src/hsa_instr.hpp
-        src/hsa_instr.cpp)
+        src/hsa_instr.cpp
+        src/hsa_code_object_reader.hpp
+        src/hsa_code_object_reader.cpp
+)
 # ======================================================================================================================
 
 # User Options =========================================================================================================

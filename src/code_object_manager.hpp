@@ -1,16 +1,18 @@
 #ifndef CODE_OBJECT_MANAGER_HPP
 #define CODE_OBJECT_MANAGER_HPP
-#include "instrumentation_function.hpp"
-#include "luthier_types.h"
 #include <set>
 #include <vector>
+
+#include "hsa_code_object_reader.hpp"
+#include "instrumentation_function.hpp"
+#include "luthier_types.h"
 
 namespace luthier::hsa {
 class GpuAgent;
 
 class ExecutableSymbol;
 
-}
+}// namespace luthier::hsa
 
 namespace luthier {
 /**
@@ -34,8 +36,8 @@ class CodeObjectManager {
      * @param instrumentationFunctionInfo a list of tuples, the first element being the host shadow pointer of the wrapper kernels,
      * the second being the name of the wrapper kernel
      */
-    void registerHipWrapperKernelsOfInstrumentationFunctions(const std::vector<std::tuple<const void *, const char *>>
-                                                                 &instrumentationFunctionInfo);
+    void registerHipWrapperKernelsOfInstrumentationFunctions(
+        const std::vector<std::tuple<const void *, const char *>> &instrumentationFunctionInfo);
 
     /**
      * Returns the hsa::ExecutableSymbol of the instrumentation function, given its HSA agent and wrapper kernel host ptr
@@ -44,7 +46,8 @@ class CodeObjectManager {
      * @param agent the GPU HSA agent where the instrumentation function is loaded on
      * @return the instrumentation function symbol
      */
-    const hsa::ExecutableSymbol &getInstrumentationFunction(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
+    const hsa::ExecutableSymbol &getInstrumentationFunction(const void *wrapperKernelHostPtr,
+                                                            hsa::GpuAgent agent) const;
 
     /**
      * Returns the kernel descriptor of the wrapper kernel associated with an instrumentation function, given its wrapper kernel
@@ -56,16 +59,8 @@ class CodeObjectManager {
      */
     const hsa::ExecutableSymbol &getInstrumentationKernel(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
 
-    /**
-     * Registers an instrumented version of a target application kernel. \class CodeObjectManager keeps track of instrumented kernels
-     * via their kernel descriptors located in device memory. Kernel descriptors can then be used to query information about the kernel
-     * (e.g. start of the kernel)
-     * Both kernel descriptors should be located on the same device
-     * @param originalCodeKD device address of the target application kernel's descriptor
-     * @param instrumentedCodeKD device address of the instrumented kernel's descriptor
-     */
-    void registerInstrumentedKernel(const hsa::ExecutableSymbol &originalKernel,
-                                    const hsa::ExecutableSymbol &instrumentedKernel);
+    void loadInstrumentedKernel(const luthier::byte_string_t &instrumentedElf,
+                                const hsa::ExecutableSymbol &originalKernel);
 
     /**
      * Returns the instrumented kernel's KD given its original un-instrumented version's KD
@@ -77,8 +72,7 @@ class CodeObjectManager {
 
  private:
     CodeObjectManager() {}
-    ~CodeObjectManager() {
-    }
+    ~CodeObjectManager();
 
     /**
      * Iterates over all the frozen HSA executables in the HSA Runtime and registers the ones that belong to the Luthier tool
@@ -93,7 +87,8 @@ class CodeObjectManager {
 
     std::unordered_map<const void *, std::unordered_map<hsa::GpuAgent, luthier::InstrumentationFunction>> functions_{};
 
-    std::unordered_map<hsa::ExecutableSymbol, hsa::ExecutableSymbol> instrumentedKernels_{};
+    std::unordered_map<hsa::ExecutableSymbol, std::tuple<hsa::ExecutableSymbol, hsa::Executable, hsa::CodeObjectReader>>
+        instrumentedKernels_{};
 };
 };// namespace luthier
 
