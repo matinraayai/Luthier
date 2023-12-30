@@ -23,9 +23,7 @@ add_library(luthier SHARED
         src/hsa_executable.cpp
         src/hsa_executable_symbol.hpp
         src/hsa_agent.hpp
-        src/hsa_cache.hpp
         src/hsa_handle_type.hpp
-        src/hsa_cache.cpp
         src/hsa_type.hpp
         src/hsa_agent.cpp
         src/hsa_executable_symbol.cpp
