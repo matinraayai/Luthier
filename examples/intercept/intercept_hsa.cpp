@@ -13,7 +13,7 @@ void luthier_at_init() {
     //luthier_enable_hsa_op_callback(HSA_API_ID_hsa_signal_create);
     //luthier_enable_hsa_op_callback(HSA_API_ID_hsa_amd_memory_pool_free);
     //luthier_disable_hsa_op_callback(HSA_EVT_ID_hsa_queue_packet_submit);
-    luthier_enable_hsa_all_callback();
+    luthier_enable_all_hsa_callbacks();
 }
 
 

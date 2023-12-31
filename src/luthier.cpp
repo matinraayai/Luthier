@@ -61,22 +61,27 @@ void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount, uint64_
     auto &hsaInternalCallback = hsaInterceptor.getInternalCallback();
     auto apiId = HSA_EVT_ID_hsa_queue_packet_submit;
     hsa_api_evt_args_t args;
+    bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+    bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+    if (isUserCallbackEnabled || isInternalCallbackEnabled) {
+        // Copy the packets to a non-const buffer
+        std::vector<luthier_hsa_aql_packet_t> modifiedPackets(
+            reinterpret_cast<const luthier_hsa_aql_packet_t *>(packets),
+            reinterpret_cast<const luthier_hsa_aql_packet_t *>(packets) + pktCount);
 
-    // Copy the packets to a non-const buffer
-    std::vector<luthier_hsa_aql_packet_t> modifiedPackets(
-        reinterpret_cast<const luthier_hsa_aql_packet_t *>(packets),
-        reinterpret_cast<const luthier_hsa_aql_packet_t *>(packets) + pktCount);
+        args.evt_args.hsa_queue_packet_submit.packets = modifiedPackets.data();
+        args.evt_args.hsa_queue_packet_submit.pkt_count = pktCount;
+        args.evt_args.hsa_queue_packet_submit.user_pkt_index = userPktIndex;
+        if (isUserCallbackEnabled) hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+        if (isInternalCallbackEnabled) hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, nullptr);
 
-    args.evt_args.hsa_queue_packet_submit.packets = modifiedPackets.data();
-    args.evt_args.hsa_queue_packet_submit.pkt_count = pktCount;
-    args.evt_args.hsa_queue_packet_submit.user_pkt_index = userPktIndex;
-
-    hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-    hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, nullptr);
-
-    // Write the packets to hardware queue
-    // Even if the packets are not modified, this call has to be made to ensure the packets are copied to the hardware queue
-    writer(modifiedPackets.data(), pktCount);
+        // Write the packets to hardware queue
+        // Even if the packets are not modified, this call has to be made to ensure the packets are copied to
+        // the hardware queue
+        writer(modifiedPackets.data(), pktCount);
+    } else {
+        writer(packets, pktCount);
+    }
 }
 
 void hsaApiInternalCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id,
@@ -140,38 +145,23 @@ void luthier_insert_call(luthier_instruction_t instr, const void *dev_func, luth
     luthier::CodeGenerator::instance().instrument(*luthier::hsa::Instr::fromHandle(instr), dev_func, point);
 }
 
-void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op) {
-    luthier::HsaInterceptor::instance().enableCallback(op);
-}
+void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op) { luthier::HsaInterceptor::instance().enableUserCallback(op); }
 
 void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op) {
-    luthier::HsaInterceptor::instance().disableCallback(op);
+    luthier::HsaInterceptor::instance().disableUserCallback(op);
 }
 
-void luthier_enable_hsa_all_callback() {
-    luthier::HsaInterceptor::instance().enableAllCallback();
-}
+void luthier_enable_all_hsa_callbacks() { luthier::HsaInterceptor::instance().enableAllUserCallbacks(); }
 
-void luthier_disable_hsa_all_callback() {
-    luthier::HsaInterceptor::instance().disableAllCallback();
-}
+void luthier_disable_all_hsa_callbacks() { luthier::HsaInterceptor::instance().disableAllUserCallbacks(); }
 
+void luthier_enable_hip_op_callback(uint32_t op) { luthier::HipInterceptor::Instance().enableCallback(op); }
 
-void luthier_enable_hip_op_callback(uint32_t op) {
-    luthier::HipInterceptor::Instance().enableCallback(op);
-}
+void luthier_disable_hip_op_callback(uint32_t op) { luthier::HipInterceptor::Instance().disableCallback(op); }
 
-void luthier_disable_hip_op_callback(uint32_t op) {
-    luthier::HipInterceptor::Instance().disableCallback(op);
-}
+void luthier_enable_all_hip_callbacks() { luthier::HipInterceptor::Instance().enableAllCallback(); }
 
-void luthier_enable_hip_all_callback() {
-    luthier::HipInterceptor::Instance().enableAllCallback();
-}
-
-void luthier_disable_hip_all_callback() {
-    luthier::HipInterceptor::Instance().disableAllCallback();
-}
+void luthier_disable_all_hip_callbacks() { luthier::HipInterceptor::Instance().disableAllCallback(); }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
     const auto instrumentedKernel = luthier::CodeObjectManager::instance().getInstrumentedKernel(
@@ -193,6 +183,7 @@ __attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t 
     luthier_at_init();
     luthier::HsaInterceptor::instance().setInternalCallback(luthier::impl::hsaApiInternalCallback);
     luthier::HsaInterceptor::instance().setUserCallback(luthier::impl::hsaApiUserCallback);
+    luthier::HsaInterceptor::instance().enableInternalCallback(HSA_API_ID_hsa_queue_create);
     return res;
     LUTHIER_LOG_FUNCTION_CALL_END
 }

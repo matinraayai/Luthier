@@ -29,7 +29,13 @@ LUTHIER_DECLARE_FUNC void instrumentation_kernel(int* counter) {
 LUTHIER_EXPORT_FUNC(instrumentation_kernel)
 
 
-void luthier_at_init() { std::cout << "Kernel Instrument Tool is launching." << std::endl; }
+void luthier_at_init() {
+    std::cout << "Kernel Instrument Tool is launching." << std::endl;
+    luthier_enable_hsa_op_callback(HSA_API_ID_hsa_queue_create);
+    luthier_enable_hsa_op_callback(HSA_API_ID_hsa_signal_store_screlease);
+    luthier_enable_hsa_op_callback(HSA_API_ID_hsa_executable_freeze);
+    luthier_enable_hsa_op_callback(HSA_EVT_ID_hsa_queue_packet_submit);
+}
 
 void luthier_at_term() {
     std::cout << "Counter Value: " << globalCounter << std::endl;
