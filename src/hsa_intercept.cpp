@@ -7,7 +7,7 @@
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
 
@@ -31,4454 +31,6108 @@
 /* block: CoreApi API */
 static hsa_status_t hsa_init_callback() {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_init;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_init_fn();
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_init_fn();
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_init);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_init, &skipFunction);
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_init_fn();
+		return out;
+	}
 }
 
 static hsa_status_t hsa_shut_down_callback() {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_shut_down;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_shut_down_fn();
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_shut_down_fn();
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_shut_down);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_shut_down, &skipFunction);
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_shut_down_fn();
+		return out;
+	}
 }
 
 static hsa_status_t hsa_system_get_info_callback(hsa_system_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_system_get_info.attribute = attribute;
-	args.api_args.hsa_system_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_info_fn(args.api_args.hsa_system_get_info.attribute, args.api_args.hsa_system_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_system_get_info.attribute = attribute;
+		args.api_args.hsa_system_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_info_fn(args.api_args.hsa_system_get_info.attribute, args.api_args.hsa_system_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_get_info, &skipFunction);
-      attribute = args.api_args.hsa_system_get_info.attribute;
-      value = args.api_args.hsa_system_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_info_fn(attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_system_extension_supported_callback(uint16_t extension, uint16_t version_major, uint16_t version_minor, bool* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_extension_supported;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_system_extension_supported.extension = extension;
-	args.api_args.hsa_system_extension_supported.version_major = version_major;
-	args.api_args.hsa_system_extension_supported.version_minor = version_minor;
-	args.api_args.hsa_system_extension_supported.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_extension_supported_fn(args.api_args.hsa_system_extension_supported.extension, args.api_args.hsa_system_extension_supported.version_major, args.api_args.hsa_system_extension_supported.version_minor, args.api_args.hsa_system_extension_supported.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_system_extension_supported.extension = extension;
+		args.api_args.hsa_system_extension_supported.version_major = version_major;
+		args.api_args.hsa_system_extension_supported.version_minor = version_minor;
+		args.api_args.hsa_system_extension_supported.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_system_extension_supported_fn(args.api_args.hsa_system_extension_supported.extension, args.api_args.hsa_system_extension_supported.version_major, args.api_args.hsa_system_extension_supported.version_minor, args.api_args.hsa_system_extension_supported.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_extension_supported);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_extension_supported, &skipFunction);
-      extension = args.api_args.hsa_system_extension_supported.extension;
-      version_major = args.api_args.hsa_system_extension_supported.version_major;
-      version_minor = args.api_args.hsa_system_extension_supported.version_minor;
-      result = args.api_args.hsa_system_extension_supported.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_extension_supported_fn(extension, version_major, version_minor, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_system_get_extension_table_callback(uint16_t extension, uint16_t version_major, uint16_t version_minor, void* table) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_get_extension_table;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_system_get_extension_table.extension = extension;
-	args.api_args.hsa_system_get_extension_table.version_major = version_major;
-	args.api_args.hsa_system_get_extension_table.version_minor = version_minor;
-	args.api_args.hsa_system_get_extension_table.table = table;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_extension_table_fn(args.api_args.hsa_system_get_extension_table.extension, args.api_args.hsa_system_get_extension_table.version_major, args.api_args.hsa_system_get_extension_table.version_minor, args.api_args.hsa_system_get_extension_table.table);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_system_get_extension_table.extension = extension;
+		args.api_args.hsa_system_get_extension_table.version_major = version_major;
+		args.api_args.hsa_system_get_extension_table.version_minor = version_minor;
+		args.api_args.hsa_system_get_extension_table.table = table;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_extension_table_fn(args.api_args.hsa_system_get_extension_table.extension, args.api_args.hsa_system_get_extension_table.version_major, args.api_args.hsa_system_get_extension_table.version_minor, args.api_args.hsa_system_get_extension_table.table);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_get_extension_table);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_get_extension_table, &skipFunction);
-      extension = args.api_args.hsa_system_get_extension_table.extension;
-      version_major = args.api_args.hsa_system_get_extension_table.version_major;
-      version_minor = args.api_args.hsa_system_get_extension_table.version_minor;
-      table = args.api_args.hsa_system_get_extension_table.table;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_extension_table_fn(extension, version_major, version_minor, table);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_iterate_agents_callback(hsa_status_t (* callback)(hsa_agent_t agent, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_iterate_agents;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_iterate_agents.callback = callback;
-	args.api_args.hsa_iterate_agents.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_iterate_agents_fn(args.api_args.hsa_iterate_agents.callback, args.api_args.hsa_iterate_agents.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_iterate_agents.callback = callback;
+		args.api_args.hsa_iterate_agents.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_iterate_agents_fn(args.api_args.hsa_iterate_agents.callback, args.api_args.hsa_iterate_agents.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_iterate_agents);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_iterate_agents, &skipFunction);
-      callback = args.api_args.hsa_iterate_agents.callback;
-      data = args.api_args.hsa_iterate_agents.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_iterate_agents_fn(callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_agent_get_info_callback(hsa_agent_t agent, hsa_agent_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_agent_get_info.agent = agent;
-	args.api_args.hsa_agent_get_info.attribute = attribute;
-	args.api_args.hsa_agent_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_info_fn(args.api_args.hsa_agent_get_info.agent, args.api_args.hsa_agent_get_info.attribute, args.api_args.hsa_agent_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_agent_get_info.agent = agent;
+		args.api_args.hsa_agent_get_info.attribute = attribute;
+		args.api_args.hsa_agent_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_info_fn(args.api_args.hsa_agent_get_info.agent, args.api_args.hsa_agent_get_info.attribute, args.api_args.hsa_agent_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_get_info, &skipFunction);
-      agent = args.api_args.hsa_agent_get_info.agent;
-      attribute = args.api_args.hsa_agent_get_info.attribute;
-      value = args.api_args.hsa_agent_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_info_fn(agent, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_queue_create_callback(hsa_agent_t agent, uint32_t size, hsa_queue_type32_t type, void (* callback)(hsa_status_t status, hsa_queue_t* source, void* data), void* data, uint32_t private_segment_size, uint32_t group_segment_size, hsa_queue_t** queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_create.agent = agent;
-	args.api_args.hsa_queue_create.size = size;
-	args.api_args.hsa_queue_create.type = type;
-	args.api_args.hsa_queue_create.callback = callback;
-	args.api_args.hsa_queue_create.data = data;
-	args.api_args.hsa_queue_create.private_segment_size = private_segment_size;
-	args.api_args.hsa_queue_create.group_segment_size = group_segment_size;
-	args.api_args.hsa_queue_create.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_create_fn(args.api_args.hsa_queue_create.agent, args.api_args.hsa_queue_create.size, args.api_args.hsa_queue_create.type, args.api_args.hsa_queue_create.callback, args.api_args.hsa_queue_create.data, args.api_args.hsa_queue_create.private_segment_size, args.api_args.hsa_queue_create.group_segment_size, args.api_args.hsa_queue_create.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_create.agent = agent;
+		args.api_args.hsa_queue_create.size = size;
+		args.api_args.hsa_queue_create.type = type;
+		args.api_args.hsa_queue_create.callback = callback;
+		args.api_args.hsa_queue_create.data = data;
+		args.api_args.hsa_queue_create.private_segment_size = private_segment_size;
+		args.api_args.hsa_queue_create.group_segment_size = group_segment_size;
+		args.api_args.hsa_queue_create.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_create_fn(args.api_args.hsa_queue_create.agent, args.api_args.hsa_queue_create.size, args.api_args.hsa_queue_create.type, args.api_args.hsa_queue_create.callback, args.api_args.hsa_queue_create.data, args.api_args.hsa_queue_create.private_segment_size, args.api_args.hsa_queue_create.group_segment_size, args.api_args.hsa_queue_create.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_create, &skipFunction);
-      agent = args.api_args.hsa_queue_create.agent;
-      size = args.api_args.hsa_queue_create.size;
-      type = args.api_args.hsa_queue_create.type;
-      callback = args.api_args.hsa_queue_create.callback;
-      data = args.api_args.hsa_queue_create.data;
-      private_segment_size = args.api_args.hsa_queue_create.private_segment_size;
-      group_segment_size = args.api_args.hsa_queue_create.group_segment_size;
-      queue = args.api_args.hsa_queue_create.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_create_fn(agent, size, type, callback, data, private_segment_size, group_segment_size, queue);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_soft_queue_create_callback(hsa_region_t region, uint32_t size, hsa_queue_type32_t type, uint32_t features, hsa_signal_t doorbell_signal, hsa_queue_t** queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_soft_queue_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_soft_queue_create.region = region;
-	args.api_args.hsa_soft_queue_create.size = size;
-	args.api_args.hsa_soft_queue_create.type = type;
-	args.api_args.hsa_soft_queue_create.features = features;
-	args.api_args.hsa_soft_queue_create.doorbell_signal = doorbell_signal;
-	args.api_args.hsa_soft_queue_create.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_soft_queue_create_fn(args.api_args.hsa_soft_queue_create.region, args.api_args.hsa_soft_queue_create.size, args.api_args.hsa_soft_queue_create.type, args.api_args.hsa_soft_queue_create.features, args.api_args.hsa_soft_queue_create.doorbell_signal, args.api_args.hsa_soft_queue_create.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_soft_queue_create.region = region;
+		args.api_args.hsa_soft_queue_create.size = size;
+		args.api_args.hsa_soft_queue_create.type = type;
+		args.api_args.hsa_soft_queue_create.features = features;
+		args.api_args.hsa_soft_queue_create.doorbell_signal = doorbell_signal;
+		args.api_args.hsa_soft_queue_create.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_soft_queue_create_fn(args.api_args.hsa_soft_queue_create.region, args.api_args.hsa_soft_queue_create.size, args.api_args.hsa_soft_queue_create.type, args.api_args.hsa_soft_queue_create.features, args.api_args.hsa_soft_queue_create.doorbell_signal, args.api_args.hsa_soft_queue_create.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_soft_queue_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_soft_queue_create, &skipFunction);
-      region = args.api_args.hsa_soft_queue_create.region;
-      size = args.api_args.hsa_soft_queue_create.size;
-      type = args.api_args.hsa_soft_queue_create.type;
-      features = args.api_args.hsa_soft_queue_create.features;
-      doorbell_signal = args.api_args.hsa_soft_queue_create.doorbell_signal;
-      queue = args.api_args.hsa_soft_queue_create.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_soft_queue_create_fn(region, size, type, features, doorbell_signal, queue);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_queue_destroy_callback(hsa_queue_t* queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_destroy.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_destroy_fn(args.api_args.hsa_queue_destroy.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_destroy.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_destroy_fn(args.api_args.hsa_queue_destroy.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_destroy, &skipFunction);
-      queue = args.api_args.hsa_queue_destroy.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_destroy_fn(queue);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_queue_inactivate_callback(hsa_queue_t* queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_inactivate;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_inactivate.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_inactivate_fn(args.api_args.hsa_queue_inactivate.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_inactivate.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_inactivate_fn(args.api_args.hsa_queue_inactivate.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_inactivate);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_inactivate, &skipFunction);
-      queue = args.api_args.hsa_queue_inactivate.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_inactivate_fn(queue);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_load_read_index_scacquire_callback(const hsa_queue_t* queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_read_index_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_load_read_index_scacquire.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_scacquire_fn(args.api_args.hsa_queue_load_read_index_scacquire.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_load_read_index_scacquire.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_scacquire_fn(args.api_args.hsa_queue_load_read_index_scacquire.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_read_index_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_read_index_scacquire, &skipFunction);
-      queue = args.api_args.hsa_queue_load_read_index_scacquire.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_scacquire_fn(queue);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_load_read_index_relaxed_callback(const hsa_queue_t* queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_read_index_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_load_read_index_relaxed.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_relaxed_fn(args.api_args.hsa_queue_load_read_index_relaxed.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_load_read_index_relaxed.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_relaxed_fn(args.api_args.hsa_queue_load_read_index_relaxed.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_read_index_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_read_index_relaxed, &skipFunction);
-      queue = args.api_args.hsa_queue_load_read_index_relaxed.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_read_index_relaxed_fn(queue);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_load_write_index_scacquire_callback(const hsa_queue_t* queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_write_index_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_load_write_index_scacquire.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_scacquire_fn(args.api_args.hsa_queue_load_write_index_scacquire.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_load_write_index_scacquire.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_scacquire_fn(args.api_args.hsa_queue_load_write_index_scacquire.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_write_index_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_write_index_scacquire, &skipFunction);
-      queue = args.api_args.hsa_queue_load_write_index_scacquire.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_scacquire_fn(queue);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_load_write_index_relaxed_callback(const hsa_queue_t* queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_load_write_index_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_load_write_index_relaxed.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_relaxed_fn(args.api_args.hsa_queue_load_write_index_relaxed.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_load_write_index_relaxed.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_relaxed_fn(args.api_args.hsa_queue_load_write_index_relaxed.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_write_index_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_load_write_index_relaxed, &skipFunction);
-      queue = args.api_args.hsa_queue_load_write_index_relaxed.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_load_write_index_relaxed_fn(queue);
+		return out;
+	}
 }
 
 static void hsa_queue_store_write_index_relaxed_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_write_index_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_store_write_index_relaxed.queue = queue;
-	args.api_args.hsa_queue_store_write_index_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_relaxed_fn(args.api_args.hsa_queue_store_write_index_relaxed.queue, args.api_args.hsa_queue_store_write_index_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_store_write_index_relaxed.queue = queue;
+		args.api_args.hsa_queue_store_write_index_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_relaxed_fn(args.api_args.hsa_queue_store_write_index_relaxed.queue, args.api_args.hsa_queue_store_write_index_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_write_index_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_write_index_relaxed, &skipFunction);
-      queue = args.api_args.hsa_queue_store_write_index_relaxed.queue;
-      value = args.api_args.hsa_queue_store_write_index_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_relaxed_fn(queue, value);
+
+	}
 }
 
 static void hsa_queue_store_write_index_screlease_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_write_index_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_store_write_index_screlease.queue = queue;
-	args.api_args.hsa_queue_store_write_index_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_screlease_fn(args.api_args.hsa_queue_store_write_index_screlease.queue, args.api_args.hsa_queue_store_write_index_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_store_write_index_screlease.queue = queue;
+		args.api_args.hsa_queue_store_write_index_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_screlease_fn(args.api_args.hsa_queue_store_write_index_screlease.queue, args.api_args.hsa_queue_store_write_index_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_write_index_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_write_index_screlease, &skipFunction);
-      queue = args.api_args.hsa_queue_store_write_index_screlease.queue;
-      value = args.api_args.hsa_queue_store_write_index_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_write_index_screlease_fn(queue, value);
+
+	}
 }
 
 static uint64_t hsa_queue_cas_write_index_scacq_screl_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_cas_write_index_scacq_screl.queue = queue;
-	args.api_args.hsa_queue_cas_write_index_scacq_screl.expected = expected;
-	args.api_args.hsa_queue_cas_write_index_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacq_screl_fn(args.api_args.hsa_queue_cas_write_index_scacq_screl.queue, args.api_args.hsa_queue_cas_write_index_scacq_screl.expected, args.api_args.hsa_queue_cas_write_index_scacq_screl.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_cas_write_index_scacq_screl.queue = queue;
+		args.api_args.hsa_queue_cas_write_index_scacq_screl.expected = expected;
+		args.api_args.hsa_queue_cas_write_index_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacq_screl_fn(args.api_args.hsa_queue_cas_write_index_scacq_screl.queue, args.api_args.hsa_queue_cas_write_index_scacq_screl.expected, args.api_args.hsa_queue_cas_write_index_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_scacq_screl, &skipFunction);
-      queue = args.api_args.hsa_queue_cas_write_index_scacq_screl.queue;
-      expected = args.api_args.hsa_queue_cas_write_index_scacq_screl.expected;
-      value = args.api_args.hsa_queue_cas_write_index_scacq_screl.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacq_screl_fn(queue, expected, value);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_cas_write_index_scacquire_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_cas_write_index_scacquire.queue = queue;
-	args.api_args.hsa_queue_cas_write_index_scacquire.expected = expected;
-	args.api_args.hsa_queue_cas_write_index_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacquire_fn(args.api_args.hsa_queue_cas_write_index_scacquire.queue, args.api_args.hsa_queue_cas_write_index_scacquire.expected, args.api_args.hsa_queue_cas_write_index_scacquire.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_cas_write_index_scacquire.queue = queue;
+		args.api_args.hsa_queue_cas_write_index_scacquire.expected = expected;
+		args.api_args.hsa_queue_cas_write_index_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacquire_fn(args.api_args.hsa_queue_cas_write_index_scacquire.queue, args.api_args.hsa_queue_cas_write_index_scacquire.expected, args.api_args.hsa_queue_cas_write_index_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_scacquire, &skipFunction);
-      queue = args.api_args.hsa_queue_cas_write_index_scacquire.queue;
-      expected = args.api_args.hsa_queue_cas_write_index_scacquire.expected;
-      value = args.api_args.hsa_queue_cas_write_index_scacquire.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_scacquire_fn(queue, expected, value);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_cas_write_index_relaxed_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_cas_write_index_relaxed.queue = queue;
-	args.api_args.hsa_queue_cas_write_index_relaxed.expected = expected;
-	args.api_args.hsa_queue_cas_write_index_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_relaxed_fn(args.api_args.hsa_queue_cas_write_index_relaxed.queue, args.api_args.hsa_queue_cas_write_index_relaxed.expected, args.api_args.hsa_queue_cas_write_index_relaxed.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_cas_write_index_relaxed.queue = queue;
+		args.api_args.hsa_queue_cas_write_index_relaxed.expected = expected;
+		args.api_args.hsa_queue_cas_write_index_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_relaxed_fn(args.api_args.hsa_queue_cas_write_index_relaxed.queue, args.api_args.hsa_queue_cas_write_index_relaxed.expected, args.api_args.hsa_queue_cas_write_index_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_relaxed, &skipFunction);
-      queue = args.api_args.hsa_queue_cas_write_index_relaxed.queue;
-      expected = args.api_args.hsa_queue_cas_write_index_relaxed.expected;
-      value = args.api_args.hsa_queue_cas_write_index_relaxed.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_relaxed_fn(queue, expected, value);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_cas_write_index_screlease_callback(const hsa_queue_t* queue, uint64_t expected, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_cas_write_index_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_cas_write_index_screlease.queue = queue;
-	args.api_args.hsa_queue_cas_write_index_screlease.expected = expected;
-	args.api_args.hsa_queue_cas_write_index_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_screlease_fn(args.api_args.hsa_queue_cas_write_index_screlease.queue, args.api_args.hsa_queue_cas_write_index_screlease.expected, args.api_args.hsa_queue_cas_write_index_screlease.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_cas_write_index_screlease.queue = queue;
+		args.api_args.hsa_queue_cas_write_index_screlease.expected = expected;
+		args.api_args.hsa_queue_cas_write_index_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_screlease_fn(args.api_args.hsa_queue_cas_write_index_screlease.queue, args.api_args.hsa_queue_cas_write_index_screlease.expected, args.api_args.hsa_queue_cas_write_index_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_cas_write_index_screlease, &skipFunction);
-      queue = args.api_args.hsa_queue_cas_write_index_screlease.queue;
-      expected = args.api_args.hsa_queue_cas_write_index_screlease.expected;
-      value = args.api_args.hsa_queue_cas_write_index_screlease.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_cas_write_index_screlease_fn(queue, expected, value);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_add_write_index_scacq_screl_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_add_write_index_scacq_screl.queue = queue;
-	args.api_args.hsa_queue_add_write_index_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacq_screl_fn(args.api_args.hsa_queue_add_write_index_scacq_screl.queue, args.api_args.hsa_queue_add_write_index_scacq_screl.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_add_write_index_scacq_screl.queue = queue;
+		args.api_args.hsa_queue_add_write_index_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacq_screl_fn(args.api_args.hsa_queue_add_write_index_scacq_screl.queue, args.api_args.hsa_queue_add_write_index_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_scacq_screl, &skipFunction);
-      queue = args.api_args.hsa_queue_add_write_index_scacq_screl.queue;
-      value = args.api_args.hsa_queue_add_write_index_scacq_screl.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacq_screl_fn(queue, value);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_add_write_index_scacquire_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_add_write_index_scacquire.queue = queue;
-	args.api_args.hsa_queue_add_write_index_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacquire_fn(args.api_args.hsa_queue_add_write_index_scacquire.queue, args.api_args.hsa_queue_add_write_index_scacquire.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_add_write_index_scacquire.queue = queue;
+		args.api_args.hsa_queue_add_write_index_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacquire_fn(args.api_args.hsa_queue_add_write_index_scacquire.queue, args.api_args.hsa_queue_add_write_index_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_scacquire, &skipFunction);
-      queue = args.api_args.hsa_queue_add_write_index_scacquire.queue;
-      value = args.api_args.hsa_queue_add_write_index_scacquire.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_scacquire_fn(queue, value);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_add_write_index_relaxed_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_add_write_index_relaxed.queue = queue;
-	args.api_args.hsa_queue_add_write_index_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_relaxed_fn(args.api_args.hsa_queue_add_write_index_relaxed.queue, args.api_args.hsa_queue_add_write_index_relaxed.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_add_write_index_relaxed.queue = queue;
+		args.api_args.hsa_queue_add_write_index_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_relaxed_fn(args.api_args.hsa_queue_add_write_index_relaxed.queue, args.api_args.hsa_queue_add_write_index_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_relaxed, &skipFunction);
-      queue = args.api_args.hsa_queue_add_write_index_relaxed.queue;
-      value = args.api_args.hsa_queue_add_write_index_relaxed.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_relaxed_fn(queue, value);
+		return out;
+	}
 }
 
 static uint64_t hsa_queue_add_write_index_screlease_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_add_write_index_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_add_write_index_screlease.queue = queue;
-	args.api_args.hsa_queue_add_write_index_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint64_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_screlease_fn(args.api_args.hsa_queue_add_write_index_screlease.queue, args.api_args.hsa_queue_add_write_index_screlease.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_add_write_index_screlease.queue = queue;
+		args.api_args.hsa_queue_add_write_index_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_screlease_fn(args.api_args.hsa_queue_add_write_index_screlease.queue, args.api_args.hsa_queue_add_write_index_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_add_write_index_screlease, &skipFunction);
-      queue = args.api_args.hsa_queue_add_write_index_screlease.queue;
-      value = args.api_args.hsa_queue_add_write_index_screlease.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_queue_add_write_index_screlease_fn(queue, value);
+		return out;
+	}
 }
 
 static void hsa_queue_store_read_index_relaxed_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_read_index_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_store_read_index_relaxed.queue = queue;
-	args.api_args.hsa_queue_store_read_index_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_relaxed_fn(args.api_args.hsa_queue_store_read_index_relaxed.queue, args.api_args.hsa_queue_store_read_index_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_store_read_index_relaxed.queue = queue;
+		args.api_args.hsa_queue_store_read_index_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_relaxed_fn(args.api_args.hsa_queue_store_read_index_relaxed.queue, args.api_args.hsa_queue_store_read_index_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_read_index_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_read_index_relaxed, &skipFunction);
-      queue = args.api_args.hsa_queue_store_read_index_relaxed.queue;
-      value = args.api_args.hsa_queue_store_read_index_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_relaxed_fn(queue, value);
+
+	}
 }
 
 static void hsa_queue_store_read_index_screlease_callback(const hsa_queue_t* queue, uint64_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_queue_store_read_index_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_queue_store_read_index_screlease.queue = queue;
-	args.api_args.hsa_queue_store_read_index_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_screlease_fn(args.api_args.hsa_queue_store_read_index_screlease.queue, args.api_args.hsa_queue_store_read_index_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_queue_store_read_index_screlease.queue = queue;
+		args.api_args.hsa_queue_store_read_index_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_screlease_fn(args.api_args.hsa_queue_store_read_index_screlease.queue, args.api_args.hsa_queue_store_read_index_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_read_index_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_queue_store_read_index_screlease, &skipFunction);
-      queue = args.api_args.hsa_queue_store_read_index_screlease.queue;
-      value = args.api_args.hsa_queue_store_read_index_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_queue_store_read_index_screlease_fn(queue, value);
+
+	}
 }
 
 static hsa_status_t hsa_agent_iterate_regions_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_region_t region, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_iterate_regions;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_agent_iterate_regions.agent = agent;
-	args.api_args.hsa_agent_iterate_regions.callback = callback;
-	args.api_args.hsa_agent_iterate_regions.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_regions_fn(args.api_args.hsa_agent_iterate_regions.agent, args.api_args.hsa_agent_iterate_regions.callback, args.api_args.hsa_agent_iterate_regions.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_agent_iterate_regions.agent = agent;
+		args.api_args.hsa_agent_iterate_regions.callback = callback;
+		args.api_args.hsa_agent_iterate_regions.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_regions_fn(args.api_args.hsa_agent_iterate_regions.agent, args.api_args.hsa_agent_iterate_regions.callback, args.api_args.hsa_agent_iterate_regions.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_iterate_regions);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_iterate_regions, &skipFunction);
-      agent = args.api_args.hsa_agent_iterate_regions.agent;
-      callback = args.api_args.hsa_agent_iterate_regions.callback;
-      data = args.api_args.hsa_agent_iterate_regions.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_regions_fn(agent, callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_region_get_info_callback(hsa_region_t region, hsa_region_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_region_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_region_get_info.region = region;
-	args.api_args.hsa_region_get_info.attribute = attribute;
-	args.api_args.hsa_region_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_region_get_info_fn(args.api_args.hsa_region_get_info.region, args.api_args.hsa_region_get_info.attribute, args.api_args.hsa_region_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_region_get_info.region = region;
+		args.api_args.hsa_region_get_info.attribute = attribute;
+		args.api_args.hsa_region_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_region_get_info_fn(args.api_args.hsa_region_get_info.region, args.api_args.hsa_region_get_info.attribute, args.api_args.hsa_region_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_region_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_region_get_info, &skipFunction);
-      region = args.api_args.hsa_region_get_info.region;
-      attribute = args.api_args.hsa_region_get_info.attribute;
-      value = args.api_args.hsa_region_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_region_get_info_fn(region, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_agent_get_exception_policies_callback(hsa_agent_t agent, hsa_profile_t profile, uint16_t* mask) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_get_exception_policies;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_agent_get_exception_policies.agent = agent;
-	args.api_args.hsa_agent_get_exception_policies.profile = profile;
-	args.api_args.hsa_agent_get_exception_policies.mask = mask;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_exception_policies_fn(args.api_args.hsa_agent_get_exception_policies.agent, args.api_args.hsa_agent_get_exception_policies.profile, args.api_args.hsa_agent_get_exception_policies.mask);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_agent_get_exception_policies.agent = agent;
+		args.api_args.hsa_agent_get_exception_policies.profile = profile;
+		args.api_args.hsa_agent_get_exception_policies.mask = mask;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_exception_policies_fn(args.api_args.hsa_agent_get_exception_policies.agent, args.api_args.hsa_agent_get_exception_policies.profile, args.api_args.hsa_agent_get_exception_policies.mask);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_get_exception_policies);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_get_exception_policies, &skipFunction);
-      agent = args.api_args.hsa_agent_get_exception_policies.agent;
-      profile = args.api_args.hsa_agent_get_exception_policies.profile;
-      mask = args.api_args.hsa_agent_get_exception_policies.mask;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_get_exception_policies_fn(agent, profile, mask);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_agent_extension_supported_callback(uint16_t extension, hsa_agent_t agent, uint16_t version_major, uint16_t version_minor, bool* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_extension_supported;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_agent_extension_supported.extension = extension;
-	args.api_args.hsa_agent_extension_supported.agent = agent;
-	args.api_args.hsa_agent_extension_supported.version_major = version_major;
-	args.api_args.hsa_agent_extension_supported.version_minor = version_minor;
-	args.api_args.hsa_agent_extension_supported.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_extension_supported_fn(args.api_args.hsa_agent_extension_supported.extension, args.api_args.hsa_agent_extension_supported.agent, args.api_args.hsa_agent_extension_supported.version_major, args.api_args.hsa_agent_extension_supported.version_minor, args.api_args.hsa_agent_extension_supported.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_agent_extension_supported.extension = extension;
+		args.api_args.hsa_agent_extension_supported.agent = agent;
+		args.api_args.hsa_agent_extension_supported.version_major = version_major;
+		args.api_args.hsa_agent_extension_supported.version_minor = version_minor;
+		args.api_args.hsa_agent_extension_supported.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_extension_supported_fn(args.api_args.hsa_agent_extension_supported.extension, args.api_args.hsa_agent_extension_supported.agent, args.api_args.hsa_agent_extension_supported.version_major, args.api_args.hsa_agent_extension_supported.version_minor, args.api_args.hsa_agent_extension_supported.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_extension_supported);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_extension_supported, &skipFunction);
-      extension = args.api_args.hsa_agent_extension_supported.extension;
-      agent = args.api_args.hsa_agent_extension_supported.agent;
-      version_major = args.api_args.hsa_agent_extension_supported.version_major;
-      version_minor = args.api_args.hsa_agent_extension_supported.version_minor;
-      result = args.api_args.hsa_agent_extension_supported.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_extension_supported_fn(extension, agent, version_major, version_minor, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_memory_register_callback(void* ptr, size_t size) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_register;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_memory_register.ptr = ptr;
-	args.api_args.hsa_memory_register.size = size;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_register_fn(args.api_args.hsa_memory_register.ptr, args.api_args.hsa_memory_register.size);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_memory_register.ptr = ptr;
+		args.api_args.hsa_memory_register.size = size;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_register_fn(args.api_args.hsa_memory_register.ptr, args.api_args.hsa_memory_register.size);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_register);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_register, &skipFunction);
-      ptr = args.api_args.hsa_memory_register.ptr;
-      size = args.api_args.hsa_memory_register.size;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_register_fn(ptr, size);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_memory_deregister_callback(void* ptr, size_t size) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_deregister;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_memory_deregister.ptr = ptr;
-	args.api_args.hsa_memory_deregister.size = size;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_deregister_fn(args.api_args.hsa_memory_deregister.ptr, args.api_args.hsa_memory_deregister.size);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_memory_deregister.ptr = ptr;
+		args.api_args.hsa_memory_deregister.size = size;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_deregister_fn(args.api_args.hsa_memory_deregister.ptr, args.api_args.hsa_memory_deregister.size);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_deregister);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_deregister, &skipFunction);
-      ptr = args.api_args.hsa_memory_deregister.ptr;
-      size = args.api_args.hsa_memory_deregister.size;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_deregister_fn(ptr, size);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_memory_allocate_callback(hsa_region_t region, size_t size, void** ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_allocate;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_memory_allocate.region = region;
-	args.api_args.hsa_memory_allocate.size = size;
-	args.api_args.hsa_memory_allocate.ptr = ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_allocate_fn(args.api_args.hsa_memory_allocate.region, args.api_args.hsa_memory_allocate.size, args.api_args.hsa_memory_allocate.ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_memory_allocate.region = region;
+		args.api_args.hsa_memory_allocate.size = size;
+		args.api_args.hsa_memory_allocate.ptr = ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_allocate_fn(args.api_args.hsa_memory_allocate.region, args.api_args.hsa_memory_allocate.size, args.api_args.hsa_memory_allocate.ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_allocate);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_allocate, &skipFunction);
-      region = args.api_args.hsa_memory_allocate.region;
-      size = args.api_args.hsa_memory_allocate.size;
-      ptr = args.api_args.hsa_memory_allocate.ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_allocate_fn(region, size, ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_memory_free_callback(void* ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_free;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_memory_free.ptr = ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_free_fn(args.api_args.hsa_memory_free.ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_memory_free.ptr = ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_free_fn(args.api_args.hsa_memory_free.ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_free);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_free, &skipFunction);
-      ptr = args.api_args.hsa_memory_free.ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_free_fn(ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_memory_copy_callback(void* dst, const void* src, size_t size) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_copy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_memory_copy.dst = dst;
-	args.api_args.hsa_memory_copy.src = src;
-	args.api_args.hsa_memory_copy.size = size;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_copy_fn(args.api_args.hsa_memory_copy.dst, args.api_args.hsa_memory_copy.src, args.api_args.hsa_memory_copy.size);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_memory_copy.dst = dst;
+		args.api_args.hsa_memory_copy.src = src;
+		args.api_args.hsa_memory_copy.size = size;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_copy_fn(args.api_args.hsa_memory_copy.dst, args.api_args.hsa_memory_copy.src, args.api_args.hsa_memory_copy.size);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_copy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_copy, &skipFunction);
-      dst = args.api_args.hsa_memory_copy.dst;
-      src = args.api_args.hsa_memory_copy.src;
-      size = args.api_args.hsa_memory_copy.size;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_copy_fn(dst, src, size);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_memory_assign_agent_callback(void* ptr, hsa_agent_t agent, hsa_access_permission_t access) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_memory_assign_agent;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_memory_assign_agent.ptr = ptr;
-	args.api_args.hsa_memory_assign_agent.agent = agent;
-	args.api_args.hsa_memory_assign_agent.access = access;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_assign_agent_fn(args.api_args.hsa_memory_assign_agent.ptr, args.api_args.hsa_memory_assign_agent.agent, args.api_args.hsa_memory_assign_agent.access);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_memory_assign_agent.ptr = ptr;
+		args.api_args.hsa_memory_assign_agent.agent = agent;
+		args.api_args.hsa_memory_assign_agent.access = access;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_assign_agent_fn(args.api_args.hsa_memory_assign_agent.ptr, args.api_args.hsa_memory_assign_agent.agent, args.api_args.hsa_memory_assign_agent.access);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_assign_agent);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_memory_assign_agent, &skipFunction);
-      ptr = args.api_args.hsa_memory_assign_agent.ptr;
-      agent = args.api_args.hsa_memory_assign_agent.agent;
-      access = args.api_args.hsa_memory_assign_agent.access;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_memory_assign_agent_fn(ptr, agent, access);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_signal_create_callback(hsa_signal_value_t initial_value, uint32_t num_consumers, const hsa_agent_t* consumers, hsa_signal_t* signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_create.initial_value = initial_value;
-	args.api_args.hsa_signal_create.num_consumers = num_consumers;
-	args.api_args.hsa_signal_create.consumers = consumers;
-	args.api_args.hsa_signal_create.signal = signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_create_fn(args.api_args.hsa_signal_create.initial_value, args.api_args.hsa_signal_create.num_consumers, args.api_args.hsa_signal_create.consumers, args.api_args.hsa_signal_create.signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_create.initial_value = initial_value;
+		args.api_args.hsa_signal_create.num_consumers = num_consumers;
+		args.api_args.hsa_signal_create.consumers = consumers;
+		args.api_args.hsa_signal_create.signal = signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_create_fn(args.api_args.hsa_signal_create.initial_value, args.api_args.hsa_signal_create.num_consumers, args.api_args.hsa_signal_create.consumers, args.api_args.hsa_signal_create.signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_create, &skipFunction);
-      initial_value = args.api_args.hsa_signal_create.initial_value;
-      num_consumers = args.api_args.hsa_signal_create.num_consumers;
-      consumers = args.api_args.hsa_signal_create.consumers;
-      signal = args.api_args.hsa_signal_create.signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_create_fn(initial_value, num_consumers, consumers, signal);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_signal_destroy_callback(hsa_signal_t signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_destroy.signal = signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_destroy_fn(args.api_args.hsa_signal_destroy.signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_destroy.signal = signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_destroy_fn(args.api_args.hsa_signal_destroy.signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_destroy, &skipFunction);
-      signal = args.api_args.hsa_signal_destroy.signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_destroy_fn(signal);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_load_relaxed_callback(hsa_signal_t signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_load_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_load_relaxed.signal = signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_relaxed_fn(args.api_args.hsa_signal_load_relaxed.signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_load_relaxed.signal = signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_relaxed_fn(args.api_args.hsa_signal_load_relaxed.signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_load_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_load_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_load_relaxed.signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_relaxed_fn(signal);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_load_scacquire_callback(hsa_signal_t signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_load_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_load_scacquire.signal = signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_scacquire_fn(args.api_args.hsa_signal_load_scacquire.signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_load_scacquire.signal = signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_scacquire_fn(args.api_args.hsa_signal_load_scacquire.signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_load_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_load_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_load_scacquire.signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_load_scacquire_fn(signal);
+		return out;
+	}
 }
 
 static void hsa_signal_store_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_store_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_store_relaxed.signal = signal;
-	args.api_args.hsa_signal_store_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_relaxed_fn(args.api_args.hsa_signal_store_relaxed.signal, args.api_args.hsa_signal_store_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_store_relaxed.signal = signal;
+		args.api_args.hsa_signal_store_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_relaxed_fn(args.api_args.hsa_signal_store_relaxed.signal, args.api_args.hsa_signal_store_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_store_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_store_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_store_relaxed.signal;
-      value = args.api_args.hsa_signal_store_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_relaxed_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_store_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_store_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_store_screlease.signal = signal;
-	args.api_args.hsa_signal_store_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_screlease_fn(args.api_args.hsa_signal_store_screlease.signal, args.api_args.hsa_signal_store_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_store_screlease.signal = signal;
+		args.api_args.hsa_signal_store_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_screlease_fn(args.api_args.hsa_signal_store_screlease.signal, args.api_args.hsa_signal_store_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_store_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_store_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_store_screlease.signal;
-      value = args.api_args.hsa_signal_store_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_store_screlease_fn(signal, value);
+
+	}
 }
 
 static hsa_signal_value_t hsa_signal_wait_relaxed_callback(hsa_signal_t signal, hsa_signal_condition_t condition, hsa_signal_value_t compare_value, uint64_t timeout_hint, hsa_wait_state_t wait_state_hint) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_wait_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_wait_relaxed.signal = signal;
-	args.api_args.hsa_signal_wait_relaxed.condition = condition;
-	args.api_args.hsa_signal_wait_relaxed.compare_value = compare_value;
-	args.api_args.hsa_signal_wait_relaxed.timeout_hint = timeout_hint;
-	args.api_args.hsa_signal_wait_relaxed.wait_state_hint = wait_state_hint;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_relaxed_fn(args.api_args.hsa_signal_wait_relaxed.signal, args.api_args.hsa_signal_wait_relaxed.condition, args.api_args.hsa_signal_wait_relaxed.compare_value, args.api_args.hsa_signal_wait_relaxed.timeout_hint, args.api_args.hsa_signal_wait_relaxed.wait_state_hint);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_wait_relaxed.signal = signal;
+		args.api_args.hsa_signal_wait_relaxed.condition = condition;
+		args.api_args.hsa_signal_wait_relaxed.compare_value = compare_value;
+		args.api_args.hsa_signal_wait_relaxed.timeout_hint = timeout_hint;
+		args.api_args.hsa_signal_wait_relaxed.wait_state_hint = wait_state_hint;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_relaxed_fn(args.api_args.hsa_signal_wait_relaxed.signal, args.api_args.hsa_signal_wait_relaxed.condition, args.api_args.hsa_signal_wait_relaxed.compare_value, args.api_args.hsa_signal_wait_relaxed.timeout_hint, args.api_args.hsa_signal_wait_relaxed.wait_state_hint);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_wait_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_wait_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_wait_relaxed.signal;
-      condition = args.api_args.hsa_signal_wait_relaxed.condition;
-      compare_value = args.api_args.hsa_signal_wait_relaxed.compare_value;
-      timeout_hint = args.api_args.hsa_signal_wait_relaxed.timeout_hint;
-      wait_state_hint = args.api_args.hsa_signal_wait_relaxed.wait_state_hint;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_relaxed_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_wait_scacquire_callback(hsa_signal_t signal, hsa_signal_condition_t condition, hsa_signal_value_t compare_value, uint64_t timeout_hint, hsa_wait_state_t wait_state_hint) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_wait_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_wait_scacquire.signal = signal;
-	args.api_args.hsa_signal_wait_scacquire.condition = condition;
-	args.api_args.hsa_signal_wait_scacquire.compare_value = compare_value;
-	args.api_args.hsa_signal_wait_scacquire.timeout_hint = timeout_hint;
-	args.api_args.hsa_signal_wait_scacquire.wait_state_hint = wait_state_hint;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_scacquire_fn(args.api_args.hsa_signal_wait_scacquire.signal, args.api_args.hsa_signal_wait_scacquire.condition, args.api_args.hsa_signal_wait_scacquire.compare_value, args.api_args.hsa_signal_wait_scacquire.timeout_hint, args.api_args.hsa_signal_wait_scacquire.wait_state_hint);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_wait_scacquire.signal = signal;
+		args.api_args.hsa_signal_wait_scacquire.condition = condition;
+		args.api_args.hsa_signal_wait_scacquire.compare_value = compare_value;
+		args.api_args.hsa_signal_wait_scacquire.timeout_hint = timeout_hint;
+		args.api_args.hsa_signal_wait_scacquire.wait_state_hint = wait_state_hint;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_scacquire_fn(args.api_args.hsa_signal_wait_scacquire.signal, args.api_args.hsa_signal_wait_scacquire.condition, args.api_args.hsa_signal_wait_scacquire.compare_value, args.api_args.hsa_signal_wait_scacquire.timeout_hint, args.api_args.hsa_signal_wait_scacquire.wait_state_hint);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_wait_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_wait_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_wait_scacquire.signal;
-      condition = args.api_args.hsa_signal_wait_scacquire.condition;
-      compare_value = args.api_args.hsa_signal_wait_scacquire.compare_value;
-      timeout_hint = args.api_args.hsa_signal_wait_scacquire.timeout_hint;
-      wait_state_hint = args.api_args.hsa_signal_wait_scacquire.wait_state_hint;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_wait_scacquire_fn(signal, condition, compare_value, timeout_hint, wait_state_hint);
+		return out;
+	}
 }
 
 static void hsa_signal_and_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_and_relaxed.signal = signal;
-	args.api_args.hsa_signal_and_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_relaxed_fn(args.api_args.hsa_signal_and_relaxed.signal, args.api_args.hsa_signal_and_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_and_relaxed.signal = signal;
+		args.api_args.hsa_signal_and_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_relaxed_fn(args.api_args.hsa_signal_and_relaxed.signal, args.api_args.hsa_signal_and_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_and_relaxed.signal;
-      value = args.api_args.hsa_signal_and_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_relaxed_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_and_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_and_scacquire.signal = signal;
-	args.api_args.hsa_signal_and_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacquire_fn(args.api_args.hsa_signal_and_scacquire.signal, args.api_args.hsa_signal_and_scacquire.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_and_scacquire.signal = signal;
+		args.api_args.hsa_signal_and_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacquire_fn(args.api_args.hsa_signal_and_scacquire.signal, args.api_args.hsa_signal_and_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_and_scacquire.signal;
-      value = args.api_args.hsa_signal_and_scacquire.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacquire_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_and_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_and_screlease.signal = signal;
-	args.api_args.hsa_signal_and_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_screlease_fn(args.api_args.hsa_signal_and_screlease.signal, args.api_args.hsa_signal_and_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_and_screlease.signal = signal;
+		args.api_args.hsa_signal_and_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_screlease_fn(args.api_args.hsa_signal_and_screlease.signal, args.api_args.hsa_signal_and_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_and_screlease.signal;
-      value = args.api_args.hsa_signal_and_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_screlease_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_and_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_and_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_and_scacq_screl.signal = signal;
-	args.api_args.hsa_signal_and_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacq_screl_fn(args.api_args.hsa_signal_and_scacq_screl.signal, args.api_args.hsa_signal_and_scacq_screl.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_and_scacq_screl.signal = signal;
+		args.api_args.hsa_signal_and_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacq_screl_fn(args.api_args.hsa_signal_and_scacq_screl.signal, args.api_args.hsa_signal_and_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_and_scacq_screl, &skipFunction);
-      signal = args.api_args.hsa_signal_and_scacq_screl.signal;
-      value = args.api_args.hsa_signal_and_scacq_screl.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_and_scacq_screl_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_or_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_or_relaxed.signal = signal;
-	args.api_args.hsa_signal_or_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_relaxed_fn(args.api_args.hsa_signal_or_relaxed.signal, args.api_args.hsa_signal_or_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_or_relaxed.signal = signal;
+		args.api_args.hsa_signal_or_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_relaxed_fn(args.api_args.hsa_signal_or_relaxed.signal, args.api_args.hsa_signal_or_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_or_relaxed.signal;
-      value = args.api_args.hsa_signal_or_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_relaxed_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_or_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_or_scacquire.signal = signal;
-	args.api_args.hsa_signal_or_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacquire_fn(args.api_args.hsa_signal_or_scacquire.signal, args.api_args.hsa_signal_or_scacquire.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_or_scacquire.signal = signal;
+		args.api_args.hsa_signal_or_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacquire_fn(args.api_args.hsa_signal_or_scacquire.signal, args.api_args.hsa_signal_or_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_or_scacquire.signal;
-      value = args.api_args.hsa_signal_or_scacquire.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacquire_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_or_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_or_screlease.signal = signal;
-	args.api_args.hsa_signal_or_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_screlease_fn(args.api_args.hsa_signal_or_screlease.signal, args.api_args.hsa_signal_or_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_or_screlease.signal = signal;
+		args.api_args.hsa_signal_or_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_screlease_fn(args.api_args.hsa_signal_or_screlease.signal, args.api_args.hsa_signal_or_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_or_screlease.signal;
-      value = args.api_args.hsa_signal_or_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_screlease_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_or_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_or_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_or_scacq_screl.signal = signal;
-	args.api_args.hsa_signal_or_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacq_screl_fn(args.api_args.hsa_signal_or_scacq_screl.signal, args.api_args.hsa_signal_or_scacq_screl.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_or_scacq_screl.signal = signal;
+		args.api_args.hsa_signal_or_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacq_screl_fn(args.api_args.hsa_signal_or_scacq_screl.signal, args.api_args.hsa_signal_or_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_or_scacq_screl, &skipFunction);
-      signal = args.api_args.hsa_signal_or_scacq_screl.signal;
-      value = args.api_args.hsa_signal_or_scacq_screl.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_or_scacq_screl_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_xor_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_xor_relaxed.signal = signal;
-	args.api_args.hsa_signal_xor_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_relaxed_fn(args.api_args.hsa_signal_xor_relaxed.signal, args.api_args.hsa_signal_xor_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_xor_relaxed.signal = signal;
+		args.api_args.hsa_signal_xor_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_relaxed_fn(args.api_args.hsa_signal_xor_relaxed.signal, args.api_args.hsa_signal_xor_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_xor_relaxed.signal;
-      value = args.api_args.hsa_signal_xor_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_relaxed_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_xor_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_xor_scacquire.signal = signal;
-	args.api_args.hsa_signal_xor_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacquire_fn(args.api_args.hsa_signal_xor_scacquire.signal, args.api_args.hsa_signal_xor_scacquire.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_xor_scacquire.signal = signal;
+		args.api_args.hsa_signal_xor_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacquire_fn(args.api_args.hsa_signal_xor_scacquire.signal, args.api_args.hsa_signal_xor_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_xor_scacquire.signal;
-      value = args.api_args.hsa_signal_xor_scacquire.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacquire_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_xor_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_xor_screlease.signal = signal;
-	args.api_args.hsa_signal_xor_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_screlease_fn(args.api_args.hsa_signal_xor_screlease.signal, args.api_args.hsa_signal_xor_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_xor_screlease.signal = signal;
+		args.api_args.hsa_signal_xor_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_screlease_fn(args.api_args.hsa_signal_xor_screlease.signal, args.api_args.hsa_signal_xor_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_xor_screlease.signal;
-      value = args.api_args.hsa_signal_xor_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_screlease_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_xor_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_xor_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_xor_scacq_screl.signal = signal;
-	args.api_args.hsa_signal_xor_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacq_screl_fn(args.api_args.hsa_signal_xor_scacq_screl.signal, args.api_args.hsa_signal_xor_scacq_screl.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_xor_scacq_screl.signal = signal;
+		args.api_args.hsa_signal_xor_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacq_screl_fn(args.api_args.hsa_signal_xor_scacq_screl.signal, args.api_args.hsa_signal_xor_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_xor_scacq_screl, &skipFunction);
-      signal = args.api_args.hsa_signal_xor_scacq_screl.signal;
-      value = args.api_args.hsa_signal_xor_scacq_screl.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_xor_scacq_screl_fn(signal, value);
+
+	}
 }
 
 static hsa_signal_value_t hsa_signal_exchange_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_exchange_relaxed.signal = signal;
-	args.api_args.hsa_signal_exchange_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_relaxed_fn(args.api_args.hsa_signal_exchange_relaxed.signal, args.api_args.hsa_signal_exchange_relaxed.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_exchange_relaxed.signal = signal;
+		args.api_args.hsa_signal_exchange_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_relaxed_fn(args.api_args.hsa_signal_exchange_relaxed.signal, args.api_args.hsa_signal_exchange_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_exchange_relaxed.signal;
-      value = args.api_args.hsa_signal_exchange_relaxed.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_relaxed_fn(signal, value);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_exchange_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_exchange_scacquire.signal = signal;
-	args.api_args.hsa_signal_exchange_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacquire_fn(args.api_args.hsa_signal_exchange_scacquire.signal, args.api_args.hsa_signal_exchange_scacquire.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_exchange_scacquire.signal = signal;
+		args.api_args.hsa_signal_exchange_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacquire_fn(args.api_args.hsa_signal_exchange_scacquire.signal, args.api_args.hsa_signal_exchange_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_exchange_scacquire.signal;
-      value = args.api_args.hsa_signal_exchange_scacquire.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacquire_fn(signal, value);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_exchange_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_exchange_screlease.signal = signal;
-	args.api_args.hsa_signal_exchange_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_screlease_fn(args.api_args.hsa_signal_exchange_screlease.signal, args.api_args.hsa_signal_exchange_screlease.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_exchange_screlease.signal = signal;
+		args.api_args.hsa_signal_exchange_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_screlease_fn(args.api_args.hsa_signal_exchange_screlease.signal, args.api_args.hsa_signal_exchange_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_exchange_screlease.signal;
-      value = args.api_args.hsa_signal_exchange_screlease.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_screlease_fn(signal, value);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_exchange_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_exchange_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_exchange_scacq_screl.signal = signal;
-	args.api_args.hsa_signal_exchange_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacq_screl_fn(args.api_args.hsa_signal_exchange_scacq_screl.signal, args.api_args.hsa_signal_exchange_scacq_screl.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_exchange_scacq_screl.signal = signal;
+		args.api_args.hsa_signal_exchange_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacq_screl_fn(args.api_args.hsa_signal_exchange_scacq_screl.signal, args.api_args.hsa_signal_exchange_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_exchange_scacq_screl, &skipFunction);
-      signal = args.api_args.hsa_signal_exchange_scacq_screl.signal;
-      value = args.api_args.hsa_signal_exchange_scacq_screl.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_exchange_scacq_screl_fn(signal, value);
+		return out;
+	}
 }
 
 static void hsa_signal_add_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_add_relaxed.signal = signal;
-	args.api_args.hsa_signal_add_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_relaxed_fn(args.api_args.hsa_signal_add_relaxed.signal, args.api_args.hsa_signal_add_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_add_relaxed.signal = signal;
+		args.api_args.hsa_signal_add_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_relaxed_fn(args.api_args.hsa_signal_add_relaxed.signal, args.api_args.hsa_signal_add_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_add_relaxed.signal;
-      value = args.api_args.hsa_signal_add_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_relaxed_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_add_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_add_scacquire.signal = signal;
-	args.api_args.hsa_signal_add_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacquire_fn(args.api_args.hsa_signal_add_scacquire.signal, args.api_args.hsa_signal_add_scacquire.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_add_scacquire.signal = signal;
+		args.api_args.hsa_signal_add_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacquire_fn(args.api_args.hsa_signal_add_scacquire.signal, args.api_args.hsa_signal_add_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_add_scacquire.signal;
-      value = args.api_args.hsa_signal_add_scacquire.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacquire_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_add_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_add_screlease.signal = signal;
-	args.api_args.hsa_signal_add_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_screlease_fn(args.api_args.hsa_signal_add_screlease.signal, args.api_args.hsa_signal_add_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_add_screlease.signal = signal;
+		args.api_args.hsa_signal_add_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_screlease_fn(args.api_args.hsa_signal_add_screlease.signal, args.api_args.hsa_signal_add_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_add_screlease.signal;
-      value = args.api_args.hsa_signal_add_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_screlease_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_add_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_add_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_add_scacq_screl.signal = signal;
-	args.api_args.hsa_signal_add_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacq_screl_fn(args.api_args.hsa_signal_add_scacq_screl.signal, args.api_args.hsa_signal_add_scacq_screl.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_add_scacq_screl.signal = signal;
+		args.api_args.hsa_signal_add_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacq_screl_fn(args.api_args.hsa_signal_add_scacq_screl.signal, args.api_args.hsa_signal_add_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_add_scacq_screl, &skipFunction);
-      signal = args.api_args.hsa_signal_add_scacq_screl.signal;
-      value = args.api_args.hsa_signal_add_scacq_screl.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_add_scacq_screl_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_subtract_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_subtract_relaxed.signal = signal;
-	args.api_args.hsa_signal_subtract_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_relaxed_fn(args.api_args.hsa_signal_subtract_relaxed.signal, args.api_args.hsa_signal_subtract_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_subtract_relaxed.signal = signal;
+		args.api_args.hsa_signal_subtract_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_relaxed_fn(args.api_args.hsa_signal_subtract_relaxed.signal, args.api_args.hsa_signal_subtract_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_subtract_relaxed.signal;
-      value = args.api_args.hsa_signal_subtract_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_relaxed_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_subtract_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_subtract_scacquire.signal = signal;
-	args.api_args.hsa_signal_subtract_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacquire_fn(args.api_args.hsa_signal_subtract_scacquire.signal, args.api_args.hsa_signal_subtract_scacquire.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_subtract_scacquire.signal = signal;
+		args.api_args.hsa_signal_subtract_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacquire_fn(args.api_args.hsa_signal_subtract_scacquire.signal, args.api_args.hsa_signal_subtract_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_subtract_scacquire.signal;
-      value = args.api_args.hsa_signal_subtract_scacquire.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacquire_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_subtract_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_subtract_screlease.signal = signal;
-	args.api_args.hsa_signal_subtract_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_screlease_fn(args.api_args.hsa_signal_subtract_screlease.signal, args.api_args.hsa_signal_subtract_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_subtract_screlease.signal = signal;
+		args.api_args.hsa_signal_subtract_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_screlease_fn(args.api_args.hsa_signal_subtract_screlease.signal, args.api_args.hsa_signal_subtract_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_subtract_screlease.signal;
-      value = args.api_args.hsa_signal_subtract_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_screlease_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_subtract_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_subtract_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_subtract_scacq_screl.signal = signal;
-	args.api_args.hsa_signal_subtract_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacq_screl_fn(args.api_args.hsa_signal_subtract_scacq_screl.signal, args.api_args.hsa_signal_subtract_scacq_screl.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_subtract_scacq_screl.signal = signal;
+		args.api_args.hsa_signal_subtract_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacq_screl_fn(args.api_args.hsa_signal_subtract_scacq_screl.signal, args.api_args.hsa_signal_subtract_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_subtract_scacq_screl, &skipFunction);
-      signal = args.api_args.hsa_signal_subtract_scacq_screl.signal;
-      value = args.api_args.hsa_signal_subtract_scacq_screl.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_subtract_scacq_screl_fn(signal, value);
+
+	}
 }
 
 static hsa_signal_value_t hsa_signal_cas_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_cas_relaxed.signal = signal;
-	args.api_args.hsa_signal_cas_relaxed.expected = expected;
-	args.api_args.hsa_signal_cas_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_relaxed_fn(args.api_args.hsa_signal_cas_relaxed.signal, args.api_args.hsa_signal_cas_relaxed.expected, args.api_args.hsa_signal_cas_relaxed.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_cas_relaxed.signal = signal;
+		args.api_args.hsa_signal_cas_relaxed.expected = expected;
+		args.api_args.hsa_signal_cas_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_relaxed_fn(args.api_args.hsa_signal_cas_relaxed.signal, args.api_args.hsa_signal_cas_relaxed.expected, args.api_args.hsa_signal_cas_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_cas_relaxed.signal;
-      expected = args.api_args.hsa_signal_cas_relaxed.expected;
-      value = args.api_args.hsa_signal_cas_relaxed.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_relaxed_fn(signal, expected, value);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_cas_scacquire_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_cas_scacquire.signal = signal;
-	args.api_args.hsa_signal_cas_scacquire.expected = expected;
-	args.api_args.hsa_signal_cas_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacquire_fn(args.api_args.hsa_signal_cas_scacquire.signal, args.api_args.hsa_signal_cas_scacquire.expected, args.api_args.hsa_signal_cas_scacquire.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_cas_scacquire.signal = signal;
+		args.api_args.hsa_signal_cas_scacquire.expected = expected;
+		args.api_args.hsa_signal_cas_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacquire_fn(args.api_args.hsa_signal_cas_scacquire.signal, args.api_args.hsa_signal_cas_scacquire.expected, args.api_args.hsa_signal_cas_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_scacquire, &skipFunction);
-      signal = args.api_args.hsa_signal_cas_scacquire.signal;
-      expected = args.api_args.hsa_signal_cas_scacquire.expected;
-      value = args.api_args.hsa_signal_cas_scacquire.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacquire_fn(signal, expected, value);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_cas_screlease_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_cas_screlease.signal = signal;
-	args.api_args.hsa_signal_cas_screlease.expected = expected;
-	args.api_args.hsa_signal_cas_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_screlease_fn(args.api_args.hsa_signal_cas_screlease.signal, args.api_args.hsa_signal_cas_screlease.expected, args.api_args.hsa_signal_cas_screlease.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_cas_screlease.signal = signal;
+		args.api_args.hsa_signal_cas_screlease.expected = expected;
+		args.api_args.hsa_signal_cas_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_screlease_fn(args.api_args.hsa_signal_cas_screlease.signal, args.api_args.hsa_signal_cas_screlease.expected, args.api_args.hsa_signal_cas_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_cas_screlease.signal;
-      expected = args.api_args.hsa_signal_cas_screlease.expected;
-      value = args.api_args.hsa_signal_cas_screlease.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_screlease_fn(signal, expected, value);
+		return out;
+	}
 }
 
 static hsa_signal_value_t hsa_signal_cas_scacq_screl_callback(hsa_signal_t signal, hsa_signal_value_t expected, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_cas_scacq_screl;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_cas_scacq_screl.signal = signal;
-	args.api_args.hsa_signal_cas_scacq_screl.expected = expected;
-	args.api_args.hsa_signal_cas_scacq_screl.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_signal_value_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacq_screl_fn(args.api_args.hsa_signal_cas_scacq_screl.signal, args.api_args.hsa_signal_cas_scacq_screl.expected, args.api_args.hsa_signal_cas_scacq_screl.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_cas_scacq_screl.signal = signal;
+		args.api_args.hsa_signal_cas_scacq_screl.expected = expected;
+		args.api_args.hsa_signal_cas_scacq_screl.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacq_screl_fn(args.api_args.hsa_signal_cas_scacq_screl.signal, args.api_args.hsa_signal_cas_scacq_screl.expected, args.api_args.hsa_signal_cas_scacq_screl.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_scacq_screl);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_cas_scacq_screl, &skipFunction);
-      signal = args.api_args.hsa_signal_cas_scacq_screl.signal;
-      expected = args.api_args.hsa_signal_cas_scacq_screl.expected;
-      value = args.api_args.hsa_signal_cas_scacq_screl.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_cas_scacq_screl_fn(signal, expected, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_isa_from_name_callback(const char* name, hsa_isa_t* isa) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_from_name;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_isa_from_name.name = name;
-	args.api_args.hsa_isa_from_name.isa = isa;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_from_name_fn(args.api_args.hsa_isa_from_name.name, args.api_args.hsa_isa_from_name.isa);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_isa_from_name.name = name;
+		args.api_args.hsa_isa_from_name.isa = isa;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_from_name_fn(args.api_args.hsa_isa_from_name.name, args.api_args.hsa_isa_from_name.isa);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_from_name);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_from_name, &skipFunction);
-      name = args.api_args.hsa_isa_from_name.name;
-      isa = args.api_args.hsa_isa_from_name.isa;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_from_name_fn(name, isa);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_isa_get_info_callback(hsa_isa_t isa, hsa_isa_info_t attribute, uint32_t index, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_isa_get_info.isa = isa;
-	args.api_args.hsa_isa_get_info.attribute = attribute;
-	args.api_args.hsa_isa_get_info.index = index;
-	args.api_args.hsa_isa_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_fn(args.api_args.hsa_isa_get_info.isa, args.api_args.hsa_isa_get_info.attribute, args.api_args.hsa_isa_get_info.index, args.api_args.hsa_isa_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_isa_get_info.isa = isa;
+		args.api_args.hsa_isa_get_info.attribute = attribute;
+		args.api_args.hsa_isa_get_info.index = index;
+		args.api_args.hsa_isa_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_fn(args.api_args.hsa_isa_get_info.isa, args.api_args.hsa_isa_get_info.attribute, args.api_args.hsa_isa_get_info.index, args.api_args.hsa_isa_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_info, &skipFunction);
-      isa = args.api_args.hsa_isa_get_info.isa;
-      attribute = args.api_args.hsa_isa_get_info.attribute;
-      index = args.api_args.hsa_isa_get_info.index;
-      value = args.api_args.hsa_isa_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_fn(isa, attribute, index, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_isa_compatible_callback(hsa_isa_t code_object_isa, hsa_isa_t agent_isa, bool* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_compatible;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_isa_compatible.code_object_isa = code_object_isa;
-	args.api_args.hsa_isa_compatible.agent_isa = agent_isa;
-	args.api_args.hsa_isa_compatible.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_compatible_fn(args.api_args.hsa_isa_compatible.code_object_isa, args.api_args.hsa_isa_compatible.agent_isa, args.api_args.hsa_isa_compatible.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_isa_compatible.code_object_isa = code_object_isa;
+		args.api_args.hsa_isa_compatible.agent_isa = agent_isa;
+		args.api_args.hsa_isa_compatible.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_compatible_fn(args.api_args.hsa_isa_compatible.code_object_isa, args.api_args.hsa_isa_compatible.agent_isa, args.api_args.hsa_isa_compatible.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_compatible);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_compatible, &skipFunction);
-      code_object_isa = args.api_args.hsa_isa_compatible.code_object_isa;
-      agent_isa = args.api_args.hsa_isa_compatible.agent_isa;
-      result = args.api_args.hsa_isa_compatible.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_compatible_fn(code_object_isa, agent_isa, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_serialize_callback(hsa_code_object_t code_object, hsa_status_t (* alloc_callback)(size_t size, hsa_callback_data_t data, void** address), hsa_callback_data_t callback_data, const char* options, void** serialized_code_object, size_t* serialized_code_object_size) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_serialize;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_serialize.code_object = code_object;
-	args.api_args.hsa_code_object_serialize.alloc_callback = alloc_callback;
-	args.api_args.hsa_code_object_serialize.callback_data = callback_data;
-	args.api_args.hsa_code_object_serialize.options = options;
-	args.api_args.hsa_code_object_serialize.serialized_code_object = serialized_code_object;
-	args.api_args.hsa_code_object_serialize.serialized_code_object_size = serialized_code_object_size;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_serialize_fn(args.api_args.hsa_code_object_serialize.code_object, args.api_args.hsa_code_object_serialize.alloc_callback, args.api_args.hsa_code_object_serialize.callback_data, args.api_args.hsa_code_object_serialize.options, args.api_args.hsa_code_object_serialize.serialized_code_object, args.api_args.hsa_code_object_serialize.serialized_code_object_size);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_serialize.code_object = code_object;
+		args.api_args.hsa_code_object_serialize.alloc_callback = alloc_callback;
+		args.api_args.hsa_code_object_serialize.callback_data = callback_data;
+		args.api_args.hsa_code_object_serialize.options = options;
+		args.api_args.hsa_code_object_serialize.serialized_code_object = serialized_code_object;
+		args.api_args.hsa_code_object_serialize.serialized_code_object_size = serialized_code_object_size;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_serialize_fn(args.api_args.hsa_code_object_serialize.code_object, args.api_args.hsa_code_object_serialize.alloc_callback, args.api_args.hsa_code_object_serialize.callback_data, args.api_args.hsa_code_object_serialize.options, args.api_args.hsa_code_object_serialize.serialized_code_object, args.api_args.hsa_code_object_serialize.serialized_code_object_size);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_serialize);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_serialize, &skipFunction);
-      code_object = args.api_args.hsa_code_object_serialize.code_object;
-      alloc_callback = args.api_args.hsa_code_object_serialize.alloc_callback;
-      callback_data = args.api_args.hsa_code_object_serialize.callback_data;
-      options = args.api_args.hsa_code_object_serialize.options;
-      serialized_code_object = args.api_args.hsa_code_object_serialize.serialized_code_object;
-      serialized_code_object_size = args.api_args.hsa_code_object_serialize.serialized_code_object_size;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_serialize_fn(code_object, alloc_callback, callback_data, options, serialized_code_object, serialized_code_object_size);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_deserialize_callback(void* serialized_code_object, size_t serialized_code_object_size, const char* options, hsa_code_object_t* code_object) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_deserialize;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_deserialize.serialized_code_object = serialized_code_object;
-	args.api_args.hsa_code_object_deserialize.serialized_code_object_size = serialized_code_object_size;
-	args.api_args.hsa_code_object_deserialize.options = options;
-	args.api_args.hsa_code_object_deserialize.code_object = code_object;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_deserialize_fn(args.api_args.hsa_code_object_deserialize.serialized_code_object, args.api_args.hsa_code_object_deserialize.serialized_code_object_size, args.api_args.hsa_code_object_deserialize.options, args.api_args.hsa_code_object_deserialize.code_object);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_deserialize.serialized_code_object = serialized_code_object;
+		args.api_args.hsa_code_object_deserialize.serialized_code_object_size = serialized_code_object_size;
+		args.api_args.hsa_code_object_deserialize.options = options;
+		args.api_args.hsa_code_object_deserialize.code_object = code_object;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_deserialize_fn(args.api_args.hsa_code_object_deserialize.serialized_code_object, args.api_args.hsa_code_object_deserialize.serialized_code_object_size, args.api_args.hsa_code_object_deserialize.options, args.api_args.hsa_code_object_deserialize.code_object);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_deserialize);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_deserialize, &skipFunction);
-      serialized_code_object = args.api_args.hsa_code_object_deserialize.serialized_code_object;
-      serialized_code_object_size = args.api_args.hsa_code_object_deserialize.serialized_code_object_size;
-      options = args.api_args.hsa_code_object_deserialize.options;
-      code_object = args.api_args.hsa_code_object_deserialize.code_object;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_deserialize_fn(serialized_code_object, serialized_code_object_size, options, code_object);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_destroy_callback(hsa_code_object_t code_object) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_destroy.code_object = code_object;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_destroy_fn(args.api_args.hsa_code_object_destroy.code_object);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_destroy.code_object = code_object;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_destroy_fn(args.api_args.hsa_code_object_destroy.code_object);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_destroy, &skipFunction);
-      code_object = args.api_args.hsa_code_object_destroy.code_object;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_destroy_fn(code_object);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_get_info_callback(hsa_code_object_t code_object, hsa_code_object_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_get_info.code_object = code_object;
-	args.api_args.hsa_code_object_get_info.attribute = attribute;
-	args.api_args.hsa_code_object_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_info_fn(args.api_args.hsa_code_object_get_info.code_object, args.api_args.hsa_code_object_get_info.attribute, args.api_args.hsa_code_object_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_get_info.code_object = code_object;
+		args.api_args.hsa_code_object_get_info.attribute = attribute;
+		args.api_args.hsa_code_object_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_info_fn(args.api_args.hsa_code_object_get_info.code_object, args.api_args.hsa_code_object_get_info.attribute, args.api_args.hsa_code_object_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_get_info, &skipFunction);
-      code_object = args.api_args.hsa_code_object_get_info.code_object;
-      attribute = args.api_args.hsa_code_object_get_info.attribute;
-      value = args.api_args.hsa_code_object_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_info_fn(code_object, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_get_symbol_callback(hsa_code_object_t code_object, const char* symbol_name, hsa_code_symbol_t* symbol) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_get_symbol;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_get_symbol.code_object = code_object;
-	args.api_args.hsa_code_object_get_symbol.symbol_name = symbol_name;
-	args.api_args.hsa_code_object_get_symbol.symbol = symbol;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_fn(args.api_args.hsa_code_object_get_symbol.code_object, args.api_args.hsa_code_object_get_symbol.symbol_name, args.api_args.hsa_code_object_get_symbol.symbol);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_get_symbol.code_object = code_object;
+		args.api_args.hsa_code_object_get_symbol.symbol_name = symbol_name;
+		args.api_args.hsa_code_object_get_symbol.symbol = symbol;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_fn(args.api_args.hsa_code_object_get_symbol.code_object, args.api_args.hsa_code_object_get_symbol.symbol_name, args.api_args.hsa_code_object_get_symbol.symbol);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_get_symbol);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_get_symbol, &skipFunction);
-      code_object = args.api_args.hsa_code_object_get_symbol.code_object;
-      symbol_name = args.api_args.hsa_code_object_get_symbol.symbol_name;
-      symbol = args.api_args.hsa_code_object_get_symbol.symbol;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_fn(code_object, symbol_name, symbol);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_symbol_get_info_callback(hsa_code_symbol_t code_symbol, hsa_code_symbol_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_symbol_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_symbol_get_info.code_symbol = code_symbol;
-	args.api_args.hsa_code_symbol_get_info.attribute = attribute;
-	args.api_args.hsa_code_symbol_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_symbol_get_info_fn(args.api_args.hsa_code_symbol_get_info.code_symbol, args.api_args.hsa_code_symbol_get_info.attribute, args.api_args.hsa_code_symbol_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_symbol_get_info.code_symbol = code_symbol;
+		args.api_args.hsa_code_symbol_get_info.attribute = attribute;
+		args.api_args.hsa_code_symbol_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_symbol_get_info_fn(args.api_args.hsa_code_symbol_get_info.code_symbol, args.api_args.hsa_code_symbol_get_info.attribute, args.api_args.hsa_code_symbol_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_symbol_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_symbol_get_info, &skipFunction);
-      code_symbol = args.api_args.hsa_code_symbol_get_info.code_symbol;
-      attribute = args.api_args.hsa_code_symbol_get_info.attribute;
-      value = args.api_args.hsa_code_symbol_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_symbol_get_info_fn(code_symbol, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_iterate_symbols_callback(hsa_code_object_t code_object, hsa_status_t (* callback)(hsa_code_object_t code_object, hsa_code_symbol_t symbol, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_iterate_symbols;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_iterate_symbols.code_object = code_object;
-	args.api_args.hsa_code_object_iterate_symbols.callback = callback;
-	args.api_args.hsa_code_object_iterate_symbols.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_iterate_symbols_fn(args.api_args.hsa_code_object_iterate_symbols.code_object, args.api_args.hsa_code_object_iterate_symbols.callback, args.api_args.hsa_code_object_iterate_symbols.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_iterate_symbols.code_object = code_object;
+		args.api_args.hsa_code_object_iterate_symbols.callback = callback;
+		args.api_args.hsa_code_object_iterate_symbols.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_iterate_symbols_fn(args.api_args.hsa_code_object_iterate_symbols.code_object, args.api_args.hsa_code_object_iterate_symbols.callback, args.api_args.hsa_code_object_iterate_symbols.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_iterate_symbols);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_iterate_symbols, &skipFunction);
-      code_object = args.api_args.hsa_code_object_iterate_symbols.code_object;
-      callback = args.api_args.hsa_code_object_iterate_symbols.callback;
-      data = args.api_args.hsa_code_object_iterate_symbols.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_iterate_symbols_fn(code_object, callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_create_callback(hsa_profile_t profile, hsa_executable_state_t executable_state, const char* options, hsa_executable_t* executable) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_create.profile = profile;
-	args.api_args.hsa_executable_create.executable_state = executable_state;
-	args.api_args.hsa_executable_create.options = options;
-	args.api_args.hsa_executable_create.executable = executable;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_fn(args.api_args.hsa_executable_create.profile, args.api_args.hsa_executable_create.executable_state, args.api_args.hsa_executable_create.options, args.api_args.hsa_executable_create.executable);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_create.profile = profile;
+		args.api_args.hsa_executable_create.executable_state = executable_state;
+		args.api_args.hsa_executable_create.options = options;
+		args.api_args.hsa_executable_create.executable = executable;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_fn(args.api_args.hsa_executable_create.profile, args.api_args.hsa_executable_create.executable_state, args.api_args.hsa_executable_create.options, args.api_args.hsa_executable_create.executable);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_create, &skipFunction);
-      profile = args.api_args.hsa_executable_create.profile;
-      executable_state = args.api_args.hsa_executable_create.executable_state;
-      options = args.api_args.hsa_executable_create.options;
-      executable = args.api_args.hsa_executable_create.executable;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_fn(profile, executable_state, options, executable);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_destroy_callback(hsa_executable_t executable) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_destroy.executable = executable;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_destroy_fn(args.api_args.hsa_executable_destroy.executable);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_destroy.executable = executable;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_destroy_fn(args.api_args.hsa_executable_destroy.executable);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_destroy, &skipFunction);
-      executable = args.api_args.hsa_executable_destroy.executable;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_destroy_fn(executable);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_load_code_object_callback(hsa_executable_t executable, hsa_agent_t agent, hsa_code_object_t code_object, const char* options) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_load_code_object;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_load_code_object.executable = executable;
-	args.api_args.hsa_executable_load_code_object.agent = agent;
-	args.api_args.hsa_executable_load_code_object.code_object = code_object;
-	args.api_args.hsa_executable_load_code_object.options = options;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_code_object_fn(args.api_args.hsa_executable_load_code_object.executable, args.api_args.hsa_executable_load_code_object.agent, args.api_args.hsa_executable_load_code_object.code_object, args.api_args.hsa_executable_load_code_object.options);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_load_code_object.executable = executable;
+		args.api_args.hsa_executable_load_code_object.agent = agent;
+		args.api_args.hsa_executable_load_code_object.code_object = code_object;
+		args.api_args.hsa_executable_load_code_object.options = options;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_code_object_fn(args.api_args.hsa_executable_load_code_object.executable, args.api_args.hsa_executable_load_code_object.agent, args.api_args.hsa_executable_load_code_object.code_object, args.api_args.hsa_executable_load_code_object.options);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_load_code_object);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_load_code_object, &skipFunction);
-      executable = args.api_args.hsa_executable_load_code_object.executable;
-      agent = args.api_args.hsa_executable_load_code_object.agent;
-      code_object = args.api_args.hsa_executable_load_code_object.code_object;
-      options = args.api_args.hsa_executable_load_code_object.options;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_code_object_fn(executable, agent, code_object, options);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_freeze_callback(hsa_executable_t executable, const char* options) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_freeze;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_freeze.executable = executable;
-	args.api_args.hsa_executable_freeze.options = options;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_freeze_fn(args.api_args.hsa_executable_freeze.executable, args.api_args.hsa_executable_freeze.options);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_freeze.executable = executable;
+		args.api_args.hsa_executable_freeze.options = options;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_freeze_fn(args.api_args.hsa_executable_freeze.executable, args.api_args.hsa_executable_freeze.options);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_freeze);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_freeze, &skipFunction);
-      executable = args.api_args.hsa_executable_freeze.executable;
-      options = args.api_args.hsa_executable_freeze.options;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_freeze_fn(executable, options);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_get_info_callback(hsa_executable_t executable, hsa_executable_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_get_info.executable = executable;
-	args.api_args.hsa_executable_get_info.attribute = attribute;
-	args.api_args.hsa_executable_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_info_fn(args.api_args.hsa_executable_get_info.executable, args.api_args.hsa_executable_get_info.attribute, args.api_args.hsa_executable_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_get_info.executable = executable;
+		args.api_args.hsa_executable_get_info.attribute = attribute;
+		args.api_args.hsa_executable_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_info_fn(args.api_args.hsa_executable_get_info.executable, args.api_args.hsa_executable_get_info.attribute, args.api_args.hsa_executable_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_get_info, &skipFunction);
-      executable = args.api_args.hsa_executable_get_info.executable;
-      attribute = args.api_args.hsa_executable_get_info.attribute;
-      value = args.api_args.hsa_executable_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_info_fn(executable, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_global_variable_define_callback(hsa_executable_t executable, const char* variable_name, void* address) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_global_variable_define;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_global_variable_define.executable = executable;
-	args.api_args.hsa_executable_global_variable_define.variable_name = variable_name;
-	args.api_args.hsa_executable_global_variable_define.address = address;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_global_variable_define_fn(args.api_args.hsa_executable_global_variable_define.executable, args.api_args.hsa_executable_global_variable_define.variable_name, args.api_args.hsa_executable_global_variable_define.address);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_global_variable_define.executable = executable;
+		args.api_args.hsa_executable_global_variable_define.variable_name = variable_name;
+		args.api_args.hsa_executable_global_variable_define.address = address;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_global_variable_define_fn(args.api_args.hsa_executable_global_variable_define.executable, args.api_args.hsa_executable_global_variable_define.variable_name, args.api_args.hsa_executable_global_variable_define.address);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_global_variable_define);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_global_variable_define, &skipFunction);
-      executable = args.api_args.hsa_executable_global_variable_define.executable;
-      variable_name = args.api_args.hsa_executable_global_variable_define.variable_name;
-      address = args.api_args.hsa_executable_global_variable_define.address;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_global_variable_define_fn(executable, variable_name, address);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_agent_global_variable_define_callback(hsa_executable_t executable, hsa_agent_t agent, const char* variable_name, void* address) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_agent_global_variable_define;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_agent_global_variable_define.executable = executable;
-	args.api_args.hsa_executable_agent_global_variable_define.agent = agent;
-	args.api_args.hsa_executable_agent_global_variable_define.variable_name = variable_name;
-	args.api_args.hsa_executable_agent_global_variable_define.address = address;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_agent_global_variable_define_fn(args.api_args.hsa_executable_agent_global_variable_define.executable, args.api_args.hsa_executable_agent_global_variable_define.agent, args.api_args.hsa_executable_agent_global_variable_define.variable_name, args.api_args.hsa_executable_agent_global_variable_define.address);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_agent_global_variable_define.executable = executable;
+		args.api_args.hsa_executable_agent_global_variable_define.agent = agent;
+		args.api_args.hsa_executable_agent_global_variable_define.variable_name = variable_name;
+		args.api_args.hsa_executable_agent_global_variable_define.address = address;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_agent_global_variable_define_fn(args.api_args.hsa_executable_agent_global_variable_define.executable, args.api_args.hsa_executable_agent_global_variable_define.agent, args.api_args.hsa_executable_agent_global_variable_define.variable_name, args.api_args.hsa_executable_agent_global_variable_define.address);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_agent_global_variable_define);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_agent_global_variable_define, &skipFunction);
-      executable = args.api_args.hsa_executable_agent_global_variable_define.executable;
-      agent = args.api_args.hsa_executable_agent_global_variable_define.agent;
-      variable_name = args.api_args.hsa_executable_agent_global_variable_define.variable_name;
-      address = args.api_args.hsa_executable_agent_global_variable_define.address;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_agent_global_variable_define_fn(executable, agent, variable_name, address);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_readonly_variable_define_callback(hsa_executable_t executable, hsa_agent_t agent, const char* variable_name, void* address) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_readonly_variable_define;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_readonly_variable_define.executable = executable;
-	args.api_args.hsa_executable_readonly_variable_define.agent = agent;
-	args.api_args.hsa_executable_readonly_variable_define.variable_name = variable_name;
-	args.api_args.hsa_executable_readonly_variable_define.address = address;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_readonly_variable_define_fn(args.api_args.hsa_executable_readonly_variable_define.executable, args.api_args.hsa_executable_readonly_variable_define.agent, args.api_args.hsa_executable_readonly_variable_define.variable_name, args.api_args.hsa_executable_readonly_variable_define.address);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_readonly_variable_define.executable = executable;
+		args.api_args.hsa_executable_readonly_variable_define.agent = agent;
+		args.api_args.hsa_executable_readonly_variable_define.variable_name = variable_name;
+		args.api_args.hsa_executable_readonly_variable_define.address = address;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_readonly_variable_define_fn(args.api_args.hsa_executable_readonly_variable_define.executable, args.api_args.hsa_executable_readonly_variable_define.agent, args.api_args.hsa_executable_readonly_variable_define.variable_name, args.api_args.hsa_executable_readonly_variable_define.address);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_readonly_variable_define);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_readonly_variable_define, &skipFunction);
-      executable = args.api_args.hsa_executable_readonly_variable_define.executable;
-      agent = args.api_args.hsa_executable_readonly_variable_define.agent;
-      variable_name = args.api_args.hsa_executable_readonly_variable_define.variable_name;
-      address = args.api_args.hsa_executable_readonly_variable_define.address;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_readonly_variable_define_fn(executable, agent, variable_name, address);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_validate_callback(hsa_executable_t executable, uint32_t* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_validate;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_validate.executable = executable;
-	args.api_args.hsa_executable_validate.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_fn(args.api_args.hsa_executable_validate.executable, args.api_args.hsa_executable_validate.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_validate.executable = executable;
+		args.api_args.hsa_executable_validate.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_fn(args.api_args.hsa_executable_validate.executable, args.api_args.hsa_executable_validate.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_validate);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_validate, &skipFunction);
-      executable = args.api_args.hsa_executable_validate.executable;
-      result = args.api_args.hsa_executable_validate.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_fn(executable, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_get_symbol_callback(hsa_executable_t executable, const char* module_name, const char* symbol_name, hsa_agent_t agent, int32_t call_convention, hsa_executable_symbol_t* symbol) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_get_symbol;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_get_symbol.executable = executable;
-	args.api_args.hsa_executable_get_symbol.module_name = module_name;
-	args.api_args.hsa_executable_get_symbol.symbol_name = symbol_name;
-	args.api_args.hsa_executable_get_symbol.agent = agent;
-	args.api_args.hsa_executable_get_symbol.call_convention = call_convention;
-	args.api_args.hsa_executable_get_symbol.symbol = symbol;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_fn(args.api_args.hsa_executable_get_symbol.executable, args.api_args.hsa_executable_get_symbol.module_name, args.api_args.hsa_executable_get_symbol.symbol_name, args.api_args.hsa_executable_get_symbol.agent, args.api_args.hsa_executable_get_symbol.call_convention, args.api_args.hsa_executable_get_symbol.symbol);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_get_symbol.executable = executable;
+		args.api_args.hsa_executable_get_symbol.module_name = module_name;
+		args.api_args.hsa_executable_get_symbol.symbol_name = symbol_name;
+		args.api_args.hsa_executable_get_symbol.agent = agent;
+		args.api_args.hsa_executable_get_symbol.call_convention = call_convention;
+		args.api_args.hsa_executable_get_symbol.symbol = symbol;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_fn(args.api_args.hsa_executable_get_symbol.executable, args.api_args.hsa_executable_get_symbol.module_name, args.api_args.hsa_executable_get_symbol.symbol_name, args.api_args.hsa_executable_get_symbol.agent, args.api_args.hsa_executable_get_symbol.call_convention, args.api_args.hsa_executable_get_symbol.symbol);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_get_symbol);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_get_symbol, &skipFunction);
-      executable = args.api_args.hsa_executable_get_symbol.executable;
-      module_name = args.api_args.hsa_executable_get_symbol.module_name;
-      symbol_name = args.api_args.hsa_executable_get_symbol.symbol_name;
-      agent = args.api_args.hsa_executable_get_symbol.agent;
-      call_convention = args.api_args.hsa_executable_get_symbol.call_convention;
-      symbol = args.api_args.hsa_executable_get_symbol.symbol;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_fn(executable, module_name, symbol_name, agent, call_convention, symbol);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_symbol_get_info_callback(hsa_executable_symbol_t executable_symbol, hsa_executable_symbol_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_symbol_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_symbol_get_info.executable_symbol = executable_symbol;
-	args.api_args.hsa_executable_symbol_get_info.attribute = attribute;
-	args.api_args.hsa_executable_symbol_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_symbol_get_info_fn(args.api_args.hsa_executable_symbol_get_info.executable_symbol, args.api_args.hsa_executable_symbol_get_info.attribute, args.api_args.hsa_executable_symbol_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_symbol_get_info.executable_symbol = executable_symbol;
+		args.api_args.hsa_executable_symbol_get_info.attribute = attribute;
+		args.api_args.hsa_executable_symbol_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_symbol_get_info_fn(args.api_args.hsa_executable_symbol_get_info.executable_symbol, args.api_args.hsa_executable_symbol_get_info.attribute, args.api_args.hsa_executable_symbol_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_symbol_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_symbol_get_info, &skipFunction);
-      executable_symbol = args.api_args.hsa_executable_symbol_get_info.executable_symbol;
-      attribute = args.api_args.hsa_executable_symbol_get_info.attribute;
-      value = args.api_args.hsa_executable_symbol_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_symbol_get_info_fn(executable_symbol, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_iterate_symbols_callback(hsa_executable_t executable, hsa_status_t (* callback)(hsa_executable_t exec, hsa_executable_symbol_t symbol, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_iterate_symbols;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_iterate_symbols.executable = executable;
-	args.api_args.hsa_executable_iterate_symbols.callback = callback;
-	args.api_args.hsa_executable_iterate_symbols.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_symbols_fn(args.api_args.hsa_executable_iterate_symbols.executable, args.api_args.hsa_executable_iterate_symbols.callback, args.api_args.hsa_executable_iterate_symbols.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_iterate_symbols.executable = executable;
+		args.api_args.hsa_executable_iterate_symbols.callback = callback;
+		args.api_args.hsa_executable_iterate_symbols.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_symbols_fn(args.api_args.hsa_executable_iterate_symbols.executable, args.api_args.hsa_executable_iterate_symbols.callback, args.api_args.hsa_executable_iterate_symbols.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_iterate_symbols);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_iterate_symbols, &skipFunction);
-      executable = args.api_args.hsa_executable_iterate_symbols.executable;
-      callback = args.api_args.hsa_executable_iterate_symbols.callback;
-      data = args.api_args.hsa_executable_iterate_symbols.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_symbols_fn(executable, callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_status_string_callback(hsa_status_t status, const char** status_string) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_status_string;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_status_string.status = status;
-	args.api_args.hsa_status_string.status_string = status_string;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_status_string_fn(args.api_args.hsa_status_string.status, args.api_args.hsa_status_string.status_string);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_status_string.status = status;
+		args.api_args.hsa_status_string.status_string = status_string;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_status_string_fn(args.api_args.hsa_status_string.status, args.api_args.hsa_status_string.status_string);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_status_string);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_status_string, &skipFunction);
-      status = args.api_args.hsa_status_string.status;
-      status_string = args.api_args.hsa_status_string.status_string;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_status_string_fn(status, status_string);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_extension_get_name_callback(uint16_t extension, const char** name) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_extension_get_name;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_extension_get_name.extension = extension;
-	args.api_args.hsa_extension_get_name.name = name;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_extension_get_name_fn(args.api_args.hsa_extension_get_name.extension, args.api_args.hsa_extension_get_name.name);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_extension_get_name.extension = extension;
+		args.api_args.hsa_extension_get_name.name = name;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_extension_get_name_fn(args.api_args.hsa_extension_get_name.extension, args.api_args.hsa_extension_get_name.name);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_extension_get_name);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_extension_get_name, &skipFunction);
-      extension = args.api_args.hsa_extension_get_name.extension;
-      name = args.api_args.hsa_extension_get_name.name;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_extension_get_name_fn(extension, name);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_system_major_extension_supported_callback(uint16_t extension, uint16_t version_major, uint16_t* version_minor, bool* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_major_extension_supported;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_system_major_extension_supported.extension = extension;
-	args.api_args.hsa_system_major_extension_supported.version_major = version_major;
-	args.api_args.hsa_system_major_extension_supported.version_minor = version_minor;
-	args.api_args.hsa_system_major_extension_supported.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_major_extension_supported_fn(args.api_args.hsa_system_major_extension_supported.extension, args.api_args.hsa_system_major_extension_supported.version_major, args.api_args.hsa_system_major_extension_supported.version_minor, args.api_args.hsa_system_major_extension_supported.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_system_major_extension_supported.extension = extension;
+		args.api_args.hsa_system_major_extension_supported.version_major = version_major;
+		args.api_args.hsa_system_major_extension_supported.version_minor = version_minor;
+		args.api_args.hsa_system_major_extension_supported.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_system_major_extension_supported_fn(args.api_args.hsa_system_major_extension_supported.extension, args.api_args.hsa_system_major_extension_supported.version_major, args.api_args.hsa_system_major_extension_supported.version_minor, args.api_args.hsa_system_major_extension_supported.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_major_extension_supported);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_major_extension_supported, &skipFunction);
-      extension = args.api_args.hsa_system_major_extension_supported.extension;
-      version_major = args.api_args.hsa_system_major_extension_supported.version_major;
-      version_minor = args.api_args.hsa_system_major_extension_supported.version_minor;
-      result = args.api_args.hsa_system_major_extension_supported.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_major_extension_supported_fn(extension, version_major, version_minor, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_system_get_major_extension_table_callback(uint16_t extension, uint16_t version_major, size_t table_length, void* table) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_system_get_major_extension_table;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_system_get_major_extension_table.extension = extension;
-	args.api_args.hsa_system_get_major_extension_table.version_major = version_major;
-	args.api_args.hsa_system_get_major_extension_table.table_length = table_length;
-	args.api_args.hsa_system_get_major_extension_table.table = table;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_major_extension_table_fn(args.api_args.hsa_system_get_major_extension_table.extension, args.api_args.hsa_system_get_major_extension_table.version_major, args.api_args.hsa_system_get_major_extension_table.table_length, args.api_args.hsa_system_get_major_extension_table.table);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_system_get_major_extension_table.extension = extension;
+		args.api_args.hsa_system_get_major_extension_table.version_major = version_major;
+		args.api_args.hsa_system_get_major_extension_table.table_length = table_length;
+		args.api_args.hsa_system_get_major_extension_table.table = table;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_major_extension_table_fn(args.api_args.hsa_system_get_major_extension_table.extension, args.api_args.hsa_system_get_major_extension_table.version_major, args.api_args.hsa_system_get_major_extension_table.table_length, args.api_args.hsa_system_get_major_extension_table.table);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_get_major_extension_table);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_system_get_major_extension_table, &skipFunction);
-      extension = args.api_args.hsa_system_get_major_extension_table.extension;
-      version_major = args.api_args.hsa_system_get_major_extension_table.version_major;
-      table_length = args.api_args.hsa_system_get_major_extension_table.table_length;
-      table = args.api_args.hsa_system_get_major_extension_table.table;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_system_get_major_extension_table_fn(extension, version_major, table_length, table);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_agent_major_extension_supported_callback(uint16_t extension, hsa_agent_t agent, uint16_t version_major, uint16_t* version_minor, bool* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_major_extension_supported;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_agent_major_extension_supported.extension = extension;
-	args.api_args.hsa_agent_major_extension_supported.agent = agent;
-	args.api_args.hsa_agent_major_extension_supported.version_major = version_major;
-	args.api_args.hsa_agent_major_extension_supported.version_minor = version_minor;
-	args.api_args.hsa_agent_major_extension_supported.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_major_extension_supported_fn(args.api_args.hsa_agent_major_extension_supported.extension, args.api_args.hsa_agent_major_extension_supported.agent, args.api_args.hsa_agent_major_extension_supported.version_major, args.api_args.hsa_agent_major_extension_supported.version_minor, args.api_args.hsa_agent_major_extension_supported.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_agent_major_extension_supported.extension = extension;
+		args.api_args.hsa_agent_major_extension_supported.agent = agent;
+		args.api_args.hsa_agent_major_extension_supported.version_major = version_major;
+		args.api_args.hsa_agent_major_extension_supported.version_minor = version_minor;
+		args.api_args.hsa_agent_major_extension_supported.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_major_extension_supported_fn(args.api_args.hsa_agent_major_extension_supported.extension, args.api_args.hsa_agent_major_extension_supported.agent, args.api_args.hsa_agent_major_extension_supported.version_major, args.api_args.hsa_agent_major_extension_supported.version_minor, args.api_args.hsa_agent_major_extension_supported.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_major_extension_supported);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_major_extension_supported, &skipFunction);
-      extension = args.api_args.hsa_agent_major_extension_supported.extension;
-      agent = args.api_args.hsa_agent_major_extension_supported.agent;
-      version_major = args.api_args.hsa_agent_major_extension_supported.version_major;
-      version_minor = args.api_args.hsa_agent_major_extension_supported.version_minor;
-      result = args.api_args.hsa_agent_major_extension_supported.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_major_extension_supported_fn(extension, agent, version_major, version_minor, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_cache_get_info_callback(hsa_cache_t cache, hsa_cache_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_cache_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_cache_get_info.cache = cache;
-	args.api_args.hsa_cache_get_info.attribute = attribute;
-	args.api_args.hsa_cache_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_cache_get_info_fn(args.api_args.hsa_cache_get_info.cache, args.api_args.hsa_cache_get_info.attribute, args.api_args.hsa_cache_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_cache_get_info.cache = cache;
+		args.api_args.hsa_cache_get_info.attribute = attribute;
+		args.api_args.hsa_cache_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_cache_get_info_fn(args.api_args.hsa_cache_get_info.cache, args.api_args.hsa_cache_get_info.attribute, args.api_args.hsa_cache_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_cache_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_cache_get_info, &skipFunction);
-      cache = args.api_args.hsa_cache_get_info.cache;
-      attribute = args.api_args.hsa_cache_get_info.attribute;
-      value = args.api_args.hsa_cache_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_cache_get_info_fn(cache, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_agent_iterate_caches_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_cache_t cache, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_iterate_caches;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_agent_iterate_caches.agent = agent;
-	args.api_args.hsa_agent_iterate_caches.callback = callback;
-	args.api_args.hsa_agent_iterate_caches.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_caches_fn(args.api_args.hsa_agent_iterate_caches.agent, args.api_args.hsa_agent_iterate_caches.callback, args.api_args.hsa_agent_iterate_caches.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_agent_iterate_caches.agent = agent;
+		args.api_args.hsa_agent_iterate_caches.callback = callback;
+		args.api_args.hsa_agent_iterate_caches.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_caches_fn(args.api_args.hsa_agent_iterate_caches.agent, args.api_args.hsa_agent_iterate_caches.callback, args.api_args.hsa_agent_iterate_caches.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_iterate_caches);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_iterate_caches, &skipFunction);
-      agent = args.api_args.hsa_agent_iterate_caches.agent;
-      callback = args.api_args.hsa_agent_iterate_caches.callback;
-      data = args.api_args.hsa_agent_iterate_caches.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_caches_fn(agent, callback, data);
+		return out;
+	}
 }
 
 static void hsa_signal_silent_store_relaxed_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_silent_store_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_silent_store_relaxed.signal = signal;
-	args.api_args.hsa_signal_silent_store_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_relaxed_fn(args.api_args.hsa_signal_silent_store_relaxed.signal, args.api_args.hsa_signal_silent_store_relaxed.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_silent_store_relaxed.signal = signal;
+		args.api_args.hsa_signal_silent_store_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_relaxed_fn(args.api_args.hsa_signal_silent_store_relaxed.signal, args.api_args.hsa_signal_silent_store_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_silent_store_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_silent_store_relaxed, &skipFunction);
-      signal = args.api_args.hsa_signal_silent_store_relaxed.signal;
-      value = args.api_args.hsa_signal_silent_store_relaxed.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_relaxed_fn(signal, value);
+
+	}
 }
 
 static void hsa_signal_silent_store_screlease_callback(hsa_signal_t signal, hsa_signal_value_t value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_silent_store_screlease;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_silent_store_screlease.signal = signal;
-	args.api_args.hsa_signal_silent_store_screlease.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
-	if (!skipFunction) {
-		hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_screlease_fn(args.api_args.hsa_signal_silent_store_screlease.signal, args.api_args.hsa_signal_silent_store_screlease.value);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_silent_store_screlease.signal = signal;
+		args.api_args.hsa_signal_silent_store_screlease.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_screlease_fn(args.api_args.hsa_signal_silent_store_screlease.signal, args.api_args.hsa_signal_silent_store_screlease.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_silent_store_screlease);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_silent_store_screlease, &skipFunction);
-      signal = args.api_args.hsa_signal_silent_store_screlease.signal;
-      value = args.api_args.hsa_signal_silent_store_screlease.value;
+	else {
+		hsaInterceptor.getSavedHsaTables().core.hsa_signal_silent_store_screlease_fn(signal, value);
+
+	}
 }
 
 static hsa_status_t hsa_signal_group_create_callback(uint32_t num_signals, const hsa_signal_t* signals, uint32_t num_consumers, const hsa_agent_t* consumers, hsa_signal_group_t* signal_group) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_group_create.num_signals = num_signals;
-	args.api_args.hsa_signal_group_create.signals = signals;
-	args.api_args.hsa_signal_group_create.num_consumers = num_consumers;
-	args.api_args.hsa_signal_group_create.consumers = consumers;
-	args.api_args.hsa_signal_group_create.signal_group = signal_group;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_create_fn(args.api_args.hsa_signal_group_create.num_signals, args.api_args.hsa_signal_group_create.signals, args.api_args.hsa_signal_group_create.num_consumers, args.api_args.hsa_signal_group_create.consumers, args.api_args.hsa_signal_group_create.signal_group);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_group_create.num_signals = num_signals;
+		args.api_args.hsa_signal_group_create.signals = signals;
+		args.api_args.hsa_signal_group_create.num_consumers = num_consumers;
+		args.api_args.hsa_signal_group_create.consumers = consumers;
+		args.api_args.hsa_signal_group_create.signal_group = signal_group;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_create_fn(args.api_args.hsa_signal_group_create.num_signals, args.api_args.hsa_signal_group_create.signals, args.api_args.hsa_signal_group_create.num_consumers, args.api_args.hsa_signal_group_create.consumers, args.api_args.hsa_signal_group_create.signal_group);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_create, &skipFunction);
-      num_signals = args.api_args.hsa_signal_group_create.num_signals;
-      signals = args.api_args.hsa_signal_group_create.signals;
-      num_consumers = args.api_args.hsa_signal_group_create.num_consumers;
-      consumers = args.api_args.hsa_signal_group_create.consumers;
-      signal_group = args.api_args.hsa_signal_group_create.signal_group;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_create_fn(num_signals, signals, num_consumers, consumers, signal_group);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_signal_group_destroy_callback(hsa_signal_group_t signal_group) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_group_destroy.signal_group = signal_group;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_destroy_fn(args.api_args.hsa_signal_group_destroy.signal_group);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_group_destroy.signal_group = signal_group;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_destroy_fn(args.api_args.hsa_signal_group_destroy.signal_group);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_destroy, &skipFunction);
-      signal_group = args.api_args.hsa_signal_group_destroy.signal_group;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_destroy_fn(signal_group);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_signal_group_wait_any_scacquire_callback(hsa_signal_group_t signal_group, const hsa_signal_condition_t* conditions, const hsa_signal_value_t* compare_values, hsa_wait_state_t wait_state_hint, hsa_signal_t* signal, hsa_signal_value_t* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_wait_any_scacquire;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_group_wait_any_scacquire.signal_group = signal_group;
-	args.api_args.hsa_signal_group_wait_any_scacquire.conditions = conditions;
-	args.api_args.hsa_signal_group_wait_any_scacquire.compare_values = compare_values;
-	args.api_args.hsa_signal_group_wait_any_scacquire.wait_state_hint = wait_state_hint;
-	args.api_args.hsa_signal_group_wait_any_scacquire.signal = signal;
-	args.api_args.hsa_signal_group_wait_any_scacquire.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_scacquire_fn(args.api_args.hsa_signal_group_wait_any_scacquire.signal_group, args.api_args.hsa_signal_group_wait_any_scacquire.conditions, args.api_args.hsa_signal_group_wait_any_scacquire.compare_values, args.api_args.hsa_signal_group_wait_any_scacquire.wait_state_hint, args.api_args.hsa_signal_group_wait_any_scacquire.signal, args.api_args.hsa_signal_group_wait_any_scacquire.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_group_wait_any_scacquire.signal_group = signal_group;
+		args.api_args.hsa_signal_group_wait_any_scacquire.conditions = conditions;
+		args.api_args.hsa_signal_group_wait_any_scacquire.compare_values = compare_values;
+		args.api_args.hsa_signal_group_wait_any_scacquire.wait_state_hint = wait_state_hint;
+		args.api_args.hsa_signal_group_wait_any_scacquire.signal = signal;
+		args.api_args.hsa_signal_group_wait_any_scacquire.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_scacquire_fn(args.api_args.hsa_signal_group_wait_any_scacquire.signal_group, args.api_args.hsa_signal_group_wait_any_scacquire.conditions, args.api_args.hsa_signal_group_wait_any_scacquire.compare_values, args.api_args.hsa_signal_group_wait_any_scacquire.wait_state_hint, args.api_args.hsa_signal_group_wait_any_scacquire.signal, args.api_args.hsa_signal_group_wait_any_scacquire.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_wait_any_scacquire);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_wait_any_scacquire, &skipFunction);
-      signal_group = args.api_args.hsa_signal_group_wait_any_scacquire.signal_group;
-      conditions = args.api_args.hsa_signal_group_wait_any_scacquire.conditions;
-      compare_values = args.api_args.hsa_signal_group_wait_any_scacquire.compare_values;
-      wait_state_hint = args.api_args.hsa_signal_group_wait_any_scacquire.wait_state_hint;
-      signal = args.api_args.hsa_signal_group_wait_any_scacquire.signal;
-      value = args.api_args.hsa_signal_group_wait_any_scacquire.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_scacquire_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_signal_group_wait_any_relaxed_callback(hsa_signal_group_t signal_group, const hsa_signal_condition_t* conditions, const hsa_signal_value_t* compare_values, hsa_wait_state_t wait_state_hint, hsa_signal_t* signal, hsa_signal_value_t* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_signal_group_wait_any_relaxed;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_signal_group_wait_any_relaxed.signal_group = signal_group;
-	args.api_args.hsa_signal_group_wait_any_relaxed.conditions = conditions;
-	args.api_args.hsa_signal_group_wait_any_relaxed.compare_values = compare_values;
-	args.api_args.hsa_signal_group_wait_any_relaxed.wait_state_hint = wait_state_hint;
-	args.api_args.hsa_signal_group_wait_any_relaxed.signal = signal;
-	args.api_args.hsa_signal_group_wait_any_relaxed.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_relaxed_fn(args.api_args.hsa_signal_group_wait_any_relaxed.signal_group, args.api_args.hsa_signal_group_wait_any_relaxed.conditions, args.api_args.hsa_signal_group_wait_any_relaxed.compare_values, args.api_args.hsa_signal_group_wait_any_relaxed.wait_state_hint, args.api_args.hsa_signal_group_wait_any_relaxed.signal, args.api_args.hsa_signal_group_wait_any_relaxed.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_signal_group_wait_any_relaxed.signal_group = signal_group;
+		args.api_args.hsa_signal_group_wait_any_relaxed.conditions = conditions;
+		args.api_args.hsa_signal_group_wait_any_relaxed.compare_values = compare_values;
+		args.api_args.hsa_signal_group_wait_any_relaxed.wait_state_hint = wait_state_hint;
+		args.api_args.hsa_signal_group_wait_any_relaxed.signal = signal;
+		args.api_args.hsa_signal_group_wait_any_relaxed.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_relaxed_fn(args.api_args.hsa_signal_group_wait_any_relaxed.signal_group, args.api_args.hsa_signal_group_wait_any_relaxed.conditions, args.api_args.hsa_signal_group_wait_any_relaxed.compare_values, args.api_args.hsa_signal_group_wait_any_relaxed.wait_state_hint, args.api_args.hsa_signal_group_wait_any_relaxed.signal, args.api_args.hsa_signal_group_wait_any_relaxed.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_wait_any_relaxed);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_signal_group_wait_any_relaxed, &skipFunction);
-      signal_group = args.api_args.hsa_signal_group_wait_any_relaxed.signal_group;
-      conditions = args.api_args.hsa_signal_group_wait_any_relaxed.conditions;
-      compare_values = args.api_args.hsa_signal_group_wait_any_relaxed.compare_values;
-      wait_state_hint = args.api_args.hsa_signal_group_wait_any_relaxed.wait_state_hint;
-      signal = args.api_args.hsa_signal_group_wait_any_relaxed.signal;
-      value = args.api_args.hsa_signal_group_wait_any_relaxed.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_signal_group_wait_any_relaxed_fn(signal_group, conditions, compare_values, wait_state_hint, signal, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_agent_iterate_isas_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_isa_t isa, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_agent_iterate_isas;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_agent_iterate_isas.agent = agent;
-	args.api_args.hsa_agent_iterate_isas.callback = callback;
-	args.api_args.hsa_agent_iterate_isas.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_isas_fn(args.api_args.hsa_agent_iterate_isas.agent, args.api_args.hsa_agent_iterate_isas.callback, args.api_args.hsa_agent_iterate_isas.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_agent_iterate_isas.agent = agent;
+		args.api_args.hsa_agent_iterate_isas.callback = callback;
+		args.api_args.hsa_agent_iterate_isas.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_isas_fn(args.api_args.hsa_agent_iterate_isas.agent, args.api_args.hsa_agent_iterate_isas.callback, args.api_args.hsa_agent_iterate_isas.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_iterate_isas);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_agent_iterate_isas, &skipFunction);
-      agent = args.api_args.hsa_agent_iterate_isas.agent;
-      callback = args.api_args.hsa_agent_iterate_isas.callback;
-      data = args.api_args.hsa_agent_iterate_isas.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_agent_iterate_isas_fn(agent, callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_isa_get_info_alt_callback(hsa_isa_t isa, hsa_isa_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_info_alt;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_isa_get_info_alt.isa = isa;
-	args.api_args.hsa_isa_get_info_alt.attribute = attribute;
-	args.api_args.hsa_isa_get_info_alt.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_alt_fn(args.api_args.hsa_isa_get_info_alt.isa, args.api_args.hsa_isa_get_info_alt.attribute, args.api_args.hsa_isa_get_info_alt.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_isa_get_info_alt.isa = isa;
+		args.api_args.hsa_isa_get_info_alt.attribute = attribute;
+		args.api_args.hsa_isa_get_info_alt.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_alt_fn(args.api_args.hsa_isa_get_info_alt.isa, args.api_args.hsa_isa_get_info_alt.attribute, args.api_args.hsa_isa_get_info_alt.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_info_alt);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_info_alt, &skipFunction);
-      isa = args.api_args.hsa_isa_get_info_alt.isa;
-      attribute = args.api_args.hsa_isa_get_info_alt.attribute;
-      value = args.api_args.hsa_isa_get_info_alt.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_info_alt_fn(isa, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_isa_get_exception_policies_callback(hsa_isa_t isa, hsa_profile_t profile, uint16_t* mask) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_exception_policies;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_isa_get_exception_policies.isa = isa;
-	args.api_args.hsa_isa_get_exception_policies.profile = profile;
-	args.api_args.hsa_isa_get_exception_policies.mask = mask;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_exception_policies_fn(args.api_args.hsa_isa_get_exception_policies.isa, args.api_args.hsa_isa_get_exception_policies.profile, args.api_args.hsa_isa_get_exception_policies.mask);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_isa_get_exception_policies.isa = isa;
+		args.api_args.hsa_isa_get_exception_policies.profile = profile;
+		args.api_args.hsa_isa_get_exception_policies.mask = mask;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_exception_policies_fn(args.api_args.hsa_isa_get_exception_policies.isa, args.api_args.hsa_isa_get_exception_policies.profile, args.api_args.hsa_isa_get_exception_policies.mask);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_exception_policies);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_exception_policies, &skipFunction);
-      isa = args.api_args.hsa_isa_get_exception_policies.isa;
-      profile = args.api_args.hsa_isa_get_exception_policies.profile;
-      mask = args.api_args.hsa_isa_get_exception_policies.mask;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_exception_policies_fn(isa, profile, mask);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_isa_get_round_method_callback(hsa_isa_t isa, hsa_fp_type_t fp_type, hsa_flush_mode_t flush_mode, hsa_round_method_t* round_method) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_get_round_method;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_isa_get_round_method.isa = isa;
-	args.api_args.hsa_isa_get_round_method.fp_type = fp_type;
-	args.api_args.hsa_isa_get_round_method.flush_mode = flush_mode;
-	args.api_args.hsa_isa_get_round_method.round_method = round_method;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_round_method_fn(args.api_args.hsa_isa_get_round_method.isa, args.api_args.hsa_isa_get_round_method.fp_type, args.api_args.hsa_isa_get_round_method.flush_mode, args.api_args.hsa_isa_get_round_method.round_method);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_isa_get_round_method.isa = isa;
+		args.api_args.hsa_isa_get_round_method.fp_type = fp_type;
+		args.api_args.hsa_isa_get_round_method.flush_mode = flush_mode;
+		args.api_args.hsa_isa_get_round_method.round_method = round_method;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_round_method_fn(args.api_args.hsa_isa_get_round_method.isa, args.api_args.hsa_isa_get_round_method.fp_type, args.api_args.hsa_isa_get_round_method.flush_mode, args.api_args.hsa_isa_get_round_method.round_method);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_round_method);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_get_round_method, &skipFunction);
-      isa = args.api_args.hsa_isa_get_round_method.isa;
-      fp_type = args.api_args.hsa_isa_get_round_method.fp_type;
-      flush_mode = args.api_args.hsa_isa_get_round_method.flush_mode;
-      round_method = args.api_args.hsa_isa_get_round_method.round_method;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_get_round_method_fn(isa, fp_type, flush_mode, round_method);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_wavefront_get_info_callback(hsa_wavefront_t wavefront, hsa_wavefront_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_wavefront_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_wavefront_get_info.wavefront = wavefront;
-	args.api_args.hsa_wavefront_get_info.attribute = attribute;
-	args.api_args.hsa_wavefront_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_wavefront_get_info_fn(args.api_args.hsa_wavefront_get_info.wavefront, args.api_args.hsa_wavefront_get_info.attribute, args.api_args.hsa_wavefront_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_wavefront_get_info.wavefront = wavefront;
+		args.api_args.hsa_wavefront_get_info.attribute = attribute;
+		args.api_args.hsa_wavefront_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_wavefront_get_info_fn(args.api_args.hsa_wavefront_get_info.wavefront, args.api_args.hsa_wavefront_get_info.attribute, args.api_args.hsa_wavefront_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_wavefront_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_wavefront_get_info, &skipFunction);
-      wavefront = args.api_args.hsa_wavefront_get_info.wavefront;
-      attribute = args.api_args.hsa_wavefront_get_info.attribute;
-      value = args.api_args.hsa_wavefront_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_wavefront_get_info_fn(wavefront, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_isa_iterate_wavefronts_callback(hsa_isa_t isa, hsa_status_t (* callback)(hsa_wavefront_t wavefront, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_isa_iterate_wavefronts;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_isa_iterate_wavefronts.isa = isa;
-	args.api_args.hsa_isa_iterate_wavefronts.callback = callback;
-	args.api_args.hsa_isa_iterate_wavefronts.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_iterate_wavefronts_fn(args.api_args.hsa_isa_iterate_wavefronts.isa, args.api_args.hsa_isa_iterate_wavefronts.callback, args.api_args.hsa_isa_iterate_wavefronts.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_isa_iterate_wavefronts.isa = isa;
+		args.api_args.hsa_isa_iterate_wavefronts.callback = callback;
+		args.api_args.hsa_isa_iterate_wavefronts.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_iterate_wavefronts_fn(args.api_args.hsa_isa_iterate_wavefronts.isa, args.api_args.hsa_isa_iterate_wavefronts.callback, args.api_args.hsa_isa_iterate_wavefronts.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_iterate_wavefronts);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_isa_iterate_wavefronts, &skipFunction);
-      isa = args.api_args.hsa_isa_iterate_wavefronts.isa;
-      callback = args.api_args.hsa_isa_iterate_wavefronts.callback;
-      data = args.api_args.hsa_isa_iterate_wavefronts.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_isa_iterate_wavefronts_fn(isa, callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_get_symbol_from_name_callback(hsa_code_object_t code_object, const char* module_name, const char* symbol_name, hsa_code_symbol_t* symbol) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_get_symbol_from_name;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_get_symbol_from_name.code_object = code_object;
-	args.api_args.hsa_code_object_get_symbol_from_name.module_name = module_name;
-	args.api_args.hsa_code_object_get_symbol_from_name.symbol_name = symbol_name;
-	args.api_args.hsa_code_object_get_symbol_from_name.symbol = symbol;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_from_name_fn(args.api_args.hsa_code_object_get_symbol_from_name.code_object, args.api_args.hsa_code_object_get_symbol_from_name.module_name, args.api_args.hsa_code_object_get_symbol_from_name.symbol_name, args.api_args.hsa_code_object_get_symbol_from_name.symbol);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_get_symbol_from_name.code_object = code_object;
+		args.api_args.hsa_code_object_get_symbol_from_name.module_name = module_name;
+		args.api_args.hsa_code_object_get_symbol_from_name.symbol_name = symbol_name;
+		args.api_args.hsa_code_object_get_symbol_from_name.symbol = symbol;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_from_name_fn(args.api_args.hsa_code_object_get_symbol_from_name.code_object, args.api_args.hsa_code_object_get_symbol_from_name.module_name, args.api_args.hsa_code_object_get_symbol_from_name.symbol_name, args.api_args.hsa_code_object_get_symbol_from_name.symbol);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_get_symbol_from_name);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_get_symbol_from_name, &skipFunction);
-      code_object = args.api_args.hsa_code_object_get_symbol_from_name.code_object;
-      module_name = args.api_args.hsa_code_object_get_symbol_from_name.module_name;
-      symbol_name = args.api_args.hsa_code_object_get_symbol_from_name.symbol_name;
-      symbol = args.api_args.hsa_code_object_get_symbol_from_name.symbol;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_get_symbol_from_name_fn(code_object, module_name, symbol_name, symbol);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_reader_create_from_file_callback(hsa_file_t file, hsa_code_object_reader_t* code_object_reader) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_reader_create_from_file;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_reader_create_from_file.file = file;
-	args.api_args.hsa_code_object_reader_create_from_file.code_object_reader = code_object_reader;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_file_fn(args.api_args.hsa_code_object_reader_create_from_file.file, args.api_args.hsa_code_object_reader_create_from_file.code_object_reader);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_reader_create_from_file.file = file;
+		args.api_args.hsa_code_object_reader_create_from_file.code_object_reader = code_object_reader;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_file_fn(args.api_args.hsa_code_object_reader_create_from_file.file, args.api_args.hsa_code_object_reader_create_from_file.code_object_reader);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_reader_create_from_file);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_reader_create_from_file, &skipFunction);
-      file = args.api_args.hsa_code_object_reader_create_from_file.file;
-      code_object_reader = args.api_args.hsa_code_object_reader_create_from_file.code_object_reader;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_file_fn(file, code_object_reader);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_reader_create_from_memory_callback(const void* code_object, size_t size, hsa_code_object_reader_t* code_object_reader) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_reader_create_from_memory;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_reader_create_from_memory.code_object = code_object;
-	args.api_args.hsa_code_object_reader_create_from_memory.size = size;
-	args.api_args.hsa_code_object_reader_create_from_memory.code_object_reader = code_object_reader;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_memory_fn(args.api_args.hsa_code_object_reader_create_from_memory.code_object, args.api_args.hsa_code_object_reader_create_from_memory.size, args.api_args.hsa_code_object_reader_create_from_memory.code_object_reader);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_reader_create_from_memory.code_object = code_object;
+		args.api_args.hsa_code_object_reader_create_from_memory.size = size;
+		args.api_args.hsa_code_object_reader_create_from_memory.code_object_reader = code_object_reader;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_memory_fn(args.api_args.hsa_code_object_reader_create_from_memory.code_object, args.api_args.hsa_code_object_reader_create_from_memory.size, args.api_args.hsa_code_object_reader_create_from_memory.code_object_reader);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_reader_create_from_memory);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_reader_create_from_memory, &skipFunction);
-      code_object = args.api_args.hsa_code_object_reader_create_from_memory.code_object;
-      size = args.api_args.hsa_code_object_reader_create_from_memory.size;
-      code_object_reader = args.api_args.hsa_code_object_reader_create_from_memory.code_object_reader;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_create_from_memory_fn(code_object, size, code_object_reader);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_code_object_reader_destroy_callback(hsa_code_object_reader_t code_object_reader) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_code_object_reader_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_code_object_reader_destroy.code_object_reader = code_object_reader;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_destroy_fn(args.api_args.hsa_code_object_reader_destroy.code_object_reader);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_code_object_reader_destroy.code_object_reader = code_object_reader;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_destroy_fn(args.api_args.hsa_code_object_reader_destroy.code_object_reader);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_reader_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_code_object_reader_destroy, &skipFunction);
-      code_object_reader = args.api_args.hsa_code_object_reader_destroy.code_object_reader;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_code_object_reader_destroy_fn(code_object_reader);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_create_alt_callback(hsa_profile_t profile, hsa_default_float_rounding_mode_t default_float_rounding_mode, const char* options, hsa_executable_t* executable) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_create_alt;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_create_alt.profile = profile;
-	args.api_args.hsa_executable_create_alt.default_float_rounding_mode = default_float_rounding_mode;
-	args.api_args.hsa_executable_create_alt.options = options;
-	args.api_args.hsa_executable_create_alt.executable = executable;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_alt_fn(args.api_args.hsa_executable_create_alt.profile, args.api_args.hsa_executable_create_alt.default_float_rounding_mode, args.api_args.hsa_executable_create_alt.options, args.api_args.hsa_executable_create_alt.executable);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_create_alt.profile = profile;
+		args.api_args.hsa_executable_create_alt.default_float_rounding_mode = default_float_rounding_mode;
+		args.api_args.hsa_executable_create_alt.options = options;
+		args.api_args.hsa_executable_create_alt.executable = executable;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_alt_fn(args.api_args.hsa_executable_create_alt.profile, args.api_args.hsa_executable_create_alt.default_float_rounding_mode, args.api_args.hsa_executable_create_alt.options, args.api_args.hsa_executable_create_alt.executable);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_create_alt);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_create_alt, &skipFunction);
-      profile = args.api_args.hsa_executable_create_alt.profile;
-      default_float_rounding_mode = args.api_args.hsa_executable_create_alt.default_float_rounding_mode;
-      options = args.api_args.hsa_executable_create_alt.options;
-      executable = args.api_args.hsa_executable_create_alt.executable;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_create_alt_fn(profile, default_float_rounding_mode, options, executable);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_load_program_code_object_callback(hsa_executable_t executable, hsa_code_object_reader_t code_object_reader, const char* options, hsa_loaded_code_object_t* loaded_code_object) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_load_program_code_object;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_load_program_code_object.executable = executable;
-	args.api_args.hsa_executable_load_program_code_object.code_object_reader = code_object_reader;
-	args.api_args.hsa_executable_load_program_code_object.options = options;
-	args.api_args.hsa_executable_load_program_code_object.loaded_code_object = loaded_code_object;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_program_code_object_fn(args.api_args.hsa_executable_load_program_code_object.executable, args.api_args.hsa_executable_load_program_code_object.code_object_reader, args.api_args.hsa_executable_load_program_code_object.options, args.api_args.hsa_executable_load_program_code_object.loaded_code_object);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_load_program_code_object.executable = executable;
+		args.api_args.hsa_executable_load_program_code_object.code_object_reader = code_object_reader;
+		args.api_args.hsa_executable_load_program_code_object.options = options;
+		args.api_args.hsa_executable_load_program_code_object.loaded_code_object = loaded_code_object;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_program_code_object_fn(args.api_args.hsa_executable_load_program_code_object.executable, args.api_args.hsa_executable_load_program_code_object.code_object_reader, args.api_args.hsa_executable_load_program_code_object.options, args.api_args.hsa_executable_load_program_code_object.loaded_code_object);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_load_program_code_object);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_load_program_code_object, &skipFunction);
-      executable = args.api_args.hsa_executable_load_program_code_object.executable;
-      code_object_reader = args.api_args.hsa_executable_load_program_code_object.code_object_reader;
-      options = args.api_args.hsa_executable_load_program_code_object.options;
-      loaded_code_object = args.api_args.hsa_executable_load_program_code_object.loaded_code_object;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_program_code_object_fn(executable, code_object_reader, options, loaded_code_object);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_load_agent_code_object_callback(hsa_executable_t executable, hsa_agent_t agent, hsa_code_object_reader_t code_object_reader, const char* options, hsa_loaded_code_object_t* loaded_code_object) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_load_agent_code_object;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_load_agent_code_object.executable = executable;
-	args.api_args.hsa_executable_load_agent_code_object.agent = agent;
-	args.api_args.hsa_executable_load_agent_code_object.code_object_reader = code_object_reader;
-	args.api_args.hsa_executable_load_agent_code_object.options = options;
-	args.api_args.hsa_executable_load_agent_code_object.loaded_code_object = loaded_code_object;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_agent_code_object_fn(args.api_args.hsa_executable_load_agent_code_object.executable, args.api_args.hsa_executable_load_agent_code_object.agent, args.api_args.hsa_executable_load_agent_code_object.code_object_reader, args.api_args.hsa_executable_load_agent_code_object.options, args.api_args.hsa_executable_load_agent_code_object.loaded_code_object);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_load_agent_code_object.executable = executable;
+		args.api_args.hsa_executable_load_agent_code_object.agent = agent;
+		args.api_args.hsa_executable_load_agent_code_object.code_object_reader = code_object_reader;
+		args.api_args.hsa_executable_load_agent_code_object.options = options;
+		args.api_args.hsa_executable_load_agent_code_object.loaded_code_object = loaded_code_object;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_agent_code_object_fn(args.api_args.hsa_executable_load_agent_code_object.executable, args.api_args.hsa_executable_load_agent_code_object.agent, args.api_args.hsa_executable_load_agent_code_object.code_object_reader, args.api_args.hsa_executable_load_agent_code_object.options, args.api_args.hsa_executable_load_agent_code_object.loaded_code_object);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_load_agent_code_object);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_load_agent_code_object, &skipFunction);
-      executable = args.api_args.hsa_executable_load_agent_code_object.executable;
-      agent = args.api_args.hsa_executable_load_agent_code_object.agent;
-      code_object_reader = args.api_args.hsa_executable_load_agent_code_object.code_object_reader;
-      options = args.api_args.hsa_executable_load_agent_code_object.options;
-      loaded_code_object = args.api_args.hsa_executable_load_agent_code_object.loaded_code_object;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_load_agent_code_object_fn(executable, agent, code_object_reader, options, loaded_code_object);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_validate_alt_callback(hsa_executable_t executable, const char* options, uint32_t* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_validate_alt;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_validate_alt.executable = executable;
-	args.api_args.hsa_executable_validate_alt.options = options;
-	args.api_args.hsa_executable_validate_alt.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_alt_fn(args.api_args.hsa_executable_validate_alt.executable, args.api_args.hsa_executable_validate_alt.options, args.api_args.hsa_executable_validate_alt.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_validate_alt.executable = executable;
+		args.api_args.hsa_executable_validate_alt.options = options;
+		args.api_args.hsa_executable_validate_alt.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_alt_fn(args.api_args.hsa_executable_validate_alt.executable, args.api_args.hsa_executable_validate_alt.options, args.api_args.hsa_executable_validate_alt.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_validate_alt);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_validate_alt, &skipFunction);
-      executable = args.api_args.hsa_executable_validate_alt.executable;
-      options = args.api_args.hsa_executable_validate_alt.options;
-      result = args.api_args.hsa_executable_validate_alt.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_validate_alt_fn(executable, options, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_get_symbol_by_name_callback(hsa_executable_t executable, const char* symbol_name, const hsa_agent_t* agent, hsa_executable_symbol_t* symbol) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_get_symbol_by_name;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_get_symbol_by_name.executable = executable;
-	args.api_args.hsa_executable_get_symbol_by_name.symbol_name = symbol_name;
-	args.api_args.hsa_executable_get_symbol_by_name.agent = agent;
-	args.api_args.hsa_executable_get_symbol_by_name.symbol = symbol;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_by_name_fn(args.api_args.hsa_executable_get_symbol_by_name.executable, args.api_args.hsa_executable_get_symbol_by_name.symbol_name, args.api_args.hsa_executable_get_symbol_by_name.agent, args.api_args.hsa_executable_get_symbol_by_name.symbol);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_get_symbol_by_name.executable = executable;
+		args.api_args.hsa_executable_get_symbol_by_name.symbol_name = symbol_name;
+		args.api_args.hsa_executable_get_symbol_by_name.agent = agent;
+		args.api_args.hsa_executable_get_symbol_by_name.symbol = symbol;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_by_name_fn(args.api_args.hsa_executable_get_symbol_by_name.executable, args.api_args.hsa_executable_get_symbol_by_name.symbol_name, args.api_args.hsa_executable_get_symbol_by_name.agent, args.api_args.hsa_executable_get_symbol_by_name.symbol);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_get_symbol_by_name);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_get_symbol_by_name, &skipFunction);
-      executable = args.api_args.hsa_executable_get_symbol_by_name.executable;
-      symbol_name = args.api_args.hsa_executable_get_symbol_by_name.symbol_name;
-      agent = args.api_args.hsa_executable_get_symbol_by_name.agent;
-      symbol = args.api_args.hsa_executable_get_symbol_by_name.symbol;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_get_symbol_by_name_fn(executable, symbol_name, agent, symbol);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_iterate_agent_symbols_callback(hsa_executable_t executable, hsa_agent_t agent, hsa_status_t (* callback)(hsa_executable_t exec, hsa_agent_t agent, hsa_executable_symbol_t symbol, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_iterate_agent_symbols;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_iterate_agent_symbols.executable = executable;
-	args.api_args.hsa_executable_iterate_agent_symbols.agent = agent;
-	args.api_args.hsa_executable_iterate_agent_symbols.callback = callback;
-	args.api_args.hsa_executable_iterate_agent_symbols.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_agent_symbols_fn(args.api_args.hsa_executable_iterate_agent_symbols.executable, args.api_args.hsa_executable_iterate_agent_symbols.agent, args.api_args.hsa_executable_iterate_agent_symbols.callback, args.api_args.hsa_executable_iterate_agent_symbols.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_iterate_agent_symbols.executable = executable;
+		args.api_args.hsa_executable_iterate_agent_symbols.agent = agent;
+		args.api_args.hsa_executable_iterate_agent_symbols.callback = callback;
+		args.api_args.hsa_executable_iterate_agent_symbols.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_agent_symbols_fn(args.api_args.hsa_executable_iterate_agent_symbols.executable, args.api_args.hsa_executable_iterate_agent_symbols.agent, args.api_args.hsa_executable_iterate_agent_symbols.callback, args.api_args.hsa_executable_iterate_agent_symbols.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_iterate_agent_symbols);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_iterate_agent_symbols, &skipFunction);
-      executable = args.api_args.hsa_executable_iterate_agent_symbols.executable;
-      agent = args.api_args.hsa_executable_iterate_agent_symbols.agent;
-      callback = args.api_args.hsa_executable_iterate_agent_symbols.callback;
-      data = args.api_args.hsa_executable_iterate_agent_symbols.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_agent_symbols_fn(executable, agent, callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_executable_iterate_program_symbols_callback(hsa_executable_t executable, hsa_status_t (* callback)(hsa_executable_t exec, hsa_executable_symbol_t symbol, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_executable_iterate_program_symbols;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_executable_iterate_program_symbols.executable = executable;
-	args.api_args.hsa_executable_iterate_program_symbols.callback = callback;
-	args.api_args.hsa_executable_iterate_program_symbols.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_program_symbols_fn(args.api_args.hsa_executable_iterate_program_symbols.executable, args.api_args.hsa_executable_iterate_program_symbols.callback, args.api_args.hsa_executable_iterate_program_symbols.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_executable_iterate_program_symbols.executable = executable;
+		args.api_args.hsa_executable_iterate_program_symbols.callback = callback;
+		args.api_args.hsa_executable_iterate_program_symbols.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_program_symbols_fn(args.api_args.hsa_executable_iterate_program_symbols.executable, args.api_args.hsa_executable_iterate_program_symbols.callback, args.api_args.hsa_executable_iterate_program_symbols.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_iterate_program_symbols);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_executable_iterate_program_symbols, &skipFunction);
-      executable = args.api_args.hsa_executable_iterate_program_symbols.executable;
-      callback = args.api_args.hsa_executable_iterate_program_symbols.callback;
-      data = args.api_args.hsa_executable_iterate_program_symbols.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().core.hsa_executable_iterate_program_symbols_fn(executable, callback, data);
+		return out;
+	}
 }
 
 
 /* block: AmdExt API */
 static hsa_status_t hsa_amd_coherency_get_type_callback(hsa_agent_t agent, hsa_amd_coherency_type_t* type) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_coherency_get_type;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_coherency_get_type.agent = agent;
-	args.api_args.hsa_amd_coherency_get_type.type = type;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_get_type_fn(args.api_args.hsa_amd_coherency_get_type.agent, args.api_args.hsa_amd_coherency_get_type.type);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_coherency_get_type.agent = agent;
+		args.api_args.hsa_amd_coherency_get_type.type = type;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_get_type_fn(args.api_args.hsa_amd_coherency_get_type.agent, args.api_args.hsa_amd_coherency_get_type.type);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_coherency_get_type);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_coherency_get_type, &skipFunction);
-      agent = args.api_args.hsa_amd_coherency_get_type.agent;
-      type = args.api_args.hsa_amd_coherency_get_type.type;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_get_type_fn(agent, type);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_coherency_set_type_callback(hsa_agent_t agent, hsa_amd_coherency_type_t type) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_coherency_set_type;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_coherency_set_type.agent = agent;
-	args.api_args.hsa_amd_coherency_set_type.type = type;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_set_type_fn(args.api_args.hsa_amd_coherency_set_type.agent, args.api_args.hsa_amd_coherency_set_type.type);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_coherency_set_type.agent = agent;
+		args.api_args.hsa_amd_coherency_set_type.type = type;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_set_type_fn(args.api_args.hsa_amd_coherency_set_type.agent, args.api_args.hsa_amd_coherency_set_type.type);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_coherency_set_type);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_coherency_set_type, &skipFunction);
-      agent = args.api_args.hsa_amd_coherency_set_type.agent;
-      type = args.api_args.hsa_amd_coherency_set_type.type;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_coherency_set_type_fn(agent, type);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_profiling_set_profiler_enabled_callback(hsa_queue_t* queue, int enable) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_set_profiler_enabled;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_profiling_set_profiler_enabled.queue = queue;
-	args.api_args.hsa_amd_profiling_set_profiler_enabled.enable = enable;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_set_profiler_enabled_fn(args.api_args.hsa_amd_profiling_set_profiler_enabled.queue, args.api_args.hsa_amd_profiling_set_profiler_enabled.enable);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_profiling_set_profiler_enabled.queue = queue;
+		args.api_args.hsa_amd_profiling_set_profiler_enabled.enable = enable;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_set_profiler_enabled_fn(args.api_args.hsa_amd_profiling_set_profiler_enabled.queue, args.api_args.hsa_amd_profiling_set_profiler_enabled.enable);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_set_profiler_enabled);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_set_profiler_enabled, &skipFunction);
-      queue = args.api_args.hsa_amd_profiling_set_profiler_enabled.queue;
-      enable = args.api_args.hsa_amd_profiling_set_profiler_enabled.enable;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_set_profiler_enabled_fn(queue, enable);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_profiling_async_copy_enable_callback(bool enable) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_async_copy_enable;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_profiling_async_copy_enable.enable = enable;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_async_copy_enable_fn(args.api_args.hsa_amd_profiling_async_copy_enable.enable);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_profiling_async_copy_enable.enable = enable;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_async_copy_enable_fn(args.api_args.hsa_amd_profiling_async_copy_enable.enable);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_async_copy_enable);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_async_copy_enable, &skipFunction);
-      enable = args.api_args.hsa_amd_profiling_async_copy_enable.enable;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_async_copy_enable_fn(enable);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_profiling_get_dispatch_time_callback(hsa_agent_t agent, hsa_signal_t signal, hsa_amd_profiling_dispatch_time_t* time) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_get_dispatch_time;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_profiling_get_dispatch_time.agent = agent;
-	args.api_args.hsa_amd_profiling_get_dispatch_time.signal = signal;
-	args.api_args.hsa_amd_profiling_get_dispatch_time.time = time;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_dispatch_time_fn(args.api_args.hsa_amd_profiling_get_dispatch_time.agent, args.api_args.hsa_amd_profiling_get_dispatch_time.signal, args.api_args.hsa_amd_profiling_get_dispatch_time.time);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_profiling_get_dispatch_time.agent = agent;
+		args.api_args.hsa_amd_profiling_get_dispatch_time.signal = signal;
+		args.api_args.hsa_amd_profiling_get_dispatch_time.time = time;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_dispatch_time_fn(args.api_args.hsa_amd_profiling_get_dispatch_time.agent, args.api_args.hsa_amd_profiling_get_dispatch_time.signal, args.api_args.hsa_amd_profiling_get_dispatch_time.time);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_get_dispatch_time);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_get_dispatch_time, &skipFunction);
-      agent = args.api_args.hsa_amd_profiling_get_dispatch_time.agent;
-      signal = args.api_args.hsa_amd_profiling_get_dispatch_time.signal;
-      time = args.api_args.hsa_amd_profiling_get_dispatch_time.time;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_dispatch_time_fn(agent, signal, time);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_profiling_get_async_copy_time_callback(hsa_signal_t signal, hsa_amd_profiling_async_copy_time_t* time) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_get_async_copy_time;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_profiling_get_async_copy_time.signal = signal;
-	args.api_args.hsa_amd_profiling_get_async_copy_time.time = time;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_async_copy_time_fn(args.api_args.hsa_amd_profiling_get_async_copy_time.signal, args.api_args.hsa_amd_profiling_get_async_copy_time.time);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_profiling_get_async_copy_time.signal = signal;
+		args.api_args.hsa_amd_profiling_get_async_copy_time.time = time;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_async_copy_time_fn(args.api_args.hsa_amd_profiling_get_async_copy_time.signal, args.api_args.hsa_amd_profiling_get_async_copy_time.time);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_get_async_copy_time);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_get_async_copy_time, &skipFunction);
-      signal = args.api_args.hsa_amd_profiling_get_async_copy_time.signal;
-      time = args.api_args.hsa_amd_profiling_get_async_copy_time.time;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_get_async_copy_time_fn(signal, time);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_profiling_convert_tick_to_system_domain_callback(hsa_agent_t agent, uint64_t agent_tick, uint64_t* system_tick) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_profiling_convert_tick_to_system_domain;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent = agent;
-	args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent_tick = agent_tick;
-	args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.system_tick = system_tick;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_convert_tick_to_system_domain_fn(args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent, args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent_tick, args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.system_tick);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent = agent;
+		args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent_tick = agent_tick;
+		args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.system_tick = system_tick;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_convert_tick_to_system_domain_fn(args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent, args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent_tick, args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.system_tick);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_convert_tick_to_system_domain);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_profiling_convert_tick_to_system_domain, &skipFunction);
-      agent = args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent;
-      agent_tick = args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.agent_tick;
-      system_tick = args.api_args.hsa_amd_profiling_convert_tick_to_system_domain.system_tick;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_profiling_convert_tick_to_system_domain_fn(agent, agent_tick, system_tick);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_signal_async_handler_callback(hsa_signal_t signal, hsa_signal_condition_t cond, hsa_signal_value_t value, hsa_amd_signal_handler handler, void* arg) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_async_handler;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_signal_async_handler.signal = signal;
-	args.api_args.hsa_amd_signal_async_handler.cond = cond;
-	args.api_args.hsa_amd_signal_async_handler.value = value;
-	args.api_args.hsa_amd_signal_async_handler.handler = handler;
-	args.api_args.hsa_amd_signal_async_handler.arg = arg;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_async_handler_fn(args.api_args.hsa_amd_signal_async_handler.signal, args.api_args.hsa_amd_signal_async_handler.cond, args.api_args.hsa_amd_signal_async_handler.value, args.api_args.hsa_amd_signal_async_handler.handler, args.api_args.hsa_amd_signal_async_handler.arg);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_signal_async_handler.signal = signal;
+		args.api_args.hsa_amd_signal_async_handler.cond = cond;
+		args.api_args.hsa_amd_signal_async_handler.value = value;
+		args.api_args.hsa_amd_signal_async_handler.handler = handler;
+		args.api_args.hsa_amd_signal_async_handler.arg = arg;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_async_handler_fn(args.api_args.hsa_amd_signal_async_handler.signal, args.api_args.hsa_amd_signal_async_handler.cond, args.api_args.hsa_amd_signal_async_handler.value, args.api_args.hsa_amd_signal_async_handler.handler, args.api_args.hsa_amd_signal_async_handler.arg);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_async_handler);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_async_handler, &skipFunction);
-      signal = args.api_args.hsa_amd_signal_async_handler.signal;
-      cond = args.api_args.hsa_amd_signal_async_handler.cond;
-      value = args.api_args.hsa_amd_signal_async_handler.value;
-      handler = args.api_args.hsa_amd_signal_async_handler.handler;
-      arg = args.api_args.hsa_amd_signal_async_handler.arg;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_async_handler_fn(signal, cond, value, handler, arg);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_async_function_callback(void (* callback)(void* arg), void* arg) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_async_function;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_async_function.callback = callback;
-	args.api_args.hsa_amd_async_function.arg = arg;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_async_function_fn(args.api_args.hsa_amd_async_function.callback, args.api_args.hsa_amd_async_function.arg);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_async_function.callback = callback;
+		args.api_args.hsa_amd_async_function.arg = arg;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_async_function_fn(args.api_args.hsa_amd_async_function.callback, args.api_args.hsa_amd_async_function.arg);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_async_function);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_async_function, &skipFunction);
-      callback = args.api_args.hsa_amd_async_function.callback;
-      arg = args.api_args.hsa_amd_async_function.arg;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_async_function_fn(callback, arg);
+		return out;
+	}
 }
 
 static uint32_t hsa_amd_signal_wait_any_callback(uint32_t signal_count, hsa_signal_t* signals, hsa_signal_condition_t* conds, hsa_signal_value_t* values, uint64_t timeout_hint, hsa_wait_state_t wait_hint, hsa_signal_value_t* satisfying_value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_wait_any;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_signal_wait_any.signal_count = signal_count;
-	args.api_args.hsa_amd_signal_wait_any.signals = signals;
-	args.api_args.hsa_amd_signal_wait_any.conds = conds;
-	args.api_args.hsa_amd_signal_wait_any.values = values;
-	args.api_args.hsa_amd_signal_wait_any.timeout_hint = timeout_hint;
-	args.api_args.hsa_amd_signal_wait_any.wait_hint = wait_hint;
-	args.api_args.hsa_amd_signal_wait_any.satisfying_value = satisfying_value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	uint32_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_wait_any_fn(args.api_args.hsa_amd_signal_wait_any.signal_count, args.api_args.hsa_amd_signal_wait_any.signals, args.api_args.hsa_amd_signal_wait_any.conds, args.api_args.hsa_amd_signal_wait_any.values, args.api_args.hsa_amd_signal_wait_any.timeout_hint, args.api_args.hsa_amd_signal_wait_any.wait_hint, args.api_args.hsa_amd_signal_wait_any.satisfying_value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_signal_wait_any.signal_count = signal_count;
+		args.api_args.hsa_amd_signal_wait_any.signals = signals;
+		args.api_args.hsa_amd_signal_wait_any.conds = conds;
+		args.api_args.hsa_amd_signal_wait_any.values = values;
+		args.api_args.hsa_amd_signal_wait_any.timeout_hint = timeout_hint;
+		args.api_args.hsa_amd_signal_wait_any.wait_hint = wait_hint;
+		args.api_args.hsa_amd_signal_wait_any.satisfying_value = satisfying_value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_wait_any_fn(args.api_args.hsa_amd_signal_wait_any.signal_count, args.api_args.hsa_amd_signal_wait_any.signals, args.api_args.hsa_amd_signal_wait_any.conds, args.api_args.hsa_amd_signal_wait_any.values, args.api_args.hsa_amd_signal_wait_any.timeout_hint, args.api_args.hsa_amd_signal_wait_any.wait_hint, args.api_args.hsa_amd_signal_wait_any.satisfying_value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_wait_any);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_wait_any, &skipFunction);
-      signal_count = args.api_args.hsa_amd_signal_wait_any.signal_count;
-      signals = args.api_args.hsa_amd_signal_wait_any.signals;
-      conds = args.api_args.hsa_amd_signal_wait_any.conds;
-      values = args.api_args.hsa_amd_signal_wait_any.values;
-      timeout_hint = args.api_args.hsa_amd_signal_wait_any.timeout_hint;
-      wait_hint = args.api_args.hsa_amd_signal_wait_any.wait_hint;
-      satisfying_value = args.api_args.hsa_amd_signal_wait_any.satisfying_value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_wait_any_fn(signal_count, signals, conds, values, timeout_hint, wait_hint, satisfying_value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_queue_cu_set_mask_callback(const hsa_queue_t* queue, uint32_t num_cu_mask_count, const uint32_t* cu_mask) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_cu_set_mask;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_queue_cu_set_mask.queue = queue;
-	args.api_args.hsa_amd_queue_cu_set_mask.num_cu_mask_count = num_cu_mask_count;
-	args.api_args.hsa_amd_queue_cu_set_mask.cu_mask = cu_mask;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_set_mask_fn(args.api_args.hsa_amd_queue_cu_set_mask.queue, args.api_args.hsa_amd_queue_cu_set_mask.num_cu_mask_count, args.api_args.hsa_amd_queue_cu_set_mask.cu_mask);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_queue_cu_set_mask.queue = queue;
+		args.api_args.hsa_amd_queue_cu_set_mask.num_cu_mask_count = num_cu_mask_count;
+		args.api_args.hsa_amd_queue_cu_set_mask.cu_mask = cu_mask;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_set_mask_fn(args.api_args.hsa_amd_queue_cu_set_mask.queue, args.api_args.hsa_amd_queue_cu_set_mask.num_cu_mask_count, args.api_args.hsa_amd_queue_cu_set_mask.cu_mask);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_cu_set_mask);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_cu_set_mask, &skipFunction);
-      queue = args.api_args.hsa_amd_queue_cu_set_mask.queue;
-      num_cu_mask_count = args.api_args.hsa_amd_queue_cu_set_mask.num_cu_mask_count;
-      cu_mask = args.api_args.hsa_amd_queue_cu_set_mask.cu_mask;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_set_mask_fn(queue, num_cu_mask_count, cu_mask);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_pool_get_info_callback(hsa_amd_memory_pool_t memory_pool, hsa_amd_memory_pool_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_pool_get_info.memory_pool = memory_pool;
-	args.api_args.hsa_amd_memory_pool_get_info.attribute = attribute;
-	args.api_args.hsa_amd_memory_pool_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_get_info_fn(args.api_args.hsa_amd_memory_pool_get_info.memory_pool, args.api_args.hsa_amd_memory_pool_get_info.attribute, args.api_args.hsa_amd_memory_pool_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_pool_get_info.memory_pool = memory_pool;
+		args.api_args.hsa_amd_memory_pool_get_info.attribute = attribute;
+		args.api_args.hsa_amd_memory_pool_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_get_info_fn(args.api_args.hsa_amd_memory_pool_get_info.memory_pool, args.api_args.hsa_amd_memory_pool_get_info.attribute, args.api_args.hsa_amd_memory_pool_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_get_info, &skipFunction);
-      memory_pool = args.api_args.hsa_amd_memory_pool_get_info.memory_pool;
-      attribute = args.api_args.hsa_amd_memory_pool_get_info.attribute;
-      value = args.api_args.hsa_amd_memory_pool_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_get_info_fn(memory_pool, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_agent_iterate_memory_pools_callback(hsa_agent_t agent, hsa_status_t (* callback)(hsa_amd_memory_pool_t memory_pool, void* data), void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_agent_iterate_memory_pools;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_agent_iterate_memory_pools.agent = agent;
-	args.api_args.hsa_amd_agent_iterate_memory_pools.callback = callback;
-	args.api_args.hsa_amd_agent_iterate_memory_pools.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_iterate_memory_pools_fn(args.api_args.hsa_amd_agent_iterate_memory_pools.agent, args.api_args.hsa_amd_agent_iterate_memory_pools.callback, args.api_args.hsa_amd_agent_iterate_memory_pools.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_agent_iterate_memory_pools.agent = agent;
+		args.api_args.hsa_amd_agent_iterate_memory_pools.callback = callback;
+		args.api_args.hsa_amd_agent_iterate_memory_pools.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_iterate_memory_pools_fn(args.api_args.hsa_amd_agent_iterate_memory_pools.agent, args.api_args.hsa_amd_agent_iterate_memory_pools.callback, args.api_args.hsa_amd_agent_iterate_memory_pools.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_agent_iterate_memory_pools);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_agent_iterate_memory_pools, &skipFunction);
-      agent = args.api_args.hsa_amd_agent_iterate_memory_pools.agent;
-      callback = args.api_args.hsa_amd_agent_iterate_memory_pools.callback;
-      data = args.api_args.hsa_amd_agent_iterate_memory_pools.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_iterate_memory_pools_fn(agent, callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_pool_allocate_callback(hsa_amd_memory_pool_t memory_pool, size_t size, uint32_t flags, void** ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_allocate;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_pool_allocate.memory_pool = memory_pool;
-	args.api_args.hsa_amd_memory_pool_allocate.size = size;
-	args.api_args.hsa_amd_memory_pool_allocate.flags = flags;
-	args.api_args.hsa_amd_memory_pool_allocate.ptr = ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_allocate_fn(args.api_args.hsa_amd_memory_pool_allocate.memory_pool, args.api_args.hsa_amd_memory_pool_allocate.size, args.api_args.hsa_amd_memory_pool_allocate.flags, args.api_args.hsa_amd_memory_pool_allocate.ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_pool_allocate.memory_pool = memory_pool;
+		args.api_args.hsa_amd_memory_pool_allocate.size = size;
+		args.api_args.hsa_amd_memory_pool_allocate.flags = flags;
+		args.api_args.hsa_amd_memory_pool_allocate.ptr = ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_allocate_fn(args.api_args.hsa_amd_memory_pool_allocate.memory_pool, args.api_args.hsa_amd_memory_pool_allocate.size, args.api_args.hsa_amd_memory_pool_allocate.flags, args.api_args.hsa_amd_memory_pool_allocate.ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_allocate);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_allocate, &skipFunction);
-      memory_pool = args.api_args.hsa_amd_memory_pool_allocate.memory_pool;
-      size = args.api_args.hsa_amd_memory_pool_allocate.size;
-      flags = args.api_args.hsa_amd_memory_pool_allocate.flags;
-      ptr = args.api_args.hsa_amd_memory_pool_allocate.ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_allocate_fn(memory_pool, size, flags, ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_pool_free_callback(void* ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_free;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_pool_free.ptr = ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_free_fn(args.api_args.hsa_amd_memory_pool_free.ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_pool_free.ptr = ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_free_fn(args.api_args.hsa_amd_memory_pool_free.ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_free);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_free, &skipFunction);
-      ptr = args.api_args.hsa_amd_memory_pool_free.ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_free_fn(ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_async_copy_callback(void* dst, hsa_agent_t dst_agent, const void* src, hsa_agent_t src_agent, size_t size, uint32_t num_dep_signals, const hsa_signal_t* dep_signals, hsa_signal_t completion_signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_async_copy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_async_copy.dst = dst;
-	args.api_args.hsa_amd_memory_async_copy.dst_agent = dst_agent;
-	args.api_args.hsa_amd_memory_async_copy.src = src;
-	args.api_args.hsa_amd_memory_async_copy.src_agent = src_agent;
-	args.api_args.hsa_amd_memory_async_copy.size = size;
-	args.api_args.hsa_amd_memory_async_copy.num_dep_signals = num_dep_signals;
-	args.api_args.hsa_amd_memory_async_copy.dep_signals = dep_signals;
-	args.api_args.hsa_amd_memory_async_copy.completion_signal = completion_signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_fn(args.api_args.hsa_amd_memory_async_copy.dst, args.api_args.hsa_amd_memory_async_copy.dst_agent, args.api_args.hsa_amd_memory_async_copy.src, args.api_args.hsa_amd_memory_async_copy.src_agent, args.api_args.hsa_amd_memory_async_copy.size, args.api_args.hsa_amd_memory_async_copy.num_dep_signals, args.api_args.hsa_amd_memory_async_copy.dep_signals, args.api_args.hsa_amd_memory_async_copy.completion_signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_async_copy.dst = dst;
+		args.api_args.hsa_amd_memory_async_copy.dst_agent = dst_agent;
+		args.api_args.hsa_amd_memory_async_copy.src = src;
+		args.api_args.hsa_amd_memory_async_copy.src_agent = src_agent;
+		args.api_args.hsa_amd_memory_async_copy.size = size;
+		args.api_args.hsa_amd_memory_async_copy.num_dep_signals = num_dep_signals;
+		args.api_args.hsa_amd_memory_async_copy.dep_signals = dep_signals;
+		args.api_args.hsa_amd_memory_async_copy.completion_signal = completion_signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_fn(args.api_args.hsa_amd_memory_async_copy.dst, args.api_args.hsa_amd_memory_async_copy.dst_agent, args.api_args.hsa_amd_memory_async_copy.src, args.api_args.hsa_amd_memory_async_copy.src_agent, args.api_args.hsa_amd_memory_async_copy.size, args.api_args.hsa_amd_memory_async_copy.num_dep_signals, args.api_args.hsa_amd_memory_async_copy.dep_signals, args.api_args.hsa_amd_memory_async_copy.completion_signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_async_copy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_async_copy, &skipFunction);
-      dst = args.api_args.hsa_amd_memory_async_copy.dst;
-      dst_agent = args.api_args.hsa_amd_memory_async_copy.dst_agent;
-      src = args.api_args.hsa_amd_memory_async_copy.src;
-      src_agent = args.api_args.hsa_amd_memory_async_copy.src_agent;
-      size = args.api_args.hsa_amd_memory_async_copy.size;
-      num_dep_signals = args.api_args.hsa_amd_memory_async_copy.num_dep_signals;
-      dep_signals = args.api_args.hsa_amd_memory_async_copy.dep_signals;
-      completion_signal = args.api_args.hsa_amd_memory_async_copy.completion_signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_fn(dst, dst_agent, src, src_agent, size, num_dep_signals, dep_signals, completion_signal);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_agent_memory_pool_get_info_callback(hsa_agent_t agent, hsa_amd_memory_pool_t memory_pool, hsa_amd_agent_memory_pool_info_t attribute, void* value) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_agent_memory_pool_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_agent_memory_pool_get_info.agent = agent;
-	args.api_args.hsa_amd_agent_memory_pool_get_info.memory_pool = memory_pool;
-	args.api_args.hsa_amd_agent_memory_pool_get_info.attribute = attribute;
-	args.api_args.hsa_amd_agent_memory_pool_get_info.value = value;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_memory_pool_get_info_fn(args.api_args.hsa_amd_agent_memory_pool_get_info.agent, args.api_args.hsa_amd_agent_memory_pool_get_info.memory_pool, args.api_args.hsa_amd_agent_memory_pool_get_info.attribute, args.api_args.hsa_amd_agent_memory_pool_get_info.value);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_agent_memory_pool_get_info.agent = agent;
+		args.api_args.hsa_amd_agent_memory_pool_get_info.memory_pool = memory_pool;
+		args.api_args.hsa_amd_agent_memory_pool_get_info.attribute = attribute;
+		args.api_args.hsa_amd_agent_memory_pool_get_info.value = value;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_memory_pool_get_info_fn(args.api_args.hsa_amd_agent_memory_pool_get_info.agent, args.api_args.hsa_amd_agent_memory_pool_get_info.memory_pool, args.api_args.hsa_amd_agent_memory_pool_get_info.attribute, args.api_args.hsa_amd_agent_memory_pool_get_info.value);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_agent_memory_pool_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_agent_memory_pool_get_info, &skipFunction);
-      agent = args.api_args.hsa_amd_agent_memory_pool_get_info.agent;
-      memory_pool = args.api_args.hsa_amd_agent_memory_pool_get_info.memory_pool;
-      attribute = args.api_args.hsa_amd_agent_memory_pool_get_info.attribute;
-      value = args.api_args.hsa_amd_agent_memory_pool_get_info.value;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_memory_pool_get_info_fn(agent, memory_pool, attribute, value);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_agents_allow_access_callback(uint32_t num_agents, const hsa_agent_t* agents, const uint32_t* flags, const void* ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_agents_allow_access;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_agents_allow_access.num_agents = num_agents;
-	args.api_args.hsa_amd_agents_allow_access.agents = agents;
-	args.api_args.hsa_amd_agents_allow_access.flags = flags;
-	args.api_args.hsa_amd_agents_allow_access.ptr = ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agents_allow_access_fn(args.api_args.hsa_amd_agents_allow_access.num_agents, args.api_args.hsa_amd_agents_allow_access.agents, args.api_args.hsa_amd_agents_allow_access.flags, args.api_args.hsa_amd_agents_allow_access.ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_agents_allow_access.num_agents = num_agents;
+		args.api_args.hsa_amd_agents_allow_access.agents = agents;
+		args.api_args.hsa_amd_agents_allow_access.flags = flags;
+		args.api_args.hsa_amd_agents_allow_access.ptr = ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agents_allow_access_fn(args.api_args.hsa_amd_agents_allow_access.num_agents, args.api_args.hsa_amd_agents_allow_access.agents, args.api_args.hsa_amd_agents_allow_access.flags, args.api_args.hsa_amd_agents_allow_access.ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_agents_allow_access);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_agents_allow_access, &skipFunction);
-      num_agents = args.api_args.hsa_amd_agents_allow_access.num_agents;
-      agents = args.api_args.hsa_amd_agents_allow_access.agents;
-      flags = args.api_args.hsa_amd_agents_allow_access.flags;
-      ptr = args.api_args.hsa_amd_agents_allow_access.ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agents_allow_access_fn(num_agents, agents, flags, ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_pool_can_migrate_callback(hsa_amd_memory_pool_t src_memory_pool, hsa_amd_memory_pool_t dst_memory_pool, bool* result) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_pool_can_migrate;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_pool_can_migrate.src_memory_pool = src_memory_pool;
-	args.api_args.hsa_amd_memory_pool_can_migrate.dst_memory_pool = dst_memory_pool;
-	args.api_args.hsa_amd_memory_pool_can_migrate.result = result;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_can_migrate_fn(args.api_args.hsa_amd_memory_pool_can_migrate.src_memory_pool, args.api_args.hsa_amd_memory_pool_can_migrate.dst_memory_pool, args.api_args.hsa_amd_memory_pool_can_migrate.result);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_pool_can_migrate.src_memory_pool = src_memory_pool;
+		args.api_args.hsa_amd_memory_pool_can_migrate.dst_memory_pool = dst_memory_pool;
+		args.api_args.hsa_amd_memory_pool_can_migrate.result = result;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_can_migrate_fn(args.api_args.hsa_amd_memory_pool_can_migrate.src_memory_pool, args.api_args.hsa_amd_memory_pool_can_migrate.dst_memory_pool, args.api_args.hsa_amd_memory_pool_can_migrate.result);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_can_migrate);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_pool_can_migrate, &skipFunction);
-      src_memory_pool = args.api_args.hsa_amd_memory_pool_can_migrate.src_memory_pool;
-      dst_memory_pool = args.api_args.hsa_amd_memory_pool_can_migrate.dst_memory_pool;
-      result = args.api_args.hsa_amd_memory_pool_can_migrate.result;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_pool_can_migrate_fn(src_memory_pool, dst_memory_pool, result);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_migrate_callback(const void* ptr, hsa_amd_memory_pool_t memory_pool, uint32_t flags) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_migrate;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_migrate.ptr = ptr;
-	args.api_args.hsa_amd_memory_migrate.memory_pool = memory_pool;
-	args.api_args.hsa_amd_memory_migrate.flags = flags;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_migrate_fn(args.api_args.hsa_amd_memory_migrate.ptr, args.api_args.hsa_amd_memory_migrate.memory_pool, args.api_args.hsa_amd_memory_migrate.flags);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_migrate.ptr = ptr;
+		args.api_args.hsa_amd_memory_migrate.memory_pool = memory_pool;
+		args.api_args.hsa_amd_memory_migrate.flags = flags;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_migrate_fn(args.api_args.hsa_amd_memory_migrate.ptr, args.api_args.hsa_amd_memory_migrate.memory_pool, args.api_args.hsa_amd_memory_migrate.flags);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_migrate);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_migrate, &skipFunction);
-      ptr = args.api_args.hsa_amd_memory_migrate.ptr;
-      memory_pool = args.api_args.hsa_amd_memory_migrate.memory_pool;
-      flags = args.api_args.hsa_amd_memory_migrate.flags;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_migrate_fn(ptr, memory_pool, flags);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_lock_callback(void* host_ptr, size_t size, hsa_agent_t* agents, int num_agent, void** agent_ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_lock;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_lock.host_ptr = host_ptr;
-	args.api_args.hsa_amd_memory_lock.size = size;
-	args.api_args.hsa_amd_memory_lock.agents = agents;
-	args.api_args.hsa_amd_memory_lock.num_agent = num_agent;
-	args.api_args.hsa_amd_memory_lock.agent_ptr = agent_ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_fn(args.api_args.hsa_amd_memory_lock.host_ptr, args.api_args.hsa_amd_memory_lock.size, args.api_args.hsa_amd_memory_lock.agents, args.api_args.hsa_amd_memory_lock.num_agent, args.api_args.hsa_amd_memory_lock.agent_ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_lock.host_ptr = host_ptr;
+		args.api_args.hsa_amd_memory_lock.size = size;
+		args.api_args.hsa_amd_memory_lock.agents = agents;
+		args.api_args.hsa_amd_memory_lock.num_agent = num_agent;
+		args.api_args.hsa_amd_memory_lock.agent_ptr = agent_ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_fn(args.api_args.hsa_amd_memory_lock.host_ptr, args.api_args.hsa_amd_memory_lock.size, args.api_args.hsa_amd_memory_lock.agents, args.api_args.hsa_amd_memory_lock.num_agent, args.api_args.hsa_amd_memory_lock.agent_ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_lock);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_lock, &skipFunction);
-      host_ptr = args.api_args.hsa_amd_memory_lock.host_ptr;
-      size = args.api_args.hsa_amd_memory_lock.size;
-      agents = args.api_args.hsa_amd_memory_lock.agents;
-      num_agent = args.api_args.hsa_amd_memory_lock.num_agent;
-      agent_ptr = args.api_args.hsa_amd_memory_lock.agent_ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_fn(host_ptr, size, agents, num_agent, agent_ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_unlock_callback(void* host_ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_unlock;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_unlock.host_ptr = host_ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_unlock_fn(args.api_args.hsa_amd_memory_unlock.host_ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_unlock.host_ptr = host_ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_unlock_fn(args.api_args.hsa_amd_memory_unlock.host_ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_unlock);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_unlock, &skipFunction);
-      host_ptr = args.api_args.hsa_amd_memory_unlock.host_ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_unlock_fn(host_ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_fill_callback(void* ptr, uint32_t value, size_t count) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_fill;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_fill.ptr = ptr;
-	args.api_args.hsa_amd_memory_fill.value = value;
-	args.api_args.hsa_amd_memory_fill.count = count;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_fill_fn(args.api_args.hsa_amd_memory_fill.ptr, args.api_args.hsa_amd_memory_fill.value, args.api_args.hsa_amd_memory_fill.count);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_fill.ptr = ptr;
+		args.api_args.hsa_amd_memory_fill.value = value;
+		args.api_args.hsa_amd_memory_fill.count = count;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_fill_fn(args.api_args.hsa_amd_memory_fill.ptr, args.api_args.hsa_amd_memory_fill.value, args.api_args.hsa_amd_memory_fill.count);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_fill);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_fill, &skipFunction);
-      ptr = args.api_args.hsa_amd_memory_fill.ptr;
-      value = args.api_args.hsa_amd_memory_fill.value;
-      count = args.api_args.hsa_amd_memory_fill.count;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_fill_fn(ptr, value, count);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_interop_map_buffer_callback(uint32_t num_agents, hsa_agent_t* agents, int interop_handle, uint32_t flags, size_t* size, void** ptr, size_t* metadata_size, const void** metadata) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_interop_map_buffer;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_interop_map_buffer.num_agents = num_agents;
-	args.api_args.hsa_amd_interop_map_buffer.agents = agents;
-	args.api_args.hsa_amd_interop_map_buffer.interop_handle = interop_handle;
-	args.api_args.hsa_amd_interop_map_buffer.flags = flags;
-	args.api_args.hsa_amd_interop_map_buffer.size = size;
-	args.api_args.hsa_amd_interop_map_buffer.ptr = ptr;
-	args.api_args.hsa_amd_interop_map_buffer.metadata_size = metadata_size;
-	args.api_args.hsa_amd_interop_map_buffer.metadata = metadata;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_map_buffer_fn(args.api_args.hsa_amd_interop_map_buffer.num_agents, args.api_args.hsa_amd_interop_map_buffer.agents, args.api_args.hsa_amd_interop_map_buffer.interop_handle, args.api_args.hsa_amd_interop_map_buffer.flags, args.api_args.hsa_amd_interop_map_buffer.size, args.api_args.hsa_amd_interop_map_buffer.ptr, args.api_args.hsa_amd_interop_map_buffer.metadata_size, args.api_args.hsa_amd_interop_map_buffer.metadata);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_interop_map_buffer.num_agents = num_agents;
+		args.api_args.hsa_amd_interop_map_buffer.agents = agents;
+		args.api_args.hsa_amd_interop_map_buffer.interop_handle = interop_handle;
+		args.api_args.hsa_amd_interop_map_buffer.flags = flags;
+		args.api_args.hsa_amd_interop_map_buffer.size = size;
+		args.api_args.hsa_amd_interop_map_buffer.ptr = ptr;
+		args.api_args.hsa_amd_interop_map_buffer.metadata_size = metadata_size;
+		args.api_args.hsa_amd_interop_map_buffer.metadata = metadata;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_map_buffer_fn(args.api_args.hsa_amd_interop_map_buffer.num_agents, args.api_args.hsa_amd_interop_map_buffer.agents, args.api_args.hsa_amd_interop_map_buffer.interop_handle, args.api_args.hsa_amd_interop_map_buffer.flags, args.api_args.hsa_amd_interop_map_buffer.size, args.api_args.hsa_amd_interop_map_buffer.ptr, args.api_args.hsa_amd_interop_map_buffer.metadata_size, args.api_args.hsa_amd_interop_map_buffer.metadata);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_interop_map_buffer);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_interop_map_buffer, &skipFunction);
-      num_agents = args.api_args.hsa_amd_interop_map_buffer.num_agents;
-      agents = args.api_args.hsa_amd_interop_map_buffer.agents;
-      interop_handle = args.api_args.hsa_amd_interop_map_buffer.interop_handle;
-      flags = args.api_args.hsa_amd_interop_map_buffer.flags;
-      size = args.api_args.hsa_amd_interop_map_buffer.size;
-      ptr = args.api_args.hsa_amd_interop_map_buffer.ptr;
-      metadata_size = args.api_args.hsa_amd_interop_map_buffer.metadata_size;
-      metadata = args.api_args.hsa_amd_interop_map_buffer.metadata;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_map_buffer_fn(num_agents, agents, interop_handle, flags, size, ptr, metadata_size, metadata);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_interop_unmap_buffer_callback(void* ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_interop_unmap_buffer;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_interop_unmap_buffer.ptr = ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_unmap_buffer_fn(args.api_args.hsa_amd_interop_unmap_buffer.ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_interop_unmap_buffer.ptr = ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_unmap_buffer_fn(args.api_args.hsa_amd_interop_unmap_buffer.ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_interop_unmap_buffer);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_interop_unmap_buffer, &skipFunction);
-      ptr = args.api_args.hsa_amd_interop_unmap_buffer.ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_interop_unmap_buffer_fn(ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_image_create_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, const hsa_amd_image_descriptor_t* image_layout, const void* image_data, hsa_access_permission_t access_permission, hsa_ext_image_t* image) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_image_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_image_create.agent = agent;
-	args.api_args.hsa_amd_image_create.image_descriptor = image_descriptor;
-	args.api_args.hsa_amd_image_create.image_layout = image_layout;
-	args.api_args.hsa_amd_image_create.image_data = image_data;
-	args.api_args.hsa_amd_image_create.access_permission = access_permission;
-	args.api_args.hsa_amd_image_create.image = image;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_image_create_fn(args.api_args.hsa_amd_image_create.agent, args.api_args.hsa_amd_image_create.image_descriptor, args.api_args.hsa_amd_image_create.image_layout, args.api_args.hsa_amd_image_create.image_data, args.api_args.hsa_amd_image_create.access_permission, args.api_args.hsa_amd_image_create.image);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_image_create.agent = agent;
+		args.api_args.hsa_amd_image_create.image_descriptor = image_descriptor;
+		args.api_args.hsa_amd_image_create.image_layout = image_layout;
+		args.api_args.hsa_amd_image_create.image_data = image_data;
+		args.api_args.hsa_amd_image_create.access_permission = access_permission;
+		args.api_args.hsa_amd_image_create.image = image;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_image_create_fn(args.api_args.hsa_amd_image_create.agent, args.api_args.hsa_amd_image_create.image_descriptor, args.api_args.hsa_amd_image_create.image_layout, args.api_args.hsa_amd_image_create.image_data, args.api_args.hsa_amd_image_create.access_permission, args.api_args.hsa_amd_image_create.image);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_image_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_image_create, &skipFunction);
-      agent = args.api_args.hsa_amd_image_create.agent;
-      image_descriptor = args.api_args.hsa_amd_image_create.image_descriptor;
-      image_layout = args.api_args.hsa_amd_image_create.image_layout;
-      image_data = args.api_args.hsa_amd_image_create.image_data;
-      access_permission = args.api_args.hsa_amd_image_create.access_permission;
-      image = args.api_args.hsa_amd_image_create.image;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_image_create_fn(agent, image_descriptor, image_layout, image_data, access_permission, image);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_pointer_info_callback(const void* ptr, hsa_amd_pointer_info_t* info, void* (* alloc)(size_t), uint32_t* num_agents_accessible, hsa_agent_t** accessible) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_pointer_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_pointer_info.ptr = ptr;
-	args.api_args.hsa_amd_pointer_info.info = info;
-	args.api_args.hsa_amd_pointer_info.alloc = alloc;
-	args.api_args.hsa_amd_pointer_info.num_agents_accessible = num_agents_accessible;
-	args.api_args.hsa_amd_pointer_info.accessible = accessible;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_fn(args.api_args.hsa_amd_pointer_info.ptr, args.api_args.hsa_amd_pointer_info.info, args.api_args.hsa_amd_pointer_info.alloc, args.api_args.hsa_amd_pointer_info.num_agents_accessible, args.api_args.hsa_amd_pointer_info.accessible);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_pointer_info.ptr = ptr;
+		args.api_args.hsa_amd_pointer_info.info = info;
+		args.api_args.hsa_amd_pointer_info.alloc = alloc;
+		args.api_args.hsa_amd_pointer_info.num_agents_accessible = num_agents_accessible;
+		args.api_args.hsa_amd_pointer_info.accessible = accessible;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_fn(args.api_args.hsa_amd_pointer_info.ptr, args.api_args.hsa_amd_pointer_info.info, args.api_args.hsa_amd_pointer_info.alloc, args.api_args.hsa_amd_pointer_info.num_agents_accessible, args.api_args.hsa_amd_pointer_info.accessible);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_pointer_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_pointer_info, &skipFunction);
-      ptr = args.api_args.hsa_amd_pointer_info.ptr;
-      info = args.api_args.hsa_amd_pointer_info.info;
-      alloc = args.api_args.hsa_amd_pointer_info.alloc;
-      num_agents_accessible = args.api_args.hsa_amd_pointer_info.num_agents_accessible;
-      accessible = args.api_args.hsa_amd_pointer_info.accessible;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_fn(ptr, info, alloc, num_agents_accessible, accessible);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_pointer_info_set_userdata_callback(const void* ptr, void* userdata) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_pointer_info_set_userdata;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_pointer_info_set_userdata.ptr = ptr;
-	args.api_args.hsa_amd_pointer_info_set_userdata.userdata = userdata;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_set_userdata_fn(args.api_args.hsa_amd_pointer_info_set_userdata.ptr, args.api_args.hsa_amd_pointer_info_set_userdata.userdata);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_pointer_info_set_userdata.ptr = ptr;
+		args.api_args.hsa_amd_pointer_info_set_userdata.userdata = userdata;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_set_userdata_fn(args.api_args.hsa_amd_pointer_info_set_userdata.ptr, args.api_args.hsa_amd_pointer_info_set_userdata.userdata);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_pointer_info_set_userdata);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_pointer_info_set_userdata, &skipFunction);
-      ptr = args.api_args.hsa_amd_pointer_info_set_userdata.ptr;
-      userdata = args.api_args.hsa_amd_pointer_info_set_userdata.userdata;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_pointer_info_set_userdata_fn(ptr, userdata);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_ipc_memory_create_callback(void* ptr, size_t len, hsa_amd_ipc_memory_t* handle) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_memory_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_ipc_memory_create.ptr = ptr;
-	args.api_args.hsa_amd_ipc_memory_create.len = len;
-	args.api_args.hsa_amd_ipc_memory_create.handle = handle;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_create_fn(args.api_args.hsa_amd_ipc_memory_create.ptr, args.api_args.hsa_amd_ipc_memory_create.len, args.api_args.hsa_amd_ipc_memory_create.handle);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_ipc_memory_create.ptr = ptr;
+		args.api_args.hsa_amd_ipc_memory_create.len = len;
+		args.api_args.hsa_amd_ipc_memory_create.handle = handle;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_create_fn(args.api_args.hsa_amd_ipc_memory_create.ptr, args.api_args.hsa_amd_ipc_memory_create.len, args.api_args.hsa_amd_ipc_memory_create.handle);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_memory_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_memory_create, &skipFunction);
-      ptr = args.api_args.hsa_amd_ipc_memory_create.ptr;
-      len = args.api_args.hsa_amd_ipc_memory_create.len;
-      handle = args.api_args.hsa_amd_ipc_memory_create.handle;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_create_fn(ptr, len, handle);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_ipc_memory_attach_callback(const hsa_amd_ipc_memory_t* handle, size_t len, uint32_t num_agents, const hsa_agent_t* mapping_agents, void** mapped_ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_memory_attach;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_ipc_memory_attach.handle = handle;
-	args.api_args.hsa_amd_ipc_memory_attach.len = len;
-	args.api_args.hsa_amd_ipc_memory_attach.num_agents = num_agents;
-	args.api_args.hsa_amd_ipc_memory_attach.mapping_agents = mapping_agents;
-	args.api_args.hsa_amd_ipc_memory_attach.mapped_ptr = mapped_ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_attach_fn(args.api_args.hsa_amd_ipc_memory_attach.handle, args.api_args.hsa_amd_ipc_memory_attach.len, args.api_args.hsa_amd_ipc_memory_attach.num_agents, args.api_args.hsa_amd_ipc_memory_attach.mapping_agents, args.api_args.hsa_amd_ipc_memory_attach.mapped_ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_ipc_memory_attach.handle = handle;
+		args.api_args.hsa_amd_ipc_memory_attach.len = len;
+		args.api_args.hsa_amd_ipc_memory_attach.num_agents = num_agents;
+		args.api_args.hsa_amd_ipc_memory_attach.mapping_agents = mapping_agents;
+		args.api_args.hsa_amd_ipc_memory_attach.mapped_ptr = mapped_ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_attach_fn(args.api_args.hsa_amd_ipc_memory_attach.handle, args.api_args.hsa_amd_ipc_memory_attach.len, args.api_args.hsa_amd_ipc_memory_attach.num_agents, args.api_args.hsa_amd_ipc_memory_attach.mapping_agents, args.api_args.hsa_amd_ipc_memory_attach.mapped_ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_memory_attach);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_memory_attach, &skipFunction);
-      handle = args.api_args.hsa_amd_ipc_memory_attach.handle;
-      len = args.api_args.hsa_amd_ipc_memory_attach.len;
-      num_agents = args.api_args.hsa_amd_ipc_memory_attach.num_agents;
-      mapping_agents = args.api_args.hsa_amd_ipc_memory_attach.mapping_agents;
-      mapped_ptr = args.api_args.hsa_amd_ipc_memory_attach.mapped_ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_attach_fn(handle, len, num_agents, mapping_agents, mapped_ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_ipc_memory_detach_callback(void* mapped_ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_memory_detach;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_ipc_memory_detach.mapped_ptr = mapped_ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_detach_fn(args.api_args.hsa_amd_ipc_memory_detach.mapped_ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_ipc_memory_detach.mapped_ptr = mapped_ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_detach_fn(args.api_args.hsa_amd_ipc_memory_detach.mapped_ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_memory_detach);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_memory_detach, &skipFunction);
-      mapped_ptr = args.api_args.hsa_amd_ipc_memory_detach.mapped_ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_memory_detach_fn(mapped_ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_signal_create_callback(hsa_signal_value_t initial_value, uint32_t num_consumers, const hsa_agent_t* consumers, uint64_t attributes, hsa_signal_t* signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_signal_create.initial_value = initial_value;
-	args.api_args.hsa_amd_signal_create.num_consumers = num_consumers;
-	args.api_args.hsa_amd_signal_create.consumers = consumers;
-	args.api_args.hsa_amd_signal_create.attributes = attributes;
-	args.api_args.hsa_amd_signal_create.signal = signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_create_fn(args.api_args.hsa_amd_signal_create.initial_value, args.api_args.hsa_amd_signal_create.num_consumers, args.api_args.hsa_amd_signal_create.consumers, args.api_args.hsa_amd_signal_create.attributes, args.api_args.hsa_amd_signal_create.signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_signal_create.initial_value = initial_value;
+		args.api_args.hsa_amd_signal_create.num_consumers = num_consumers;
+		args.api_args.hsa_amd_signal_create.consumers = consumers;
+		args.api_args.hsa_amd_signal_create.attributes = attributes;
+		args.api_args.hsa_amd_signal_create.signal = signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_create_fn(args.api_args.hsa_amd_signal_create.initial_value, args.api_args.hsa_amd_signal_create.num_consumers, args.api_args.hsa_amd_signal_create.consumers, args.api_args.hsa_amd_signal_create.attributes, args.api_args.hsa_amd_signal_create.signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_create, &skipFunction);
-      initial_value = args.api_args.hsa_amd_signal_create.initial_value;
-      num_consumers = args.api_args.hsa_amd_signal_create.num_consumers;
-      consumers = args.api_args.hsa_amd_signal_create.consumers;
-      attributes = args.api_args.hsa_amd_signal_create.attributes;
-      signal = args.api_args.hsa_amd_signal_create.signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_create_fn(initial_value, num_consumers, consumers, attributes, signal);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_ipc_signal_create_callback(hsa_signal_t signal, hsa_amd_ipc_signal_t* handle) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_signal_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_ipc_signal_create.signal = signal;
-	args.api_args.hsa_amd_ipc_signal_create.handle = handle;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_create_fn(args.api_args.hsa_amd_ipc_signal_create.signal, args.api_args.hsa_amd_ipc_signal_create.handle);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_ipc_signal_create.signal = signal;
+		args.api_args.hsa_amd_ipc_signal_create.handle = handle;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_create_fn(args.api_args.hsa_amd_ipc_signal_create.signal, args.api_args.hsa_amd_ipc_signal_create.handle);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_signal_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_signal_create, &skipFunction);
-      signal = args.api_args.hsa_amd_ipc_signal_create.signal;
-      handle = args.api_args.hsa_amd_ipc_signal_create.handle;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_create_fn(signal, handle);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_ipc_signal_attach_callback(const hsa_amd_ipc_signal_t* handle, hsa_signal_t* signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_ipc_signal_attach;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_ipc_signal_attach.handle = handle;
-	args.api_args.hsa_amd_ipc_signal_attach.signal = signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_attach_fn(args.api_args.hsa_amd_ipc_signal_attach.handle, args.api_args.hsa_amd_ipc_signal_attach.signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_ipc_signal_attach.handle = handle;
+		args.api_args.hsa_amd_ipc_signal_attach.signal = signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_attach_fn(args.api_args.hsa_amd_ipc_signal_attach.handle, args.api_args.hsa_amd_ipc_signal_attach.signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_signal_attach);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_ipc_signal_attach, &skipFunction);
-      handle = args.api_args.hsa_amd_ipc_signal_attach.handle;
-      signal = args.api_args.hsa_amd_ipc_signal_attach.signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_ipc_signal_attach_fn(handle, signal);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_register_system_event_handler_callback(hsa_amd_system_event_callback_t callback, void* data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_register_system_event_handler;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_register_system_event_handler.callback = callback;
-	args.api_args.hsa_amd_register_system_event_handler.data = data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_system_event_handler_fn(args.api_args.hsa_amd_register_system_event_handler.callback, args.api_args.hsa_amd_register_system_event_handler.data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_register_system_event_handler.callback = callback;
+		args.api_args.hsa_amd_register_system_event_handler.data = data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_system_event_handler_fn(args.api_args.hsa_amd_register_system_event_handler.callback, args.api_args.hsa_amd_register_system_event_handler.data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_register_system_event_handler);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_register_system_event_handler, &skipFunction);
-      callback = args.api_args.hsa_amd_register_system_event_handler.callback;
-      data = args.api_args.hsa_amd_register_system_event_handler.data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_system_event_handler_fn(callback, data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_queue_intercept_create_callback(hsa_agent_t agent_handle, uint32_t size, hsa_queue_type32_t type, void (* callback)(hsa_status_t status, hsa_queue_t* source, void* data), void* data, uint32_t private_segment_size, uint32_t group_segment_size, hsa_queue_t** queue) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_intercept_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_queue_intercept_create.agent_handle = agent_handle;
-	args.api_args.hsa_amd_queue_intercept_create.size = size;
-	args.api_args.hsa_amd_queue_intercept_create.type = type;
-	args.api_args.hsa_amd_queue_intercept_create.callback = callback;
-	args.api_args.hsa_amd_queue_intercept_create.data = data;
-	args.api_args.hsa_amd_queue_intercept_create.private_segment_size = private_segment_size;
-	args.api_args.hsa_amd_queue_intercept_create.group_segment_size = group_segment_size;
-	args.api_args.hsa_amd_queue_intercept_create.queue = queue;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_create_fn(args.api_args.hsa_amd_queue_intercept_create.agent_handle, args.api_args.hsa_amd_queue_intercept_create.size, args.api_args.hsa_amd_queue_intercept_create.type, args.api_args.hsa_amd_queue_intercept_create.callback, args.api_args.hsa_amd_queue_intercept_create.data, args.api_args.hsa_amd_queue_intercept_create.private_segment_size, args.api_args.hsa_amd_queue_intercept_create.group_segment_size, args.api_args.hsa_amd_queue_intercept_create.queue);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_queue_intercept_create.agent_handle = agent_handle;
+		args.api_args.hsa_amd_queue_intercept_create.size = size;
+		args.api_args.hsa_amd_queue_intercept_create.type = type;
+		args.api_args.hsa_amd_queue_intercept_create.callback = callback;
+		args.api_args.hsa_amd_queue_intercept_create.data = data;
+		args.api_args.hsa_amd_queue_intercept_create.private_segment_size = private_segment_size;
+		args.api_args.hsa_amd_queue_intercept_create.group_segment_size = group_segment_size;
+		args.api_args.hsa_amd_queue_intercept_create.queue = queue;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_create_fn(args.api_args.hsa_amd_queue_intercept_create.agent_handle, args.api_args.hsa_amd_queue_intercept_create.size, args.api_args.hsa_amd_queue_intercept_create.type, args.api_args.hsa_amd_queue_intercept_create.callback, args.api_args.hsa_amd_queue_intercept_create.data, args.api_args.hsa_amd_queue_intercept_create.private_segment_size, args.api_args.hsa_amd_queue_intercept_create.group_segment_size, args.api_args.hsa_amd_queue_intercept_create.queue);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_intercept_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_intercept_create, &skipFunction);
-      agent_handle = args.api_args.hsa_amd_queue_intercept_create.agent_handle;
-      size = args.api_args.hsa_amd_queue_intercept_create.size;
-      type = args.api_args.hsa_amd_queue_intercept_create.type;
-      callback = args.api_args.hsa_amd_queue_intercept_create.callback;
-      data = args.api_args.hsa_amd_queue_intercept_create.data;
-      private_segment_size = args.api_args.hsa_amd_queue_intercept_create.private_segment_size;
-      group_segment_size = args.api_args.hsa_amd_queue_intercept_create.group_segment_size;
-      queue = args.api_args.hsa_amd_queue_intercept_create.queue;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_create_fn(agent_handle, size, type, callback, data, private_segment_size, group_segment_size, queue);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_queue_intercept_register_callback(hsa_queue_t* queue, hsa_amd_queue_intercept_handler callback, void* user_data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_intercept_register;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_queue_intercept_register.queue = queue;
-	args.api_args.hsa_amd_queue_intercept_register.callback = callback;
-	args.api_args.hsa_amd_queue_intercept_register.user_data = user_data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_register_fn(args.api_args.hsa_amd_queue_intercept_register.queue, args.api_args.hsa_amd_queue_intercept_register.callback, args.api_args.hsa_amd_queue_intercept_register.user_data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_queue_intercept_register.queue = queue;
+		args.api_args.hsa_amd_queue_intercept_register.callback = callback;
+		args.api_args.hsa_amd_queue_intercept_register.user_data = user_data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_register_fn(args.api_args.hsa_amd_queue_intercept_register.queue, args.api_args.hsa_amd_queue_intercept_register.callback, args.api_args.hsa_amd_queue_intercept_register.user_data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_intercept_register);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_intercept_register, &skipFunction);
-      queue = args.api_args.hsa_amd_queue_intercept_register.queue;
-      callback = args.api_args.hsa_amd_queue_intercept_register.callback;
-      user_data = args.api_args.hsa_amd_queue_intercept_register.user_data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_intercept_register_fn(queue, callback, user_data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_queue_set_priority_callback(hsa_queue_t* queue, hsa_amd_queue_priority_t priority) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_set_priority;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_queue_set_priority.queue = queue;
-	args.api_args.hsa_amd_queue_set_priority.priority = priority;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_set_priority_fn(args.api_args.hsa_amd_queue_set_priority.queue, args.api_args.hsa_amd_queue_set_priority.priority);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_queue_set_priority.queue = queue;
+		args.api_args.hsa_amd_queue_set_priority.priority = priority;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_set_priority_fn(args.api_args.hsa_amd_queue_set_priority.queue, args.api_args.hsa_amd_queue_set_priority.priority);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_set_priority);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_set_priority, &skipFunction);
-      queue = args.api_args.hsa_amd_queue_set_priority.queue;
-      priority = args.api_args.hsa_amd_queue_set_priority.priority;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_set_priority_fn(queue, priority);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_async_copy_rect_callback(const hsa_pitched_ptr_t* dst, const hsa_dim3_t* dst_offset, const hsa_pitched_ptr_t* src, const hsa_dim3_t* src_offset, const hsa_dim3_t* range, hsa_agent_t copy_agent, hsa_amd_copy_direction_t dir, uint32_t num_dep_signals, const hsa_signal_t* dep_signals, hsa_signal_t completion_signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_async_copy_rect;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_async_copy_rect.dst = dst;
-	args.api_args.hsa_amd_memory_async_copy_rect.dst_offset = dst_offset;
-	args.api_args.hsa_amd_memory_async_copy_rect.src = src;
-	args.api_args.hsa_amd_memory_async_copy_rect.src_offset = src_offset;
-	args.api_args.hsa_amd_memory_async_copy_rect.range = range;
-	args.api_args.hsa_amd_memory_async_copy_rect.copy_agent = copy_agent;
-	args.api_args.hsa_amd_memory_async_copy_rect.dir = dir;
-	args.api_args.hsa_amd_memory_async_copy_rect.num_dep_signals = num_dep_signals;
-	args.api_args.hsa_amd_memory_async_copy_rect.dep_signals = dep_signals;
-	args.api_args.hsa_amd_memory_async_copy_rect.completion_signal = completion_signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_rect_fn(args.api_args.hsa_amd_memory_async_copy_rect.dst, args.api_args.hsa_amd_memory_async_copy_rect.dst_offset, args.api_args.hsa_amd_memory_async_copy_rect.src, args.api_args.hsa_amd_memory_async_copy_rect.src_offset, args.api_args.hsa_amd_memory_async_copy_rect.range, args.api_args.hsa_amd_memory_async_copy_rect.copy_agent, args.api_args.hsa_amd_memory_async_copy_rect.dir, args.api_args.hsa_amd_memory_async_copy_rect.num_dep_signals, args.api_args.hsa_amd_memory_async_copy_rect.dep_signals, args.api_args.hsa_amd_memory_async_copy_rect.completion_signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_async_copy_rect.dst = dst;
+		args.api_args.hsa_amd_memory_async_copy_rect.dst_offset = dst_offset;
+		args.api_args.hsa_amd_memory_async_copy_rect.src = src;
+		args.api_args.hsa_amd_memory_async_copy_rect.src_offset = src_offset;
+		args.api_args.hsa_amd_memory_async_copy_rect.range = range;
+		args.api_args.hsa_amd_memory_async_copy_rect.copy_agent = copy_agent;
+		args.api_args.hsa_amd_memory_async_copy_rect.dir = dir;
+		args.api_args.hsa_amd_memory_async_copy_rect.num_dep_signals = num_dep_signals;
+		args.api_args.hsa_amd_memory_async_copy_rect.dep_signals = dep_signals;
+		args.api_args.hsa_amd_memory_async_copy_rect.completion_signal = completion_signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_rect_fn(args.api_args.hsa_amd_memory_async_copy_rect.dst, args.api_args.hsa_amd_memory_async_copy_rect.dst_offset, args.api_args.hsa_amd_memory_async_copy_rect.src, args.api_args.hsa_amd_memory_async_copy_rect.src_offset, args.api_args.hsa_amd_memory_async_copy_rect.range, args.api_args.hsa_amd_memory_async_copy_rect.copy_agent, args.api_args.hsa_amd_memory_async_copy_rect.dir, args.api_args.hsa_amd_memory_async_copy_rect.num_dep_signals, args.api_args.hsa_amd_memory_async_copy_rect.dep_signals, args.api_args.hsa_amd_memory_async_copy_rect.completion_signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_async_copy_rect);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_async_copy_rect, &skipFunction);
-      dst = args.api_args.hsa_amd_memory_async_copy_rect.dst;
-      dst_offset = args.api_args.hsa_amd_memory_async_copy_rect.dst_offset;
-      src = args.api_args.hsa_amd_memory_async_copy_rect.src;
-      src_offset = args.api_args.hsa_amd_memory_async_copy_rect.src_offset;
-      range = args.api_args.hsa_amd_memory_async_copy_rect.range;
-      copy_agent = args.api_args.hsa_amd_memory_async_copy_rect.copy_agent;
-      dir = args.api_args.hsa_amd_memory_async_copy_rect.dir;
-      num_dep_signals = args.api_args.hsa_amd_memory_async_copy_rect.num_dep_signals;
-      dep_signals = args.api_args.hsa_amd_memory_async_copy_rect.dep_signals;
-      completion_signal = args.api_args.hsa_amd_memory_async_copy_rect.completion_signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_async_copy_rect_fn(dst, dst_offset, src, src_offset, range, copy_agent, dir, num_dep_signals, dep_signals, completion_signal);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_runtime_queue_create_register_callback(hsa_amd_runtime_queue_notifier callback, void* user_data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_runtime_queue_create_register;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_runtime_queue_create_register.callback = callback;
-	args.api_args.hsa_amd_runtime_queue_create_register.user_data = user_data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_runtime_queue_create_register_fn(args.api_args.hsa_amd_runtime_queue_create_register.callback, args.api_args.hsa_amd_runtime_queue_create_register.user_data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_runtime_queue_create_register.callback = callback;
+		args.api_args.hsa_amd_runtime_queue_create_register.user_data = user_data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_runtime_queue_create_register_fn(args.api_args.hsa_amd_runtime_queue_create_register.callback, args.api_args.hsa_amd_runtime_queue_create_register.user_data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_runtime_queue_create_register);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_runtime_queue_create_register, &skipFunction);
-      callback = args.api_args.hsa_amd_runtime_queue_create_register.callback;
-      user_data = args.api_args.hsa_amd_runtime_queue_create_register.user_data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_runtime_queue_create_register_fn(callback, user_data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_memory_lock_to_pool_callback(void* host_ptr, size_t size, hsa_agent_t* agents, int num_agent, hsa_amd_memory_pool_t pool, uint32_t flags, void** agent_ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_memory_lock_to_pool;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_memory_lock_to_pool.host_ptr = host_ptr;
-	args.api_args.hsa_amd_memory_lock_to_pool.size = size;
-	args.api_args.hsa_amd_memory_lock_to_pool.agents = agents;
-	args.api_args.hsa_amd_memory_lock_to_pool.num_agent = num_agent;
-	args.api_args.hsa_amd_memory_lock_to_pool.pool = pool;
-	args.api_args.hsa_amd_memory_lock_to_pool.flags = flags;
-	args.api_args.hsa_amd_memory_lock_to_pool.agent_ptr = agent_ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_to_pool_fn(args.api_args.hsa_amd_memory_lock_to_pool.host_ptr, args.api_args.hsa_amd_memory_lock_to_pool.size, args.api_args.hsa_amd_memory_lock_to_pool.agents, args.api_args.hsa_amd_memory_lock_to_pool.num_agent, args.api_args.hsa_amd_memory_lock_to_pool.pool, args.api_args.hsa_amd_memory_lock_to_pool.flags, args.api_args.hsa_amd_memory_lock_to_pool.agent_ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_memory_lock_to_pool.host_ptr = host_ptr;
+		args.api_args.hsa_amd_memory_lock_to_pool.size = size;
+		args.api_args.hsa_amd_memory_lock_to_pool.agents = agents;
+		args.api_args.hsa_amd_memory_lock_to_pool.num_agent = num_agent;
+		args.api_args.hsa_amd_memory_lock_to_pool.pool = pool;
+		args.api_args.hsa_amd_memory_lock_to_pool.flags = flags;
+		args.api_args.hsa_amd_memory_lock_to_pool.agent_ptr = agent_ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_to_pool_fn(args.api_args.hsa_amd_memory_lock_to_pool.host_ptr, args.api_args.hsa_amd_memory_lock_to_pool.size, args.api_args.hsa_amd_memory_lock_to_pool.agents, args.api_args.hsa_amd_memory_lock_to_pool.num_agent, args.api_args.hsa_amd_memory_lock_to_pool.pool, args.api_args.hsa_amd_memory_lock_to_pool.flags, args.api_args.hsa_amd_memory_lock_to_pool.agent_ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_lock_to_pool);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_memory_lock_to_pool, &skipFunction);
-      host_ptr = args.api_args.hsa_amd_memory_lock_to_pool.host_ptr;
-      size = args.api_args.hsa_amd_memory_lock_to_pool.size;
-      agents = args.api_args.hsa_amd_memory_lock_to_pool.agents;
-      num_agent = args.api_args.hsa_amd_memory_lock_to_pool.num_agent;
-      pool = args.api_args.hsa_amd_memory_lock_to_pool.pool;
-      flags = args.api_args.hsa_amd_memory_lock_to_pool.flags;
-      agent_ptr = args.api_args.hsa_amd_memory_lock_to_pool.agent_ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_memory_lock_to_pool_fn(host_ptr, size, agents, num_agent, pool, flags, agent_ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_register_deallocation_callback_callback(void* ptr, hsa_amd_deallocation_callback_t callback, void* user_data) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_register_deallocation_callback;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_register_deallocation_callback.ptr = ptr;
-	args.api_args.hsa_amd_register_deallocation_callback.callback = callback;
-	args.api_args.hsa_amd_register_deallocation_callback.user_data = user_data;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_deallocation_callback_fn(args.api_args.hsa_amd_register_deallocation_callback.ptr, args.api_args.hsa_amd_register_deallocation_callback.callback, args.api_args.hsa_amd_register_deallocation_callback.user_data);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_register_deallocation_callback.ptr = ptr;
+		args.api_args.hsa_amd_register_deallocation_callback.callback = callback;
+		args.api_args.hsa_amd_register_deallocation_callback.user_data = user_data;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_deallocation_callback_fn(args.api_args.hsa_amd_register_deallocation_callback.ptr, args.api_args.hsa_amd_register_deallocation_callback.callback, args.api_args.hsa_amd_register_deallocation_callback.user_data);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_register_deallocation_callback);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_register_deallocation_callback, &skipFunction);
-      ptr = args.api_args.hsa_amd_register_deallocation_callback.ptr;
-      callback = args.api_args.hsa_amd_register_deallocation_callback.callback;
-      user_data = args.api_args.hsa_amd_register_deallocation_callback.user_data;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_register_deallocation_callback_fn(ptr, callback, user_data);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_deregister_deallocation_callback_callback(void* ptr, hsa_amd_deallocation_callback_t callback) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_deregister_deallocation_callback;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_deregister_deallocation_callback.ptr = ptr;
-	args.api_args.hsa_amd_deregister_deallocation_callback.callback = callback;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_deregister_deallocation_callback_fn(args.api_args.hsa_amd_deregister_deallocation_callback.ptr, args.api_args.hsa_amd_deregister_deallocation_callback.callback);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_deregister_deallocation_callback.ptr = ptr;
+		args.api_args.hsa_amd_deregister_deallocation_callback.callback = callback;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_deregister_deallocation_callback_fn(args.api_args.hsa_amd_deregister_deallocation_callback.ptr, args.api_args.hsa_amd_deregister_deallocation_callback.callback);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_deregister_deallocation_callback);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_deregister_deallocation_callback, &skipFunction);
-      ptr = args.api_args.hsa_amd_deregister_deallocation_callback.ptr;
-      callback = args.api_args.hsa_amd_deregister_deallocation_callback.callback;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_deregister_deallocation_callback_fn(ptr, callback);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_signal_value_pointer_callback(hsa_signal_t signal, volatile hsa_signal_value_t** value_ptr) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_signal_value_pointer;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_signal_value_pointer.signal = signal;
-	args.api_args.hsa_amd_signal_value_pointer.value_ptr = value_ptr;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_value_pointer_fn(args.api_args.hsa_amd_signal_value_pointer.signal, args.api_args.hsa_amd_signal_value_pointer.value_ptr);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_signal_value_pointer.signal = signal;
+		args.api_args.hsa_amd_signal_value_pointer.value_ptr = value_ptr;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_value_pointer_fn(args.api_args.hsa_amd_signal_value_pointer.signal, args.api_args.hsa_amd_signal_value_pointer.value_ptr);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_value_pointer);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_signal_value_pointer, &skipFunction);
-      signal = args.api_args.hsa_amd_signal_value_pointer.signal;
-      value_ptr = args.api_args.hsa_amd_signal_value_pointer.value_ptr;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_signal_value_pointer_fn(signal, value_ptr);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_svm_attributes_set_callback(void* ptr, size_t size, hsa_amd_svm_attribute_pair_t* attribute_list, size_t attribute_count) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_svm_attributes_set;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_svm_attributes_set.ptr = ptr;
-	args.api_args.hsa_amd_svm_attributes_set.size = size;
-	args.api_args.hsa_amd_svm_attributes_set.attribute_list = attribute_list;
-	args.api_args.hsa_amd_svm_attributes_set.attribute_count = attribute_count;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_set_fn(args.api_args.hsa_amd_svm_attributes_set.ptr, args.api_args.hsa_amd_svm_attributes_set.size, args.api_args.hsa_amd_svm_attributes_set.attribute_list, args.api_args.hsa_amd_svm_attributes_set.attribute_count);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_svm_attributes_set.ptr = ptr;
+		args.api_args.hsa_amd_svm_attributes_set.size = size;
+		args.api_args.hsa_amd_svm_attributes_set.attribute_list = attribute_list;
+		args.api_args.hsa_amd_svm_attributes_set.attribute_count = attribute_count;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_set_fn(args.api_args.hsa_amd_svm_attributes_set.ptr, args.api_args.hsa_amd_svm_attributes_set.size, args.api_args.hsa_amd_svm_attributes_set.attribute_list, args.api_args.hsa_amd_svm_attributes_set.attribute_count);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_svm_attributes_set);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_svm_attributes_set, &skipFunction);
-      ptr = args.api_args.hsa_amd_svm_attributes_set.ptr;
-      size = args.api_args.hsa_amd_svm_attributes_set.size;
-      attribute_list = args.api_args.hsa_amd_svm_attributes_set.attribute_list;
-      attribute_count = args.api_args.hsa_amd_svm_attributes_set.attribute_count;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_set_fn(ptr, size, attribute_list, attribute_count);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_svm_attributes_get_callback(void* ptr, size_t size, hsa_amd_svm_attribute_pair_t* attribute_list, size_t attribute_count) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_svm_attributes_get;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_svm_attributes_get.ptr = ptr;
-	args.api_args.hsa_amd_svm_attributes_get.size = size;
-	args.api_args.hsa_amd_svm_attributes_get.attribute_list = attribute_list;
-	args.api_args.hsa_amd_svm_attributes_get.attribute_count = attribute_count;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_get_fn(args.api_args.hsa_amd_svm_attributes_get.ptr, args.api_args.hsa_amd_svm_attributes_get.size, args.api_args.hsa_amd_svm_attributes_get.attribute_list, args.api_args.hsa_amd_svm_attributes_get.attribute_count);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_svm_attributes_get.ptr = ptr;
+		args.api_args.hsa_amd_svm_attributes_get.size = size;
+		args.api_args.hsa_amd_svm_attributes_get.attribute_list = attribute_list;
+		args.api_args.hsa_amd_svm_attributes_get.attribute_count = attribute_count;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_get_fn(args.api_args.hsa_amd_svm_attributes_get.ptr, args.api_args.hsa_amd_svm_attributes_get.size, args.api_args.hsa_amd_svm_attributes_get.attribute_list, args.api_args.hsa_amd_svm_attributes_get.attribute_count);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_svm_attributes_get);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_svm_attributes_get, &skipFunction);
-      ptr = args.api_args.hsa_amd_svm_attributes_get.ptr;
-      size = args.api_args.hsa_amd_svm_attributes_get.size;
-      attribute_list = args.api_args.hsa_amd_svm_attributes_get.attribute_list;
-      attribute_count = args.api_args.hsa_amd_svm_attributes_get.attribute_count;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_attributes_get_fn(ptr, size, attribute_list, attribute_count);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_svm_prefetch_async_callback(void* ptr, size_t size, hsa_agent_t agent, uint32_t num_dep_signals, const hsa_signal_t* dep_signals, hsa_signal_t completion_signal) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_svm_prefetch_async;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_svm_prefetch_async.ptr = ptr;
-	args.api_args.hsa_amd_svm_prefetch_async.size = size;
-	args.api_args.hsa_amd_svm_prefetch_async.agent = agent;
-	args.api_args.hsa_amd_svm_prefetch_async.num_dep_signals = num_dep_signals;
-	args.api_args.hsa_amd_svm_prefetch_async.dep_signals = dep_signals;
-	args.api_args.hsa_amd_svm_prefetch_async.completion_signal = completion_signal;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_prefetch_async_fn(args.api_args.hsa_amd_svm_prefetch_async.ptr, args.api_args.hsa_amd_svm_prefetch_async.size, args.api_args.hsa_amd_svm_prefetch_async.agent, args.api_args.hsa_amd_svm_prefetch_async.num_dep_signals, args.api_args.hsa_amd_svm_prefetch_async.dep_signals, args.api_args.hsa_amd_svm_prefetch_async.completion_signal);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_svm_prefetch_async.ptr = ptr;
+		args.api_args.hsa_amd_svm_prefetch_async.size = size;
+		args.api_args.hsa_amd_svm_prefetch_async.agent = agent;
+		args.api_args.hsa_amd_svm_prefetch_async.num_dep_signals = num_dep_signals;
+		args.api_args.hsa_amd_svm_prefetch_async.dep_signals = dep_signals;
+		args.api_args.hsa_amd_svm_prefetch_async.completion_signal = completion_signal;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_prefetch_async_fn(args.api_args.hsa_amd_svm_prefetch_async.ptr, args.api_args.hsa_amd_svm_prefetch_async.size, args.api_args.hsa_amd_svm_prefetch_async.agent, args.api_args.hsa_amd_svm_prefetch_async.num_dep_signals, args.api_args.hsa_amd_svm_prefetch_async.dep_signals, args.api_args.hsa_amd_svm_prefetch_async.completion_signal);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_svm_prefetch_async);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_svm_prefetch_async, &skipFunction);
-      ptr = args.api_args.hsa_amd_svm_prefetch_async.ptr;
-      size = args.api_args.hsa_amd_svm_prefetch_async.size;
-      agent = args.api_args.hsa_amd_svm_prefetch_async.agent;
-      num_dep_signals = args.api_args.hsa_amd_svm_prefetch_async.num_dep_signals;
-      dep_signals = args.api_args.hsa_amd_svm_prefetch_async.dep_signals;
-      completion_signal = args.api_args.hsa_amd_svm_prefetch_async.completion_signal;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_svm_prefetch_async_fn(ptr, size, agent, num_dep_signals, dep_signals, completion_signal);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_amd_queue_cu_get_mask_callback(const hsa_queue_t* queue, uint32_t num_cu_mask_count, uint32_t* cu_mask) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_amd_queue_cu_get_mask;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_amd_queue_cu_get_mask.queue = queue;
-	args.api_args.hsa_amd_queue_cu_get_mask.num_cu_mask_count = num_cu_mask_count;
-	args.api_args.hsa_amd_queue_cu_get_mask.cu_mask = cu_mask;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_get_mask_fn(args.api_args.hsa_amd_queue_cu_get_mask.queue, args.api_args.hsa_amd_queue_cu_get_mask.num_cu_mask_count, args.api_args.hsa_amd_queue_cu_get_mask.cu_mask);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_amd_queue_cu_get_mask.queue = queue;
+		args.api_args.hsa_amd_queue_cu_get_mask.num_cu_mask_count = num_cu_mask_count;
+		args.api_args.hsa_amd_queue_cu_get_mask.cu_mask = cu_mask;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_get_mask_fn(args.api_args.hsa_amd_queue_cu_get_mask.queue, args.api_args.hsa_amd_queue_cu_get_mask.num_cu_mask_count, args.api_args.hsa_amd_queue_cu_get_mask.cu_mask);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_cu_get_mask);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_amd_queue_cu_get_mask, &skipFunction);
-      queue = args.api_args.hsa_amd_queue_cu_get_mask.queue;
-      num_cu_mask_count = args.api_args.hsa_amd_queue_cu_get_mask.num_cu_mask_count;
-      cu_mask = args.api_args.hsa_amd_queue_cu_get_mask.cu_mask;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_cu_get_mask_fn(queue, num_cu_mask_count, cu_mask);
+		return out;
+	}
 }
 
 
 /* block: ImageExt API */
 static hsa_status_t hsa_ext_image_get_capability_callback(hsa_agent_t agent, hsa_ext_image_geometry_t geometry, const hsa_ext_image_format_t* image_format, uint32_t* capability_mask) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_get_capability;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_get_capability.agent = agent;
-	args.api_args.hsa_ext_image_get_capability.geometry = geometry;
-	args.api_args.hsa_ext_image_get_capability.image_format = image_format;
-	args.api_args.hsa_ext_image_get_capability.capability_mask = capability_mask;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_fn(args.api_args.hsa_ext_image_get_capability.agent, args.api_args.hsa_ext_image_get_capability.geometry, args.api_args.hsa_ext_image_get_capability.image_format, args.api_args.hsa_ext_image_get_capability.capability_mask);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_get_capability.agent = agent;
+		args.api_args.hsa_ext_image_get_capability.geometry = geometry;
+		args.api_args.hsa_ext_image_get_capability.image_format = image_format;
+		args.api_args.hsa_ext_image_get_capability.capability_mask = capability_mask;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_fn(args.api_args.hsa_ext_image_get_capability.agent, args.api_args.hsa_ext_image_get_capability.geometry, args.api_args.hsa_ext_image_get_capability.image_format, args.api_args.hsa_ext_image_get_capability.capability_mask);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_get_capability);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_get_capability, &skipFunction);
-      agent = args.api_args.hsa_ext_image_get_capability.agent;
-      geometry = args.api_args.hsa_ext_image_get_capability.geometry;
-      image_format = args.api_args.hsa_ext_image_get_capability.image_format;
-      capability_mask = args.api_args.hsa_ext_image_get_capability.capability_mask;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_fn(agent, geometry, image_format, capability_mask);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_data_get_info_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, hsa_access_permission_t access_permission, hsa_ext_image_data_info_t* image_data_info) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_data_get_info;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_data_get_info.agent = agent;
-	args.api_args.hsa_ext_image_data_get_info.image_descriptor = image_descriptor;
-	args.api_args.hsa_ext_image_data_get_info.access_permission = access_permission;
-	args.api_args.hsa_ext_image_data_get_info.image_data_info = image_data_info;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_fn(args.api_args.hsa_ext_image_data_get_info.agent, args.api_args.hsa_ext_image_data_get_info.image_descriptor, args.api_args.hsa_ext_image_data_get_info.access_permission, args.api_args.hsa_ext_image_data_get_info.image_data_info);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_data_get_info.agent = agent;
+		args.api_args.hsa_ext_image_data_get_info.image_descriptor = image_descriptor;
+		args.api_args.hsa_ext_image_data_get_info.access_permission = access_permission;
+		args.api_args.hsa_ext_image_data_get_info.image_data_info = image_data_info;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_fn(args.api_args.hsa_ext_image_data_get_info.agent, args.api_args.hsa_ext_image_data_get_info.image_descriptor, args.api_args.hsa_ext_image_data_get_info.access_permission, args.api_args.hsa_ext_image_data_get_info.image_data_info);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_data_get_info);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_data_get_info, &skipFunction);
-      agent = args.api_args.hsa_ext_image_data_get_info.agent;
-      image_descriptor = args.api_args.hsa_ext_image_data_get_info.image_descriptor;
-      access_permission = args.api_args.hsa_ext_image_data_get_info.access_permission;
-      image_data_info = args.api_args.hsa_ext_image_data_get_info.image_data_info;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_fn(agent, image_descriptor, access_permission, image_data_info);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_create_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, const void* image_data, hsa_access_permission_t access_permission, hsa_ext_image_t* image) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_create.agent = agent;
-	args.api_args.hsa_ext_image_create.image_descriptor = image_descriptor;
-	args.api_args.hsa_ext_image_create.image_data = image_data;
-	args.api_args.hsa_ext_image_create.access_permission = access_permission;
-	args.api_args.hsa_ext_image_create.image = image;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_fn(args.api_args.hsa_ext_image_create.agent, args.api_args.hsa_ext_image_create.image_descriptor, args.api_args.hsa_ext_image_create.image_data, args.api_args.hsa_ext_image_create.access_permission, args.api_args.hsa_ext_image_create.image);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_create.agent = agent;
+		args.api_args.hsa_ext_image_create.image_descriptor = image_descriptor;
+		args.api_args.hsa_ext_image_create.image_data = image_data;
+		args.api_args.hsa_ext_image_create.access_permission = access_permission;
+		args.api_args.hsa_ext_image_create.image = image;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_fn(args.api_args.hsa_ext_image_create.agent, args.api_args.hsa_ext_image_create.image_descriptor, args.api_args.hsa_ext_image_create.image_data, args.api_args.hsa_ext_image_create.access_permission, args.api_args.hsa_ext_image_create.image);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_create, &skipFunction);
-      agent = args.api_args.hsa_ext_image_create.agent;
-      image_descriptor = args.api_args.hsa_ext_image_create.image_descriptor;
-      image_data = args.api_args.hsa_ext_image_create.image_data;
-      access_permission = args.api_args.hsa_ext_image_create.access_permission;
-      image = args.api_args.hsa_ext_image_create.image;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_fn(agent, image_descriptor, image_data, access_permission, image);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_import_callback(hsa_agent_t agent, const void* src_memory, size_t src_row_pitch, size_t src_slice_pitch, hsa_ext_image_t dst_image, const hsa_ext_image_region_t* image_region) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_import;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_import.agent = agent;
-	args.api_args.hsa_ext_image_import.src_memory = src_memory;
-	args.api_args.hsa_ext_image_import.src_row_pitch = src_row_pitch;
-	args.api_args.hsa_ext_image_import.src_slice_pitch = src_slice_pitch;
-	args.api_args.hsa_ext_image_import.dst_image = dst_image;
-	args.api_args.hsa_ext_image_import.image_region = image_region;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_import_fn(args.api_args.hsa_ext_image_import.agent, args.api_args.hsa_ext_image_import.src_memory, args.api_args.hsa_ext_image_import.src_row_pitch, args.api_args.hsa_ext_image_import.src_slice_pitch, args.api_args.hsa_ext_image_import.dst_image, args.api_args.hsa_ext_image_import.image_region);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_import.agent = agent;
+		args.api_args.hsa_ext_image_import.src_memory = src_memory;
+		args.api_args.hsa_ext_image_import.src_row_pitch = src_row_pitch;
+		args.api_args.hsa_ext_image_import.src_slice_pitch = src_slice_pitch;
+		args.api_args.hsa_ext_image_import.dst_image = dst_image;
+		args.api_args.hsa_ext_image_import.image_region = image_region;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_import_fn(args.api_args.hsa_ext_image_import.agent, args.api_args.hsa_ext_image_import.src_memory, args.api_args.hsa_ext_image_import.src_row_pitch, args.api_args.hsa_ext_image_import.src_slice_pitch, args.api_args.hsa_ext_image_import.dst_image, args.api_args.hsa_ext_image_import.image_region);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_import);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_import, &skipFunction);
-      agent = args.api_args.hsa_ext_image_import.agent;
-      src_memory = args.api_args.hsa_ext_image_import.src_memory;
-      src_row_pitch = args.api_args.hsa_ext_image_import.src_row_pitch;
-      src_slice_pitch = args.api_args.hsa_ext_image_import.src_slice_pitch;
-      dst_image = args.api_args.hsa_ext_image_import.dst_image;
-      image_region = args.api_args.hsa_ext_image_import.image_region;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_import_fn(agent, src_memory, src_row_pitch, src_slice_pitch, dst_image, image_region);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_export_callback(hsa_agent_t agent, hsa_ext_image_t src_image, void* dst_memory, size_t dst_row_pitch, size_t dst_slice_pitch, const hsa_ext_image_region_t* image_region) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_export;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_export.agent = agent;
-	args.api_args.hsa_ext_image_export.src_image = src_image;
-	args.api_args.hsa_ext_image_export.dst_memory = dst_memory;
-	args.api_args.hsa_ext_image_export.dst_row_pitch = dst_row_pitch;
-	args.api_args.hsa_ext_image_export.dst_slice_pitch = dst_slice_pitch;
-	args.api_args.hsa_ext_image_export.image_region = image_region;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_export_fn(args.api_args.hsa_ext_image_export.agent, args.api_args.hsa_ext_image_export.src_image, args.api_args.hsa_ext_image_export.dst_memory, args.api_args.hsa_ext_image_export.dst_row_pitch, args.api_args.hsa_ext_image_export.dst_slice_pitch, args.api_args.hsa_ext_image_export.image_region);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_export.agent = agent;
+		args.api_args.hsa_ext_image_export.src_image = src_image;
+		args.api_args.hsa_ext_image_export.dst_memory = dst_memory;
+		args.api_args.hsa_ext_image_export.dst_row_pitch = dst_row_pitch;
+		args.api_args.hsa_ext_image_export.dst_slice_pitch = dst_slice_pitch;
+		args.api_args.hsa_ext_image_export.image_region = image_region;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_export_fn(args.api_args.hsa_ext_image_export.agent, args.api_args.hsa_ext_image_export.src_image, args.api_args.hsa_ext_image_export.dst_memory, args.api_args.hsa_ext_image_export.dst_row_pitch, args.api_args.hsa_ext_image_export.dst_slice_pitch, args.api_args.hsa_ext_image_export.image_region);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_export);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_export, &skipFunction);
-      agent = args.api_args.hsa_ext_image_export.agent;
-      src_image = args.api_args.hsa_ext_image_export.src_image;
-      dst_memory = args.api_args.hsa_ext_image_export.dst_memory;
-      dst_row_pitch = args.api_args.hsa_ext_image_export.dst_row_pitch;
-      dst_slice_pitch = args.api_args.hsa_ext_image_export.dst_slice_pitch;
-      image_region = args.api_args.hsa_ext_image_export.image_region;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_export_fn(agent, src_image, dst_memory, dst_row_pitch, dst_slice_pitch, image_region);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_copy_callback(hsa_agent_t agent, hsa_ext_image_t src_image, const hsa_dim3_t* src_offset, hsa_ext_image_t dst_image, const hsa_dim3_t* dst_offset, const hsa_dim3_t* range) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_copy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_copy.agent = agent;
-	args.api_args.hsa_ext_image_copy.src_image = src_image;
-	args.api_args.hsa_ext_image_copy.src_offset = src_offset;
-	args.api_args.hsa_ext_image_copy.dst_image = dst_image;
-	args.api_args.hsa_ext_image_copy.dst_offset = dst_offset;
-	args.api_args.hsa_ext_image_copy.range = range;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_copy_fn(args.api_args.hsa_ext_image_copy.agent, args.api_args.hsa_ext_image_copy.src_image, args.api_args.hsa_ext_image_copy.src_offset, args.api_args.hsa_ext_image_copy.dst_image, args.api_args.hsa_ext_image_copy.dst_offset, args.api_args.hsa_ext_image_copy.range);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_copy.agent = agent;
+		args.api_args.hsa_ext_image_copy.src_image = src_image;
+		args.api_args.hsa_ext_image_copy.src_offset = src_offset;
+		args.api_args.hsa_ext_image_copy.dst_image = dst_image;
+		args.api_args.hsa_ext_image_copy.dst_offset = dst_offset;
+		args.api_args.hsa_ext_image_copy.range = range;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_copy_fn(args.api_args.hsa_ext_image_copy.agent, args.api_args.hsa_ext_image_copy.src_image, args.api_args.hsa_ext_image_copy.src_offset, args.api_args.hsa_ext_image_copy.dst_image, args.api_args.hsa_ext_image_copy.dst_offset, args.api_args.hsa_ext_image_copy.range);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_copy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_copy, &skipFunction);
-      agent = args.api_args.hsa_ext_image_copy.agent;
-      src_image = args.api_args.hsa_ext_image_copy.src_image;
-      src_offset = args.api_args.hsa_ext_image_copy.src_offset;
-      dst_image = args.api_args.hsa_ext_image_copy.dst_image;
-      dst_offset = args.api_args.hsa_ext_image_copy.dst_offset;
-      range = args.api_args.hsa_ext_image_copy.range;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_copy_fn(agent, src_image, src_offset, dst_image, dst_offset, range);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_clear_callback(hsa_agent_t agent, hsa_ext_image_t image, const void* data, const hsa_ext_image_region_t* image_region) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_clear;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_clear.agent = agent;
-	args.api_args.hsa_ext_image_clear.image = image;
-	args.api_args.hsa_ext_image_clear.data = data;
-	args.api_args.hsa_ext_image_clear.image_region = image_region;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_clear_fn(args.api_args.hsa_ext_image_clear.agent, args.api_args.hsa_ext_image_clear.image, args.api_args.hsa_ext_image_clear.data, args.api_args.hsa_ext_image_clear.image_region);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_clear.agent = agent;
+		args.api_args.hsa_ext_image_clear.image = image;
+		args.api_args.hsa_ext_image_clear.data = data;
+		args.api_args.hsa_ext_image_clear.image_region = image_region;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_clear_fn(args.api_args.hsa_ext_image_clear.agent, args.api_args.hsa_ext_image_clear.image, args.api_args.hsa_ext_image_clear.data, args.api_args.hsa_ext_image_clear.image_region);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_clear);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_clear, &skipFunction);
-      agent = args.api_args.hsa_ext_image_clear.agent;
-      image = args.api_args.hsa_ext_image_clear.image;
-      data = args.api_args.hsa_ext_image_clear.data;
-      image_region = args.api_args.hsa_ext_image_clear.image_region;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_clear_fn(agent, image, data, image_region);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_destroy_callback(hsa_agent_t agent, hsa_ext_image_t image) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_destroy.agent = agent;
-	args.api_args.hsa_ext_image_destroy.image = image;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_destroy_fn(args.api_args.hsa_ext_image_destroy.agent, args.api_args.hsa_ext_image_destroy.image);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_destroy.agent = agent;
+		args.api_args.hsa_ext_image_destroy.image = image;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_destroy_fn(args.api_args.hsa_ext_image_destroy.agent, args.api_args.hsa_ext_image_destroy.image);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_destroy, &skipFunction);
-      agent = args.api_args.hsa_ext_image_destroy.agent;
-      image = args.api_args.hsa_ext_image_destroy.image;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_destroy_fn(agent, image);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_sampler_create_callback(hsa_agent_t agent, const hsa_ext_sampler_descriptor_t* sampler_descriptor, hsa_ext_sampler_t* sampler) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_sampler_create;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_sampler_create.agent = agent;
-	args.api_args.hsa_ext_sampler_create.sampler_descriptor = sampler_descriptor;
-	args.api_args.hsa_ext_sampler_create.sampler = sampler;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_create_fn(args.api_args.hsa_ext_sampler_create.agent, args.api_args.hsa_ext_sampler_create.sampler_descriptor, args.api_args.hsa_ext_sampler_create.sampler);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_sampler_create.agent = agent;
+		args.api_args.hsa_ext_sampler_create.sampler_descriptor = sampler_descriptor;
+		args.api_args.hsa_ext_sampler_create.sampler = sampler;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_create_fn(args.api_args.hsa_ext_sampler_create.agent, args.api_args.hsa_ext_sampler_create.sampler_descriptor, args.api_args.hsa_ext_sampler_create.sampler);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_sampler_create);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_sampler_create, &skipFunction);
-      agent = args.api_args.hsa_ext_sampler_create.agent;
-      sampler_descriptor = args.api_args.hsa_ext_sampler_create.sampler_descriptor;
-      sampler = args.api_args.hsa_ext_sampler_create.sampler;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_create_fn(agent, sampler_descriptor, sampler);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_sampler_destroy_callback(hsa_agent_t agent, hsa_ext_sampler_t sampler) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_sampler_destroy;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_sampler_destroy.agent = agent;
-	args.api_args.hsa_ext_sampler_destroy.sampler = sampler;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_destroy_fn(args.api_args.hsa_ext_sampler_destroy.agent, args.api_args.hsa_ext_sampler_destroy.sampler);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_sampler_destroy.agent = agent;
+		args.api_args.hsa_ext_sampler_destroy.sampler = sampler;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_destroy_fn(args.api_args.hsa_ext_sampler_destroy.agent, args.api_args.hsa_ext_sampler_destroy.sampler);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_sampler_destroy);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_sampler_destroy, &skipFunction);
-      agent = args.api_args.hsa_ext_sampler_destroy.agent;
-      sampler = args.api_args.hsa_ext_sampler_destroy.sampler;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_sampler_destroy_fn(agent, sampler);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_get_capability_with_layout_callback(hsa_agent_t agent, hsa_ext_image_geometry_t geometry, const hsa_ext_image_format_t* image_format, hsa_ext_image_data_layout_t image_data_layout, uint32_t* capability_mask) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_get_capability_with_layout;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_get_capability_with_layout.agent = agent;
-	args.api_args.hsa_ext_image_get_capability_with_layout.geometry = geometry;
-	args.api_args.hsa_ext_image_get_capability_with_layout.image_format = image_format;
-	args.api_args.hsa_ext_image_get_capability_with_layout.image_data_layout = image_data_layout;
-	args.api_args.hsa_ext_image_get_capability_with_layout.capability_mask = capability_mask;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_with_layout_fn(args.api_args.hsa_ext_image_get_capability_with_layout.agent, args.api_args.hsa_ext_image_get_capability_with_layout.geometry, args.api_args.hsa_ext_image_get_capability_with_layout.image_format, args.api_args.hsa_ext_image_get_capability_with_layout.image_data_layout, args.api_args.hsa_ext_image_get_capability_with_layout.capability_mask);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_get_capability_with_layout.agent = agent;
+		args.api_args.hsa_ext_image_get_capability_with_layout.geometry = geometry;
+		args.api_args.hsa_ext_image_get_capability_with_layout.image_format = image_format;
+		args.api_args.hsa_ext_image_get_capability_with_layout.image_data_layout = image_data_layout;
+		args.api_args.hsa_ext_image_get_capability_with_layout.capability_mask = capability_mask;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_with_layout_fn(args.api_args.hsa_ext_image_get_capability_with_layout.agent, args.api_args.hsa_ext_image_get_capability_with_layout.geometry, args.api_args.hsa_ext_image_get_capability_with_layout.image_format, args.api_args.hsa_ext_image_get_capability_with_layout.image_data_layout, args.api_args.hsa_ext_image_get_capability_with_layout.capability_mask);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_get_capability_with_layout);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_get_capability_with_layout, &skipFunction);
-      agent = args.api_args.hsa_ext_image_get_capability_with_layout.agent;
-      geometry = args.api_args.hsa_ext_image_get_capability_with_layout.geometry;
-      image_format = args.api_args.hsa_ext_image_get_capability_with_layout.image_format;
-      image_data_layout = args.api_args.hsa_ext_image_get_capability_with_layout.image_data_layout;
-      capability_mask = args.api_args.hsa_ext_image_get_capability_with_layout.capability_mask;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_get_capability_with_layout_fn(agent, geometry, image_format, image_data_layout, capability_mask);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_data_get_info_with_layout_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, hsa_access_permission_t access_permission, hsa_ext_image_data_layout_t image_data_layout, size_t image_data_row_pitch, size_t image_data_slice_pitch, hsa_ext_image_data_info_t* image_data_info) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_data_get_info_with_layout;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_data_get_info_with_layout.agent = agent;
-	args.api_args.hsa_ext_image_data_get_info_with_layout.image_descriptor = image_descriptor;
-	args.api_args.hsa_ext_image_data_get_info_with_layout.access_permission = access_permission;
-	args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_layout = image_data_layout;
-	args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_row_pitch = image_data_row_pitch;
-	args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_slice_pitch = image_data_slice_pitch;
-	args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_info = image_data_info;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_with_layout_fn(args.api_args.hsa_ext_image_data_get_info_with_layout.agent, args.api_args.hsa_ext_image_data_get_info_with_layout.image_descriptor, args.api_args.hsa_ext_image_data_get_info_with_layout.access_permission, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_layout, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_row_pitch, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_slice_pitch, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_info);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_data_get_info_with_layout.agent = agent;
+		args.api_args.hsa_ext_image_data_get_info_with_layout.image_descriptor = image_descriptor;
+		args.api_args.hsa_ext_image_data_get_info_with_layout.access_permission = access_permission;
+		args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_layout = image_data_layout;
+		args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_row_pitch = image_data_row_pitch;
+		args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_slice_pitch = image_data_slice_pitch;
+		args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_info = image_data_info;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_with_layout_fn(args.api_args.hsa_ext_image_data_get_info_with_layout.agent, args.api_args.hsa_ext_image_data_get_info_with_layout.image_descriptor, args.api_args.hsa_ext_image_data_get_info_with_layout.access_permission, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_layout, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_row_pitch, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_slice_pitch, args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_info);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_data_get_info_with_layout);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_data_get_info_with_layout, &skipFunction);
-      agent = args.api_args.hsa_ext_image_data_get_info_with_layout.agent;
-      image_descriptor = args.api_args.hsa_ext_image_data_get_info_with_layout.image_descriptor;
-      access_permission = args.api_args.hsa_ext_image_data_get_info_with_layout.access_permission;
-      image_data_layout = args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_layout;
-      image_data_row_pitch = args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_row_pitch;
-      image_data_slice_pitch = args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_slice_pitch;
-      image_data_info = args.api_args.hsa_ext_image_data_get_info_with_layout.image_data_info;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_data_get_info_with_layout_fn(agent, image_descriptor, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image_data_info);
+		return out;
+	}
 }
 
 static hsa_status_t hsa_ext_image_create_with_layout_callback(hsa_agent_t agent, const hsa_ext_image_descriptor_t* image_descriptor, const void* image_data, hsa_access_permission_t access_permission, hsa_ext_image_data_layout_t image_data_layout, size_t image_data_row_pitch, size_t image_data_slice_pitch, hsa_ext_image_t* image) {
 	auto& hsaInterceptor = luthier::HsaInterceptor::instance();
-	auto& hsaUserCallback = hsaInterceptor.getUserCallback();
-	auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
 	auto apiId = HSA_API_ID_hsa_ext_image_create_with_layout;
-	bool skipFunction{false};
-	hsa_api_evt_args_t args;
-	args.api_args.hsa_ext_image_create_with_layout.agent = agent;
-	args.api_args.hsa_ext_image_create_with_layout.image_descriptor = image_descriptor;
-	args.api_args.hsa_ext_image_create_with_layout.image_data = image_data;
-	args.api_args.hsa_ext_image_create_with_layout.access_permission = access_permission;
-	args.api_args.hsa_ext_image_create_with_layout.image_data_layout = image_data_layout;
-	args.api_args.hsa_ext_image_create_with_layout.image_data_row_pitch = image_data_row_pitch;
-	args.api_args.hsa_ext_image_create_with_layout.image_data_slice_pitch = image_data_slice_pitch;
-	args.api_args.hsa_ext_image_create_with_layout.image = image;
-	hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-	hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
+	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
 	hsa_status_t out{};
-	if (!skipFunction) {
-		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_with_layout_fn(args.api_args.hsa_ext_image_create_with_layout.agent, args.api_args.hsa_ext_image_create_with_layout.image_descriptor, args.api_args.hsa_ext_image_create_with_layout.image_data, args.api_args.hsa_ext_image_create_with_layout.access_permission, args.api_args.hsa_ext_image_create_with_layout.image_data_layout, args.api_args.hsa_ext_image_create_with_layout.image_data_row_pitch, args.api_args.hsa_ext_image_create_with_layout.image_data_slice_pitch, args.api_args.hsa_ext_image_create_with_layout.image);
+	if (shouldCallback) {
+		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
+		auto& hsaInternalCallback = hsaInterceptor.getInternalCallback();
+		hsa_api_evt_args_t args;
+		bool skipFunction{false};
+		args.api_args.hsa_ext_image_create_with_layout.agent = agent;
+		args.api_args.hsa_ext_image_create_with_layout.image_descriptor = image_descriptor;
+		args.api_args.hsa_ext_image_create_with_layout.image_data = image_data;
+		args.api_args.hsa_ext_image_create_with_layout.access_permission = access_permission;
+		args.api_args.hsa_ext_image_create_with_layout.image_data_layout = image_data_layout;
+		args.api_args.hsa_ext_image_create_with_layout.image_data_row_pitch = image_data_row_pitch;
+		args.api_args.hsa_ext_image_create_with_layout.image_data_slice_pitch = image_data_slice_pitch;
+		args.api_args.hsa_ext_image_create_with_layout.image = image;
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);
+		if (!skipFunction)
+			out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_with_layout_fn(args.api_args.hsa_ext_image_create_with_layout.agent, args.api_args.hsa_ext_image_create_with_layout.image_descriptor, args.api_args.hsa_ext_image_create_with_layout.image_data, args.api_args.hsa_ext_image_create_with_layout.access_permission, args.api_args.hsa_ext_image_create_with_layout.image_data_layout, args.api_args.hsa_ext_image_create_with_layout.image_data_row_pitch, args.api_args.hsa_ext_image_create_with_layout.image_data_slice_pitch, args.api_args.hsa_ext_image_create_with_layout.image);
+		if (isUserCallbackEnabled)
+			hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);
+		if (isInternalCallbackEnabled)
+			hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);
+		return out;
 	}
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_create_with_layout);
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, HSA_API_ID_hsa_ext_image_create_with_layout, &skipFunction);
-      agent = args.api_args.hsa_ext_image_create_with_layout.agent;
-      image_descriptor = args.api_args.hsa_ext_image_create_with_layout.image_descriptor;
-      image_data = args.api_args.hsa_ext_image_create_with_layout.image_data;
-      access_permission = args.api_args.hsa_ext_image_create_with_layout.access_permission;
-      image_data_layout = args.api_args.hsa_ext_image_create_with_layout.image_data_layout;
-      image_data_row_pitch = args.api_args.hsa_ext_image_create_with_layout.image_data_row_pitch;
-      image_data_slice_pitch = args.api_args.hsa_ext_image_create_with_layout.image_data_slice_pitch;
-      image = args.api_args.hsa_ext_image_create_with_layout.image;
-      return out;
+	else {
+		out = hsaInterceptor.getSavedHsaTables().image_ext.hsa_ext_image_create_with_layout_fn(agent, image_descriptor, image_data, access_permission, image_data_layout, image_data_row_pitch, image_data_slice_pitch, image);
+		return out;
+	}
 }
 
 
@@ -4613,6 +6267,7 @@ void luthier::HsaInterceptor::installCoreApiWrappers(CoreApiTable* table) {
   table->hsa_executable_iterate_agent_symbols_fn = hsa_executable_iterate_agent_symbols_callback;
   table->hsa_executable_iterate_program_symbols_fn = hsa_executable_iterate_program_symbols_callback;
 };
+
 void luthier::HsaInterceptor::installAmdExtWrappers(AmdExtTable* table) {
   savedTables_.amd_ext = *table;
 

@@ -48,7 +48,7 @@ LICENSE = """/* Copyright (c) 2018-2023 Advanced Micro Devices, Inc.
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
 
@@ -353,54 +353,72 @@ class ApiDescrParser:
     # generate API callbacks
     def gen_callbacks(self, n, name, call, struct):
         content = ''
+        bad_callbacks = ['hsa_amd_portable_close_dmabuf',
+                         'hsa_amd_portable_export_dmabuf',
+                         'hsa_amd_memory_async_copy_on_engine',
+                         'hsa_amd_memory_copy_engine_status',
+                         'hsa_amd_spm_acquire',
+                         'hsa_amd_spm_release',
+                         'hsa_amd_spm_set_dest_buffer']
         if n == -1:
             content += '/* section: Static declarations */\n'
             content += '\n'
-        if call != '-':
+        if call != '-' and call not in bad_callbacks:
             call_id = self.api_id[call]
             ret_type = struct['ret']
             content += f'static {ret_type} {call}_callback({struct["args"]}) {{\n'
-            content += "\tauto& hsaInterceptor = luthier::HsaInterceptor::instance();\n" + \
-                       "\tauto& hsaUserCallback = hsaInterceptor.getUserCallback();\n" + \
-                       "\tauto& hsaInternalCallback = hsaInterceptor.getInternalCallback();\n" + \
-                       f"\tauto apiId = HSA_API_ID_{call};\n" + \
-                       "\tbool skipFunction{false};\n"
-            content += "\thsa_api_evt_args_t args;\n"
-            for var in struct['alst']:
-                item = struct['astr'][var]
-                content += f'\targs.api_args.{call}.{var} = {var};\n'
-
-            content += f'\thsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, '\
-                       f'apiId);\n'
-            content += f'\thsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, ' \
-                       f'apiId, &skipFunction);\n'
-
+            content += "\tauto& hsaInterceptor = luthier::HsaInterceptor::instance();\n" \
+                       f"\tauto apiId = HSA_API_ID_{call};\n" \
+                       "\tbool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);\n" \
+                       "\tbool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);\n" \
+                       "\tbool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;\n"
             if ret_type != 'void':
                 content += f'\t{ret_type} out{{}};\n'
-            content += "\tif (!skipFunction) {\n"
+            content += "\tif (shouldCallback) {\n" \
+                       "\t\tauto& hsaUserCallback = hsaInterceptor.getUserCallback();\n" \
+                       "\t\tauto& hsaInternalCallback = hsaInterceptor.getInternalCallback();\n" \
+                       "\t\thsa_api_evt_args_t args;\n" \
+                       "\t\tbool skipFunction{false};\n"
+            for var in struct['alst']:
+                item = struct['astr'][var]
+                content += f"\t\targs.api_args.{call}.{var} = {var};\n"
+            content += "\t\tif (isUserCallbackEnabled)\n" \
+                       "\t\t\thsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);\n" \
+                       "\t\tif (isInternalCallbackEnabled)\n" \
+                       "\t\t\thsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);\n" \
+                       "\t\tif (!skipFunction)\n"
+            if ret_type != 'void':
+                content += f'\t\t\tout = '
+            else:
+                content += "\t\t\t"
+            content += f'hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
+            for i, var in enumerate(struct['alst']):
+                content += f'args.api_args.{call}.{var}'
+                if i != len(struct['alst']) - 1:
+                    content += ", "
+            content += ');\n'
+            content += "\t\tif (isUserCallbackEnabled)\n" \
+                       "\t\t\thsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);\n" \
+                       "\t\tif (isInternalCallbackEnabled)\n" \
+                       "\t\t\thsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);\n"
+            if ret_type != 'void':
+                content += "\t\treturn out;\n"
+            content += "\t}\n" \
+                       "\telse {\n"
             if ret_type != 'void':
                 content += f'\t\tout = '
             else:
                 content += "\t\t"
             content += f'hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
             for i, var in enumerate(struct['alst']):
-                content += f'args.api_args.{call}.{var}'
+                content += f'{var}'
                 if i != len(struct['alst']) - 1:
                     content += ", "
-            content += ');\n\t}'
-            content += '\n'
-
-            content += f'      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, ' \
-                       f'HSA_API_ID_{call});\n'
-            content += f'      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, ' \
-                       f'HSA_API_ID_{call}, &skipFunction);\n'
-            for var in struct['alst']:
-                content += f'      {var} = args.api_args.{call}.{var};\n'
-
+            content += ');\n'
             if ret_type != 'void':
-                content += "      return out;\n"
-
-            content += '}\n\n'
+                content += '\t\treturn out;\n\t}\n}\n\n'
+            else:
+                content += "\n\t}\n}\n\n"
 
         return content
 
@@ -421,7 +439,6 @@ class ApiDescrParser:
             else:
                 content += '  { void* p = (void*)' + call + '_callback; (void)p; }\n'
         return content
-
 
 
 #############################################################

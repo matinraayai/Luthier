@@ -10,6 +10,7 @@
 #include <experimental/filesystem>
 #include <functional>
 #include <optional>
+#include <unordered_set>
 
 #include "luthier_types.h"
 
@@ -20,10 +21,11 @@ namespace luthier {
 class HipInterceptor {
  private:
     void *handle_{nullptr};
-    std::function<void(void *, const luthier_api_evt_phase_t, const int)> userCallback_{
-        [](void *, const luthier_api_evt_phase_t, const int) {}};
+    std::function<void(void *, const luthier_api_evt_phase_t, const int)> userCallback_{};
     std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *, std::optional<std::any> *)>
-        internalCallback_{[](void *, const luthier_api_evt_phase_t, const int, bool *, std::optional<std::any> *) {}};
+        internalCallback_{};
+    std::unordered_set<unsigned int> enabledUserCallbacks_;
+    std::unordered_set<unsigned int> enabledInternalCallbacks_;
 
     HipInterceptor();
 
@@ -35,14 +37,10 @@ class HipInterceptor {
     HipInterceptor(const HipInterceptor &) = delete;
     HipInterceptor &operator=(const HipInterceptor &) = delete;
 
-    [[nodiscard]] bool IsEnabled() const { return handle_ != nullptr; }
+    [[nodiscard]] bool isEnabled() const { return handle_ != nullptr; }
 
     [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &getUserCallback() const {
         return userCallback_;
-    }
-
-    void SetUserCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &callback) {
-        userCallback_ = callback;
     }
 
     [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *,
@@ -50,28 +48,88 @@ class HipInterceptor {
     getInternalCallback() const {
         return internalCallback_;
     }
-    void SetInternalCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *,
-                                                      std::optional<std::any> *)> &internal_callback) {
-        internalCallback_ = internal_callback;
+
+    [[nodiscard]] bool isUserCallbackEnabled(uint32_t op) const { return enabledUserCallbacks_.contains(op); }
+
+    [[nodiscard]] bool isInternalCallbackEnabled(uint32_t op) const { return enabledInternalCallbacks_.contains(op); }
+
+    void setUserCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int)> &callback) {
+        userCallback_ = callback;
     }
 
-    void *GetHipFunction(const char *symbol) const {
-        assert(IsEnabled());
+    void setInternalCallback(const std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *,
+                                                      std::optional<std::any> *)> &internalCallback) {
+        internalCallback_ = internalCallback;
+    }
 
-        void *function_ptr = ::dlsym(handle_, symbol);
-        if (function_ptr == nullptr)
+    void enableUserCallback(uint32_t op) {
+        if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
+              || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
+            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+        enabledUserCallbacks_.insert(op);
+    }
+
+    void enableInternalCallback(uint32_t op) {
+        if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
+              || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
+            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+        enabledInternalCallbacks_.insert(op);
+    }
+
+    void disableUserCallback(uint32_t op) {
+        if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
+              || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
+            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+        enabledUserCallbacks_.erase(op);
+    }
+
+    void disableInternalCallback(uint32_t op) {
+        if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
+              || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
+            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+        enabledInternalCallbacks_.erase(op);
+    }
+
+
+    void enableAllUserCallbacks() {
+        for (int i = static_cast<int>(HIP_API_ID_FIRST); i <= static_cast<int>(HIP_API_ID_LAST); ++i) {
+            enableUserCallback(i);
+        }
+        for (int i = static_cast<int>(HIP_PRIVATE_API_ID_FIRST); i <= static_cast<int>(HIP_PRIVATE_API_ID_LAST); ++i) {
+            enableUserCallback(i);
+        }
+    }
+
+    void enableAllInternalCallbacks() {
+        for (int i = static_cast<int>(HIP_API_ID_FIRST); i <= static_cast<int>(HIP_API_ID_LAST); ++i) {
+            enableInternalCallback(i);
+        }
+        for (int i = static_cast<int>(HIP_PRIVATE_API_ID_FIRST); i <= static_cast<int>(HIP_PRIVATE_API_ID_LAST); ++i) {
+            enableInternalCallback(i);
+        }
+    }
+
+    void disableAllUserCallbacks() { enabledUserCallbacks_.clear(); }
+
+    void disableAllInternalCallbacks() { enabledInternalCallbacks_.clear(); }
+
+    void *getHipFunction(const char *symbol) const {
+        assert(isEnabled());
+
+        void *functionPtr = ::dlsym(handle_, symbol);
+        if (functionPtr == nullptr)
             throw std::runtime_error(
                 fmt::format("symbol lookup '{:s}' failed: {:s}", std::string(symbol), std::string(::dlerror())));
-        return function_ptr;
+        return functionPtr;
     }
 
     template<typename FunctionPtr>
-    FunctionPtr GetHipFunction(const char *symbol) const {
-        assert(IsEnabled());
-        return reinterpret_cast<FunctionPtr>(GetHipFunction(symbol));
+    FunctionPtr getHipFunction(const char *symbol) const {
+        assert(isEnabled());
+        return reinterpret_cast<FunctionPtr>(getHipFunction(symbol));
     }
 
-    static inline HipInterceptor &Instance() {
+    static inline HipInterceptor &instance() {
         static HipInterceptor instance;
         return instance;
     }

@@ -163,12 +163,9 @@ target_link_libraries(luthier hip::host roctracer64 elfio::elfio stdc++fs amd_co
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-    set(SUB_DIRS examples/kernel_instrument examples/iterate_all_executable_symbols)
+    set(SUB_DIRS examples/intercept examples/kernel_instrument examples/iterate_all_executable_symbols)
     foreach (DIR ${SUB_DIRS})
         add_subdirectory(${DIR})
     endforeach (DIR)
 endif ()
 # ======================================================================================================================
-
-
-

@@ -5,6 +5,7 @@
 #include <hsa/hsa_ven_amd_loader.h>
 
 #include <functional>
+#include <unordered_set>
 
 #include "error.h"
 #include "luthier_types.h"
@@ -16,11 +17,12 @@ class HsaInterceptor {
     HsaApiTableContainer savedTables_;
     HsaApiTableContainer interceptTables_;
     hsa_ven_amd_loader_1_03_pfn_s amdTable_;
+    std::unordered_set<hsa_api_evt_id_t> enabledUserOps_;
+    std::unordered_set<hsa_api_evt_id_t> enabledInternalOps_;
 
-    std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> userCallback_{
-        [](hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t) {}};
+    std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t)> userCallback_{};
     std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t, bool *)>
-        internalCallback_{[](hsa_api_evt_args_t *, const luthier_api_evt_phase_t, const hsa_api_evt_id_t, bool *) {}};
+        internalCallback_{};
 
     void installCoreApiWrappers(CoreApiTable *table);
 
@@ -64,6 +66,43 @@ class HsaInterceptor {
     getInternalCallback() const {
         return internalCallback_;
     }
+
+    [[nodiscard]] bool isUserCallbackEnabled(hsa_api_evt_id_t op) const { return enabledUserOps_.contains(op); }
+
+    [[nodiscard]] bool isInternalCallbackEnabled(hsa_api_evt_id_t op) const { return enabledInternalOps_.contains(op); }
+
+    void enableUserCallback(hsa_api_evt_id_t op) { enabledUserOps_.insert(op); }
+
+    void disableUserCallback(hsa_api_evt_id_t op) { enabledUserOps_.erase(op); }
+
+    void enableInternalCallback(hsa_api_evt_id_t op) { enabledInternalOps_.insert(op); }
+
+    void disableInternalCallback(hsa_api_evt_id_t op) { enabledInternalOps_.erase(op); }
+
+    void enableAllUserCallbacks() {
+        for (auto i = static_cast<unsigned int>(HSA_API_ID_FIRST); i <= static_cast<unsigned int>(HSA_API_ID_LAST);
+             ++i) {
+            enableUserCallback(static_cast<hsa_api_evt_id_t>(i));
+        }
+        for (auto i = static_cast<unsigned int>(HSA_EVT_ID_FIRST); i <= static_cast<unsigned int>(HSA_EVT_ID_LAST);
+             ++i) {
+            enableUserCallback(static_cast<hsa_api_evt_id_t>(i));
+        }
+    }
+    void disableAllUserCallbacks() { enabledUserOps_.clear(); }
+
+    void enableAllInternalCallbacks() {
+        for (auto i = static_cast<unsigned int>(HSA_API_ID_FIRST); i <= static_cast<unsigned int>(HSA_API_ID_LAST);
+             ++i) {
+            enableInternalCallback(static_cast<hsa_api_evt_id_t>(i));
+        }
+        for (auto i = static_cast<unsigned int>(HSA_EVT_ID_FIRST); i <= static_cast<unsigned int>(HSA_EVT_ID_LAST);
+             ++i) {
+            enableInternalCallback(static_cast<hsa_api_evt_id_t>(i));
+        }
+    }
+
+    void disableAllInternalCallbacks() { enabledInternalOps_.clear(); }
 
     bool captureHsaApiTable(HsaApiTable *table) {
         internalHsaApiTable_ = table;

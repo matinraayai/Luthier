@@ -36,6 +36,21 @@ void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api
 
 void luthier_at_hsa_event(hsa_api_evt_args_t* cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id);
 
+void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op);
+
+void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op);
+
+void luthier_enable_all_hsa_callbacks();
+
+void luthier_disable_all_hsa_callbacks();
+
+void luthier_enable_hip_op_callback(uint32_t op);
+
+void luthier_disable_hip_op_callback(uint32_t op);
+
+void luthier_enable_all_hip_callbacks();
+
+void luthier_disable_all_hip_callbacks();
 /**
  * Returns the original HSA API table to avoid re-instrumentation of HSA functions.
  * @return saved HSA API Table
