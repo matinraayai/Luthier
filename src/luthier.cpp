@@ -14,44 +14,42 @@
 
 namespace luthier::impl {
 
-void hipApiInternalCallback(void *cb_data, luthier_api_evt_phase_t phase, int api_id, bool *skip_func,
+static std::vector<std::tuple<const void *, const char *>>
+    coManagerArgs;//> List of device functions to be managed by CodeObjectManager
+
+void hipApiInternalCallback(void *cbData, luthier_api_evt_phase_t phase, int apiId, bool *skipFunc,
                             std::optional<std::any> *out) {
     LUTHIER_LOG_FUNCTION_CALL_START
     // Logic for intercepting the __hipRegister* functions
-    static bool isHipRegistrationOver{
-        false};//> indicates if the registration step of the HIP runtime is over. It is set when the
-               // current API ID is not a registration function anymore
-    static std::vector<std::tuple<const void *, const char *>>
-        coManagerArgs;//> List of device functions to be managed by CodeObjectManager
-
-    if (!isHipRegistrationOver && phase == LUTHIER_API_EVT_PHASE_ENTER) {
-        if (api_id == HIP_PRIVATE_API_ID___hipRegisterFunction) {
-            auto lastRFuncArgs = reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cb_data);
-            // If the function doesn't have __luthier_wrap__ in its name then it belongs to the instrumented application or
-            // HIP can manage on its own since no device function is present to strip from it
+    if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
+        if (apiId == HIP_PRIVATE_API_ID___hipRegisterFunction) {
+            auto lastRFuncArgs = reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cbData);
+            // If the function doesn't have __luthier_wrap__ in its name then it belongs to the instrumented application
+            // or HIP can manage on its own since no device function is present to strip from it
             if (std::string(lastRFuncArgs->deviceFunction).find(LUTHIER_DEVICE_FUNCTION_WRAP) != std::string::npos) {
                 coManagerArgs.emplace_back(lastRFuncArgs->hostFunction, lastRFuncArgs->deviceFunction);
             }
-        } else if (api_id != HIP_PRIVATE_API_ID___hipRegisterFatBinary
-                   && api_id != HIP_PRIVATE_API_ID___hipRegisterManagedVar
-                   && api_id != HIP_PRIVATE_API_ID___hipRegisterVar && api_id != HIP_PRIVATE_API_ID___hipRegisterSurface
-                   && api_id != HIP_PRIVATE_API_ID___hipRegisterTexture) {
+        } else if (apiId != HIP_PRIVATE_API_ID___hipRegisterFatBinary
+            && apiId != HIP_PRIVATE_API_ID___hipRegisterManagedVar
+            && apiId != HIP_PRIVATE_API_ID___hipRegisterVar && apiId != HIP_PRIVATE_API_ID___hipRegisterSurface
+            && apiId != HIP_PRIVATE_API_ID___hipRegisterTexture) {
             auto &coManager = CodeObjectManager::instance();
             if (!coManagerArgs.empty()) {
                 coManager.registerHipWrapperKernelsOfInstrumentationFunctions(coManagerArgs);
             }
-            isHipRegistrationOver = true;
+            coManagerArgs.clear();
+            HipInterceptor::instance().disableAllInternalCallbacks();
         }
     }
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-void hipApiUserCallback(void *cb_data, luthier_api_evt_phase_t phase, int api_id) {
-    ::luthier_at_hip_event(cb_data, phase, api_id);
+void hipApiUserCallback(void *cbData, luthier_api_evt_phase_t phase, int apiId) {
+    ::luthier_at_hip_event(cbData, phase, apiId);
 }
 
-void hsaApiUserCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id) {
-    ::luthier_at_hsa_event(cb_data, phase, api_id);
+void hsaApiUserCallback(hsa_api_evt_args_t *cbData, luthier_api_evt_phase_t phase, hsa_api_evt_id_t apiId) {
+    ::luthier_at_hsa_event(cbData, phase, apiId);
 }
 
 void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount, uint64_t userPktIndex, void *data,
@@ -84,11 +82,12 @@ void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount, uint64_
     }
 }
 
-void hsaApiInternalCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id,
+void hsaApiInternalCallback(hsa_api_evt_args_t *cbData, luthier_api_evt_phase_t phase, hsa_api_evt_id_t apiId,
                             bool *skipFunction) {
+    LUTHIER_LOG_FUNCTION_CALL_START
     if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
-        if (api_id == HSA_API_ID_hsa_queue_create) {
-            auto args = cb_data->api_args.hsa_queue_create;
+        if (apiId == HSA_API_ID_hsa_queue_create) {
+            auto args = cbData->api_args.hsa_queue_create;
             LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_create_fn(
                 args.agent, args.size, args.type, args.callback, args.data, args.private_segment_size,
                 args.group_segment_size, args.queue));
@@ -99,13 +98,16 @@ void hsaApiInternalCallback(hsa_api_evt_args_t *cb_data, luthier_api_evt_phase_t
             *skipFunction = true;
         }
     }
+    LUTHIER_LOG_FUNCTION_CALL_END
 }
 
 __attribute__((constructor)) void init() {
     LUTHIER_LOG_FUNCTION_CALL_START
-    assert(HipInterceptor::Instance().IsEnabled());
-    HipInterceptor::Instance().SetInternalCallback(luthier::impl::hipApiInternalCallback);
-    HipInterceptor::Instance().SetUserCallback(luthier::impl::hipApiUserCallback);
+    auto &hipInterceptor = HipInterceptor::instance();
+    assert(hipInterceptor.isEnabled());
+    hipInterceptor.setInternalCallback(luthier::impl::hipApiInternalCallback);
+    hipInterceptor.setUserCallback(luthier::impl::hipApiUserCallback);
+    hipInterceptor.enableAllInternalCallbacks();
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
@@ -138,7 +140,7 @@ void luthier_disassemble_kernel_object(uint64_t kernel_object, size_t *size, lut
 }
 
 void *luthier_get_hip_function(const char *funcName) {
-    return luthier::HipInterceptor::Instance().GetHipFunction(funcName);
+    return luthier::HipInterceptor::instance().getHipFunction(funcName);
 }
 
 void luthier_insert_call(luthier_instruction_t instr, const void *dev_func, luthier_ipoint_t point) {
@@ -155,13 +157,13 @@ void luthier_enable_all_hsa_callbacks() { luthier::HsaInterceptor::instance().en
 
 void luthier_disable_all_hsa_callbacks() { luthier::HsaInterceptor::instance().disableAllUserCallbacks(); }
 
-void luthier_enable_hip_op_callback(uint32_t op) { luthier::HipInterceptor::Instance().enableCallback(op); }
+void luthier_enable_hip_op_callback(uint32_t op) { luthier::HipInterceptor::instance().enableUserCallback(op); }
 
-void luthier_disable_hip_op_callback(uint32_t op) { luthier::HipInterceptor::Instance().disableCallback(op); }
+void luthier_disable_hip_op_callback(uint32_t op) { luthier::HipInterceptor::instance().disableUserCallback(op); }
 
-void luthier_enable_all_hip_callbacks() { luthier::HipInterceptor::Instance().enableAllCallback(); }
+void luthier_enable_all_hip_callbacks() { luthier::HipInterceptor::instance().enableAllUserCallbacks(); }
 
-void luthier_disable_all_hip_callbacks() { luthier::HipInterceptor::Instance().disableAllCallback(); }
+void luthier_disable_all_hip_callbacks() { luthier::HipInterceptor::instance().disableAllUserCallbacks(); }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
     const auto instrumentedKernel = luthier::CodeObjectManager::instance().getInstrumentedKernel(
@@ -181,9 +183,10 @@ __attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t 
     [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
     bool res = luthier::HsaInterceptor::instance().captureHsaApiTable(table);
     luthier_at_init();
-    luthier::HsaInterceptor::instance().setInternalCallback(luthier::impl::hsaApiInternalCallback);
-    luthier::HsaInterceptor::instance().setUserCallback(luthier::impl::hsaApiUserCallback);
-    luthier::HsaInterceptor::instance().enableInternalCallback(HSA_API_ID_hsa_queue_create);
+    auto& hsaInterceptor = luthier::HsaInterceptor::instance();
+    hsaInterceptor.setInternalCallback(luthier::impl::hsaApiInternalCallback);
+    hsaInterceptor.setUserCallback(luthier::impl::hsaApiUserCallback);
+    hsaInterceptor.enableInternalCallback(HSA_API_ID_hsa_queue_create);
     return res;
     LUTHIER_LOG_FUNCTION_CALL_END
 }
