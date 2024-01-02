@@ -16,30 +16,12 @@ add_library(luthier SHARED
         include/luthier_types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
         src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h include/error.h
         src/disassembler.hpp src/disassembler.cpp src/code_object_manipulation.hpp src/code_object_manipulation.cpp
-        src/context_manager.hpp src/code_generator.hpp src/code_generator.cpp
-        src/log.hpp
-        src/instrumentation_function.hpp
-        src/hsa_executable.hpp
-        src/hsa_executable.cpp
-        src/hsa_executable_symbol.hpp
-        src/hsa_agent.hpp
-        src/hsa_handle_type.hpp
-        src/hsa_type.hpp
-        src/hsa_agent.cpp
-        src/hsa_executable_symbol.cpp
-        src/hsa_loaded_code_object.hpp
-        src/hsa_loaded_code_object.cpp
-        src/hsa_isa.hpp
-        src/hsa_isa.cpp
-        src/code_view.hpp
-        src/code_view.cpp
-        src/hsa_kernel_descriptor.hpp
-        src/llvm_mc.hpp
-        src/llvm_mc.cpp
-        src/context_manager.cpp
-        src/hsa_instr.hpp
-        src/hsa_instr.cpp
-        src/hsa_code_object_reader.hpp
+        src/context_manager.hpp src/code_generator.hpp src/code_generator.cpp src/log.hpp
+        src/instrumentation_function.hpp src/hsa_executable.hpp src/hsa_executable.cpp src/hsa_executable_symbol.hpp
+        src/hsa_agent.hpp src/hsa_handle_type.hpp src/hsa_type.hpp src/hsa_agent.cpp src/hsa_executable_symbol.cpp
+        src/hsa_loaded_code_object.hpp src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp
+        src/code_view.hpp src/code_view.cpp src/hsa_kernel_descriptor.hpp src/llvm_mc.hpp src/llvm_mc.cpp
+        src/context_manager.cpp src/hsa_instr.hpp src/hsa_instr.cpp src/hsa_code_object_reader.hpp
         src/hsa_code_object_reader.cpp
 )
 # ======================================================================================================================
@@ -137,9 +119,6 @@ llvm_map_components_to_libnames(support bitreader core mc)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-# Required since roctracer doesn't have a cmake config file
-target_link_directories(luthier PUBLIC /opt/rocm/lib/)
-target_include_directories(luthier PUBLIC /opt/rocm/include)
 
 # Some HSA include files won't work unless this is defined
 target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
@@ -156,7 +135,7 @@ target_compile_definitions(luthier PUBLIC "-D_GLIBCXX_DEBUG")
 target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 
-target_link_libraries(luthier hip::host roctracer64 elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
+target_link_libraries(luthier hip::host elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
         hsa-runtime64::hsa-runtime64 LLVMCore LLVMBitReader LLVMSupport LLVMMC LLVMAMDGPUTargetMCA LLVMAMDGPUInfo
         LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUInfo LLVMAMDGPUDisassembler LLVMAMDGPUAsmParser
         boost_iostreams)

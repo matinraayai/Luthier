@@ -112,10 +112,7 @@ hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_packet) {
 /////* Get vector of related functions */
 ////std::vector<CUfunction> nvbit_get_related_functions(CUcontext ctx,
 ////                                                    CUfunction func);
-////
-/////* Get vector of instructions composing the CUfunction */
-////const std::vector<Instr*>& nvbit_get_instrs(CUcontext ctx, CUfunction func);
-////
+
 /////* Get control flow graph (CFG) */
 ////const CFG_t& nvbit_get_CFG(CUcontext ctx, CUfunction func);
 ////
@@ -153,9 +150,6 @@ hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_packet) {
 //// *
 //// **********************************************************************/
 ////
-/////* Enumeration used by nvbit_insert_call to specify where we want to insert
-//// * the device function for a given Instr, if before or after */
-////typedef enum { IPOINT_BEFORE, IPOINT_AFTER } ipoint_t;
 ////
 /////* This function inserts a device function call named "dev_func_name",
 //// * before or after Instr (ipoint_t { IPOINT_BEFORE, IPOINT_AFTER}).
