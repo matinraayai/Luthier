@@ -22,8 +22,7 @@ add_library(luthier SHARED
         src/hsa_loaded_code_object.hpp src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp
         src/code_view.hpp src/code_view.cpp src/hsa_kernel_descriptor.hpp src/llvm_mc.hpp src/llvm_mc.cpp
         src/context_manager.cpp src/hsa_instr.hpp src/hsa_instr.cpp src/hsa_code_object_reader.hpp
-        src/hsa_code_object_reader.cpp
-)
+        src/hsa_code_object_reader.cpp src/mc_instr_factory.hpp)
 # ======================================================================================================================
 
 # User Options =========================================================================================================
@@ -50,15 +49,16 @@ set(BOOST_VERSION "1.83.0" CACHE STRING "C++ Boost library to download and build
 include(FetchContent)
 include(ExternalProject)
 
+set_directory_properties(PROPERTIES EP_BASE ${CMAKE_SOURCE_DIR}/ext/)
+
 # ELFIO Configuration ==================================================================================================
 #TODO: Add an option to the user to set the path to these libraries if externally available
 FetchContent_Declare(
         elfio
-        DOWNLOAD_EXTRACT_TIMESTAMP 0
+        DOWNLOAD_EXTRACT_TIMESTAMP 1
         URL "https://github.com/serge1/ELFIO/archive/refs/heads/main.zip"
-        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/elfio/
-        BUILD_COMMAND ""
-        CONFIGURE_COMMAND "cmake -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE ..."
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/Source/elfio/
+        CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE
         INSTALL_COMMAND ""
 )
 
@@ -69,10 +69,10 @@ FetchContent_MakeAvailable(elfio)
 # FMT Configuration ====================================================================================================
 FetchContent_Declare(
         fmt
-        DOWNLOAD_EXTRACT_TIMESTAMP 0
+        DOWNLOAD_EXTRACT_TIMESTAMP 1
         URL "https://github.com/fmtlib/fmt/archive/refs/heads/master.zip"
-        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/fmt/
-        CONFIGURE_COMMAND "cmake -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE ..."
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/Source/fmt/
+        CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE
         INSTALL_COMMAND ""
 )
 
@@ -82,10 +82,9 @@ FetchContent_MakeAvailable(fmt)
 
 # Boost Configuration ==================================================================================================
 ExternalProject_add(boost
-        DOWNLOAD_EXTRACT_TIMESTAMP 0
+        DOWNLOAD_EXTRACT_TIMESTAMP 1
         URL https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}.tar.xz
         CONFIGURE_COMMAND ./bootstrap.sh --with-libraries=iostreams --prefix=./build
-        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/boost/
         BUILD_COMMAND ./b2 install link=static
         BUILD_IN_SOURCE 1
         INSTALL_COMMAND ""
@@ -100,28 +99,47 @@ target_include_directories(luthier PRIVATE ${SOURCE_DIR}/build/include)
 target_link_directories(luthier PUBLIC ${SOURCE_DIR}/build/lib)
 
 # ======================================================================================================================
-
 # ROCM Setup ===========================================================================================================
-
 #TODO: make this take arbitrary paths for each ROCm library
-
 find_package(hip REQUIRED)
 
 find_package(amd_comgr REQUIRED)
 
 find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/)
+# Some HSA include files won't work unless this is defined
+target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
 
-find_package(LLVM REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/llvm/)
+# LLVM AMDGPU Configuration (for tablegen and code generation) =========================================================
+# TODO: Wait for ROCm 6.1 to be released to see if compiling LLVM from scratch can be avoided
+ExternalProject_add(
+        llvm-project
+        DOWNLOAD_EXTRACT_TIMESTAMP 1
+        URL https://github.com/ROCm/llvm-project/archive/refs/heads/amd-staging.zip
+#        URL https://github.com/ROCm/llvm-project/archive/refs/tags/rocm-${hip_VERSION_MAJOR}.${hip_VERSION_MINOR}.${hip_VERSION_TWEAK}.zip
+        CMAKE_ARGS -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_TARGETS_TO_BUILD=AMDGPU\;
+        -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -DLLVM_ENABLE_RTTI=ON
+        SOURCE_SUBDIR llvm
+        BUILD_COMMAND ${CMAKE_COMMAND} --build . --target AMDGPUCommonTableGen InstCombineTableGen LLVMCore
+        LLVMBitReader LLVMSupport LLVMMC LLVMAMDGPUTargetMCA LLVMAMDGPUInfo LLVMAMDGPUCodeGen LLVMAMDGPUDesc
+        LLVMAMDGPUInfo LLVMAMDGPUDisassembler LLVMAMDGPUAsmParser
+#        BUILD_COMMAND ${CMAKE_COMMAND} --build . --target AMDGPUCommonTableGen InstCombineTableGen
+        INSTALL_COMMAND ""
+)
+
+add_dependencies(luthier llvm-project)
+
+ExternalProject_Get_Property(llvm-project BINARY_DIR)
+
+target_include_directories(luthier PRIVATE ${BINARY_DIR}/lib/Target/AMDGPU/)
+
+set(LLVM_DIR ${BINARY_DIR})
+
+# ======================================================================================================================
+find_package(LLVM REQUIRED PATHS ${LLVM_DIR} NO_DEFAULT_PATH)
 target_compile_definitions(luthier PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
-
-llvm_map_components_to_libnames(support bitreader core mc)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
-
-
-# Some HSA include files won't work unless this is defined
-target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
 # ======================================================================================================================
 
 # Any Compilation Flags, Linking Configuration Left ====================================================================
