@@ -80,7 +80,7 @@ class ContextManager {
 
     std::vector<luthier::hsa::Executable> getHsaExecutables() const;
 
-    LLVMMCTargetInfo& getLLVMTargetInfo(const hsa::Isa& isa) {return llvmContexts_.at(isa);}
+    const LLVMMCTargetInfo& getLLVMTargetInfo(const hsa::Isa& isa) const {return llvmContexts_.at(isa);}
 };
 
 }// namespace luthier

@@ -51,15 +51,9 @@ std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, luthier
         }
         inst.setLoc(llvm::SMLoc::getFromPointer(reinterpret_cast<const char *>(currentAddress)));
 
-        std::string instStr;
-        llvm::raw_string_ostream instStream(instStr);
-
-        targetInfo.IP_->printInst(&inst, currentAddress, annotationsStream.str(), *targetInfo.STI_, instStream);
-
         idx += instSize;
         currentAddress += instSize;
         instructions.push_back(inst);
-        fmt::println("{}", instStream.str());
     }
 
     return instructions;
