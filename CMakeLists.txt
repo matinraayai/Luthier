@@ -22,7 +22,8 @@ add_library(luthier SHARED
         src/hsa_loaded_code_object.hpp src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp
         src/code_view.hpp src/code_view.cpp src/hsa_kernel_descriptor.hpp src/llvm_mc.hpp src/llvm_mc.cpp
         src/context_manager.cpp src/hsa_instr.hpp src/hsa_instr.cpp src/hsa_code_object_reader.hpp
-        src/hsa_code_object_reader.cpp src/mc_instr_factory.hpp)
+        src/hsa_code_object_reader.cpp
+        src/hsa_kernel_descriptor.cpp)
 # ======================================================================================================================
 
 # User Options =========================================================================================================
@@ -110,7 +111,7 @@ find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/roc
 target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
 
 # LLVM AMDGPU Configuration (for tablegen and code generation) =========================================================
-# TODO: Wait for ROCm 6.1 to be released to see if compiling LLVM from scratch can be avoided
+# TODO: Wait for ROCm 6.1 to be released to see if compiling LLVM from scratch can be avoided + match the rocm version
 ExternalProject_add(
         llvm-project
         DOWNLOAD_EXTRACT_TIMESTAMP 1
@@ -131,6 +132,10 @@ add_dependencies(luthier llvm-project)
 ExternalProject_Get_Property(llvm-project BINARY_DIR)
 
 target_include_directories(luthier PRIVATE ${BINARY_DIR}/lib/Target/AMDGPU/)
+
+ExternalProject_Get_Property(llvm-project SOURCE_DIR)
+
+target_include_directories(luthier PUBLIC ${SOURCE_DIR}/llvm/lib/Target/AMDGPU/)
 
 set(LLVM_DIR ${BINARY_DIR})
 
