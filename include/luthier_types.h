@@ -68,7 +68,7 @@ THE SOFTWARE.
 #include "hip_private_api.h"
 #include <hip/amd_detail/hip_prof_str.h>
 #include <hip/hip_runtime_api.h>
-#include <hsa/amd_hsa_kernel_code.h>
+//#include <hsa/amd_hsa_kernel_code.h>
 #include <hsa/hsa.h>
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ext_amd.h>

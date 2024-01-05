@@ -4,7 +4,6 @@
 #include <hsa/hsa_ven_amd_loader.h>
 
 #include "error.h"
-#include "instr.hpp"
 #include "luthier_types.h"
 
 #ifdef __cplusplus

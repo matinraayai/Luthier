@@ -5,6 +5,8 @@
 #include <hsa/amd_hsa_common.h>
 #include <hsa/hsa_ext_amd.h>
 
+#include <memory>
+
 #include "code_object_manager.hpp"
 #include "context_manager.hpp"
 #include "disassembler.hpp"
@@ -37,6 +39,8 @@
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/ADT/StringExtras.h"
 #include "log.hpp"
+#include "llvm/MC/MCSymbolELF.h"
+#include "MCTargetDesc/AMDGPUTargetStreamer.h"
 
 #define GET_REGINFO_ENUM
 #include "AMDGPUGenRegisterInfo.inc"
@@ -52,6 +56,24 @@
 //#define GET_INSTRINFO_HEADER
 #include "AMDGPUGenInstrInfo.inc"
 #include "fmt/ranges.h"
+#include "llvm/BinaryFormat/ELF.h"
+
+namespace llvm::hsa {
+struct kernel_descriptor_t {
+  uint32_t group_segment_fixed_size;
+  uint32_t private_segment_fixed_size;
+  uint32_t kernarg_size;
+  uint8_t reserved0[4];
+  int64_t kernel_code_entry_byte_offset;
+  uint8_t reserved1[20];
+  uint32_t compute_pgm_rsrc3; // GFX10+ and GFX90A+
+  uint32_t compute_pgm_rsrc1;
+  uint32_t compute_pgm_rsrc2;
+  uint16_t kernel_code_properties;
+  uint16_t kernarg_preload;
+  uint8_t reserved3[4];
+};
+}
 
 luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::byte_string_t &code,
                                                                               const hsa::GpuAgent &agent) {
@@ -172,115 +194,6 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instL
     amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(outElf.data()));
     auto outView = code::ElfView::makeView(outElf);
     return outElf;
-    //    auto isaName = luthier::ContextManager::Instance().getHsaAgentInfo(agent)->getIsaName();
-    //
-    //    std::string Error;
-    //    const llvm::Target *TheTarget = llvm::TargetRegistry::lookupTarget(isaName, Error);
-    //    assert(TheTarget);
-    //
-    //    std::unique_ptr<const llvm::MCRegisterInfo> MRI(TheTarget->createMCRegInfo(llvm::StringRef(isaName)));
-    //    assert(MRI);
-    //
-    //
-    //    llvm::MCTargetOptions MCOptions;
-    //    std::unique_ptr<const llvm::MCAsmInfo> MAI(
-    //        TheTarget->createMCAsmInfo(*MRI, isaName, MCOptions));
-    //
-    //    assert(MAI);
-    //
-    //    std::unique_ptr<const llvm::MCInstrInfo> MII(TheTarget->createMCInstrInfo());
-    //    assert(MII);
-    //
-    //    std::unique_ptr<const llvm::MCSubtargetInfo> STI(
-    //        TheTarget->createMCSubtargetInfo(isaName, "gfx908", "+sramecc-xnack"));
-    //    assert(STI);
-    //
-    //    // MatchAndEmitInstruction in MCTargetAsmParser.h
-    //
-    //
-    //    // Now that GetTarget() has (potentially) replaced TripleName, it's safe to
-    //    // construct the Triple object.
-    //    llvm::Triple TheTriple(isaName);
-    //
-    //    std::unique_ptr<llvm::MemoryBuffer> BufferPtr = llvm::MemoryBuffer::getMemBuffer(instListStr);
-    //
-    //    llvm::SourceMgr SrcMgr;
-    //
-    //    // Tell SrcMgr about this buffer, which is what the parser will pick up.
-    //    SrcMgr.AddNewSourceBuffer(std::move(BufferPtr), llvm::SMLoc());
-    //
-    //    // Package up features to be passed to target/subtarget
-    //    std::string FeaturesStr;
-    ////    if (MAttrs.size()) {
-    ////        SubtargetFeatures Features;
-    ////        for (unsigned i = 0; i != MAttrs.size(); ++i)
-    ////            Features.AddFeature(MAttrs[i]);
-    ////        FeaturesStr = Features.getString();
-    ////    }
-    //
-    ////    std::unique_ptr<llvm::MCContext> Ctx(new (std::nothrow)
-    ////                                             llvm::MCContext(llvm::Triple(isaName), MAI.get(), MRI.get(),
-    ////                                                             &SrcMgr,
-    ////                                                             &MCOptions,
-    ////                                                             STI.get()));
-    ////    assert(Ctx);
-    //
-    //    // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
-    //    // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
-    //    llvm::MCContext Ctx(TheTriple, MAI.get(), MRI.get(), STI.get(), &SrcMgr,
-    //                  &MCOptions);
-    //    std::unique_ptr<llvm::MCObjectFileInfo> MOFI(
-    //        TheTarget->createMCObjectFileInfo(Ctx, /*PIC*/ true, /*large code model*/ false));
-    //    Ctx.setObjectFileInfo(MOFI.get());
-    //
-    //    Ctx.setAllowTemporaryLabels(false);
-    //
-    //    Ctx.setGenDwarfForAssembly(false);
-    //
-    //    llvm::SmallVector<char> out;
-    //
-    //    llvm::raw_svector_ostream VOS(out);
-    //
-    //    std::unique_ptr<llvm::buffer_ostream> BOS;
-    //
-    //    std::unique_ptr<llvm::MCStreamer> Str;
-    //
-    //    std::unique_ptr<llvm::MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
-    //    assert(MCII && "Unable to create instruction info!");
-    //
-    //    llvm::MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, Ctx);
-    //    llvm::MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*STI, *MRI, MCOptions);
-    //    Str.reset(TheTarget->createMCObjectStreamer(
-    //        TheTriple, Ctx, std::unique_ptr<llvm::MCAsmBackend>(MAB),
-    //        MAB->createObjectWriter(VOS),
-    //        std::unique_ptr<llvm::MCCodeEmitter>(CE), *STI, MCOptions.MCRelaxAll,
-    //        MCOptions.MCIncrementalLinkerCompatible,
-    //        /*DWARFMustBeAtTheEnd*/ false));
-    //
-    ////    Str->initSections(true, *STI);
-    //
-    //    // Use Assembler information for parsing.
-    //    Str->setUseAssemblerInfoForParsing(true);
-    //
-    //    std::unique_ptr<llvm::MCAsmParser> Parser(
-    //        llvm::createMCAsmParser(SrcMgr, Ctx, *Str, *MAI));
-    //    std::unique_ptr<llvm::MCTargetAsmParser> TAP(
-    //        TheTarget->createMCAsmParser(*STI, *Parser, *MCII, MCOptions));
-    //
-    //    assert(TAP && "this target does not support assembly parsing.\n");
-    //
-    ////    int SymbolResult = fillCommandLineSymbols(*Parser);
-    ////    if(SymbolResult)
-    ////        return SymbolResult;
-    //    Parser->setShowParsedOperands(true);
-    //    Parser->setTargetParser(*TAP);
-    //    Parser->getLexer().setLexMasmIntegers(true);
-    //    Parser->getLexer().setLexMasmHexFloats(true);
-    //    Parser->getLexer().setLexMotorolaIntegers(true);
-    //
-    //    int Res = Parser->Run(false);
-    //
-    //    return {reinterpret_cast<std::byte*>(out.data()), out.size()};
 }
 
 luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector,
@@ -304,7 +217,7 @@ luthier::CodeGenerator::CodeGenerator() {
     // For each unique ISA, identify the supported instructions, and split the target-agnostic and target-specific
     // opcodes to match them later
     for (const auto &isa: uniqueISAs) {
-        const auto& targetInfo = contextManager.getLLVMTargetInfo(isa);
+        const auto &targetInfo = contextManager.getLLVMTargetInfo(isa);
         llvm::FeatureBitset subTargetFeatures = targetInfo.STI_->getFeatureBits();
         llvm::StringMap<unsigned int> nonTargetOpcodes;
         llvm::StringMap<unsigned int> targetOpcodes;
@@ -318,15 +231,13 @@ luthier::CodeGenerator::CodeGenerator() {
                     if (it->contains("gfx") || it->contains("vi")) {
                         isNonTarget = false;
                         it = splitName.erase(it);
-                    }
-                    else
+                    } else
                         it++;
                 }
                 auto opNameWithNoSep = llvm::join(splitName, "_");
                 if (isNonTarget) {
                     nonTargetOpcodes.insert({opNameWithNoSep, opCode});
-                }
-                else {
+                } else {
                     targetOpcodes.insert({opNameWithNoSep, opCode});
                 }
             }
@@ -334,7 +245,7 @@ luthier::CodeGenerator::CodeGenerator() {
 
         llvmTargetInstructions_.insert({isa, {}});
 
-        auto& opcodeMap = llvmTargetInstructions_[isa];
+        auto &opcodeMap = llvmTargetInstructions_[isa];
 
         // Target-specific opcodes are the ones actually supported by the code emitter
         for (const auto &[opName, opCode]: targetOpcodes) {
@@ -353,8 +264,6 @@ luthier::CodeGenerator::CodeGenerator() {
     }
 }
 
-
-
 void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFunc, luthier_ipoint_t point) {
     LUTHIER_LOG_FUNCTION_CALL_START
     auto agent = instr.getAgent();
@@ -369,9 +278,9 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     const auto &targetInfo = contextManager.getLLVMTargetInfo(agent.getIsa()[0]);
 
     const auto targetTriple = llvm::Triple(agent.getIsa()[0].getLLVMTargetTriple());
-    std::unique_ptr<llvm::MCContext> ctx(new(std::nothrow) llvm::MCContext(
-        targetTriple, targetInfo.MAI_.get(), targetInfo.MRI_.get(), targetInfo.STI_.get()));
-    auto mcEmitter = targetInfo.target_->createMCCodeEmitter(*targetInfo.MII_, *ctx);
+    llvm::MCContext ctx(
+        targetTriple, targetInfo.MAI_.get(), targetInfo.MRI_.get(), targetInfo.STI_.get());
+    auto mcEmitter = targetInfo.target_->createMCCodeEmitter(*targetInfo.MII_, ctx);
 
     llvm::SmallVector<char> osBack;
     llvm::SmallVector<llvm::MCFixup> fixUps;
@@ -462,6 +371,126 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     auto meta = storageSymbol->getMetaData();
     fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
     fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
+
+    std::unique_ptr<llvm::MCObjectFileInfo> MOFI(
+        targetInfo.target_->createMCObjectFileInfo(ctx, /*PIC*/ true, /*large code model*/ false));
+    auto textSection = MOFI->getTextSection();
+    fmt::println("Does the text section have instructions? {}", textSection->hasInstructions());
+    ctx.setObjectFileInfo(MOFI.get());
+//    ctx->setAllowTemporaryLabels(true);
+    ctx.setGenDwarfForAssembly(false);
+
+    llvm::SmallVector<char> out;
+
+    llvm::raw_svector_ostream VOS(out);
+
+    llvm::MCCodeEmitter *CE = targetInfo.target_->createMCCodeEmitter(*targetInfo.MII_, ctx);
+    llvm::MCAsmBackend *MAB = targetInfo.target_->createMCAsmBackend(*targetInfo.STI_, *targetInfo.MRI_,
+                                                                     *targetInfo.MCOptions_);
+
+    auto Str = std::unique_ptr<llvm::MCStreamer>(targetInfo.target_->createMCObjectStreamer(
+        llvm::Triple(agent.getIsa()[0].getLLVMTargetTriple()), ctx,
+        std::unique_ptr<llvm::MCAsmBackend>(MAB),
+        MAB->createObjectWriter(VOS),
+        std::unique_ptr<llvm::MCCodeEmitter>(CE), *targetInfo.STI_, true,
+        targetInfo.MCOptions_->MCIncrementalLinkerCompatible,
+        /*DWARFMustBeAtTheEnd*/ false));
+
+//    Str->initSections(false, *targetInfo.STI_);
+    Str->switchSection(ctx.getObjectFileInfo()->getTextSection());
+    Str->emitCodeAlignment(llvm::Align(ctx.getObjectFileInfo()->getTextSectionAlignment()),
+                      targetInfo.STI_.get());
+
+    for (const auto& inst: *targetFunction) {
+        Str->emitInstruction(inst.getInstr(), *targetInfo.STI_);
+    }
+    auto kernelName = instr.getExecutableSymbol().getName();
+//
+    auto kName = kernelName.substr(0, kernelName.find(".kd"));
+
+    auto KernelDescriptor = instr.getExecutableSymbol().getKernelDescriptor();
+//
+    llvm::MCSymbolELF *KernelCodeSymbol = cast<llvm::MCSymbolELF>(
+        ctx.getOrCreateSymbol(llvm::Twine(kName)));
+
+//    Str->pushSection();
+    Str->switchSection(ctx.getObjectFileInfo()->getReadOnlySection());
+
+    Str->emitValueToAlignment(llvm::Align(64), 0, 1, 0);
+    ctx.getObjectFileInfo()->getReadOnlySection()->ensureMinAlignment(llvm::Align(64));
+
+    llvm::MCSymbolELF *KernelDescriptorSymbol = cast<llvm::MCSymbolELF>(
+        ctx.getOrCreateSymbol(kernelName));
+
+    // Copy kernel descriptor symbol's binding, other and visibility from the
+    // kernel code symbol.
+    KernelDescriptorSymbol->setBinding(KernelCodeSymbol->getBinding());
+    KernelDescriptorSymbol->setOther(KernelCodeSymbol->getOther());
+    KernelDescriptorSymbol->setVisibility(KernelCodeSymbol->getVisibility());
+    // Kernel descriptor symbol's type and size are fixed.
+    KernelDescriptorSymbol->setType(llvm::ELF::STT_OBJECT);
+    KernelDescriptorSymbol->setSize(
+        llvm::MCConstantExpr::create(sizeof(hsa::KernelDescriptor), ctx));
+
+//    // The visibility of the kernel code symbol must be protected or less to allow
+//    // static relocations from the kernel descriptor to be used.
+    if (KernelCodeSymbol->getVisibility() == llvm::ELF::STV_DEFAULT)
+        KernelCodeSymbol->setVisibility(llvm::ELF::STV_PROTECTED);
+//
+    Str->emitLabel(KernelDescriptorSymbol);
+    Str->emitInt32(KernelDescriptor->groupSegmentFixedSize);
+    Str->emitInt32(KernelDescriptor->privateSegmentFixedSize);
+    Str->emitInt32(KernelDescriptor->kernArgSize);
+//
+    for (uint8_t Res : KernelDescriptor->reserved0)
+        Str->emitInt8(Res);
+
+//    // FIXME: Remove the use of VK_AMDGPU_REL64 in the expression below. The
+//    // expression being created is:
+//    //   (start of kernel code) - (start of kernel descriptor)
+//    // It implies R_AMDGPU_REL64, but ends up being R_AMDGPU_ABS64.
+    Str->emitValue(llvm::MCBinaryExpr::createSub(
+                           llvm::MCSymbolRefExpr::create(
+                               KernelCodeSymbol, llvm::MCSymbolRefExpr::VK_AMDGPU_REL64, ctx),
+                           llvm::MCSymbolRefExpr::create(
+                               KernelDescriptorSymbol, llvm::MCSymbolRefExpr::VK_None, ctx),
+                           ctx),
+                       sizeof(KernelDescriptor->kernelCodeEntryByteOffset));
+    for (uint8_t Res : KernelDescriptor->reserved1)
+        Str->emitInt8(Res);
+    Str->emitInt32(KernelDescriptor->computePgmRsrc3);
+    Str->emitInt32(KernelDescriptor->computePgmRsrc1);
+    Str->emitInt32(KernelDescriptor->computePgmRsrc2);
+    Str->emitInt16(KernelDescriptor->kernelCodeProperties);
+    Str->emitInt16(KernelDescriptor->kernArgPreload);
+    for (uint8_t Res : KernelDescriptor->reserved2)
+        Str->emitInt8(Res);
+
+//    Str->popSection();
+//    Str->switchSection(ctx.getObjectFileInfo()->getTextSection());
+
+    fmt::println("Does the text section have instructions? {}", textSection->hasInstructions());
+
+    Str->getTargetStreamer()->finish();
+    Str->finish();
+    Str->finishImpl();
+    auto finalView = code::ElfView::makeView(luthier::byte_string_view(reinterpret_cast<std::byte*>(out.data()), out.size()));
+    fmt::println("Length of the out vector: {}", out.size());
+    fmt::println("Type of the code object created: {}", finalView->getElfIo().get_type());
+    fmt::println("Number of symbols: {}", finalView->getNumSymbols());
+
+    finalView->getElfIo().sections[0]->get_data();
+//    fmt::println("Symbol name : {}", finalView->getSymbol(0)->getName());
+//    fmt::println("Symbol name : {}", finalView->getSymbol(1)->getName());
+//    finalView->getSymbol(0)->getData();
+    fmt::println("Data works");
+    finalView->getElfIo().sections[1]->get_data();
+
+//    auto executable = compileRelocatableToExecutable({reinterpret_cast<std::byte*>(out.data()), out.size()}, instr.getAgent());
+//    delete Str;
+//    Str->finishImpl();
+
+//    targetStr->finish();
 
     CodeObjectManager::instance().loadInstrumentedKernel(luthier::byte_string_t(storage), instr.getExecutableSymbol());
 }
