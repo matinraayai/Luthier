@@ -1,25 +1,41 @@
-# Code Structure of Luthier
+# High-level Structure of Luthier
 Luthier consists of the following components:
 
-1. The Controller: Under ```luthier::impl``` namespace. Implements the high-level interface for the tool writer,
-and initializes and finalizes all essential components as needed.
-2. HIP/HSA Intercept Layers: Under ```hip_intecept.*pp``` and ```hsa_intercept.*pp```, respectively. In charge of
-capturing HIP and HSA API calls of the target applications.
-   - HIP/HSA API tables are automatically generated via the python ```hip_intercept_gen.py``` and 
-   ```hsa_intecept_gen.py```. 
-   - As of right now, HIP uses ```dlsym``` to capture necessary HIP APIs. We are in the process of migrating to
-   Gotcha, to provide a dynamic way of turning unnecessary API captures on/off. HIP API tables are promised
-   in ROCm 6.0+
-   - HSA uses the ```libroctool.so``` to capture the HSA API table. Dynamically turning capturing on/off is 
-   currently being worked on.
+1. **The Controller**: Under ```luthier``` namespace, in [```src/luthier.cpp```](../src/luthier.cpp). It implements 
+the high-level interface for the tool writer, and initializes and finalizes all essential components as needed.
+2. **HSA Intercept Layer**: implemented in [```src/hsa_intecept.hpp```](../src/hsa_intercept.hpp) and 
+[```src/hsa_intercept.cpp```](../src/hsa_intercept.cpp). It intercepts all the HSA functions called by the target 
+application, and (if enabled), performs a callback to both the user and the tool.
+3. **HIP Intercept Layer**: implemented in [```src/hip_intercept.hpp```](../src/hip_intercept.hpp) and
+[```src/hip_intercept.cpp```](../src/hip_intercept.cpp). It intercepts all HIP functions called by the HIP runtime,
+and (if enabled) performs a callback to both the user and the tool.
+4. **Context Manager**: implemented in [```src/context_manager.hpp```](../src/context_manager.hpp) and
+   [```src/context_manager.cpp```](../src/context_manager.cpp). It records the GPU HSA Agents attached to the system, 
+creates LLVM-related data structures based on the HSA Agents, and caches them. Any other component can query this 
+information.
+5. **HSA Abstraction Layer** implemented under ```luthier::hsa``` namespace. Provides a useful, 
+object-oriented abstraction over the C-API of the HSA library, to provide a less-verbose interface to Luthier, 
+and implement any required features not currently implemented in HSA (e.g. indirect function support). 
+APIs called by this layer are not intercepted. Other components should not use the HSA library directly.
+6. **Disassembler**: can be found in [```src/disassembler.hpp```](../src/disassembler.hpp) and 
+[```src/disassembler.hpp```](../src/disassembler.cpp). It disassembles every ```hsa::ExecutableSymbol``` using LLVM, 
+and caches the results. It is the only component allowed to create ```hsa::Instr``` objects. 
+7. **Code Generator**: Under [```src/code_generator.hpp```](../src/code_generator.hpp) and 
+[```src/code_generator.cpp```](../src/code_generator.cpp). After the user describes the instrumentation task, 
+the code generator creates the instrumented code objects via analysing the disassembled instructions of the target code
+object in LLVM.
 
-3. Context Manager: Under ```context_manager.*pp```. Is in charge of recording the information regarding the
-GPU HSA Agents available on the system, and retrieving their information either using HSA or AMD Comgr.
-4. Disassembler: Under ```disassmbler.*pp```. Is in charge of disassembling the code object, whether they 
-are on the host only, or part of a loaded code object on the device. Creates ```Instr``` objects for the tool
-writer to use. The disassembler can also identify the ```hsa_agent_t```, ```hsa_executable_t``` and the 
-```hsa_executable_symbol_t``` associated with the instruction.
-5. Code Generator: Under ```code_generator.*pp```. Is in charge of queueing instrumentation tasks, and carrying 
-them out after a user's HIP/HSA callback. Also provides instruction assembling APIs.
-6. Code Object Manipulator: Under ```code_object_manipulation.*pp```. Provides a range of APIs for reading/writing
-AMDGPU code objects.
+
+[//]: # (   - HIP/HSA API tables are automatically generated via the python ```hip_intercept_gen.py``` and)
+
+[//]: # (     ```hsa_intecept_gen.py```.)
+
+[//]: # (   - As of right now, HIP uses ```dlsym``` to capture necessary HIP APIs. We are in the process of migrating to)
+
+[//]: # (     Gotcha, to provide a dynamic way of turning unnecessary API captures on/off. HIP API tables are promised)
+
+[//]: # (     in ROCm 6.0+.)
+
+[//]: # (   - HSA uses the ```libroctool.so``` to capture the HSA API table. Dynamically turning capturing on/off is)
+
+[//]: # (     currently being worked on.)
