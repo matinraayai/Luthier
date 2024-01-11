@@ -200,67 +200,67 @@ SymbolView::SymbolView(const ElfView &elf, unsigned int index) : elf_(elf) {
 //    LUTHIER_AMD_COMGR_CHECK(amd_comgr_destroy_metadata(meta));
 //}
 
-amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<elfio> &fatBinaryElfs) {
-    auto fbWrapper = reinterpret_cast<const CudaFatBinaryWrapper *>(data);
-    assert(fbWrapper->magic == hipFatMAGIC2 && fbWrapper->version == 1);
-    auto fatBinary = fbWrapper->binary;
-
-    llvm::BinaryStreamReader Reader(llvm::StringRef(reinterpret_cast<const char *>(fatBinary), 4096),
-                                    llvm::support::little);
-    llvm::StringRef Magic;
-    auto EC = Reader.readFixedString(Magic, OffloadBundleMagicLen);
-    if (EC) {
-        return AMD_COMGR_STATUS_ERROR;
-    }
-    if (Magic != CLANG_OFFLOAD_BUNDLER_MAGIC) {
-        return AMD_COMGR_STATUS_ERROR_INVALID_ARGUMENT;
-    }
-    uint64_t NumOfCodeObjects;
-    EC = Reader.readInteger(NumOfCodeObjects);
-    if (EC) {
-        return AMD_COMGR_STATUS_ERROR;
-    }
-    // For each code object, extract BundleEntryID information, and check that
-    // against each ISA in the QueryList
-    fatBinaryElfs.resize(NumOfCodeObjects);
-    for (uint64_t I = 0; I < NumOfCodeObjects; I++) {
-        uint64_t BundleEntryCodeObjectSize;
-        uint64_t BundleEntryCodeObjectOffset;
-        uint64_t BundleEntryIDSize;
-        llvm::StringRef BundleEntryID;
-
-        if (auto EC = Reader.readInteger(BundleEntryCodeObjectOffset)) {
-            return AMD_COMGR_STATUS_ERROR;
-        }
-
-        if (auto Status = Reader.readInteger(BundleEntryCodeObjectSize)) {
-            return AMD_COMGR_STATUS_ERROR;
-        }
-
-        if (auto Status = Reader.readInteger(BundleEntryIDSize)) {
-            return AMD_COMGR_STATUS_ERROR;
-        }
-
-        if (Reader.readFixedString(BundleEntryID, BundleEntryIDSize)) {
-            return AMD_COMGR_STATUS_ERROR;
-        }
-
-        const auto OffloadAndTargetId = BundleEntryID.split('-');
-        fmt::println("Target: {}", OffloadAndTargetId.second.str());
-        if (OffloadAndTargetId.first != OFFLOAD_KIND_HIP && OffloadAndTargetId.first != OFFLOAD_KIND_HIPV4 && OffloadAndTargetId.first != OFFLOAD_KIND_HCC) {
-            continue;
-        }
-        std::stringstream ss{std::string(reinterpret_cast<const char *>(fatBinary) + BundleEntryCodeObjectOffset,
-                                         BundleEntryCodeObjectSize)};
-        if (!fatBinaryElfs.at(I).load(ss, false)) {
-            fmt::println("Size of the code object: {}", BundleEntryCodeObjectSize);
-            fmt::println("Failed to parse the ELF.");
-            return AMD_COMGR_STATUS_ERROR;
-        }
-    }
-
-    return AMD_COMGR_STATUS_SUCCESS;
-}
+//amd_comgr_status_t getCodeObjectElfsFromFatBinary(const void *data, std::vector<elfio> &fatBinaryElfs) {
+//    auto fbWrapper = reinterpret_cast<const CudaFatBinaryWrapper *>(data);
+//    assert(fbWrapper->magic == hipFatMAGIC2 && fbWrapper->version == 1);
+//    auto fatBinary = fbWrapper->binary;
+//
+//    llvm::BinaryStreamReader Reader(llvm::StringRef(reinterpret_cast<const char *>(fatBinary), 4096),
+//                                    llvm::support::little);
+//    llvm::StringRef Magic;
+//    auto EC = Reader.readFixedString(Magic, OffloadBundleMagicLen);
+//    if (EC) {
+//        return AMD_COMGR_STATUS_ERROR;
+//    }
+//    if (Magic != CLANG_OFFLOAD_BUNDLER_MAGIC) {
+//        return AMD_COMGR_STATUS_ERROR_INVALID_ARGUMENT;
+//    }
+//    uint64_t NumOfCodeObjects;
+//    EC = Reader.readInteger(NumOfCodeObjects);
+//    if (EC) {
+//        return AMD_COMGR_STATUS_ERROR;
+//    }
+//    // For each code object, extract BundleEntryID information, and check that
+//    // against each ISA in the QueryList
+//    fatBinaryElfs.resize(NumOfCodeObjects);
+//    for (uint64_t I = 0; I < NumOfCodeObjects; I++) {
+//        uint64_t BundleEntryCodeObjectSize;
+//        uint64_t BundleEntryCodeObjectOffset;
+//        uint64_t BundleEntryIDSize;
+//        llvm::StringRef BundleEntryID;
+//
+//        if (auto EC = Reader.readInteger(BundleEntryCodeObjectOffset)) {
+//            return AMD_COMGR_STATUS_ERROR;
+//        }
+//
+//        if (auto Status = Reader.readInteger(BundleEntryCodeObjectSize)) {
+//            return AMD_COMGR_STATUS_ERROR;
+//        }
+//
+//        if (auto Status = Reader.readInteger(BundleEntryIDSize)) {
+//            return AMD_COMGR_STATUS_ERROR;
+//        }
+//
+//        if (Reader.readFixedString(BundleEntryID, BundleEntryIDSize)) {
+//            return AMD_COMGR_STATUS_ERROR;
+//        }
+//
+//        const auto OffloadAndTargetId = BundleEntryID.split('-');
+//        fmt::println("Target: {}", OffloadAndTargetId.second.str());
+//        if (OffloadAndTargetId.first != OFFLOAD_KIND_HIP && OffloadAndTargetId.first != OFFLOAD_KIND_HIPV4 && OffloadAndTargetId.first != OFFLOAD_KIND_HCC) {
+//            continue;
+//        }
+//        std::stringstream ss{std::string(reinterpret_cast<const char *>(fatBinary) + BundleEntryCodeObjectOffset,
+//                                         BundleEntryCodeObjectSize)};
+//        if (!fatBinaryElfs.at(I).load(ss, false)) {
+//            fmt::println("Size of the code object: {}", BundleEntryCodeObjectSize);
+//            fmt::println("Failed to parse the ELF.");
+//            return AMD_COMGR_STATUS_ERROR;
+//        }
+//    }
+//
+//    return AMD_COMGR_STATUS_SUCCESS;
+//}
 
 code_view_t getFunctionFromSymbol(const ElfView &elfView, const std::string &functionName) {
     auto &elfIo = elfView->getElfIo();

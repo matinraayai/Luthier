@@ -138,7 +138,7 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phas
         std::cout << "In packet submission callback" << std::endl;
         auto packets = args->evt_args.hsa_queue_packet_submit.packets;
         for (unsigned int i = 0; i < args->evt_args.hsa_queue_packet_submit.pkt_count; i++) {
-            auto packet = packets[i];
+            auto &packet = packets[i];
             hsa_packet_type_t packetType = luthier_get_packet_type(packet);
 
             if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {

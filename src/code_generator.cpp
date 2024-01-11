@@ -7,6 +7,7 @@
 #include "instr.hpp"
 #include "log.hpp"
 #include <fmt/color.h>
+#include <fmt/xchar.h>
 #include <fmt/core.h>
 #include <hsa/amd_hsa_common.h>
 #include <hsa/hsa_ext_amd.h>
@@ -314,7 +315,8 @@ uint64_t luthier::CodeGenerator::allocateGlobalSpace(int numGPRToSave,uint32_t g
 }
 
 luthier::CodeGenerator::~CodeGenerator(){
-    int savedRegisterHost[allocatedSize];
+    int* savedRegisterHost = new int[allocatedSize];
+//    int savedRegisterHost[allocatedSize];
     reinterpret_cast<hipError_t (*)(void *, void *, size_t, hipMemcpyKind)>(luthier_get_hip_function("hipMemcpy"))(
         savedRegisterHost, saved_register, allocatedSize, hipMemcpyDeviceToHost);
     int gridSize = allocatedSize / (4*numRegisters);
@@ -326,6 +328,7 @@ luthier::CodeGenerator::~CodeGenerator(){
     }
     auto hipFreeFunc = reinterpret_cast<hipError_t (*)(void **)>(luthier_get_hip_function("hipFree"));
     (*hipFreeFunc)(&saved_register);
+    delete[] savedRegisterHost;
 }
 
 hsa_status_t registerSymbolWithCodeObjectManager(const hsa_executable_t &executable,
@@ -528,7 +531,7 @@ void luthier::CodeGenerator::instrument(Instr &instr, const void *device_func,
     }
     myNewProg += assemble(std::vector<std::string>{"s_endpgm"}, agent);
 
-    elfio_mkd.sections[".text"]->insert_data(0x100, reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
+    elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
     // elfio_mkd.sections[".text"]->set_data(reinterpret_cast<char *>(myNewProg.data()), myNewProg.size());
     std::cout << myNewProg.size() << std::endl;
     std::cout << elfio_mkd.sections[".text"]->get_offset() << std::endl;
