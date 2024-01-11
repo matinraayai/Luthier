@@ -17,7 +17,6 @@
 #include "hsa_intercept.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "instr.hpp"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -41,6 +40,7 @@
 #include "log.hpp"
 #include "llvm/MC/MCSymbolELF.h"
 #include "MCTargetDesc/AMDGPUTargetStreamer.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
 
 #define GET_REGINFO_ENUM
 #include "AMDGPUGenRegisterInfo.inc"
@@ -57,23 +57,6 @@
 #include "AMDGPUGenInstrInfo.inc"
 #include "fmt/ranges.h"
 #include "llvm/BinaryFormat/ELF.h"
-
-namespace llvm::hsa {
-struct kernel_descriptor_t {
-  uint32_t group_segment_fixed_size;
-  uint32_t private_segment_fixed_size;
-  uint32_t kernarg_size;
-  uint8_t reserved0[4];
-  int64_t kernel_code_entry_byte_offset;
-  uint8_t reserved1[20];
-  uint32_t compute_pgm_rsrc3; // GFX10+ and GFX90A+
-  uint32_t compute_pgm_rsrc1;
-  uint32_t compute_pgm_rsrc2;
-  uint16_t kernel_code_properties;
-  uint16_t kernarg_preload;
-  uint8_t reserved3[4];
-};
-}
 
 luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::byte_string_t &code,
                                                                               const hsa::GpuAgent &agent) {
@@ -267,6 +250,10 @@ luthier::CodeGenerator::CodeGenerator() {
 void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFunc, luthier_ipoint_t point) {
     LUTHIER_LOG_FUNCTION_CALL_START
     auto agent = instr.getAgent();
+    llvm::LLVMContext context;
+    llvm::Module module("inst", context);
+//    llvm::Function f;
+//    llvm::MachineFunction func;
     auto genInst = makeInstruction(agent.getIsa()[0],
                                    llvm::AMDGPU::S_ADD_I32,
                                    llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
@@ -494,273 +481,3 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
 
     CodeObjectManager::instance().loadInstrumentedKernel(luthier::byte_string_t(storage), instr.getExecutableSymbol());
 }
-
-//{
-//
-//    hsa_agent_t agent = instr.getAgent();
-//    const auto& coManager = luthier::CodeObjectManager::Instance();
-//    luthier::co_manip::code_object_region_t instrumentationFunction = coManager.getCodeObjectOfInstrumentationFunction(device_func, agent);
-//    kernel_descriptor_t* kd = luthier::CodeObjectManager::Instance().getKernelDescriptorOfInstrumentationFunction(device_func, agent);
-//    fmt::println("Address of kd: {:#x}", reinterpret_cast<luthier_address_t>(kd));
-//    co_manip::printRSR1(kd);
-//    co_manip::printRSR2(kd);
-//    co_manip::printCodeProperties(kd);
-//    fmt::println("group_segment_fixed_size: {}", kd->group_segment_fixed_size);
-//    fmt::println("private_segment_fixed_size: {}", kd->private_segment_fixed_size);
-//    fmt::println("kernarg_size: {}", kd->kernarg_size);
-//    for (int i = 0; i < 4; i++)
-//        fmt::println("reserved0: {}", kd->reserved0[i]);
-//    fmt::println("compute_pgm_rsrc3: {}", kd->compute_pgm_rsrc3);
-//    fmt::println("group_segment_fixed_size: {}", kd->group_segment_fixed_size);
-//    for (int i = 0; i < 6; i++)
-//        fmt::println("reserved2: {}", kd->reserved2[i]);
-//
-//    auto funcVgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
-////    auto funcSgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT);
-////    auto funcUserSgprCount = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT);
-////    auto funcDynamicCallStack = AMD_HSA_BITS_GET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_IS_DYNAMIC_CALLSTACK);
-////    auto funcEnableSegPtr = AMD_HSA_BITS_GET(kd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR);
-////    auto funcEnableX = AMD_HSA_BITS_GET(kd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_WORKGROUP_ID_X);
-//    auto instrKd = instr.getKernelDescriptor();
-//    auto entryPointOfInstr = instrKd->kernel_code_entry_byte_offset;
-////    *instrKd = *kd;
-////    instrKd->kernel_code_entry_byte_offset = entryPointOfInstr;
-//    fmt::println("Address of Instr kd: {:#x}", reinterpret_cast<luthier_address_t>(instrKd));
-//    fmt::println("Entry: {:#x}", reinterpret_cast<luthier_address_t>(instrKd) + instrKd->kernel_code_entry_byte_offset);
-//    co_manip::printRSR1(instrKd);
-//    co_manip::printRSR2(instrKd);
-//    co_manip::printCodeProperties(instrKd);
-//    fmt::println("group_segment_fixed_size: {}", instrKd->group_segment_fixed_size);
-//    fmt::println("private_segment_fixed_size: {}", instrKd->private_segment_fixed_size);
-//    fmt::println("kernarg_size: {}", instrKd->kernarg_size);
-//    for (int i = 0; i < 4; i++)
-//        fmt::println("reserved0: {}", instrKd->reserved0[i]);
-//    fmt::println("compute_pgm_rsrc3: {}", instrKd->compute_pgm_rsrc3);
-//    fmt::println("group_segment_fixed_size: {}", instrKd->group_segment_fixed_size);
-//    for (int i = 0; i < 6; i++)
-//        fmt::println("reserved2: {}", instrKd->reserved2[i]);
-////    auto instrVgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
-////    auto instrSgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT);
-////    auto instrUserSgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT);
-////    auto instrDynamicCallStack = AMD_HSA_BITS_GET(instrKd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_IS_DYNAMIC_CALLSTACK);
-////    auto instrEnableSegPtr = AMD_HSA_BITS_GET(instrKd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR);
-////    auto instrEnableX = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_WORKGROUP_ID_X);
-////    LuthierLogDebug("Function VGPR count: {}. SGPR count: {}. User SGPR Count: {}, dynamic call stack: {}", funcVgprCount, funcSgprCount, funcUserSgprCount, funcDynamicCallStack);
-////    LuthierLogDebug("Function sgpr kernarg seg ptr: {}, Enable X: {}", funcEnableSegPtr, funcEnableX);
-////    LuthierLogDebug("Instr VGPR count: {}. SGPR count: {}, User SGPR Count: {}, dynamic call stack: {}", instrVgprCount, instrSgprCount, instrUserSgprCount, instrDynamicCallStack);
-////    LuthierLogDebug("Instr sgpr kernarg seg ptr: {}, enable X: {}", instrEnableSegPtr, instrEnableX);
-////    AMD_HSA_BITS_SET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT, 1);
-////    AMD_HSA_BITS_SET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT, 5);
-////    AMD_HSA_BITS_SET(instrKd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT, 12);
-////    AMD_HSA_BITS_SET(instrKd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_PRIVATE_SEGMENT_WAVE_BYTE_OFFSET, 1);
-////    AMD_HSA_BITS_SET(instrKd->kernel_code_properties, AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_FLAT_SCRATCH_INIT, 1);
-////    instrKd->group_segment_fixed_size = 8;
-////    instrVgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
-////    instrSgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc1, AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WAVEFRONT_SGPR_COUNT);
-////    instrUserSgprCount = AMD_HSA_BITS_GET(instrKd->compute_pgm_rsrc2, AMD_COMPUTE_PGM_RSRC_TWO_USER_SGPR_COUNT);
-////    LuthierLogDebug("Instr VGPR count: {}. SGPR count: {}, User SGPR Count: {}", instrVgprCount, instrSgprCount, instrUserSgprCount);
-//
-//    luthier_address_t instDeviceAddress = instr.getDeviceAddress();
-//    // Load the instrumentation ELF into the agent, and get its location on the device
-//    auto instrumentationExecutable = createExecutableMemoryRegion(instrumentationFunction.size, agent);
-//
-////    auto instrmntLoadedCodeObject = luthier::elf::mem_backed_code_object_t(
-////        reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable()))),
-////        instrumentationFunction.size()
-////        );
-////    auto instrmntTextSectionStart = reinterpret_cast<luthier_address_t>(allocateHsaKmtMemory(agent, instrumentationFunction.size(), getLoadedCodeObject(instr.getExecutable()), getCodeObject(instr.getExecutable())));
-////    auto instrmntLoadedCodeObject = luthier::co_manip::getDeviceLoadedCodeObjectOfExecutable(instrumentationExecutable, agent);
-//
-//
-//
-//    // Get a pointer to the beginning of the .text section of the instrumentation executable
-//    luthier_address_t instrmntTextSectionStart = instrumentationExecutable.data;
-//
-//    // The instrumentation function is inserted first
-//    std::string dummyInstrmnt = assemble(std::vector<std::string>
-//        {"s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)", "s_setpc_b64 s[0:1]"}, agent);
-//
-//    // Padded with nop
-//    std::string nopInstr = assemble("s_nop 0", agent);
-//
-//    std::memcpy(reinterpret_cast<void*>(instrmntTextSectionStart), dummyInstrmnt.data(), dummyInstrmnt.size());
-//
-//    std::memcpy(reinterpret_cast<void*>(instrmntTextSectionStart + dummyInstrmnt.size()), nopInstr.data(), nopInstr.size());
-//
-//    // Trampoline starts after the nop
-//    luthier_address_t trampolineStartAddr = instrmntTextSectionStart + dummyInstrmnt.size() + nopInstr.size();
-//
-//    // Trampoline is located within the short jump range
-//    luthier_address_t trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineStartAddr - instDeviceAddress :
-//                                                                                      instDeviceAddress - trampolineStartAddr;
-//
-//    std::string trampoline;
-//    if (trampolineInstrOffset < ((2 << 16) - 1)) {
-//        trampoline = assemble("s_getpc_b64 s[2:3]", agent);
-//
-//        // Get the PC of the instruction after the get PC instruction
-//        luthier_address_t trampolinePcOffset = trampolineStartAddr + trampoline.size();
-//
-//
-//        int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
-//
-//        fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
-//        fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
-//        fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
-//
-//
-//        trampoline += assemble({fmt::format("s_sub_u32 s2, s2, {:#x}", firstAddOffset),
-//                                "s_subb_u32 s3, s3, 0x0",
-//                                "s_swappc_b64 s[0:1], s[2:3]",
-//                                instr.getInstr()}, agent);
-//
-//
-//        trampolinePcOffset = trampolineStartAddr + trampoline.size() + 4;
-//        //    hostCodeObjectTextSection->append_data(trampoline);
-//        int lastBranchImmInt;
-//        short lastBranchImm;
-//        if (trampolinePcOffset < instr.getDeviceAddress()) {
-//            lastBranchImmInt = (instr.getDeviceAddress() + 4 - trampolinePcOffset) / 4;
-//            lastBranchImm = (short) (lastBranchImmInt);
-//        }
-//        else {
-//            lastBranchImmInt = (trampolinePcOffset - (instr.getDeviceAddress() + 4)) / 4;
-//            lastBranchImm = -(short)(lastBranchImmInt);
-//        }
-//
-//#ifdef LUTHIER_LOG_ENABLE_DEBUG
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline PC Offset: {:#x}\n", trampolinePcOffset);
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Last branch imm: {:#x}\n", lastBranchImmInt);
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "After conversion to short: {:#x}\n", lastBranchImm);
-//#endif
-//
-//        trampoline += assemble(fmt::format("s_branch {:#x}", lastBranchImm), agent);
-//
-//        std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
-//
-//        const auto& amdExtApi = luthier::HsaInterceptor::instance()().getSavedHsaTables().amd_ext;
-//        hsa_amd_pointer_info_t instrPtrInfo;
-//        luthier_address_t address = instr.getDeviceAddress();
-//        fmt::println("Address to query: {:#x}", address);
-//        LUTHIER_HSA_CHECK(amdExtApi.hsa_amd_pointer_info_fn(reinterpret_cast<void*>(address),
-//                                                          &instrPtrInfo, nullptr, nullptr, nullptr));
-//        fmt::println("Instruction Info:");
-//        fmt::println("Type: {}", (uint32_t) instrPtrInfo.type);
-//        fmt::println("Agent base address: {:#x}", reinterpret_cast<luthier_address_t>(instrPtrInfo.agentBaseAddress));
-//        fmt::println("Host base address: {:#x}", reinterpret_cast<luthier_address_t>(instrPtrInfo.hostBaseAddress));
-//        fmt::println("size: {}", instrPtrInfo.sizeInBytes);
-//
-//
-//        // Overwrite the target instruction
-//        int firstBranchImmUnconverted;
-//        short firstBranchImm;
-//        if (trampolineStartAddr < instr.getDeviceAddress()) {
-//            firstBranchImmUnconverted = (instr.getDeviceAddress() + 4 - trampolineStartAddr) / 4;
-//            firstBranchImm = -static_cast<short>(firstBranchImmUnconverted);
-//        }
-//        else {
-//            firstBranchImmUnconverted = (trampolineStartAddr - (instr.getDeviceAddress() + 4)) / 4;
-//            firstBranchImm = static_cast<short>(firstBranchImmUnconverted);
-//        }
-//#ifdef LUTHIER_LOG_ENABLE_DEBUG
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Trampoline start Address: {:#x}\n", trampolineStartAddr);
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instr Address: {:#x}\n", instr.getDeviceAddress());
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "First branch imm: {:#x}\n", firstBranchImmUnconverted);
-//        fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "After conversion to short: {:#x}\n", firstBranchImm);
-//#endif
-//
-//        //    std::string firstJump = assemble("s_trap 1", agent);
-//        std::string firstJump = assemble({fmt::format("s_branch {:#x}", firstBranchImm)}, agent);
-//        if (instr.getSize() == 8)
-//            firstJump += assemble({std::string("s_nop 0")}, agent);
-//        std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), firstJump.data(), firstJump.size());
-//    }
-//
-//    else {
-//        trampolineInstrOffset = trampolineStartAddr > instDeviceAddress ? trampolineInstrOffset - 4 : trampolineInstrOffset + 4;
-//        constexpr uint64_t upperMaskUint64_t = 0xFFFFFFFF00000000;
-//        constexpr uint64_t lowerMaskUint64_t = 0x00000000FFFFFFFF;
-//        uint32_t upperTrampolineInstrOffset = (trampolineInstrOffset & upperMaskUint64_t) >> 32;
-//        uint32_t lowerTrampolineInstrOffset = trampolineInstrOffset & lowerMaskUint64_t;
-//
-//        fmt::println("Upper diff: {:#b}\n", upperTrampolineInstrOffset);
-//        fmt::println("Lower diff: {:#b}\n", lowerTrampolineInstrOffset);
-//        fmt::println("Actual diff: {:#b}\n", trampolineInstrOffset);
-//        std::string targetToTrampolineOffsetInstr = trampolineStartAddr > instDeviceAddress ? fmt::format("s_add_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset) :
-//                                                                                            fmt::format("s_sub_u32 s6, s6, {:#x}", lowerTrampolineInstrOffset);
-//        std::string longJumpForTarget = assemble(std::vector<std::string>{"s_getpc_b64 s[8:9]",
-//                                                                          targetToTrampolineOffsetInstr}, agent);
-//
-//        if (upperTrampolineInstrOffset != 0) {
-//            longJumpForTarget += trampolineStartAddr > instDeviceAddress ? assemble(fmt::format("s_addc_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent) :
-//                                                                         assemble(fmt::format("s_subb_u32 s7, s7, {:#x}", upperTrampolineInstrOffset), agent);
-//        }
-//
-//       longJumpForTarget += assemble("s_swappc_b64 s[2:3], s[8:9]", agent);
-//        fmt::println("Assembled!!!");
-//        std::string displacedInstr = std::string(reinterpret_cast<const char*>(instr.getDeviceAddress()),
-//                                                 longJumpForTarget.size());
-//
-//        // Get the PC of the instruction after the get PC instruction
-//        luthier_address_t trampolinePcOffset = trampolineStartAddr;
-//
-//
-//        int firstAddOffset = (int) (trampolinePcOffset - instrmntTextSectionStart);
-//
-//        fmt::println(stdout, "Trampoline PC offset: {:#x}", trampolinePcOffset);
-//        fmt::println(stdout, "Instrument Code Offset: {:#x}", instrmntTextSectionStart);
-//        fmt::println(stdout, "The set PC offset: {:#x}", firstAddOffset);
-//
-//
-//        trampoline = assemble({fmt::format("s_sub_u32 s6, s6, {:#x}", firstAddOffset),
-//                                "s_subb_u32 s7, s7, 0x0",
-//                                "s_swappc_b64 s[0:1], s[8:9]"}, agent);
-//        trampoline += displacedInstr;
-//        trampoline += assemble("s_setpc_b64 s[2:3]", agent);
-//
-//        std::memcpy(reinterpret_cast<void*>(trampolineStartAddr), trampoline.data(), trampoline.size());
-//        std::memcpy(reinterpret_cast<void *>(instr.getDeviceAddress()), longJumpForTarget.data(), longJumpForTarget.size());
-//    }
-//
-//#ifdef LUTHIER_LOG_ENABLE_DEBUG
-////    fmt::println("content of the header: {}", std::string(reinterpret_cast<const char*>(instr.getDeviceAddress() - 0x1000), 0x750));
-////    std::memset(reinterpret_cast<void*>(instr.getDeviceAddress() - 0x1000), 0, 0x750);
-//    auto finalTargetInstructions =
-//        luthier::Disassembler::Instance().disassemble(reinterpret_cast<luthier_address_t>(instr.getKernelDescriptor()));
-//    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Instrumented Kernel Final View:\n");
-//
-//    for (const auto& i: finalTargetInstructions) {
-//        auto printFormat = instr.getDeviceAddress() <= i.getDeviceAddress() && (i.getDeviceAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
-//                                                                                                                                                                    fmt::emphasis::underline :
-//                                                                                                                                                                    fmt::emphasis::bold;
-//        fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getDeviceAddress(), i.getInstr());
-//    }
-//    auto finalInstrumentationInstructions =
-//        luthier::Disassembler::Instance().disassemble(agent, instrmntTextSectionStart,
-//                                                    dummyInstrmnt.size() + nopInstr.size() + trampoline.size());
-//    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::orange_red), "Instrumented Kernel Final View:\n");
-//    for (const auto& i: finalInstrumentationInstructions) {
-//        fmt::print(stdout, fmt::emphasis::bold, "{:#x}: {:s}\n", i.getHostAddress(), i.getInstr());
-//    }
-//#endif
-//
-//#ifdef LUTHIER_LOG_ENABLE_DEBUG
-//    auto hostInstructions =
-//        luthier::Disassembler::Instance().disassemble(agent, luthier::co_manip::getHostLoadedCodeObjectOfExecutable(instr.getExecutable(), agent)[0].data + 0x1000, 0x54);
-//    fmt::print(stdout, fmt::emphasis::bold | fg(fmt::color::aquamarine), "Host Executable:\n");
-//
-//    for (const auto& i: hostInstructions) {
-//        auto printFormat = instr.getDeviceAddress() <= i.getHostAddress() && (i.getHostAddress() + i.getSize()) <= (instr.getDeviceAddress() + instr.getSize()) ?
-//                                                                                                                                                                    fmt::emphasis::underline :
-//                                                                                                                                                                    fmt::emphasis::bold;
-//        fmt::print(stdout, printFormat, "{:#x}: {:s}\n", i.getHostAddress(), i.getInstr());
-//    }
-//#endif
-//
-//
-//
-//
-//
-//    LUTHIER_LOG_FUNCTION_CALL_END
-//}

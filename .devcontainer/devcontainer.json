@@ -1,0 +1,11 @@
+{
+  "name": "Luthier",
+
+  "context": "..",
+
+  "image": "rocm/dev-ubuntu-22.04:6.0-complete",
+
+
+  "runArgs": ["--device=/dev/kfd",  "--device=/dev/dri", "--ipc=host", "--group-add=video", "--shm-size=16G",
+    "--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"]
+}

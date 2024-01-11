@@ -1,6 +1,7 @@
 #include "hsa_executable_symbol.hpp"
 
 #include "context_manager.hpp"
+#include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_loaded_code_object.hpp"
 

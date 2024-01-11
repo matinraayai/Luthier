@@ -10,6 +10,7 @@
 
 #include "context_manager.hpp"
 #include "hsa_executable.hpp"
+#include "hsa_agent.hpp"
 #include "hsa_isa.hpp"
 
 namespace luthier {

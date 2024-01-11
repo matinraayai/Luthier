@@ -5,7 +5,6 @@
 #include <optional>
 #include <string>
 
-#include "code_object_manipulation.hpp"
 #include "code_view.hpp"
 #include "hsa_handle_type.hpp"
 #include "hsa_kernel_descriptor.hpp"
