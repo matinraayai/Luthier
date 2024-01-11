@@ -5,18 +5,24 @@
                 "/opt/rocm/include",
                 "/opt/rocm/llvm/include",
                 "${workspaceRoot}/include",
-                "${workspaceRoot}/ext/fmt/include",
-                "${workspaceRoot}/ext/elfio",
-                "${workspaceRoot}/ext/boost",
-                "${workspaceRoot}/ext/boost/libs/utility/include",
-                "${workspaceRoot}/ext/boost/libs/detail/include"
+                "${workspaceRoot}/ext/Source/fmt/include",
+                "${workspaceRoot}/ext/Source/elfio",
+                "${workspaceRoot}/ext/Source/boost",
+                "${workspaceRoot}/ext/Source/boost/libs/utility/include",
+                "${workspaceRoot}/ext/Source/boost/libs/detail/include",
+                "${workspaceRoot}/ext/Source/llvm-project/llvm/include"
             ],
-            "defines": ["AMD_INTERNAL_BUILD", "FMT_HEADER_ONLY",
-                        "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1",
-                        "LUTHIER_LOG_ENABLE_DEBUG", "_GLIBCXX_DEBUG"],
+            "defines": [
+                "AMD_INTERNAL_BUILD",
+                "FMT_HEADER_ONLY",
+                "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1",
+                "LUTHIER_LOG_ENABLE_DEBUG",
+                "_GLIBCXX_DEBUG"
+            ],
             "cppStandard": "c++20",
             "name": "Linux",
-            "compileCommands": "${workspaceRoot}/.vscode/compile_commands.json"
+            "compileCommands": "${workspaceRoot}/.vscode/compile_commands.json",
+            "configurationProvider": "ms-vscode.cmake-tools"
         }
     ],
     "version": 4

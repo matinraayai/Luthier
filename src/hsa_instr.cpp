@@ -1,8 +1,8 @@
 #include "hsa_instr.hpp"
+#include "hsa_executable.hpp"
+#include "hsa_agent.hpp"
 
 #include <utility>
-
-#include "hsa_executable.hpp"
 
 namespace luthier::hsa {
 
