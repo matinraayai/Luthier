@@ -62,6 +62,7 @@ class Disassembler {
     }
 
     const std::vector<hsa::Instr> *disassemble(const hsa::ExecutableSymbol &symbol,
+                                               std::optional<hsa::Isa> isa = std::nullopt,
                                                std::optional<size_t> size = std::nullopt);
 
     //TODO: ISA has to be detected from the ELF, not passed manually

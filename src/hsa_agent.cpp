@@ -1,4 +1,5 @@
 #include "hsa_agent.hpp"
+
 #include "hsa_isa.hpp"
 
 //
@@ -114,18 +115,24 @@
 
 namespace luthier::hsa {
 
-std::vector<Isa> GpuAgent::getIsa() const {
-    std::vector<Isa> supportedIsaList;
-    auto iterator = [](hsa_isa_t isa, void* data) {
-        auto supportedIsaList = reinterpret_cast<std::vector<Isa>*>(data);
+void GpuAgent::getIsa(llvm::SmallVectorImpl<Isa> &isaList) const {
+    auto iterator = [](hsa_isa_t isa, void *data) {
+        auto supportedIsaList = reinterpret_cast<llvm::SmallVectorImpl<Isa> *>(data);
         supportedIsaList->emplace_back(isa);
         return HSA_STATUS_SUCCESS;
     };
 
-    LUTHIER_HSA_CHECK(getApiTable().core.hsa_agent_iterate_isas_fn(this->asHsaType(),
-                                                                   iterator, &supportedIsaList));
-
-    return supportedIsaList;
+    LUTHIER_HSA_CHECK(getApiTable().core.hsa_agent_iterate_isas_fn(this->asHsaType(), iterator, &isaList));
 }
+hsa::Isa GpuAgent::getIsa() const {
+    hsa_isa_t out;
+    auto iterator = [](hsa_isa_t isa, void *data) {
+        *reinterpret_cast<hsa_isa_t *>(data) = isa;
+        return HSA_STATUS_INFO_BREAK;
+    };
+
+    getApiTable().core.hsa_agent_iterate_isas_fn(this->asHsaType(), iterator, &out);
+    return hsa::Isa(out);
 }
 
+}// namespace luthier::hsa

@@ -2,8 +2,9 @@
 #define HSA_AGENT_HPP
 #include "hsa_handle_type.hpp"
 #include "hsa_intercept.hpp"
+#include "hsa_isa.hpp"
 #include <hsa/hsa.h>
-#include <string>
+#include <llvm/ADT/SmallVector.h>
 
 //#define AGENT_COMGR_META_ACCESSOR(metaName, metaType, typeConvertor) \
 //    metaType get##metaName##fromComgrMeta() {                                 \
@@ -115,13 +116,13 @@ namespace luthier::hsa {
 //        return std::any_cast<metaReturnType>(hsaMetaDataMap_.at((hsa_agent_info_t) hsaInfoType));         \
 //    }
 
-class Isa;
-
 class GpuAgent : public HandleType<hsa_agent_t> {
  public:
     explicit GpuAgent(hsa_agent_t agent) : HandleType<hsa_agent_t>(agent){};
 
-    [[nodiscard]] std::vector<Isa> getIsa() const;
+    void getIsa(llvm::SmallVectorImpl<Isa>& isaList) const;
+
+    hsa::Isa getIsa() const;
 };
 
 }// namespace luthier::hsa

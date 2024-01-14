@@ -20,10 +20,9 @@ add_library(luthier SHARED
         src/instrumentation_function.hpp src/hsa_executable.hpp src/hsa_executable.cpp src/hsa_executable_symbol.hpp
         src/hsa_agent.hpp src/hsa_handle_type.hpp src/hsa_type.hpp src/hsa_agent.cpp src/hsa_executable_symbol.cpp
         src/hsa_loaded_code_object.hpp src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp
-        src/code_view.hpp src/code_view.cpp src/hsa_kernel_descriptor.hpp src/llvm_mc.hpp src/llvm_mc.cpp
-        src/context_manager.cpp src/hsa_instr.hpp src/hsa_instr.cpp src/hsa_code_object_reader.hpp
-        src/hsa_code_object_reader.cpp
-        src/hsa_kernel_descriptor.cpp)
+        src/code_view.hpp src/code_view.cpp src/hsa_kernel_descriptor.hpp src/context_manager.cpp src/hsa_instr.hpp
+        src/hsa_instr.cpp src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/hsa_kernel_descriptor.cpp
+        src/hsa.hpp src/hsa.cpp)
 # ======================================================================================================================
 
 # User Options =========================================================================================================

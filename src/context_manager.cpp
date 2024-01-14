@@ -16,35 +16,19 @@
 #include <llvm/MC/MCRegisterInfo.h>
 #include <llvm/MC/MCStreamer.h>
 #include <llvm/MC/MCSubtargetInfo.h>
+#include <llvm/MC/MCTargetOptions.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/TargetOptions.h>
 
-#include "error.h"
+#include <memory>
+
+#include "hsa.hpp"
 #include "hsa_agent.hpp"
-#include "hsa_executable.hpp"
-#include "hsa_isa.hpp"
 
 namespace luthier {
 
-hsa_status_t ContextManager::initGpuAgentList() {
-    auto &coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
-
-    auto returnGpuAgentsCallback = [](hsa_agent_t agent, void *data) {
-        auto agentMap = reinterpret_cast<std::vector<hsa::GpuAgent> *>(data);
-        hsa_device_type_t dev_type = HSA_DEVICE_TYPE_CPU;
-
-        hsa_status_t stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &dev_type);
-
-        if (stat != HSA_STATUS_SUCCESS) return stat;
-        if (dev_type == HSA_DEVICE_TYPE_GPU) { agentMap->push_back(luthier::hsa::GpuAgent(agent)); }
-        return stat;
-    };
-    return coreTable.hsa_iterate_agents_fn(returnGpuAgentsCallback, &agents_);
-}
-
 ContextManager::ContextManager() {
-    // Initialize the GpuAgent list
-    LUTHIER_HSA_CHECK(initGpuAgentList());
 
     LLVMInitializeAMDGPUTarget();
     LLVMInitializeAMDGPUTargetInfo();
@@ -53,76 +37,53 @@ ContextManager::ContextManager() {
     LLVMInitializeAMDGPUAsmParser();
     LLVMInitializeAMDGPUAsmPrinter();
 
-    for (const auto &agent: getHsaAgents()) {
-        for (const auto &isa: agent.getIsa()) {
+    llvm::SmallVector<hsa::GpuAgent, 8> agents;
+    hsa::getGpuAgents(agents);
+    for (const auto &agent: agents) {
+        llvm::SmallVector<hsa::Isa, 1> isaList;
+        agent.getIsa(isaList);
+
+        for (const auto &isa: isaList) {
+            auto targetOptions = new llvm::TargetOptions();
 
             std::string targetTriple = isa.getLLVMTargetTriple();
             std::string targetIsa = isa.getLLVMTarget();
             std::string error;
 
-            const llvm::Target *theTarget = llvm::TargetRegistry::lookupTarget(targetTriple, error);
-            assert(theTarget);
-            std::unique_ptr<const llvm::MCRegisterInfo> mri(theTarget->createMCRegInfo(targetTriple));
-            assert(mri);
+            auto target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
+            assert(target);
 
-            auto mcOptions = std::make_unique<const llvm::MCTargetOptions>();
-            std::unique_ptr<const llvm::MCAsmInfo> mai(theTarget->createMCAsmInfo(*mri, targetTriple, *mcOptions));
-            assert(mai);
+            auto MRI = target->createMCRegInfo(targetTriple);
+            assert(MRI);
 
-            std::unique_ptr<const llvm::MCInstrInfo> mii(theTarget->createMCInstrInfo());
-            assert(mii);
+            auto MAI = target->createMCAsmInfo(*MRI, targetTriple, targetOptions->MCOptions);
+            assert(MAI);
 
-            std::unique_ptr<const llvm::MCInstrAnalysis> mia(theTarget->createMCInstrAnalysis(mii.get()));
+            auto MII = target->createMCInstrInfo();
+            assert(MII);
 
-            std::unique_ptr<const llvm::MCSubtargetInfo> sti(
-                theTarget->createMCSubtargetInfo(targetTriple, isa.getProcessor(), isa.getFeatureString()));
-            assert(sti);
+            auto MIA = target->createMCInstrAnalysis(MII);
+            assert(MIA);
 
-            std::unique_ptr<llvm::MCInstPrinter> ip(theTarget->createMCInstPrinter(
-                llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri));
-            assert(ip);
+            auto STI = target->createMCSubtargetInfo(targetTriple, isa.getProcessor(), isa.getFeatureString());
+            assert(STI);
 
-            llvmContexts_.insert({isa,
-                                  LLVMMCTargetInfo(theTarget, std::move(mri), std::move(mcOptions), std::move(mai),
-                                                   std::move(mii), std::move(mia), std::move(sti), std::move(ip))});
+            auto IP =
+                target->createMCInstPrinter(llvm::Triple(targetTriple), MAI->getAssemblerDialect(), *MAI, *MII, *MRI);
+            assert(IP);
+            auto info = llvmContexts_.insert({isa, std::make_unique<LLVMMCTargetInfo>()}).first;
+            info->second->target_ = target;
+            info->second->MRI_.reset(MRI);
+            info->second->MAI_.reset(MAI);
+            info->second->MII_.reset(MII);
+            info->second->MIA_.reset(MIA);
+            info->second->STI_.reset(STI);
+            info->second->IP_.reset(IP);
+            info->second->targetOptions_ = targetOptions;
         }
     }
 }
 
-std::vector<hsa::Executable> ContextManager::getHsaExecutables() const {
-    const auto &loaderApi = HsaInterceptor::instance().getHsaVenAmdLoaderTable();
-    std::vector<luthier::hsa::Executable> out;
-    auto iterator = [](hsa_executable_t exec, void *data) {
-        auto out = reinterpret_cast<std::vector<luthier::hsa::Executable> *>(data);
-        out->emplace_back(exec);
-        return HSA_STATUS_SUCCESS;
-    };
-    LUTHIER_HSA_CHECK(loaderApi.hsa_ven_amd_loader_iterate_executables(iterator, &out));
-    return out;
-}
-ContextManager::~ContextManager() = default;
+ContextManager::~ContextManager() { llvmContexts_.clear(); }
 
-LLVMMCTargetInfo::LLVMMCTargetInfo(const llvm::Target *target, std::unique_ptr<const llvm::MCRegisterInfo> mri,
-                                   std::unique_ptr<const llvm::MCTargetOptions> mcOptions,
-                                   std::unique_ptr<const llvm::MCAsmInfo> mai,
-                                   std::unique_ptr<const llvm::MCInstrInfo> mii,
-                                   std::unique_ptr<const llvm::MCInstrAnalysis> mia,
-                                   std::unique_ptr<const llvm::MCSubtargetInfo> sti,
-                                   std::unique_ptr<llvm::MCInstPrinter> ip)
-    : target_(target),
-      MRI_(std::move(mri)),
-      MCOptions_(std::move(mcOptions)),
-      MAI_(std::move(mai)),
-      MII_(std::move(mii)),
-      MIA_(std::move(mia)),
-      STI_(std::move(sti)),
-      IP_(std::move(ip)) {
-    assert(target_);
-    assert(MRI_);
-    assert(MCOptions_);
-    assert(MAI_);
-    assert(MII_);
-    assert(MIA_);
-    assert(STI_);
-};
 }// namespace luthier

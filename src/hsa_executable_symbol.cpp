@@ -4,6 +4,7 @@
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_loaded_code_object.hpp"
+#include "hsa.hpp"
 
 hsa_symbol_kind_t luthier::hsa::ExecutableSymbol::getType() const {
     hsa_symbol_kind_t out;
@@ -47,7 +48,10 @@ luthier::hsa::ExecutableSymbol luthier::hsa::ExecutableSymbol::fromKernelDescrip
 
     // Check which executable this kernel object (address) belongs to
     LUTHIER_HSA_CHECK(loaderTable.hsa_ven_amd_loader_query_executable(reinterpret_cast<const void *>(kd), &executable));
-    for (const auto &a: ContextManager::instance().getHsaAgents()) {
+    llvm::SmallVector<GpuAgent, 8> agents;
+    hsa::getGpuAgents(agents);
+
+    for (const auto &a: agents) {
         for (const auto &s: hsa::Executable(executable).getSymbols(a)) {
             if (s.getKernelDescriptor() == kd) return s;
         }
