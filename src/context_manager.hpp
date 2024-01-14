@@ -1,9 +1,12 @@
-#ifndef CONTEXT_MANAGER_HPP
-#define CONTEXT_MANAGER_HPP
-#include "hsa_isa.hpp"
+#ifndef TARGET_MANAGER_HPP
+#define TARGET_MANAGER_HPP
+#include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
-#include <optional>
+
+#include "hsa_isa.hpp"
+#include "llvm/Target/TargetOptions.h"
 
 namespace llvm {
 
@@ -11,7 +14,7 @@ class Target;
 
 class MCRegisterInfo;
 
-class MCTargetOptions;
+class TargetOptions;
 
 class MCAsmInfo;
 
@@ -26,43 +29,44 @@ class MCInstPrinter;
 
 namespace luthier {
 
-namespace hsa {
-
-class GpuAgent;
-
-class Isa;
-
-class Executable;
-}// namespace hsa
+class ContextManager;
 
 struct LLVMMCTargetInfo {
     friend class ContextManager;
 
- public:
-    const llvm::Target *target_;
-    std::unique_ptr<const llvm::MCRegisterInfo> MRI_;
-    std::unique_ptr<const llvm::MCTargetOptions> MCOptions_;
-    std::unique_ptr<const llvm::MCAsmInfo> MAI_;
-    std::unique_ptr<const llvm::MCInstrInfo> MII_;
-    std::unique_ptr<const llvm::MCInstrAnalysis> MIA_;
-    std::unique_ptr<const llvm::MCSubtargetInfo> STI_;
-    std::unique_ptr<llvm::MCInstPrinter> IP_;
-    LLVMMCTargetInfo() = delete;
-
  private:
-    LLVMMCTargetInfo(const llvm::Target *target, std::unique_ptr<const llvm::MCRegisterInfo> mri,
-                     std::unique_ptr<const llvm::MCTargetOptions> mcOptions, std::unique_ptr<const llvm::MCAsmInfo> mai,
-                     std::unique_ptr<const llvm::MCInstrInfo> mii, std::unique_ptr<const llvm::MCInstrAnalysis> mia,
-                     std::unique_ptr<const llvm::MCSubtargetInfo> sti,
-                     std::unique_ptr<llvm::MCInstPrinter> ip);
+    const llvm::Target *target_{nullptr};
+    std::unique_ptr<const llvm::MCRegisterInfo> MRI_{nullptr};
+    std::unique_ptr<const llvm::MCAsmInfo> MAI_{nullptr};
+    std::unique_ptr<const llvm::MCInstrInfo> MII_{nullptr};
+    std::unique_ptr<const llvm::MCInstrAnalysis> MIA_{nullptr};
+    std::unique_ptr<const llvm::MCSubtargetInfo> STI_{nullptr};
+    std::unique_ptr<llvm::MCInstPrinter> IP_{nullptr};
+    llvm::TargetOptions* targetOptions_{nullptr}; //TODO: FIX the issue with the destructor
+
+
+ public:
+
+    [[nodiscard]] const llvm::Target *getTarget() const { return target_; }
+
+    [[nodiscard]] const llvm::MCRegisterInfo *getMCRegisterInfo() const { return MRI_.get(); }
+
+    [[nodiscard]] const llvm::MCAsmInfo *getMCAsmInfo() const { return MAI_.get(); }
+
+    [[nodiscard]] const llvm::MCInstrInfo *getMCInstrInfo() const { return MII_.get(); }
+
+    [[nodiscard]] const llvm::MCInstrAnalysis *getMCInstrAnalysis() const { return MIA_.get(); }
+
+    [[nodiscard]] const llvm::MCSubtargetInfo *getMCSubTargetInfo() const { return STI_.get(); }
+
+    [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP_.get(); }
+
+    [[nodiscard]] llvm::TargetOptions *getTargetOptions() const { return targetOptions_; }
 };
 
 class ContextManager {
  private:
-    std::vector<luthier::hsa::GpuAgent> agents_;
-    std::unordered_map<hsa::Isa, LLVMMCTargetInfo> llvmContexts_;
-
-    hsa_status_t initGpuAgentList();
+    std::unordered_map<hsa::Isa, std::unique_ptr<LLVMMCTargetInfo>> llvmContexts_;
 
     ContextManager();
     ~ContextManager();
@@ -76,11 +80,7 @@ class ContextManager {
         return instance;
     }
 
-    const std::vector<hsa::GpuAgent> &getHsaAgents() const { return agents_; };
-
-    std::vector<luthier::hsa::Executable> getHsaExecutables() const;
-
-    const LLVMMCTargetInfo& getLLVMTargetInfo(const hsa::Isa& isa) const {return llvmContexts_.at(isa);}
+    const LLVMMCTargetInfo &getLLVMTargetInfo(const hsa::Isa &isa) const { return *llvmContexts_.at(isa); }
 };
 
 }// namespace luthier

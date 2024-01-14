@@ -19,10 +19,10 @@ const Disassembler::DisassemblyInfo &luthier::Disassembler::getDisassemblyInfo(c
     if (!disassemblyInfoMap_.contains(isa)) {
         const auto &targetInfo = ContextManager::instance().getLLVMTargetInfo(isa);
         const auto targetTriple = llvm::Triple(isa.getLLVMTargetTriple());
-        std::unique_ptr<llvm::MCContext> ctx(new (std::nothrow) llvm::MCContext(
-            targetTriple, targetInfo.MAI_.get(), targetInfo.MRI_.get(), targetInfo.STI_.get()));
+        std::unique_ptr<llvm::MCContext> ctx(new(std::nothrow) llvm::MCContext(
+            targetTriple, targetInfo.getMCAsmInfo(), targetInfo.getMCRegisterInfo(), targetInfo.getMCSubTargetInfo()));
         std::unique_ptr<const llvm::MCDisassembler> disAsm(
-            targetInfo.target_->createMCDisassembler(*(targetInfo.STI_), *ctx));
+            targetInfo.getTarget()->createMCDisassembler(*(targetInfo.getMCSubTargetInfo()), *ctx));
         disassemblyInfoMap_.insert({isa, DisassemblyInfo{std::move(ctx), std::move(disAsm)}});
     }
     return disassemblyInfoMap_.at(isa);
@@ -33,7 +33,7 @@ std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, luthier
     const auto &targetInfo = ContextManager::instance().getLLVMTargetInfo(isa);
     const auto &disAsm = disassemblyInfo.disAsm_;
 
-    size_t maxReadSize = targetInfo.MAI_->getMaxInstLength();
+    size_t maxReadSize = targetInfo.getMCAsmInfo()->getMaxInstLength();
     size_t idx = 0;
     auto currentAddress = reinterpret_cast<luthier_address_t>(code.data());
     std::vector<llvm::MCInst> instructions;
@@ -60,19 +60,21 @@ std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, luthier
     return instructions;
 }
 
-const std::vector<hsa::Instr>* luthier::Disassembler::disassemble(const hsa::ExecutableSymbol &symbol,
-                                                                                std::optional<size_t> size) {
+const std::vector<hsa::Instr> *luthier::Disassembler::disassemble(const hsa::ExecutableSymbol &symbol,
+                                                                  std::optional<hsa::Isa> isa,
+                                                                  std::optional<size_t> size) {
     if (!disassembledSymbols_.contains(symbol)) {
         const auto symbolType = symbol.getType();
         assert(symbolType != HSA_SYMBOL_KIND_VARIABLE);
-        const auto isa = symbol.getAgent().getIsa()[0];
+        if (!isa.has_value())
+            isa.emplace(symbol.getAgent().getIsa());
 
         luthier::byte_string_view code =
             symbol.getType() == HSA_SYMBOL_KIND_KERNEL ? symbol.getKernelCode() : symbol.getIndirectFunctionCode();
 
         if (size.has_value()) code = code.substr(0, *size > code.size() ? code.size() : *size);
 
-        std::vector<llvm::MCInst> instructions = disassemble(isa, code);
+        std::vector<llvm::MCInst> instructions = disassemble(*isa, code);
         disassembledSymbols_.insert({symbol, std::make_unique<std::vector<hsa::Instr>>()});
         auto &out = disassembledSymbols_.at(symbol);
         out->reserve(instructions.size());

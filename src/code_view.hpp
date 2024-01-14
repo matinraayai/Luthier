@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "luthier_types.h"
+#include "llvm/Support/MemoryBuffer.h"
 #define CL_TARGET_OPENCL_VERSION 220
 #include <CL/cl.h>
 
@@ -361,6 +362,9 @@ class ElfView : public std::enable_shared_from_this<ElfView> {
             io_.emplace();
             // All elfio objects are loaded with lazy=true in ElfViewImpl to prevent additional memory copy
             if (not io_->load(*dataStringStream_, true)) { throw std::runtime_error("Failed to load the ELF file."); }
+//            std::unique_ptr<llvm::MemoryBuffer> buf = llvm::MemoryBuffer::getMemBuffer(
+//                llvm::StringRef(reinterpret_cast<const char*>(data_.data(), data_.size())), "", false);
+
         }
         return io_.value();
     }

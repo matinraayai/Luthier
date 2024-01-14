@@ -10,11 +10,17 @@
 #include "hsa_loaded_code_object.hpp"
 #include "instrumentation_function.hpp"
 #include "log.hpp"
+#include "hsa.hpp"
 
 void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
+    llvm::SmallVector<hsa::Executable> executables;
+    hsa::getAllExecutables(executables);
 
-    for (const auto &e: luthier::ContextManager::instance().getHsaExecutables()) {
-        for (const auto &a: luthier::ContextManager::instance().getHsaAgents()) {
+    llvm::SmallVector<hsa::GpuAgent, 8> agents;
+    hsa::getGpuAgents(agents);
+
+    for (const auto &e: executables) {
+        for (const auto &a: agents) {
             if (e.getSymbolByName(a, LUTHIER_RESERVED_MANAGED_VAR).has_value()
                 || e.getSymbolByName(a, std::string(LUTHIER_RESERVED_MANAGED_VAR) + ".managed")) {
                 toolExecutables_.insert(e);
@@ -27,8 +33,12 @@ void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
 void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunctions(
     const std::vector<std::tuple<const void *, const char *>> &instrumentationFunctionInfo) {
     registerLuthierHsaExecutables();
+
+    llvm::SmallVector<hsa::GpuAgent, 8> agents;
+    hsa::getGpuAgents(agents);
+
     for (const auto &e: toolExecutables_) {
-        for (const auto &a: luthier::ContextManager::instance().getHsaAgents()) {
+        for (const auto &a: agents) {
             std::unordered_map<std::string, hsa::ExecutableSymbol> instKernelSymbols;
             std::unordered_map<std::string, hsa::ExecutableSymbol> instFunctionSymbols;
             auto symbols = e.getSymbols(a);
@@ -46,7 +56,6 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
                     if (functions_.contains(instKerShadowPtr)) {
                         functions_.at(instKerShadowPtr).insert({a, {functionSymbol, kernelSymbol}});
                     } else {
-                        fmt::println("Function: {:#x}", reinterpret_cast<luthier_address_t>(instKerShadowPtr));
                         functions_.insert({instKerShadowPtr, {{a, {functionSymbol, kernelSymbol}}}});
                     }
                 }
