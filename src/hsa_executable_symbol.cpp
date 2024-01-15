@@ -1,10 +1,9 @@
 #include "hsa_executable_symbol.hpp"
 
-#include "context_manager.hpp"
+#include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "hsa.hpp"
 
 hsa_symbol_kind_t luthier::hsa::ExecutableSymbol::getType() const {
     hsa_symbol_kind_t out;

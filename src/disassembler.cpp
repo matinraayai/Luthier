@@ -8,16 +8,16 @@
 #include <llvm/MC/MCRegisterInfo.h>
 #include <llvm/MC/TargetRegistry.h>
 
-#include "context_manager.hpp"
-#include "hsa_executable.hpp"
 #include "hsa_agent.hpp"
+#include "hsa_executable.hpp"
 #include "hsa_isa.hpp"
+#include "target_manager.hpp"
 
 namespace luthier {
 
 const Disassembler::DisassemblyInfo &luthier::Disassembler::getDisassemblyInfo(const luthier::hsa::Isa &isa) {
     if (!disassemblyInfoMap_.contains(isa)) {
-        const auto &targetInfo = ContextManager::instance().getLLVMTargetInfo(isa);
+        const auto &targetInfo = TargetManager::instance().getTargetInfo(isa);
         const auto targetTriple = llvm::Triple(isa.getLLVMTargetTriple());
         std::unique_ptr<llvm::MCContext> ctx(new(std::nothrow) llvm::MCContext(
             targetTriple, targetInfo.getMCAsmInfo(), targetInfo.getMCRegisterInfo(), targetInfo.getMCSubTargetInfo()));
@@ -30,7 +30,7 @@ const Disassembler::DisassemblyInfo &luthier::Disassembler::getDisassemblyInfo(c
 
 std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, luthier::byte_string_view code) {
     const auto &disassemblyInfo = getDisassemblyInfo(isa);
-    const auto &targetInfo = ContextManager::instance().getLLVMTargetInfo(isa);
+    const auto &targetInfo = TargetManager::instance().getTargetInfo(isa);
     const auto &disAsm = disassemblyInfo.disAsm_;
 
     size_t maxReadSize = targetInfo.getMCAsmInfo()->getMaxInstLength();

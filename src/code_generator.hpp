@@ -1,12 +1,13 @@
 #ifndef CODE_GENERATOR_HPP
 #define CODE_GENERATOR_HPP
+#include <unordered_map>
+
 #include "code_view.hpp"
-#include "hsa_isa.hpp"
-#include "context_manager.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_instr.hpp"
+#include "hsa_isa.hpp"
 #include "luthier_types.h"
-#include <unordered_map>
+#include "target_manager.hpp"
 
 namespace luthier {
 class CodeGenerator {
@@ -43,7 +44,7 @@ class CodeGenerator {
   llvm::MCInst makeInstruction(const luthier::hsa::Isa &isa, unsigned int opcodeId, const Ops &... operands) {
       llvm::MCInst out;
       unsigned int targetOperand = llvmTargetInstructions_.at(isa).at(opcodeId);
-      const auto &targetInfo = luthier::ContextManager::instance().getLLVMTargetInfo(isa);
+      const auto &targetInfo = luthier::TargetManager::instance().getTargetInfo(isa);
 
       out.setOpcode(targetOperand);
       for (const auto &op: {operands...}) {
