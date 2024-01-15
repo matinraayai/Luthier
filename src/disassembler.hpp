@@ -1,6 +1,5 @@
 #ifndef DISASSEMBLER_HPP
 #define DISASSEMBLER_HPP
-#include <amd_comgr/amd_comgr.h>
 #include <llvm/MC/MCContext.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInst.h>

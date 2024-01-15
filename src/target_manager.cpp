@@ -1,5 +1,3 @@
-#include "context_manager.hpp"
-
 #include <llvm/MC/MCAsmBackend.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCCodeEmitter.h>
@@ -25,10 +23,11 @@
 
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
+#include "target_manager.hpp"
 
 namespace luthier {
 
-ContextManager::ContextManager() {
+TargetManager::TargetManager() {
 
     LLVMInitializeAMDGPUTarget();
     LLVMInitializeAMDGPUTargetInfo();
@@ -71,7 +70,7 @@ ContextManager::ContextManager() {
             auto IP =
                 target->createMCInstPrinter(llvm::Triple(targetTriple), MAI->getAssemblerDialect(), *MAI, *MII, *MRI);
             assert(IP);
-            auto info = llvmContexts_.insert({isa, std::make_unique<LLVMMCTargetInfo>()}).first;
+            auto info = llvmTargetInfo_.insert({isa, std::make_unique<TargetInfo>()}).first;
             info->second->target_ = target;
             info->second->MRI_.reset(MRI);
             info->second->MAI_.reset(MAI);
@@ -84,6 +83,6 @@ ContextManager::ContextManager() {
     }
 }
 
-ContextManager::~ContextManager() { llvmContexts_.clear(); }
+TargetManager::~TargetManager() { llvmTargetInfo_.clear(); }
 
 }// namespace luthier

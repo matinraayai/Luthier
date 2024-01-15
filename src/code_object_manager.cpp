@@ -2,15 +2,15 @@
 
 #include <vector>
 
-#include "context_manager.hpp"
 #include "disassembler.hpp"
+#include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
 #include "hsa_loaded_code_object.hpp"
 #include "instrumentation_function.hpp"
 #include "log.hpp"
-#include "hsa.hpp"
+#include "target_manager.hpp"
 
 void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
     llvm::SmallVector<hsa::Executable> executables;

@@ -9,7 +9,6 @@
 
 #include "MCTargetDesc/AMDGPUTargetStreamer.h"
 #include "code_object_manager.hpp"
-#include "context_manager.hpp"
 #include "disassembler.hpp"
 #include "elfio/elfio.hpp"
 #include "hsa.hpp"
@@ -40,9 +39,11 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/AMDGPUAddrSpace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
 #include "log.hpp"
+#include "target_manager.hpp"
 
 #define GET_REGINFO_ENUM
 #include "AMDGPUGenRegisterInfo.inc"
@@ -59,6 +60,7 @@
 #include "AMDGPUGenInstrInfo.inc"
 #include "fmt/ranges.h"
 #include "llvm/BinaryFormat/ELF.h"
+#include "llvm/IR/Instructions.h"
 
 luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::byte_string_t &code,
                                                                               const hsa::GpuAgent &agent) {
@@ -196,7 +198,7 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::s
 }
 
 luthier::CodeGenerator::CodeGenerator() {
-    const auto &contextManager = luthier::ContextManager::instance();
+    const auto &contextManager = luthier::TargetManager::instance();
     llvm::SmallVector<hsa::GpuAgent, 8> hsaAgents;
 
     hsa::getGpuAgents(hsaAgents);
@@ -213,7 +215,7 @@ luthier::CodeGenerator::CodeGenerator() {
     // For each unique ISA, identify the supported instructions, and split the target-agnostic and target-specific
     // opcodes to match them later
     for (const auto &isa: uniqueISAs) {
-        const auto &targetInfo = contextManager.getLLVMTargetInfo(isa);
+        const auto &targetInfo = contextManager.getTargetInfo(isa);
         llvm::FeatureBitset subTargetFeatures = targetInfo.getMCSubTargetInfo()->getFeatureBits();
         llvm::StringMap<unsigned int> nonTargetOpcodes;
         llvm::StringMap<unsigned int> targetOpcodes;
@@ -264,9 +266,9 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     LUTHIER_LOG_FUNCTION_CALL_START
     auto agent = instr.getAgent();
     auto &codeObjectManager = luthier::CodeObjectManager::instance();
-    auto &contextManager = luthier::ContextManager::instance();
+    auto &contextManager = luthier::TargetManager::instance();
 
-    const auto &targetInfo = contextManager.getLLVMTargetInfo(agent.getIsa());
+    const auto &targetInfo = contextManager.getTargetInfo(agent.getIsa());
 //    auto Context = std::make_unique<llvm::LLVMContext>();
 //    auto triple = agent.getIsa().getLLVMTargetTriple();
 //    auto processor = agent.getIsa().getProcessor();
@@ -279,7 +281,55 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
 //    std::unique_ptr<llvm::Module> Module = std::make_unique<llvm::Module>("MyModule", *Context);
 //    Module->setDataLayout(TheTargetMachine->createDataLayout());
 //    auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TheTargetMachine.get());
-    //    llvm::Function f;
+//
+//    llvm::Type *const ReturnType = llvm::Type::getVoidTy(Module->getContext());
+//    llvm::Type *const MemParamType = llvm::PointerType::get(
+//        llvm::Type::getInt32Ty(Module->getContext()), llvm::AMDGPUAS::GLOBAL_ADDRESS /*default address space*/);
+//    llvm::FunctionType *FunctionType =
+//        llvm::FunctionType::get(ReturnType, {MemParamType}, false);
+//    llvm::Function *const F = llvm::Function::Create(
+//        FunctionType, llvm::GlobalValue::ExternalLinkage, instr.getExecutableSymbol().getName(), *Module);
+//    F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+//
+//
+//    llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module->getContext(), "", F);
+//    new llvm::UnreachableInst(Module->getContext(), BB);
+//    llvm::MachineFunction &MF = MMIWP->getMMI().getOrCreateMachineFunction(*F);
+//    auto &Properties = MF.getProperties();
+//    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
+//    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
+//    Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
+//
+//
+    const std::vector<hsa::Instr> *targetFunction = Disassembler::instance().disassemble(instr.getExecutableSymbol());
+//    for (const auto& i: *targetFunction) {
+//        const unsigned Opcode = i.getInstr().getOpcode();
+//        const llvm::MCInstrDesc &MCID = targetInfo.getMCInstrInfo()->get(Opcode);
+//        llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, DL, MCID);
+//        for (unsigned OpIndex = 0, E = i.getInstr().getNumOperands(); OpIndex < E;
+//             ++OpIndex) {
+//            const MCOperand &Op = Inst.getOperand(OpIndex);
+//            if (Op.isReg()) {
+//                const bool IsDef = OpIndex < MCID.getNumDefs();
+//                unsigned Flags = 0;
+//                const MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
+//                if (IsDef && !OpInfo.isOptionalDef())
+//                    Flags |= RegState::Define;
+//                Builder.addReg(Op.getReg(), Flags);
+//            } else if (Op.isImm()) {
+//                Builder.addImm(Op.getImm());
+//            } else if (!Op.isValid()) {
+//                llvm_unreachable("Operand is not set");
+//            } else {
+//                llvm_unreachable("Not yet implemented");
+//            }
+//        }
+//    }
+
+//    new UnreachableInst(Module->getContext(), BB);
+//    return MMI->getOrCreateMachineFunction(*F);
+
+//        llvm::Function f;
     //    llvm::MachineFunction func;
     auto genInst = makeInstruction(
         agent.getIsa(), llvm::AMDGPU::S_ADD_I32, llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
@@ -302,9 +352,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
 
     hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationKernel(deviceFunc, agent);
 
-    //    const std::vector<hsa::Instr> *instFunctionInstructions = Disassembler::instance().disassemble(instrumentationFunc);
-
-    const std::vector<hsa::Instr> *targetFunction = Disassembler::instance().disassemble(instr.getExecutableSymbol());
+//        const std::vector<hsa::Instr> *instFunctionInstructions = Disassembler::instance().disassemble(instrumentationFunc);
 
     for (const auto &i: *targetFunction) {
         std::string instStr;

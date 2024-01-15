@@ -1,12 +1,13 @@
 #ifndef TARGET_MANAGER_HPP
 #define TARGET_MANAGER_HPP
+#include <llvm/Target/TargetOptions.h>
+
 #include <memory>
 #include <optional>
 #include <unordered_map>
 #include <vector>
 
 #include "hsa_isa.hpp"
-#include "llvm/Target/TargetOptions.h"
 
 namespace llvm {
 
@@ -29,10 +30,10 @@ class MCInstPrinter;
 
 namespace luthier {
 
-class ContextManager;
+class TargetManager;
 
-struct LLVMMCTargetInfo {
-    friend class ContextManager;
+struct TargetInfo {
+    friend class TargetManager;
 
  private:
     const llvm::Target *target_{nullptr};
@@ -42,11 +43,9 @@ struct LLVMMCTargetInfo {
     std::unique_ptr<const llvm::MCInstrAnalysis> MIA_{nullptr};
     std::unique_ptr<const llvm::MCSubtargetInfo> STI_{nullptr};
     std::unique_ptr<llvm::MCInstPrinter> IP_{nullptr};
-    llvm::TargetOptions* targetOptions_{nullptr}; //TODO: FIX the issue with the destructor
-
+    llvm::TargetOptions *targetOptions_{nullptr};//TODO: FIX the issue with the destructor
 
  public:
-
     [[nodiscard]] const llvm::Target *getTarget() const { return target_; }
 
     [[nodiscard]] const llvm::MCRegisterInfo *getMCRegisterInfo() const { return MRI_.get(); }
@@ -64,23 +63,23 @@ struct LLVMMCTargetInfo {
     [[nodiscard]] llvm::TargetOptions *getTargetOptions() const { return targetOptions_; }
 };
 
-class ContextManager {
+class TargetManager {
  private:
-    std::unordered_map<hsa::Isa, std::unique_ptr<LLVMMCTargetInfo>> llvmContexts_;
+    std::unordered_map<hsa::Isa, std::unique_ptr<TargetInfo>> llvmTargetInfo_;
 
-    ContextManager();
-    ~ContextManager();
+    TargetManager();
+    ~TargetManager();
 
  public:
-    ContextManager(const ContextManager &) = delete;
-    ContextManager &operator=(const ContextManager &) = delete;
+    TargetManager(const TargetManager &) = delete;
+    TargetManager &operator=(const TargetManager &) = delete;
 
-    static inline ContextManager &instance() {
-        static ContextManager instance;
+    static inline TargetManager &instance() {
+        static TargetManager instance;
         return instance;
     }
 
-    const LLVMMCTargetInfo &getLLVMTargetInfo(const hsa::Isa &isa) const { return *llvmContexts_.at(isa); }
+    const TargetInfo &getTargetInfo(const hsa::Isa &isa) const { return *llvmTargetInfo_.at(isa); }
 };
 
 }// namespace luthier
