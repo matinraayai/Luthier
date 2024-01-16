@@ -71,7 +71,7 @@ class Disassembler {
 
     std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, byte_string_view code);
 
-    void liftModule(const hsa::ExecutableSymbol &symbol);
+    void liftKernelModule(const hsa::ExecutableSymbol &symbol);
 };
 
 }// namespace luthier
