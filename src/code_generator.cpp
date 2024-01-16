@@ -39,7 +39,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/TargetRegistry.h"
-#include "llvm/Support/AMDGPUAddrSpace.h"
+
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
 #include "log.hpp"
@@ -269,6 +269,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     auto &contextManager = luthier::TargetManager::instance();
 
     const auto &targetInfo = contextManager.getTargetInfo(agent.getIsa());
+    luthier::Disassembler::instance().liftModule(instr.getExecutableSymbol());
 //    auto Context = std::make_unique<llvm::LLVMContext>();
 //    auto triple = agent.getIsa().getLLVMTargetTriple();
 //    auto processor = agent.getIsa().getProcessor();
@@ -439,7 +440,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
 
     llvm::MCCodeEmitter *CE = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
     llvm::MCAsmBackend *MAB = targetInfo.getTarget()->createMCAsmBackend(
-        *targetInfo.getMCSubTargetInfo(), *targetInfo.getMCRegisterInfo(), targetInfo.getTargetOptions()->MCOptions);
+        *targetInfo.getMCSubTargetInfo(), *targetInfo.getMCRegisterInfo(), targetInfo.getTargetOptions().MCOptions);
 
     auto Str = std::unique_ptr<llvm::MCStreamer>(targetInfo.getTarget()->createMCObjectStreamer(
         llvm::Triple(agent.getIsa().getLLVMTargetTriple()), ctx, std::unique_ptr<llvm::MCAsmBackend>(MAB),
