@@ -35,6 +35,7 @@ TargetManager::TargetManager() {
     LLVMInitializeAMDGPUDisassembler();
     LLVMInitializeAMDGPUAsmParser();
     LLVMInitializeAMDGPUAsmPrinter();
+    LLVMInitializeAMDGPUTargetMCA();
 
     llvm::SmallVector<hsa::GpuAgent, 8> agents;
     hsa::getGpuAgents(agents);
@@ -43,8 +44,7 @@ TargetManager::TargetManager() {
         agent.getIsa(isaList);
 
         for (const auto &isa: isaList) {
-            auto targetOptions = new llvm::TargetOptions();
-
+            auto info = llvmTargetInfo_.insert({isa, std::make_unique<TargetInfo>()}).first;
             std::string targetTriple = isa.getLLVMTargetTriple();
             std::string targetIsa = isa.getLLVMTarget();
             std::string error;
@@ -55,7 +55,7 @@ TargetManager::TargetManager() {
             auto MRI = target->createMCRegInfo(targetTriple);
             assert(MRI);
 
-            auto MAI = target->createMCAsmInfo(*MRI, targetTriple, targetOptions->MCOptions);
+            auto MAI = target->createMCAsmInfo(*MRI, targetTriple, info->second->targetOptions_.MCOptions);
             assert(MAI);
 
             auto MII = target->createMCInstrInfo();
@@ -70,7 +70,7 @@ TargetManager::TargetManager() {
             auto IP =
                 target->createMCInstPrinter(llvm::Triple(targetTriple), MAI->getAssemblerDialect(), *MAI, *MII, *MRI);
             assert(IP);
-            auto info = llvmTargetInfo_.insert({isa, std::make_unique<TargetInfo>()}).first;
+
             info->second->target_ = target;
             info->second->MRI_.reset(MRI);
             info->second->MAI_.reset(MAI);
@@ -78,7 +78,6 @@ TargetManager::TargetManager() {
             info->second->MIA_.reset(MIA);
             info->second->STI_.reset(STI);
             info->second->IP_.reset(IP);
-            info->second->targetOptions_ = targetOptions;
         }
     }
 }

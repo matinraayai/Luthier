@@ -44,6 +44,8 @@ option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder"
 
 set(BOOST_VERSION "1.83.0" CACHE STRING "C++ Boost library to download and build with Luthier")
 # ======================================================================================================================
+# Required Flags for the project =======================================================================================
+set_property(GLOBAL PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 # External CXX Dependencies ============================================================================================
 include(FetchContent)
@@ -58,7 +60,6 @@ FetchContent_Declare(
         DOWNLOAD_EXTRACT_TIMESTAMP 1
         URL "https://github.com/serge1/ELFIO/archive/refs/heads/main.zip"
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/Source/elfio/
-        CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE
         INSTALL_COMMAND ""
 )
 
@@ -72,7 +73,6 @@ FetchContent_Declare(
         DOWNLOAD_EXTRACT_TIMESTAMP 1
         URL "https://github.com/fmtlib/fmt/archive/refs/heads/master.zip"
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/Source/fmt/
-        CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE
         INSTALL_COMMAND ""
 )
 
@@ -130,20 +130,27 @@ add_dependencies(luthier llvm-project)
 
 ExternalProject_Get_Property(llvm-project BINARY_DIR)
 
+ExternalProject_Get_Property(llvm-project SOURCE_DIR)
+
 target_include_directories(luthier PRIVATE ${BINARY_DIR}/lib/Target/AMDGPU/)
 
-ExternalProject_Get_Property(llvm-project SOURCE_DIR)
+target_link_directories(luthier PUBLIC ${BINARY_DIR}/lib)
 
 target_include_directories(luthier PUBLIC ${SOURCE_DIR}/llvm/lib/Target/AMDGPU/)
 
-set(LLVM_DIR ${BINARY_DIR})
+target_include_directories(luthier PUBLIC ${SOURCE_DIR}/llvm/include)
+
+target_include_directories(luthier PUBLIC ${BINARY_DIR}/include)
+
+#set(LLVM_DIR ${BINARY_DIR})
 
 # ======================================================================================================================
-find_package(LLVM REQUIRED PATHS ${LLVM_DIR} NO_DEFAULT_PATH)
+# TODO: Fix the issue with ExternalProjectAdd
+#find_package(LLVM REQUIRED PATHS ${LLVM_DIR} NO_DEFAULT_PATH)
 target_compile_definitions(luthier PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
 
-include_directories(${LLVM_INCLUDE_DIRS})
-add_definitions(${LLVM_DEFINITIONS})
+#include_directories(${LLVM_INCLUDE_DIRS})
+#add_definitions(${LLVM_DEFINITIONS})
 # ======================================================================================================================
 
 # Any Compilation Flags, Linking Configuration Left ====================================================================
@@ -158,9 +165,16 @@ target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 
 target_link_libraries(luthier hip::host elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
-        hsa-runtime64::hsa-runtime64 LLVMCore LLVMBitReader LLVMSupport LLVMMC LLVMAMDGPUTargetMCA LLVMAMDGPUInfo
-        LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUInfo LLVMAMDGPUDisassembler LLVMAMDGPUAsmParser
-        boost_iostreams)
+        hsa-runtime64::hsa-runtime64
+        LLVMAMDGPUAsmParser LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
+        LLVMAMDGPUUtils LLVMAggressiveInstCombine LLVMAnalysis LLVMAsmParser LLVMAsmPrinter LLVMBinaryFormat
+        LLVMBitReader LLVMBitWriter LLVMBitstreamReader LLVMCFGuard LLVMCodeGen LLVMCodeGenTypes LLVMCore LLVMCoroutines
+        LLVMDebugInfoBTF LLVMDebugInfoCodeView LLVMDebugInfoDWARF LLVMDebugInfoMSF LLVMDebugInfoPDB LLVMDemangle
+        LLVMFrontendOffloading LLVMFrontendOpenMP LLVMGlobalISel LLVMHipStdPar LLVMIRPrinter LLVMIRReader LLVMInstCombine
+        LLVMInstrumentation LLVMLinker LLVMMC LLVMMCA LLVMMCDisassembler LLVMMCParser LLVMMIRParser LLVMObjCARCOpts
+        LLVMObject LLVMPasses LLVMProfileData LLVMRemarks LLVMScalarOpts LLVMSelectionDAG LLVMSupport LLVMSymbolize
+        LLVMTableGen LLVMTableGenGlobalISel LLVMTarget LLVMTargetParser LLVMTextAPI LLVMTransformUtils LLVMVectorize
+        LLVMipo boost_iostreams)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================

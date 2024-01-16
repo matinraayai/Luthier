@@ -1,6 +1,7 @@
-#ifndef DISASSEMBLER_HPP
-#define DISASSEMBLER_HPP
+#ifndef CODE_LIFTER_HPP
+#define CODE_LIFTER_HPP
 #include <llvm/MC/MCContext.h>
+#include <llvm/Target/TargetOptions.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInst.h>
 
@@ -69,6 +70,8 @@ class Disassembler {
                                           std::optional<size_t> size = std::nullopt);
 
     std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, byte_string_view code);
+
+    void liftModule(const hsa::ExecutableSymbol &symbol);
 };
 
 }// namespace luthier

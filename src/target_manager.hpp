@@ -43,7 +43,7 @@ struct TargetInfo {
     std::unique_ptr<const llvm::MCInstrAnalysis> MIA_{nullptr};
     std::unique_ptr<const llvm::MCSubtargetInfo> STI_{nullptr};
     std::unique_ptr<llvm::MCInstPrinter> IP_{nullptr};
-    llvm::TargetOptions *targetOptions_{nullptr};//TODO: FIX the issue with the destructor
+    const llvm::TargetOptions targetOptions_{};
 
  public:
     [[nodiscard]] const llvm::Target *getTarget() const { return target_; }
@@ -60,7 +60,7 @@ struct TargetInfo {
 
     [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP_.get(); }
 
-    [[nodiscard]] llvm::TargetOptions *getTargetOptions() const { return targetOptions_; }
+    [[nodiscard]] const llvm::TargetOptions& getTargetOptions() const { return targetOptions_; }
 };
 
 class TargetManager {
