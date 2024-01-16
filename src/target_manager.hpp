@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "hsa_isa.hpp"
+#include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
 
@@ -65,7 +66,7 @@ struct TargetInfo {
 
 class TargetManager {
  private:
-    std::unordered_map<hsa::Isa, std::unique_ptr<TargetInfo>> llvmTargetInfo_;
+    mutable std::unordered_map<hsa::Isa, std::unique_ptr<TargetInfo>> llvmTargetInfo_;
 
     TargetManager();
     ~TargetManager();
@@ -79,9 +80,9 @@ class TargetManager {
         return instance;
     }
 
-    const TargetInfo &getTargetInfo(const hsa::Isa &isa) const { return *llvmTargetInfo_.at(isa); }
+    const TargetInfo &getTargetInfo(const hsa::Isa &isa) const;
 };
 
 }// namespace luthier
 
-#endif//CONTEXT_MANAGER_HPP
+#endif//TARGET_MANAGER_HPP

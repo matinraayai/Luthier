@@ -113,41 +113,36 @@ luthier::Disassembler::~Disassembler() {
     disassemblyInfoMap_.clear();
     disassembledSymbols_.clear();
 }
-void Disassembler::liftModule(const hsa::ExecutableSymbol &symbol) {
+void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
     auto agent = symbol.getAgent();
+    assert(symbol.getType() == HSA_SYMBOL_KIND_KERNEL);
+    auto isa = agent.getIsa();
     auto &targetManager = luthier::TargetManager::instance();
 
     const auto &targetInfo = targetManager.getTargetInfo(agent.getIsa());
-    auto Context = std::make_unique<llvm::LLVMContext>();
-    auto triple = llvm::Triple(agent.getIsa().getLLVMTargetTriple());
-    auto processor = agent.getIsa().getProcessor();
-    auto featureString = agent.getIsa().getFeatureString();
-//    auto targetOptions = new llvm::TargetOptions();
-//    llvm::TargetOptions targetOptions;
-//    targetOptions.MCOptions.IASSearchPaths.clear("");
-    auto TheTargetMachine = std::unique_ptr<llvm::LLVMTargetMachine>(
+    auto context = std::make_unique<llvm::LLVMContext>();
+    auto theTargetMachine = std::unique_ptr<llvm::LLVMTargetMachine>(
         reinterpret_cast<llvm::LLVMTargetMachine *>(targetInfo.getTarget()->createTargetMachine(
-            triple.str(), llvm::StringRef(processor), llvm::StringRef(featureString), targetInfo.getTargetOptions(),
+            isa.getLLVMTargetTriple(),
+            isa.getProcessor(), isa.getFeatureString(), targetInfo.getTargetOptions(),
             llvm::Reloc::Model::PIC_)));
     //
-    fmt::println("Options: {}", targetInfo.getTargetOptions().ObjectFilenameForDebug);
-    std::unique_ptr<llvm::Module> Module = std::make_unique<llvm::Module>("MyModule", *Context);
-    auto DL = TheTargetMachine->createDataLayout();
-    Module->setDataLayout(DL);
-    auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TheTargetMachine.get());
+    std::unique_ptr<llvm::Module> module = std::make_unique<llvm::Module>("MyModule", *context);
+    module->setDataLayout(theTargetMachine->createDataLayout());
+    auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine.get());
     //
-    llvm::Type *const ReturnType = llvm::Type::getVoidTy(Module->getContext());
-    llvm::Type *const MemParamType = llvm::PointerType::get(llvm::Type::getInt32Ty(Module->getContext()),
+    llvm::Type *const returnType = llvm::Type::getVoidTy(module->getContext());
+    llvm::Type *const memParamType = llvm::PointerType::get(llvm::Type::getInt32Ty(module->getContext()),
                                                             llvm::AMDGPUAS::GLOBAL_ADDRESS /*default address space*/);
-    llvm::FunctionType *FunctionType = llvm::FunctionType::get(ReturnType, {MemParamType}, false);
+    llvm::FunctionType *FunctionType = llvm::FunctionType::get(returnType, {memParamType}, false);
     llvm::Function *const F =
-        llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, symbol.getName(), *Module);
+        llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, symbol.getName(), *module);
     F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
     //
     //
-    llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module->getContext(), "", F);
-    new llvm::UnreachableInst(Module->getContext(), BB);
-    llvm::MachineFunction &MF = MMIWP->getMMI().getOrCreateMachineFunction(*F);
+    llvm::BasicBlock *BB = llvm::BasicBlock::Create(module->getContext(), "", F);
+    new llvm::UnreachableInst(module->getContext(), BB);
+    llvm::MachineFunction &MF = mmiwp->getMMI().getOrCreateMachineFunction(*F);
 //    auto &Properties = MF.getProperties();
 //    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
 //    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
@@ -183,12 +178,6 @@ void Disassembler::liftModule(const hsa::ExecutableSymbol &symbol) {
             }
         }
     }
-
-    //    new UnreachableInst(Module->getContext(), BB);
-    //    return MMI->getOrCreateMachineFunction(*F);
-
-    //        llvm::Function f;
-    //    llvm::MachineFunction func;
 }
 
 }// namespace luthier

@@ -269,7 +269,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     auto &contextManager = luthier::TargetManager::instance();
 
     const auto &targetInfo = contextManager.getTargetInfo(agent.getIsa());
-    luthier::Disassembler::instance().liftModule(instr.getExecutableSymbol());
+    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
 //    auto Context = std::make_unique<llvm::LLVMContext>();
 //    auto triple = agent.getIsa().getLLVMTargetTriple();
 //    auto processor = agent.getIsa().getProcessor();
