@@ -8,15 +8,12 @@
 #include <vector>
 
 #include "hsa_isa.hpp"
-#include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
 
 class Target;
 
 class MCRegisterInfo;
-
-class TargetOptions;
 
 class MCAsmInfo;
 
@@ -66,7 +63,7 @@ struct TargetInfo {
 
 class TargetManager {
  private:
-    mutable std::unordered_map<hsa::Isa, std::unique_ptr<TargetInfo>> llvmTargetInfo_;
+    mutable std::unordered_map<hsa::Isa, TargetInfo> llvmTargetInfo_;
 
     TargetManager();
     ~TargetManager();

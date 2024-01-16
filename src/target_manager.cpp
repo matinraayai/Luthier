@@ -37,9 +37,10 @@ TargetManager::TargetManager() {
 }
 
 TargetManager::~TargetManager() { llvmTargetInfo_.clear(); }
+
 const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
     if (!llvmTargetInfo_.contains(isa)) {
-        auto info = llvmTargetInfo_.insert({isa, std::make_unique<TargetInfo>()}).first;
+        auto info = llvmTargetInfo_.insert({isa, TargetInfo()}).first;
         std::string targetTriple = isa.getLLVMTargetTriple();
         std::string targetIsa = isa.getLLVMTarget();
         std::string error;
@@ -50,7 +51,7 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         auto mri = target->createMCRegInfo(targetTriple);
         assert(mri);
 
-        auto mai = target->createMCAsmInfo(*mri, targetTriple, info->second->targetOptions_.MCOptions);
+        auto mai = target->createMCAsmInfo(*mri, targetTriple, info->second.targetOptions_.MCOptions);
         assert(mai);
 
         auto mii = target->createMCInstrInfo();
@@ -66,15 +67,15 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
             target->createMCInstPrinter(llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri);
         assert(ip);
 
-        info->second->target_ = target;
-        info->second->MRI_.reset(mri);
-        info->second->MAI_.reset(mai);
-        info->second->MII_.reset(mii);
-        info->second->MIA_.reset(mia);
-        info->second->STI_.reset(sti);
-        info->second->IP_.reset(ip);
+        info->second.target_ = target;
+        info->second.MRI_.reset(mri);
+        info->second.MAI_.reset(mai);
+        info->second.MII_.reset(mii);
+        info->second.MIA_.reset(mia);
+        info->second.STI_.reset(sti);
+        info->second.IP_.reset(ip);
     }
-    return *llvmTargetInfo_.at(isa);
+    return llvmTargetInfo_.at(isa);
 }
 
 }// namespace luthier
