@@ -63,11 +63,33 @@ Runtime type information (RTTI), which is not enabled by the stock LLVM shipped 
 - **```-DCMAKE_BUILD_TYPE```** can enable/disable build with source debug information if set to ```Debug``` or 
 ```RelWithDebugInfo```.
 
-## Example Build Command
-
-```shell
-mkdir build/
-cd build/
-cmake -DCMAKE_CXX_COMPILER=gcc -DLUTHIER_LOG_LEVEL=DEBUG -DCMAKE_BUILD_TYPE=Debug .. 
-make -j
-```
+## Build Instructions
+1. Clone the AMD staging fork of the llvm-project in a separate directory from Luthier:
+    ```shell
+    git clone https://github.com/ROCm/llvm-project/ 
+    ```
+   You can either select a specific ROCm release, or clone the staging branch to get the latest version.
+2. Configure the LLVM CMake project:
+    ```shell
+    mkdir build/
+    cd build
+    cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_TARGETS_TO_BUILD=AMDGPU -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -DLLVM_ENABLE_RTTI=OFF ../llvm
+    ```
+    You can set the `CMAKE_BUILD_TYPE` to be any type you deem necessary (e.g. `Debug` for debugging, `Release` to more 
+    performant code).
+    You can set the generator to be `Unix Makefiles` if preferred; `Ninja` should be faster.
+    The CMake project is configured to only build necessary AMDGPU-specific components of the LLVM project.
+3. Build the project using the following command:
+    ```shell
+    cmake --build . --target AMDGPUCommonTableGen InstCombineTableGen LLVMCore LLVMBitReader LLVMSupport \
+    LLVMMC LLVMAMDGPUTargetMCA LLVMAMDGPUInfo LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUInfo LLVMAMDGPUDisassembler \
+    LLVMAMDGPUAsmParser
+    ```
+    This will only build the CMake targets necessary for Luthier in LLVM.
+4. Change to the Luthier directory and build Luthier, pointing it to the **absolute** build folder of LLVM:
+    ```shell
+   mkdir build/
+   cd build/
+   cmake -G Ninja -DLUTHIER_LLVM_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT}/build/ ..
+   cmake --build .
+   ```
