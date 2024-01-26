@@ -91,8 +91,6 @@ void hsaApiInternalCallback(hsa_api_evt_args_t *cbData, luthier_api_evt_phase_t 
             LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_create_fn(
                 args.agent, args.size, args.type, args.callback, args.data, args.private_segment_size,
                 args.group_segment_size, args.queue));
-            LUTHIER_HSA_CHECK(
-                luthier_get_hsa_table()->amd_ext_->hsa_amd_profiling_set_profiler_enabled_fn(*args.queue, true));
             LUTHIER_HSA_CHECK(luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_register_fn(
                 *args.queue, queueSubmitWriteInterceptor, *args.queue));
             *skipFunction = true;
