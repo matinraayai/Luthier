@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(llvm-reproducer VERSION 0.0.1 LANGUAGES CXX C)
+project(llvm-reproducer VERSION 0.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
 include(FetchContent)
+include(ExternalProject)
 
 FetchContent_Declare(
         elfio
@@ -26,10 +27,31 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(fmt)
 
-
-add_executable(reproducer reproducer.cpp
+add_library(reproducer SHARED reproducer.cpp
         code_view.hpp
         code_view.cpp)
+
+set(BOOST_VERSION "1.83.0" CACHE STRING "C++ Boost library to download and build with Luthier")
+
+ExternalProject_add(boost
+        DOWNLOAD_EXTRACT_TIMESTAMP 1
+        URL https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}.tar.xz
+        CONFIGURE_COMMAND ./bootstrap.sh --with-libraries=iostreams --prefix=./build
+        BUILD_COMMAND ./b2 install link=static
+        BUILD_IN_SOURCE 1
+        INSTALL_COMMAND ""
+)
+
+ExternalProject_Get_Property(boost SOURCE_DIR)
+
+add_dependencies(reproducer boost)
+
+target_include_directories(reproducer PRIVATE ${SOURCE_DIR}/build/include)
+
+target_link_directories(reproducer PUBLIC ${SOURCE_DIR}/build/lib)
+
+
+
 
 find_package(LLVM PATHS /opt/rocm/llvm)
 
