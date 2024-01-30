@@ -99,7 +99,7 @@ std::string Isa::getFeatureString() const {
     llvm::SmallVector<llvm::StringRef> features;
     llvm::StringRef(isaName).substr(isaName.find_first_of(':')).split(features, ":");
     // The +/- must be before the feature code for LLVM, not after
-    llvm::SmallVector<std::string> featuresOut;
+    std::vector<std::string> featuresOut;
     for (auto& feat: features) {
         auto featureToggle = feat.substr(feat.size() - 1);
         auto featureName = feat.substr(0, feat.size() - 1);
