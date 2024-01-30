@@ -19,7 +19,9 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
@@ -27,16 +29,36 @@
 namespace luthier {
 
 TargetManager::TargetManager() {
-    LLVMInitializeAMDGPUTarget();
-    LLVMInitializeAMDGPUTargetInfo();
-    LLVMInitializeAMDGPUTargetMC();
-    LLVMInitializeAMDGPUDisassembler();
-    LLVMInitializeAMDGPUAsmParser();
-    LLVMInitializeAMDGPUAsmPrinter();
-    LLVMInitializeAMDGPUTargetMCA();
+    static std::mutex llvm_init_mutex;
+    {
+        std::scoped_lock llvm_init_lock(llvm_init_mutex);
+        static bool LLVMInitialized = false;
+        if (LLVMInitialized) {
+            return;
+        }
+        LLVMInitializeAMDGPUTarget();
+        LLVMInitializeAMDGPUTargetInfo();
+        LLVMInitializeAMDGPUTargetMC();
+        LLVMInitializeAMDGPUDisassembler();
+        LLVMInitializeAMDGPUAsmParser();
+        LLVMInitializeAMDGPUAsmPrinter();
+        LLVMInitializeAMDGPUTargetMCA();
+        LLVMInitialized = true;
+    }
 }
 
-TargetManager::~TargetManager() { llvmTargetInfo_.clear(); }
+TargetManager::~TargetManager() {
+    for (auto& it: llvmTargetInfo_) {
+        delete it.second.MRI_;
+        delete it.second.MAI_;
+        delete it.second.MII_;
+        delete it.second.MIA_;
+        delete it.second.STI_;
+        delete it.second.IP_;
+    }
+    llvmTargetInfo_.clear();
+
+}
 
 const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
     if (!llvmTargetInfo_.contains(isa)) {
@@ -68,12 +90,12 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         assert(ip);
 
         info->second.target_ = target;
-        info->second.MRI_.reset(mri);
-        info->second.MAI_.reset(mai);
-        info->second.MII_.reset(mii);
-        info->second.MIA_.reset(mia);
-        info->second.STI_.reset(sti);
-        info->second.IP_.reset(ip);
+        info->second.MRI_ = mri;
+        info->second.MAI_ = mai;
+        info->second.MII_ = mii;
+        info->second.MIA_ = mia;
+        info->second.STI_ = sti;
+        info->second.IP_ = ip;
     }
     return llvmTargetInfo_.at(isa);
 }

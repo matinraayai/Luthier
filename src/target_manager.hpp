@@ -35,35 +35,35 @@ struct TargetInfo {
 
  private:
     const llvm::Target *target_{nullptr};
-    std::unique_ptr<const llvm::MCRegisterInfo> MRI_{nullptr};
-    std::unique_ptr<const llvm::MCAsmInfo> MAI_{nullptr};
-    std::unique_ptr<const llvm::MCInstrInfo> MII_{nullptr};
-    std::unique_ptr<const llvm::MCInstrAnalysis> MIA_{nullptr};
-    std::unique_ptr<const llvm::MCSubtargetInfo> STI_{nullptr};
-    std::unique_ptr<llvm::MCInstPrinter> IP_{nullptr};
-    const llvm::TargetOptions targetOptions_{};
+    const llvm::MCRegisterInfo* MRI_{nullptr};
+    const llvm::MCAsmInfo* MAI_{nullptr};
+    const llvm::MCInstrInfo* MII_{nullptr};
+    const llvm::MCInstrAnalysis* MIA_{nullptr};
+    const llvm::MCSubtargetInfo* STI_{nullptr};
+    llvm::MCInstPrinter* IP_{nullptr};
+    llvm::TargetOptions targetOptions_{};
 
  public:
     [[nodiscard]] const llvm::Target *getTarget() const { return target_; }
 
-    [[nodiscard]] const llvm::MCRegisterInfo *getMCRegisterInfo() const { return MRI_.get(); }
+    [[nodiscard]] const llvm::MCRegisterInfo *getMCRegisterInfo() const { return MRI_; }
 
-    [[nodiscard]] const llvm::MCAsmInfo *getMCAsmInfo() const { return MAI_.get(); }
+    [[nodiscard]] const llvm::MCAsmInfo *getMCAsmInfo() const { return MAI_; }
 
-    [[nodiscard]] const llvm::MCInstrInfo *getMCInstrInfo() const { return MII_.get(); }
+    [[nodiscard]] const llvm::MCInstrInfo *getMCInstrInfo() const { return MII_; }
 
-    [[nodiscard]] const llvm::MCInstrAnalysis *getMCInstrAnalysis() const { return MIA_.get(); }
+    [[nodiscard]] const llvm::MCInstrAnalysis *getMCInstrAnalysis() const { return MIA_; }
 
-    [[nodiscard]] const llvm::MCSubtargetInfo *getMCSubTargetInfo() const { return STI_.get(); }
+    [[nodiscard]] const llvm::MCSubtargetInfo *getMCSubTargetInfo() const { return STI_; }
 
-    [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP_.get(); }
+    [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP_; }
 
     [[nodiscard]] const llvm::TargetOptions& getTargetOptions() const { return targetOptions_; }
 };
 
 class TargetManager {
  private:
-    mutable std::unordered_map<hsa::Isa, TargetInfo> llvmTargetInfo_;
+    mutable std::unordered_map<hsa::Isa, TargetInfo> llvmTargetInfo_{};
 
     TargetManager();
     ~TargetManager();
