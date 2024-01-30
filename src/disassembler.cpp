@@ -111,72 +111,152 @@ std::vector<llvm::MCInst> luthier::Disassembler::disassemble(const code::SymbolV
 
 luthier::Disassembler::~Disassembler() {
     disassemblyInfoMap_.clear();
+    moduleInfoMap_.clear();
     disassembledSymbols_.clear();
 }
 void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
-    auto agent = symbol.getAgent();
-    assert(symbol.getType() == HSA_SYMBOL_KIND_KERNEL);
-    auto isa = agent.getIsa();
-    auto &targetManager = luthier::TargetManager::instance();
+    if (!moduleInfoMap_.contains(symbol)) {
 
-    const auto &targetInfo = targetManager.getTargetInfo(agent.getIsa());
-    auto context = std::make_unique<llvm::LLVMContext>();
-    auto theTargetMachine = std::unique_ptr<llvm::LLVMTargetMachine>(
-        reinterpret_cast<llvm::LLVMTargetMachine *>(targetInfo.getTarget()->createTargetMachine(
-            isa.getLLVMTargetTriple(),
-            isa.getProcessor(), isa.getFeatureString(), targetInfo.getTargetOptions(),
-            llvm::Reloc::Model::PIC_)));
-    //
-    std::unique_ptr<llvm::Module> module = std::make_unique<llvm::Module>("MyModule", *context);
-    module->setDataLayout(theTargetMachine->createDataLayout());
-    auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine.get());
-    //
-    llvm::Type *const returnType = llvm::Type::getVoidTy(module->getContext());
-    llvm::Type *const memParamType = llvm::PointerType::get(llvm::Type::getInt32Ty(module->getContext()),
-                                                            llvm::AMDGPUAS::GLOBAL_ADDRESS /*default address space*/);
-    llvm::FunctionType *FunctionType = llvm::FunctionType::get(returnType, {memParamType}, false);
-    llvm::Function *const F =
-        llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, symbol.getName(), *module);
-    F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-    //
-    //
-    llvm::BasicBlock *BB = llvm::BasicBlock::Create(module->getContext(), "", F);
-    new llvm::UnreachableInst(module->getContext(), BB);
-    llvm::MachineFunction &MF = mmiwp->getMMI().getOrCreateMachineFunction(*F);
-//    auto &Properties = MF.getProperties();
-//    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
-//    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
-//    Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
-    //
-    //
-    const std::vector<hsa::Instr> *targetFunction = Disassembler::instance().disassemble(symbol);
+        auto agent = symbol.getAgent();
+        assert(symbol.getType() == HSA_SYMBOL_KIND_KERNEL);
+        auto isa = agent.getIsa();
+        auto targetInfo = luthier::TargetManager::instance().getTargetInfo(isa);
 
-    llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
-//    MF.push_back(MBB);
+//        std::string targetTriple = isa.getLLVMTargetTriple();
+//        auto cpu = llvm::sys::getHostCPUName();
 
-    for (const auto& i: *targetFunction) {
-        auto inst = i.getInstr();
-        const unsigned Opcode = inst.getOpcode();
-        const llvm::MCInstrDesc &MCID = targetInfo.getMCInstrInfo()->get(Opcode);
-        llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
-        for (unsigned OpIndex = 0, E = i.getInstr().getNumOperands(); OpIndex < E;
-             ++OpIndex) {
-            const llvm::MCOperand &Op = inst.getOperand(OpIndex);
-            if (Op.isReg()) {
-                const bool IsDef = OpIndex < MCID.getNumDefs();
-                unsigned Flags = 0;
-                const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
-                if (IsDef && !OpInfo.isOptionalDef())
-                    Flags |= llvm::RegState::Define;
-                Builder.addReg(Op.getReg(), Flags);
-            } else if (Op.isImm()) {
-                Builder.addImm(Op.getImm());
-            } else if (!Op.isValid()) {
-                llvm_unreachable("Operand is not set");
-            } else {
-                llvm_unreachable("Not yet implemented");
+//        std::string targetTriple = llvm::sys::getProcessTriple();
+//        std::string targetIsa = isa.getLLVMTarget();
+
+        auto target = targetInfo.getTarget();
+
+        auto mri = targetInfo.getMCRegisterInfo();
+//        auto mri = target->createMCRegInfo(isa.getLLVMTargetTriple());
+//        assert(mri);
+
+//        llvm::TargetOptions targetOptions;
+//        targetOptions.ObjectFilenameForDebug = "";
+//        targetOptions.StackUsageOutput = "";
+//        targetOptions.MCOptions.AssemblyLanguage = "";
+//        targetOptions.MCOptions.AsSecureLogFile = "";
+//        targetOptions.MCOptions.ABIName = "";
+//        targetOptions.MCOptions.SplitDwarfFile = "";
+//        assert(targetOptions);
+
+        auto mai = targetInfo.getMCAsmInfo();
+//        auto mai = target->createMCAsmInfo(*mri, isa.getLLVMTargetTriple(), targetOptions.MCOptions);
+//        assert(mai);
+
+        auto mii = targetInfo.getMCInstrInfo();
+//        auto mii = target->createMCInstrInfo();
+//        assert(mii);
+
+        auto mia = targetInfo.getMCInstrAnalysis();
+//        auto mia = target->createMCInstrAnalysis(mii);
+//        assert(mia);
+        auto sti = targetInfo.getMCSubTargetInfo();
+
+//        auto sti = target->createMCSubtargetInfo(isa.getLLVMTargetTriple(), isa.getProcessor(), isa.getFeatureString());
+//        assert(sti);
+
+//        auto ip =
+//            target->createMCInstPrinter(llvm::Triple(isa.getLLVMTargetTriple()), mai->getAssemblerDialect(), *mai, *mii, *mri);
+//        assert(ip);
+
+//        const auto &targetInfo = luthier::TargetManager::instance().getTargetInfo(isa);
+
+        fmt::println("Feature String: {}", "");
+        fmt::println("Triplet: {}", isa.getLLVMTargetTriple());
+        fmt::println("Processor: {}", isa.getProcessor());
+        auto context = new llvm::LLVMContext();
+//        auto proc = new std::string(isa.getProcessor());
+//        auto featureString = new std::string(isa.getFeatureString());
+        assert(context);
+        auto theTargetMachine =
+            reinterpret_cast<llvm::LLVMTargetMachine *>(target->createTargetMachine(
+                isa.getLLVMTargetTriple(), isa.getProcessor(), isa.getFeatureString(),
+                targetInfo.getTargetOptions(),
+                llvm::Reloc::Model::PIC_));
+//        fmt::println("{}", targetOptions.StackUsageOutput);
+//        delete proc;
+//        delete featureString;
+
+        assert(theTargetMachine);
+        auto module =  new llvm::Module(symbol.getName(), *context);
+        assert(module);
+        module->setDataLayout(theTargetMachine->createDataLayout());
+        auto mmiwp = new llvm::MachineModuleInfoWrapperPass(theTargetMachine);
+        assert(mmiwp);
+        llvm::Type *const returnType = llvm::Type::getVoidTy(module->getContext());
+        assert(returnType);
+        llvm::Type *const memParamType = llvm::PointerType::get(llvm::Type::getInt32Ty(module->getContext()),
+                                                                llvm::AMDGPUAS::GLOBAL_ADDRESS /*default address space*/);
+        assert(memParamType);
+        llvm::FunctionType *FunctionType = llvm::FunctionType::get(returnType, {memParamType}, false);
+        assert(FunctionType);
+        llvm::Function * F =
+            llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, symbol.getName(), *module);
+        assert(F);
+        F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+
+        llvm::BasicBlock *BB = llvm::BasicBlock::Create(module->getContext(), "", F);
+        assert(BB);
+        new llvm::UnreachableInst(module->getContext(), BB);
+        auto& mmi = mmiwp->getMMI();
+//        mmi.getOrCreateMachineFunction(*F);
+        llvm::MachineFunction MF(*F, *theTargetMachine, *theTargetMachine->getSubtargetImpl(*F),
+                                                          1, mmi);
+//        llvm::MachineFunction *MF = mmi.getMachineFunction(*F);
+        MF.setAlignment(llvm::Align(4096));
+        llvm::MachineFunctionProperties &properties = MF.getProperties();
+        const llvm::MachineFunctionProperties& constProperties = MF.getProperties();
+        fmt::println("Properties address: {:#x}", reinterpret_cast<uint64_t>(&properties));
+        fmt::println("const Properties address: {:#x}", reinterpret_cast<uint64_t>(&constProperties));
+        MF.getProperties().set(llvm::MachineFunctionProperties::Property::NoVRegs);
+        MF.getProperties().reset(llvm::MachineFunctionProperties::Property::IsSSA);
+        MF.getProperties().set(llvm::MachineFunctionProperties::Property::NoPHIs);
+//        mmi.getOrCreateMachineFunction(*F);
+        //
+        //
+        const std::vector<hsa::Instr> *targetFunction = Disassembler::instance().disassemble(symbol);
+
+        llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
+        //    MF.push_back(MBB);
+
+        for (const auto& i: *targetFunction) {
+            auto inst = i.getInstr();
+            const unsigned Opcode = inst.getOpcode();
+            const llvm::MCInstrDesc &MCID = mii->get(Opcode);
+            llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
+            for (unsigned OpIndex = 0, E = i.getInstr().getNumOperands(); OpIndex < E;
+                 ++OpIndex) {
+                const llvm::MCOperand &Op = inst.getOperand(OpIndex);
+                if (Op.isReg()) {
+                    const bool IsDef = OpIndex < MCID.getNumDefs();
+                    unsigned Flags = 0;
+                    const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
+                    if (IsDef && !OpInfo.isOptionalDef())
+                        Flags |= llvm::RegState::Define;
+                    Builder.addReg(Op.getReg(), Flags);
+                } else if (Op.isImm()) {
+                    Builder.addImm(Op.getImm());
+                } else if (!Op.isValid()) {
+                    llvm_unreachable("Operand is not set");
+                } else {
+                    llvm_unreachable("Not yet implemented");
+                }
             }
         }
+        delete context;
+        delete theTargetMachine;
+        delete module;
+        delete mmiwp;
+        delete mri;
+//        delete targetOptions;
+        delete mai;
+        delete mii;
+        delete mia;
+        delete sti;
     }
 }
 

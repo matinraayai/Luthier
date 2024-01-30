@@ -18,6 +18,10 @@
 
 namespace luthier {
 
+struct KernelModuleInfo {
+
+};
+
 /**
  * \brief a singleton class in charge of disassembling device instructions and returning them as an
  * std::vector of \class Instr
@@ -47,6 +51,8 @@ class Disassembler {
     const DisassemblyInfo &getDisassemblyInfo(const hsa::Isa &isa);
 
     std::unordered_map<hsa::Isa, DisassemblyInfo> disassemblyInfoMap_;
+
+    std::unordered_map<hsa::ExecutableSymbol, KernelModuleInfo> moduleInfoMap_;
 
     // The vectors have to be allocated as a smart pointer to stop it from calling its destructor prematurely
     // The disassembler is in charge of destroying the disassembled symbols
