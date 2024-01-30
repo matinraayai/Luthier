@@ -96,11 +96,7 @@ void luthier_disassemble_kernel_object(uint64_t kernel_object, size_t* size, lut
 /**
  * Returns the HSA packet type of the AQL packet
  */
-hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t aql_packet) {
-    return static_cast<hsa_packet_type_t>((aql_packet.packet.header >> HSA_PACKET_HEADER_TYPE)
-                                          & ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
-}
-
+hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t* aql_packet);
 
 ////
 /////*********************************************************************

@@ -30,9 +30,9 @@ void hipApiInternalCallback(void *cbData, luthier_api_evt_phase_t phase, int api
                 coManagerArgs.emplace_back(lastRFuncArgs->hostFunction, lastRFuncArgs->deviceFunction);
             }
         } else if (apiId != HIP_PRIVATE_API_ID___hipRegisterFatBinary
-            && apiId != HIP_PRIVATE_API_ID___hipRegisterManagedVar
-            && apiId != HIP_PRIVATE_API_ID___hipRegisterVar && apiId != HIP_PRIVATE_API_ID___hipRegisterSurface
-            && apiId != HIP_PRIVATE_API_ID___hipRegisterTexture) {
+                   && apiId != HIP_PRIVATE_API_ID___hipRegisterManagedVar
+                   && apiId != HIP_PRIVATE_API_ID___hipRegisterVar && apiId != HIP_PRIVATE_API_ID___hipRegisterSurface
+                   && apiId != HIP_PRIVATE_API_ID___hipRegisterTexture) {
             auto &coManager = CodeObjectManager::instance();
             if (!coManagerArgs.empty()) {
                 coManager.registerHipWrapperKernelsOfInstrumentationFunctions(coManagerArgs);
@@ -145,6 +145,11 @@ void luthier_insert_call(luthier_instruction_t instr, const void *dev_func, luth
     luthier::CodeGenerator::instance().instrument(*luthier::hsa::Instr::fromHandle(instr), dev_func, point);
 }
 
+hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t *aql_packet) {
+    return static_cast<hsa_packet_type_t>((aql_packet->packet.header >> HSA_PACKET_HEADER_TYPE)
+                                          & ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
+}
+
 void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op) { luthier::HsaInterceptor::instance().enableUserCallback(op); }
 
 void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op) {
@@ -181,7 +186,7 @@ __attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t 
     [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
     bool res = luthier::HsaInterceptor::instance().captureHsaApiTable(table);
     luthier_at_init();
-    auto& hsaInterceptor = luthier::HsaInterceptor::instance();
+    auto &hsaInterceptor = luthier::HsaInterceptor::instance();
     hsaInterceptor.setInternalCallback(luthier::impl::hsaApiInternalCallback);
     hsaInterceptor.setUserCallback(luthier::impl::hsaApiUserCallback);
     hsaInterceptor.enableInternalCallback(HSA_API_ID_hsa_queue_create);
