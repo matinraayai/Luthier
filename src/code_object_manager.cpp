@@ -11,6 +11,7 @@
 #include "instrumentation_function.hpp"
 #include "log.hpp"
 #include "target_manager.hpp"
+#include <llvm/ADT/SmallVector.h>
 
 void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
     llvm::SmallVector<hsa::Executable> executables;
