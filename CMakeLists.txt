@@ -11,7 +11,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # ======================================================================================================================
 
 # Library Declaration ==================================================================================================
-add_library(luthier SHARED
+add_library(luthier STATIC
         src/luthier.cpp include/luthier.h src/hip_intercept.hpp src/hip_intercept.cpp
         include/luthier_types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
         src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h include/error.h
@@ -110,53 +110,21 @@ find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/roc
 target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
 
 # LLVM AMDGPU Configuration (for tablegen and code generation) =========================================================
-# TODO: Wait for ROCm 6.1 to be released to see if compiling LLVM from scratch can be avoided + match the rocm version
-ExternalProject_add(
-        llvm-project
-        DOWNLOAD_EXTRACT_TIMESTAMP 1
-        URL https://github.com/ROCm/llvm-project/archive/refs/heads/amd-staging.zip
-#        URL https://github.com/ROCm/llvm-project/archive/refs/tags/rocm-${hip_VERSION_MAJOR}.${hip_VERSION_MINOR}.${hip_VERSION_TWEAK}.zip
-        CMAKE_ARGS -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_TARGETS_TO_BUILD=AMDGPU\;
-        -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -DLLVM_ENABLE_RTTI=ON
-        SOURCE_SUBDIR llvm
-        BUILD_COMMAND ${CMAKE_COMMAND} --build . --target AMDGPUCommonTableGen InstCombineTableGen LLVMCore
-        LLVMBitReader LLVMSupport LLVMMC LLVMAMDGPUTargetMCA LLVMAMDGPUInfo LLVMAMDGPUCodeGen LLVMAMDGPUDesc
-        LLVMAMDGPUInfo LLVMAMDGPUDisassembler LLVMAMDGPUAsmParser
-#        BUILD_COMMAND ${CMAKE_COMMAND} --build . --target AMDGPUCommonTableGen InstCombineTableGen
-        INSTALL_COMMAND ""
-)
+find_package(LLVM REQUIRED CONFIG PATHS ${LUTHIER_LLVM_DIR} NO_DEFAULT_PATH)
 
-add_dependencies(luthier llvm-project)
+target_include_directories(luthier PUBLIC ${LLVM_INCLUDE_DIRS})
 
-ExternalProject_Get_Property(llvm-project BINARY_DIR)
-
-ExternalProject_Get_Property(llvm-project SOURCE_DIR)
-
-target_include_directories(luthier PRIVATE ${BINARY_DIR}/lib/Target/AMDGPU/)
-
-target_link_directories(luthier PUBLIC ${BINARY_DIR}/lib)
-
-target_include_directories(luthier PUBLIC ${SOURCE_DIR}/llvm/lib/Target/AMDGPU/)
-
-target_include_directories(luthier PUBLIC ${SOURCE_DIR}/llvm/include)
-
-target_include_directories(luthier PUBLIC ${BINARY_DIR}/include)
-
-#set(LLVM_DIR ${BINARY_DIR})
+target_include_directories(luthier PUBLIC ${LUTHIER_LLVM_DIR}/lib/Target/AMDGPU)
 
 # ======================================================================================================================
-# TODO: Fix the issue with ExternalProjectAdd
-#find_package(LLVM REQUIRED PATHS ${LLVM_DIR} NO_DEFAULT_PATH)
-target_compile_definitions(luthier PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
+target_compile_definitions(luthier PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=0)
 
 #include_directories(${LLVM_INCLUDE_DIRS})
 #add_definitions(${LLVM_DEFINITIONS})
 # ======================================================================================================================
 
 # Any Compilation Flags, Linking Configuration Left ====================================================================
-
-target_compile_options(luthier INTERFACE "-fPIC")
-
+target_compile_options(luthier PUBLIC "-fPIC")
 
 # For LD_PRELOAD-ing the hip intercept functions
 target_compile_definitions(luthier PUBLIC "-D_GLIBCXX_DEBUG")
