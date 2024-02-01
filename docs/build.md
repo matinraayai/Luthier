@@ -9,14 +9,14 @@ The following software components are required as external dependencies to Luthi
 **[GNU Make](https://www.gnu.org/software/make/)**. The [CMakeLists.txt](../CMakeLists.txt) file for Luthier is located 
 at the top-level directory of the project. **CMake v3.21 and above** is required, since it is the earliest version that 
 supports HIP as a first-class citizen with built-in HIP/ROCm-specific CMake variables.
-2. **[AMD Code Object Manager Library (COMGR)](https://github.com/ROCm/llvm-project/tree/amd-staging/amd/comgr)** is used for
+2. **[AMD Code Object Manager Library (COMGR)](https://github.com/RadeonOpenCompute/ROCm-CompilerSupport/)** is used for 
 assembling/disassembling AMDGPU instructions, parsing AMDGPU code object notes, and querying information about GPU ISA
 to use for generating instrumented code.
-3. **[AMD HSA and ROCm Runtime Library](https://github.com/ROCm/ROCR-Runtime)** is used for intercepting
+3. **[AMD HSA and ROCm Runtime Library](https://github.com/RadeonOpenCompute/ROCR-Runtime)** is used for intercepting
 calls to AMD's Heterogeneous Systems Architecture (HSA) implementation (including kernel launches), loading/unloading
 instrumentation code, querying the HSA agents (GPUs) present on the system, and other core GPU functionality needed by
 AMDGPUs for instrumentation.
-4. **[AMD Compute Language Runtimes](https://github.com/ROCm/clr)** provides AMD's
+4. **[AMD Compute Language Runtimes](https://github.com/ROCm-Developer-Tools/clr)** provides AMD's
 Heterogeneous-Compute Interface for Portability (HIP) compiler and its runtime. Luthier requires HIP to intercept its 
 calls, compile device-side code, and load user-written device code.
 5. **A C/C++ compiler**, like [GNU GCC](https://gcc.gnu.org/) or [Clang](https://clang.llvm.org/).
