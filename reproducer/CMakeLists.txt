@@ -27,7 +27,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(fmt)
 
-add_library(reproducer SHARED reproducer.cpp
+add_executable(reproducer SHARED reproducer.cpp
         code_view.hpp
         code_view.cpp)
 
