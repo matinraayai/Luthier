@@ -12,6 +12,7 @@
 #include <optional>
 #include <unordered_set>
 
+#include "error.hpp"
 #include "luthier_types.h"
 
 namespace fs = std::experimental::filesystem;
@@ -114,7 +115,7 @@ class HipInterceptor {
     void disableAllInternalCallbacks() { enabledInternalCallbacks_.clear(); }
 
     void *getHipFunction(const char *symbol) const {
-        assert(isEnabled());
+        LUTHIER_CHECK(isEnabled());
 
         void *functionPtr = ::dlsym(handle_, symbol);
         if (functionPtr == nullptr)
@@ -125,7 +126,7 @@ class HipInterceptor {
 
     template<typename FunctionPtr>
     FunctionPtr getHipFunction(const char *symbol) const {
-        assert(isEnabled());
+        LUTHIER_CHECK(isEnabled());
         return reinterpret_cast<FunctionPtr>(getHipFunction(symbol));
     }
 

@@ -4,7 +4,7 @@
 #include <unordered_set>
 
 #include "code_view.hpp"
-#include "error.h"
+#include "error.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_code_object_reader.hpp"
 #include "hsa_executable_symbol.hpp"

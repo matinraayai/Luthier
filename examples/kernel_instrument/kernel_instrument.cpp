@@ -11,6 +11,11 @@
 
 static bool instrumented{false};
 
+void check(bool pred) {
+    if (!pred)
+        std::exit(-1);
+}
+
 MARK_LUTHIER_DEVICE_MODULE
 
 __managed__ int globalCounter = 20;
@@ -57,7 +62,7 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phas
             fprintf(stdout, "HSA Executable Freeze Callback\n");
             // Get the state of the executable (frozen or not frozen)
             hsa_executable_state_t e_state;
-            LUTHIER_HSA_CHECK(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE, &e_state));
+            check(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE, &e_state) == HSA_STATUS_SUCCESS);
 
             fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
             auto& coreTable = luthier_get_hsa_table()->core_;

@@ -1,11 +1,13 @@
 #include "luthier.h"
 
+#include <llvm/ADT/StringRef.h>
+
 #include <optional>
 
 #include "code_generator.hpp"
 #include "code_object_manager.hpp"
 #include "disassembler.hpp"
-#include "error.h"
+#include "error.hpp"
 #include "hip_intercept.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_instr.hpp"
@@ -26,7 +28,8 @@ void hipApiInternalCallback(void *cbData, luthier_api_evt_phase_t phase, int api
             auto lastRFuncArgs = reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cbData);
             // If the function doesn't have __luthier_wrap__ in its name then it belongs to the instrumented application
             // or HIP can manage on its own since no device function is present to strip from it
-            if (std::string(lastRFuncArgs->deviceFunction).find(LUTHIER_DEVICE_FUNCTION_WRAP) != std::string::npos) {
+            if (llvm::StringRef(lastRFuncArgs->deviceFunction).find(LUTHIER_DEVICE_FUNCTION_WRAP)
+                != llvm::StringRef::npos) {
                 coManagerArgs.emplace_back(lastRFuncArgs->hostFunction, lastRFuncArgs->deviceFunction);
             }
         } else if (apiId != HIP_PRIVATE_API_ID___hipRegisterFatBinary
@@ -102,7 +105,7 @@ void hsaApiInternalCallback(hsa_api_evt_args_t *cbData, luthier_api_evt_phase_t 
 __attribute__((constructor)) void init() {
     LUTHIER_LOG_FUNCTION_CALL_START
     auto &hipInterceptor = HipInterceptor::instance();
-    assert(hipInterceptor.isEnabled());
+    LUTHIER_CHECK_WITH_MSG(hipInterceptor.isEnabled(), "HIP Interceptor failed to initialize");
     hipInterceptor.setInternalCallback(luthier::impl::hipApiInternalCallback);
     hipInterceptor.setUserCallback(luthier::impl::hipApiUserCallback);
     hipInterceptor.enableAllInternalCallbacks();

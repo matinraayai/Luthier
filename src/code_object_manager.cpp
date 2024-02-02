@@ -1,5 +1,8 @@
 #include "code_object_manager.hpp"
 
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/Support/FormatVariadic.h>
+
 #include <vector>
 
 #include "disassembler.hpp"
@@ -11,7 +14,6 @@
 #include "instrumentation_function.hpp"
 #include "log.hpp"
 #include "target_manager.hpp"
-#include <llvm/ADT/SmallVector.h>
 
 void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
     llvm::SmallVector<hsa::Executable> executables;
@@ -96,8 +98,12 @@ void luthier::CodeObjectManager::loadInstrumentedKernel(const luthier::byte_stri
 
         auto originalSymbolName = originalKernel.getName();
         auto instrumentedKernel = executable.getSymbolByName(agent, originalSymbolName);
-        assert(instrumentedKernel.has_value());
-        assert(instrumentedKernel->getType() == HSA_SYMBOL_KIND_KERNEL);
+        LUTHIER_CHECK_WITH_MSG(
+            instrumentedKernel.has_value(),
+            llvm::formatv("Failed to find symbol {0} in Executable {1}", originalSymbolName, executable.hsaHandle())
+                .str());
+        LUTHIER_CHECK_WITH_MSG((instrumentedKernel->getType() == HSA_SYMBOL_KIND_KERNEL),
+                      llvm::formatv("Symbol {0} was found, but its type is not a kernel", originalSymbolName).str());
         instrumentedKernels_.insert({originalKernel, std::make_tuple(*instrumentedKernel, executable, reader)});
     }
 }

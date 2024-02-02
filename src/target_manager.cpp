@@ -24,6 +24,7 @@
 #include <mutex>
 
 #include "hsa.hpp"
+#include "error.hpp"
 #include "hsa_agent.hpp"
 
 namespace luthier {
@@ -68,26 +69,26 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         std::string error;
 
         auto target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
-        assert(target && error.c_str());
+        LUTHIER_CHECK(target && error.c_str());
 
         auto mri = target->createMCRegInfo(targetTriple);
-        assert(mri);
+        LUTHIER_CHECK(mri);
 
         auto mai = target->createMCAsmInfo(*mri, targetTriple, info->second.targetOptions_.MCOptions);
-        assert(mai);
+        LUTHIER_CHECK(mai);
 
         auto mii = target->createMCInstrInfo();
-        assert(mii);
+        LUTHIER_CHECK(mii);
 
         auto mia = target->createMCInstrAnalysis(mii);
-        assert(mia);
+        LUTHIER_CHECK(mia);
 
         auto sti = target->createMCSubtargetInfo(targetTriple, isa.getProcessor(), isa.getFeatureString());
-        assert(sti);
+        LUTHIER_CHECK(sti);
 
         auto ip =
             target->createMCInstPrinter(llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri);
-        assert(ip);
+        LUTHIER_CHECK(ip);
 
         info->second.target_ = target;
         info->second.MRI_ = mri;
