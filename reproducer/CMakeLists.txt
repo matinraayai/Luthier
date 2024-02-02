@@ -27,7 +27,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(fmt)
 
-add_executable(reproducer SHARED reproducer.cpp
+add_executable(reproducer reproducer.cpp
         code_view.hpp
         code_view.cpp)
 
@@ -51,9 +51,7 @@ target_include_directories(reproducer PRIVATE ${SOURCE_DIR}/build/include)
 target_link_directories(reproducer PUBLIC ${SOURCE_DIR}/build/lib)
 
 
-
-
-find_package(LLVM PATHS /opt/rocm/llvm)
+find_package(LLVM REQUIRED CONFIG PATHS ${REPRODUCER_LLVM_BIN_DIR} NO_DEFAULT_PATH)
 
 find_package(hip)
 
@@ -64,6 +62,11 @@ find_package(amd_comgr REQUIRED)
 target_compile_definitions(reproducer PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
 
 target_include_directories(reproducer PUBLIC ${LLVM_INCLUDE_DIRS})
+
+#target_include_directories(reproducer PUBLIC ${REPRODUCER_LLVM_SOURCE_DIR}/llvm/lib/Target/AMDGPU/)
+#
+#target_include_directories(reproducer PUBLIC ${REPRODUCER_LLVM_BIN_DIR}/lib/Target/AMDGPU)
+
 add_definitions(${LLVM_DEFINITIONS})
 
 target_compile_definitions(reproducer PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
