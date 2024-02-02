@@ -22,8 +22,8 @@ class InstrumentationFunction {
     InstrumentationFunction(hsa::ExecutableSymbol instrumentationFunction, hsa::ExecutableSymbol instrumentationKernel)
         : instrumentationFunction_(std::move(instrumentationFunction)),
           instrumentationKernel_(std::move(instrumentationKernel)) {
-        assert(instrumentationKernel_.getAgent() == instrumentationFunction_.getAgent());
-        assert(instrumentationKernel_.getExecutable() == instrumentationFunction_.getExecutable());
+        LUTHIER_CHECK((instrumentationKernel_.getAgent() == instrumentationFunction_.getAgent()));
+        LUTHIER_CHECK((instrumentationKernel_.getExecutable() == instrumentationFunction_.getExecutable()));
     };
 
     [[nodiscard]] hsa::GpuAgent getAgent() const { return instrumentationFunction_.getAgent(); }

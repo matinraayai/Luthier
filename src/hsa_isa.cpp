@@ -29,7 +29,7 @@ std::string Isa::getName() const {
 inline llvm::SmallVector<llvm::StringRef, 5> parseIsaName(llvm::StringRef isaName) {
     llvm::SmallVector<llvm::StringRef, 5> isaNameComponents;
     isaName.split(isaNameComponents, '-', 4);
-    assert(isaNameComponents.size() == 5);
+    LUTHIER_CHECK((isaNameComponents.size() == 5));
     return isaNameComponents;
 }
 

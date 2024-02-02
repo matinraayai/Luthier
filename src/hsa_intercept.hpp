@@ -7,7 +7,7 @@
 #include <functional>
 #include <unordered_set>
 
-#include "error.h"
+#include "error.hpp"
 #include "luthier_types.h"
 
 namespace luthier {

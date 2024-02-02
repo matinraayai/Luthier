@@ -1,5 +1,5 @@
 #include "instr.hpp"
-#include "error.h"
+#include "error.hpp"
 #include "hsa_intercept.hpp"
 
 

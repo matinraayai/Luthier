@@ -39,8 +39,8 @@ class Disassembler {
                         std::unique_ptr<const llvm::MCDisassembler> disAsm)
             : context_(std::move(context)),
               disAsm_(std::move(disAsm)) {
-            assert(context_);
-            assert(disAsm_);
+            LUTHIER_CHECK(context_);
+            LUTHIER_CHECK(disAsm_);
         };
     };
 

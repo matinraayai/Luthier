@@ -26,7 +26,7 @@ THE SOFTWARE. */
 #include <string>
 #include <thread>
 
-#include "error.h"
+#include "error.hpp"
 #include "log.hpp"
 
 namespace luthier::code {
@@ -804,7 +804,7 @@ WorkGroupInfo ElfView::getAttrCodePropMetadata(amd_comgr_metadata_node_t kernelM
                                                     static_cast<void *>(&workGroupInfo));
     }
 
-    assert(status == AMD_COMGR_STATUS_SUCCESS);
+    LUTHIER_AMD_COMGR_CHECK(status);
     initParameters(shared_from_this(), kernelMetaNode, workGroupInfo);
 
     return workGroupInfo;
