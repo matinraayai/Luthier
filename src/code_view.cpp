@@ -21,6 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE. */
 
 #include <llvm/Support/Error.h>
+#include <llvm/Support/FormatVariadic.h>
 
 #include <elfio/elfio.hpp>
 #include <string>
@@ -694,7 +695,7 @@ void initParameters(const std::shared_ptr<ElfView> &elfView, const amd_comgr_met
                     desc.type_ = T_POINTER;
                     if (desc.info_.shared_) {
                         if (desc.info_.arrayIndex_ == 0) {
-                            fmt::println("Missing DynamicSharedPointer alignment");
+                            llvm::outs() << "Missing DynamicSharedPointer alignment\n";
                             desc.info_.arrayIndex_ = 128; /* worst case alignment */
                         }
                     } else {
@@ -841,7 +842,7 @@ amd_comgr_status_t ElfView::initializeComgrMetaData() const {
         status = amd_comgr_index_list_metadata(versionMD, 0, &versionNode);
         if (status != AMD_COMGR_STATUS_SUCCESS) {
             amd_comgr_destroy_metadata(versionMD);
-            throw std::runtime_error("Cannot get code object metadata major version node.");
+            llvm::report_fatal_error("Cannot get code object metadata major version node.");
         }
 
         size = 1;
@@ -849,14 +850,14 @@ amd_comgr_status_t ElfView::initializeComgrMetaData() const {
         if (status != AMD_COMGR_STATUS_SUCCESS) {
             amd_comgr_destroy_metadata(versionNode);
             amd_comgr_destroy_metadata(versionMD);
-            throw std::runtime_error("Cannot get code object metadata major version.");
+            llvm::report_fatal_error("Cannot get code object metadata major version.");
         }
         amd_comgr_destroy_metadata(versionNode);
 
         status = amd_comgr_index_list_metadata(versionMD, 1, &versionNode);
         if (status != AMD_COMGR_STATUS_SUCCESS) {
             amd_comgr_destroy_metadata(versionMD);
-            throw std::runtime_error("Cannot get code object metadata minor version node.");
+            llvm::report_fatal_error("Cannot get code object metadata minor version node.");
         }
 
         size = 1;
@@ -864,7 +865,7 @@ amd_comgr_status_t ElfView::initializeComgrMetaData() const {
         if (status != AMD_COMGR_STATUS_SUCCESS) {
             amd_comgr_destroy_metadata(versionNode);
             amd_comgr_destroy_metadata(versionMD);
-            throw std::runtime_error("Cannot get code object metadata minor version.");
+            llvm::report_fatal_error("Cannot get code object metadata minor version.");
         }
         amd_comgr_destroy_metadata(versionNode);
 
@@ -962,10 +963,10 @@ std::optional<SymbolView> ElfView::getSymbol(unsigned int index) {
     if (!ret) { return std::nullopt; }
     symbolSection = io_->sections[sectionIndex];
     if (symbolSection == nullptr) {
-        throw std::runtime_error(
-            fmt::format("Section for symbol index {} was "
-                        "reported as nullptr by the ELFIO library.",
-                        index));
+        llvm::report_fatal_error(
+            llvm::formatv("Section for symbol index {0} was "
+                          "reported as nullptr by the ELFIO library.",
+                          index));
     }
 
     uint64_t symbolDataStart =
@@ -992,10 +993,10 @@ std::optional<SymbolView> ElfView::getSymbol(const std::string &symbolName) {
     if (!ret) { return std::nullopt; }
     symbolSection = io_->sections[sectionIndex];
     if (symbolSection == nullptr) {
-        throw std::runtime_error(
-            fmt::format("Section for symbol name {} was "
-                        "reported as nullptr by the ELFIO library.",
-                        symbolName));
+        llvm::report_fatal_error(
+            llvm::formatv("Section for symbol name {0} was "
+                          "reported as nullptr by the ELFIO library.",
+                          symbolName));
     }
 
     uint64_t symbolDataStart =

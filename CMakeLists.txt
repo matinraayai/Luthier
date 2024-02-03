@@ -15,13 +15,13 @@ add_library(luthier SHARED
         src/luthier.cpp include/luthier.h src/hip_intercept.hpp src/hip_intercept.cpp
         include/luthier_types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
         src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h src/error.hpp
-        src/disassembler.hpp src/disassembler.cpp
-        src/target_manager.hpp src/code_generator.hpp src/code_generator.cpp src/log.hpp
-        src/instrumentation_function.hpp src/hsa_executable.hpp src/hsa_executable.cpp src/hsa_executable_symbol.hpp
-        src/hsa_agent.hpp src/hsa_handle_type.hpp src/hsa_type.hpp src/hsa_agent.cpp src/hsa_executable_symbol.cpp
-        src/hsa_loaded_code_object.hpp src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp
-        src/code_view.hpp src/code_view.cpp src/hsa_kernel_descriptor.hpp src/target_manager.cpp src/hsa_instr.hpp
-        src/hsa_instr.cpp src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/hsa_kernel_descriptor.cpp
+        src/disassembler.hpp src/disassembler.cpp src/target_manager.hpp src/code_generator.hpp
+        src/code_generator.cpp src/log.hpp src/instrumentation_function.hpp src/hsa_executable.hpp
+        src/hsa_executable.cpp src/hsa_executable_symbol.hpp src/hsa_agent.hpp src/hsa_handle_type.hpp
+        src/hsa_type.hpp src/hsa_agent.cpp src/hsa_executable_symbol.cpp src/hsa_loaded_code_object.hpp
+        src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp src/code_view.hpp src/code_view.cpp
+        src/hsa_kernel_descriptor.hpp src/target_manager.cpp src/hsa_instr.hpp src/hsa_instr.cpp
+        src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/hsa_kernel_descriptor.cpp
         src/hsa.hpp src/hsa.cpp)
 # ======================================================================================================================
 
@@ -66,20 +66,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(elfio)
 
 # ======================================================================================================================
-
-# FMT Configuration ====================================================================================================
-FetchContent_Declare(
-        fmt
-        DOWNLOAD_EXTRACT_TIMESTAMP 1
-        URL "https://github.com/fmtlib/fmt/archive/refs/heads/master.zip"
-        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/Source/fmt/
-        INSTALL_COMMAND ""
-)
-
-FetchContent_MakeAvailable(fmt)
-
-# ======================================================================================================================
-
 # Boost Configuration ==================================================================================================
 ExternalProject_add(boost
         DOWNLOAD_EXTRACT_TIMESTAMP 1
@@ -132,8 +118,7 @@ target_compile_definitions(luthier PUBLIC "-D_GLIBCXX_DEBUG")
 target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 
-target_link_libraries(luthier hip::host elfio::elfio stdc++fs amd_comgr fmt::fmt-header-only
-        hsa-runtime64::hsa-runtime64
+target_link_libraries(luthier hip::host elfio::elfio stdc++fs amd_comgr hsa-runtime64::hsa-runtime64
         LLVMAMDGPUAsmParser LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
         LLVMAMDGPUUtils LLVMAggressiveInstCombine LLVMAnalysis LLVMAsmParser LLVMAsmPrinter LLVMBinaryFormat
         LLVMBitReader LLVMBitWriter LLVMBitstreamReader LLVMCFGuard LLVMCodeGen LLVMCodeGenTypes LLVMCore LLVMCoroutines

@@ -362,7 +362,7 @@ class ElfView : public std::enable_shared_from_this<ElfView> {
         if (io_ == std::nullopt) {
             io_.emplace();
             // All elfio objects are loaded with lazy=true in ElfViewImpl to prevent additional memory copy
-            if (not io_->load(*dataStringStream_, true)) { throw std::runtime_error("Failed to load the ELF file."); }
+            if (not io_->load(*dataStringStream_, true)) { llvm::report_fatal_error("Failed to load the ELF file."); }
         }
         return io_.value();
     }

@@ -1,6 +1,7 @@
 #include "code_object_manager.hpp"
 
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/FormatVariadic.h>
 
 #include <vector>
@@ -11,15 +12,13 @@
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "instrumentation_function.hpp"
 #include "log.hpp"
-#include "target_manager.hpp"
 
 void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
     llvm::SmallVector<hsa::Executable> executables;
     hsa::getAllExecutables(executables);
 
-    llvm::SmallVector<hsa::GpuAgent, 8> agents;
+    llvm::SmallVector<hsa::GpuAgent> agents;
     hsa::getGpuAgents(agents);
 
     for (const auto &e: executables) {
@@ -30,14 +29,14 @@ void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
             }
         }
     }
-    LuthierLogDebug("Number of executables captured: {}", toolExecutables_.size());
+    LuthierLogDebug("Number of executables captured: {0}", toolExecutables_.size());
 }
 
 void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunctions(
     const std::vector<std::tuple<const void *, const char *>> &instrumentationFunctionInfo) {
     registerLuthierHsaExecutables();
 
-    llvm::SmallVector<hsa::GpuAgent, 8> agents;
+    llvm::SmallVector<hsa::GpuAgent> agents;
     hsa::getGpuAgents(agents);
 
     for (const auto &e: toolExecutables_) {
@@ -65,7 +64,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
             }
         }
     }
-    LuthierLogDebug("Number of functions registered: {}", functions_.size());
+    LuthierLogDebug("Number of functions registered: {0}", functions_.size());
 }
 
 const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumentationFunction(
@@ -80,10 +79,11 @@ const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumenta
 
 const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumentedKernel(
     const hsa::ExecutableSymbol &originalKernel) const {
-    if (!instrumentedKernels_.contains(originalKernel))
-        throw std::runtime_error(
-            fmt::format("The Kernel Descriptor {:#x} has not been instrumented.",
-                        reinterpret_cast<luthier_address_t>(originalKernel.getKernelDescriptor())));
+    if (!instrumentedKernels_.contains(originalKernel)) {
+        llvm::report_fatal_error(
+            llvm::formatv("The Kernel Descriptor {0:x} has not been instrumented.",
+                          reinterpret_cast<luthier_address_t>(originalKernel.getKernelDescriptor())));
+    }
     return std::get<hsa::ExecutableSymbol>(instrumentedKernels_.at(originalKernel));
 }
 
@@ -102,8 +102,9 @@ void luthier::CodeObjectManager::loadInstrumentedKernel(const luthier::byte_stri
             instrumentedKernel.has_value(),
             llvm::formatv("Failed to find symbol {0} in Executable {1}", originalSymbolName, executable.hsaHandle())
                 .str());
-        LUTHIER_CHECK_WITH_MSG((instrumentedKernel->getType() == HSA_SYMBOL_KIND_KERNEL),
-                      llvm::formatv("Symbol {0} was found, but its type is not a kernel", originalSymbolName).str());
+        LUTHIER_CHECK_WITH_MSG(
+            (instrumentedKernel->getType() == HSA_SYMBOL_KIND_KERNEL),
+            llvm::formatv("Symbol {0} was found, but its type is not a kernel", originalSymbolName).str());
         instrumentedKernels_.insert({originalKernel, std::make_tuple(*instrumentedKernel, executable, reader)});
     }
 }

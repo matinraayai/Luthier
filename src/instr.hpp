@@ -1,7 +1,6 @@
 #ifndef INSTR_H
 #define INSTR_H
 #include "luthier_types.h"
-#include <fmt/ostream.h>
 #include <hsa/hsa.h>
 
 #include <string>
@@ -336,7 +335,7 @@ class Instr {
 
 }// namespace luthier
 
-template<>
-struct fmt::formatter<luthier::Operand> : fmt::ostream_formatter {};
+//template<>
+//struct fmt::formatter<luthier::Operand> : fmt::ostream_formatter {};
 
 #endif

@@ -2,7 +2,6 @@
 #define HIP_INTERCEPT_HPP
 
 #include <dlfcn.h>
-#include <fmt/core.h>
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 
@@ -66,31 +65,30 @@ class HipInterceptor {
     void enableUserCallback(uint32_t op) {
         if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
               || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
-            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+            llvm::report_fatal_error(llvm::formatv("Op ID {0} not in hip_api_id_t or hip_private_api_id_t."), op);
         enabledUserCallbacks_.insert(op);
     }
 
     void enableInternalCallback(uint32_t op) {
         if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
               || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
-            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+            llvm::report_fatal_error(llvm::formatv("Op ID {0} not in hip_api_id_t or hip_private_api_id_t."), op);
         enabledInternalCallbacks_.insert(op);
     }
 
     void disableUserCallback(uint32_t op) {
         if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
               || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
-            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+            llvm::report_fatal_error(llvm::formatv("Op ID {0} not in hip_api_id_t or hip_private_api_id_t."), op);
         enabledUserCallbacks_.erase(op);
     }
 
     void disableInternalCallback(uint32_t op) {
         if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST
               || op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
-            throw std::invalid_argument("Op not in hip_api_id_t or hip_private_api_id_t.");
+            llvm::report_fatal_error(llvm::formatv("Op ID {0} not in hip_api_id_t or hip_private_api_id_t."), op);
         enabledInternalCallbacks_.erase(op);
     }
-
 
     void enableAllUserCallbacks() {
         for (int i = static_cast<int>(HIP_API_ID_FIRST); i <= static_cast<int>(HIP_API_ID_LAST); ++i) {
@@ -119,8 +117,8 @@ class HipInterceptor {
 
         void *functionPtr = ::dlsym(handle_, symbol);
         if (functionPtr == nullptr)
-            throw std::runtime_error(
-                fmt::format("symbol lookup '{:s}' failed: {:s}", std::string(symbol), std::string(::dlerror())));
+            llvm::report_fatal_error(
+                llvm::formatv("symbol lookup '{0:s}' failed: {1:s}", std::string(symbol), std::string(::dlerror())));
         return functionPtr;
     }
 
