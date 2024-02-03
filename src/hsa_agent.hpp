@@ -122,7 +122,7 @@ class GpuAgent : public HandleType<hsa_agent_t> {
 
     void getIsa(llvm::SmallVectorImpl<Isa>& isaList) const;
 
-    hsa::Isa getIsa() const;
+    [[nodiscard]] hsa::Isa getIsa() const;
 };
 
 }// namespace luthier::hsa
@@ -180,7 +180,5 @@ struct greater_equal<luthier::hsa::GpuAgent> {
 
 
 }// namespace std
-
-//#undef AGENT_HSA_META_ACCESSOR
 
 #endif

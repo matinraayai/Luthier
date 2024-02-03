@@ -1,6 +1,7 @@
 #include "luthier.h"
 
 #include <llvm/ADT/StringRef.h>
+#include <llvm/Support/FormatVariadic.h>
 
 #include <optional>
 
@@ -176,7 +177,7 @@ void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_p
         luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
             reinterpret_cast<const luthier::hsa::KernelDescriptor *>(dispatch_packet->kernel_object)));
     dispatch_packet->kernel_object = reinterpret_cast<uint64_t>(instrumentedKernel.getKernelDescriptor());
-    fmt::println("Kernel Object address: {:#x}", dispatch_packet->kernel_object);
+    llvm::outs() << llvm::formatv("Kernel Object Address: {0:x}\n", dispatch_packet->kernel_object);
 }
 
 // NOLINTBEGIN

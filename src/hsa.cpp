@@ -5,7 +5,7 @@ namespace luthier::hsa {
 void getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
     const auto &coreTable = HsaInterceptor::instance().getSavedHsaTables().core;
     auto returnGpuAgentsCallback = [](hsa_agent_t agent, void *data) {
-        auto agentMap = reinterpret_cast<llvm::SmallVector<GpuAgent, 8> *>(data);
+        auto agentMap = reinterpret_cast<llvm::SmallVector<GpuAgent> *>(data);
         hsa_device_type_t devType = HSA_DEVICE_TYPE_CPU;
 
         hsa_status_t stat = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &devType);

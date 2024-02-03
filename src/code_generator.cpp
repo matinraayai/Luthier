@@ -1,10 +1,5 @@
 #include "code_generator.hpp"
 
-#include <fmt/color.h>
-#include <fmt/core.h>
-#include <hsa/amd_hsa_common.h>
-#include <hsa/hsa_ext_amd.h>
-
 #include <memory>
 
 //#include "MCTargetDesc/AMDGPUTargetStreamer.h"
@@ -39,6 +34,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbolELF.h"
+#include <llvm/ADT/StringExtras.h>
 #include "llvm/MC/TargetRegistry.h"
 
 #include "llvm/Support/SourceMgr.h"
@@ -59,7 +55,6 @@
 //#define GET_INSTRINFO_CTOR_DTOR
 //#define GET_INSTRINFO_HEADER
 #include "AMDGPUGenInstrInfo.inc"
-#include "fmt/ranges.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Instructions.h"
 
@@ -69,10 +64,7 @@ luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(co
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
 
-    llvm::SmallVector<hsa::Isa, 1> isa;
-    agent.getIsa(isa);
-
-    std::string isaName = isa[0].getName();
+    auto isaName = agent.getIsa().getName();
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
 
@@ -106,10 +98,7 @@ luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
 
-    llvm::SmallVector<hsa::Isa, 1> isa;
-    agent.getIsa(isa);
-
-    std::string isaName = isa[0].getName();
+    auto isaName = agent.getIsa().getName();
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
 
@@ -134,7 +123,7 @@ luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::
     name.resize(nameSize);
     amd_comgr_get_data_name(dataOut, &nameSize, name.data());
 
-    fmt::print(stderr, "Name of the data: {}\n", name);
+    llvm::errs() << llvm::formatv("Name of the data: {0}\n", name);
 
     amd_comgr_get_data(dataOut, &dataOutSize, nullptr);
     luthier::byte_string_t outElf;
@@ -146,7 +135,7 @@ luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::
 
 luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::vector<std::string> &instList,
                                                                      const hsa::GpuAgent &agent) {
-    std::string instString = fmt::format("{}", fmt::join(instList, "\n"));
+    std::string instString = llvm::join(instList, "\n");
     return assembleToRelocatable(instString, agent);
 }
 
@@ -155,10 +144,7 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instL
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
 
-    llvm::SmallVector<hsa::Isa, 1> isa;
-    agent.getIsa(isa);
-
-    std::string isaName = isa[0].getName();
+    auto isaName = agent.getIsa().getName();
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
 
@@ -183,7 +169,7 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instL
     name.resize(nameSize);
     amd_comgr_get_data_name(dataOut, &nameSize, name.data());
 
-    fmt::print(stderr, "Name of the data: {}\n", name);
+    llvm::errs() << llvm::formatv("Name of the data: {0}\n", name);
 
     amd_comgr_get_data(dataOut, &dataOutSize, nullptr);
     luthier::byte_string_t outElf;
@@ -198,71 +184,6 @@ luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::s
     return assembleToRelocatable(instrVector, agent);
 }
 
-luthier::CodeGenerator::CodeGenerator() {
-    const auto &contextManager = luthier::TargetManager::instance();
-    llvm::SmallVector<hsa::GpuAgent, 8> hsaAgents;
-
-    hsa::getGpuAgents(hsaAgents);
-
-    // Find all the unique ISAs supported by the Agents attached to the system
-    std::unordered_set<hsa::Isa> uniqueISAs;
-
-    for (const auto &a: hsaAgents) {
-        llvm::SmallVector<hsa::Isa, 1> isaList;
-        a.getIsa(isaList);
-        for (const auto &isa: isaList) { uniqueISAs.insert(isa); }
-    }
-
-    // For each unique ISA, identify the supported instructions, and split the target-agnostic and target-specific
-    // opcodes to match them later
-    for (const auto &isa: uniqueISAs) {
-        const auto &targetInfo = contextManager.getTargetInfo(isa);
-        llvm::FeatureBitset subTargetFeatures = targetInfo.getMCSubTargetInfo()->getFeatureBits();
-        llvm::StringMap<unsigned int> nonTargetOpcodes;
-        llvm::StringMap<unsigned int> targetOpcodes;
-        for (unsigned int opCode = 0; opCode < targetInfo.getMCInstrInfo()->getNumOpcodes(); opCode++) {
-            llvm::StringRef opName = targetInfo.getMCInstrInfo()->getName(opCode);
-            if (llvm::AMDGPU_MC::isOpcodeAvailable(opCode, subTargetFeatures)) {
-                llvm::SmallVector<llvm::StringRef> splitName;
-                bool isNonTarget = true;
-                opName.split(splitName, "_", -1, false);
-                for (auto it = splitName.begin(); it != splitName.end();) {
-                    if (it->contains("gfx") || it->contains("vi")) {
-                        isNonTarget = false;
-                        it = splitName.erase(it);
-                    } else
-                        it++;
-                }
-                auto opNameWithNoSep = llvm::join(splitName, "_");
-                if (isNonTarget) {
-                    nonTargetOpcodes.insert({opNameWithNoSep, opCode});
-                } else {
-                    targetOpcodes.insert({opNameWithNoSep, opCode});
-                }
-            }
-        }
-
-        llvmTargetInstructions_.insert({isa, {}});
-
-        auto &opcodeMap = llvmTargetInstructions_[isa];
-
-        // Target-specific opcodes are the ones actually supported by the code emitter
-        for (const auto &[opName, opCode]: targetOpcodes) {
-            if (nonTargetOpcodes.contains(opName)) {
-                opcodeMap.insert({nonTargetOpcodes[opName], opCode});
-            } else {
-                // If there are no target-agnostic enums, then push the target-specific enum
-                opcodeMap.insert({opCode, opCode});
-            }
-        }
-    }
-
-    for (const auto &agent: hsaAgents) {
-        //        auto emptyRelocatable = assembleToRelocatable("s_nop 0", agent);
-        //        emptyRelocatableMap_.insert({agent, emptyRelocatable});
-    }
-}
-
 void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFunc, luthier_ipoint_t point) {
     LUTHIER_LOG_FUNCTION_CALL_START
     auto agent = instr.getAgent();
@@ -270,7 +191,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     auto &contextManager = luthier::TargetManager::instance();
 
     const auto &targetInfo = contextManager.getTargetInfo(agent.getIsa());
-    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
+//    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
 //    auto Context = std::make_unique<llvm::LLVMContext>();
 //    auto triple = agent.getIsa().getLLVMTargetTriple();
 //    auto processor = agent.getIsa().getProcessor();
@@ -333,24 +254,24 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
 
 //        llvm::Function f;
     //    llvm::MachineFunction func;
-    auto genInst = makeInstruction(
-        agent.getIsa(), llvm::AMDGPU::S_ADD_I32, llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
-        llvm::MCOperand::createReg(llvm::AMDGPU::SGPR6), llvm::MCOperand::createReg(llvm::AMDGPU::VGPR1));
+//    auto genInst = makeInstruction(
+//        agent.getIsa(), llvm::AMDGPU::S_ADD_I32, llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
+//        llvm::MCOperand::createReg(llvm::AMDGPU::SGPR6), llvm::MCOperand::createReg(llvm::AMDGPU::VGPR1));
 
     const auto targetTriple = llvm::Triple(agent.getIsa().getLLVMTargetTriple());
     llvm::MCContext ctx(targetTriple, targetInfo.getMCAsmInfo(), targetInfo.getMCRegisterInfo(),
                         targetInfo.getMCSubTargetInfo());
-    auto mcEmitter = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
+//    auto mcEmitter = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
 
-    llvm::SmallVector<char> osBack;
-    llvm::SmallVector<llvm::MCFixup> fixUps;
-    mcEmitter->encodeInstruction(genInst, osBack, fixUps, *targetInfo.getMCSubTargetInfo());
-    fmt::print("Assembled instruction :");
-    for (auto s: osBack) { fmt::print("{:#x}", s); }
-    fmt::print("\n");
+//    llvm::SmallVector<char> osBack;
+//    llvm::SmallVector<llvm::MCFixup> fixUps;
+//    mcEmitter->encodeInstruction(genInst, osBack, fixUps, *targetInfo.getMCSubTargetInfo());
+//    fmt::print("Assembled instruction :");
+//    for (auto s: osBack) { fmt::print("{:#x}", s); }
+//    fmt::print("\n");
 
-    auto oneMoreTime = Disassembler::instance().disassemble(
-        agent.getIsa(), {reinterpret_cast<std::byte *>(osBack.data()), osBack.size()});
+//    auto oneMoreTime = Disassembler::instance().disassemble(
+//        agent.getIsa(), {reinterpret_cast<std::byte *>(osBack.data()), osBack.size()});
 
     hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationKernel(deviceFunc, agent);
 
@@ -360,14 +281,14 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
         std::string instStr;
         llvm::raw_string_ostream instStream(instStr);
         auto inst = i.getInstr();
-        fmt::println("{}", targetInfo.getMCInstrInfo()->getName(inst.getOpcode()).str());
+        llvm::outs() << targetInfo.getMCInstrInfo()->getName(inst.getOpcode()).str() << "\n";
         //        fmt::println("Is call? {}", targetInfo.MII_->get(inst.getOpcode()).isCall());
         //        fmt::println("Is control flow? {}",
         //                     targetInfo.MII_->get(inst.getOpcode()).mayAffectControlFlow(inst, *targetInfo.MRI_));
         //        fmt::println("Num max operands? {}", targetInfo.MII_->get(inst.getOpcode()).getNumOperands());
-        fmt::println("Num operands? {}", inst.getNumOperands());
+        llvm::outs() << llvm::formatv("Num operands? {0:X}\n", inst.getNumOperands());
         //        fmt::println("May load? {}", targetInfo.MII_->get(inst.getOpcode()).mayLoad());
-        fmt::println("Mnemonic: {}", targetInfo.getMCInstPrinter()->getMnemonic(&inst).first);
+        llvm::outs() << llvm::formatv("Mnemonic: {0}\n", targetInfo.getMCInstPrinter()->getMnemonic(&inst).first);
 
         for (int j = 0; j < inst.getNumOperands(); j++) {
             //            auto op = inst.getOperand(j);
@@ -392,10 +313,10 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
         }
         targetInfo.getMCInstPrinter()->printInst(&inst, reinterpret_cast<luthier_address_t>(inst.getLoc().getPointer()),
                                                  "", *targetInfo.getMCSubTargetInfo(), instStream);
-        fmt::println("{}", instStream.str());
+        llvm::outs() << instStream.str() << "\n";
         inst.getOpcode();
     }
-    fmt::println("==================================");
+    llvm::outs() << "==================================\n";
     //
     //    for (const auto &i: *targetFunction) {
     //        std::string instStr;

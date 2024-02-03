@@ -18,13 +18,14 @@
 #include <llvm/MC/MCSubtargetInfo.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/TargetMachine.h>
 
 #include <atomic>
 #include <memory>
 #include <mutex>
 
-#include "hsa.hpp"
 #include "error.hpp"
+#include "hsa.hpp"
 #include "hsa_agent.hpp"
 
 namespace luthier {
@@ -34,9 +35,7 @@ TargetManager::TargetManager() {
     {
         std::scoped_lock llvm_init_lock(llvm_init_mutex);
         static bool LLVMInitialized = false;
-        if (LLVMInitialized) {
-            return;
-        }
+        if (LLVMInitialized) { return; }
         LLVMInitializeAMDGPUTarget();
         LLVMInitializeAMDGPUTargetInfo();
         LLVMInitializeAMDGPUTargetMC();
@@ -49,30 +48,36 @@ TargetManager::TargetManager() {
 }
 
 TargetManager::~TargetManager() {
-    for (auto& it: llvmTargetInfo_) {
+    for (auto &it: llvmTargetInfo_) {
         delete it.second.MRI_;
         delete it.second.MAI_;
         delete it.second.MII_;
         delete it.second.MIA_;
         delete it.second.STI_;
         delete it.second.IP_;
+        //        delete it.second.targetOptions_;
     }
     llvmTargetInfo_.clear();
-
 }
 
 const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
     if (!llvmTargetInfo_.contains(isa)) {
         auto info = llvmTargetInfo_.insert({isa, TargetInfo()}).first;
-        std::string targetTriple = isa.getLLVMTargetTriple();
-        std::string targetIsa = isa.getLLVMTarget();
+        std::string targetTriple = llvm::Triple(isa.getLLVMTargetTriple()).normalize();
+        //        std::string targetIsa = isa.getLLVMTarget();
         std::string error;
+
+        //        auto theTargetMachine = reinterpret_cast<llvm::LLVMTargetMachine *>(
+        //            target->createTargetMachine(triple, cpu, features,
+        //                                        targetInfo.getTargetOptions(), llvm::Reloc::PIC_));
 
         auto target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
         LUTHIER_CHECK(target && error.c_str());
 
         auto mri = target->createMCRegInfo(targetTriple);
         LUTHIER_CHECK(mri);
+
+        //        auto targetOptions = new llvm::TargetOptions();
 
         auto mai = target->createMCAsmInfo(*mri, targetTriple, info->second.targetOptions_.MCOptions);
         LUTHIER_CHECK(mai);
@@ -86,8 +91,7 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         auto sti = target->createMCSubtargetInfo(targetTriple, isa.getProcessor(), isa.getFeatureString());
         LUTHIER_CHECK(sti);
 
-        auto ip =
-            target->createMCInstPrinter(llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri);
+        auto ip = target->createMCInstPrinter(llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri);
         LUTHIER_CHECK(ip);
 
         info->second.target_ = target;
@@ -97,6 +101,7 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         info->second.MIA_ = mia;
         info->second.STI_ = sti;
         info->second.IP_ = ip;
+        //        info->second.targetOptions_ = targetOptions;
     }
     return llvmTargetInfo_.at(isa);
 }

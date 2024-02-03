@@ -1,5 +1,7 @@
 #include "hsa_executable_symbol.hpp"
 
+#include <llvm/Support/ErrorHandling.h>
+
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
@@ -47,7 +49,7 @@ luthier::hsa::ExecutableSymbol luthier::hsa::ExecutableSymbol::fromKernelDescrip
 
     // Check which executable this kernel object (address) belongs to
     LUTHIER_HSA_CHECK(loaderTable.hsa_ven_amd_loader_query_executable(reinterpret_cast<const void *>(kd), &executable));
-    llvm::SmallVector<GpuAgent, 8> agents;
+    llvm::SmallVector<GpuAgent> agents;
     hsa::getGpuAgents(agents);
 
     for (const auto &a: agents) {
@@ -55,7 +57,8 @@ luthier::hsa::ExecutableSymbol luthier::hsa::ExecutableSymbol::fromKernelDescrip
             if (s.getKernelDescriptor() == kd) return s;
         }
     }
-    LUTHIER_HSA_CHECK(HSA_STATUS_ERROR_INVALID_CODE_OBJECT);
+    llvm::report_fatal_error(llvm::formatv("Kernel descriptor {0:x} does not have a symbol associated with it.",
+                                           reinterpret_cast<const void *>(kd)));
 }
 luthier::hsa::GpuAgent luthier::hsa::ExecutableSymbol::getAgent() const { return luthier::hsa::GpuAgent(agent_); }
 luthier::hsa::Executable luthier::hsa::ExecutableSymbol::getExecutable() const {
