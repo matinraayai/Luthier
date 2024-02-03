@@ -73,7 +73,7 @@ Runtime type information (RTTI), which is not enabled by the stock LLVM shipped 
     ```shell
     mkdir build/
     cd build
-    cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_TARGETS_TO_BUILD=AMDGPU -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -DLLVM_ENABLE_RTTI=OFF ../llvm
+    cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLLVM_TARGETS_TO_BUILD=AMDGPU -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -DLLVM_ENABLE_RTTI=ON ../llvm
     ```
     You can set the `CMAKE_BUILD_TYPE` to be any type you deem necessary (e.g. `Debug` for debugging, `Release` to more 
     performant code).
