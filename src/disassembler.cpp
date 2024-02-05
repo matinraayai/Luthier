@@ -122,19 +122,14 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         auto targetInfo = luthier::TargetManager::instance().getTargetInfo(isa);
 
         auto target = targetInfo.getTarget();
-
-        auto mai = targetInfo.getMCAsmInfo();
         //        auto mai = target->createMCAsmInfo(*mri, isa.getLLVMTargetTriple(), targetOptions.MCOptions);
         //        assert(mai);
 
-        auto mii = targetInfo.getMCInstrInfo();
+
         //        auto mii = target->createMCInstrInfo();
         //        assert(mii);
-
-        auto mia = targetInfo.getMCInstrAnalysis();
         //        auto mia = target->createMCInstrAnalysis(mii);
         //        assert(mia);
-        auto sti = targetInfo.getMCSubTargetInfo();
 
 //        auto triple = isa.getLLVMTargetTriple();
 //        auto cpu = isa.getProcessor();
@@ -144,13 +139,26 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         constexpr const char* cpu{"gfx908"};
         constexpr const char* features{",+sramecc,-xnack"};
 
-//        llvm::TargetOptions options;
+        llvm::TargetOptions options;
+        auto mcOptions = std::make_unique<llvm::MCTargetOptions>();
+//        targetInfo.getTargetOptions() = *mcOptions;
 
-        try {
-            std::unique_ptr<llvm::LLVMTargetMachine> theTargetMachine(static_cast<llvm::LLVMTargetMachine *>(
-                target->createTargetMachine(llvm::Triple(triple).normalize(), cpu, features,
-                                            targetInfo.getTargetOptions(), llvm::Reloc::PIC_)));
-            LUTHIER_CHECK(theTargetMachine);
+        std::unique_ptr<llvm::LLVMTargetMachine> theTargetMachine{nullptr};
+        while (!theTargetMachine) {
+            try {
+                theTargetMachine.reset(reinterpret_cast<llvm::LLVMTargetMachine *>(
+                    target->createTargetMachine(llvm::Triple(triple).normalize(), cpu, features,
+                                                targetInfo.getTargetOptions(), llvm::Reloc::PIC_)));
+                LUTHIER_CHECK(theTargetMachine);
+            }
+            catch (std::exception& e) {
+                llvm::outs() << "Caught the exception\n";
+                llvm::outs() << "What: " << e.what() << "\n";
+            };
+            llvm::outs() << "continue executing..\n";
+        }
+
+            auto mCInstInfo = theTargetMachine->getMCInstrInfo();
 
 
             auto context = std::make_unique<llvm::LLVMContext>();
@@ -166,8 +174,10 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
             auto module = std::make_unique<llvm::Module>(symbol.getName(), *context);
             LUTHIER_CHECK(module);
             module->setDataLayout(theTargetMachine->createDataLayout());
-            auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine.get());
-            LUTHIER_CHECK(mmiwp);
+            auto mmi = std::make_unique<llvm::MachineModuleInfo>(theTargetMachine.get());
+            LUTHIER_CHECK(mmi);
+//            auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine.get());
+//            LUTHIER_CHECK(mmiwp);
             llvm::Type *const returnType = llvm::Type::getVoidTy(module->getContext());
             LUTHIER_CHECK(returnType);
             llvm::Type *const memParamType = llvm::PointerType::get(
@@ -183,9 +193,9 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
             llvm::BasicBlock *BB = llvm::BasicBlock::Create(module->getContext(), "", F);
             LUTHIER_CHECK(BB);
             new llvm::UnreachableInst(module->getContext(), BB);
-            auto &mmi = mmiwp->getMMI();
+//            auto &mmi = mmiwp->getMMI();
 //                    mmi.getOrCreateMachineFunction(*F);
-            auto MF = new llvm::MachineFunction(*F, *theTargetMachine, *theTargetMachine->getSubtargetImpl(*F), 1, mmi);
+            auto MF = new llvm::MachineFunction(*F, *theTargetMachine, *theTargetMachine->getSubtargetImpl(*F), 1, *mmi);
 //            llvm::MachineFunction& MF = mmi.getOrCreateMachineFunction(*F);
             LUTHIER_CHECK(MF);
             MF->setAlignment(llvm::Align(4096));
@@ -202,7 +212,7 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
 
                 const unsigned Opcode = inst.getOpcode();
 
-                const llvm::MCInstrDesc &MCID = mii->get(Opcode);
+                const llvm::MCInstrDesc &MCID = mCInstInfo->get(Opcode);
                 llvm::outs() << MCID.getOpcode() << "\n";
                 llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
                 for (unsigned OpIndex = 0, E = i.getInstr().getNumOperands(); OpIndex < E; ++OpIndex) {
@@ -244,12 +254,7 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
 //            delete mia;
 //            delete sti;
 
-        }
-        catch (std::exception& e) {
-            llvm::outs() << "Caught the exception\n";
-            llvm::outs() << "What: " << e.what() << "\n";
-        };
-        llvm::outs() << "continue executing..\n";
+
 
 
     }
