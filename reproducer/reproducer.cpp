@@ -12,12 +12,13 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Support/TargetSelect.h>
 #include <fstream>
-#include "code_view.hpp"
-#include <iostream>
+#include "elf.hpp"
 #include <sstream>
+#include <llvm/Support/FormatVariadic.h>
+#include <SIMachineFunctionInfo.h>
 
 struct TargetInfo {
-  const llvm::Target* target_;
+  const llvm::Target* target_{nullptr};
   std::unique_ptr<llvm::MCRegisterInfo> MRI_;
   std::unique_ptr<llvm::TargetOptions> options_;
   std::unique_ptr<llvm::MCAsmInfo> MAI_;
@@ -73,7 +74,7 @@ std::vector<llvm::MCInst> disassembleSymbol(const llvm::Target *target,
                                             const char* TT,
                                             const llvm::MCAsmInfo* MAI,
                                             const llvm::MCRegisterInfo* MRI,
-                                            const llvm::MCSubtargetInfo* STI, luthier::byte_string_view code) {
+                                            const llvm::MCSubtargetInfo* STI, byte_string_view code) {
     std::unique_ptr<llvm::MCContext> ctx(
         new (std::nothrow) llvm::MCContext(llvm::Triple(TT), MAI, MRI, STI)
         );
@@ -93,7 +94,7 @@ std::vector<llvm::MCInst> disassembleSymbol(const llvm::Target *target,
         llvm::MCInst inst;
         std::string annotations;
         llvm::raw_string_ostream annotationsStream(annotations);
-        if (disassembler->getInstruction(inst, instSize, luthier::code::toArrayRef<uint8_t>(code.substr(idx, readSize)),
+        if (disassembler->getInstruction(inst, instSize, toArrayRef<uint8_t>(code.substr(idx, readSize)),
                                    currentAddress, annotationsStream)
             != llvm::MCDisassembler::Success) {
             break;
@@ -108,7 +109,7 @@ std::vector<llvm::MCInst> disassembleSymbol(const llvm::Target *target,
     return instructions;
 }
 
-luthier::byte_string_t readCodeObject(const char* path) {
+byte_string_t readCodeObject(const char* path) {
     auto f = std::make_unique<std::ifstream>();
     f->open( path, std::ios::in | std::ios::binary );
     assert(f != nullptr);
@@ -116,13 +117,13 @@ luthier::byte_string_t readCodeObject(const char* path) {
     std::ostringstream ss;
     ss << f->rdbuf();
 
-    luthier::byte_string_t codeObject{reinterpret_cast<std::byte*>(ss.str().data()), ss.str().size()};
-    std::cout << "Size of code object: " << codeObject.size() << std::endl;
+    byte_string_t codeObject{reinterpret_cast<std::byte*>(ss.str().data()), ss.str().size()};
+    llvm::outs() << llvm::formatv("Size of the code object: {0}.\n", codeObject.size());
     return codeObject;
 }
 
 // ASSUMES THE SYMBOL IS FOUND!
-std::string findKernelName(std::shared_ptr<luthier::code::ElfView> elf) {
+std::string findKernelName(std::shared_ptr<ElfView> elf) {
     std::string kernelName;
     for (unsigned int i = 0; i < elf->getNumSymbols(); i++) {
         auto symbol = elf->getSymbol(i);
@@ -139,11 +140,9 @@ std::string findKernelName(std::shared_ptr<luthier::code::ElfView> elf) {
 void printInstructions(const std::vector<llvm::MCInst>& instructions, llvm::MCInstPrinter& IP,
                        const llvm::MCSubtargetInfo& STI) {
     for (const auto& inst: instructions) {
-        std::string instStr;
-        llvm::raw_string_ostream instStream(instStr);
         IP.printInst(&inst, reinterpret_cast<size_t>(inst.getLoc().getPointer()),
-                                                 "", STI, instStream);
-        std::cout << instStr << std::endl;
+                                                 "", STI, llvm::outs());
+        llvm::outs() << "\n";
     }
 
 }
@@ -158,31 +157,32 @@ int main(int argc, char** argv) {
     initializeTargetInfo(TI, targetTriple, processor, featureString);
 
     // Read in the code object
-    luthier::byte_string_t codeObject = readCodeObject(argv[1]);
-    auto elfView = luthier::code::ElfView::makeView(codeObject);
+    byte_string_t codeObject = readCodeObject(argv[1]);
+    auto elfView = ElfView::makeView(codeObject);
 
     // Find the KD Symbol and the kernel code symbol
     auto kernelName = findKernelName(elfView);
     auto kernelCodeSymbol = *elfView->getSymbol(kernelName);
     auto kdSymbol = *elfView->getSymbol(kernelName + ".kd");
-    std::cout << "Size of the kernel: " << kernelCodeSymbol.getSize() << std::endl;
+    llvm::outs() << llvm::formatv("Size of the kernel: {0}", kernelCodeSymbol.getSize());
 
     auto kernelInstructions = disassembleSymbol(TI.target_, targetTriple, TI.MAI_.get(), TI.MRI_.get(), TI.STI_.get(),
                                                 kernelCodeSymbol.getView());
 
-    std::cout << "Number of instructions: " << kernelInstructions.size() << std::endl;
+    llvm::outs() << llvm::formatv("Number of instructions: {0}.\n", kernelInstructions.size());
     printInstructions(kernelInstructions, *TI.IP_, *TI.STI_);
+    llvm::outs() << llvm::formatv("Code object version: {0}\n", elfView->getCodeObjectVersion());
 
     auto context = std::make_unique<llvm::LLVMContext>();
     assert(context);
     auto theTargetMachine = std::unique_ptr<llvm::LLVMTargetMachine>(
         reinterpret_cast<llvm::LLVMTargetMachine *>(TI.target_->createTargetMachine(
             targetTriple,
-            processor, featureString, *TI.options_,
-            llvm::Reloc::Model::PIC_)));
+            processor, featureString, *TI.options_, std::nullopt)));
     assert(theTargetMachine);
     std::unique_ptr<llvm::Module> module = std::make_unique<llvm::Module>("My Module", *context);
     assert(module);
+//    module->setModuleFlag()
     module->setDataLayout(theTargetMachine->createDataLayout());
     auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine.get());
     assert(mmiwp);
@@ -194,10 +194,9 @@ int main(int argc, char** argv) {
     llvm::FunctionType *FunctionType = llvm::FunctionType::get(returnType, {memParamType}, false);
     assert(FunctionType);
     llvm::Function *const F =
-        llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, "myfunc", *module);
+        llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, kernelName, *module);
     assert(F);
     F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-
     llvm::BasicBlock *BB = llvm::BasicBlock::Create(module->getContext(), "", F);
     assert(BB);
     new llvm::UnreachableInst(module->getContext(), BB);
@@ -210,11 +209,42 @@ int main(int argc, char** argv) {
     properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
     properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
 
-    std::cout << "Properties: ";
-    std::string propertiesString;
-    llvm::raw_string_ostream pOS(propertiesString);
-    properties.print(pOS);
-    std::cout << propertiesString << std::endl;
+    properties.print(llvm::outs());
 
+    llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
+    //    MF.push_back(MBB);
 
+    for (const auto &inst: kernelInstructions) {
+
+        const unsigned Opcode = inst.getOpcode();
+
+        const llvm::MCInstrDesc &MCID = TI.MII_->get(Opcode);
+        llvm::outs() << MCID.getOpcode() << "\n";
+        llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
+        for (unsigned OpIndex = 0, E = inst.getNumOperands(); OpIndex < E; ++OpIndex) {
+            const llvm::MCOperand &Op = inst.getOperand(OpIndex);
+            if (Op.isReg()) {
+                const bool IsDef = OpIndex < MCID.getNumDefs();
+                unsigned Flags = 0;
+                const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
+                if (IsDef && !OpInfo.isOptionalDef()) Flags |= llvm::RegState::Define;
+                Builder.addReg(Op.getReg(), Flags);
+            } else if (Op.isImm()) {
+                Builder.addImm(Op.getImm());
+            } else if (!Op.isValid()) {
+                llvm_unreachable("Operand is not set");
+            } else {
+                llvm_unreachable("Not yet implemented");
+            }
+        }
+    }
+    MBB->dump();
+    MF.dump();
+    llvm::outs() << llvm::formatv("Properties address: {0:x}\n", reinterpret_cast<uint64_t>(&properties));
+    MF.dump();
+    for (const auto& bb: MF) {
+        bb.print(llvm::outs());
+    }
+    properties.print(llvm::outs());
+    llvm::outs() << "\n";
 }
