@@ -1,6 +1,7 @@
 #ifndef HSA_CODE_OBJECT_READER_HPP
 #define HSA_CODE_OBJECT_READER_HPP
-#include "code_view.hpp"
+#include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/ArrayRef.h>
 #include "hsa_handle_type.hpp"
 
 namespace luthier {
@@ -13,9 +14,9 @@ class CodeObjectReader : public HandleType<hsa_code_object_reader_t> {
     friend class luthier::CodeObjectManager;
 
  private:
-    static CodeObjectReader createFromMemory(luthier::byte_string_view elf);
+    static CodeObjectReader createFromMemory(llvm::StringRef elf);
 
-    static CodeObjectReader createFromMemory(const luthier::byte_string_t& elf);
+    static CodeObjectReader createFromMemory(llvm::ArrayRef<uint8_t> elf);
 
     void destroy();
 
