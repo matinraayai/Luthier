@@ -10,6 +10,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # ======================================================================================================================
 
+# TODO: Add option to compile luthier as a shared library
 # Library Declaration ==================================================================================================
 add_library(luthier STATIC
         src/luthier.cpp include/luthier.h src/hip_intercept.hpp src/hip_intercept.cpp
@@ -62,55 +63,31 @@ find_package(LLVM REQUIRED CONFIG PATHS ${LUTHIER_LLVM_BIN_DIR} NO_DEFAULT_PATH)
 
 target_include_directories(luthier PUBLIC ${LLVM_INCLUDE_DIRS})
 
+target_compile_definitions(luthier PUBLIC ${LLVM_DEFINITIONS})
+
 target_include_directories(luthier PUBLIC ${LUTHIER_LLVM_BIN_DIR}/lib/Target/AMDGPU)
 
 target_include_directories(luthier PUBLIC ${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/)
 
 target_include_directories(luthier PUBLIC ${LUTHIER_LLVM_BIN_DIR}/lib/Target/AMDGPU)
 
-# ======================================================================================================================
 target_compile_definitions(luthier PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
-
-#include_directories(${LLVM_INCLUDE_DIRS})
-#add_definitions(${LLVM_DEFINITIONS})
 # ======================================================================================================================
 
 # Any Compilation Flags, Linking Configuration Left ====================================================================
 target_compile_options(luthier PUBLIC "-fPIC")
 
-#target_compile_options(luthier PUBLIC "-fsanitize=address")
-
-#target_compile_options(luthier PUBLIC "-static-libsan")
-
-#target_compile_options(luthier PUBLIC "-g3")
-
-#target_compile_options(luthier PUBLIC "-fno-omit-frame-pointer")
+# TODO: Add option to build with sanitizers
 
 # For LD_PRELOAD-ing the hip intercept functions
 target_compile_definitions(luthier PUBLIC "-D_GLIBCXX_DEBUG")
 
-#target_link_options(luthier PUBLIC "-static-libsan")
-
-#target_compile_options(luthier PUBLIC "-static-libsan")
-
-#set_property(TARGET luthier PROPERTY HIP_ARCHITECTURES OFF)
-
-#target_compile_options(luthier PUBLIC "--offload-arch=gfx908:xnack+")
-
 target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
-
-#target_link_options(luthier PUBLIC "-fsanitize=address")
-#target_link_options(luthier PUBLIC "-static-libsan")
-
-#target_link_options(luthier PUBLIC "--offload-arch=gfx908:xnack+")
 
 target_link_libraries(luthier hip::host stdc++fs hsa-runtime64::hsa-runtime64
         LLVMAMDGPUAsmParser LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
-        LLVMAMDGPUUtils LLVMAsmParser LLVMAsmPrinter
-        LLVMCodeGen LLVMCodeGenTypes LLVMCore
-        LLVMMC LLVMMCA LLVMMCDisassembler LLVMMCParser LLVMMIRParser
-        LLVMObject LLVMPasses LLVMSupport
-        LLVMTarget LLVMTargetParser)
+        LLVMAMDGPUUtils LLVMAsmParser LLVMAsmPrinter LLVMCodeGen LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA
+        LLVMMCDisassembler LLVMMCParser LLVMMIRParser LLVMObject LLVMPasses LLVMSupport LLVMTarget LLVMTargetParser)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================
