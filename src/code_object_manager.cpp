@@ -87,7 +87,7 @@ const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumente
     return std::get<hsa::ExecutableSymbol>(instrumentedKernels_.at(originalKernel));
 }
 
-void luthier::CodeObjectManager::loadInstrumentedKernel(const luthier::byte_string_t &instrumentedElf,
+void luthier::CodeObjectManager::loadInstrumentedKernel(const ArrayRef<uint8_t> &instrumentedElf,
                                                         const hsa::ExecutableSymbol &originalKernel) {
     if (!instrumentedKernels_.contains(originalKernel)) {
         auto executable = hsa::Executable::create();
