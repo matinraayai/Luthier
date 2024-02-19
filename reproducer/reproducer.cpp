@@ -17,6 +17,8 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <SIMachineFunctionInfo.h>
 
+#include <AMDGPUResourceUsageAnalysis.h>
+
 struct TargetInfo {
   const llvm::Target* target_{nullptr};
   std::unique_ptr<llvm::MCRegisterInfo> MRI_;
@@ -173,6 +175,20 @@ int main(int argc, char** argv) {
     printInstructions(kernelInstructions, *TI.IP_, *TI.STI_);
     llvm::outs() << llvm::formatv("Code object version: {0}\n", elfView->getCodeObjectVersion());
 
+    // llvm::outs() << "\n"
+    //              << "------------------------------------------------" << "\n" << "\n";
+
+    // WorkGroupInfo wgi = kdSymbol.getMetaData();
+
+    // llvm::outs() << "From kernel metadata"  << "\n"
+    //              << "Num SGPRs available: " << wgi.availableSGPRs_ << "\n"
+    //              << "Num SGPRs used: "      << wgi.usedSGPRs_      << "\n"
+    //              << "Num VGPRs available: " << wgi.availableVGPRs_ << "\n"
+    //              << "Num VGPRs used: "      << wgi.usedVGPRs_      << "\n";
+
+    llvm::outs() << "\n"
+                 << "------------------------------------------------" << "\n" << "\n";
+
     auto context = std::make_unique<llvm::LLVMContext>();
     assert(context);
     auto theTargetMachine = std::unique_ptr<llvm::LLVMTargetMachine>(
@@ -182,7 +198,7 @@ int main(int argc, char** argv) {
     assert(theTargetMachine);
     std::unique_ptr<llvm::Module> module = std::make_unique<llvm::Module>("My Module", *context);
     assert(module);
-//    module->setModuleFlag()
+    // module->setModuleFlag()
     module->setDataLayout(theTargetMachine->createDataLayout());
     auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine.get());
     assert(mmiwp);
@@ -206,9 +222,10 @@ int main(int argc, char** argv) {
     MF.ensureAlignment(llvm::Align(4096));
     auto &properties = MF.getProperties();
     properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
-    properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
+    properties.set(llvm::MachineFunctionProperties::Property::IsSSA);
     properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
 
+    properties.print(llvm::outs());
     properties.print(llvm::outs());
 
     llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
@@ -238,13 +255,66 @@ int main(int argc, char** argv) {
             }
         }
     }
-    MBB->dump();
-    MF.dump();
-    llvm::outs() << llvm::formatv("Properties address: {0:x}\n", reinterpret_cast<uint64_t>(&properties));
-    MF.dump();
-    for (const auto& bb: MF) {
-        bb.print(llvm::outs());
+    // MBB->dump();
+    // MF.dump();
+    // llvm::outs() << llvm::formatv("Properties address: {0:x}\n", reinterpret_cast<uint64_t>(&properties));
+    // MF.dump();
+    // for (const auto& bb: MF) {
+    //     bb.print(llvm::outs());
+    // }
+    // properties.print(llvm::outs());
+    // llvm::outs() << "\n";
+
+
+    // llvm::outs() << "SI Machine Func Info:" << "\n";
+    // llvm::SIMachineFunctionInfo* MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
+    // llvm::Register reg = MFI->addLDSKernelId();
+    // const llvm::GCNSubtarget &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+    // llvm::SIRegisterInfo TRI(ST);
+    // const llvm::TargetRegisterClass *RC = TRI.getPhysRegBaseClass(reg.asMCReg());
+    // llvm::SmallVectorImpl<llvm::MCRegister>
+    //     *PreloadRegs = MFI->addPreloadedKernArg(TRI, RC, wgi.usedSGPRs_, 0, 0);
+    // if (PreloadRegs->size() > 1)
+    //     for (auto &Reg : *PreloadRegs) {
+    //         assert(Reg);
+    //         MF.addLiveIn(Reg, RC);
+    //     }
+    // llvm::outs() << "Num user SGPRs = "               << MFI->getNumUserSGPRs()             << "\n"
+    //              << "Num pre-loaded SGPRs = "         << MFI->getNumPreloadedSGPRs()        << "\n"
+    //              << "Num Kernarg pre-loaded SGPRs = " << MFI->getNumKernargPreloadedSGPRs() << "\n"
+    //              << "\n";
+
+
+    MF.getRegInfo().freezeReservedRegs(MF);
+
+    // Create a legacy pass manager. The new pass manager is too annoying to use.
+    llvm::legacy::PassManager PM;
+    llvm::TargetPassConfig *TPC = theTargetMachine->createPassConfig(PM);
+
+    TPC->setDisableVerify(true);
+
+    PM.add(TPC);
+    PM.add(mmiwp.get());
+
+    TPC->addMachinePasses();
+    TPC->setInitialized();
+
+    std::error_code of_err;
+    llvm::raw_fd_ostream asmOutFile("output.s", of_err);
+    if (asmOutFile.has_error()) {
+        llvm::outs() << "Error opening output file: " << of_err.message() << "\n";
+        return -1;
     }
-    properties.print(llvm::outs());
-    llvm::outs() << "\n";
+    if (theTargetMachine->addAsmPrinter(PM, asmOutFile, nullptr,
+                                        llvm::CodeGenFileType::AssemblyFile, mmi.getContext())) {
+        llvm::outs() << "Problem with theTargetMachine->addAsmPrinter()" << "\n";
+        return -1;
+    }
+
+    // PM.add(llvm::createFreeMachineFunctionPass());
+
+    llvm::outs() << "Run module on pass manager\n";
+    PM.run(*module); // Run all the passes
+
+    llvm::outs() << "\n\t~~ Reproducer finished ~~\n";
 }
