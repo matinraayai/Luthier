@@ -59,8 +59,7 @@ class CodeObjectManager {
      */
     const hsa::ExecutableSymbol &getInstrumentationKernel(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
 
-    void loadInstrumentedKernel(const luthier::byte_string_t &instrumentedElf,
-                                const hsa::ExecutableSymbol &originalKernel);
+    void loadInstrumentedKernel(const ArrayRef<uint8_t> &instrumentedElf, const hsa::ExecutableSymbol &originalKernel);
 
     /**
      * Returns the instrumented kernel's KD given its original un-instrumented version's KD
@@ -83,6 +82,7 @@ class CodeObjectManager {
      * A set of all hsa_executable_t handles that belong to the Luthier tool, containing the instrumentation function
      * and their wrapper kernels
      */
+    // TODO: Replace these containers with LLVM-based containers
     std::set<hsa::Executable> toolExecutables_{};
 
     std::unordered_map<const void *, std::unordered_map<hsa::GpuAgent, luthier::InstrumentationFunction>> functions_{};
