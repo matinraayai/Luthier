@@ -1,11 +1,13 @@
 #include "hsa_executable_symbol.hpp"
 
+#include <llvm/Object/ELFObjectFile.h>
 #include <llvm/Support/ErrorHandling.h>
 
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_loaded_code_object.hpp"
+#include "object_utils.hpp"
 
 hsa_symbol_kind_t luthier::hsa::ExecutableSymbol::getType() const {
     hsa_symbol_kind_t out;
@@ -64,19 +66,30 @@ luthier::hsa::GpuAgent luthier::hsa::ExecutableSymbol::getAgent() const { return
 luthier::hsa::Executable luthier::hsa::ExecutableSymbol::getExecutable() const {
     return luthier::hsa::Executable(executable_);
 }
-luthier::byte_string_view luthier::hsa::ExecutableSymbol::getIndirectFunctionCode() const {
-    return *indirectFunctionCode_;
-}
-luthier::byte_string_view luthier::hsa::ExecutableSymbol::getKernelCode() const {
+
+ArrayRef<uint8_t> luthier::hsa::ExecutableSymbol::getIndirectFunctionCode() const { return *indirectFunctionCode_; }
+
+ArrayRef<uint8_t> luthier::hsa::ExecutableSymbol::getKernelCode() const {
     auto loadedCodeObjects = Executable(executable_).getLoadedCodeObjects();
     auto kdSymbolName = getName();
     auto kernelSymbolName = kdSymbolName.substr(0, kdSymbolName.find(".kd"));
     for (const auto &lco: loadedCodeObjects) {
-        auto elfView = code::ElfView::makeView(lco.getStorageMemory());
-        auto s = elfView->getSymbol(kernelSymbolName);
-        if (s.has_value()) {
-            auto storageOffset = s->getAddress() - reinterpret_cast<luthier_address_t>(lco.getStorageMemory().data());
-            return lco.getLoadedMemory().substr(storageOffset, s->getSize());
+        auto hostElfOrError = getELFObjectFileBase(lco.getStorageMemory());
+        LUTHIER_CHECK_WITH_MSG(hostElfOrError == true, "Failed to create an ELF");
+
+        auto hostElf = hostElfOrError->get();
+
+        //TODO: Replace this with a hash lookup
+        auto Syms = hostElf->symbols();
+        for (llvm::object::ELFSymbolRef elfSymbol: Syms) {
+            auto nameOrError = elfSymbol.getName();
+            LUTHIER_CHECK_WITH_MSG(nameOrError == true, "Failed to get the name of the symbol");
+            if (nameOrError.get() == kernelSymbolName) {
+                auto addressOrError = elfSymbol.getAddress();
+                LUTHIER_CHECK_WITH_MSG(addressOrError == true, "Failed to get the address of the symbol");
+                return {reinterpret_cast<const uint8_t *>(addressOrError.get() + lco.getLoadedMemory().data()),
+                        elfSymbol.getSize()};
+            }
         }
     }
     return {};
