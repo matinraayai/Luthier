@@ -1,11 +1,11 @@
 #ifndef HSA_EXECUTABLE_SYMBOL_HPP
 #define HSA_EXECUTABLE_SYMBOL_HPP
 #include <hsa/hsa.h>
+#include <llvm/ADT/ArrayRef.h>
 
 #include <optional>
 #include <string>
 
-#include "code_view.hpp"
 #include "hsa_handle_type.hpp"
 #include "hsa_kernel_descriptor.hpp"
 #include "luthier_types.h"
@@ -21,7 +21,7 @@ class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
     hsa_agent_t agent_;
     hsa_executable_t executable_;
     std::optional<std::string> indirectFunctionName_{std::nullopt};
-    std::optional<luthier::byte_string_view> indirectFunctionCode_{std::nullopt};
+    std::optional<llvm::ArrayRef<uint8_t>> indirectFunctionCode_{std::nullopt};
 
  public:
     ExecutableSymbol(hsa_executable_symbol_t symbol, hsa_agent_t agent, hsa_executable_t executable)
@@ -29,7 +29,7 @@ class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
           agent_(agent),
           executable_(executable){};
 
-    ExecutableSymbol(std::string indirectFunctionName, luthier::byte_string_view indirectFunctionCode,
+    ExecutableSymbol(std::string indirectFunctionName, llvm::ArrayRef<uint8_t> indirectFunctionCode,
                      hsa_agent_t agent, hsa_executable_t executable)
         : HandleType<hsa_executable_symbol_t>({0}),
           agent_(agent),
@@ -53,9 +53,9 @@ class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
 
     [[nodiscard]] Executable getExecutable() const;
 
-    [[nodiscard]] luthier::byte_string_view getIndirectFunctionCode() const;
+    [[nodiscard]] llvm::ArrayRef<uint8_t> getIndirectFunctionCode() const;
 
-    [[nodiscard]] luthier::byte_string_view getKernelCode() const;
+    [[nodiscard]] llvm::ArrayRef<uint8_t> getKernelCode() const;
 };
 
 }// namespace luthier::hsa
