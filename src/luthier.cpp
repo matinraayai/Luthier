@@ -170,7 +170,7 @@ void luthier_disable_hip_op_callback(uint32_t op) { luthier::HipInterceptor::ins
 
 void luthier_enable_all_hip_callbacks() { luthier::HipInterceptor::instance().enableAllUserCallbacks(); }
 
-void luthier_disable_all_hip_callbacks() { luthier::HipInterceptor::instance().disableAllUserCallbacks(); }
+void luthier_diable_all_hip_callbacks() { luthier::HipInterceptor::instance().disableAllUserCallbacks(); }
 
 void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t *dispatch_packet) {
     const auto instrumentedKernel = luthier::CodeObjectManager::instance().getInstrumentedKernel(
@@ -200,6 +200,7 @@ __attribute__((visibility("default"))) bool OnLoad(HsaApiTable *table, uint64_t 
 
 __attribute__((visibility("default"))) void OnUnload() {
     LUTHIER_LOG_FUNCTION_CALL_START
+    luthier::HsaInterceptor::instance().uninstallApiTables();
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 }

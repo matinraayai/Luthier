@@ -32,6 +32,7 @@ class HsaInterceptor {
 
     HsaInterceptor() {}
     ~HsaInterceptor() {
+        uninstallApiTables();
         savedTables_ = {};
         interceptTables_ = {};
         amdTable_ = {};
@@ -44,6 +45,13 @@ class HsaInterceptor {
     [[nodiscard]] const HsaApiTableContainer &getSavedHsaTables() const { return savedTables_; }
 
     [[nodiscard]] const hsa_ven_amd_loader_1_03_pfn_t &getHsaVenAmdLoaderTable() const { return amdTable_; }
+
+    void uninstallApiTables() {
+        *internalHsaApiTable_->core_ = savedTables_.core;
+        *internalHsaApiTable_->amd_ext_ = savedTables_.amd_ext;
+        *internalHsaApiTable_->finalizer_ext_ = savedTables_.finalizer_ext;
+        *internalHsaApiTable_->image_ext_ = savedTables_.image_ext;
+    }
 
     void setUserCallback(const std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t,
                                                   const hsa_api_evt_id_t)> &callback) {
