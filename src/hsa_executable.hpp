@@ -1,12 +1,8 @@
 #ifndef HSA_EXECUTABLE_HPP
 #define HSA_EXECUTABLE_HPP
-#include <hsa/hsa.h>
-#include <hsa/hsa_api_trace.h>
-
 #include <optional>
 #include <vector>
 
-#include "code_view.hpp"
 #include "hsa_code_object_reader.hpp"
 #include "hsa_handle_type.hpp"
 

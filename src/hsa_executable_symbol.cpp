@@ -67,9 +67,11 @@ luthier::hsa::Executable luthier::hsa::ExecutableSymbol::getExecutable() const {
     return luthier::hsa::Executable(executable_);
 }
 
-ArrayRef<uint8_t> luthier::hsa::ExecutableSymbol::getIndirectFunctionCode() const { return *indirectFunctionCode_; }
+llvm::ArrayRef<uint8_t> luthier::hsa::ExecutableSymbol::getIndirectFunctionCode() const {
+    return *indirectFunctionCode_;
+}
 
-ArrayRef<uint8_t> luthier::hsa::ExecutableSymbol::getKernelCode() const {
+llvm::ArrayRef<uint8_t> luthier::hsa::ExecutableSymbol::getKernelCode() const {
     auto loadedCodeObjects = Executable(executable_).getLoadedCodeObjects();
     auto kdSymbolName = getName();
     auto kernelSymbolName = kdSymbolName.substr(0, kdSymbolName.find(".kd"));
