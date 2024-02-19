@@ -3,9 +3,14 @@
 #include <memory>
 
 //#include "MCTargetDesc/AMDGPUTargetStreamer.h"
+#include <amd_comgr/amd_comgr.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/StringExtras.h>
+
+#include "target_manager.hpp"
 #include "code_object_manager.hpp"
 #include "disassembler.hpp"
-#include "elfio/elfio.hpp"
+#include "error.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
@@ -13,7 +18,6 @@
 #include "hsa_intercept.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include <llvm/ADT/SmallVector.h>
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
@@ -34,9 +38,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbolELF.h"
-#include <llvm/ADT/StringExtras.h>
 #include "llvm/MC/TargetRegistry.h"
-
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
 #include "log.hpp"
@@ -58,13 +60,15 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Instructions.h"
 
-luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(const luthier::byte_string_t &code,
-                                                                              const hsa::GpuAgent &agent) {
+namespace luthier {
+
+void CodeGenerator::compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code, const hsa::Isa &isa,
+                                                   llvm::SmallVectorImpl<uint8_t> &out) {
     amd_comgr_data_t dataIn;
     amd_comgr_data_set_t dataSetIn, dataSetOut;
     amd_comgr_action_info_t dataAction;
 
-    auto isaName = agent.getIsa().getName();
+    auto isaName = isa.getName();
 
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
 
@@ -85,103 +89,13 @@ luthier::byte_string_t luthier::CodeGenerator::compileRelocatableToExecutable(co
     size_t dataOutSize;
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &dataOut));
     LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, nullptr));
-    luthier::byte_string_t executableOut;
-    executableOut.resize(dataOutSize);
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(executableOut.data())));
-    return executableOut;
+    out.resize(dataOutSize);
+    LUTHIER_AMD_COMGR_CHECK(amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(out.data())));
 }
 
-luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::string &instList,
-                                                                     const hsa::GpuAgent &agent) {
-
-    amd_comgr_data_t dataIn;
-    amd_comgr_data_set_t dataSetIn, dataSetOut;
-    amd_comgr_action_info_t dataAction;
-
-    auto isaName = agent.getIsa().getName();
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &dataIn));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, instList.size(), instList.data()));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(dataIn, "my_source.s"));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(dataSetIn, dataIn));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction, isaName.c_str()));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
-    LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE, dataAction, dataSetIn, dataSetOut));
-    amd_comgr_data_t dataOut;
-    size_t dataOutSize;
-    amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_RELOCATABLE, 0, &dataOut);
-    size_t nameSize;
-    std::string name;
-    amd_comgr_get_data_name(dataOut, &nameSize, nullptr);
-    name.resize(nameSize);
-    amd_comgr_get_data_name(dataOut, &nameSize, name.data());
-
-    llvm::errs() << llvm::formatv("Name of the data: {0}\n", name);
-
-    amd_comgr_get_data(dataOut, &dataOutSize, nullptr);
-    luthier::byte_string_t outElf;
-    outElf.resize(dataOutSize);
-    amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(outElf.data()));
-    auto outView = code::ElfView::makeView(outElf);
-    return outElf;
-}
-
-luthier::byte_string_t luthier::CodeGenerator::assembleToRelocatable(const std::vector<std::string> &instList,
-                                                                     const hsa::GpuAgent &agent) {
-    std::string instString = llvm::join(instList, "\n");
-    return assembleToRelocatable(instString, agent);
-}
-
-luthier::byte_string_t luthier::CodeGenerator::assemble(const std::string &instList, const hsa::GpuAgent &agent) {
-    amd_comgr_data_t dataIn;
-    amd_comgr_data_set_t dataSetIn, dataSetOut;
-    amd_comgr_action_info_t dataAction;
-
-    auto isaName = agent.getIsa().getName();
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetIn));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &dataIn));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data(dataIn, instList.size(), instList.data()));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_set_data_name(dataIn, "my_source.s"));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_data_set_add(dataSetIn, dataIn));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_data_set(&dataSetOut));
-
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_create_action_info(&dataAction));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_isa_name(dataAction, isaName.c_str()));
-    LUTHIER_AMD_COMGR_CHECK(amd_comgr_action_info_set_option_list(dataAction, nullptr, 0));
-    LUTHIER_AMD_COMGR_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_ASSEMBLE_SOURCE_TO_RELOCATABLE, dataAction, dataSetIn, dataSetOut));
-    amd_comgr_data_t dataOut;
-    size_t dataOutSize;
-    amd_comgr_action_data_get_data(dataSetOut, AMD_COMGR_DATA_KIND_RELOCATABLE, 0, &dataOut);
-    size_t nameSize;
-    std::string name;
-    amd_comgr_get_data_name(dataOut, &nameSize, nullptr);
-    name.resize(nameSize);
-    amd_comgr_get_data_name(dataOut, &nameSize, name.data());
-
-    llvm::errs() << llvm::formatv("Name of the data: {0}\n", name);
-
-    amd_comgr_get_data(dataOut, &dataOutSize, nullptr);
-    luthier::byte_string_t outElf;
-    outElf.resize(dataOutSize);
-    amd_comgr_get_data(dataOut, &dataOutSize, reinterpret_cast<char *>(outElf.data()));
-    auto outView = code::ElfView::makeView(outElf);
-    return outElf;
-}
-
-luthier::byte_string_t luthier::CodeGenerator::assemble(const std::vector<std::string> &instrVector,
-                                                        const hsa::GpuAgent &agent) {
-    return assembleToRelocatable(instrVector, agent);
+void CodeGenerator::compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code, const hsa::GpuAgent &agent,
+                                                   llvm::SmallVectorImpl<uint8_t> &out) {
+    compileRelocatableToExecutable(code, agent.getIsa(), out);
 }
 
 void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFunc, luthier_ipoint_t point) {
@@ -191,91 +105,91 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     auto &contextManager = luthier::TargetManager::instance();
 
     const auto &targetInfo = contextManager.getTargetInfo(agent.getIsa());
-//    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
-//    auto Context = std::make_unique<llvm::LLVMContext>();
-//    auto triple = agent.getIsa().getLLVMTargetTriple();
-//    auto processor = agent.getIsa().getProcessor();
-//    auto featureString = agent.getIsa().getFeatureString();
-//    //    auto targetOptions = std::make_unique<llvm::TargetOptions>();
-//    auto TheTargetMachine = std::unique_ptr<llvm::LLVMTargetMachine>(
-//        reinterpret_cast<llvm::LLVMTargetMachine *>(targetInfo.getTarget()->createTargetMachine(
-//            triple, processor, featureString, *targetInfo.getTargetOptions(), llvm::Reloc::Model::PIC_)));
-//    //
-//    std::unique_ptr<llvm::Module> Module = std::make_unique<llvm::Module>("MyModule", *Context);
-//    Module->setDataLayout(TheTargetMachine->createDataLayout());
-//    auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TheTargetMachine.get());
-//
-//    llvm::Type *const ReturnType = llvm::Type::getVoidTy(Module->getContext());
-//    llvm::Type *const MemParamType = llvm::PointerType::get(
-//        llvm::Type::getInt32Ty(Module->getContext()), llvm::AMDGPUAS::GLOBAL_ADDRESS /*default address space*/);
-//    llvm::FunctionType *FunctionType =
-//        llvm::FunctionType::get(ReturnType, {MemParamType}, false);
-//    llvm::Function *const F = llvm::Function::Create(
-//        FunctionType, llvm::GlobalValue::ExternalLinkage, instr.getExecutableSymbol().getName(), *Module);
-//    F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-//
-//
-//    llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module->getContext(), "", F);
-//    new llvm::UnreachableInst(Module->getContext(), BB);
-//    llvm::MachineFunction &MF = MMIWP->getMMI().getOrCreateMachineFunction(*F);
-//    auto &Properties = MF.getProperties();
-//    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
-//    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
-//    Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
-//
-//
+    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
+    //    auto Context = std::make_unique<llvm::LLVMContext>();
+    //    auto triple = agent.getIsa().getLLVMTargetTriple();
+    //    auto processor = agent.getIsa().getProcessor();
+    //    auto featureString = agent.getIsa().getFeatureString();
+    //    //    auto targetOptions = std::make_unique<llvm::TargetOptions>();
+    //    auto TheTargetMachine = std::unique_ptr<llvm::LLVMTargetMachine>(
+    //        reinterpret_cast<llvm::LLVMTargetMachine *>(targetInfo.getTarget()->createTargetMachine(
+    //            triple, processor, featureString, *targetInfo.getTargetOptions(), llvm::Reloc::Model::PIC_)));
+    //    //
+    //    std::unique_ptr<llvm::Module> Module = std::make_unique<llvm::Module>("MyModule", *Context);
+    //    Module->setDataLayout(TheTargetMachine->createDataLayout());
+    //    auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TheTargetMachine.get());
+    //
+    //    llvm::Type *const ReturnType = llvm::Type::getVoidTy(Module->getContext());
+    //    llvm::Type *const MemParamType = llvm::PointerType::get(
+    //        llvm::Type::getInt32Ty(Module->getContext()), llvm::AMDGPUAS::GLOBAL_ADDRESS /*default address space*/);
+    //    llvm::FunctionType *FunctionType =
+    //        llvm::FunctionType::get(ReturnType, {MemParamType}, false);
+    //    llvm::Function *const F = llvm::Function::Create(
+    //        FunctionType, llvm::GlobalValue::ExternalLinkage, instr.getExecutableSymbol().getName(), *Module);
+    //    F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+    //
+    //
+    //    llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module->getContext(), "", F);
+    //    new llvm::UnreachableInst(Module->getContext(), BB);
+    //    llvm::MachineFunction &MF = MMIWP->getMMI().getOrCreateMachineFunction(*F);
+    //    auto &Properties = MF.getProperties();
+    //    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
+    //    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
+    //    Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
+    //
+    //
     const std::vector<hsa::Instr> *targetFunction = Disassembler::instance().disassemble(instr.getExecutableSymbol());
-//    for (const auto& i: *targetFunction) {
-//        const unsigned Opcode = i.getInstr().getOpcode();
-//        const llvm::MCInstrDesc &MCID = targetInfo.getMCInstrInfo()->get(Opcode);
-//        llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, DL, MCID);
-//        for (unsigned OpIndex = 0, E = i.getInstr().getNumOperands(); OpIndex < E;
-//             ++OpIndex) {
-//            const MCOperand &Op = Inst.getOperand(OpIndex);
-//            if (Op.isReg()) {
-//                const bool IsDef = OpIndex < MCID.getNumDefs();
-//                unsigned Flags = 0;
-//                const MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
-//                if (IsDef && !OpInfo.isOptionalDef())
-//                    Flags |= RegState::Define;
-//                Builder.addReg(Op.getReg(), Flags);
-//            } else if (Op.isImm()) {
-//                Builder.addImm(Op.getImm());
-//            } else if (!Op.isValid()) {
-//                llvm_unreachable("Operand is not set");
-//            } else {
-//                llvm_unreachable("Not yet implemented");
-//            }
-//        }
-//    }
+    //    for (const auto& i: *targetFunction) {
+    //        const unsigned Opcode = i.getInstr().getOpcode();
+    //        const llvm::MCInstrDesc &MCID = targetInfo.getMCInstrInfo()->get(Opcode);
+    //        llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, DL, MCID);
+    //        for (unsigned OpIndex = 0, E = i.getInstr().getNumOperands(); OpIndex < E;
+    //             ++OpIndex) {
+    //            const MCOperand &Op = Inst.getOperand(OpIndex);
+    //            if (Op.isReg()) {
+    //                const bool IsDef = OpIndex < MCID.getNumDefs();
+    //                unsigned Flags = 0;
+    //                const MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
+    //                if (IsDef && !OpInfo.isOptionalDef())
+    //                    Flags |= RegState::Define;
+    //                Builder.addReg(Op.getReg(), Flags);
+    //            } else if (Op.isImm()) {
+    //                Builder.addImm(Op.getImm());
+    //            } else if (!Op.isValid()) {
+    //                llvm_unreachable("Operand is not set");
+    //            } else {
+    //                llvm_unreachable("Not yet implemented");
+    //            }
+    //        }
+    //    }
 
-//    new UnreachableInst(Module->getContext(), BB);
-//    return MMI->getOrCreateMachineFunction(*F);
+    //    new UnreachableInst(Module->getContext(), BB);
+    //    return MMI->getOrCreateMachineFunction(*F);
 
-//        llvm::Function f;
+    //        llvm::Function f;
     //    llvm::MachineFunction func;
-//    auto genInst = makeInstruction(
-//        agent.getIsa(), llvm::AMDGPU::S_ADD_I32, llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
-//        llvm::MCOperand::createReg(llvm::AMDGPU::SGPR6), llvm::MCOperand::createReg(llvm::AMDGPU::VGPR1));
+    //    auto genInst = makeInstruction(
+    //        agent.getIsa(), llvm::AMDGPU::S_ADD_I32, llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
+    //        llvm::MCOperand::createReg(llvm::AMDGPU::SGPR6), llvm::MCOperand::createReg(llvm::AMDGPU::VGPR1));
 
     const auto targetTriple = llvm::Triple(agent.getIsa().getLLVMTargetTriple());
     llvm::MCContext ctx(targetTriple, targetInfo.getMCAsmInfo(), targetInfo.getMCRegisterInfo(),
                         targetInfo.getMCSubTargetInfo());
-//    auto mcEmitter = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
+    //    auto mcEmitter = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
 
-//    llvm::SmallVector<char> osBack;
-//    llvm::SmallVector<llvm::MCFixup> fixUps;
-//    mcEmitter->encodeInstruction(genInst, osBack, fixUps, *targetInfo.getMCSubTargetInfo());
-//    fmt::print("Assembled instruction :");
-//    for (auto s: osBack) { fmt::print("{:#x}", s); }
-//    fmt::print("\n");
+    //    llvm::SmallVector<char> osBack;
+    //    llvm::SmallVector<llvm::MCFixup> fixUps;
+    //    mcEmitter->encodeInstruction(genInst, osBack, fixUps, *targetInfo.getMCSubTargetInfo());
+    //    fmt::print("Assembled instruction :");
+    //    for (auto s: osBack) { fmt::print("{:#x}", s); }
+    //    fmt::print("\n");
 
-//    auto oneMoreTime = Disassembler::instance().disassemble(
-//        agent.getIsa(), {reinterpret_cast<std::byte *>(osBack.data()), osBack.size()});
+    //    auto oneMoreTime = Disassembler::instance().disassemble(
+    //        agent.getIsa(), {reinterpret_cast<std::byte *>(osBack.data()), osBack.size()});
 
-    hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationKernel(deviceFunc, agent);
+    //    hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationKernel(deviceFunc, agent);
 
-//        const std::vector<hsa::Instr> *instFunctionInstructions = Disassembler::instance().disassemble(instrumentationFunc);
+    //        const std::vector<hsa::Instr> *instFunctionInstructions = Disassembler::instance().disassemble(instrumentationFunc);
 
     for (const auto &i: *targetFunction) {
         std::string instStr;
@@ -338,123 +252,125 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     std::string symbolName = symbol.getName();
 
     auto storage = targetExecutable.getLoadedCodeObjects()[0].getStorageMemory();
-    auto instrumentedElfView = code::ElfView::makeView(storage);
+    //    auto instrumentedElfView = getELFObjectFileBase(storage);
 
-//    // Find the symbol that requires instrumentation.
-//    std::optional<code::SymbolView> storageSymbol = instrumentedElfView->getSymbol(symbolName);
-//    if (!storageSymbol.has_value())
-//        throw std::runtime_error(fmt::format("Failed to find symbol {} in the copied executable", symbolName));
-//    auto meta = storageSymbol->getMetaData();
-//    fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
-//    fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
-//
-//    std::unique_ptr<llvm::MCObjectFileInfo> MOFI(
-//        targetInfo.getTarget()->createMCObjectFileInfo(ctx, /*PIC*/ true, /*large code model*/ false));
-//    auto textSection = MOFI->getTextSection();
-//    fmt::println("Does the text section have instructions? {}", textSection->hasInstructions());
-//    ctx.setObjectFileInfo(MOFI.get());
-//    //    ctx->setAllowTemporaryLabels(true);
-//    ctx.setGenDwarfForAssembly(false);
-//
-//    llvm::SmallVector<char> out;
-//
-//    llvm::raw_svector_ostream VOS(out);
-//
-//    llvm::MCCodeEmitter *CE = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
-//    llvm::MCAsmBackend *MAB = targetInfo.getTarget()->createMCAsmBackend(
-//        *targetInfo.getMCSubTargetInfo(), *targetInfo.getMCRegisterInfo(), targetInfo.getTargetOptions().MCOptions);
-//
-//    auto Str = std::unique_ptr<llvm::MCStreamer>(targetInfo.getTarget()->createMCObjectStreamer(
-//        llvm::Triple(agent.getIsa().getLLVMTargetTriple()), ctx, std::unique_ptr<llvm::MCAsmBackend>(MAB),
-//        MAB->createObjectWriter(VOS), std::unique_ptr<llvm::MCCodeEmitter>(CE), *targetInfo.getMCSubTargetInfo(), true,
-//        false,
-//        /*DWARFMustBeAtTheEnd*/ false));
-//
-//    //    Str->initSections(false, *targetInfo.STI_);
-//    Str->switchSection(ctx.getObjectFileInfo()->getTextSection());
-//    Str->emitCodeAlignment(llvm::Align(ctx.getObjectFileInfo()->getTextSectionAlignment()),
-//                           targetInfo.getMCSubTargetInfo());
-//
-//    for (const auto &inst: *targetFunction) { Str->emitInstruction(inst.getInstr(), *targetInfo.getMCSubTargetInfo()); }
-//    auto kernelName = instr.getExecutableSymbol().getName();
-//    //
-//    auto kName = kernelName.substr(0, kernelName.find(".kd"));
-//
-//    auto KernelDescriptor = instr.getExecutableSymbol().getKernelDescriptor();
-//    //
-//    llvm::MCSymbolELF *KernelCodeSymbol = cast<llvm::MCSymbolELF>(ctx.getOrCreateSymbol(llvm::Twine(kName)));
-//
-//    //    Str->pushSection();
-//    Str->switchSection(ctx.getObjectFileInfo()->getReadOnlySection());
-//
-//    Str->emitValueToAlignment(llvm::Align(64), 0, 1, 0);
-//    ctx.getObjectFileInfo()->getReadOnlySection()->ensureMinAlignment(llvm::Align(64));
-//
-//    llvm::MCSymbolELF *KernelDescriptorSymbol = cast<llvm::MCSymbolELF>(ctx.getOrCreateSymbol(kernelName));
-//
-//    // Copy kernel descriptor symbol's binding, other and visibility from the
-//    // kernel code symbol.
-//    KernelDescriptorSymbol->setBinding(KernelCodeSymbol->getBinding());
-//    KernelDescriptorSymbol->setOther(KernelCodeSymbol->getOther());
-//    KernelDescriptorSymbol->setVisibility(KernelCodeSymbol->getVisibility());
-//    // Kernel descriptor symbol's type and size are fixed.
-//    KernelDescriptorSymbol->setType(llvm::ELF::STT_OBJECT);
-//    KernelDescriptorSymbol->setSize(llvm::MCConstantExpr::create(sizeof(hsa::KernelDescriptor), ctx));
-//
-//    //    // The visibility of the kernel code symbol must be protected or less to allow
-//    //    // static relocations from the kernel descriptor to be used.
-//    if (KernelCodeSymbol->getVisibility() == llvm::ELF::STV_DEFAULT)
-//        KernelCodeSymbol->setVisibility(llvm::ELF::STV_PROTECTED);
-//    //
-//    Str->emitLabel(KernelDescriptorSymbol);
-//    Str->emitInt32(KernelDescriptor->groupSegmentFixedSize);
-//    Str->emitInt32(KernelDescriptor->privateSegmentFixedSize);
-//    Str->emitInt32(KernelDescriptor->kernArgSize);
-//    //
-//    for (uint8_t Res: KernelDescriptor->reserved0) Str->emitInt8(Res);
-//
-//    //    // FIXME: Remove the use of VK_AMDGPU_REL64 in the expression below. The
-//    //    // expression being created is:
-//    //    //   (start of kernel code) - (start of kernel descriptor)
-//    //    // It implies R_AMDGPU_REL64, but ends up being R_AMDGPU_ABS64.
-//    Str->emitValue(llvm::MCBinaryExpr::createSub(
-//                       llvm::MCSymbolRefExpr::create(KernelCodeSymbol, llvm::MCSymbolRefExpr::VK_AMDGPU_REL64, ctx),
-//                       llvm::MCSymbolRefExpr::create(KernelDescriptorSymbol, llvm::MCSymbolRefExpr::VK_None, ctx), ctx),
-//                   sizeof(KernelDescriptor->kernelCodeEntryByteOffset));
-//    for (uint8_t Res: KernelDescriptor->reserved1) Str->emitInt8(Res);
-//    Str->emitInt32(KernelDescriptor->computePgmRsrc3);
-//    Str->emitInt32(KernelDescriptor->computePgmRsrc1);
-//    Str->emitInt32(KernelDescriptor->computePgmRsrc2);
-//    Str->emitInt16(KernelDescriptor->kernelCodeProperties);
-//    Str->emitInt16(KernelDescriptor->kernArgPreload);
-//    for (uint8_t Res: KernelDescriptor->reserved2) Str->emitInt8(Res);
-//
-//    //    Str->popSection();
-//    //    Str->switchSection(ctx.getObjectFileInfo()->getTextSection());
-//
-//    fmt::println("Does the text section have instructions? {}", textSection->hasInstructions());
-//
-//    Str->getTargetStreamer()->finish();
-//    Str->finish();
-//    Str->finishImpl();
-//    auto finalView =
-//        code::ElfView::makeView(luthier::byte_string_view(reinterpret_cast<std::byte *>(out.data()), out.size()));
-//    fmt::println("Length of the out vector: {}", out.size());
-//    fmt::println("Type of the code object created: {}", finalView->getElfIo().get_type());
-//    fmt::println("Number of symbols: {}", finalView->getNumSymbols());
-//
-//    finalView->getElfIo().sections[0]->get_data();
-//    //    fmt::println("Symbol name : {}", finalView->getSymbol(0)->getName());
-//    //    fmt::println("Symbol name : {}", finalView->getSymbol(1)->getName());
-//    //    finalView->getSymbol(0)->getData();
-//    fmt::println("Data works");
-//    finalView->getElfIo().sections[1]->get_data();
-//
-//    //    auto executable = compileRelocatableToExecutable({reinterpret_cast<std::byte*>(out.data()), out.size()}, instr.getAgent());
-//    //    delete Str;
-//    //    Str->finishImpl();
-//
-//    //    targetStr->finish();
-//
-//    CodeObjectManager::instance().loadInstrumentedKernel(luthier::byte_string_t(storage), instr.getExecutableSymbol());
+    //    // Find the symbol that requires instrumentation.
+    //    std::optional<code::SymbolView> storageSymbol = instrumentedElfView->getSymbol(symbolName);
+    //    if (!storageSymbol.has_value())
+    //        throw std::runtime_error(fmt::format("Failed to find symbol {} in the copied executable", symbolName));
+    //    auto meta = storageSymbol->getMetaData();
+    //    fmt::println("Number of SGPRS: {}", meta.usedSGPRs_);
+    //    fmt::println("Number of VGPRS: {}", meta.usedVGPRs_);
+    //
+    //    std::unique_ptr<llvm::MCObjectFileInfo> MOFI(
+    //        targetInfo.getTarget()->createMCObjectFileInfo(ctx, /*PIC*/ true, /*large code model*/ false));
+    //    auto textSection = MOFI->getTextSection();
+    //    fmt::println("Does the text section have instructions? {}", textSection->hasInstructions());
+    //    ctx.setObjectFileInfo(MOFI.get());
+    //    //    ctx->setAllowTemporaryLabels(true);
+    //    ctx.setGenDwarfForAssembly(false);
+    //
+    //    llvm::SmallVector<char> out;
+    //
+    //    llvm::raw_svector_ostream VOS(out);
+    //
+    //    llvm::MCCodeEmitter *CE = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
+    //    llvm::MCAsmBackend *MAB = targetInfo.getTarget()->createMCAsmBackend(
+    //        *targetInfo.getMCSubTargetInfo(), *targetInfo.getMCRegisterInfo(), targetInfo.getTargetOptions().MCOptions);
+    //
+    //    auto Str = std::unique_ptr<llvm::MCStreamer>(targetInfo.getTarget()->createMCObjectStreamer(
+    //        llvm::Triple(agent.getIsa().getLLVMTargetTriple()), ctx, std::unique_ptr<llvm::MCAsmBackend>(MAB),
+    //        MAB->createObjectWriter(VOS), std::unique_ptr<llvm::MCCodeEmitter>(CE), *targetInfo.getMCSubTargetInfo(), true,
+    //        false,
+    //        /*DWARFMustBeAtTheEnd*/ false));
+    //
+    //    //    Str->initSections(false, *targetInfo.STI_);
+    //    Str->switchSection(ctx.getObjectFileInfo()->getTextSection());
+    //    Str->emitCodeAlignment(llvm::Align(ctx.getObjectFileInfo()->getTextSectionAlignment()),
+    //                           targetInfo.getMCSubTargetInfo());
+    //
+    //    for (const auto &inst: *targetFunction) { Str->emitInstruction(inst.getInstr(), *targetInfo.getMCSubTargetInfo()); }
+    //    auto kernelName = instr.getExecutableSymbol().getName();
+    //    //
+    //    auto kName = kernelName.substr(0, kernelName.find(".kd"));
+    //
+    //    auto KernelDescriptor = instr.getExecutableSymbol().getKernelDescriptor();
+    //    //
+    //    llvm::MCSymbolELF *KernelCodeSymbol = cast<llvm::MCSymbolELF>(ctx.getOrCreateSymbol(llvm::Twine(kName)));
+    //
+    //    //    Str->pushSection();
+    //    Str->switchSection(ctx.getObjectFileInfo()->getReadOnlySection());
+    //
+    //    Str->emitValueToAlignment(llvm::Align(64), 0, 1, 0);
+    //    ctx.getObjectFileInfo()->getReadOnlySection()->ensureMinAlignment(llvm::Align(64));
+    //
+    //    llvm::MCSymbolELF *KernelDescriptorSymbol = cast<llvm::MCSymbolELF>(ctx.getOrCreateSymbol(kernelName));
+    //
+    //    // Copy kernel descriptor symbol's binding, other and visibility from the
+    //    // kernel code symbol.
+    //    KernelDescriptorSymbol->setBinding(KernelCodeSymbol->getBinding());
+    //    KernelDescriptorSymbol->setOther(KernelCodeSymbol->getOther());
+    //    KernelDescriptorSymbol->setVisibility(KernelCodeSymbol->getVisibility());
+    //    // Kernel descriptor symbol's type and size are fixed.
+    //    KernelDescriptorSymbol->setType(llvm::ELF::STT_OBJECT);
+    //    KernelDescriptorSymbol->setSize(llvm::MCConstantExpr::create(sizeof(hsa::KernelDescriptor), ctx));
+    //
+    //    //    // The visibility of the kernel code symbol must be protected or less to allow
+    //    //    // static relocations from the kernel descriptor to be used.
+    //    if (KernelCodeSymbol->getVisibility() == llvm::ELF::STV_DEFAULT)
+    //        KernelCodeSymbol->setVisibility(llvm::ELF::STV_PROTECTED);
+    //    //
+    //    Str->emitLabel(KernelDescriptorSymbol);
+    //    Str->emitInt32(KernelDescriptor->groupSegmentFixedSize);
+    //    Str->emitInt32(KernelDescriptor->privateSegmentFixedSize);
+    //    Str->emitInt32(KernelDescriptor->kernArgSize);
+    //    //
+    //    for (uint8_t Res: KernelDescriptor->reserved0) Str->emitInt8(Res);
+    //
+    //    //    // FIXME: Remove the use of VK_AMDGPU_REL64 in the expression below. The
+    //    //    // expression being created is:
+    //    //    //   (start of kernel code) - (start of kernel descriptor)
+    //    //    // It implies R_AMDGPU_REL64, but ends up being R_AMDGPU_ABS64.
+    //    Str->emitValue(llvm::MCBinaryExpr::createSub(
+    //                       llvm::MCSymbolRefExpr::create(KernelCodeSymbol, llvm::MCSymbolRefExpr::VK_AMDGPU_REL64, ctx),
+    //                       llvm::MCSymbolRefExpr::create(KernelDescriptorSymbol, llvm::MCSymbolRefExpr::VK_None, ctx), ctx),
+    //                   sizeof(KernelDescriptor->kernelCodeEntryByteOffset));
+    //    for (uint8_t Res: KernelDescriptor->reserved1) Str->emitInt8(Res);
+    //    Str->emitInt32(KernelDescriptor->computePgmRsrc3);
+    //    Str->emitInt32(KernelDescriptor->computePgmRsrc1);
+    //    Str->emitInt32(KernelDescriptor->computePgmRsrc2);
+    //    Str->emitInt16(KernelDescriptor->kernelCodeProperties);
+    //    Str->emitInt16(KernelDescriptor->kernArgPreload);
+    //    for (uint8_t Res: KernelDescriptor->reserved2) Str->emitInt8(Res);
+    //
+    //    //    Str->popSection();
+    //    //    Str->switchSection(ctx.getObjectFileInfo()->getTextSection());
+    //
+    //    fmt::println("Does the text section have instructions? {}", textSection->hasInstructions());
+    //
+    //    Str->getTargetStreamer()->finish();
+    //    Str->finish();
+    //    Str->finishImpl();
+    //    auto finalView =
+    //        code::ElfView::makeView(luthier::byte_string_view(reinterpret_cast<std::byte *>(out.data()), out.size()));
+    //    fmt::println("Length of the out vector: {}", out.size());
+    //    fmt::println("Type of the code object created: {}", finalView->getElfIo().get_type());
+    //    fmt::println("Number of symbols: {}", finalView->getNumSymbols());
+    //
+    //    finalView->getElfIo().sections[0]->get_data();
+    //    //    fmt::println("Symbol name : {}", finalView->getSymbol(0)->getName());
+    //    //    fmt::println("Symbol name : {}", finalView->getSymbol(1)->getName());
+    //    //    finalView->getSymbol(0)->getData();
+    //    fmt::println("Data works");
+    //    finalView->getElfIo().sections[1]->get_data();
+    //
+    //    //    auto executable = compileRelocatableToExecutable({reinterpret_cast<std::byte*>(out.data()), out.size()}, instr.getAgent());
+    //    //    delete Str;
+    //    //    Str->finishImpl();
+    //
+    //    //    targetStr->finish();
+    //
+    //    CodeObjectManager::instance().loadInstrumentedKernel(luthier::byte_string_t(storage), instr.getExecutableSymbol());
 }
+
+}// namespace luthier
