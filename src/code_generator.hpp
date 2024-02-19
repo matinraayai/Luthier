@@ -1,48 +1,40 @@
 #ifndef CODE_GENERATOR_HPP
 #define CODE_GENERATOR_HPP
-#include <unordered_map>
 
-#include "code_view.hpp"
-#include "hsa_agent.hpp"
-#include "hsa_instr.hpp"
-#include "hsa_isa.hpp"
 #include "luthier_types.h"
-#include "target_manager.hpp"
+#include "object_utils.hpp"
 
 namespace luthier {
+
+namespace hsa {
+class GpuAgent;
+
+class Isa;
+
+class Instr;
+}// namespace hsa
+
 class CodeGenerator {
  public:
-  CodeGenerator(const CodeGenerator &) = delete;
-  CodeGenerator &operator=(const CodeGenerator &) = delete;
+    CodeGenerator(const CodeGenerator &) = delete;
+    CodeGenerator &operator=(const CodeGenerator &) = delete;
 
-  static inline CodeGenerator &instance() {
-      static CodeGenerator instance;
-      return instance;
-  }
+    static inline CodeGenerator &instance() {
+        static CodeGenerator instance;
+        return instance;
+    }
 
-  static luthier::byte_string_t assemble(const std::string &instList, const hsa::GpuAgent &agent);
+    static void compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code, const hsa::GpuAgent &agent,
+                                               llvm::SmallVectorImpl<uint8_t> &out);
 
-  static luthier::byte_string_t assemble(const std::vector<std::string> &instList, const hsa::GpuAgent &agent);
+    static void compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code, const hsa::Isa &isa,
+                                               llvm::SmallVectorImpl<uint8_t> &out);
 
-  static luthier::byte_string_t assembleToRelocatable(const std::string &instList, const hsa::GpuAgent &agent);
-
-  static luthier::byte_string_t assembleToRelocatable(const std::vector<std::string> &instList,
-                                                      const hsa::GpuAgent &agent);
-
-  static luthier::byte_string_t compileRelocatableToExecutable(const luthier::byte_string_t &code,
-                                                               const hsa::GpuAgent &agent);
-
-  void instrument(hsa::Instr &instr, const void *devFunc, luthier_ipoint_t point);
+    void instrument(hsa::Instr &instr, const void *devFunc, luthier_ipoint_t point);
 
  private:
-  /**
-   * A map of agent to its empty relocatable. Empty relocatables have only an s_nop instructions.
-   * The relocatables get assembled when the CodeGenerator first gets called
-   */
-  std::unordered_map<hsa::GpuAgent, luthier::byte_string_t> emptyRelocatableMap_;
-
-  CodeGenerator() = default;
-  ~CodeGenerator() = default;
+    CodeGenerator() = default;
+    ~CodeGenerator() = default;
 };
 }// namespace luthier
 
