@@ -1,31 +1,28 @@
 #ifndef CODE_LIFTER_HPP
 #define CODE_LIFTER_HPP
 #include <llvm/MC/MCContext.h>
-#include <llvm/Target/TargetOptions.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInst.h>
+#include <llvm/Object/ELFObjectFile.h>
 
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "code_view.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_instr.hpp"
 #include "hsa_isa.hpp"
 #include "luthier_types.h"
+#include "object_utils.hpp"
 
 namespace luthier {
 
-struct KernelModuleInfo {
-
-};
+struct KernelModuleInfo {};
 
 /**
  * \brief a singleton class in charge of disassembling device instructions and returning them as an
  * std::vector of \class Instr
- * Uses the AMD COMGR library internally
  */
 class Disassembler {
  private:
@@ -72,10 +69,10 @@ class Disassembler {
                                                std::optional<size_t> size = std::nullopt);
 
     //TODO: ISA has to be detected from the ELF, not passed manually
-    std::vector<llvm::MCInst> disassemble(const code::SymbolView &symbol, const hsa::Isa &isa,
-                                          std::optional<size_t> size = std::nullopt);
+    //    std::vector<llvm::MCInst> disassemble(const llvm::object::ELFSymbolRef &symbol, const hsa::Isa &isa,
+    //                                          std::optional<size_t> size = std::nullopt);
 
-    std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, byte_string_view code);
+    std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, ArrayRef<uint8_t> code);
 
     void liftKernelModule(const hsa::ExecutableSymbol &symbol);
 };
