@@ -20,10 +20,6 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 
-#include <atomic>
-#include <memory>
-#include <mutex>
-
 #include "error.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
@@ -31,20 +27,14 @@
 namespace luthier {
 
 TargetManager::TargetManager() {
-    static std::mutex llvm_init_mutex;
-    {
-        std::scoped_lock llvm_init_lock(llvm_init_mutex);
-        static bool LLVMInitialized = false;
-        if (LLVMInitialized) { return; }
-        LLVMInitializeAMDGPUTarget();
-        LLVMInitializeAMDGPUTargetInfo();
-        LLVMInitializeAMDGPUTargetMC();
-        LLVMInitializeAMDGPUDisassembler();
-        LLVMInitializeAMDGPUAsmParser();
-        LLVMInitializeAMDGPUAsmPrinter();
-        LLVMInitializeAMDGPUTargetMCA();
-        LLVMInitialized = true;
-    }
+    //TODO: When The target application is multi-threaded, this might need to be in a scoped lock
+    LLVMInitializeAMDGPUTarget();
+    LLVMInitializeAMDGPUTargetInfo();
+    LLVMInitializeAMDGPUTargetMC();
+    LLVMInitializeAMDGPUDisassembler();
+    LLVMInitializeAMDGPUAsmParser();
+    LLVMInitializeAMDGPUAsmPrinter();
+    LLVMInitializeAMDGPUTargetMCA();
 }
 
 TargetManager::~TargetManager() {
@@ -55,7 +45,7 @@ TargetManager::~TargetManager() {
         delete it.second.MIA_;
         delete it.second.STI_;
         delete it.second.IP_;
-        //        delete it.second.targetOptions_;
+        delete it.second.targetOptions_;
     }
     llvmTargetInfo_.clear();
 }
@@ -63,13 +53,9 @@ TargetManager::~TargetManager() {
 const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
     if (!llvmTargetInfo_.contains(isa)) {
         auto info = llvmTargetInfo_.insert({isa, TargetInfo()}).first;
-        std::string targetTriple = llvm::Triple(isa.getLLVMTargetTriple()).normalize();
-        //        std::string targetIsa = isa.getLLVMTarget();
-        std::string error;
 
-        //        auto theTargetMachine = reinterpret_cast<llvm::LLVMTargetMachine *>(
-        //            target->createTargetMachine(triple, cpu, features,
-        //                                        targetInfo.getTargetOptions(), llvm::Reloc::PIC_));
+        std::string targetTriple = llvm::Triple(isa.getLLVMTargetTriple()).normalize();
+        std::string error;
 
         auto target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
         LUTHIER_CHECK(target && error.c_str());
@@ -77,9 +63,9 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         auto mri = target->createMCRegInfo(targetTriple);
         LUTHIER_CHECK(mri);
 
-        //        auto targetOptions = new llvm::TargetOptions();
+        auto targetOptions = new llvm::TargetOptions();
 
-        auto mai = target->createMCAsmInfo(*mri, targetTriple, info->second.targetOptions_.MCOptions);
+        auto mai = target->createMCAsmInfo(*mri, targetTriple, targetOptions->MCOptions);
         LUTHIER_CHECK(mai);
 
         auto mii = target->createMCInstrInfo();
@@ -101,7 +87,7 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         info->second.MIA_ = mia;
         info->second.STI_ = sti;
         info->second.IP_ = ip;
-        //        info->second.targetOptions_ = targetOptions;
+        info->second.targetOptions_ = targetOptions;
     }
     return llvmTargetInfo_.at(isa);
 }
