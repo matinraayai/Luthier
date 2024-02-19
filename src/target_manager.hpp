@@ -41,7 +41,7 @@ struct TargetInfo {
     const llvm::MCInstrAnalysis* MIA_{nullptr};
     const llvm::MCSubtargetInfo* STI_{nullptr};
     llvm::MCInstPrinter* IP_{nullptr};
-    llvm::TargetOptions targetOptions_{};
+    llvm::TargetOptions* targetOptions_{nullptr};
 
  public:
     [[nodiscard]] const llvm::Target *getTarget() const { return target_; }
@@ -58,7 +58,7 @@ struct TargetInfo {
 
     [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP_; }
 
-    [[nodiscard]] const llvm::TargetOptions& getTargetOptions() const { return targetOptions_; }
+    [[nodiscard]] const llvm::TargetOptions& getTargetOptions() const { return *targetOptions_; }
 };
 
 class TargetManager {
