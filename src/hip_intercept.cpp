@@ -10431,49 +10431,49 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f, unsigned int gridDimX, unsigne
 	};
 }
 
-extern "C" __attribute__((visibility("default")))
-hipError_t hipModuleLaunchKernelExt(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
-	auto& hipInterceptor = luthier::HipInterceptor::instance();
-	auto apiId = HIP_API_ID_hipModuleLaunchKernelExt;
-	bool isUserCallbackEnabled = hipInterceptor.isUserCallbackEnabled(apiId);
-	bool isInternalCallbackEnabled = hipInterceptor.isInternalCallbackEnabled(apiId);
-	if (isUserCallbackEnabled || isInternalCallbackEnabled) {		auto& hipUserCallback = hipInterceptor.getUserCallback();
-		auto& hipInternalCallback = hipInterceptor.getInternalCallback();
-		// Copy Arguments for PHASE_ENTER
-		// Flag to skip calling the original function
-		bool skipFunction{false};
-		std::optional<std::any> out{std::nullopt};
-		hip_hipModuleLaunchKernelExt_api_args_t hipFuncArgs{f, globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra, startEvent, stopEvent};
-		if (isUserCallbackEnabled) hipUserCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_ENTER, apiId);
-		if (isInternalCallbackEnabled) hipInternalCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction, &out);
-		if (!skipFunction) {
-			static auto hipFunc = hipInterceptor.getHipFunction<hipError_t(*)(hipFunction_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,size_t,hipStream_t,void * *,void * *,hipEvent_t,hipEvent_t)>("hipModuleLaunchKernelExt");
-			out = hipFunc(hipFuncArgs.f, hipFuncArgs.globalWorkSizeX, hipFuncArgs.globalWorkSizeY, hipFuncArgs.globalWorkSizeZ, hipFuncArgs.blockDimX, hipFuncArgs.blockDimY, hipFuncArgs.blockDimZ, hipFuncArgs.sharedMemBytes, hipFuncArgs.hStream, hipFuncArgs.kernelParams, hipFuncArgs.extra, hipFuncArgs.startEvent, hipFuncArgs.stopEvent);
-		};
-		// Exit Callback
-		if (isUserCallbackEnabled) hipUserCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_EXIT, apiId);
-		if (isInternalCallbackEnabled) hipInternalCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction, &out);
-		// Copy the modified arguments back to the original arguments (if non-const)
-		f = hipFuncArgs.f;
-		globalWorkSizeX = hipFuncArgs.globalWorkSizeX;
-		globalWorkSizeY = hipFuncArgs.globalWorkSizeY;
-		globalWorkSizeZ = hipFuncArgs.globalWorkSizeZ;
-		blockDimX = hipFuncArgs.blockDimX;
-		blockDimY = hipFuncArgs.blockDimY;
-		blockDimZ = hipFuncArgs.blockDimZ;
-		sharedMemBytes = hipFuncArgs.sharedMemBytes;
-		hStream = hipFuncArgs.hStream;
-		kernelParams = hipFuncArgs.kernelParams;
-		extra = hipFuncArgs.extra;
-		startEvent = hipFuncArgs.startEvent;
-		stopEvent = hipFuncArgs.stopEvent;
-
-		return std::any_cast<hipError_t>(*out);
-	} else {
-		static auto hipFunc = hipInterceptor.getHipFunction<hipError_t(*)(hipFunction_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,size_t,hipStream_t,void * *,void * *,hipEvent_t,hipEvent_t)>("hipModuleLaunchKernelExt");
-		return hipFunc(f, globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra, startEvent, stopEvent);
-	};
-}
+//extern "C" __attribute__((visibility("default")))
+//hipError_t hipModuleLaunchKernelExt(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, size_t sharedMemBytes, hipStream_t hStream, void * * kernelParams, void * * extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
+//	auto& hipInterceptor = luthier::HipInterceptor::instance();
+//	auto apiId = HIP_API_ID_hipModuleLaunchKernelExt;
+//	bool isUserCallbackEnabled = hipInterceptor.isUserCallbackEnabled(apiId);
+//	bool isInternalCallbackEnabled = hipInterceptor.isInternalCallbackEnabled(apiId);
+//	if (isUserCallbackEnabled || isInternalCallbackEnabled) {		auto& hipUserCallback = hipInterceptor.getUserCallback();
+//		auto& hipInternalCallback = hipInterceptor.getInternalCallback();
+//		// Copy Arguments for PHASE_ENTER
+//		// Flag to skip calling the original function
+//		bool skipFunction{false};
+//		std::optional<std::any> out{std::nullopt};
+//		hip_hipModuleLaunchKernelExt_api_args_t hipFuncArgs{f, globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra, startEvent, stopEvent};
+//		if (isUserCallbackEnabled) hipUserCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_ENTER, apiId);
+//		if (isInternalCallbackEnabled) hipInternalCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction, &out);
+//		if (!skipFunction) {
+//			static auto hipFunc = hipInterceptor.getHipFunction<hipError_t(*)(hipFunction_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,size_t,hipStream_t,void * *,void * *,hipEvent_t,hipEvent_t)>("hipModuleLaunchKernelExt");
+//			out = hipFunc(hipFuncArgs.f, hipFuncArgs.globalWorkSizeX, hipFuncArgs.globalWorkSizeY, hipFuncArgs.globalWorkSizeZ, hipFuncArgs.blockDimX, hipFuncArgs.blockDimY, hipFuncArgs.blockDimZ, hipFuncArgs.sharedMemBytes, hipFuncArgs.hStream, hipFuncArgs.kernelParams, hipFuncArgs.extra, hipFuncArgs.startEvent, hipFuncArgs.stopEvent);
+//		};
+//		// Exit Callback
+//		if (isUserCallbackEnabled) hipUserCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_EXIT, apiId);
+//		if (isInternalCallbackEnabled) hipInternalCallback(static_cast<void*>(&hipFuncArgs), LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction, &out);
+//		// Copy the modified arguments back to the original arguments (if non-const)
+//		f = hipFuncArgs.f;
+//		globalWorkSizeX = hipFuncArgs.globalWorkSizeX;
+//		globalWorkSizeY = hipFuncArgs.globalWorkSizeY;
+//		globalWorkSizeZ = hipFuncArgs.globalWorkSizeZ;
+//		blockDimX = hipFuncArgs.blockDimX;
+//		blockDimY = hipFuncArgs.blockDimY;
+//		blockDimZ = hipFuncArgs.blockDimZ;
+//		sharedMemBytes = hipFuncArgs.sharedMemBytes;
+//		hStream = hipFuncArgs.hStream;
+//		kernelParams = hipFuncArgs.kernelParams;
+//		extra = hipFuncArgs.extra;
+//		startEvent = hipFuncArgs.startEvent;
+//		stopEvent = hipFuncArgs.stopEvent;
+//
+//		return std::any_cast<hipError_t>(*out);
+//	} else {
+//		static auto hipFunc = hipInterceptor.getHipFunction<hipError_t(*)(hipFunction_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,size_t,hipStream_t,void * *,void * *,hipEvent_t,hipEvent_t)>("hipModuleLaunchKernelExt");
+//		return hipFunc(f, globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra, startEvent, stopEvent);
+//	};
+//}
 
 extern "C" __attribute__((visibility("default")))
 hipError_t hipModuleLoad(hipModule_t * module, const char * fname) {
