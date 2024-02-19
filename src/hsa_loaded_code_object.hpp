@@ -1,6 +1,5 @@
 #ifndef HSA_LOADED_CODE_OBJECT_HPP
 #define HSA_LOADED_CODE_OBJECT_HPP
-#include "code_view.hpp"
 #include "hsa_handle_type.hpp"
 
 namespace luthier::hsa {
@@ -18,19 +17,17 @@ class LoadedCodeObject : public HandleType<hsa_loaded_code_object_t> {
 
     [[nodiscard]] hsa_ven_amd_loader_code_object_storage_type_t getStorageType() const;
 
-    [[nodiscard]] luthier::byte_string_view getStorageMemory() const;
+    [[nodiscard]] llvm::ArrayRef<uint8_t> getStorageMemory() const;
 
     [[nodiscard]] int getStorageFile() const;
 
     [[nodiscard]] long getLoadDelta() const;
 
-    [[nodiscard]] luthier::byte_string_view getLoadedMemory() const;
+    [[nodiscard]] llvm::ArrayRef<uint8_t> getLoadedMemory() const;
 
     [[nodiscard]] std::string getUri() const;
-
 };
 
-}
-
+}// namespace luthier::hsa
 
 #endif
