@@ -72,7 +72,7 @@ class Disassembler {
     //    std::vector<llvm::MCInst> disassemble(const llvm::object::ELFSymbolRef &symbol, const hsa::Isa &isa,
     //                                          std::optional<size_t> size = std::nullopt);
 
-    std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, ArrayRef<uint8_t> code);
+    std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, llvm::ArrayRef<uint8_t> code);
 
     void liftKernelModule(const hsa::ExecutableSymbol &symbol);
 };

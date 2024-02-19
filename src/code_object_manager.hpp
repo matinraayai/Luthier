@@ -59,7 +59,8 @@ class CodeObjectManager {
      */
     const hsa::ExecutableSymbol &getInstrumentationKernel(const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const;
 
-    void loadInstrumentedKernel(const ArrayRef<uint8_t> &instrumentedElf, const hsa::ExecutableSymbol &originalKernel);
+    void loadInstrumentedKernel(const llvm::ArrayRef<uint8_t> &instrumentedElf,
+                                const hsa::ExecutableSymbol &originalKernel);
 
     /**
      * Returns the instrumented kernel's KD given its original un-instrumented version's KD

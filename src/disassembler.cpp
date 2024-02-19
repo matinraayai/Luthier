@@ -37,7 +37,7 @@ const Disassembler::DisassemblyInfo &luthier::Disassembler::getDisassemblyInfo(c
     return disassemblyInfoMap_.at(isa);
 }
 
-std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, ArrayRef<uint8_t> code) {
+std::vector<llvm::MCInst> Disassembler::disassemble(const hsa::Isa &isa, llvm::ArrayRef<uint8_t> code) {
     const auto &disassemblyInfo = getDisassemblyInfo(isa);
     const auto &targetInfo = TargetManager::instance().getTargetInfo(isa);
     const auto &disAsm = disassemblyInfo.disAsm_;
