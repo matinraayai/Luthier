@@ -85,7 +85,6 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phas
                     luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, nullptr);
                     std::vector<luthier_instruction_t> instrVec(instSize);
                     luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, instrVec.data());
-
                     luthier_insert_call(instrVec[0], LUTHIER_GET_EXPORTED_FUNC(instrumentation_kernel),
                                         LUTHIER_IPOINT_AFTER);
                     instrumented = true;
@@ -100,11 +99,11 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phas
 void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id) {
     fprintf(stdout, "<call to (%s)\t on %s> ", hip_api_name(hip_api_id),
             phase == LUTHIER_API_EVT_PHASE_ENTER ? "entry" : "exit");
-    if (hip_api_id == HIP_API_ID_hipLaunchKernel) {
-        auto kern_args = reinterpret_cast<hip_hipLaunchKernel_api_args_t*>(args);
-        fprintf(stdout, "kernel(\"%s\") stream(%p)",
-                hipKernelNameRefByPtr(kern_args->function_address, kern_args->stream), kern_args->stream);
-    }
+//    if (hip_api_id == HIP_API_ID_hipLaunchKernel) {
+//        auto kern_args = reinterpret_cast<hip_hipLaunchKernel_api_args_t*>(args);
+//        fprintf(stdout, "kernel(\"%s\") stream(%p)",
+//                hipKernelNameRefByPtr(kern_args->function_address, kern_args->stream), kern_args->stream);
+//    }
     fprintf(stdout, "\n");
     fflush(stdout);
 }
