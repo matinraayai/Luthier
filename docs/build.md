@@ -90,6 +90,7 @@ Runtime type information (RTTI), which is not enabled by the stock LLVM shipped 
     ```shell
    mkdir build/
    cd build/
-   cmake -G Ninja -DLUTHIER_LLVM_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT}/build/ ..
+   cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/rocm/lib/cmake -DLUTHIER_LLVM_BIN_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT}/build/
+   -DLUTHIER_LLVM_SRC_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT} ..
    cmake --build .
    ```
