@@ -1,5 +1,6 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCInstPrinter.h>
@@ -17,7 +18,7 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <SIMachineFunctionInfo.h>
 
-#include <AMDGPUResourceUsageAnalysis.h>
+// #include <AMDGPUResourceUsageAnalysis.h>
 
 struct TargetInfo {
   const llvm::Target* target_{nullptr};
@@ -229,7 +230,7 @@ int main(int argc, char** argv) {
     properties.print(llvm::outs());
 
     llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
-    //    MF.push_back(MBB);
+    MF.push_back(MBB);
 
     for (const auto &inst: kernelInstructions) {
 
