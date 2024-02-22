@@ -1,5 +1,6 @@
 #ifndef CODE_LIFTER_HPP
 #define CODE_LIFTER_HPP
+#include <llvm/IR/Module.h>
 #include <llvm/MC/MCContext.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInst.h>
@@ -18,7 +19,13 @@
 
 namespace luthier {
 
-struct KernelModuleInfo {};
+/**
+ * \brief contains information regarding an \p llvm::Module and other LLVM-based constructs associated with an
+ * \p luthier::hsa::ExecutableSymbol.
+ */
+struct KernelModuleInfo {
+//    llvm::Module
+};
 
 /**
  * \brief a singleton class in charge of disassembling device instructions and returning them as an
@@ -54,6 +61,8 @@ class Disassembler {
     // The vectors have to be allocated as a smart pointer to stop it from calling its destructor prematurely
     // The disassembler is in charge of destroying the disassembled symbols
     std::unordered_map<hsa::ExecutableSymbol, std::unique_ptr<std::vector<hsa::Instr>>> disassembledSymbols_;
+
+    std::unordered_map<hsa::ExecutableSymbol, KernelModuleInfo> kernelModules_;
 
  public:
     Disassembler(const Disassembler &) = delete;

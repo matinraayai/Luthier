@@ -1,11 +1,16 @@
 #include "disassembler.hpp"
 
 #include <AMDGPUTargetMachine.h>
+#include <GCNSubtarget.h>
+#include <SIMachineFunctionInfo.h>
+#include <AMDGPUResourceUsageAnalysis.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCContext.h>
 #include <llvm/MC/MCInstPrinter.h>
@@ -20,6 +25,7 @@
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_isa.hpp"
+#include "hsa_loaded_code_object.hpp"
 #include "target_manager.hpp"
 
 namespace luthier {
@@ -124,15 +130,7 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         auto isa = agent.getIsa();
         auto targetInfo = luthier::TargetManager::instance().getTargetInfo(isa);
 
-        auto target = targetInfo.getTarget();
-
-        auto triple = isa.getLLVMTargetTriple();
-        auto cpu = isa.getProcessor();
-        auto features = isa.getFeatureString();
-
-        std::unique_ptr<llvm::GCNTargetMachine> theTargetMachine;
-        theTargetMachine.reset(reinterpret_cast<llvm::GCNTargetMachine *>(target->createTargetMachine(
-            llvm::Triple(triple).normalize(), cpu, features, targetInfo.getTargetOptions(), llvm::Reloc::PIC_)));
+        auto theTargetMachine = targetInfo.getTargetMachine();
 
         auto mCInstInfo = theTargetMachine->getMCInstrInfo();
 
@@ -143,12 +141,13 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         LUTHIER_CHECK(module);
         module->setDataLayout(theTargetMachine->createDataLayout());
 
-        auto mmiwp = new llvm::MachineModuleInfoWrapperPass(theTargetMachine.get());
+        auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine);
         LUTHIER_CHECK(mmiwp);
+
         llvm::Type *const returnType = llvm::Type::getVoidTy(module->getContext());
         LUTHIER_CHECK(returnType);
         llvm::Type *const memParamType = llvm::PointerType::get(
-            llvm::Type::getInt32Ty(module->getContext()), llvm::AMDGPUAS::GLOBAL_ADDRESS /*default address space*/);
+            llvm::Type::getInt32Ty(module->getContext()), llvm::AMDGPUAS::GLOBAL_ADDRESS);
         LUTHIER_CHECK(memParamType);
         llvm::FunctionType *FunctionType = llvm::FunctionType::get(returnType, {memParamType}, false);
         LUTHIER_CHECK(FunctionType);
@@ -161,6 +160,12 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         LUTHIER_CHECK(BB);
         new llvm::UnreachableInst(module->getContext(), BB);
 
+        // Construct the attributes of the Function, which will result in the MF attributes getting populated
+        F->addFnAttr("amdgpu-no-dispatch-ptr");
+        F->addFnAttr("amdgpu-no-queue-ptr");
+        F->addFnAttr("amdgpu-no-dispatch-id");
+
+
         auto &MF = mmiwp->getMMI().getOrCreateMachineFunction(*F);
 
         MF.setAlignment(llvm::Align(4096));
@@ -168,11 +173,14 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         const std::vector<hsa::Instr> *targetFunction = Disassembler::instance().disassemble(symbol);
 
         llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
+        MF.push_back(MBB);
 
         for (const auto &i: *targetFunction) {
             auto inst = i.getInstr();
 
             const unsigned Opcode = inst.getOpcode();
+
+            auto subTargetInfo = theTargetMachine->getSubtargetImpl(*F);
 
             const llvm::MCInstrDesc &MCID = mCInstInfo->get(Opcode);
             llvm::MachineInstrBuilder Builder = llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
@@ -183,6 +191,9 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
                     unsigned Flags = 0;
                     const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
                     if (IsDef && !OpInfo.isOptionalDef()) Flags |= llvm::RegState::Define;
+                    llvm::outs() << "Reg name: ";
+                    Op.print(llvm::outs(), targetInfo.getMCRegisterInfo());
+                    llvm::outs() << " " << llvm::hexdigit(Flags) << "\n";
                     Builder.addReg(Op.getReg(), Flags);
                 } else if (Op.isImm()) {
                     Builder.addImm(Op.getImm());
@@ -193,15 +204,112 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
                 }
             }
         }
-        MBB->dump();
-        llvm::outs() << "Number of blocks : " << MF.getNumBlockIDs() << "\n";
-        MF.dump();
+//        MBB->dump();
+//        llvm::outs() << "Number of blocks : " << MF.getNumBlockIDs() << "\n";
+//        MF.dump();
+        auto TII = reinterpret_cast<const llvm::SIInstrInfo*>(theTargetMachine->getSubtargetImpl(*F)->getInstrInfo());
+        auto TRI = theTargetMachine->getSubtargetImpl(*F)->getRegisterInfo();
+        for (auto& BB: MF) {
+            for (auto& Inst: BB) {
+                llvm::outs() << "MIR: ";
+                Inst.print(llvm::outs(), true, false, false, true, TII);
+                std::string error;
+                llvm::StringRef errorRef(error);
+                bool isInstCorrect = TII->verifyInstruction(Inst, errorRef);
+                llvm::outs() << "Is instruction correct: " << isInstCorrect << "\n";
+                if (!isInstCorrect) {
+
+                    llvm::outs() << "May read Exec : " << TII->mayReadEXEC(MF.getRegInfo(), Inst) << "\n";
+                    Inst.addOperand(llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
+                    TII->fixImplicitOperands(Inst);
+                    Inst.addImplicitDefUseOperands(MF);
+                    llvm::outs() << "After correction: ";
+                    Inst.print(llvm::outs(), true, false, false, true, TII);
+
+                    llvm::outs() << "Is correct now: " << TII->verifyInstruction(Inst, errorRef) << "\n";
+                }
+                llvm::outs() << "Error: " << errorRef << "\n";
+                for (auto& op : Inst.operands()) {
+                    if (op.isReg()) {
+                        llvm::outs() << "Reg: ";
+                        op.print(llvm::outs(), TRI);
+                        llvm::outs() << "\n";
+                        llvm::outs() << "is implicit: " << op.isImplicit() << "\n";
+//                        if (op.isImplicit() && op.readsReg() && op.isUse() && op.getReg().id() == llvm::AMDGPU::EXEC) {
+//                            op.setImplicit(true);
+//
+//                        }
+                    }
+                }
+                llvm::outs() << "==============================================================\n";
+            }
+        }
         llvm::MachineFunctionProperties &properties = MF.getProperties();
         properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
         properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
         properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
-        properties.print(llvm::outs());
-        llvm::outs() << "\n";
+        properties.reset(llvm::MachineFunctionProperties::Property::TracksLiveness);
+
+        MF.getRegInfo().freezeReservedRegs(MF);
+
+//        auto elfOrError = getELFObjectFileBase(symbol.getExecutable().getLoadedCodeObjects()[0].getStorageMemory());
+//        if (llvm::errorToBool(elfOrError.takeError())) {
+//            llvm::report_fatal_error("Failed to parse the elf.");
+//        }
+//        auto noteOrError = getElfNoteMetadataRoot(elfOrError.get().get());
+//        if (llvm::errorToBool(noteOrError.takeError())) {
+//            llvm::report_fatal_error("Failed to parse the note section");
+//        }
+//        noteOrError.get().toYAML(llvm::outs());
+//        llvm::outs() << "\n";
+////        MF.dump();
+//        properties.print(llvm::outs());
+//        llvm::outs() << "\n";
+
+        // We create the pass manager, run the passes to populate AsmBuffer.
+        llvm::MCContext &MCContext = mmiwp->getMMI().getContext();
+        llvm::legacy::PassManager PM;
+
+
+
+        llvm::TargetLibraryInfoImpl tlii(llvm::Triple(module->getTargetTriple()));
+        PM.add(new llvm::TargetLibraryInfoWrapperPass(tlii));
+
+
+        llvm::TargetPassConfig *TPC = theTargetMachine->createPassConfig(PM);
+        PM.add(TPC);
+        PM.add(mmiwp.release());
+//        TPC->printAndVerify("MachineFunctionGenerator::assemble");
+
+        //        auto usageAnalysis = std::make_unique<llvm::AMDGPUResourceUsageAnalysis>();
+        PM.add(new llvm::AMDGPUResourceUsageAnalysis());
+        // Add target-specific passes.
+//        ET.addTargetSpecificPasses(PM);
+//        TPC->printAndVerify("After ExegesisTarget::addTargetSpecificPasses");
+        // Adding the following passes:
+        // - postrapseudos: expands pseudo return instructions used on some targets.
+        // - machineverifier: checks that the MachineFunction is well formed.
+        // - prologepilog: saves and restore callee saved registers.
+//        for (const char *PassName :
+//             {"postrapseudos", "machineverifier", "prologepilog"})
+//            if (addPass(PM, PassName, *TPC))
+//                return make_error<Failure>("Unable to add a mandatory pass");
+        TPC->setInitialized();
+
+        llvm::SmallVector<char> o;
+//        std::string out;
+//        llvm::raw_string_ostream outOs(out);
+        llvm::raw_svector_ostream OutOs(o);
+        // AsmPrinter is responsible for generating the assembly into AsmBuffer.
+        if (theTargetMachine->addAsmPrinter(PM, OutOs, nullptr, llvm::CodeGenFileType::AssemblyFile,
+                              MCContext))
+            llvm::outs() << "Failed to add pass manager\n";
+//            return make_error<llvm::Failure>("Cannot add AsmPrinter passes");
+
+        PM.run(*module); // Run all the passes
+
+        llvm::outs() << o << "\n";
+
     }
 }
 

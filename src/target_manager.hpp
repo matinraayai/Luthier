@@ -24,6 +24,8 @@ class MCInstrAnalysis;
 class MCSubtargetInfo;
 
 class MCInstPrinter;
+
+class GCNTargetMachine;
 }// namespace llvm
 
 namespace luthier {
@@ -35,16 +37,19 @@ struct TargetInfo {
 
  private:
     const llvm::Target *target_{nullptr};
-    const llvm::MCRegisterInfo* MRI_{nullptr};
-    const llvm::MCAsmInfo* MAI_{nullptr};
-    const llvm::MCInstrInfo* MII_{nullptr};
-    const llvm::MCInstrAnalysis* MIA_{nullptr};
-    const llvm::MCSubtargetInfo* STI_{nullptr};
-    llvm::MCInstPrinter* IP_{nullptr};
-    llvm::TargetOptions* targetOptions_{nullptr};
+    llvm::GCNTargetMachine *targetMachine_{nullptr};
+    const llvm::MCRegisterInfo *MRI_{nullptr};
+    const llvm::MCAsmInfo *MAI_{nullptr};
+    const llvm::MCInstrInfo *MII_{nullptr};
+    const llvm::MCInstrAnalysis *MIA_{nullptr};
+    const llvm::MCSubtargetInfo *STI_{nullptr};
+    llvm::MCInstPrinter *IP_{nullptr};
+    llvm::TargetOptions *targetOptions_{nullptr};
 
  public:
     [[nodiscard]] const llvm::Target *getTarget() const { return target_; }
+
+    [[nodiscard]] llvm::GCNTargetMachine *getTargetMachine() const { return targetMachine_;}
 
     [[nodiscard]] const llvm::MCRegisterInfo *getMCRegisterInfo() const { return MRI_; }
 
@@ -58,7 +63,7 @@ struct TargetInfo {
 
     [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP_; }
 
-    [[nodiscard]] const llvm::TargetOptions& getTargetOptions() const { return *targetOptions_; }
+    [[nodiscard]] const llvm::TargetOptions &getTargetOptions() const { return *targetOptions_; }
 };
 
 class TargetManager {

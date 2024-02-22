@@ -3,8 +3,9 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/BinaryFormat/ELF.h>
 #include <llvm/Object/ELFObjectFile.h>
+#include <llvm/Object/ELFTypes.h>
 #include <llvm/Object/ObjectFile.h>
-#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/BinaryFormat/MsgPackDocument.h>
 
 #include <map>
 #include <optional>
@@ -59,7 +60,7 @@ typedef enum {
 typedef struct {
     ElfSections id;
     const char *name;
-    uint64_t d_align;   // section alignment in bytes
+    uint64_t d_align;              // section alignment in bytes
     llvm::ELF::Elf32_Word sh_type; // section type
     llvm::ELF::Elf32_Word sh_flags;// section flags
     const char *desc;
@@ -268,7 +269,25 @@ struct WorkGroupInfo {
     }
 };
 
+/**
+ * \brief Parses the ELF file pointed to by \p elf into a \p llvm::object::ELFObjectFileBase.
+ * @param elf \p llvm::ArrayRef encompassing the ELF file in memory
+ * @return a \p std::unique_ptr pointing to a \p llvm::object::ELFObjectFileBase
+ */
+llvm::Expected<std::unique_ptr<llvm::object::ELFObjectFileBase>> getELFObjectFileBase(llvm::StringRef elf);
+
+/**
+ * \brief Parses the ELF file pointed to by \p elf into a \p llvm::object::ELFObjectFileBase.
+ * @param elf \p llvm::ArrayRef encompassing the ELF file in memory
+ * @return a \p std::unique_ptr pointing to a \p llvm::object::ELFObjectFileBase
+ */
 llvm::Expected<std::unique_ptr<llvm::object::ELFObjectFileBase>> getELFObjectFileBase(llvm::ArrayRef<uint8_t> elf);
+
+
+llvm::Expected<llvm::msgpack::Document> getElfNoteMetadataRoot(const llvm::object::ELFObjectFileBase* elf);
+
+
+
 //class SymbolView;
 
 ///**

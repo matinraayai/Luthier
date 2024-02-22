@@ -20,9 +20,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE. */
 
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/MemoryBuffer.h>
 
 #include <string>
+
+using namespace llvm;
+
+using namespace llvm::object;
+
+using namespace llvm::msgpack;
 
 namespace luthier {
 
@@ -1012,16 +1020,186 @@ inline T alignUp(T value, size_t alignment) {
 //                      symbolType};
 //}
 
-llvm::Expected<std::unique_ptr<llvm::object::ELFObjectFileBase>> getELFObjectFileBase(llvm::ArrayRef<uint8_t> elf) {
-    std::unique_ptr<llvm::MemoryBuffer> Buf = llvm::MemoryBuffer::getMemBuffer(
-        llvm::StringRef(reinterpret_cast<const char *>(elf.data()), elf.size()), "", false);
+Expected<std::unique_ptr<ELFObjectFileBase>> getELFObjectFileBase(StringRef elf) {
+    std::unique_ptr<MemoryBuffer> buffer = MemoryBuffer::getMemBuffer(elf, "", false);
 
-    llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> ObjOrErr =
-        llvm::object::ObjectFile::createELFObjectFile(*Buf);
+    Expected<std::unique_ptr<ObjectFile>> elfOrErr = ObjectFile::createELFObjectFile(*buffer);
 
-    if (auto Err = ObjOrErr.takeError()) return std::move(Err);
+    if (auto err = elfOrErr.takeError()) return std::move(err);
 
-    return llvm::unique_dyn_cast<llvm::object::ELFObjectFileBase>(std::move(*ObjOrErr));
+    return unique_dyn_cast<ELFObjectFileBase>(std::move(*elfOrErr));
+}
+
+Expected<std::unique_ptr<ELFObjectFileBase>> getELFObjectFileBase(ArrayRef<uint8_t> elf) {
+    return getELFObjectFileBase(toStringRef(elf));
+}
+
+template<class ELFT>
+static std::optional<Expected<typename ELFT::Phdr>> getNotesFromProgramHeader(const ELFObjectFile<ELFT> *obj) {
+    const ELFFile<ELFT> &ELFFile = obj->getELFFile();
+
+    auto programHeadersOrError = ELFFile.program_headers();
+    if (errorToBool(programHeadersOrError.takeError())) { return programHeadersOrError.takeError(); }
+
+    for (const auto &pHdr: *programHeadersOrError) {
+        if (pHdr.p_type == llvm::ELF::PT_NOTE) { return pHdr; }
+    }
+    return std::nullopt;
+}
+
+template<class ELFT>
+static std::optional<Expected<typename ELFT::Shdr>> getNotesFromSectionHeader(const ELFObjectFile<ELFT> *Obj) {
+    const ELFFile<ELFT> &ELFFile = Obj->getELFFile();
+
+    auto sectionsOrError = ELFFile.sections();
+    if (errorToBool(sectionsOrError.takeError())) { return sectionsOrError.takeError(); }
+
+    for (const auto &sHdr: *sectionsOrError) {
+        if (sHdr.sh_type == llvm::ELF::SHT_NOTE) return sHdr;
+    }
+
+    return std::nullopt;
+}
+
+// Try to merge "amdhsa.kernels" from DocNode @p From to @p To.
+// The merge is allowed only if
+// 1. "amdhsa.printf" record is not existing in either of the nodes.
+// 2. "amdhsa.version" exists and is same.
+// 3. "amdhsa.kernels" exists in both nodes.
+//
+// If merge is possible the function merges Kernel records
+// to @p To and returns @c true.
+static bool mergeNoteRecords(llvm::msgpack::DocNode &From, llvm::msgpack::DocNode &To, const StringRef VersionStrKey,
+                             const StringRef PrintfStrKey, const StringRef KernelStrKey) {
+    if (!From.isMap()) { return false; }
+
+    if (To.isEmpty()) {
+        To = From;
+        return true;
+    }
+
+    assert(To.isMap());
+
+    if (From.getMap().find(PrintfStrKey) != From.getMap().end()) {
+        /* Check if both have Printf records */
+        if (To.getMap().find(PrintfStrKey) != To.getMap().end()) { return false; }
+
+        /* Add Printf record for 'To' */
+        To.getMap()[PrintfStrKey] = From.getMap()[PrintfStrKey];
+    }
+
+    auto &FromMapNode = From.getMap();
+    auto &ToMapNode = To.getMap();
+
+    auto FromVersionArrayNode = FromMapNode.find(VersionStrKey);
+    auto ToVersionArrayNode = ToMapNode.find(VersionStrKey);
+
+    if ((FromVersionArrayNode == FromMapNode.end() || !FromVersionArrayNode->second.isArray())
+        || (ToVersionArrayNode == ToMapNode.end() || !ToVersionArrayNode->second.isArray())) {
+        return false;
+    }
+
+    auto FromVersionArray = FromMapNode[VersionStrKey].getArray();
+    auto ToVersionArray = ToMapNode[VersionStrKey].getArray();
+
+    if (FromVersionArray.size() != ToVersionArray.size()) { return false; }
+
+    for (size_t I = 0, E = FromVersionArray.size(); I != E; ++I) {
+        if (FromVersionArray[I] != ToVersionArray[I]) { return false; }
+    }
+
+    auto FromKernelArray = FromMapNode.find(KernelStrKey);
+    auto ToKernelArray = ToMapNode.find(KernelStrKey);
+
+    if ((FromKernelArray == FromMapNode.end() || !FromKernelArray->second.isArray())
+        || (ToKernelArray == ToMapNode.end() || !ToKernelArray->second.isArray())) {
+        return false;
+    }
+
+    auto &ToKernelRecords = ToKernelArray->second.getArray();
+    for (auto Kernel: FromKernelArray->second.getArray()) { ToKernelRecords.push_back(Kernel); }
+
+    return true;
+}
+
+template<class ELFT>
+static bool processNote(const typename ELFT::Note &note, Document &doc) {
+    auto descString = note.getDescAsStringRef(16);
+    auto root = doc.getRoot();
+    bool emitIntegerBooleans = false;
+
+    llvm::outs() << "Name of Note: " << note.getName() << "\n";
+    llvm::outs() << "Type of Note: " << note.getType() << "\n";
+    llvm::outs() << "Desc String: " << descString << "\n";
+    if (note.getName() == "AMD" && note.getType() == ELF::NT_AMD_HSA_METADATA) {
+        if (!root.isEmpty()) { return false; }
+        emitIntegerBooleans = false;
+
+        if (!doc.fromYAML(descString)) { return false; }
+        doc.toYAML(llvm::outs());
+        llvm::outs() << "\n";
+        return true;
+    }
+    if (((note.getName() == "AMD" || note.getName() == "AMDGPU") && note.getType() == llvm::ELF::NT_AMD_PAL_METADATA)
+        || (note.getName() == "AMDGPU" && note.getType() == ELF::NT_AMDGPU_METADATA)) {
+        llvm::outs() << "in the blob path\n";
+//        if (!Root.isEmpty() && MetaP->MetaDoc->EmitIntegerBooleans != true) { return false; }
+//
+//        MetaP->MetaDoc->EmitIntegerBooleans = true;
+//        MetaP->MetaDoc->RawDocumentList.push_back(std::string(descString));
+//
+//        /* TODO add support for merge using readFromBlob merge function */
+//        auto &Document = MetaP->MetaDoc->Document;
+//
+//        Document.clear();
+        if (!doc.readFromBlob(std::string(descString), false)) { return false; }
+//        doc.writeToBlob(llvm::outs());
+        llvm::outs() << "\n";
+        return true;
+//
+//        return mergeNoteRecords(Document.getRoot(), Root, "amdhsa.version", "amdhsa.printf", "amdhsa.kernels");
+    }
+    return false;
+}
+
+template<class ELFT>
+static Expected<Document> getElfNoteMetadataRoot(const ELFObjectFile<ELFT> *obj) {
+    bool Found = false;
+    llvm::msgpack::Document doc;
+    const ELFFile<ELFT> &ELFFile = obj->getELFFile();
+
+    std::optional<Expected<typename ELFT::Phdr>> notePHdrOrError = getNotesFromProgramHeader(obj);
+    if (notePHdrOrError.has_value()) {
+        if (!errorToBool(notePHdrOrError->takeError())) {
+            auto notePHdr = notePHdrOrError->get();
+            llvm::Error err = llvm::Error::success();
+            for (const auto &Note: ELFFile.notes(notePHdr, err)) {
+                if (processNote<ELFT>(Note, doc)) { return doc;}
+            }
+        } else {
+            return notePHdrOrError->takeError();
+        };
+    };
+
+    std::optional<Expected<typename ELFT::Shdr>> noteSHdrOrError = getNotesFromSectionHeader(obj);
+    if (noteSHdrOrError.has_value()) {
+        if (!errorToBool(noteSHdrOrError->takeError())) {
+            auto noteSHdr = noteSHdrOrError->get();
+            llvm::Error err = llvm::Error::success();
+            for (const auto &Note: ELFFile.notes(noteSHdr, err)) {
+                if (processNote<ELFT>(Note, doc)) { Found = true; }
+            }
+        };
+    };
+    if (Found) return doc;
+}
+
+Expected<Document> getElfNoteMetadataRoot(const ELFObjectFileBase *elf) {
+    if (auto *ELF32LE = dyn_cast<ELF32LEObjectFile>(elf)) { return getElfNoteMetadataRoot(ELF32LE); }
+    if (auto *ELF64LE = dyn_cast<ELF64LEObjectFile>(elf)) { return getElfNoteMetadataRoot(ELF64LE); }
+    if (auto *ELF32BE = dyn_cast<ELF32BEObjectFile>(elf)) { return getElfNoteMetadataRoot(ELF32BE); }
+    auto *ELF64BE = dyn_cast<ELF64BEObjectFile>(elf);
+    return getElfNoteMetadataRoot(ELF64BE);
 }
 
 }// namespace luthier

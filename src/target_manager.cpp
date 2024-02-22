@@ -19,6 +19,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
+#include <AMDGPUTargetMachine.h>
 
 #include "error.hpp"
 #include "hsa.hpp"
@@ -27,7 +28,7 @@
 namespace luthier {
 
 TargetManager::TargetManager() {
-    //TODO: When The target application is multi-threaded, this might need to be in a scoped lock
+    //TODO: When the target application is multi-threaded, this might need to be in a scoped lock
     LLVMInitializeAMDGPUTarget();
     LLVMInitializeAMDGPUTargetInfo();
     LLVMInitializeAMDGPUTargetMC();
@@ -46,6 +47,7 @@ TargetManager::~TargetManager() {
         delete it.second.STI_;
         delete it.second.IP_;
         delete it.second.targetOptions_;
+        delete it.second.targetMachine_;
     }
     llvmTargetInfo_.clear();
 }
@@ -74,11 +76,17 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         auto mia = target->createMCInstrAnalysis(mii);
         LUTHIER_CHECK(mia);
 
-        auto sti = target->createMCSubtargetInfo(targetTriple, isa.getProcessor(), isa.getFeatureString());
+        std::string cpu = isa.getProcessor();
+        std::string featureString = isa.getFeatureString();
+
+        auto sti = target->createMCSubtargetInfo(targetTriple, cpu, featureString);
         LUTHIER_CHECK(sti);
 
         auto ip = target->createMCInstPrinter(llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri);
         LUTHIER_CHECK(ip);
+
+        auto targetMachine = reinterpret_cast<llvm::GCNTargetMachine *>(target->createTargetMachine(
+            llvm::Triple(targetTriple).normalize(), cpu, featureString, *targetOptions, llvm::Reloc::PIC_));
 
         info->second.target_ = target;
         info->second.MRI_ = mri;
@@ -88,6 +96,7 @@ const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
         info->second.STI_ = sti;
         info->second.IP_ = ip;
         info->second.targetOptions_ = targetOptions;
+        info->second.targetMachine_ = targetMachine;
     }
     return llvmTargetInfo_.at(isa);
 }
