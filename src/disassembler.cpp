@@ -123,7 +123,7 @@ luthier::Disassembler::~Disassembler() {
     moduleInfoMap_.clear();
     disassembledSymbols_.clear();
 }
-void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
+void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol, llvm::SmallVectorImpl<char>& out) {
     if (!moduleInfoMap_.contains(symbol)) {
         auto agent = symbol.getAgent();
         LUTHIER_CHECK((symbol.getType() == HSA_SYMBOL_KIND_KERNEL));
@@ -136,6 +136,8 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
 
         auto context = std::make_unique<llvm::LLVMContext>();
         LUTHIER_CHECK(context);
+
+        auto symbolName = symbol.getName();
 
         auto module = std::make_unique<llvm::Module>(symbol.getName(), *context);
         LUTHIER_CHECK(module);
@@ -153,9 +155,12 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         llvm::FunctionType *FunctionType = llvm::FunctionType::get(returnType, {memParamType}, false);
         LUTHIER_CHECK(FunctionType);
         llvm::Function *F =
-            llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, symbol.getName(), *module);
+            llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, symbolName.substr(0, symbolName.size() - 3),
+                                   *module);
         LUTHIER_CHECK(F);
         F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+
+        llvm::outs() << "Number of arguments: " << F->arg_size() << "\n";
 
         llvm::BasicBlock *BB = llvm::BasicBlock::Create(module->getContext(), "", F);
         LUTHIER_CHECK(BB);
@@ -165,9 +170,17 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         F->addFnAttr("amdgpu-no-dispatch-ptr");
         F->addFnAttr("amdgpu-no-queue-ptr");
         F->addFnAttr("amdgpu-no-dispatch-id");
+        F->addFnAttr("amdgpu-no-workgroup-id-y");
+        F->addFnAttr("amdgpu-no-workitem-id-y");
+        F->addFnAttr("amdgpu-no-workgroup-id-z");
+        F->addFnAttr("amdgpu-no-workitem-id-z");
+        F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
+        F->addFnAttr("uniform-work-group-size", "true");
 
+        llvm::outs() << "Preloaded Args: " << symbol.getKernelDescriptor()->kernArgPreload << "\n";
 
         auto &MF = mmiwp->getMMI().getOrCreateMachineFunction(*F);
+
 
         MF.setAlignment(llvm::Align(4096));
 
@@ -209,7 +222,11 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
 //        llvm::outs() << "Number of blocks : " << MF.getNumBlockIDs() << "\n";
 //        MF.dump();
         auto TII = reinterpret_cast<const llvm::SIInstrInfo*>(theTargetMachine->getSubtargetImpl(*F)->getInstrInfo());
-        auto TRI = theTargetMachine->getSubtargetImpl(*F)->getRegisterInfo();
+        auto TRI = reinterpret_cast<const llvm::SIRegisterInfo*>(theTargetMachine->getSubtargetImpl(*F)->getRegisterInfo());
+        auto MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
+        MFI->addPrivateSegmentBuffer(*TRI);
+        MFI->addKernargSegmentPtr(*TRI);
+
         for (auto& BB: MF) {
             for (auto& Inst: BB) {
                 llvm::outs() << "MIR: ";
@@ -297,20 +314,19 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
 //                return make_error<Failure>("Unable to add a mandatory pass");
         TPC->setInitialized();
 
-        llvm::SmallVector<char> o;
+//        llvm::SmallVector<char> o;
 //        std::string out;
 //        llvm::raw_string_ostream outOs(out);
-        llvm::raw_svector_ostream OutOs(o);
+        llvm::raw_svector_ostream outOs(out);
         // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-        if (theTargetMachine->addAsmPrinter(PM, OutOs, nullptr, llvm::CodeGenFileType::AssemblyFile,
+        if (theTargetMachine->addAsmPrinter(PM, outOs, nullptr, llvm::CodeGenFileType::ObjectFile,
                               MCContext))
             llvm::outs() << "Failed to add pass manager\n";
 //            return make_error<llvm::Failure>("Cannot add AsmPrinter passes");
 
         PM.run(*module); // Run all the passes
 
-        llvm::outs() << o << "\n";
-
+        llvm::outs() << out << "\n";
     }
 }
 

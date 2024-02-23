@@ -1124,7 +1124,7 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From, llvm::msgpack::DocNod
 
 template<class ELFT>
 static bool processNote(const typename ELFT::Note &note, Document &doc) {
-    auto descString = note.getDescAsStringRef(16);
+    auto descString = note.getDescAsStringRef(4);
     auto root = doc.getRoot();
     bool emitIntegerBooleans = false;
 

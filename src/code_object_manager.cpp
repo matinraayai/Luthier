@@ -127,14 +127,15 @@ const hsa::ExecutableSymbol &CodeObjectManager::getInstrumentationKernel(const v
 }
 
 CodeObjectManager::~CodeObjectManager() {
+    //TODO: Fix the destructor
     for (auto &[origSymbol, instInfo]: instrumentedKernels_) {
         auto &[s, e, r] = instInfo;
-        e.destroy();
-        r.destroy();
+//        r.destroy();
+//        e.destroy();
     }
-    instrumentedKernels_.clear();
-    toolExecutables_.clear();
-    functions_.clear();
+//    instrumentedKernels_.clear();
+//    toolExecutables_.clear();
+//    functions_.clear();
 }
 
 }// namespace luthier

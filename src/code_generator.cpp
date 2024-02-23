@@ -41,6 +41,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
+#include <llvm/ADT/StringExtras.h>
 #include "log.hpp"
 #include "target_manager.hpp"
 
@@ -105,7 +106,13 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     auto &contextManager = luthier::TargetManager::instance();
 
     const auto &targetInfo = contextManager.getTargetInfo(agent.getIsa());
-//    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
+    llvm::SmallVector<char> reloc;
+    llvm::SmallVector<uint8_t> executable;
+
+    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol(), reloc);
+
+    compileRelocatableToExecutable(llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t*>(reloc.data()), reloc.size()), agent.getIsa(), executable);
+    codeObjectManager.loadInstrumentedKernel(executable, instr.getExecutableSymbol());
     //    auto Context = std::make_unique<llvm::LLVMContext>();
     //    auto triple = agent.getIsa().getLLVMTargetTriple();
     //    auto processor = agent.getIsa().getProcessor();
@@ -172,9 +179,9 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     //        agent.getIsa(), llvm::AMDGPU::S_ADD_I32, llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
     //        llvm::MCOperand::createReg(llvm::AMDGPU::SGPR6), llvm::MCOperand::createReg(llvm::AMDGPU::VGPR1));
 
-    const auto targetTriple = llvm::Triple(agent.getIsa().getLLVMTargetTriple());
-    llvm::MCContext ctx(targetTriple, targetInfo.getMCAsmInfo(), targetInfo.getMCRegisterInfo(),
-                        targetInfo.getMCSubTargetInfo());
+//    const auto targetTriple = llvm::Triple(agent.getIsa().getLLVMTargetTriple());
+//    llvm::MCContext ctx(targetTriple, targetInfo.getMCAsmInfo(), targetInfo.getMCRegisterInfo(),
+//                        targetInfo.getMCSubTargetInfo());
     //    auto mcEmitter = targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(), ctx);
 
     //    llvm::SmallVector<char> osBack;
@@ -189,48 +196,48 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
 
     hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationKernel(deviceFunc, agent);
 
-    //        const std::vector<hsa::Instr> *instFunctionInstructions = Disassembler::instance().disassemble(instrumentationFunc);
-
-    for (const auto &i: *targetFunction) {
-        std::string instStr;
-        llvm::raw_string_ostream instStream(instStr);
-        auto inst = i.getInstr();
-        llvm::outs() << targetInfo.getMCInstrInfo()->getName(inst.getOpcode()).str() << "\n";
-        //        fmt::println("Is call? {}", targetInfo.MII_->get(inst.getOpcode()).isCall());
-        //        fmt::println("Is control flow? {}",
-        //                     targetInfo.MII_->get(inst.getOpcode()).mayAffectControlFlow(inst, *targetInfo.MRI_));
-        //        fmt::println("Num max operands? {}", targetInfo.MII_->get(inst.getOpcode()).getNumOperands());
-        llvm::outs() << llvm::formatv("Num operands? {0:X}\n", inst.getNumOperands());
-        //        fmt::println("May load? {}", targetInfo.MII_->get(inst.getOpcode()).mayLoad());
-        llvm::outs() << llvm::formatv("Mnemonic: {0}\n", targetInfo.getMCInstPrinter()->getMnemonic(&inst).first);
-
-        for (int j = 0; j < inst.getNumOperands(); j++) {
-            //            auto op = inst.getOperand(j);
-            //            std::string opStr;
-            //            llvm::raw_string_ostream opStream(opStr);
-            //            op.print(opStream, targetInfo.MRI_.get());
-            //            fmt::println("OP: {}", opStream.str());
-            //            if (op.isReg()) {
-            //                fmt::println("Reg idx: {}", op.getReg());
-            //                fmt::println("Reg name: {}", targetInfo.MRI_->getName(op.getReg()));
-            //                auto subRegIterator = targetInfo.MRI_->subregs(op.getReg());
-            //                for (auto it = subRegIterator.begin(); it != subRegIterator.end(); it++) {
-            //                    fmt::println("\tSub reg Name: {}", targetInfo.MRI_->getName((*it)));
-            //                }
-            ////                auto superRegIterator = targetInfo.MRI_->superregs(op.getReg());
-            ////                for (auto it = superRegIterator.begin(); it != superRegIterator.end(); it++) {
-            ////                    fmt::println("\tSuper reg Name: {}", targetInfo.MRI_->getName((*it)));
-            ////                }
-            //            }
-            //            fmt::println("Is op {} reg? {}", j, op.isReg());
-            //            fmt::println("Is op {} valid? {}", j, op.isValid());
-        }
-        targetInfo.getMCInstPrinter()->printInst(&inst, reinterpret_cast<luthier_address_t>(inst.getLoc().getPointer()),
-                                                 "", *targetInfo.getMCSubTargetInfo(), instStream);
-        llvm::outs() << instStream.str() << "\n";
-        inst.getOpcode();
-    }
-    llvm::outs() << "==================================\n";
+///*    //        const std::vector<hsa::Instr> *instFunctionInstructions = Disassembler::instance().disassemble(instrumentationFunc);
+//
+//    for (const auto &i: *targetFunction) {
+//        std::string instStr;
+//        llvm::raw_string_ostream instStream(instStr);
+//        auto inst = i.getInstr();
+//        llvm::outs() << targetInfo.getMCInstrInfo()->getName(inst.getOpcode()).str() << "\n";
+//        //        fmt::println("Is call? {}", targetInfo.MII_->get(inst.getOpcode()).isCall());
+//        //        fmt::println("Is control flow? {}",
+//        //                     targetInfo.MII_->get(inst.getOpcode()).mayAffectControlFlow(inst, *targetInfo.MRI_));
+//        //        fmt::println("Num max operands? {}", targetInfo.MII_->get(inst.getOpcode()).getNumOperands());
+//        llvm::outs() << llvm::formatv("Num operands? {0:X}\n", inst.getNumOperands());
+//        //        fmt::println("May load? {}", targetInfo.MII_->get(inst.getOpcode()).mayLoad());
+//        llvm::outs() << llvm::formatv("Mnemonic: {0}\n", targetInfo.getMCInstPrinter()->getMnemonic(&inst).first);
+//
+//        for (int j = 0; j < inst.getNumOperands(); j++) {
+//            //            auto op = inst.getOperand(j);
+//            //            std::string opStr;
+//            //            llvm::raw_string_ostream opStream(opStr);
+//            //            op.print(opStream, targetInfo.MRI_.get());
+//            //            fmt::println("OP: {}", opStream.str());
+//            //            if (op.isReg()) {
+//            //                fmt::println("Reg idx: {}", op.getReg());
+//            //                fmt::println("Reg name: {}", targetInfo.MRI_->getName(op.getReg()));
+//            //                auto subRegIterator = targetInfo.MRI_->subregs(op.getReg());
+//            //                for (auto it = subRegIterator.begin(); it != subRegIterator.end(); it++) {
+//            //                    fmt::println("\tSub reg Name: {}", targetInfo.MRI_->getName((*it)));
+//            //                }
+//            ////                auto superRegIterator = targetInfo.MRI_->superregs(op.getReg());
+//            ////                for (auto it = superRegIterator.begin(); it != superRegIterator.end(); it++) {
+//            ////                    fmt::println("\tSuper reg Name: {}", targetInfo.MRI_->getName((*it)));
+//            ////                }
+//            //            }
+//            //            fmt::println("Is op {} reg? {}", j, op.isReg());
+//            //            fmt::println("Is op {} valid? {}", j, op.isValid());
+//        }
+//        targetInfo.getMCInstPrinter()->printInst(&inst, reinterpret_cast<luthier_address_t>(inst.getLoc().getPointer()),
+//                                                 "", *targetInfo.getMCSubTargetInfo(), instStream);
+//        llvm::outs() << instStream.str() << "\n";
+//        inst.getOpcode();
+//    }
+//    llvm::outs() << "==================================\n";*/
     //
     //    for (const auto &i: *targetFunction) {
     //        std::string instStr;
