@@ -1,10 +1,12 @@
 # Running Luthier-based Tools
-To run tools developed using Luthier, run the following command:
+To instrument HIP-based applications using tools developed with Luthier, run the following command:
 ```shell
-HIP_ENABLE_DEFERRED_LOADING=0 LD_PRELOAD=${TOOL_PATH} ${APPLICATION_CMD}
+LD_PRELOAD=${LUTHIER_PATH}${TOOL_PATH} ${APPLICATION_CMD}
 ```
-- ```HIP_ENABLE_DEFERRED_LOADING=0``` forces the HIP runtime to eagerly load any FAT binaries statically loaded into
-the runtime, and not defer the loading to when the code object is used.
-- ```LD_PRELOAD``` loads the specified shared objects before loading any other library.
+- ```LD_PRELOAD``` loads the specified shared objects before loading any other library
+- ```${LUTHIER_PATH}``` is the path to Luthier's shared library
 - ```${TOOL_PATH}``` is the path to the tool built as a shared object using Luthier
 - ```${APPLICATION_CMD}``` is the command one uses to launch the target application
+
+If the target application is not HIP-based, then the environment variable ```HIP_ENABLE_DEFERRED_LOADING``` must be
+set to 0 to ensure the HIP runtime loads the instrumentation device functions.
