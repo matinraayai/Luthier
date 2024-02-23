@@ -142,6 +142,7 @@ void Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol) {
         module->setDataLayout(theTargetMachine->createDataLayout());
 
         auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(theTargetMachine);
+
         LUTHIER_CHECK(mmiwp);
 
         llvm::Type *const returnType = llvm::Type::getVoidTy(module->getContext());

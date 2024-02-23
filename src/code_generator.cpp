@@ -105,7 +105,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     auto &contextManager = luthier::TargetManager::instance();
 
     const auto &targetInfo = contextManager.getTargetInfo(agent.getIsa());
-    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
+//    luthier::Disassembler::instance().liftKernelModule(instr.getExecutableSymbol());
     //    auto Context = std::make_unique<llvm::LLVMContext>();
     //    auto triple = agent.getIsa().getLLVMTargetTriple();
     //    auto processor = agent.getIsa().getProcessor();
@@ -187,7 +187,7 @@ void luthier::CodeGenerator::instrument(hsa::Instr &instr, const void *deviceFun
     //    auto oneMoreTime = Disassembler::instance().disassemble(
     //        agent.getIsa(), {reinterpret_cast<std::byte *>(osBack.data()), osBack.size()});
 
-    //    hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationKernel(deviceFunc, agent);
+    hsa::ExecutableSymbol instrumentationFunc = codeObjectManager.getInstrumentationKernel(deviceFunc, agent);
 
     //        const std::vector<hsa::Instr> *instFunctionInstructions = Disassembler::instance().disassemble(instrumentationFunc);
 

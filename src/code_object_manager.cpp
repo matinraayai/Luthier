@@ -14,7 +14,9 @@
 #include "hsa_loaded_code_object.hpp"
 #include "log.hpp"
 
-void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
+namespace luthier {
+
+void CodeObjectManager::registerLuthierHsaExecutables() const {
     llvm::SmallVector<hsa::Executable> executables;
     hsa::getAllExecutables(executables);
 
@@ -24,7 +26,7 @@ void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
     for (const auto &e: executables) {
         for (const auto &a: agents) {
             if (e.getSymbolByName(a, LUTHIER_RESERVED_MANAGED_VAR).has_value()
-                || e.getSymbolByName(a, std::string(LUTHIER_RESERVED_MANAGED_VAR) + ".managed")) {
+                || e.getSymbolByName(a, std::string(LUTHIER_RESERVED_MANAGED_VAR) + ".managed").has_value()) {
                 toolExecutables_.insert(e);
             }
         }
@@ -32,8 +34,7 @@ void luthier::CodeObjectManager::registerLuthierHsaExecutables() {
     LuthierLogDebug("Number of executables captured: {0}", toolExecutables_.size());
 }
 
-void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunctions(
-    const std::vector<std::tuple<const void *, const char *>> &instrumentationFunctionInfo) {
+void CodeObjectManager::processFunctions() const {
     registerLuthierHsaExecutables();
 
     llvm::SmallVector<hsa::GpuAgent> agents;
@@ -51,7 +52,7 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
                 else if (sType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
                     instFunctionSymbols.insert({LUTHIER_DEVICE_FUNCTION_WRAP + sName, s});
             }
-            for (const auto &[instKerShadowPtr, instKerName]: instrumentationFunctionInfo) {
+            for (const auto &[instKerShadowPtr, instKerName]: unprocessedFunctions_) {
                 if (instKernelSymbols.contains(instKerName)) {
                     auto kernelSymbol = instKernelSymbols.at(instKerName);
                     auto functionSymbol = instFunctionSymbols.at(instKerName);
@@ -65,11 +66,19 @@ void luthier::CodeObjectManager::registerHipWrapperKernelsOfInstrumentationFunct
         }
     }
     LuthierLogDebug("Number of functions registered: {0}", functions_.size());
+    unprocessedFunctions_.clear();
 }
 
-const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumentationFunction(
-    const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const {
-    const auto &f = functions_.at(wrapperKernelHostPtr).at(agent).getInstrumentationFunction();
+void CodeObjectManager::registerInstrumentationFunctionWrapper(const void *wrapperHostPtr, const char *kernelName) {
+    unprocessedFunctions_.emplace_back(wrapperHostPtr, kernelName);
+}
+
+const hsa::ExecutableSymbol &CodeObjectManager::getInstrumentationFunction(const void *wrapperHostPtr,
+                                                                           hsa::GpuAgent agent) const {
+    if (!unprocessedFunctions_.empty()) {
+        processFunctions();
+    }
+    const auto &f = functions_.at(wrapperHostPtr).at(agent).getInstrumentationFunction();
 #ifdef LUTHIER_LOG_ENABLE_DEBUG
     auto instrs = luthier::Disassembler::instance().disassemble(f);
 //    for (const auto &i: instrs) { LuthierLogDebug("{:#x}: {}", i.getHostAddress(), i.getInstr()); }
@@ -77,7 +86,7 @@ const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumenta
     return f;
 }
 
-const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumentedKernel(
+const hsa::ExecutableSymbol &CodeObjectManager::getInstrumentedKernel(
     const hsa::ExecutableSymbol &originalKernel) const {
     if (!instrumentedKernels_.contains(originalKernel)) {
         llvm::report_fatal_error(
@@ -87,8 +96,8 @@ const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumente
     return std::get<hsa::ExecutableSymbol>(instrumentedKernels_.at(originalKernel));
 }
 
-void luthier::CodeObjectManager::loadInstrumentedKernel(const llvm::ArrayRef<uint8_t> &instrumentedElf,
-                                                        const hsa::ExecutableSymbol &originalKernel) {
+void CodeObjectManager::loadInstrumentedKernel(const llvm::ArrayRef<uint8_t> &instrumentedElf,
+                                               const hsa::ExecutableSymbol &originalKernel) {
     if (!instrumentedKernels_.contains(originalKernel)) {
         auto executable = hsa::Executable::create();
         auto agent = originalKernel.getAgent();
@@ -109,11 +118,15 @@ void luthier::CodeObjectManager::loadInstrumentedKernel(const llvm::ArrayRef<uin
     }
 }
 
-const luthier::hsa::ExecutableSymbol &luthier::CodeObjectManager::getInstrumentationKernel(
-    const void *wrapperKernelHostPtr, hsa::GpuAgent agent) const {
-    return functions_.at(wrapperKernelHostPtr).at(agent).getInstrumentationKernel();
+const hsa::ExecutableSymbol &CodeObjectManager::getInstrumentationKernel(const void *wrapperHostPtr,
+                                                                         hsa::GpuAgent agent) const {
+    if (!unprocessedFunctions_.empty()) {
+        processFunctions();
+    }
+    return functions_.at(wrapperHostPtr).at(agent).getInstrumentationKernel();
 }
-luthier::CodeObjectManager::~CodeObjectManager() {
+
+CodeObjectManager::~CodeObjectManager() {
     for (auto &[origSymbol, instInfo]: instrumentedKernels_) {
         auto &[s, e, r] = instInfo;
         e.destroy();
@@ -123,3 +136,5 @@ luthier::CodeObjectManager::~CodeObjectManager() {
     toolExecutables_.clear();
     functions_.clear();
 }
+
+}// namespace luthier

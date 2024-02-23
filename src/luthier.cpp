@@ -17,32 +17,20 @@
 
 namespace luthier::impl {
 
-static std::vector<std::tuple<const void *, const char *>>
-    coManagerArgs;//> List of device functions to be managed by CodeObjectManager
-
 void hipApiInternalCallback(void *cbData, luthier_api_evt_phase_t phase, int apiId, bool *skipFunc,
                             std::optional<std::any> *out) {
     LUTHIER_LOG_FUNCTION_CALL_START
-    // Logic for intercepting the __hipRegister* functions
     if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
         if (apiId == HIP_PRIVATE_API_ID___hipRegisterFunction) {
+            auto &coManager = CodeObjectManager::instance();
             auto lastRFuncArgs = reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cbData);
             // If the function doesn't have __luthier_wrap__ in its name then it belongs to the instrumented application
-            // or HIP can manage on its own since no device function is present to strip from it
+            // or HIP can manage it on its own since no device function is present to strip from it
             if (llvm::StringRef(lastRFuncArgs->deviceFunction).find(LUTHIER_DEVICE_FUNCTION_WRAP)
                 != llvm::StringRef::npos) {
-                coManagerArgs.emplace_back(lastRFuncArgs->hostFunction, lastRFuncArgs->deviceFunction);
+                coManager.registerInstrumentationFunctionWrapper(lastRFuncArgs->hostFunction,
+                                                                 lastRFuncArgs->deviceFunction);
             }
-        } else if (apiId != HIP_PRIVATE_API_ID___hipRegisterFatBinary
-                   && apiId != HIP_PRIVATE_API_ID___hipRegisterManagedVar
-                   && apiId != HIP_PRIVATE_API_ID___hipRegisterVar && apiId != HIP_PRIVATE_API_ID___hipRegisterSurface
-                   && apiId != HIP_PRIVATE_API_ID___hipRegisterTexture) {
-            auto &coManager = CodeObjectManager::instance();
-            if (!coManagerArgs.empty()) {
-                coManager.registerHipWrapperKernelsOfInstrumentationFunctions(coManagerArgs);
-            }
-            coManagerArgs.clear();
-            HipInterceptor::instance().disableAllInternalCallbacks();
         }
     }
     LUTHIER_LOG_FUNCTION_CALL_END
@@ -109,7 +97,7 @@ __attribute__((constructor)) void init() {
     LUTHIER_CHECK_WITH_MSG(hipInterceptor.isEnabled(), "HIP Interceptor failed to initialize");
     hipInterceptor.setInternalCallback(luthier::impl::hipApiInternalCallback);
     hipInterceptor.setUserCallback(luthier::impl::hipApiUserCallback);
-    hipInterceptor.enableAllInternalCallbacks();
+    hipInterceptor.enableInternalCallback(HIP_PRIVATE_API_ID___hipRegisterFunction);
     LUTHIER_LOG_FUNCTION_CALL_END
 }
 
