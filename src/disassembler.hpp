@@ -77,9 +77,8 @@ class Disassembler {
                                                std::optional<hsa::Isa> isa = std::nullopt,
                                                std::optional<size_t> size = std::nullopt);
 
-    //TODO: ISA has to be detected from the ELF, not passed manually
-    //    std::vector<llvm::MCInst> disassemble(const llvm::object::ELFSymbolRef &symbol, const hsa::Isa &isa,
-    //                                          std::optional<size_t> size = std::nullopt);
+    std::vector<llvm::MCInst> disassemble(const llvm::object::ELFSymbolRef& symbol,
+                                          std::optional<size_t> size = std::nullopt);
 
     std::vector<llvm::MCInst> disassemble(const hsa::Isa &isa, llvm::ArrayRef<uint8_t> code);
 

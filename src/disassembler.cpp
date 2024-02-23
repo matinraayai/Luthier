@@ -1,9 +1,9 @@
 #include "disassembler.hpp"
 
+#include <AMDGPUResourceUsageAnalysis.h>
 #include <AMDGPUTargetMachine.h>
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
-#include <AMDGPUResourceUsageAnalysis.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -21,6 +21,7 @@
 #include <llvm/Support/AMDGPUAddrSpace.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
+#include <llvm/TargetParser/Triple.h>
 
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
@@ -97,33 +98,36 @@ const std::vector<hsa::Instr> *luthier::Disassembler::disassemble(const hsa::Exe
     return disassembledSymbols_.at(symbol).get();
 }
 
-//std::vector<llvm::MCInst> luthier::Disassembler::disassemble(const llvm::object::ELFSymbolRef, const hsa::Isa &isa,
-//                                                             std::optional<size_t> size) {
-//    const auto symbolType = symbol.getType();
-//    LUTHIER_CHECK((symbolType == ELFIO::STT_FUNC));
-//
-//    const auto &symbolName = symbol.getName();
-//    // If the kd symbol was passed, get the function symbol associated with it in the parent ELF.
-//    luthier::byte_string_view code;
-//
-//    size_t kdPos = symbolName.find(".kd");
-//    if (kdPos != std::string::npos) {
-//        code = symbol.getElfView()->getSymbol(symbolName.substr(0, kdPos))->getView();
-//    } else {
-//        code = symbol.getView();
-//    }
-//
-//    if (size.has_value()) code = code.substr(0, *size > code.size() ? code.size() : *size);
-//
-//    return disassemble(isa, code);
-//}
+std::vector<llvm::MCInst> luthier::Disassembler::disassemble(const llvm::object::ELFSymbolRef& symbol,
+                                                             std::optional<size_t> size) {
+    auto symbolType = symbol.getELFType();
+    LUTHIER_CHECK((symbolType == llvm::ELF::STT_FUNC));
+
+    auto symbolNameOrError = symbol.getName();
+    LUTHIER_CHECK(llvm::errorToBool(symbolNameOrError.takeError()));
+    auto symbolName = *symbolNameOrError;
+    // If the kd symbol was passed, get the function symbol associated with it in the parent ELF.
+
+
+    auto triple = symbol.getObject()->makeTriple();
+    auto isa = hsa::Isa::fromName(triple.normalize().c_str());
+
+    auto addressOrError = symbol.getAddress();
+    LUTHIER_CHECK(llvm::errorToBool(addressOrError.takeError()));
+    auto address = *addressOrError;
+    llvm::StringRef code(reinterpret_cast<const char*>(address), symbol.getSize());
+
+    if (size.has_value()) code = code.substr(0, *size > code.size() ? code.size() : *size);
+
+    return disassemble(isa, llvm::arrayRefFromStringRef(code));
+}
 
 luthier::Disassembler::~Disassembler() {
     disassemblyInfoMap_.clear();
     moduleInfoMap_.clear();
     disassembledSymbols_.clear();
 }
-void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol, llvm::SmallVectorImpl<char>& out) {
+void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol, llvm::SmallVectorImpl<char> &out) {
     if (!moduleInfoMap_.contains(symbol)) {
         auto agent = symbol.getAgent();
         LUTHIER_CHECK((symbol.getType() == HSA_SYMBOL_KIND_KERNEL));
@@ -149,14 +153,13 @@ void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol
 
         llvm::Type *const returnType = llvm::Type::getVoidTy(module->getContext());
         LUTHIER_CHECK(returnType);
-        llvm::Type *const memParamType = llvm::PointerType::get(
-            llvm::Type::getInt32Ty(module->getContext()), llvm::AMDGPUAS::GLOBAL_ADDRESS);
+        llvm::Type *const memParamType =
+            llvm::PointerType::get(llvm::Type::getInt32Ty(module->getContext()), llvm::AMDGPUAS::GLOBAL_ADDRESS);
         LUTHIER_CHECK(memParamType);
         llvm::FunctionType *FunctionType = llvm::FunctionType::get(returnType, {memParamType}, false);
         LUTHIER_CHECK(FunctionType);
-        llvm::Function *F =
-            llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage, symbolName.substr(0, symbolName.size() - 3),
-                                   *module);
+        llvm::Function *F = llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage,
+                                                   symbolName.substr(0, symbolName.size() - 3), *module);
         LUTHIER_CHECK(F);
         F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
 
@@ -180,7 +183,6 @@ void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol
         llvm::outs() << "Preloaded Args: " << symbol.getKernelDescriptor()->kernArgPreload << "\n";
 
         auto &MF = mmiwp->getMMI().getOrCreateMachineFunction(*F);
-
 
         MF.setAlignment(llvm::Align(4096));
 
@@ -218,17 +220,18 @@ void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol
                 }
             }
         }
-//        MBB->dump();
-//        llvm::outs() << "Number of blocks : " << MF.getNumBlockIDs() << "\n";
-//        MF.dump();
-        auto TII = reinterpret_cast<const llvm::SIInstrInfo*>(theTargetMachine->getSubtargetImpl(*F)->getInstrInfo());
-        auto TRI = reinterpret_cast<const llvm::SIRegisterInfo*>(theTargetMachine->getSubtargetImpl(*F)->getRegisterInfo());
+        //        MBB->dump();
+        //        llvm::outs() << "Number of blocks : " << MF.getNumBlockIDs() << "\n";
+        //        MF.dump();
+        auto TII = reinterpret_cast<const llvm::SIInstrInfo *>(theTargetMachine->getSubtargetImpl(*F)->getInstrInfo());
+        auto TRI =
+            reinterpret_cast<const llvm::SIRegisterInfo *>(theTargetMachine->getSubtargetImpl(*F)->getRegisterInfo());
         auto MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
         MFI->addPrivateSegmentBuffer(*TRI);
         MFI->addKernargSegmentPtr(*TRI);
 
-        for (auto& BB: MF) {
-            for (auto& Inst: BB) {
+        for (auto &BB: MF) {
+            for (auto &Inst: BB) {
                 llvm::outs() << "MIR: ";
                 Inst.print(llvm::outs(), true, false, false, true, TII);
                 std::string error;
@@ -247,16 +250,16 @@ void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol
                     llvm::outs() << "Is correct now: " << TII->verifyInstruction(Inst, errorRef) << "\n";
                 }
                 llvm::outs() << "Error: " << errorRef << "\n";
-                for (auto& op : Inst.operands()) {
+                for (auto &op: Inst.operands()) {
                     if (op.isReg()) {
                         llvm::outs() << "Reg: ";
                         op.print(llvm::outs(), TRI);
                         llvm::outs() << "\n";
                         llvm::outs() << "is implicit: " << op.isImplicit() << "\n";
-//                        if (op.isImplicit() && op.readsReg() && op.isUse() && op.getReg().id() == llvm::AMDGPU::EXEC) {
-//                            op.setImplicit(true);
-//
-//                        }
+                        //                        if (op.isImplicit() && op.readsReg() && op.isUse() && op.getReg().id() == llvm::AMDGPU::EXEC) {
+                        //                            op.setImplicit(true);
+                        //
+                        //                        }
                     }
                 }
                 llvm::outs() << "==============================================================\n";
@@ -270,61 +273,57 @@ void luthier::Disassembler::liftKernelModule(const hsa::ExecutableSymbol &symbol
 
         MF.getRegInfo().freezeReservedRegs(MF);
 
-//        auto elfOrError = getELFObjectFileBase(symbol.getExecutable().getLoadedCodeObjects()[0].getStorageMemory());
-//        if (llvm::errorToBool(elfOrError.takeError())) {
-//            llvm::report_fatal_error("Failed to parse the elf.");
-//        }
-//        auto noteOrError = getElfNoteMetadataRoot(elfOrError.get().get());
-//        if (llvm::errorToBool(noteOrError.takeError())) {
-//            llvm::report_fatal_error("Failed to parse the note section");
-//        }
-//        noteOrError.get().toYAML(llvm::outs());
-//        llvm::outs() << "\n";
-////        MF.dump();
-//        properties.print(llvm::outs());
-//        llvm::outs() << "\n";
+        //        auto elfOrError = getELFObjectFileBase(symbol.getExecutable().getLoadedCodeObjects()[0].getStorageMemory());
+        //        if (llvm::errorToBool(elfOrError.takeError())) {
+        //            llvm::report_fatal_error("Failed to parse the elf.");
+        //        }
+        //        auto noteOrError = getElfNoteMetadataRoot(elfOrError.get().get());
+        //        if (llvm::errorToBool(noteOrError.takeError())) {
+        //            llvm::report_fatal_error("Failed to parse the note section");
+        //        }
+        //        noteOrError.get().toYAML(llvm::outs());
+        //        llvm::outs() << "\n";
+        ////        MF.dump();
+        //        properties.print(llvm::outs());
+        //        llvm::outs() << "\n";
 
         // We create the pass manager, run the passes to populate AsmBuffer.
         llvm::MCContext &MCContext = mmiwp->getMMI().getContext();
         llvm::legacy::PassManager PM;
 
-
-
         llvm::TargetLibraryInfoImpl tlii(llvm::Triple(module->getTargetTriple()));
         PM.add(new llvm::TargetLibraryInfoWrapperPass(tlii));
-
 
         llvm::TargetPassConfig *TPC = theTargetMachine->createPassConfig(PM);
         PM.add(TPC);
         PM.add(mmiwp.release());
-//        TPC->printAndVerify("MachineFunctionGenerator::assemble");
+        //        TPC->printAndVerify("MachineFunctionGenerator::assemble");
 
         //        auto usageAnalysis = std::make_unique<llvm::AMDGPUResourceUsageAnalysis>();
         PM.add(new llvm::AMDGPUResourceUsageAnalysis());
         // Add target-specific passes.
-//        ET.addTargetSpecificPasses(PM);
-//        TPC->printAndVerify("After ExegesisTarget::addTargetSpecificPasses");
+        //        ET.addTargetSpecificPasses(PM);
+        //        TPC->printAndVerify("After ExegesisTarget::addTargetSpecificPasses");
         // Adding the following passes:
         // - postrapseudos: expands pseudo return instructions used on some targets.
         // - machineverifier: checks that the MachineFunction is well formed.
         // - prologepilog: saves and restore callee saved registers.
-//        for (const char *PassName :
-//             {"postrapseudos", "machineverifier", "prologepilog"})
-//            if (addPass(PM, PassName, *TPC))
-//                return make_error<Failure>("Unable to add a mandatory pass");
+        //        for (const char *PassName :
+        //             {"postrapseudos", "machineverifier", "prologepilog"})
+        //            if (addPass(PM, PassName, *TPC))
+        //                return make_error<Failure>("Unable to add a mandatory pass");
         TPC->setInitialized();
 
-//        llvm::SmallVector<char> o;
-//        std::string out;
-//        llvm::raw_string_ostream outOs(out);
+        //        llvm::SmallVector<char> o;
+        //        std::string out;
+        //        llvm::raw_string_ostream outOs(out);
         llvm::raw_svector_ostream outOs(out);
         // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-        if (theTargetMachine->addAsmPrinter(PM, outOs, nullptr, llvm::CodeGenFileType::ObjectFile,
-                              MCContext))
+        if (theTargetMachine->addAsmPrinter(PM, outOs, nullptr, llvm::CodeGenFileType::ObjectFile, MCContext))
             llvm::outs() << "Failed to add pass manager\n";
-//            return make_error<llvm::Failure>("Cannot add AsmPrinter passes");
+        //            return make_error<llvm::Failure>("Cannot add AsmPrinter passes");
 
-        PM.run(*module); // Run all the passes
+        PM.run(*module);// Run all the passes
 
         llvm::outs() << out << "\n";
     }
