@@ -414,29 +414,41 @@ class SymbolView {
  private:
     friend class ElfView;
     const std::shared_ptr<ElfView> elf_;//!   section's parent elfio class
-    const ELFIO::section *section_;     //!   symbol's section
+    const ELFIO::section *section_;     //!   symbol's section, CHANGE: llvm::Elf_Shdr_Base<ELFType<TargetEndianness, true>> (Big, or Little?) (might be )
     std::string name_;                  //!   symbol name
     byte_string_view data_;             //!   symbol's raw data
-    ELFIO::Elf64_Addr value_;           //!   value of the symbol
+    ELFIO::Elf64_Addr value_;           //!   value of the symbol, CHANGE: llvm::Elf_Addr
     unsigned char type_;                //!   type of the symbol
 
-    SymbolView(const std::shared_ptr<ElfView> &elf, const ELFIO::section *section, std::string name,
-               byte_string_view data, size_t value, unsigned char type)
-        : elf_(elf),
-          section_(section),
-          name_(std::move(name)),
-          data_(data),
-          value_(value),
-          type_(type){};
+    SymbolView(const std::shared_ptr<ElfView>& elf, // CHANGE: UPDATE CONSTRUCTOR ARGS!
+               const ELFIO::section *section,
+               std::string name,
+               byte_string_view data,
+               size_t value,
+               unsigned char type) : elf_(elf),
+                                     section_(section),
+                                     name_(std::move(name)),
+                                     data_(data),
+                                     value_(value),
+                                     type_(type){};
 
  public:
     SymbolView() = delete;
 
     [[nodiscard]] std::shared_ptr<ElfView> getElfView() const { return elf_; };
 
-    [[nodiscard]] const ELFIO::section *getSection() const { return section_; };
+    [[nodiscard]] const ELFIO::section *getSection() const { // CHANGE SIGNATURE: (return a llvm::Elf_Shdr_Base)
+        return section_;
+    };
 
-    [[nodiscard]] const std::string &getName() const { return name_; };
+    // [[nodiscard]] const llvm::Elf_Shdr_Base *getSection() const { // CHANGE SIGNATURE: (return a llvm::Elf_Shdr_Base)
+    //     return section_;
+    // };
+
+
+    [[nodiscard]] const std::string &getName() const {
+        return name_;
+    };
 
     [[nodiscard]] uint64_t getAddress() const { return reinterpret_cast<uint64_t>(data_.data()); }
 
@@ -444,9 +456,13 @@ class SymbolView {
 
     [[nodiscard]] size_t getSize() const { return data_.size(); }
 
-    [[nodiscard]] ELFIO::Elf64_Addr getValue() const { return value_; };
+    [[nodiscard]] ELFIO::Elf64_Addr getValue() const { // CHANGE: signature (return a llvm:Elf_Addr)
+        return value_;
+    };
 
-    [[nodiscard]] unsigned char getType() const { return type_; };
+    [[nodiscard]] unsigned char getType() const {
+        return type_;
+    };
 
     [[nodiscard]] const std::byte *getData() const {
         return reinterpret_cast<const std::byte *>(section_->get_data() + (size_t) value_
