@@ -6,13 +6,10 @@
 
 namespace luthier::hsa {
 
-void getGpuAgents(llvm::SmallVectorImpl<GpuAgent>& agents);
+llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents);
 
-void getAllExecutables(llvm::SmallVectorImpl<Executable>& executables);
+llvm::Error getAllExecutables(llvm::SmallVectorImpl<Executable> &executables);
 
-}
-
-
-
+} // namespace luthier::hsa
 
 #endif
