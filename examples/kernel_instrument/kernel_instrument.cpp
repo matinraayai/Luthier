@@ -82,9 +82,13 @@ void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phas
                 packet.dispatch.private_segment_size = 100000;
                 if (!instrumented) {
                     size_t instSize = 0;
-                    luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, nullptr);
+                    luthier_status_t status;
+                    status = luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, nullptr);
+                    std::cout << "LUTHIER STATUS: " << status << "\n";
                     std::vector<luthier_instruction_t> instrVec(instSize);
-                    luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, instrVec.data());
+
+                    status = luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, instrVec.data());
+                    std::cout << "LUTHIER_STATUS: " << status << "\n";
                     luthier_insert_call(instrVec[0], LUTHIER_GET_EXPORTED_FUNC(instrumentation_kernel),
                                         LUTHIER_IPOINT_AFTER);
                     instrumented = true;

@@ -12,28 +12,29 @@
 extern "C" {
 
 /**
- * A callback made by Luthier during its initialization, after the HSA API tables are captured.
+ * A callback made by Luthier during its initialization, after the HSA API
+ * tables are captured.
  * */
 void luthier_at_init();
-
 
 /**
  * A callback made by Luthier during its finalization.
  * */
 void luthier_at_term();
 
+void luthier_at_hip_event(void *args, luthier_api_evt_phase_t phase,
+                          int hip_api_id);
 
-void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id);
+// static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
+//     if (hip_api_id < 1000)
+//         return hip_api_name(hip_api_id);
+//     else
+//         return
+// }
 
-//static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
-//    if (hip_api_id < 1000)
-//        return hip_api_name(hip_api_id);
-//    else
-//        return
-//}
-
-
-void luthier_at_hsa_event(hsa_api_evt_args_t* cb_data, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id);
+void luthier_at_hsa_event(hsa_api_evt_args_t *cb_data,
+                          luthier_api_evt_phase_t phase,
+                          hsa_api_evt_id_t api_id);
 
 void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op);
 
@@ -51,52 +52,63 @@ void luthier_enable_all_hip_callbacks();
 
 void luthier_disable_all_hip_callbacks();
 /**
- * Returns the original HSA API table to avoid re-instrumentation of HSA functions.
+ * Returns the original HSA API table to avoid re-instrumentation of HSA
+ * functions.
  * @return saved HSA API Table
  */
-const HsaApiTable* luthier_get_hsa_table();
+const HsaApiTable *luthier_get_hsa_table();
 
-const hsa_ven_amd_loader_1_03_pfn_s* luthier_get_hsa_ven_amd_loader();
+const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader();
 
-void* luthier_get_hip_function(const char* funcName);
+void *luthier_get_hip_function(const char *funcName);
 
 /**
- * Disassembles the passed kernel object. If instructions is NULL, then the number of instructions disassembled
- * is returned. If size is equal to n, then the first n-instruction handles are copied over to the instructions pointer.
+ * Disassembles the passed kernel object. If instructions is NULL, then the
+ * number of instructions disassembled is returned. If size is equal to n, then
+ * the first n-instruction handles are copied over to the instructions pointer.
  * The user is responsible for allocating the instructions pointer.
- * Disassembly only occurs when this function is called for the first time to query the number of instructions in the
- * kernel object. Subsequent calls will use a result cached internally.
+ * Disassembly only occurs when this function is called for the first time to
+ * query the number of instructions in the kernel object. Subsequent calls will
+ * use a result cached internally.
  * @param [in] kernel_object the kernel object to be disassembled
- * @param [in, out] size if instructions is NULL, returns the number of instructions in the kernel object, else it will
- * be the number of instructions copied over
- * @param [in, out] instructions if NULL, queries the number of instructions in the kernel object, else it will contain
- * the handles to the first "size" instructions in the kernel object. The user is responsible for allocating the
+ * @param [in, out] size if instructions is NULL, returns the number of
+ * instructions in the kernel object, else it will be the number of instructions
+ * copied over
+ * @param [in, out] instructions if NULL, queries the number of instructions in
+ * the kernel object, else it will contain the handles to the first "size"
+ * instructions in the kernel object. The user is responsible for allocating the
  * underlying memory for this pointer
  */
-void luthier_disassemble_kernel_object(uint64_t kernel_object, size_t* size, luthier_instruction_t* instructions);
+luthier_status_t
+luthier_disassemble_kernel_object(uint64_t kernel_object, size_t *size,
+                                  luthier_instruction_t *instructions);
 
 /**
- * \brief If the tool is compiled with HIP device code it needs to call this macro once
- * This macro will define a managed variable in the tool's code object
- * Internally, Luthier looks for this variable to find the code objects that belong to the tool
+ * \brief If the tool is compiled with HIP device code it needs to call this
+ * macro once This macro will define a managed variable in the tool's code
+ * object Internally, Luthier looks for this variable to find the code objects
+ * that belong to the tool
  */
 #define MARK_LUTHIER_DEVICE_MODULE __managed__ char __luthier_reserved = 0;
 
 #define LUTHIER_DECLARE_FUNC __device__ __noinline__ extern "C"
 
-#define LUTHIER_EXPORT_FUNC(f)                         \
-    extern "C" __global__ void __luthier_wrap__##f() { \
-        void (*pfun)() = (void (*)()) f;               \
-        if (pfun == (void (*)()) 1) pfun();            \
-    }
+#define LUTHIER_EXPORT_FUNC(f)                                                 \
+  extern "C" __global__ void __luthier_wrap__##f() {                           \
+    void (*pfun)() = (void (*)())f;                                            \
+    if (pfun == (void (*)())1)                                                 \
+      pfun();                                                                  \
+  }
 
-// Luthier uses the pointer to the dummy global wrapper to each function as its unique identifier
-#define LUTHIER_GET_EXPORTED_FUNC(f) reinterpret_cast<const void*>(__luthier_wrap__##f)
+// Luthier uses the pointer to the dummy global wrapper to each function as its
+// unique identifier
+#define LUTHIER_GET_EXPORTED_FUNC(f)                                           \
+  reinterpret_cast<const void *>(__luthier_wrap__##f)
 
 /**
  * Returns the HSA packet type of the AQL packet
  */
-hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t* aql_packet);
+hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t *aql_packet);
 
 ////
 /////*********************************************************************
@@ -117,8 +129,9 @@ hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t* aql_packet);
 ////
 /////* Get line information for a particular instruction offset if available,
 //// * binary must be compiled with --generate-line-info   (-lineinfo) */
-////bool nvbit_get_line_info(CUcontext cuctx, CUfunction cufunc, uint32_t offset,
-////                         char** file_name, char** dir_name, uint32_t* line);
+////bool nvbit_get_line_info(CUcontext cuctx, CUfunction cufunc, uint32_t
+/// offset, /                         char** file_name, char** dir_name,
+/// uint32_t* line);
 ////
 /////* Get the SM family */
 ////uint32_t nvbit_get_sm_family(CUcontext cuctx);
@@ -168,12 +181,12 @@ hsa_packet_type_t luthier_get_packet_type(luthier_hsa_aql_packet_t* aql_packet);
  * @param dev_func
  * @param point
  */
-void luthier_insert_call(luthier_instruction_t instr, const void* dev_func, luthier_ipoint_t point);
+void luthier_insert_call(luthier_instruction_t instr, const void *dev_func,
+                         luthier_ipoint_t point);
 
-/////* Add int32_t argument to last injected call, value of the predicate for this
-//// * instruction */
-////void nvbit_add_call_arg_pred_val(const Instr* instr,
-////                                 bool is_variadic_arg = false);
+/////* Add int32_t argument to last injected call, value of the predicate for
+/// this / * instruction */ /void nvbit_add_call_arg_pred_val(const Instr*
+/// instr, /                                 bool is_variadic_arg = false);
 ////
 /////* Add int32_t argument to last injected call, value of the entire predicate
 //// * register for this thread */
@@ -188,30 +201,30 @@ void luthier_insert_call(luthier_instruction_t instr, const void* dev_func, luth
 ////void nvbit_add_call_arg_const_val64(const Instr* instr, uint64_t val,
 ////                                    bool is_variadic_arg = false);
 ////
-/////* Add uint32_t argument to last injected call, content of the register reg_num
-//// */
-////void nvbit_add_call_arg_reg_val(const Instr* instr, int reg_num,
-////                                bool is_variadic_arg = false);
+/////* Add uint32_t argument to last injected call, content of the register
+/// reg_num / */ /void nvbit_add_call_arg_reg_val(const Instr* instr, int
+/// reg_num, /                                bool is_variadic_arg = false);
 ////
 /////* Add uint32_t argument to last injected call, content of the
 //// * uniform register reg_num */
 ////void nvbit_add_call_arg_ureg_val(const Instr* instr, int reg_num,
 ////                                 bool is_variadic_arg = false);
 ////
-/////* Add uint32_t argument to last injected call, 32-bit at launch value at offset
-//// * "offset", set at launch time with nvbit_set_at_launch */
-////void nvbit_add_call_arg_launch_val32(const Instr* instr, int offset,
-////                                     bool is_variadic_arg = false);
+/////* Add uint32_t argument to last injected call, 32-bit at launch value at
+/// offset / * "offset", set at launch time with nvbit_set_at_launch */ /void
+/// nvbit_add_call_arg_launch_val32(const Instr* instr, int offset, / bool
+/// is_variadic_arg = false);
 ////
-/////* Add uint64_t argument to last injected call, 64-bit at launch value at offset
-//// * "offset", set at launch time with nvbit_set_at_launch */
-////void nvbit_add_call_arg_launch_val64(const Instr* instr, int offset,
-////                                     bool is_variadic_arg = false);
+/////* Add uint64_t argument to last injected call, 64-bit at launch value at
+/// offset / * "offset", set at launch time with nvbit_set_at_launch */ /void
+/// nvbit_add_call_arg_launch_val64(const Instr* instr, int offset, / bool
+/// is_variadic_arg = false);
 ////
 /////* Add uint32_t argument to last injected call, constant bank value at
 //// * c[bankid][bankoffset] */
 ////void nvbit_add_call_arg_cbank_val(const Instr* instr, int bankid,
-////                                  int bankoffset, bool is_variadic_arg = false);
+////                                  int bankoffset, bool is_variadic_arg =
+/// false);
 ////
 /////* The 64-bit memory reference address accessed by this instruction
 ////  Typically memory instructions have only 1 MREF so in general id = 0 */
@@ -231,9 +244,11 @@ void luthier_insert_call(luthier_instruction_t instr, const void* dev_func, luth
 /////* device function used to read/write register values
 //// * writes are permanent into application state */
 ////__device__ __noinline__ int32_t nvbit_read_reg(uint64_t reg_num);
-////__device__ __noinline__ void nvbit_write_reg(uint64_t reg_num, int32_t reg_val);
+////__device__ __noinline__ void nvbit_write_reg(uint64_t reg_num, int32_t
+/// reg_val);
 ////__device__ __noinline__ int32_t nvbit_read_ureg(uint64_t reg_num);
-////__device__ __noinline__ void nvbit_write_ureg(uint64_t reg_num, int32_t reg_val);
+////__device__ __noinline__ void nvbit_write_ureg(uint64_t reg_num, int32_t
+/// reg_val);
 ////__device__ __noinline__ int32_t nvbit_read_pred_reg(void);
 ////__device__ __noinline__ void nvbit_write_pred_reg(int32_t reg_val);
 ////__device__ __noinline__ int32_t nvbit_read_upred_reg(void);
@@ -248,15 +263,17 @@ void luthier_insert_call(luthier_instruction_t instr, const void* dev_func, luth
 ////
 
 /**
- * Overrides the kernel object field of the @param dispatch_packet with its instrumented version, forcing HSA to
- * launch the instrumented version instead. Note that this function should be called every time an instrumented
- * kernel needs to be launched, since the content of the dispatch packet will always be set by the target application to
- * the original version.
- * To launch the original version of the kernel, simply refrain from calling this function.
- * @param dispatch_packet the HSA dispatch packet intercepted from an HSA queue, containing the kernel launch
- * parameters/configuration
+ * Overrides the kernel object field of the @param dispatch_packet with its
+ * instrumented version, forcing HSA to launch the instrumented version instead.
+ * Note that this function should be called every time an instrumented kernel
+ * needs to be launched, since the content of the dispatch packet will always be
+ * set by the target application to the original version. To launch the original
+ * version of the kernel, simply refrain from calling this function.
+ * @param dispatch_packet the HSA dispatch packet intercepted from an HSA queue,
+ * containing the kernel launch parameters/configuration
  */
-void luthier_override_with_instrumented(hsa_kernel_dispatch_packet_t* dispatch_packet);
+luthier_status_t luthier_override_with_instrumented(
+    hsa_kernel_dispatch_packet_t *dispatch_packet);
 //                               bool apply_to_related = true);
 ////
 /////* Set arguments at launch time, that will be loaded on input argument of

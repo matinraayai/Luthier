@@ -9,33 +9,38 @@ namespace luthier {
 namespace hsa {
 class GpuAgent;
 
-class Isa;
+class ISA;
 
 class Instr;
-}// namespace hsa
+} // namespace hsa
 
 class CodeGenerator {
- public:
-    CodeGenerator(const CodeGenerator &) = delete;
-    CodeGenerator &operator=(const CodeGenerator &) = delete;
+public:
+  CodeGenerator(const CodeGenerator &) = delete;
+  CodeGenerator &operator=(const CodeGenerator &) = delete;
 
-    static inline CodeGenerator &instance() {
-        static CodeGenerator instance;
-        return instance;
-    }
+  static inline CodeGenerator &instance() {
+    static CodeGenerator instance;
+    return instance;
+  }
 
-    static void compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code, const hsa::GpuAgent &agent,
-                                               llvm::SmallVectorImpl<uint8_t> &out);
+  static llvm::Error
+  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code,
+                                 const hsa::GpuAgent &agent,
+                                 llvm::SmallVectorImpl<uint8_t> &out);
 
-    static void compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code, const hsa::Isa &isa,
-                                               llvm::SmallVectorImpl<uint8_t> &out);
+  static llvm::Error
+  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code,
+                                 const hsa::ISA &isa,
+                                 llvm::SmallVectorImpl<uint8_t> &out);
 
-    void instrument(hsa::Instr &instr, const void *devFunc, luthier_ipoint_t point);
+  llvm::Error instrument(hsa::Instr &instr, const void *devFunc,
+                         luthier_ipoint_t point);
 
- private:
-    CodeGenerator() = default;
-    ~CodeGenerator() = default;
+private:
+  CodeGenerator() = default;
+  ~CodeGenerator() = default;
 };
-}// namespace luthier
+} // namespace luthier
 
 #endif

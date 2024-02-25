@@ -7,6 +7,8 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/FormatVariadicDetails.h>
 
+#include "luthier_types.h"
+
 // Workaround for GCC or other compilers that don't have this macro built-in
 // Source:
 // https://stackoverflow.com/questions/8487986/file-macro-shows-full-path
@@ -26,7 +28,7 @@
   }
 
 #define LUTHIER_CHECK(pred)                                                    \
-  if (!pred) {                                                                 \
+  if (!(pred)) {                                                                 \
     llvm::report_fatal_error(                                                  \
         llvm::formatv(                                                         \
             "Luthier check for expression {0} on file {1}, line {2} failed.",  \
@@ -256,6 +258,14 @@ public:
 
 #define LUTHIER_HSA_SUCCESS_CHECK(Expr)                                        \
   luthier::HsaError::hsaErrorCheck(__FILE_NAME__, __LINE__, Expr, #Expr)
+
+/**
+ * Returns a \p luthier_status_t associated with the \p llvm::Error
+ * Used by luthier.cpp to implement user-facing functions
+ * \param Error to be reported to the user
+ * \return the status code that can be returned to the user
+ */
+luthier_status_t convertErrorToStatusCode(llvm::Error& Error);
 
 } // namespace luthier
 

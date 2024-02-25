@@ -37,15 +37,15 @@ TargetManager::TargetManager() {
 
 TargetManager::~TargetManager() {
   for (auto &it : LLVMTargetInfo) {
-    delete it.second.MRI_;
+    delete it.second.MRI;
     delete it.second.MAI;
     delete it.second.MII;
     delete it.second.MIA;
     delete it.second.STI;
     delete it.second.IP;
     delete it.second.TargetOptions;
-    delete it.second.targetMachine_;
-    delete it.second.llvmContext_;
+    delete it.second.TargetMachine;
+    delete it.second.LLVMContext;
   }
   LLVMTargetInfo.clear();
 }
@@ -102,16 +102,16 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
     auto LLVMContext = new llvm::LLVMContext();
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LLVMContext));
 
-    Info->second.target_ = Target;
-    Info->second.MRI_ = MRI;
+    Info->second.Target = Target;
+    Info->second.MRI = MRI;
     Info->second.MAI = MAI;
     Info->second.MII = MII;
     Info->second.MIA = MIA;
     Info->second.STI = STI;
     Info->second.IP = IP;
     Info->second.TargetOptions = TargetOptions;
-    Info->second.targetMachine_ = TM;
-    Info->second.llvmContext_ = LLVMContext;
+    Info->second.TargetMachine = TM;
+    Info->second.LLVMContext = LLVMContext;
   }
   return LLVMTargetInfo[Isa];
 }

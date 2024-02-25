@@ -22,8 +22,8 @@ llvm::Expected<hsa::ISA> GpuAgent::getIsa() const {
     return HSA_STATUS_INFO_BREAK;
   };
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_HSA_SUCCESS_CHECK(getApiTable().core.hsa_agent_iterate_isas_fn(
-          this->asHsaType(), iterator, &out)));
+      LUTHIER_HSA_ERROR_CHECK(getApiTable().core.hsa_agent_iterate_isas_fn(
+          this->asHsaType(), iterator, &out), HSA_STATUS_INFO_BREAK));
   return hsa::ISA(out);
 }
 

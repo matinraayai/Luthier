@@ -17,86 +17,78 @@ class GpuAgent;
 class Executable;
 
 class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
- private:
-    hsa_agent_t agent_;
-    hsa_executable_t executable_;
-    std::optional<std::string> indirectFunctionName_{std::nullopt};
-    std::optional<llvm::ArrayRef<uint8_t>> indirectFunctionCode_{std::nullopt};
+private:
+  hsa_agent_t agent_;
+  hsa_executable_t executable_;
+  std::optional<std::string> indirectFunctionName_{std::nullopt};
+  std::optional<llvm::ArrayRef<uint8_t>> indirectFunctionCode_{std::nullopt};
 
- public:
-    ExecutableSymbol(hsa_executable_symbol_t symbol, hsa_agent_t agent, hsa_executable_t executable)
-        : HandleType<hsa_executable_symbol_t>(symbol),
-          agent_(agent),
-          executable_(executable){};
+public:
+  ExecutableSymbol(hsa_executable_symbol_t symbol, hsa_agent_t agent,
+                   hsa_executable_t executable)
+      : HandleType<hsa_executable_symbol_t>(symbol), agent_(agent),
+        executable_(executable){};
 
-    ExecutableSymbol(std::string indirectFunctionName, llvm::ArrayRef<uint8_t> indirectFunctionCode,
-                     hsa_agent_t agent, hsa_executable_t executable)
-        : HandleType<hsa_executable_symbol_t>({0}),
-          agent_(agent),
-          executable_(executable),
-          indirectFunctionCode_(indirectFunctionCode),
-          indirectFunctionName_(std::move(indirectFunctionName)){};
+  ExecutableSymbol(std::string indirectFunctionName,
+                   llvm::ArrayRef<uint8_t> indirectFunctionCode,
+                   hsa_agent_t agent, hsa_executable_t executable)
+      : HandleType<hsa_executable_symbol_t>({0}), agent_(agent),
+        executable_(executable), indirectFunctionCode_(indirectFunctionCode),
+        indirectFunctionName_(std::move(indirectFunctionName)){};
 
-    static ExecutableSymbol fromKernelDescriptor(const hsa::KernelDescriptor *kd);
+  [[nodiscard]] uint64_t hsaHandle() const override {
+    if (HandleType<hsa_executable_symbol_t>::hsaHandle() == 0 &&
+        indirectFunctionCode_.has_value()) {
+      return reinterpret_cast<luthier_address_t>(indirectFunctionCode_->data());
+    } else
+      return HandleType<hsa_executable_symbol_t>::hsaHandle();
+  }
 
-    [[nodiscard]] hsa_symbol_kind_t getType() const;
+  static llvm::Expected<ExecutableSymbol>
+  fromKernelDescriptor(const hsa::KernelDescriptor *kd);
 
-    [[nodiscard]] std::string getName() const;
+  [[nodiscard]] llvm::Expected<hsa_symbol_kind_t> getType() const;
 
-    [[nodiscard]] hsa_symbol_linkage_t getLinkage() const;
+  [[nodiscard]] llvm::Expected<std::string> getName() const;
 
-    [[nodiscard]] luthier_address_t getVariableAddress() const;
+  [[nodiscard]] hsa_symbol_linkage_t getLinkage() const;
 
-    [[nodiscard]] const KernelDescriptor *getKernelDescriptor() const;
+  [[nodiscard]] llvm::Expected<luthier_address_t> getVariableAddress() const;
 
-    [[nodiscard]] GpuAgent getAgent() const;
+  [[nodiscard]] llvm::Expected<const KernelDescriptor *>
+  getKernelDescriptor() const;
 
-    [[nodiscard]] Executable getExecutable() const;
+  [[nodiscard]] GpuAgent getAgent() const;
 
-    [[nodiscard]] llvm::ArrayRef<uint8_t> getIndirectFunctionCode() const;
+  [[nodiscard]] Executable getExecutable() const;
 
-    [[nodiscard]] llvm::ArrayRef<uint8_t> getKernelCode() const;
+  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getMachineCode() const;
 };
 
-}// namespace luthier::hsa
+} // namespace luthier::hsa
 
 namespace std {
 
-template<>
-struct hash<luthier::hsa::ExecutableSymbol> {
-    size_t operator()(const luthier::hsa::ExecutableSymbol &obj) const {
-        if (obj.getType() != HSA_SYMBOL_KIND_INDIRECT_FUNCTION) return hash<unsigned long>()(obj.hsaHandle());
-        else
-            return hash<unsigned long>()(reinterpret_cast<luthier_address_t>(obj.getIndirectFunctionCode().data()));
-    }
+template <> struct hash<luthier::hsa::ExecutableSymbol> {
+  size_t operator()(const luthier::hsa::ExecutableSymbol &obj) const {
+    return hash<unsigned long>()(obj.hsaHandle());
+  }
 };
 
-template<>
-struct less<luthier::hsa::ExecutableSymbol> {
-    bool operator()(const luthier::hsa::ExecutableSymbol &lhs, const luthier::hsa::ExecutableSymbol &rhs) const {
-        auto lhsHandle = lhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
-            ? reinterpret_cast<luthier_address_t>(lhs.getIndirectFunctionCode().data())
-            : lhs.hsaHandle();
-        auto rhsHandle = rhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
-            ? reinterpret_cast<luthier_address_t>(rhs.getIndirectFunctionCode().data())
-            : rhs.hsaHandle();
-        return lhsHandle < rhsHandle;
-    }
+template <> struct less<luthier::hsa::ExecutableSymbol> {
+  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
+                  const luthier::hsa::ExecutableSymbol &rhs) const {
+    return lhs.hsaHandle() < rhs.hsaHandle();
+  }
 };
 
-template<>
-struct equal_to<luthier::hsa::ExecutableSymbol> {
-    bool operator()(const luthier::hsa::ExecutableSymbol &lhs, const luthier::hsa::ExecutableSymbol &rhs) const {
-        auto lhsHandle = lhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
-            ? reinterpret_cast<luthier_address_t>(lhs.getIndirectFunctionCode().data())
-            : lhs.hsaHandle();
-        auto rhsHandle = rhs.getType() == HSA_SYMBOL_KIND_INDIRECT_FUNCTION
-            ? reinterpret_cast<luthier_address_t>(rhs.getIndirectFunctionCode().data())
-            : rhs.hsaHandle();
-        return lhsHandle == rhsHandle;
-    }
+template <> struct equal_to<luthier::hsa::ExecutableSymbol> {
+  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
+                  const luthier::hsa::ExecutableSymbol &rhs) const {
+    return lhs.hsaHandle() == rhs.hsaHandle();
+  }
 };
 
-}// namespace std
+} // namespace std
 
 #endif

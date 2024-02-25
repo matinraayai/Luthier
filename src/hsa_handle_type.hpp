@@ -4,31 +4,32 @@
 
 namespace luthier::hsa {
 
-template<typename HT>
-class HandleType : public Type<HT> {
- protected:
-    explicit HandleType(HT primitive) : Type<HT>(primitive){};
+template <typename HT> class HandleType : public Type<HT> {
+protected:
+  explicit HandleType(HT primitive) : Type<HT>(primitive){};
 
- public:
-    [[nodiscard]] uint64_t hsaHandle() const { return this->asHsaType().handle; }
-
+public:
+  [[nodiscard]] virtual uint64_t hsaHandle() const {
+    return this->asHsaType().handle;
+  }
 };
 
-}// namespace luthier::hsa
+} // namespace luthier::hsa
 
-template<typename HT>
-inline bool operator==(const luthier::hsa::HandleType<HT> &lhs, const luthier::hsa::HandleType<HT> &rhs) {
-    return lhs.hsaHandle() == rhs.hsaHandle();
+template <typename HT>
+inline bool operator==(const luthier::hsa::HandleType<HT> &lhs,
+                       const luthier::hsa::HandleType<HT> &rhs) {
+  return lhs.hsaHandle() == rhs.hsaHandle();
 }
 
-template<typename HT>
+template <typename HT>
 inline bool operator==(const luthier::hsa::HandleType<HT> &lhs, const HT &rhs) {
-    return lhs.hsaHandle() == rhs.handle;
+  return lhs.hsaHandle() == rhs.handle;
 }
 
-template<typename HT>
+template <typename HT>
 inline bool operator==(const HT &lhs, const luthier::hsa::HandleType<HT> &rhs) {
-    return lhs.handle == rhs.hsaHandle();
+  return lhs.handle == rhs.hsaHandle();
 }
 
 #endif

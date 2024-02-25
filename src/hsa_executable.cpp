@@ -72,44 +72,50 @@ Executable::getSymbols(const GpuAgent &agent) const {
 
   std::unordered_set<std::string> kernelNames;
   for (const auto &s : out) {
-    if (s.getType() == HSA_SYMBOL_KIND_KERNEL) {
-      std::string sName = s.getName();
-      kernelNames.insert(sName);
-      kernelNames.insert(sName.substr(0, sName.find(".kd")));
+    auto type = s.getType();
+    LUTHIER_RETURN_ON_ERROR(type.takeError());
+    if (*type == HSA_SYMBOL_KIND_KERNEL) {
+      auto sName = s.getName();
+      LUTHIER_RETURN_ON_ERROR(sName.takeError());
+      kernelNames.insert(*sName);
+      kernelNames.insert(sName->substr(0, sName->find(".kd")));
     }
   }
   auto loadedCodeObjects = getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(loadedCodeObjects.takeError());
   for (const auto &lco : *loadedCodeObjects) {
-    if (lco.getAgent() == agent) {
-      if (lco.getStorageType() ==
-          HSA_VEN_AMD_LOADER_CODE_OBJECT_STORAGE_TYPE_MEMORY) {
-        auto storageMemory = lco.getStorageMemory();
-        auto loadedMemory = lco.getLoadedMemory();
-        auto hostElfOrError = getELFObjectFileBase(lco.getStorageMemory());
-        LUTHIER_CHECK_WITH_MSG(hostElfOrError == true,
-                               "Failed to create an ELF");
-        auto hostElf = hostElfOrError->get();
+    auto LCOAgent = lco.getAgent();
+    LUTHIER_RETURN_ON_ERROR(LCOAgent.takeError());
+    if (*LCOAgent == agent) {
+      auto LCOStorageType = lco.getStorageType();
+      LUTHIER_RETURN_ON_ERROR(LCOStorageType.takeError());
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+          *LCOStorageType ==
+          HSA_VEN_AMD_LOADER_CODE_OBJECT_STORAGE_TYPE_MEMORY));
+      auto storageMemory = lco.getStorageMemory();
+      LUTHIER_RETURN_ON_ERROR(storageMemory.takeError());
+      auto loadedMemory = lco.getLoadedMemory();
+      LUTHIER_RETURN_ON_ERROR(loadedMemory.takeError());
+      auto hostElfOrError = getELFObjectFileBase(*storageMemory);
+      LUTHIER_RETURN_ON_ERROR(hostElfOrError.takeError());
+      auto hostElf = hostElfOrError->get();
 
-        auto Syms = hostElf->symbols();
-        for (llvm::object::ELFSymbolRef elfSymbol : Syms) {
-          auto typeOrError = elfSymbol.getELFType();
-          auto nameOrError = elfSymbol.getName();
-          LUTHIER_CHECK_WITH_MSG(nameOrError == true,
-                                 "Failed to get the type of the symbol");
-          auto name = std::string(nameOrError.get());
-          auto addressOrError = elfSymbol.getAddress();
-          LUTHIER_CHECK_WITH_MSG(addressOrError == true,
-                                 "Failed to get the address of the symbol");
-          if (typeOrError == llvm::ELF::STT_FUNC &&
-              !kernelNames.contains(name)) {
-            out.emplace_back(
-                name,
-                arrayRefFromStringRef(
-                    toStringRef(loadedMemory)
-                        .substr(addressOrError.get(), elfSymbol.getSize())),
-                agent.asHsaType(), this->asHsaType());
-          }
+      auto Syms = hostElf->symbols();
+      for (llvm::object::ELFSymbolRef elfSymbol : Syms) {
+        auto typeOrError = elfSymbol.getELFType();
+        auto nameOrError = elfSymbol.getName();
+        LUTHIER_RETURN_ON_ERROR(nameOrError.takeError());
+        auto name = std::string(nameOrError.get());
+        auto addressOrError = elfSymbol.getAddress();
+        LUTHIER_RETURN_ON_ERROR(addressOrError.takeError());
+        if (typeOrError == llvm::ELF::STT_FUNC &&
+            !kernelNames.contains(name)) {
+          out.emplace_back(
+              name,
+              arrayRefFromStringRef(
+                  toStringRef(*loadedMemory)
+                      .substr(addressOrError.get(), elfSymbol.getSize())),
+              agent.asHsaType(), this->asHsaType());
         }
       }
     }
@@ -132,9 +138,11 @@ Executable::getSymbolByName(const luthier::hsa::GpuAgent &agent,
     LUTHIER_RETURN_ON_ERROR(loadedCodeObjects.takeError());
     for (const auto &lco : *loadedCodeObjects) {
       auto storageMemory = lco.getStorageMemory();
+      LUTHIER_RETURN_ON_ERROR(storageMemory.takeError());
       auto loadedMemory = lco.getLoadedMemory();
+      LUTHIER_RETURN_ON_ERROR(loadedMemory.takeError());
 
-      auto hostElfOrError = getELFObjectFileBase(storageMemory);
+      auto hostElfOrError = getELFObjectFileBase(*storageMemory);
       LUTHIER_RETURN_ON_ERROR(hostElfOrError.takeError());
 
       auto hostElf = hostElfOrError->get();
@@ -150,7 +158,7 @@ Executable::getSymbolByName(const luthier::hsa::GpuAgent &agent,
           return ExecutableSymbol{
               name,
               arrayRefFromStringRef(
-                  toStringRef(loadedMemory)
+                  toStringRef(*loadedMemory)
                       .substr(addressOrError.get(), elfSymbol.getSize())),
               agent.asHsaType(), this->asHsaType()};
         }

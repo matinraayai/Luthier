@@ -42,3 +42,25 @@ llvm::Error luthier::ComgrError::comgrErrorCheck(llvm::StringRef FileName,
              ? llvm::make_error<ComgrError>(FileName, LineNumber, Expr, ExprStr)
              : llvm::Error::success();
 }
+
+luthier_status_t luthier::convertErrorToStatusCode(llvm::Error& Error) {
+  if (!Error.operator bool()) {
+    return LUTHIER_STATUS_SUCCESS;
+  }
+  else if (Error.isA<luthier::InvalidArgument>()) {
+    return LUTHIER_STATUS_INVALID_ARGUMENT;
+  }
+  else if (Error.isA<luthier::AssertionError>()) {
+    return LUTHIER_STATUS_ASSERTION_ERROR;
+  }
+  else if (Error.isA<luthier::HsaError>()) {
+    return LUTHIER_STATUS_HSA_ERROR;
+  }
+  else if (Error.isA<luthier::ComgrError>()) {
+    return LUTHIER_STATUS_COMGR_ERROR;
+  }
+  else {
+    return LUTHIER_STATUS_ERROR;
+  }
+
+}
