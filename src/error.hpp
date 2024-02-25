@@ -177,11 +177,11 @@ public:
 };
 
 #define LUTHIER_COMGR_ERROR_CHECK(Expr, Expected)                              \
-  luthier::HsaError::comgrErrorCheck(__FILE_NAME__, __LINE__, Expr, #Expr,     \
-                                     Expected)
+  luthier::ComgrError::comgrErrorCheck(__FILE_NAME__, __LINE__, Expr, #Expr,   \
+                                       Expected)
 
 #define LUTHIER_COMGR_SUCCESS_CHECK(Expr)                                      \
-  luthier::HsaError::comgrErrorCheck(__FILE_NAME__, __LINE__, Expr, #Expr)
+  luthier::ComgrError::comgrErrorCheck(__FILE_NAME__, __LINE__, Expr, #Expr)
 
 /**
  * \brief Errors caused by the HSA library
