@@ -36,24 +36,24 @@ TargetManager::TargetManager() {
 }
 
 TargetManager::~TargetManager() {
-  for (auto &it : llvmTargetInfo_) {
+  for (auto &it : LLVMTargetInfo) {
     delete it.second.MRI_;
-    delete it.second.MAI_;
-    delete it.second.MII_;
-    delete it.second.MIA_;
-    delete it.second.STI_;
-    delete it.second.IP_;
-    delete it.second.targetOptions_;
+    delete it.second.MAI;
+    delete it.second.MII;
+    delete it.second.MIA;
+    delete it.second.STI;
+    delete it.second.IP;
+    delete it.second.TargetOptions;
     delete it.second.targetMachine_;
     delete it.second.llvmContext_;
   }
-  llvmTargetInfo_.clear();
+  LLVMTargetInfo.clear();
 }
 
 llvm::Expected<const TargetInfo &>
 TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
-  if (!llvmTargetInfo_.contains(Isa)) {
-    auto Info = llvmTargetInfo_.insert({Isa, TargetInfo()}).first;
+  if (!LLVMTargetInfo.contains(Isa)) {
+    auto Info = LLVMTargetInfo.insert({Isa, TargetInfo()}).first;
 
     auto TT = Isa.getLLVMTargetTriple();
     LUTHIER_RETURN_ON_ERROR(TT.takeError());
@@ -104,16 +104,16 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
 
     Info->second.target_ = Target;
     Info->second.MRI_ = MRI;
-    Info->second.MAI_ = MAI;
-    Info->second.MII_ = MII;
-    Info->second.MIA_ = MIA;
-    Info->second.STI_ = STI;
-    Info->second.IP_ = IP;
-    Info->second.targetOptions_ = TargetOptions;
+    Info->second.MAI = MAI;
+    Info->second.MII = MII;
+    Info->second.MIA = MIA;
+    Info->second.STI = STI;
+    Info->second.IP = IP;
+    Info->second.TargetOptions = TargetOptions;
     Info->second.targetMachine_ = TM;
     Info->second.llvmContext_ = LLVMContext;
   }
-  return llvmTargetInfo_[Isa];
+  return LLVMTargetInfo[Isa];
 }
 
 } // namespace luthier

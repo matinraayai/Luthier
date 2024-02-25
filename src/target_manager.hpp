@@ -38,46 +38,48 @@ struct TargetInfo {
   friend class TargetManager;
 
 private:
-  const llvm::Target *target_{nullptr};
-  llvm::LLVMContext *llvmContext_{nullptr};
-  llvm::GCNTargetMachine *targetMachine_{nullptr};
-  const llvm::MCRegisterInfo *MRI_{nullptr};
-  const llvm::MCAsmInfo *MAI_{nullptr};
-  const llvm::MCInstrInfo *MII_{nullptr};
-  const llvm::MCInstrAnalysis *MIA_{nullptr};
-  const llvm::MCSubtargetInfo *STI_{nullptr};
-  llvm::MCInstPrinter *IP_{nullptr};
-  llvm::TargetOptions *targetOptions_{nullptr};
+  const llvm::Target *Target{nullptr};
+  llvm::LLVMContext *LLVMContext{nullptr};
+  llvm::GCNTargetMachine *TargetMachine{nullptr};
+  const llvm::MCRegisterInfo *MRI{nullptr};
+  const llvm::MCAsmInfo *MAI{nullptr};
+  const llvm::MCInstrInfo *MII{nullptr};
+  const llvm::MCInstrAnalysis *MIA{nullptr};
+  const llvm::MCSubtargetInfo *STI{nullptr};
+  llvm::MCInstPrinter *IP{nullptr};
+  llvm::TargetOptions *TargetOptions{nullptr};
 
 public:
-  [[nodiscard]] const llvm::Target *getTarget() const { return target_; }
+  [[nodiscard]] const llvm::Target *getTarget() const { return Target; }
 
-  [[nodiscard]] llvm::LLVMContext *getLLVMContext() { return llvmContext_; }
+  [[nodiscard]] llvm::LLVMContext *getLLVMContext() const {
+    return LLVMContext;
+  }
 
   [[nodiscard]] llvm::GCNTargetMachine *getTargetMachine() const {
-    return targetMachine_;
+    return TargetMachine;
   }
 
   [[nodiscard]] const llvm::MCRegisterInfo *getMCRegisterInfo() const {
-    return MRI_;
+    return MRI;
   }
 
-  [[nodiscard]] const llvm::MCAsmInfo *getMCAsmInfo() const { return MAI_; }
+  [[nodiscard]] const llvm::MCAsmInfo *getMCAsmInfo() const { return MAI; }
 
-  [[nodiscard]] const llvm::MCInstrInfo *getMCInstrInfo() const { return MII_; }
+  [[nodiscard]] const llvm::MCInstrInfo *getMCInstrInfo() const { return MII; }
 
   [[nodiscard]] const llvm::MCInstrAnalysis *getMCInstrAnalysis() const {
-    return MIA_;
+    return MIA;
   }
 
   [[nodiscard]] const llvm::MCSubtargetInfo *getMCSubTargetInfo() const {
-    return STI_;
+    return STI;
   }
 
-  [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP_; }
+  [[nodiscard]] llvm::MCInstPrinter *getMCInstPrinter() const { return IP; }
 
   [[nodiscard]] const llvm::TargetOptions &getTargetOptions() const {
-    return *targetOptions_;
+    return *TargetOptions;
   }
 };
 
@@ -88,7 +90,7 @@ public:
  */
 class TargetManager {
 private:
-  mutable std::unordered_map<hsa::ISA, TargetInfo> llvmTargetInfo_{};
+  mutable std::unordered_map<hsa::ISA, TargetInfo> LLVMTargetInfo{};
 
   TargetManager();
   ~TargetManager();
