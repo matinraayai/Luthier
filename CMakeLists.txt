@@ -15,7 +15,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 add_library(luthier SHARED
         src/luthier.cpp include/luthier.h src/hip_intercept.hpp src/hip_intercept.cpp
         include/luthier_types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
-        src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h src/error.hpp
+        src/code_object_manager.cpp include/hip_arg_types.h include/hip_private_api.h src/error.hpp src/error.cpp
         src/disassembler.hpp src/disassembler.cpp src/target_manager.hpp src/code_generator.hpp
         src/code_generator.cpp src/log.hpp src/instrumentation_function.hpp src/hsa_executable.hpp
         src/hsa_executable.cpp src/hsa_executable_symbol.hpp src/hsa_agent.hpp src/hsa_handle_type.hpp
@@ -24,6 +24,7 @@ add_library(luthier SHARED
         src/hsa_kernel_descriptor.hpp src/target_manager.cpp src/hsa_instr.hpp src/hsa_instr.cpp
         src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/hsa_kernel_descriptor.cpp
         src/hsa.hpp src/hsa.cpp
+
 )
 # ======================================================================================================================
 
