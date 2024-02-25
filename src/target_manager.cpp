@@ -1,5 +1,6 @@
 #include "target_manager.hpp"
 
+#include <AMDGPUTargetMachine.h>
 #include <llvm/MC/MCAsmBackend.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCCodeEmitter.h>
@@ -7,98 +8,112 @@
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/MCInstrAnalysis.h>
-#include <llvm/MC/MCInstrDesc.h>
-#include <llvm/MC/MCInstrInfo.h>
 #include <llvm/MC/MCObjectWriter.h>
 #include <llvm/MC/MCParser/MCAsmLexer.h>
 #include <llvm/MC/MCParser/MCAsmParser.h>
 #include <llvm/MC/MCParser/MCTargetAsmParser.h>
-#include <llvm/MC/MCRegisterInfo.h>
 #include <llvm/MC/MCStreamer.h>
 #include <llvm/MC/MCSubtargetInfo.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
-#include <AMDGPUTargetMachine.h>
 
 #include "error.hpp"
-#include "hsa.hpp"
 #include "hsa_agent.hpp"
 
 namespace luthier {
 
 TargetManager::TargetManager() {
-    //TODO: When the target application is multi-threaded, this might need to be in a scoped lock
-    LLVMInitializeAMDGPUTarget();
-    LLVMInitializeAMDGPUTargetInfo();
-    LLVMInitializeAMDGPUTargetMC();
-    LLVMInitializeAMDGPUDisassembler();
-    LLVMInitializeAMDGPUAsmParser();
-    LLVMInitializeAMDGPUAsmPrinter();
-    LLVMInitializeAMDGPUTargetMCA();
+  // TODO: When the target application is multi-threaded, this might need to be
+  // in a scoped lock
+  LLVMInitializeAMDGPUTarget();
+  LLVMInitializeAMDGPUTargetInfo();
+  LLVMInitializeAMDGPUTargetMC();
+  LLVMInitializeAMDGPUDisassembler();
+  LLVMInitializeAMDGPUAsmParser();
+  LLVMInitializeAMDGPUAsmPrinter();
+  LLVMInitializeAMDGPUTargetMCA();
 }
 
 TargetManager::~TargetManager() {
-    for (auto &it: llvmTargetInfo_) {
-        delete it.second.MRI_;
-        delete it.second.MAI_;
-        delete it.second.MII_;
-        delete it.second.MIA_;
-        delete it.second.STI_;
-        delete it.second.IP_;
-        delete it.second.targetOptions_;
-        delete it.second.targetMachine_;
-    }
-    llvmTargetInfo_.clear();
+  for (auto &it : llvmTargetInfo_) {
+    delete it.second.MRI_;
+    delete it.second.MAI_;
+    delete it.second.MII_;
+    delete it.second.MIA_;
+    delete it.second.STI_;
+    delete it.second.IP_;
+    delete it.second.targetOptions_;
+    delete it.second.targetMachine_;
+    delete it.second.llvmContext_;
+  }
+  llvmTargetInfo_.clear();
 }
 
-const TargetInfo &TargetManager::getTargetInfo(const hsa::Isa &isa) const {
-    if (!llvmTargetInfo_.contains(isa)) {
-        auto info = llvmTargetInfo_.insert({isa, TargetInfo()}).first;
+llvm::Expected<const TargetInfo &>
+TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
+  if (!llvmTargetInfo_.contains(Isa)) {
+    auto Info = llvmTargetInfo_.insert({Isa, TargetInfo()}).first;
 
-        std::string targetTriple = llvm::Triple(isa.getLLVMTargetTriple()).normalize();
-        std::string error;
+    auto TT = Isa.getLLVMTargetTriple();
+    LUTHIER_RETURN_ON_ERROR(TT.takeError());
 
-        auto target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
-        LUTHIER_CHECK(target && error.c_str());
+    std::string Error;
 
-        auto mri = target->createMCRegInfo(targetTriple);
-        LUTHIER_CHECK(mri);
+    auto Target = llvm::TargetRegistry::lookupTarget(
+        llvm::Triple(*TT).normalize(), Error);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Target));
 
-        auto targetOptions = new llvm::TargetOptions();
+    auto MRI = Target->createMCRegInfo(*TT);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MRI));
 
-        auto mai = target->createMCAsmInfo(*mri, targetTriple, targetOptions->MCOptions);
-        LUTHIER_CHECK(mai);
+    auto TargetOptions = new llvm::TargetOptions();
 
-        auto mii = target->createMCInstrInfo();
-        LUTHIER_CHECK(mii);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(TargetOptions));
 
-        auto mia = target->createMCInstrAnalysis(mii);
-        LUTHIER_CHECK(mia);
+    auto MAI = Target->createMCAsmInfo(*MRI, *TT, TargetOptions->MCOptions);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MAI));
 
-        std::string cpu = isa.getProcessor();
-        std::string featureString = isa.getFeatureString();
+    auto MII = Target->createMCInstrInfo();
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MII));
 
-        auto sti = target->createMCSubtargetInfo(targetTriple, cpu, featureString);
-        LUTHIER_CHECK(sti);
+    auto MIA = Target->createMCInstrAnalysis(MII);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MIA));
 
-        auto ip = target->createMCInstPrinter(llvm::Triple(targetTriple), mai->getAssemblerDialect(), *mai, *mii, *mri);
-        LUTHIER_CHECK(ip);
+    auto CPU = Isa.getProcessor();
+    LUTHIER_RETURN_ON_ERROR(CPU.takeError());
 
-        auto targetMachine = reinterpret_cast<llvm::GCNTargetMachine *>(target->createTargetMachine(
-            llvm::Triple(targetTriple).normalize(), cpu, featureString, *targetOptions, llvm::Reloc::PIC_));
+    auto FeatureString = Isa.getFeatureString();
+    LUTHIER_RETURN_ON_ERROR(FeatureString.takeError());
 
-        info->second.target_ = target;
-        info->second.MRI_ = mri;
-        info->second.MAI_ = mai;
-        info->second.MII_ = mii;
-        info->second.MIA_ = mia;
-        info->second.STI_ = sti;
-        info->second.IP_ = ip;
-        info->second.targetOptions_ = targetOptions;
-        info->second.targetMachine_ = targetMachine;
-    }
-    return llvmTargetInfo_.at(isa);
+    auto STI = Target->createMCSubtargetInfo(*TT, *CPU, *FeatureString);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(STI));
+
+    auto IP = Target->createMCInstPrinter(
+        llvm::Triple(*TT), MAI->getAssemblerDialect(), *MAI, *MII, *MRI);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(IP));
+
+    auto TM =
+        reinterpret_cast<llvm::GCNTargetMachine *>(Target->createTargetMachine(
+            llvm::Triple(*TT).normalize(), *CPU, *FeatureString, *TargetOptions,
+            llvm::Reloc::PIC_));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(TM));
+
+    auto LLVMContext = new llvm::LLVMContext();
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LLVMContext));
+
+    Info->second.target_ = Target;
+    Info->second.MRI_ = MRI;
+    Info->second.MAI_ = MAI;
+    Info->second.MII_ = MII;
+    Info->second.MIA_ = MIA;
+    Info->second.STI_ = STI;
+    Info->second.IP_ = IP;
+    Info->second.targetOptions_ = TargetOptions;
+    Info->second.targetMachine_ = TM;
+    Info->second.llvmContext_ = LLVMContext;
+  }
+  return llvmTargetInfo_[Isa];
 }
 
-}// namespace luthier
+} // namespace luthier
