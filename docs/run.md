@@ -1,7 +1,7 @@
 # Running Luthier-based Tools
 To instrument HIP-based applications using tools developed with Luthier, run the following command:
 ```shell
-LD_PRELOAD=${LUTHIER_PATH}${TOOL_PATH} ${APPLICATION_CMD}
+LD_PRELOAD=${LUTHIER_PATH}:${TOOL_PATH} ${APPLICATION_CMD}
 ```
 - ```LD_PRELOAD``` loads the specified shared objects before loading any other library
 - ```${LUTHIER_PATH}``` is the path to Luthier's shared library
