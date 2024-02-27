@@ -570,7 +570,7 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 // This computes the hash index given the symbol name (MATH STUFF)
 // hashSysV, hashGnu() -> AT THE END OF THE LLVM file (in the ELF.h)
 template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T *elfObj, const char *symbolName) {
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T *elf, const char *symbolName) {
     // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
     for (const SectionRef &section: elf->sections()) {
         Expected<section_iterator> secOrErr = section.getRelocatedSection();
