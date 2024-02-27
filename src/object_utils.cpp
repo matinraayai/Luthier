@@ -570,45 +570,44 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 // This computes the hash index given the symbol name (MATH STUFF)
 // hashSysV, hashGnu() -> AT THE END OF THE LLVM file (in the ELF.h)
 template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T * elfObj, const char *symbolName) {
-  // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
-  for (const SectionRef &section : elf->sections()) {
-    Expected<section_iterator> secOrErr = section.getRelocatedSection();
-    if (!secOrErr.take_error()) {
-      Expected<StringRef> nameOrErr = section.getName();
-      if (!nameOrErr.take_error()) {
-        // CHECK TYPE OF HASH getElfSectionTypeName() TO SEE:
-        //       IF == SHT_HASH -> use hashSysV()
-        //       ELSE IF SHT_GNU_HASH, or DT_GNU_HASH -> use hashGnu()
-        // do the nbucket and nchain stuff (https://github.com/llvm/llvm-project/blob/be083dba95dfbbb0286d798cc06fbe021715bc03/llvm/include/llvm/Object/ELF.h#L748-L770)
-        // BASICALLY: computeHashIndex(symbolName) -> Convert symbol name into a hash (index)
-        // Then, index into the buckets (and iterate the 'linked list') to find the symbol!
-        // FOR NOW, assume a hash collision will not happen for simplicity!
-        // And then, once we have the symbol -> compare foundSymbol.getName() with symbolName, if EQ -> return, IF NOT -> NULLPTRE
-      }
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T *elfObj, const char *symbolName) {
+    // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
+    for (const SectionRef &section: elf->sections()) {
+        Expected<section_iterator> secOrErr = section.getRelocatedSection();
+        if (!secOrErr.take_error()) {
+            Expected<StringRef> nameOrErr = section.getName();
+            if (!nameOrErr.take_error()) {
+                // CHECK TYPE OF HASH getElfSectionTypeName() TO SEE:
+                //       IF == SHT_HASH -> use hashSysV()
+                //       ELSE IF SHT_GNU_HASH, or DT_GNU_HASH -> use hashGnu()
+                // do the nbucket and nchain stuff (https://github.com/llvm/llvm-project/blob/be083dba95dfbbb0286d798cc06fbe021715bc03/llvm/include/llvm/Object/ELF.h#L748-L770)
+                // BASICALLY: computeHashIndex(symbolName) -> Convert symbol name into a hash (index)
+                // Then, index into the buckets (and iterate the 'linked list') to find the symbol!
+                // FOR NOW, assume a hash collision will not happen for simplicity!
+                // And then, once we have the symbol -> compare foundSymbol.getName() with symbolName, if EQ -> return, IF NOT -> NULLPTRE
+            }
+        }
     }
-  }
 }
-
-
 
 template<typename T>
 llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(const T *elfObj, const char *symbolName) {
   // DO A HASH LOOKUP HERE! IF FAILS, WE DO THE ITERATION
   // if hash_lookup() works ->
 
-  // IF THE HASH_LOOKUP FAILS: (symbol iteration)
-  for (llvm::object::ELFSymbolRef &elfSymbol: elfObj->symbols()) {
-    Expected<StringRef> nameOrErr = elfSymbol.getName();
-    LUTHIER_CHECK_WITH_MSG(nameOrErr == true, "Failed to get the name of the symbol");
-    if (nameOrErr.get() == symbolName) {
-      auto addressOrError = elfSymbol.getAddress();
-      if (!add)
-        // Found the symbol, return a new ELFSymbolRef instance
-        return std::make_unique<ELFSymbolRef>(elfSymbol);
-    };
-  }
-  return createStringError(std::make_error_code(std::errc::invalid_argument), "Symbol not found");
+    // IF THE HASH_LOOKUP FAILS: (symbol iteration)
+    for (llvm::object::ELFSymbolRef &elfSymbol: elfObj->symbols()) {
+        Expected<StringRef> nameOrErr = elfSymbol.getName();
+        if (!nameOrErr.take_error()) {
+            if (nameOrErr.get() == symbolName) {
+                auto addressOrError = elfSymbol.getAddress();
+                if (!add)
+                    // Found the symbol, return a new ELFSymbolRef instance
+                    return std::make_unique<ELFSymbolRef>(elfSymbol);
+            };
+        }
+    }
+    return createStringError(std::make_error_code(std::errc::invalid_argument), "Symbol not found");
 }
 
 /**
