@@ -574,9 +574,9 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T 
     // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
     for (const SectionRef &section: elf->sections()) {
         Expected<section_iterator> secOrErr = section.getRelocatedSection();
-        if (!secOrErr.take_error()) {
+        if (!secOrErr.takeError()) {
             Expected<StringRef> nameOrErr = section.getName();
-            if (!nameOrErr.take_error()) {
+            if (!nameOrErr.takeError()) {
                 // CHECK TYPE OF HASH getElfSectionTypeName() TO SEE:
                 //       IF == SHT_HASH -> use hashSysV()
                 //       ELSE IF SHT_GNU_HASH, or DT_GNU_HASH -> use hashGnu()
@@ -596,12 +596,12 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(cons
   // if hash_lookup() works ->
 
     // IF THE HASH_LOOKUP FAILS: (symbol iteration)
-    for (llvm::object::ELFSymbolRef &elfSymbol: elfObj->symbols()) {
+    for (const llvm::object::ELFSymbolRef &elfSymbol: elfObj->symbols()) {
         Expected<StringRef> nameOrErr = elfSymbol.getName();
-        if (!nameOrErr.take_error()) {
+        if (!nameOrErr.takeError()) {
             if (nameOrErr.get() == symbolName) {
                 auto addressOrError = elfSymbol.getAddress();
-                if (!add)
+                if (!addressOrError.takeError())
                     // Found the symbol, return a new ELFSymbolRef instance
                     return std::make_unique<ELFSymbolRef>(elfSymbol);
             };

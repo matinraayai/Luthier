@@ -364,6 +364,8 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> getSymbolByName(cons
  * param: elf which is a parsed elf object file, and symbolName which is the symbol name of interest
  *
  * (Hash Lookup Function)
+ *
+ * Iterate over sections of ELF object and look for .hash or .gnu.hash heading; When found get contents
  * We want to find the hash table of the elf object to look up the symbol name in
  * to do this we have to covert the symbol name into a hash using (https://docs.oracle.com/cd/E23824_01/html/819-0690/chapter6-48031.html)
  *
@@ -376,7 +378,8 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> getSymbolByName(cons
  * if found, return the associated ELFSymbolRef using 'ELFSymbolRef Esym(Symbol);' (?)
  * */
 
-// Hello this is Maya typing
+//ELFObjectFileBase --> has virtual elf_symbol_iterator_range 	getDynamicSymbolIterators () const =0
+// and elf_symbol_iterator_range 	symbols () const
 
 
 /* New To Do:
