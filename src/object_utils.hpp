@@ -376,6 +376,22 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> getSymbolByName(cons
  * if found, return the associated ELFSymbolRef using 'ELFSymbolRef Esym(Symbol);' (?)
  * */
 
+// Hello this is Maya typing
+
+
+/* New To Do:
+    Add to the object_utils.*pp files
+    Use: ELFObjectFileBase and ELFSymbolRef, instead of the previous (deleted) SymbolView and ElfView
+    modify/add to: ELFSymbolRef ELFObjectFileBase::getSymbol(name); (this should call the hash_lookup function and pass the right table?)
+        if the hash_lookup(symbolName, table) == nullptr (doesn’t work (then it isn’t in there))
+        if not, iterate the vector of symbols from dynamic symbol table and CHECK
+        If not, iterate the vector of symbols from symbol table and CHECK
+    ELFSymbolRef hash_lookup(symbolName, table) -> Lookup the SHT_HASH (symbol hash table) for the particular name
+        Get the hash from the name (standard function)
+        Then, lookup the SHT_HASH table for the hash -> if symbol found OK, (optional check: get the name from the returned symbol, and compare it with the initial symbolName; if match Ok, NO MATCH, return nullptr) return it.
+        If symbol not found, return nullptr
+ * */
+
 }// namespace luthier
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const luthier::HSAMD::Kernel::Metadata &MD);
