@@ -113,7 +113,7 @@ public:
 #define LUTHIER_ASSERTION(Expr)                                                \
   luthier::AssertionError::assertionCheck(__FILE_NAME__, __LINE__, Expr, #Expr)
 
-class DisassemblerError : public llvm::ErrorInfo<DisassemblerError> {};
+//class DisassemblerError : public llvm::ErrorInfo<DisassemblerError> {};
 
 /**
  * \brief Errors caused by the COMGR library

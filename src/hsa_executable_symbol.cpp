@@ -74,7 +74,7 @@ ExecutableSymbol::fromKernelDescriptor(const hsa::KernelDescriptor *kd) {
   LUTHIER_RETURN_ON_ERROR(hsa::getGpuAgents(Agents));
 
   for (const auto &a : Agents) {
-    auto symbols = Executable(Executable).getSymbols(a);
+    auto symbols = hsa::Executable(Executable).getSymbols(a);
     LUTHIER_RETURN_ON_ERROR(symbols.takeError());
     for (const auto &s : *symbols) {
       auto CurrSymbolKD = s.getKernelDescriptor();
