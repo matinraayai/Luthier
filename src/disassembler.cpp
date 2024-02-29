@@ -255,17 +255,20 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   auto kd = Symbol.getKernelDescriptor();
   LUTHIER_RETURN_ON_ERROR(kd.takeError());
 
+  auto KdOnHost = hsa::queryHostAddress(*kd);
+  LUTHIER_RETURN_ON_ERROR(KdOnHost.takeError());
+
   F->addFnAttr("amdgpu-lds-size",
-               llvm::formatv("0, {0}", (*kd)->groupSegmentFixedSize).str());
+               llvm::formatv("0, {0}", (*KdOnHost)->groupSegmentFixedSize).str());
   // Private (scratch) segment size is determined by Analysis Usage pass
   // Kern Arg is determined via analysis usage + args set earlier
-  if ((*kd)->getKernelCodePropertiesEnableSgprDispatchId() == 0) {
+  if ((*KdOnHost)->getKernelCodePropertiesEnableSgprDispatchId() == 0) {
     F->addFnAttr("amdgpu-no-dispatch-id");
   }
-  if ((*kd)->getKernelCodePropertiesEnableSgprDispatchPtr() == 0) {
+  if ((*KdOnHost)->getKernelCodePropertiesEnableSgprDispatchPtr() == 0) {
     F->addFnAttr("amdgpu-no-dispatch-ptr");
   }
-  if ((*kd)->getKernelCodePropertiesEnableSgprQueuePtr() == 0) {
+  if ((*KdOnHost)->getKernelCodePropertiesEnableSgprQueuePtr() == 0) {
     F->addFnAttr("amdgpu-no-queue-ptr");
   }
   F->addFnAttr("amdgpu-no-workgroup-id-y");
@@ -275,7 +278,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
   F->addFnAttr("uniform-work-group-size", "true");
 
-  llvm::outs() << "Preloaded Args: " << (*kd)->kernArgPreload << "\n";
+  llvm::outs() << "Preloaded Args: " << (*KdOnHost)->kernArgPreload << "\n";
 
   auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
 
