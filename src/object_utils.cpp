@@ -567,16 +567,55 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 }
 
 
+/**
+ * Turn symbol name into a hash for SHT_HASH
+ * */
+inline uint32_t hashSysV(const char *symbolName) {
+    std::string name(symbolName);
+    uint32_t H = 0;
+
+    for (uint8_t C : name) {
+        H = (H << 4) + C;
+        H ^= (H >> 24) & 0xf0;
+    }
+    return H & 0x0fffffff;
+}
+
+/**
+ * Turn symbol name into a hash for SHT_GNU_HASH and DT_GNU_HASH
+ * */
+inline uint32_t hashGnu(const char *symbolName) {
+    std::string name(symbolName);
+    uint32_t H = 5381;
+
+    for (uint8_t C : name)
+        H = (H << 5) + H + C;
+    return H;
+}
+
 // This computes the hash index given the symbol name (MATH STUFF)
 // hashSysV, hashGnu() -> AT THE END OF THE LLVM file (in the ELF.h)
 template<typename T>
 llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T *elf, const char *symbolName) {
     // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
-    for (const SectionRef &section: elf->sections()) {
+    for (const ELFSectionRef &section: elf->sections()) { // changed this to ELFSectionRef to acces section.getType()
         Expected<section_iterator> secOrErr = section.getRelocatedSection();
         if (!secOrErr.takeError()) {
             Expected<StringRef> nameOrErr = section.getName();
             if (!nameOrErr.takeError()) {
+                uint32_t hashIndex = 0;
+                    // Unsure of what to pass for machine & type --> https://man7.org/linux/man-pages/man5/elf.5.html
+                //if(getELFSectionTypeName(elf,elf)){
+                if(section.getType() != ELF::SHT_HASH) { // https://github.com/llvm/llvm-project/blob/main/openmp/libomptarget/plugins-nextgen/common/src/Utils/ELF.cpp#L208
+                    hashIndex = hashSysV(symbolName);
+                }
+                else if(section.getType() == ELF::SHT_GNU_HASH || section.getType() != ELF::DT_GNU_HASH) {
+                    hashIndex = hashGnu(symbolName);
+                }
+                else{
+                    // Try symbol look up
+                }
+
                 // CHECK TYPE OF HASH getElfSectionTypeName() TO SEE:
                 //       IF == SHT_HASH -> use hashSysV()
                 //       ELSE IF SHT_GNU_HASH, or DT_GNU_HASH -> use hashGnu()
