@@ -6,9 +6,18 @@
 
 namespace luthier::hsa {
 
-llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents);
+llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agents);
 
-llvm::Error getAllExecutables(llvm::SmallVectorImpl<Executable> &executables);
+llvm::Error getAllExecutables(llvm::SmallVectorImpl<Executable> &Executables);
+
+template<typename T>
+llvm::Expected<T*> queryHostAddress(T* DeviceAddress);
+
+llvm::Expected<llvm::ArrayRef<uint8_t>>
+convertToHostEquivalent(llvm::ArrayRef<uint8_t> Code);
+
+llvm::Expected<llvm::StringRef>
+convertToHostEquivalent(llvm::StringRef Code);
 
 } // namespace luthier::hsa
 

@@ -39,17 +39,18 @@ private:
    * Does not contain the constructs already created by \p TargetManager
    */
   struct DisassemblyInfo {
-    std::unique_ptr<const llvm::MCContext> Context;
-    std::unique_ptr<const llvm::MCDisassembler> DisAsm;
+    std::unique_ptr<llvm::MCContext> Context;
+    std::unique_ptr<llvm::MCDisassembler> DisAsm;
+    llvm::MCSymbolizer *Symbolizer;
+    llvm::SectionSymbolsTy Symbols;
 
     DisassemblyInfo() = delete;
 
-    DisassemblyInfo(std::unique_ptr<const llvm::MCContext> Context,
-                    std::unique_ptr<const llvm::MCDisassembler> DisAsm)
-        : Context(std::move(Context)), DisAsm(std::move(DisAsm)) {
-//      LUTHIER_CHECK(Context);
-//      LUTHIER_CHECK(DisAsm);
-    };
+    DisassemblyInfo(std::unique_ptr<llvm::MCContext> Context,
+                    std::unique_ptr<llvm::MCDisassembler> DisAsm,
+                    llvm::MCSymbolizer *Symbolizer)
+        : Context(std::move(Context)), DisAsm(std::move(DisAsm)),
+          Symbolizer(Symbolizer){};
   };
 
   /**
@@ -68,7 +69,7 @@ private:
 
   ~CodeLifter();
 
-  llvm::Expected<const DisassemblyInfo &>
+  llvm::Expected<DisassemblyInfo &>
   getDisassemblyInfo(const hsa::ISA &Isa);
 
   /**
@@ -84,7 +85,11 @@ private:
    */
   std::unordered_map<hsa::ExecutableSymbol,
                      std::unique_ptr<std::vector<hsa::Instr>>>
-      DisassembledSymbols;
+      DisassembledSymbolsRaw;
+
+  std::unordered_map<hsa::ExecutableSymbol,
+                     std::unique_ptr<std::vector<hsa::Instr>>>
+      DisassembledSymbolsSymbolized;
 
   /**
    * Cache of \p KernelModuleInfo for each kernel function lifted by the
@@ -103,8 +108,8 @@ public:
    * \return the singleton \p CodeLifter
    */
   static inline CodeLifter &instance() {
-    static CodeLifter instance;
-    return instance;
+    static CodeLifter Instance;
+    return Instance;
   }
 
   /**
@@ -149,8 +154,7 @@ public:
   llvm::Expected<
       std::tuple<std::unique_ptr<llvm::Module>,
                  std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>>
-  liftKernelModule(const hsa::ExecutableSymbol &Symbol,
-                   llvm::SmallVectorImpl<char> &Out);
+  liftKernelModule(const hsa::ExecutableSymbol &Symbol);
 };
 
 } // namespace luthier

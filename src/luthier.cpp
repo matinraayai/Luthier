@@ -139,19 +139,15 @@ luthier_disassemble_kernel_object(uint64_t kernel_object, size_t *size,
                                   luthier_instruction_t *instructions) {
   auto kdSymbol = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
       reinterpret_cast<const luthier::hsa::KernelDescriptor *>(kernel_object));
-  luthier_status_t out{LUTHIER_STATUS_SUCCESS};
+  luthier_status_t Out{LUTHIER_STATUS_SUCCESS};
   if (auto Err = kdSymbol.takeError()) {
-    out = luthier::convertErrorToStatusCode(Err);
-    llvm::logAllUnhandledErrors(std::move(Err), llvm::outs());
-//    llvm::consumeError(std::move(Err));
-    return out;
+    Out = luthier::convertErrorToStatusCode(Err);
+    return Out;
   }
   auto hsaInstructions = luthier::CodeLifter::instance().disassemble(*kdSymbol);
   if (auto Err = hsaInstructions.takeError()) {
-    out = luthier::convertErrorToStatusCode(Err);
-//    llvm::consumeError(std::move(Err));
-    llvm::logAllUnhandledErrors(std::move(Err), llvm::outs());
-    return out;
+    Out = luthier::convertErrorToStatusCode(Err);
+    return Out;
   }
 
   if (instructions == nullptr) {
@@ -161,7 +157,7 @@ luthier_disassemble_kernel_object(uint64_t kernel_object, size_t *size,
       instructions[i] = luthier::hsa::Instr::toHandle(&(**hsaInstructions)[i]);
     }
   }
-  return out;
+  return Out;
 }
 
 void *luthier_get_hip_function(const char *funcName) {
@@ -223,8 +219,6 @@ luthier_status_t luthier_override_with_instrumented(
 
   if (auto Err = symbolOrError.takeError()) {
     out = luthier::convertErrorToStatusCode(Err);
-    llvm::logAllUnhandledErrors(std::move(Err), llvm::outs());
-//    llvm::consumeError(std::move(Err));
     return out;
   }
   const auto InstrumentedKernel =
@@ -235,8 +229,6 @@ luthier_status_t luthier_override_with_instrumented(
 
   if (auto Err = InstrumentedKDOrError.takeError()) {
     out = luthier::convertErrorToStatusCode(Err);
-    llvm::logAllUnhandledErrors(std::move(Err), llvm::outs());
-//    llvm::consumeError(std::move(Err));
     return out;
   }
   dispatch_packet->kernel_object =

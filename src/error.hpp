@@ -28,7 +28,7 @@
   }
 
 #define LUTHIER_CHECK(pred)                                                    \
-  if (!(pred)) {                                                                 \
+  if (!(pred)) {                                                               \
     llvm::report_fatal_error(                                                  \
         llvm::formatv(                                                         \
             "Luthier check for expression {0} on file {1}, line {2} failed.",  \
@@ -46,6 +46,10 @@
       return (Error);                                                          \
     }                                                                          \
   } while (0)
+
+#define LUTHIER_RETURN_ON_MOVE_INTO_FAIL(Type, VarName, Operation)             \
+  Type VarName;                                                                \
+  LUTHIER_RETURN_ON_ERROR((Operation).moveInto(VarName));
 
 namespace luthier {
 
@@ -261,11 +265,13 @@ public:
 
 /**
  * Returns a \p luthier_status_t associated with the \p llvm::Error
- * Used by luthier.cpp to implement user-facing functions
+ * Used by luthier.cpp to implement user-facing functions. Consumes the
+ * errors, meaning they can be safely destroyed without making the program
+ * abort
  * \param Error to be reported to the user
  * \return the status code that can be returned to the user
  */
-luthier_status_t convertErrorToStatusCode(llvm::Error& Error);
+luthier_status_t convertErrorToStatusCode(llvm::Error &Error);
 
 } // namespace luthier
 

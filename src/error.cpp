@@ -2,6 +2,17 @@
 
 char luthier::InvalidArgument::ID = 0;
 
+#ifdef LUTHIER_LOG_ENABLE_ERROR
+
+#define LUTHIER_CONSUME_LLVM_ERRORS(Error)                                     \
+  llvm::logAllUnhandledErrors(std::move(Error), llvm::errs())
+
+#else
+
+#define LUTHIER_CONSUME_LLVM_ERRORS(Error) llvm::consumeError(std::move(Error))
+
+#endif
+
 llvm::Error luthier::InvalidArgument::invalidArgumentCheck(
     llvm::StringRef FileName, int LineNumber, llvm::StringRef FunctionName,
     bool Expr, llvm::StringRef ExprStr) {
@@ -43,24 +54,23 @@ llvm::Error luthier::ComgrError::comgrErrorCheck(llvm::StringRef FileName,
              : llvm::Error::success();
 }
 
-luthier_status_t luthier::convertErrorToStatusCode(llvm::Error& Error) {
+luthier_status_t luthier::convertErrorToStatusCode(llvm::Error &Error) {
   if (!Error.operator bool()) {
+    LUTHIER_CONSUME_LLVM_ERRORS(Error);
     return LUTHIER_STATUS_SUCCESS;
-  }
-  else if (Error.isA<luthier::InvalidArgument>()) {
+  } else if (Error.isA<luthier::InvalidArgument>()) {
+    LUTHIER_CONSUME_LLVM_ERRORS(Error);
     return LUTHIER_STATUS_INVALID_ARGUMENT;
-  }
-  else if (Error.isA<luthier::AssertionError>()) {
+  } else if (Error.isA<luthier::AssertionError>()) {
+    LUTHIER_CONSUME_LLVM_ERRORS(Error);
     return LUTHIER_STATUS_ASSERTION_ERROR;
-  }
-  else if (Error.isA<luthier::HsaError>()) {
+  } else if (Error.isA<luthier::HsaError>()) {
+
     return LUTHIER_STATUS_HSA_ERROR;
-  }
-  else if (Error.isA<luthier::ComgrError>()) {
+  } else if (Error.isA<luthier::ComgrError>()) {
+    LUTHIER_CONSUME_LLVM_ERRORS(Error);
     return LUTHIER_STATUS_COMGR_ERROR;
-  }
-  else {
+  } else {
     return LUTHIER_STATUS_ERROR;
   }
-
 }

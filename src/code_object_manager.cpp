@@ -83,7 +83,7 @@ llvm::Error CodeObjectManager::processFunctions() const {
       }
     }
   }
-  LuthierLogDebug("Number of functions registered: {0}", functions_.size());
+  LuthierLogDebug("Number of functions registered: {0}\n", functions_.size());
   unprocessedFunctions_.clear();
   return llvm::Error::success();
 }
@@ -99,14 +99,7 @@ CodeObjectManager::getInstrumentationFunction(const void *wrapperHostPtr,
   if (!unprocessedFunctions_.empty()) {
     LUTHIER_RETURN_ON_ERROR(processFunctions());
   }
-  const auto &f =
-      functions_.at(wrapperHostPtr).at(agent).getInstrumentationFunction();
-#ifdef LUTHIER_LOG_ENABLE_DEBUG
-  auto instrs = luthier::CodeLifter::instance().disassemble(f);
-//    for (const auto &i: instrs) { LuthierLogDebug("{:#x}: {}",
-//    i.getHostAddress(), i.getInstr()); }
-#endif
-  return f;
+  return functions_.at(wrapperHostPtr).at(agent).getInstrumentationFunction();
 }
 
 const hsa::ExecutableSymbol &CodeObjectManager::getInstrumentedKernel(
@@ -153,6 +146,7 @@ llvm::Error CodeObjectManager::loadInstrumentedKernel(
         {originalKernel,
          std::make_tuple(**instrumentedKernel, *executable, *reader)});
   }
+  return llvm::Error::success();
 }
 
 llvm::Expected<const hsa::ExecutableSymbol &>
