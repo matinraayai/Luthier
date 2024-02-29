@@ -20,14 +20,14 @@ MARK_LUTHIER_DEVICE_MODULE
 
 __managed__ int globalCounter = 20;
 
-LUTHIER_DECLARE_FUNC void instrumentation_kernel(int* counter) {
+LUTHIER_DECLARE_FUNC void instrumentation_kernel() {
     //    int i = 0;
     //    i = i + 4;
     //    i = i * 40;
     //    return i;
     //    return 1;
-    *counter = *counter + 1;
-    //    atomicAdd(counter, 1);
+//    atomicAdd(globalCounter, 1);
+    globalCounter++;
     //    printf("Hello from LUTHIER!\n");
 }
 
