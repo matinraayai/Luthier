@@ -567,77 +567,162 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 }
 
 
-/**
- * Turn symbol name into a hash for SHT_HASH
- * */
-inline uint32_t hashSysV(const char *symbolName) {
-    std::string name(symbolName);
-    uint32_t H = 0;
+template <class ELFT>
+static Expected<const typename ELFT::Sym *>
+// would become the same as llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>>, Option 2
+getSymbolFromGnuHashTable(StringRef Name, const typename ELFT::GnuHash &HashTab, ArrayRef<typename ELFT::Sym> SymTab, StringRef StrTab) {
+    const uint32_t NameHash = hashGnu(Name);
+    const typename ELFT::Word NBucket = HashTab.nbuckets;
+    const typename ELFT::Word SymOffset = HashTab.symndx;
+    ArrayRef<typename ELFT::Off> Filter = HashTab.filter();
+    ArrayRef<typename ELFT::Word> Bucket = HashTab.buckets();
+    ArrayRef<typename ELFT::Word> Chain = HashTab.values(SymTab.size());
 
-    for (uint8_t C : name) {
-        H = (H << 4) + C;
-        H ^= (H >> 24) & 0xf0;
+    // Check the bloom filter and exit early if the symbol is not present.
+    uint64_t ElfClassBits = ELFT::Is64Bits ? 64 : 32;
+    typename ELFT::Off Word =
+        Filter[(NameHash / ElfClassBits) % HashTab.maskwords];
+    uint64_t Mask = (0x1ull << (NameHash % ElfClassBits)) |
+        (0x1ull << ((NameHash >> HashTab.shift2) % ElfClassBits));
+    if ((Word & Mask) != Mask)
+        return nullptr;
+
+    // The symbol may or may not be present, check the hash values.
+    for (typename ELFT::Word I = Bucket[NameHash % NBucket];
+         I >= SymOffset && I < SymTab.size(); I = I + 1) {
+        const uint32_t ChainHash = Chain[I - SymOffset];
+
+        if ((NameHash | 0x1) != (ChainHash | 0x1))
+            continue;
+
+        if (SymTab[I].st_name >= StrTab.size())
+            return createError("symbol [index " + Twine(I) +
+                               "] has invalid st_name: " + Twine(SymTab[I].st_name));
+        if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
+            return &SymTab[I];
+        // Instead of returning above, return "llvm::object::SymbolRef symbolRef(elfObjectFile->getSymbol(I));" Option 2
+
+        if (ChainHash & 0x1)
+            return nullptr;
     }
-    return H & 0x0fffffff;
+    return nullptr;
 }
 
-/**
- * Turn symbol name into a hash for SHT_GNU_HASH and DT_GNU_HASH
- * */
-inline uint32_t hashGnu(const char *symbolName) {
-    std::string name(symbolName);
-    uint32_t H = 5381;
+template <class ELFT>
+static Expected<const typename ELFT::Sym *>
+    // would become the same as llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>>, Option 2
+getSymbolFromSysVHashTable(StringRef Name, const typename ELFT::Hash &HashTab, ArrayRef<typename ELFT::Sym> SymTab, StringRef StrTab) {
+    const uint32_t Hash = hashSysV(Name);
+    const typename ELFT::Word NBucket = HashTab.nbucket;
+    ArrayRef<typename ELFT::Word> Bucket = HashTab.buckets();
+    ArrayRef<typename ELFT::Word> Chain = HashTab.chains();
+    for (typename ELFT::Word I = Bucket[Hash % NBucket]; I != ELF::STN_UNDEF;
+         I = Chain[I]) {
+        if (I >= SymTab.size())
+            return createError(
+                "symbol [index " + Twine(I) +
+                "] is greater than the number of symbols: " + Twine(SymTab.size()));
+        if (SymTab[I].st_name >= StrTab.size())
+            return createError("symbol [index " + Twine(I) +
+                               "] has invalid st_name: " + Twine(SymTab[I].st_name));
 
-    for (uint8_t C : name)
-        H = (H << 5) + H + C;
-    return H;
+        if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
+            return &SymTab[I];
+            // Instead of returning above, return "llvm::object::SymbolRef symbolRef(elfObjectFile->getSymbol(I));" Option 2
+    }
+    return nullptr;
 }
 
 // This computes the hash index given the symbol name (MATH STUFF)
 // hashSysV, hashGnu() -> AT THE END OF THE LLVM file (in the ELF.h)
-template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const llvm::object::ELFObjectFile<T> *elf, const char *symbolName) {
-    // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
-    for (const ELFSectionRef &section: elf->sections()) { // changed this to ELFSectionRef to acces section.getType()
-        Expected<section_iterator> secOrErr = section.getRelocatedSection();
-        if (!secOrErr.takeError()) {
-            Expected<StringRef> nameOrErr = section.getName();
-            if (!nameOrErr.takeError()) {
-                uint32_t hashIndex = 0;
-                    // Unsure of what to pass for machine & type --> https://man7.org/linux/man-pages/man5/elf.5.html
-                //if(getELFSectionTypeName(elf,elf)){
-                if(section.getType() != ELF::SHT_HASH) { // https://github.com/llvm/llvm-project/blob/main/openmp/libomptarget/plugins-nextgen/common/src/Utils/ELF.cpp#L208
-                    hashIndex = hashSysV(symbolName);
-                    const typename T::Hash *HashTab = reinterpret_cast<const typename T::Hash *>(elf->getELFFile().base() + section.getOffset();
-                }
-                else if(section.getType() == ELF::SHT_GNU_HASH || section.getType() != ELF::DT_GNU_HASH) {
-                    hashIndex = hashGnu(symbolName);
-                    const typename T::GnuHash *HashTab = reinterpret_cast<const typename T::GnuHash *>(elf->getELFFile().base() + section.getOffset());
+template<typename ELFT>
+Expected<const typename ELFT::Sym *> hash_lookup(const llvm::object::ELFObjectFile<ELFT> *elf, const typename ELFT::Shdr &Sec, StringRef symbolName) {
+    llvm::object::ELFFile elfFile = elf->getELFFile();
 
-                    
-                }
-                else {
-                    // Try symbol look up
+    if (Sec.sh_type != ELF::SHT_HASH && Sec.sh_type != ELF::SHT_GNU_HASH)
+        return createError(
+            "invalid sh_type for hash table, expected SHT_HASH or SHT_GNU_HASH");
+    Expected<typename ELFT::ShdrRange> SectionsOrError = elfFile.sections();
+    if (!SectionsOrError)
+        return SectionsOrError.takeError();
 
-                }
+    auto SymTabOrErr = getSection<ELFT>(*SectionsOrError, Sec.sh_link);
+    if (!SymTabOrErr)
+        return SymTabOrErr.takeError();
 
-                // CHECK TYPE OF HASH getElfSectionTypeName() TO SEE:
-                //       IF == SHT_HASH -> use hashSysV()
-                //       ELSE IF SHT_GNU_HASH, or DT_GNU_HASH -> use hashGnu()
-                // do the nbucket and nchain stuff (https://github.com/llvm/llvm-project/blob/be083dba95dfbbb0286d798cc06fbe021715bc03/llvm/include/llvm/Object/ELF.h#L748-L770)
-                // BASICALLY: computeHashIndex(symbolName) -> Convert symbol name into a hash (index)
-                // Then, index into the buckets (and iterate the 'linked list') to find the symbol!
-                // FOR NOW, assume a hash collision will not happen for simplicity!
-                // And then, once we have the symbol -> compare foundSymbol.getName() with symbolName, if EQ -> return, IF NOT -> NULLPTRE
-            }
-        }
+    auto StrTabOrErr =
+        elfFile.getStringTableForSymtab(**SymTabOrErr, *SectionsOrError);
+    if (!StrTabOrErr)
+        return StrTabOrErr.takeError();
+    StringRef StrTab = *StrTabOrErr;
+
+    auto SymsOrErr = elfFile.symbols(*SymTabOrErr);
+    if (!SymsOrErr)
+        return SymsOrErr.takeError();
+    ArrayRef<typename ELFT::Sym> SymTab = *SymsOrErr;
+
+    // If this is a GNU hash table we verify its size and search the symbol
+    // table using the GNU hash table format.
+    if (Sec.sh_type == ELF::SHT_GNU_HASH) {
+        std::cout << "Found hash table ! :)" << std::endl;
+        const typename ELFT::GnuHash *HashTab = reinterpret_cast<const typename ELFT::GnuHash *>(elfFile.base() +
+                                                             Sec.sh_offset);
+        if (Sec.sh_offset + Sec.sh_size >= elfFile.getBufSize())
+            return createError("section has invalid sh_offset: " +
+                               Twine(Sec.sh_offset));
+        if (Sec.sh_size < sizeof(typename ELFT::GnuHash) ||
+            Sec.sh_size <
+                sizeof(typename ELFT::GnuHash) +
+                    sizeof(typename ELFT::Word) * HashTab->maskwords +
+                    sizeof(typename ELFT::Word) * HashTab->nbuckets +
+                    sizeof(typename ELFT::Word) * (SymTab.size() - HashTab->symndx))
+            return createError("section has invalid sh_size: " + Twine(Sec.sh_size));
+        return getSymbolFromGnuHashTable<ELFT>(symbolName, *HashTab, SymTab, StrTab);
     }
+
+    // If this is a Sys-V hash table we verify its size and search the symbol
+    // table using the Sys-V hash table format.
+    if (Sec.sh_type == ELF::SHT_HASH) {
+        const typename ELFT::Hash *HashTab =
+            reinterpret_cast<const typename ELFT::Hash *>(elfFile.base() +
+                                                          Sec.sh_offset);
+        if (Sec.sh_offset + Sec.sh_size >= elfFile.getBufSize())
+            return createError("section has invalid sh_offset: " +
+                               Twine(Sec.sh_offset));
+        if (Sec.sh_size < sizeof(typename ELFT::Hash) ||
+            Sec.sh_size < sizeof(typename ELFT::Hash) +
+                    sizeof(typename ELFT::Word) * HashTab->nbucket +
+                    sizeof(typename ELFT::Word) * HashTab->nchain)
+            return createError("section has invalid sh_size: " + Twine(Sec.sh_size));
+
+        return getSymbolFromSysVHashTable<ELFT>(symbolName, *HashTab, SymTab, StrTab);
+    }
+
+    return nullptr;
 }
 
 template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(const llvm::object::ELFObjectFile<T> *elfObj, const char *symbolName) {
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(const llvm::object::ELFObjectFile<T> *elfObj, StringRef symbolName) {
     // DO A HASH LOOKUP HERE! IF FAILS, WE DO THE ITERATION
-    // if hash_lookup() works ->
+    for (const ELFSectionRef &section : elfObj->sections()) {
+        if (section.getType() != ELF::SHT_HASH && section.getType() != ELF::SHT_GNU_HASH)
+            continue;
+
+        auto HashTabOrErr = elfObj->getELFFile().getSection(section.getIndex());
+        if (!HashTabOrErr)
+            return HashTabOrErr.takeError();
+        return hash_lookup<T>(elfObj, **HashTabOrErr, symbolName);
+    }
+
+    /* Current issue we are facing: ^^^^ with above error
+     * The code we got from the llvm project returns a Sym pointer where we need a ELFSymbolRef
+     * Next step: Figure out how to instead return an ELFSymbol Ref from the hash_lookup function
+     * Option 1: Get symbol index and construct symbolRef from the index
+     *      eg. llvm::object::SymbolRef symbolRef(elfObjectFile->getSymbol(symbolIndex));
+     * Option 2: Modify the getSymbolFromGNUHashTable() & getSymbolFromSysVHashTable() to return a ELFSymbolRef
+     *      Note: Some comments have been left on how to attempt resolving this throughout code above
+     *      Specifically lines:
+     * */
 
     // IF THE HASH_LOOKUP FAILS: (symbol iteration)
     for (const llvm::object::ELFSymbolRef &elfSymbol: elfObj->symbols()) {
@@ -664,11 +749,12 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(cons
 llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> getSymbolByName(const llvm::object::ELFObjectFileBase *elf,
                                                                             const char *symbolName) {
     // Attempt to cast to each ELF type and find the symbol
-    if (const auto *ELF32LEObject = dyn_cast<ELFObjectFile<ELF32LE>>(elf)) { return findSymbolInELF(ELF32LEObject, symbolName); }
-    if (const auto *ELF64LEObject = dyn_cast<ELFObjectFile<ELF64LE>>(elf)) { return findSymbolInELF(ELF64LEObject, symbolName); }
-    if (const auto *ELF32BEObject = dyn_cast<ELFObjectFile<ELF32BE>>(elf)) { return findSymbolInELF(ELF32BEObject, symbolName); }
+    llvm::StringRef symbolNameRef(symbolName);
+    if (const auto *ELF32LEObject = dyn_cast<ELFObjectFile<ELF32LE>>(elf)) { return findSymbolInELF(ELF32LEObject,symbolNameRef); }
+    if (const auto *ELF64LEObject = dyn_cast<ELFObjectFile<ELF64LE>>(elf)) { return findSymbolInELF(ELF64LEObject, symbolNameRef); }
+    if (const auto *ELF32BEObject = dyn_cast<ELFObjectFile<ELF32BE>>(elf)) { return findSymbolInELF(ELF32BEObject, symbolNameRef); }
     const auto *ELF64BEObject = dyn_cast<ELFObjectFile<ELF64BE>>(elf);
-    return findSymbolInELF(ELF64BEObject, symbolName);
+    return findSymbolInELF(ELF64BEObject, symbolNameRef);
 };
 
 } // namespace luthier
