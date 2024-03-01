@@ -3,6 +3,8 @@
 #include <optional>
 #include <vector>
 
+#include <llvm/ADT/DenseMapInfo.h>
+
 #include "hsa_code_object_reader.hpp"
 #include "hsa_handle_type.hpp"
 
@@ -23,20 +25,20 @@ class Executable : public HandleType<hsa_executable_t> {
 
 private:
   static llvm::Expected<Executable>
-  create(hsa_profile_t profile = HSA_PROFILE_FULL,
-         hsa_default_float_rounding_mode_t defaultFloatRoundingMode =
+  create(hsa_profile_t Profile = HSA_PROFILE_FULL,
+         hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
              HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
-         const char *options = "");
+         const char *Options = "");
 
   llvm::Expected<hsa::LoadedCodeObject>
-  loadCodeObject(hsa::CodeObjectReader reader, hsa::GpuAgent agent);
+  loadCodeObject(hsa::CodeObjectReader Reader, hsa::GpuAgent Agent);
 
-  llvm::Error freeze(const char *options = "");
+  llvm::Error freeze(const char *Options = "");
 
   llvm::Error destroy();
 
 public:
-  explicit Executable(hsa_executable_t executable);
+  explicit Executable(hsa_executable_t Executable);
 
   llvm::Expected<hsa_profile_t> getProfile();
 
@@ -45,11 +47,11 @@ public:
   llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
 
   [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getSymbols(const luthier::hsa::GpuAgent &agent) const;
+  getSymbols(const luthier::hsa::GpuAgent &Agent) const;
 
   [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
-  getSymbolByName(const luthier::hsa::GpuAgent &agent,
-                  const std::string &name) const;
+  getSymbolByName(const luthier::hsa::GpuAgent &Agent,
+                  const std::string &Name) const;
 
   [[nodiscard]] llvm::Expected<std::vector<LoadedCodeObject>>
   getLoadedCodeObjects() const;
@@ -61,27 +63,54 @@ public:
 
 } // namespace luthier
 
-namespace std {
+namespace llvm {
 
-template <> struct hash<luthier::hsa::Executable> {
-  size_t operator()(const luthier::hsa::Executable &obj) const {
-    return hash<unsigned long>()(obj.hsaHandle());
+template <> struct DenseMapInfo<luthier::hsa::Executable> {
+  static inline luthier::hsa::Executable getEmptyKey() {
+    return luthier::hsa::Executable(
+        {DenseMapInfo<decltype(hsa_executable_t::handle)>::getEmptyKey()});
   }
-};
 
-template <> struct less<luthier::hsa::Executable> {
-  bool operator()(const luthier::hsa::Executable &lhs,
-                  const luthier::hsa::Executable &rhs) const {
-    return lhs.hsaHandle() < rhs.hsaHandle();
+  static inline luthier::hsa::Executable getTombstoneKey() {
+    return luthier::hsa::Executable(
+        {DenseMapInfo<decltype(hsa_executable_t::handle)>::getTombstoneKey()});
   }
-};
 
-template <> struct equal_to<luthier::hsa::Executable> {
-  bool operator()(const luthier::hsa::Executable &lhs,
-                  const luthier::hsa::Executable &rhs) const {
+  static unsigned getHashValue(const luthier::hsa::Executable &Executable) {
+    return DenseMapInfo<decltype(hsa_executable_t::handle)>::getHashValue(
+        Executable.hsaHandle());
+  }
+
+  static bool isEqual(const luthier::hsa::Executable &lhs,
+                      const luthier::hsa::Executable &rhs) {
     return lhs.hsaHandle() == rhs.hsaHandle();
   }
 };
 
+} // namespace llvm
+
+namespace std {
+
+template <> struct hash<luthier::hsa::Executable> {
+  size_t operator()(const luthier::hsa::Executable &Obj) const {
+    return hash<unsigned long>()(Obj.hsaHandle());
+  }
+};
+
+template <> struct less<luthier::hsa::Executable> {
+  bool operator()(const luthier::hsa::Executable &Lhs,
+                  const luthier::hsa::Executable &Rhs) const {
+    return Lhs.hsaHandle() < Rhs.hsaHandle();
+  }
+};
+
+template <> struct equal_to<luthier::hsa::Executable> {
+  bool operator()(const luthier::hsa::Executable &Lhs,
+                  const luthier::hsa::Executable &Rhs) const {
+    return Lhs.hsaHandle() == Rhs.hsaHandle();
+  }
+};
+
 } // namespace std
+
 #endif

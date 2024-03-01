@@ -71,4 +71,31 @@ template <> struct greater_equal<luthier::hsa::GpuAgent> {
 
 } // namespace std
 
+namespace llvm {
+
+template <> struct DenseMapInfo<luthier::hsa::GpuAgent> {
+  static inline luthier::hsa::GpuAgent getEmptyKey() {
+    return luthier::hsa::GpuAgent(
+        {DenseMapInfo<decltype(hsa_agent_t::handle)>::getEmptyKey()});
+  }
+
+  static inline luthier::hsa::GpuAgent getTombstoneKey() {
+    return luthier::hsa::GpuAgent(
+        {DenseMapInfo<decltype(hsa_agent_t::handle)>::getTombstoneKey()});
+  }
+
+  static unsigned getHashValue(const luthier::hsa::GpuAgent &Agent) {
+    return DenseMapInfo<decltype(hsa_agent_t::handle)>::getHashValue(
+        Agent.hsaHandle());
+  }
+
+  static bool isEqual(const luthier::hsa::GpuAgent &lhs,
+                      const luthier::hsa::GpuAgent &rhs) {
+    return lhs.hsaHandle() == rhs.hsaHandle();
+  }
+};
+
+} // namespace llvm
+
+
 #endif

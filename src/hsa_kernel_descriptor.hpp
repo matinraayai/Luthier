@@ -5,21 +5,19 @@
 
 namespace luthier::hsa {
 
-//TODO: Make this work with KDs in executables not created with the FULL profile
-
 struct KernelDescriptor {
-    uint32_t groupSegmentFixedSize;
-    uint32_t privateSegmentFixedSize;
-    uint32_t kernArgSize;
-    uint8_t reserved0[4];
-    int64_t kernelCodeEntryByteOffset;
-    uint8_t reserved1[20];
-    uint32_t computePgmRsrc3;// GFX10+ and GFX90A+
-    uint32_t computePgmRsrc1;
-    uint32_t computePgmRsrc2;
-    uint16_t kernelCodeProperties;
-    uint16_t kernArgPreload;
-    uint8_t reserved2[4];
+    uint32_t GroupSegmentFixedSize;
+    uint32_t PrivateSegmentFixedSize;
+    uint32_t KernArgSize;
+    uint8_t Reserved0[4];
+    int64_t KernelCodeEntryByteOffset;
+    uint8_t Reserved1[20];
+    uint32_t ComputePgmRsrc3;// GFX10+ and GFX90A+
+    uint32_t ComputePgmRsrc1;
+    uint32_t ComputePgmRsrc2;
+    uint16_t KernelCodeProperties;
+    uint16_t KernArgPreload;
+    uint8_t Reserved2[4];
 
 #define REG_BIT_GETTER(registerName, propName) \
     uint32_t get##registerName##propName() const;

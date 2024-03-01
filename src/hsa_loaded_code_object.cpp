@@ -6,111 +6,111 @@
 
 namespace luthier::hsa {
 
-LoadedCodeObject::LoadedCodeObject(hsa_loaded_code_object_t lco)
-    : HandleType<hsa_loaded_code_object_t>(lco) {}
+LoadedCodeObject::LoadedCodeObject(hsa_loaded_code_object_t LCO)
+    : HandleType<hsa_loaded_code_object_t>(LCO) {}
 
 llvm::Expected<Executable> LoadedCodeObject::getExecutable() const {
-  hsa_executable_t exec;
+  hsa_executable_t Exec;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
-          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_EXECUTABLE, &exec)));
+          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_EXECUTABLE, &Exec)));
 
-  return Executable(exec);
+  return Executable(Exec);
 }
 
 llvm::Expected<GpuAgent> LoadedCodeObject::getAgent() const {
-  hsa_agent_t agent;
+  hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(), HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT,
-          &agent)));
-  return GpuAgent(agent);
+          &Agent)));
+  return GpuAgent(Agent);
 }
 
 llvm::Expected<hsa_ven_amd_loader_code_object_storage_type_t>
 LoadedCodeObject::getStorageType() const {
-  hsa_ven_amd_loader_code_object_storage_type_t storageType;
+  hsa_ven_amd_loader_code_object_storage_type_t StorageType;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
           HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_TYPE,
-          &storageType)));
-  return storageType;
+          &StorageType)));
+  return StorageType;
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 LoadedCodeObject::getStorageMemory() const {
-  luthier_address_t storageBase;
+  luthier_address_t StorageBase;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
           HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
-          &storageBase)));
+          &StorageBase)));
 
-  uint64_t storageSize;
+  uint64_t StorageSize;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
           HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
-          &storageSize)));
+          &StorageSize)));
 
-  return llvm::ArrayRef<uint8_t>{reinterpret_cast<uint8_t *>(storageBase),
-                                 storageSize};
+  return llvm::ArrayRef<uint8_t>{reinterpret_cast<uint8_t *>(StorageBase),
+                                 StorageSize};
 }
 
 llvm::Expected<int> LoadedCodeObject::getStorageFile() const {
-  int fd;
+  int FD;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
           HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_FILE,
-          &fd)));
-  return fd;
+          &FD)));
+  return FD;
 }
 
 llvm::Expected<long> LoadedCodeObject::getLoadDelta() const {
-  long loadDelta;
+  long LoadDelta;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
-          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_DELTA, &loadDelta)));
-  return loadDelta;
+          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_DELTA, &LoadDelta)));
+  return LoadDelta;
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 LoadedCodeObject::getLoadedMemory() const {
-  luthier_address_t loadBase;
+  luthier_address_t LoadBase;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
-          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE, &loadBase)));
+          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE, &LoadBase)));
 
-  uint64_t loadSize;
+  uint64_t LoadSize;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
-          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE, &loadSize)));
+          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE, &LoadSize)));
 
-  return llvm::ArrayRef<uint8_t>{reinterpret_cast<uint8_t *>(loadBase),
-                                 loadSize};
+  return llvm::ArrayRef<uint8_t>{reinterpret_cast<uint8_t *>(LoadBase),
+                                 LoadSize};
 }
 
 llvm::Expected<std::string> LoadedCodeObject::getUri() const {
-  unsigned int uriLength;
+  unsigned int UriLength;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
-          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI_LENGTH, &uriLength)));
+          HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI_LENGTH, &UriLength)));
 
-  std::string uri;
-  uri.resize(uriLength);
+  std::string URI;
+  URI.resize(UriLength);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(), HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI,
-          uri.data())));
+          URI.data())));
 
-  return uri;
+  return URI;
 }
 
 } // namespace luthier::hsa

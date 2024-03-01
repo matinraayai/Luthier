@@ -14,7 +14,7 @@ namespace luthier::hsa {
 
 llvm::Expected<hsa_symbol_kind_t> ExecutableSymbol::getType() const {
   hsa_symbol_kind_t Out;
-  if (indirectFunctionName_.has_value() && indirectFunctionCode_.has_value())
+  if (IndirectFunctionName.has_value() && IndirectFunctionCode.has_value())
     Out = HSA_SYMBOL_KIND_INDIRECT_FUNCTION;
   else {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
@@ -24,8 +24,8 @@ llvm::Expected<hsa_symbol_kind_t> ExecutableSymbol::getType() const {
   return Out;
 }
 llvm::Expected<std::string> ExecutableSymbol::getName() const {
-  if (indirectFunctionName_.has_value())
-    return *indirectFunctionName_;
+  if (IndirectFunctionName.has_value())
+    return *IndirectFunctionName;
   else {
     uint32_t NameLength;
     LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
@@ -61,7 +61,7 @@ ExecutableSymbol::getKernelDescriptor() const {
 }
 
 llvm::Expected<ExecutableSymbol>
-ExecutableSymbol::fromKernelDescriptor(const hsa::KernelDescriptor *kd) {
+ExecutableSymbol::fromKernelDescriptor(const hsa::KernelDescriptor *KD) {
   hsa_executable_t Executable;
   const auto &LoaderTable =
       HsaInterceptor::instance().getHsaVenAmdLoaderTable();
@@ -69,30 +69,30 @@ ExecutableSymbol::fromKernelDescriptor(const hsa::KernelDescriptor *kd) {
   // Check which executable this kernel object (address) belongs to
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(LoaderTable.hsa_ven_amd_loader_query_executable(
-          reinterpret_cast<const void *>(kd), &Executable)));
+          reinterpret_cast<const void *>(KD), &Executable)));
   llvm::SmallVector<GpuAgent> Agents;
   LUTHIER_RETURN_ON_ERROR(hsa::getGpuAgents(Agents));
 
-  for (const auto &a : Agents) {
-    auto symbols = hsa::Executable(Executable).getSymbols(a);
-    LUTHIER_RETURN_ON_ERROR(symbols.takeError());
-    for (const auto &s : *symbols) {
-      auto CurrSymbolKD = s.getKernelDescriptor();
+  for (const auto &A : Agents) {
+    auto Symbols = hsa::Executable(Executable).getSymbols(A);
+    LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
+    for (const auto &S : *Symbols) {
+      auto CurrSymbolKD = S.getKernelDescriptor();
       LUTHIER_RETURN_ON_ERROR(CurrSymbolKD.takeError());
-      if (kd == *CurrSymbolKD)
-        return s;
+      if (KD == *CurrSymbolKD)
+        return S;
     }
   }
 
   llvm::report_fatal_error(llvm::formatv(
       "Kernel descriptor {0:x} does not have a symbol associated with it.",
-      reinterpret_cast<const void *>(kd)));
+      reinterpret_cast<const void *>(KD)));
 }
 luthier::hsa::GpuAgent luthier::hsa::ExecutableSymbol::getAgent() const {
-  return luthier::hsa::GpuAgent(agent_);
+  return luthier::hsa::GpuAgent(Agent);
 }
 luthier::hsa::Executable luthier::hsa::ExecutableSymbol::getExecutable() const {
-  return luthier::hsa::Executable(executable_);
+  return luthier::hsa::Executable(Executable);
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
@@ -106,9 +106,9 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
   }
 
   if (*SymbolType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
-    return *indirectFunctionCode_;
+    return *IndirectFunctionCode;
   else {
-    auto LoadedCodeObjects = Executable(executable_).getLoadedCodeObjects();
+    auto LoadedCodeObjects = hsa::Executable(Executable).getLoadedCodeObjects();
     LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
     auto KdSymbolName = getName();
     LUTHIER_RETURN_ON_ERROR(KdSymbolName.takeError());

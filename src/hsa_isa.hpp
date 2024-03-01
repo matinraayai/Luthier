@@ -39,22 +39,22 @@ public:
 namespace std {
 
 template <> struct hash<luthier::hsa::ISA> {
-  size_t operator()(const luthier::hsa::ISA &obj) const {
-    return hash<unsigned long>()(obj.hsaHandle());
+  size_t operator()(const luthier::hsa::ISA &Obj) const {
+    return hash<unsigned long>()(Obj.hsaHandle());
   }
 };
 
 template <> struct less<luthier::hsa::ISA> {
-  bool operator()(const luthier::hsa::ISA &lhs,
-                  const luthier::hsa::ISA &rhs) const {
-    return lhs.hsaHandle() < rhs.hsaHandle();
+  bool operator()(const luthier::hsa::ISA &Lhs,
+                  const luthier::hsa::ISA &Rhs) const {
+    return Lhs.hsaHandle() < Rhs.hsaHandle();
   }
 };
 
 template <> struct less_equal<luthier::hsa::ISA> {
-  bool operator()(const luthier::hsa::ISA &lhs,
-                  const luthier::hsa::ISA &rhs) const {
-    return lhs.hsaHandle() <= rhs.hsaHandle();
+  bool operator()(const luthier::hsa::ISA &Lhs,
+                  const luthier::hsa::ISA &Rhs) const {
+    return Lhs.hsaHandle() <= Rhs.hsaHandle();
   }
 };
 
@@ -66,26 +66,52 @@ template <> struct equal_to<luthier::hsa::ISA> {
 };
 
 template <> struct not_equal_to<luthier::hsa::ISA> {
-  bool operator()(const luthier::hsa::ISA &lhs,
-                  const luthier::hsa::ISA &rhs) const {
-    return lhs.hsaHandle() != rhs.hsaHandle();
+  bool operator()(const luthier::hsa::ISA &Lhs,
+                  const luthier::hsa::ISA &Rhs) const {
+    return Lhs.hsaHandle() != Rhs.hsaHandle();
   }
 };
 
 template <> struct greater<luthier::hsa::ISA> {
-  bool operator()(const luthier::hsa::ISA &lhs,
-                  const luthier::hsa::ISA &rhs) const {
-    return lhs.hsaHandle() > rhs.hsaHandle();
+  bool operator()(const luthier::hsa::ISA &Lhs,
+                  const luthier::hsa::ISA &Rhs) const {
+    return Lhs.hsaHandle() > Rhs.hsaHandle();
   }
 };
 
 template <> struct greater_equal<luthier::hsa::ISA> {
-  bool operator()(const luthier::hsa::ISA &lhs,
-                  const luthier::hsa::ISA &rhs) const {
-    return lhs.hsaHandle() >= rhs.hsaHandle();
+  bool operator()(const luthier::hsa::ISA &Lhs,
+                  const luthier::hsa::ISA &Rhs) const {
+    return Lhs.hsaHandle() >= Rhs.hsaHandle();
   }
 };
 
 } // namespace std
+
+namespace llvm {
+
+template <> struct DenseMapInfo<luthier::hsa::ISA> {
+  static inline luthier::hsa::ISA getEmptyKey() {
+    return luthier::hsa::ISA(
+        {DenseMapInfo<decltype(hsa_isa_t::handle)>::getEmptyKey()});
+  }
+
+  static inline luthier::hsa::ISA getTombstoneKey() {
+    return luthier::hsa::ISA(
+        {DenseMapInfo<decltype(hsa_isa_t::handle)>::getTombstoneKey()});
+  }
+
+  static unsigned getHashValue(const luthier::hsa::ISA &ISA) {
+    return DenseMapInfo<decltype(hsa_isa_t::handle)>::getHashValue(
+        ISA.hsaHandle());
+  }
+
+  static bool isEqual(const luthier::hsa::ISA &Lhs,
+                      const luthier::hsa::ISA &Rhs) {
+    return Lhs.hsaHandle() == Rhs.hsaHandle();
+  }
+};
+
+} // namespace llvm
 
 #endif

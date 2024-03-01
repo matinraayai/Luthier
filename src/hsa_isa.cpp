@@ -6,12 +6,12 @@
 
 namespace luthier::hsa {
 
-llvm::Expected<ISA> ISA::fromName(const char *isaName) {
+llvm::Expected<ISA> ISA::fromName(const char *IsaName) {
   hsa_isa_t Isa;
-  const auto &coreApi =
+  const auto &CoreApi =
       luthier::HsaInterceptor::instance().getSavedHsaTables().core;
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_HSA_SUCCESS_CHECK(coreApi.hsa_isa_from_name_fn(isaName, &Isa)));
+      LUTHIER_HSA_SUCCESS_CHECK(CoreApi.hsa_isa_from_name_fn(IsaName, &Isa)));
 
   return luthier::hsa::ISA(Isa);
 }
@@ -20,17 +20,17 @@ llvm::Expected<std::string> ISA::getName() const {
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(getApiTable().core.hsa_isa_get_info_alt_fn(
           this->asHsaType(), HSA_ISA_INFO_NAME_LENGTH, &IsaNameSize)));
-  std::string isaName(IsaNameSize - 1, '\0');
+  std::string IsaName(IsaNameSize - 1, '\0');
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(getApiTable().core.hsa_isa_get_info_alt_fn(
-          this->asHsaType(), HSA_ISA_INFO_NAME, &isaName.front())));
-  return isaName;
+          this->asHsaType(), HSA_ISA_INFO_NAME, &IsaName.front())));
+  return IsaName;
 }
 
-inline void parseIsaName(llvm::StringRef isaName,
-                         llvm::SmallVectorImpl<llvm::StringRef> &out) {
-  isaName.split(out, '-', 4);
-  LUTHIER_CHECK((out.size() == 5));
+inline void parseIsaName(llvm::StringRef IsaName,
+                         llvm::SmallVectorImpl<llvm::StringRef> &Out) {
+  IsaName.split(Out, '-', 4);
+  LUTHIER_CHECK((Out.size() == 5));
 }
 
 llvm::Expected<std::string> ISA::getArchitecture() const {
@@ -52,49 +52,49 @@ llvm::Expected<std::string> ISA::getVendor() const {
 llvm::Expected<std::string> ISA::getOS() const {
   auto IsaNameOrError = getName();
   LUTHIER_RETURN_ON_ERROR(IsaNameOrError.takeError());
-  llvm::SmallVector<llvm::StringRef> isaNameComponents;
-  parseIsaName(*IsaNameOrError, isaNameComponents);
-  return std::move(isaNameComponents[2].str());
+  llvm::SmallVector<llvm::StringRef> IsaNameComponents;
+  parseIsaName(*IsaNameOrError, IsaNameComponents);
+  return std::move(IsaNameComponents[2].str());
 }
 llvm::Expected<std::string> ISA::getEnvironment() const {
   auto IsaNameOrError = getName();
   LUTHIER_RETURN_ON_ERROR(IsaNameOrError.takeError());
-  llvm::SmallVector<llvm::StringRef> isaNameComponents;
-  parseIsaName(*IsaNameOrError, isaNameComponents);
-  return isaNameComponents[3].str();
+  llvm::SmallVector<llvm::StringRef> IsaNameComponents;
+  parseIsaName(*IsaNameOrError, IsaNameComponents);
+  return IsaNameComponents[3].str();
 }
 
 llvm::Expected<std::string> ISA::getProcessor() const {
   auto IsaNameOrError = getName();
   LUTHIER_RETURN_ON_ERROR(IsaNameOrError.takeError());
-  llvm::SmallVector<llvm::StringRef> isaNameComponents;
-  parseIsaName(*IsaNameOrError, isaNameComponents);
+  llvm::SmallVector<llvm::StringRef> IsaNameComponents;
+  parseIsaName(*IsaNameOrError, IsaNameComponents);
 
-  llvm::SmallVector<llvm::StringRef> features;
-  features.clear();
-  isaNameComponents[4].split(features, ':');
+  llvm::SmallVector<llvm::StringRef> Features;
+  Features.clear();
+  IsaNameComponents[4].split(Features, ':');
 
-  return features[0].str();
+  return Features[0].str();
 }
 llvm::Expected<bool> ISA::isXNACSupported() const {
   auto IsaNameOrError = getName();
   LUTHIER_RETURN_ON_ERROR(IsaNameOrError.takeError());
-  auto sRamECC = IsaNameOrError->find("xnack");
-  if (sRamECC == std::string::npos)
+  auto XNack = IsaNameOrError->find("xnack");
+  if (XNack == std::string::npos)
     return false;
   else {
-    return (*IsaNameOrError)[sRamECC + strlen("xnack")] == '+';
+    return (*IsaNameOrError)[XNack + strlen("xnack")] == '+';
   }
 }
 
 llvm::Expected<bool> ISA::isSRAMECCSupported() const {
   auto IsaNameOrError = getName();
   LUTHIER_RETURN_ON_ERROR(IsaNameOrError.takeError());
-  auto sRamECC = IsaNameOrError->find("sramecc");
-  if (sRamECC == std::string::npos)
+  auto SRamECC = IsaNameOrError->find("sramecc");
+  if (SRamECC == std::string::npos)
     return false;
   else {
-    return (*IsaNameOrError)[sRamECC + strlen("sramecc")] == '+';
+    return (*IsaNameOrError)[SRamECC + strlen("sramecc")] == '+';
   }
 }
 
@@ -107,30 +107,30 @@ llvm::Expected<std::string> ISA::getLLVMTarget() const {
 llvm::Expected<std::string> ISA::getLLVMTargetTriple() const {
   auto IsaNameOrError = getName();
   LUTHIER_RETURN_ON_ERROR(IsaNameOrError.takeError());
-  llvm::SmallVector<llvm::StringRef> isaNameComponents;
-  parseIsaName(*IsaNameOrError, isaNameComponents);
-  return (llvm::Twine(isaNameComponents[0]) + "-" +
-          llvm::Twine(isaNameComponents[1]) + "-" +
-          llvm::Twine(isaNameComponents[2]) + "-" +
-          llvm::Twine(isaNameComponents[3]))
+  llvm::SmallVector<llvm::StringRef> IsaNameComponents;
+  parseIsaName(*IsaNameOrError, IsaNameComponents);
+  return (llvm::Twine(IsaNameComponents[0]) + "-" +
+          llvm::Twine(IsaNameComponents[1]) + "-" +
+          llvm::Twine(IsaNameComponents[2]) + "-" +
+          llvm::Twine(IsaNameComponents[3]))
       .str();
 }
 
 llvm::Expected<std::string> ISA::getFeatureString() const {
   auto IsaNameOrError = getName();
   LUTHIER_RETURN_ON_ERROR(IsaNameOrError.takeError());
-  llvm::SmallVector<llvm::StringRef> features;
+  llvm::SmallVector<llvm::StringRef> Features;
   llvm::StringRef(*IsaNameOrError)
       .substr(IsaNameOrError->find_first_of(':'))
-      .split(features, ":");
+      .split(Features, ":");
   // The +/- must be before the feature code for LLVM, not after
-  std::vector<std::string> featuresOut;
-  for (auto &feat : features) {
-    auto featureToggle = feat.substr(feat.size() - 1);
-    auto featureName = feat.substr(0, feat.size() - 1);
-    featuresOut.push_back((featureToggle + featureName).str());
+  std::vector<std::string> FeaturesOut;
+  for (auto &Feat : Features) {
+    auto FeatureToggle = Feat.substr(Feat.size() - 1);
+    auto FeatureName = Feat.substr(0, Feat.size() - 1);
+    FeaturesOut.push_back((FeatureToggle + FeatureName).str());
   }
-  return llvm::join(featuresOut, ",");
+  return llvm::join(FeaturesOut, ",");
 }
 
 } // namespace luthier::hsa

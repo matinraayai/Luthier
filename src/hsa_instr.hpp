@@ -25,17 +25,17 @@ private:
 public:
   Instr() = delete;
 
-  static luthier_instruction_t toHandle(Instr *instr) {
-    return {reinterpret_cast<decltype(luthier_instruction_t::handle)>(instr)};
+  static luthier_instruction_t toHandle(Instr *Instr) {
+    return {reinterpret_cast<decltype(luthier_instruction_t::handle)>(Instr)};
   }
 
-  static luthier_instruction_t toHandle(const Instr *instr) {
+  static luthier_instruction_t toHandle(const Instr *Instr) {
     return {
-        reinterpret_cast<const decltype(luthier_instruction_t::handle)>(instr)};
+        reinterpret_cast<const decltype(luthier_instruction_t::handle)>(Instr)};
   }
 
-  static Instr *fromHandle(luthier_instruction_t instr) {
-    return reinterpret_cast<Instr *>(instr.handle);
+  static Instr *fromHandle(luthier_instruction_t Instr) {
+    return reinterpret_cast<hsa::Instr *>(Instr.handle);
   }
 
   [[nodiscard]] hsa::GpuAgent getAgent() const;

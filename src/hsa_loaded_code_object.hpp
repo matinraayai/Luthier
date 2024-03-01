@@ -10,7 +10,7 @@ class GpuAgent;
 
 class LoadedCodeObject : public HandleType<hsa_loaded_code_object_t> {
 public:
-  explicit LoadedCodeObject(hsa_loaded_code_object_t lco);
+  explicit LoadedCodeObject(hsa_loaded_code_object_t LCO);
 
   [[nodiscard]] llvm::Expected<Executable> getExecutable() const;
 
@@ -32,5 +32,83 @@ public:
 };
 
 } // namespace luthier::hsa
+
+namespace std {
+
+template <> struct hash<luthier::hsa::LoadedCodeObject> {
+  size_t operator()(const luthier::hsa::LoadedCodeObject &obj) const {
+    return hash<unsigned long>()(obj.hsaHandle());
+  }
+};
+
+template <> struct less<luthier::hsa::LoadedCodeObject> {
+  bool operator()(const luthier::hsa::LoadedCodeObject &lhs,
+                  const luthier::hsa::LoadedCodeObject &rhs) const {
+    return lhs.hsaHandle() < rhs.hsaHandle();
+  }
+};
+
+template <> struct less_equal<luthier::hsa::LoadedCodeObject> {
+  bool operator()(const luthier::hsa::LoadedCodeObject &lhs,
+                  const luthier::hsa::LoadedCodeObject &rhs) const {
+    return lhs.hsaHandle() <= rhs.hsaHandle();
+  }
+};
+
+template <> struct equal_to<luthier::hsa::LoadedCodeObject> {
+  bool operator()(const luthier::hsa::LoadedCodeObject &Lhs,
+                  const luthier::hsa::LoadedCodeObject &Rhs) const {
+    return Lhs.hsaHandle() == Rhs.hsaHandle();
+  }
+};
+
+template <> struct not_equal_to<luthier::hsa::LoadedCodeObject> {
+  bool operator()(const luthier::hsa::LoadedCodeObject &lhs,
+                  const luthier::hsa::LoadedCodeObject &rhs) const {
+    return lhs.hsaHandle() != rhs.hsaHandle();
+  }
+};
+
+template <> struct greater<luthier::hsa::LoadedCodeObject> {
+  bool operator()(const luthier::hsa::LoadedCodeObject &lhs,
+                  const luthier::hsa::LoadedCodeObject &rhs) const {
+    return lhs.hsaHandle() > rhs.hsaHandle();
+  }
+};
+
+template <> struct greater_equal<luthier::hsa::LoadedCodeObject> {
+  bool operator()(const luthier::hsa::LoadedCodeObject &lhs,
+                  const luthier::hsa::LoadedCodeObject &rhs) const {
+    return lhs.hsaHandle() >= rhs.hsaHandle();
+  }
+};
+
+} // namespace std
+
+namespace llvm {
+
+template <> struct DenseMapInfo<luthier::hsa::LoadedCodeObject> {
+  static inline luthier::hsa::LoadedCodeObject getEmptyKey() {
+    return luthier::hsa::LoadedCodeObject({DenseMapInfo<
+        decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()});
+  }
+
+  static inline luthier::hsa::LoadedCodeObject getTombstoneKey() {
+    return luthier::hsa::LoadedCodeObject({DenseMapInfo<
+        decltype(hsa_loaded_code_object_t::handle)>::getTombstoneKey()});
+  }
+
+  static unsigned getHashValue(const luthier::hsa::LoadedCodeObject &ISA) {
+    return DenseMapInfo<decltype(hsa_loaded_code_object_t::handle)>::
+        getHashValue(ISA.hsaHandle());
+  }
+
+  static bool isEqual(const luthier::hsa::LoadedCodeObject &lhs,
+                      const luthier::hsa::LoadedCodeObject &rhs) {
+    return lhs.hsaHandle() == rhs.hsaHandle();
+  }
+};
+
+} // namespace llvm
 
 #endif
