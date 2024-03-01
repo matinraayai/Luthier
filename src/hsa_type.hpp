@@ -5,29 +5,34 @@
 namespace luthier::hsa {
 template <typename HT> class Type {
 private:
-  const HT HsaType;
-  const HsaApiTableContainer &HsaApiTable; //< This is saved to reduce the
-                                           // number of calls to the HSA
-                                           // interceptor
-  const hsa_ven_amd_loader_1_03_pfn_t &HsaLoaderTable;
+  HT HsaType; //< Should be trivially copyable
 
 protected:
-  explicit Type(HT hsaType)
-      : HsaApiTable(HsaInterceptor::instance().getSavedHsaTables()),
-        HsaLoaderTable(HsaInterceptor::instance().getHsaVenAmdLoaderTable()),
-        HsaType(hsaType){};
+  explicit Type(HT HsaType) : HsaType(HsaType){};
 
   [[nodiscard]] inline const HsaApiTableContainer &getApiTable() const {
-    return HsaApiTable;
+    return HsaInterceptor::instance().getSavedHsaTables();
   }
 
   [[nodiscard]] inline const hsa_ven_amd_loader_1_03_pfn_t &
   getLoaderTable() const {
-    return HsaLoaderTable;
+    return HsaInterceptor::instance().getHsaVenAmdLoaderTable();
   }
 
 public:
   HT asHsaType() const { return HsaType; }
+
+  Type(const Type &Type) : HsaType(Type.asHsaType()){};
+
+  Type &operator=(const Type &Other) {
+    this->HsaType = Other.HsaType;
+    return *this;
+  }
+
+  Type &operator=(Type &&Other) noexcept {
+    this->HsaType = Other.HsaType;
+    return *this;
+  }
 };
 
 } // namespace luthier::hsa
