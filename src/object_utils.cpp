@@ -596,7 +596,7 @@ inline uint32_t hashGnu(const char *symbolName) {
 // This computes the hash index given the symbol name (MATH STUFF)
 // hashSysV, hashGnu() -> AT THE END OF THE LLVM file (in the ELF.h)
 template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T *elf, const char *symbolName) {
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const ELFObjectFile<T> *elf, const char *symbolName) {
     // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
     for (const ELFSectionRef &section: elf->sections()) { // changed this to ELFSectionRef to acces section.getType()
         Expected<section_iterator> secOrErr = section.getRelocatedSection();
@@ -612,7 +612,7 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T 
                 else if(section.getType() == ELF::SHT_GNU_HASH || section.getType() != ELF::DT_GNU_HASH) {
                     hashIndex = hashGnu(symbolName);
                 }
-                else{
+                else {
                     // Try symbol look up
                 }
 
@@ -630,9 +630,9 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const T 
 }
 
 template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(const T *elfObj, const char *symbolName) {
-  // DO A HASH LOOKUP HERE! IF FAILS, WE DO THE ITERATION
-  // if hash_lookup() works ->
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(const ELFObjectFile<T> *elfObj, const char *symbolName) {
+    // DO A HASH LOOKUP HERE! IF FAILS, WE DO THE ITERATION
+    // if hash_lookup() works ->
 
     // IF THE HASH_LOOKUP FAILS: (symbol iteration)
     for (const llvm::object::ELFSymbolRef &elfSymbol: elfObj->symbols()) {
@@ -658,12 +658,12 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(cons
  */
 llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> getSymbolByName(const llvm::object::ELFObjectFileBase *elf,
                                                                             const char *symbolName) {
-  // Attempt to cast to each ELF type and find the symbol
-  if (const auto *ELF32LE = dyn_cast<ELF32LEObjectFile>(elf)) { return findSymbolInELF(ELF32LE, symbolName); }
-  if (const auto *ELF64LE = dyn_cast<ELF64LEObjectFile>(elf)) { return findSymbolInELF(ELF64LE, symbolName); }
-  if (const auto *ELF32BE = dyn_cast<ELF32BEObjectFile>(elf)) { return findSymbolInELF(ELF32BE, symbolName); }
-  const auto *ELF64BE = dyn_cast<ELF64BEObjectFile>(elf);
-  return findSymbolInELF(ELF64BE, symbolName);
+    // Attempt to cast to each ELF type and find the symbol
+    if (const auto *ELF32LE = dyn_cast<ELFObjectFile<ELF32LE>>(elf)) { return findSymbolInELF(ELF32LE, symbolName); }
+    if (const auto *ELF64LE = dyn_cast<ELFObjectFile<ELF64LE>>(elf)) { return findSymbolInELF(ELF64LE, symbolName); }
+    if (const auto *ELF32BE = dyn_cast<ELFObjectFile<ELF32BE>>(elf)) { return findSymbolInELF(ELF32BE, symbolName); }
+    const auto *ELF64BE = dyn_cast<ELFObjectFile<ELF64BE>>(elf);
+    return findSymbolInELF(ELF64BE, symbolName);
 };
 
 } // namespace luthier
