@@ -596,7 +596,7 @@ inline uint32_t hashGnu(const char *symbolName) {
 // This computes the hash index given the symbol name (MATH STUFF)
 // hashSysV, hashGnu() -> AT THE END OF THE LLVM file (in the ELF.h)
 template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const ELFObjectFile<T> *elf, const char *symbolName) {
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const llvm::object::ELFObjectFile<T> *elf, const char *symbolName) {
     // iterate over the sections, and look for the hash section (SHT_HASH, SHT_GNU_HASH, DT_GNU_HASH)
     for (const ELFSectionRef &section: elf->sections()) { // changed this to ELFSectionRef to acces section.getType()
         Expected<section_iterator> secOrErr = section.getRelocatedSection();
@@ -608,12 +608,17 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const EL
                 //if(getELFSectionTypeName(elf,elf)){
                 if(section.getType() != ELF::SHT_HASH) { // https://github.com/llvm/llvm-project/blob/main/openmp/libomptarget/plugins-nextgen/common/src/Utils/ELF.cpp#L208
                     hashIndex = hashSysV(symbolName);
+                    const typename T::Hash *HashTab = reinterpret_cast<const typename T::Hash *>(elf->getELFFile().base() + section.getOffset();
                 }
                 else if(section.getType() == ELF::SHT_GNU_HASH || section.getType() != ELF::DT_GNU_HASH) {
                     hashIndex = hashGnu(symbolName);
+                    const typename T::GnuHash *HashTab = reinterpret_cast<const typename T::GnuHash *>(elf->getELFFile().base() + section.getOffset());
+
+                    
                 }
                 else {
                     // Try symbol look up
+
                 }
 
                 // CHECK TYPE OF HASH getElfSectionTypeName() TO SEE:
@@ -630,7 +635,7 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> hash_lookup(const EL
 }
 
 template<typename T>
-llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(const ELFObjectFile<T> *elfObj, const char *symbolName) {
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(const llvm::object::ELFObjectFile<T> *elfObj, const char *symbolName) {
     // DO A HASH LOOKUP HERE! IF FAILS, WE DO THE ITERATION
     // if hash_lookup() works ->
 
@@ -659,11 +664,11 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(cons
 llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> getSymbolByName(const llvm::object::ELFObjectFileBase *elf,
                                                                             const char *symbolName) {
     // Attempt to cast to each ELF type and find the symbol
-    if (const auto *ELF32LE = dyn_cast<ELFObjectFile<ELF32LE>>(elf)) { return findSymbolInELF(ELF32LE, symbolName); }
-    if (const auto *ELF64LE = dyn_cast<ELFObjectFile<ELF64LE>>(elf)) { return findSymbolInELF(ELF64LE, symbolName); }
-    if (const auto *ELF32BE = dyn_cast<ELFObjectFile<ELF32BE>>(elf)) { return findSymbolInELF(ELF32BE, symbolName); }
-    const auto *ELF64BE = dyn_cast<ELFObjectFile<ELF64BE>>(elf);
-    return findSymbolInELF(ELF64BE, symbolName);
+    if (const auto *ELF32LEObject = dyn_cast<ELFObjectFile<ELF32LE>>(elf)) { return findSymbolInELF(ELF32LEObject, symbolName); }
+    if (const auto *ELF64LEObject = dyn_cast<ELFObjectFile<ELF64LE>>(elf)) { return findSymbolInELF(ELF64LEObject, symbolName); }
+    if (const auto *ELF32BEObject = dyn_cast<ELFObjectFile<ELF32BE>>(elf)) { return findSymbolInELF(ELF32BEObject, symbolName); }
+    const auto *ELF64BEObject = dyn_cast<ELFObjectFile<ELF64BE>>(elf);
+    return findSymbolInELF(ELF64BEObject, symbolName);
 };
 
 } // namespace luthier
