@@ -1,6 +1,7 @@
 #include "luthier.h"
 
 #include <llvm/ADT/StringRef.h>
+#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 
 #include <optional>
@@ -52,14 +53,14 @@ void hsaApiUserCallback(hsa_api_evt_args_t *cbData,
 void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount,
                                  uint64_t userPktIndex, void *data,
                                  hsa_amd_queue_intercept_packet_writer writer) {
-  auto &hsaInterceptor = luthier::HsaInterceptor::instance();
-  auto &hsaUserCallback = hsaInterceptor.getUserCallback();
-  auto &hsaInternalCallback = hsaInterceptor.getInternalCallback();
+  auto &HsaInterceptor = luthier::HsaInterceptor::instance();
+  auto &hsaUserCallback = HsaInterceptor.getUserCallback();
+  auto &hsaInternalCallback = HsaInterceptor.getInternalCallback();
   auto apiId = HSA_EVT_ID_hsa_queue_packet_submit;
   hsa_api_evt_args_t args;
-  bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
+  bool isUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(apiId);
   bool isInternalCallbackEnabled =
-      hsaInterceptor.isInternalCallbackEnabled(apiId);
+      HsaInterceptor.isInternalCallbackEnabled(apiId);
   if (isUserCallbackEnabled || isInternalCallbackEnabled) {
     // Copy the packets to a non-const buffer
     std::vector<luthier_hsa_aql_packet_t> modifiedPackets(
@@ -107,12 +108,12 @@ void hsaApiInternalCallback(hsa_api_evt_args_t *cbData,
 
 __attribute__((constructor)) void init() {
   LUTHIER_LOG_FUNCTION_CALL_START
-  auto &hipInterceptor = HipInterceptor::instance();
-  LUTHIER_CHECK_WITH_MSG(hipInterceptor.isEnabled(),
+  auto &HipInterceptor = HipInterceptor::instance();
+  LUTHIER_CHECK_WITH_MSG(HipInterceptor.isEnabled(),
                          "HIP Interceptor failed to initialize");
-  hipInterceptor.setInternalCallback(luthier::impl::hipApiInternalCallback);
-  hipInterceptor.setUserCallback(luthier::impl::hipApiUserCallback);
-  hipInterceptor.enableInternalCallback(
+  HipInterceptor.setInternalCallback(luthier::impl::hipApiInternalCallback);
+  HipInterceptor.setUserCallback(luthier::impl::hipApiUserCallback);
+  HipInterceptor.enableInternalCallback(
       HIP_PRIVATE_API_ID___hipRegisterFunction);
   LUTHIER_LOG_FUNCTION_CALL_END
 }

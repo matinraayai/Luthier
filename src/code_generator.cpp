@@ -126,11 +126,11 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
                                                const void *deviceFunc,
                                                luthier_ipoint_t point) {
   LUTHIER_LOG_FUNCTION_CALL_START
-  auto agent = instr.getAgent();
-  auto &codeObjectManager = luthier::CodeObjectManager::instance();
+  auto Agent = instr.getAgent();
+  auto &CodeObjectManager = luthier::CodeObjectManager::instance();
   auto &contextManager = luthier::TargetManager::instance();
 
-  auto Isa = agent.getIsa();
+  auto Isa = Agent.getIsa();
   LUTHIER_RETURN_ON_ERROR(Isa.takeError());
 
   auto targetInfo = contextManager.getTargetInfo(*Isa);
@@ -182,7 +182,7 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
   llvm::raw_svector_ostream OutOS(reloc);
 
   // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-  if (TM->addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::ObjectFile,
+  if (TM->addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::AssemblyFile,
                         MCContext))
     llvm::outs() << "Failed to add pass manager\n";
   //            return make_error<llvm::Failure>("Cannot add AsmPrinter
@@ -196,8 +196,9 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
       llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(reloc.data()),
                               reloc.size()),
       *Isa, executable));
+  llvm::outs() << "Compiled to executable\n";
 
-  LUTHIER_RETURN_ON_ERROR(codeObjectManager.loadInstrumentedKernel(
+  LUTHIER_RETURN_ON_ERROR(CodeObjectManager.loadInstrumentedKernel(
       executable, instr.getExecutableSymbol()));
 
   //  llvm::Expected<const std::vector<hsa::Instr> *> InstFunction =
@@ -259,7 +260,7 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
   //        osBack.size()});
 
   llvm::Expected<hsa::ExecutableSymbol> instrumentationFunc =
-      codeObjectManager.getInstrumentationFunction(deviceFunc, agent);
+      CodeObjectManager.getInstrumentationFunction(deviceFunc, Agent);
   LUTHIER_RETURN_ON_ERROR(instrumentationFunc.takeError());
 
   auto instFunctionInstructions =

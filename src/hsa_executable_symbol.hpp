@@ -91,30 +91,6 @@ public:
 
 } // namespace luthier::hsa
 
-namespace std {
-
-template <> struct hash<luthier::hsa::ExecutableSymbol> {
-  size_t operator()(const luthier::hsa::ExecutableSymbol &obj) const {
-    return hash<unsigned long>()(obj.hsaHandle());
-  }
-};
-
-template <> struct less<luthier::hsa::ExecutableSymbol> {
-  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
-                  const luthier::hsa::ExecutableSymbol &rhs) const {
-    return lhs.hsaHandle() < rhs.hsaHandle();
-  }
-};
-
-template <> struct equal_to<luthier::hsa::ExecutableSymbol> {
-  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
-                  const luthier::hsa::ExecutableSymbol &rhs) const {
-    return lhs.hsaHandle() == rhs.hsaHandle();
-  }
-};
-
-} // namespace std
-
 namespace llvm {
 
 template <> struct DenseMapInfo<luthier::hsa::ExecutableSymbol> {
@@ -146,5 +122,29 @@ template <> struct DenseMapInfo<luthier::hsa::ExecutableSymbol> {
 };
 
 } // namespace llvm
+
+namespace std {
+
+template <> struct hash<luthier::hsa::ExecutableSymbol> {
+  size_t operator()(const luthier::hsa::ExecutableSymbol &obj) const {
+    return hash<unsigned long>()(obj.hsaHandle());
+  }
+};
+
+template <> struct less<luthier::hsa::ExecutableSymbol> {
+  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
+                  const luthier::hsa::ExecutableSymbol &rhs) const {
+    return lhs.hsaHandle() < rhs.hsaHandle();
+  }
+};
+
+template <> struct equal_to<luthier::hsa::ExecutableSymbol> {
+  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
+                  const luthier::hsa::ExecutableSymbol &rhs) const {
+    return lhs.hsaHandle() == rhs.hsaHandle();
+  }
+};
+
+} // namespace std
 
 #endif

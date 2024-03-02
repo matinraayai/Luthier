@@ -1,5 +1,6 @@
 #ifndef CODE_LIFTER_HPP
 #define CODE_LIFTER_HPP
+#include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Module.h>
 #include <llvm/MC/MCContext.h>
@@ -12,6 +13,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "hsa_agent.hpp"
+#include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_instr.hpp"
 #include "hsa_isa.hpp"
@@ -41,16 +44,12 @@ private:
   struct DisassemblyInfo {
     std::unique_ptr<llvm::MCContext> Context;
     std::unique_ptr<llvm::MCDisassembler> DisAsm;
-    llvm::MCSymbolizer *Symbolizer;
-    llvm::SectionSymbolsTy Symbols;
 
-    DisassemblyInfo() = delete;
+    DisassemblyInfo() : Context(nullptr), DisAsm(nullptr){};
 
     DisassemblyInfo(std::unique_ptr<llvm::MCContext> Context,
-                    std::unique_ptr<llvm::MCDisassembler> DisAsm,
-                    llvm::MCSymbolizer *Symbolizer)
-        : Context(std::move(Context)), DisAsm(std::move(DisAsm)),
-          Symbolizer(Symbolizer){};
+                    std::unique_ptr<llvm::MCDisassembler> DisAsm)
+        : Context(std::move(Context)), DisAsm(std::move(DisAsm)){};
   };
 
   /**
@@ -69,26 +68,52 @@ private:
 
   ~CodeLifter();
 
-  llvm::Expected<DisassemblyInfo &>
-  getDisassemblyInfo(const hsa::ISA &Isa);
+  llvm::Expected<DisassemblyInfo &> getDisassemblyInfo(const hsa::ISA &ISA);
 
   /**
-   * Cached Disassembly Info for each \p hsa::Isa
+   * Cached Disassembly Info for each \p hsa::ISA
    */
-  std::unordered_map<hsa::ISA, DisassemblyInfo> DisassemblyInfoMap;
+  llvm::DenseMap<hsa::ISA, DisassemblyInfo> DisassemblyInfoMap;
 
   /**
-   * Cache of \p hsa::ExecutableSymbol 's already disassembled by \p CodeLifter
-   * The vectors have to be allocated as a smart pointer to stop it from calling
-   * its destructor prematurely
-   * The disassembler is in charge of clearing the map
+   * Holds info regarding addresses on the device belonging to instructions;
+   * Contains all branch targets and branch instructions
    */
-  std::unordered_map<hsa::ExecutableSymbol,
-                     std::unique_ptr<std::vector<hsa::Instr>>>
+  llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
+                 llvm::DenseMap<luthier_address_t, llvm::SymbolInfoTy>>
+      LabelAddressInfoMap;
+  //TODO: Invalidate this cache once an Executable is destroyed
+
+  std::optional<llvm::SymbolInfoTy>
+  resolveAddressToLabel(const hsa::Executable &Executable,
+                        const hsa::GpuAgent &Agent, luthier_address_t Address);
+
+  llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
+                 llvm::DenseMap<luthier_address_t, hsa::ExecutableSymbol>>
+      ExecutableSymbolAddressInfoMap;
+
+  llvm::Expected<std::optional<hsa::ExecutableSymbol>>
+  resolveAddressToExecutableSymbol(const hsa::Executable &Executable,
+                                   const hsa::GpuAgent &Agent,
+                                   luthier_address_t Address);
+
+  llvm::SymbolInfoTy
+  getOrCreateNewAddressLabel(const hsa::Executable &Executable,
+                             const hsa::GpuAgent &Agent,
+                             luthier_address_t Address);
+
+  /**
+   * Cache of \p hsa::ExecutableSymbol 's already disassembled by \p
+   * CodeLifter The vectors have to be allocated as a smart pointer to stop
+   * it from calling its destructor prematurely The disassembler is in
+   * charge of clearing the map
+   */
+  llvm::DenseMap<hsa::ExecutableSymbol,
+                 std::unique_ptr<std::vector<hsa::Instr>>>
       DisassembledSymbolsRaw;
 
-  std::unordered_map<hsa::ExecutableSymbol,
-                     std::unique_ptr<std::vector<hsa::Instr>>>
+  llvm::DenseMap<hsa::ExecutableSymbol,
+                 std::unique_ptr<std::vector<hsa::Instr>>>
       DisassembledSymbolsSymbolized;
 
   /**
@@ -149,7 +174,7 @@ public:
    * \return on success, returns a \p std::vector of \p llvm::MCInst
    */
   llvm::Expected<std::vector<llvm::MCInst>>
-  disassemble(const hsa::ISA &Isa, llvm::ArrayRef<uint8_t> code);
+  disassemble(const hsa::ISA &Isa, llvm::ArrayRef<uint8_t> Code);
 
   llvm::Expected<
       std::tuple<std::unique_ptr<llvm::Module>,

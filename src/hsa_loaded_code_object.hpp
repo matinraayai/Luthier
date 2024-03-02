@@ -33,6 +33,33 @@ public:
 
 } // namespace luthier::hsa
 
+
+namespace llvm {
+
+template <> struct DenseMapInfo<luthier::hsa::LoadedCodeObject> {
+  static inline luthier::hsa::LoadedCodeObject getEmptyKey() {
+    return luthier::hsa::LoadedCodeObject({DenseMapInfo<
+        decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()});
+  }
+
+  static inline luthier::hsa::LoadedCodeObject getTombstoneKey() {
+    return luthier::hsa::LoadedCodeObject({DenseMapInfo<
+        decltype(hsa_loaded_code_object_t::handle)>::getTombstoneKey()});
+  }
+
+  static unsigned getHashValue(const luthier::hsa::LoadedCodeObject &ISA) {
+    return DenseMapInfo<decltype(hsa_loaded_code_object_t::handle)>::
+        getHashValue(ISA.hsaHandle());
+  }
+
+  static bool isEqual(const luthier::hsa::LoadedCodeObject &lhs,
+                      const luthier::hsa::LoadedCodeObject &rhs) {
+    return lhs.hsaHandle() == rhs.hsaHandle();
+  }
+};
+
+} // namespace llvm
+
 namespace std {
 
 template <> struct hash<luthier::hsa::LoadedCodeObject> {
@@ -85,30 +112,6 @@ template <> struct greater_equal<luthier::hsa::LoadedCodeObject> {
 
 } // namespace std
 
-namespace llvm {
 
-template <> struct DenseMapInfo<luthier::hsa::LoadedCodeObject> {
-  static inline luthier::hsa::LoadedCodeObject getEmptyKey() {
-    return luthier::hsa::LoadedCodeObject({DenseMapInfo<
-        decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()});
-  }
-
-  static inline luthier::hsa::LoadedCodeObject getTombstoneKey() {
-    return luthier::hsa::LoadedCodeObject({DenseMapInfo<
-        decltype(hsa_loaded_code_object_t::handle)>::getTombstoneKey()});
-  }
-
-  static unsigned getHashValue(const luthier::hsa::LoadedCodeObject &ISA) {
-    return DenseMapInfo<decltype(hsa_loaded_code_object_t::handle)>::
-        getHashValue(ISA.hsaHandle());
-  }
-
-  static bool isEqual(const luthier::hsa::LoadedCodeObject &lhs,
-                      const luthier::hsa::LoadedCodeObject &rhs) {
-    return lhs.hsaHandle() == rhs.hsaHandle();
-  }
-};
-
-} // namespace llvm
 
 #endif

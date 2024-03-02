@@ -22,26 +22,28 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
+#include <llvm/MC/MCFixupKindInfo.h>
+#include <SIInstrInfo.h>
 
 #include <memory>
 
 #include "error.hpp"
+#include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_isa.hpp"
-#include "hsa.hpp"
 #include "hsa_loaded_code_object.hpp"
 #include "target_manager.hpp"
 
 namespace luthier {
 
 llvm::Expected<CodeLifter::DisassemblyInfo &>
-luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &Isa) {
-  if (!DisassemblyInfoMap.contains(Isa)) {
-    auto TargetInfo = TargetManager::instance().getTargetInfo(Isa);
+luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &ISA) {
+  if (!DisassemblyInfoMap.contains(ISA)) {
+    auto TargetInfo = TargetManager::instance().getTargetInfo(ISA);
     LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
-    auto TT = Isa.getLLVMTargetTriple();
+    auto TT = ISA.getLLVMTargetTriple();
     LUTHIER_RETURN_ON_ERROR(TT.takeError());
 
     auto Target = TargetInfo->getTarget();
@@ -60,22 +62,79 @@ luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &Isa) {
         Target->createMCRelocationInfo(*TT, *CTX));
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(RelInfo != nullptr));
 
-    auto [It, _] = DisassemblyInfoMap.insert(
-        {Isa, DisassemblyInfo{
-                  std::move(CTX), std::move(DisAsm), {}}});
-
-    std::unique_ptr<llvm::MCSymbolizer> Symbolizer(Target->createMCSymbolizer(
-        *TT, nullptr, nullptr, &It->second.Symbols, &(*(It->second.Context)),
-        std::move(RelInfo)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Symbolizer != nullptr));
-    It->second.Symbolizer = Symbolizer.get();
-    It->second.DisAsm->setSymbolizer(std::move(Symbolizer));
+    DisassemblyInfoMap.insert(
+        {ISA, DisassemblyInfo{std::move(CTX), std::move(DisAsm)}});
   }
-  return DisassemblyInfoMap.at(Isa);
+  return DisassemblyInfoMap[ISA];
+}
+
+std::optional<llvm::SymbolInfoTy>
+CodeLifter::resolveAddressToLabel(const hsa::Executable &Executable,
+                                  const hsa::GpuAgent &Agent,
+                                  luthier_address_t Address) {
+  if (!LabelAddressInfoMap.contains({Executable, Agent})) {
+    return std::nullopt;
+  }
+  auto &AddressInfo = LabelAddressInfoMap[{Executable, Agent}];
+  if (!AddressInfo.contains(Address))
+    return std::nullopt;
+  return AddressInfo.at(Address);
+}
+
+llvm::Expected<std::optional<hsa::ExecutableSymbol>>
+luthier::CodeLifter::resolveAddressToExecutableSymbol(
+    const hsa::Executable &Executable, const hsa::GpuAgent &Agent,
+    luthier_address_t Address) {
+  if (!ExecutableSymbolAddressInfoMap.contains({Executable, Agent})) {
+    auto [It, _] = ExecutableSymbolAddressInfoMap.insert(
+        {{Executable, Agent},
+         llvm::DenseMap<luthier_address_t, hsa::ExecutableSymbol>{}});
+    auto Symbols = Executable.getSymbols(Agent);
+    LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
+    for (const auto &S : *Symbols) {
+      auto SType = S.getType();
+      LUTHIER_RETURN_ON_ERROR(SType.takeError());
+      luthier_address_t SAddress;
+      if (*SType == HSA_SYMBOL_KIND_VARIABLE) {
+        auto VarAddress = S.getVariableAddress();
+        LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
+        It->getSecond().insert({*VarAddress, S});
+      } else {
+        auto Code = S.getMachineCode();
+        LUTHIER_RETURN_ON_ERROR(Code.takeError());
+        It->getSecond().insert(
+            {reinterpret_cast<luthier_address_t>(Code->data()), S});
+      }
+    }
+  }
+  auto &SymbolAddressInfo = ExecutableSymbolAddressInfoMap[{Executable, Agent}];
+  if (SymbolAddressInfo.contains(Address))
+    return SymbolAddressInfo.at(Address);
+  return std::nullopt;
+}
+
+llvm::SymbolInfoTy luthier::CodeLifter::getOrCreateNewAddressLabel(
+    const hsa::Executable &Executable, const hsa::GpuAgent &Agent,
+    luthier_address_t Address) {
+  if (!LabelAddressInfoMap.contains({Executable, Agent})) {
+    LabelAddressInfoMap.insert(
+        {{Executable, Agent},
+         llvm::DenseMap<luthier_address_t, llvm::SymbolInfoTy>{}});
+  }
+  auto &LabelAddressInfo = LabelAddressInfoMap[{Executable, Agent}];
+  if (LabelAddressInfo.contains(Address))
+    return LabelAddressInfo.at(Address);
+  else {
+    auto [It, _] = LabelAddressInfo.insert(
+        {Address,
+         {Address, llvm::formatv("L{0}", LabelAddressInfo.size()).str(),
+          llvm::ELF::STT_NOTYPE}});
+    return It->getSecond();
+  };
 }
 
 llvm::Expected<std::vector<llvm::MCInst>>
-CodeLifter::disassemble(const hsa::ISA &Isa, llvm::ArrayRef<uint8_t> code) {
+CodeLifter::disassemble(const hsa::ISA &Isa, llvm::ArrayRef<uint8_t> Code) {
   auto DisassemblyInfo = getDisassemblyInfo(Isa);
 
   LUTHIER_RETURN_ON_ERROR(DisassemblyInfo.takeError());
@@ -83,34 +142,34 @@ CodeLifter::disassemble(const hsa::ISA &Isa, llvm::ArrayRef<uint8_t> code) {
   LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
   const auto &DisAsm = DisassemblyInfo->DisAsm;
 
-  size_t maxReadSize = TargetInfo->getMCAsmInfo()->getMaxInstLength();
-  size_t idx = 0;
-  auto currentAddress = reinterpret_cast<luthier_address_t>(code.data());
-  std::vector<llvm::MCInst> instructions;
+  size_t MaxReadSize = TargetInfo->getMCAsmInfo()->getMaxInstLength();
+  size_t Idx = 0;
+  luthier_address_t CurrentAddress = 0;
+  std::vector<llvm::MCInst> Instructions;
 
-  while (idx < code.size()) {
-    size_t readSize =
-        (idx + maxReadSize) < code.size() ? maxReadSize : code.size() - idx;
-    size_t instSize{};
-    llvm::MCInst inst;
-    auto readBytes =
-        arrayRefFromStringRef(toStringRef(code).substr(idx, readSize));
-    if (DisAsm->getInstruction(inst, instSize, readBytes, currentAddress,
+  while (Idx < Code.size()) {
+    size_t ReadSize =
+        (Idx + MaxReadSize) < Code.size() ? MaxReadSize : Code.size() - Idx;
+    size_t InstSize{};
+    llvm::MCInst Inst;
+    auto ReadBytes =
+        arrayRefFromStringRef(toStringRef(Code).substr(Idx, ReadSize));
+    if (DisAsm->getInstruction(Inst, InstSize, ReadBytes, CurrentAddress,
                                llvm::nulls()) !=
         llvm::MCDisassembler::Success) {
-
+      // TODO: This needs to be an error
       llvm::report_fatal_error("Failed to disassemble instructions");
     }
-    inst.setLoc(llvm::SMLoc::getFromPointer(
-        reinterpret_cast<const char *>(currentAddress)));
 
-    idx += instSize;
-    currentAddress += instSize;
-    instructions.push_back(inst);
+    Inst.setLoc(llvm::SMLoc::getFromPointer(
+        reinterpret_cast<const char *>(CurrentAddress)));
+
+    Idx += InstSize;
+    CurrentAddress += InstSize;
+    Instructions.push_back(Inst);
   }
-  llvm::outs() << "number of instructions: " << instructions.size() << "\n";
 
-  return instructions;
+  return Instructions;
 }
 
 llvm::Expected<const std::vector<hsa::Instr> *>
@@ -127,7 +186,6 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol,
       if (auto Err = IsaOrError.takeError()) {
         return Err;
       }
-      //      LUTHIER_RETURN_ON_ERROR(IsaOrError.takeError());
       Isa.emplace(*IsaOrError);
     }
 
@@ -144,11 +202,42 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol,
         {Symbol, std::make_unique<std::vector<hsa::Instr>>()});
     auto &Out = DisassembledSymbolsRaw.at(Symbol);
     Out->reserve(InstructionsOrError->size());
-    for (auto &inst : *InstructionsOrError) {
-      auto address =
-          reinterpret_cast<luthier_address_t>(inst.getLoc().getPointer());
-      inst.setLoc({});
-      Out->push_back(hsa::Instr(inst, Symbol, address));
+
+    auto TargetInfo = TargetManager::instance().getTargetInfo(*Isa);
+    LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
+
+    auto MII = TargetInfo->getMCInstrInfo();
+    auto MIA = TargetInfo->getMCInstrAnalysis();
+
+    luthier_address_t PrevInstAddress = 0;
+
+    auto Agent = Symbol.getAgent();
+    auto Executable = Symbol.getExecutable();
+
+    for (auto &Inst : *InstructionsOrError) {
+      auto Address =
+          reinterpret_cast<luthier_address_t>(CodeOrErrorOnDevice->data()) +
+          reinterpret_cast<luthier_address_t>(Inst.getLoc().getPointer());
+      Inst.setLoc({});
+      auto Size = Address - PrevInstAddress;
+      if (MII->get(Inst.getOpcode()).isBranch()) {
+        auto AddressLabelInfo =
+            resolveAddressToLabel(Executable, Agent, Address);
+        if (!AddressLabelInfo.has_value()) {
+          luthier_address_t Target;
+          if (MIA->evaluateBranch(Inst, Address, Size, Target)) {
+            llvm::outs() << llvm::formatv(
+                "Resolved branches: Address: {0:x}, Target: {1:x}\n", Address,
+                Target);
+            getOrCreateNewAddressLabel(Executable, Agent, Address);
+            getOrCreateNewAddressLabel(Executable, Agent, Target);
+          } else {
+            llvm::report_fatal_error("Was not able to resolve the branch!!!");
+          }
+        }
+      }
+      PrevInstAddress = Address;
+      Out->push_back(hsa::Instr(Inst, Symbol, Address, Size));
     }
   }
   return DisassembledSymbolsRaw.at(Symbol).get();
@@ -258,8 +347,9 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   auto KdOnHost = hsa::queryHostAddress(*kd);
   LUTHIER_RETURN_ON_ERROR(KdOnHost.takeError());
 
-  F->addFnAttr("amdgpu-lds-size",
-               llvm::formatv("0, {0}", (*KdOnHost)->groupSegmentFixedSize).str());
+  F->addFnAttr(
+      "amdgpu-lds-size",
+      llvm::formatv("0, {0}", (*KdOnHost)->GroupSegmentFixedSize).str());
   // Private (scratch) segment size is determined by Analysis Usage pass
   // Kern Arg is determined via analysis usage + args set earlier
   if ((*KdOnHost)->getKernelCodePropertiesEnableSgprDispatchId() == 0) {
@@ -278,7 +368,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
   F->addFnAttr("uniform-work-group-size", "true");
 
-  llvm::outs() << "Preloaded Args: " << (*KdOnHost)->kernArgPreload << "\n";
+  llvm::outs() << "Preloaded Args: " << (*KdOnHost)->KernArgPreload << "\n";
 
   auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
 
@@ -294,18 +384,41 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
 
   llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
   MF.push_back(MBB);
-  MBB->setLabelMustBeEmitted();
+//  MBB->setLabelMustBeEmitted();
   llvm::MCContext &MCContext = mmiwp->getMMI().getContext();
 
-  for (unsigned int i = 0; i < (*targetFunctionInstsOrError)->size(); ++i) {
-    auto inst = (*targetFunctionInstsOrError)->at(i);
+  llvm::DenseMap<luthier_address_t, llvm::SmallVector<llvm::MachineInstr *>>
+      UnresolvedMIs;
+  llvm::DenseMap<luthier_address_t, llvm::MachineBasicBlock *> TargetMBBs;
+  auto MIA = TargetInfo->getMCInstrAnalysis();
+  for (const auto &inst : **targetFunctionInstsOrError) {
     auto mcInst = inst.getInstr();
     const unsigned Opcode = mcInst.getOpcode();
 
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
+    bool IsBranch = MCID.isBranch();
+    bool IsBranchTarget =
+        resolveAddressToLabel(Symbol.getExecutable(), Agent, inst.getAddress())
+            .has_value() &&
+        !IsBranch;
+
+    if (IsBranchTarget) {
+      llvm::outs() << llvm::formatv("Address: {0:x}: ", inst.getAddress());
+      auto OldMBB = MBB;
+      MBB = MF.CreateMachineBasicBlock();
+      MF.push_back(MBB);
+//      MBB->setLabelMustBeEmitted();
+      OldMBB->addSuccessor(MBB);
+      TargetMBBs.insert({inst.getAddress(), MBB});
+      mcInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
+                         TargetInfo->getMCRegisterInfo());
+      llvm::outs() << "\n";
+    }
+
     llvm::MachineInstrBuilder Builder =
         llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
     Builder.getInstr();
+
     for (unsigned OpIndex = 0, E = mcInst.getNumOperands(); OpIndex < E;
          ++OpIndex) {
       const llvm::MCOperand &Op = mcInst.getOperand(OpIndex);
@@ -317,13 +430,22 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
           Flags |= llvm::RegState::Define;
         Builder.addReg(Op.getReg(), Flags);
       } else if (Op.isImm()) {
+        //        auto Result = resolveAddressToLabel(
+        //            Symbol.getExecutable(), Symbol.getAgent(),
+        //            inst.getAddress());
+        //        auto *Sym = MCContext.getOrCreateSymbol(Result->Name);
+        //        const auto *Add = llvm::MCSymbolRefExpr::create(Sym,
+        //        MCContext);
+        //        Builder->addOperand(llvm::MachineOperand::CreateES(Add);
 
         //          if (MCID.isBranch()) {
         //
         //            Builder.addSym(MCContext.getOrCreateSymbol(".L123"),
         //                           llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
         //          } else {
-        Builder.addImm(Op.getImm());
+        if (!IsBranch) {
+          Builder.addImm(Op.getImm());
+        }
         //          }
         //                    Op.isExpr()
         //                    Builder.addBlockAddress
@@ -335,17 +457,41 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
         llvm_unreachable("Not yet implemented");
       }
     }
-    if (MCID.isBranch()) {
+    // Basic Block resolving
 
-      mcInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
-                         TargetInfo->getMCRegisterInfo());
+    if (IsBranch) {
       llvm::outs() << llvm::formatv("Address: {0:x}\n", inst.getAddress());
       llvm::outs() << "Found a branch!\n";
+      luthier_address_t BranchTarget;
+      MIA->evaluateBranch(mcInst, inst.getAddress(), inst.getSize(),
+                          BranchTarget);
+      if (!UnresolvedMIs.contains(BranchTarget)) {
+        UnresolvedMIs.insert({BranchTarget, {Builder.getInstr()}});
+      } else {
+        UnresolvedMIs[BranchTarget].push_back(Builder.getInstr());
+      }
+      mcInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
+                         TargetInfo->getMCRegisterInfo());
+      auto OldMBB = MBB;
       MBB = MF.CreateMachineBasicBlock();
       MF.push_back(MBB);
-      MBB->setLabelMustBeEmitted();
+//      MBB->setLabelMustBeEmitted();
+      OldMBB->addSuccessor(MBB);
     }
   }
+
+  llvm::outs() << "Number of unresolved MIs: " << UnresolvedMIs.size() << "\n";
+  for (auto &[TargetAddress, BranchMIs] : UnresolvedMIs) {
+    MBB = TargetMBBs[TargetAddress];
+    for (auto &MI : BranchMIs) {
+      MI->addOperand(llvm::MachineOperand::CreateMBB(
+          MBB));
+      MI->getParent()->addSuccessor(MBB);
+      MI->print(llvm::outs());
+      llvm::outs() << "\n";
+    }
+  }
+
   //        MBB->dump();
 
   llvm::outs() << "Number of blocks : " << MF.getNumBlockIDs() << "\n";
@@ -364,10 +510,13 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
       //
       std::string error;
       llvm::StringRef errorRef(error);
+      //      llvm::outs() << "Number of operands: " << Inst.getNumOperands() <<
+      //      "\n"; Inst.print(llvm::outs()); llvm::outs() << "\n";
       bool isInstCorrect = TII->verifyInstruction(Inst, errorRef);
       //                llvm::outs() << "Is instruction correct: " <<
       //                isInstCorrect << "\n";
       if (!isInstCorrect) {
+        llvm::outs() << errorRef << "\n";
 
         //                    llvm::outs() << "May read Exec : " <<
         //                    TII->mayReadEXEC(MF.getRegInfo(), Inst) << "\n";
@@ -400,9 +549,9 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
                       }*/
       //                llvm::outs() <<
       //                "==============================================================\n";
-      Inst.print(llvm::outs(), true, false, false, true, TII);
+      //      Inst.print(llvm::outs(), true, false, false, true, TII);
     }
-    llvm::outs() << "======================================\n";
+    //    llvm::outs() << "======================================\n";
   }
   llvm::MachineFunctionProperties &Properties = MF.getProperties();
   Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
@@ -411,6 +560,9 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   Properties.reset(llvm::MachineFunctionProperties::Property::TracksLiveness);
 
   MF.getRegInfo().freezeReservedRegs(MF);
+
+  MF.print(llvm::outs());
+  llvm::outs() << "\n";
 
   //        auto elfOrError =
   //        getELFObjectFileBase(symbol.getExecutable().getLoadedCodeObjects()[0].getStorageMemory());

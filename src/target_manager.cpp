@@ -33,19 +33,23 @@ TargetManager::TargetManager() {
   LLVMInitializeAMDGPUAsmParser();
   LLVMInitializeAMDGPUAsmPrinter();
   LLVMInitializeAMDGPUTargetMCA();
+  auto Argv = "";
+  llvm::cl::ParseCommandLineOptions(
+      0, &Argv, "Luthier, An AMD GPU Binary Instrumentation Tool",
+      &llvm::errs(), "LUTHIER_ARGS");
 }
 
 TargetManager::~TargetManager() {
-  for (auto &it : LLVMTargetInfo) {
-    delete it.second.MRI;
-    delete it.second.MAI;
-    delete it.second.MII;
-    delete it.second.MIA;
-    delete it.second.STI;
-    delete it.second.IP;
-    delete it.second.TargetOptions;
-    delete it.second.TargetMachine;
-    delete it.second.LLVMContext;
+  for (auto &It : LLVMTargetInfo) {
+    delete It.second.MRI;
+    delete It.second.MAI;
+    delete It.second.MII;
+    delete It.second.MIA;
+    delete It.second.STI;
+    delete It.second.IP;
+    delete It.second.TargetOptions;
+    delete It.second.TargetMachine;
+    delete It.second.LLVMContext;
   }
   LLVMTargetInfo.clear();
 }
@@ -68,6 +72,8 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MRI));
 
     auto TargetOptions = new llvm::TargetOptions();
+
+    TargetOptions->MCOptions.AsmVerbose = true;
 
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(TargetOptions));
 

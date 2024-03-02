@@ -18,9 +18,10 @@ private:
   const llvm::MCInst Inst;
   const luthier_address_t Address;
   const ExecutableSymbol Symbol;
+  const size_t Size;
 
-  Instr(llvm::MCInst Inst, hsa::ExecutableSymbol Symbol,
-        luthier_address_t Address);
+  Instr(llvm::MCInst Inst, const hsa::ExecutableSymbol& Symbol,
+        luthier_address_t Address, size_t Size);
 
 public:
   Instr() = delete;
@@ -47,6 +48,8 @@ public:
   [[nodiscard]] llvm::MCInst getInstr() const;
 
   [[nodiscard]] luthier_address_t getAddress() const;
+
+  [[nodiscard]] size_t getSize() const;
 };
 } // namespace hsa
 } // namespace luthier
