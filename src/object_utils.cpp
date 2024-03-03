@@ -1178,17 +1178,16 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 
 template <class ELFT>
 static bool processNote(const typename ELFT::Note &note, Document &doc) {
-  auto descString = note.getDescAsStringRef(4);
+  std::string DescString{note.getDescAsStringRef(4)};
   auto root = doc.getRoot();
   bool emitIntegerBooleans = false;
 
-  llvm::outs() << "Desc String: " << descString << "\n";
   if (note.getName() == "AMD" && note.getType() == ELF::NT_AMD_HSA_METADATA) {
     if (!root.isEmpty()) {
       return false;
     }
     emitIntegerBooleans = false;
-    if (!doc.fromYAML(descString)) {
+    if (!doc.fromYAML(DescString)) {
       return false;
     }
     return true;
@@ -1208,19 +1207,14 @@ static bool processNote(const typename ELFT::Note &note, Document &doc) {
     //
     //        Document.clear();
     doc.clear();
-    if (!doc.readFromBlob(std::string(descString), false)) {
+    if (!doc.readFromBlob(DescString, false)) {
       return false;
     }
-    //        doc.writeToBlob(llvm::outs());
-    llvm::outs() << "\n";
 
-    mergeNoteRecords(doc.getRoot(), doc.getRoot(), "amdhsa.version",
-                     "amdhsa.printf", "amdhsa.kernels");
+//    mergeNoteRecords(doc.getRoot(), doc.getRoot(), "amdhsa.version",
+//                     "amdhsa.printf", "amdhsa.kernels");
     doc.toYAML(llvm::outs());
-    //        llvm::outs() << doc.getRoot().toString() << "\n";
     return true;
-    //
-    //        return ;
   }
   return false;
 }
@@ -1229,7 +1223,7 @@ template <class ELFT>
 static Expected<Document>
 getElfNoteMetadataRoot(const ELFObjectFile<ELFT> *obj) {
   bool Found = false;
-  llvm::msgpack::Document doc;
+  llvm::msgpack::Document Doc;
   const ELFFile<ELFT> &ELFFile = obj->getELFFile();
 
   std::optional<Expected<typename ELFT::Phdr>> notePHdrOrError =
@@ -1239,8 +1233,8 @@ getElfNoteMetadataRoot(const ELFObjectFile<ELFT> *obj) {
     auto notePHdr = notePHdrOrError->get();
     llvm::Error err = llvm::Error::success();
     for (const auto &note : ELFFile.notes(notePHdr, err)) {
-      if (processNote<ELFT>(note, doc)) {
-        return doc;
+      if (processNote<ELFT>(note, Doc)) {
+        return Doc;
       }
     }
   };
@@ -1252,13 +1246,13 @@ getElfNoteMetadataRoot(const ELFObjectFile<ELFT> *obj) {
     auto noteSHdr = noteSHdrOrError->get();
     llvm::Error err = llvm::Error::success();
     for (const auto &note : ELFFile.notes(noteSHdr, err)) {
-      if (processNote<ELFT>(note, doc)) {
+      if (processNote<ELFT>(note, Doc)) {
         Found = true;
       }
     }
   };
   if (Found)
-    return doc;
+    return Doc;
 }
 
 Expected<Document> getElfNoteMetadataRoot(const ELFObjectFileBase *elf) {

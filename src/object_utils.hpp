@@ -1,5 +1,5 @@
-#ifndef AMDGPU_ELF_HPP
-#define AMDGPU_ELF_HPP
+#ifndef OBJECT_UTILS_HPP
+#define OBJECT_UTILS_HPP
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/BinaryFormat/ELF.h>
 #include <llvm/BinaryFormat/MsgPackDocument.h>
@@ -20,7 +20,7 @@ namespace luthier {
  * @param mangledName mangled name string
  * @return demangled name as std::string
  */
-std::string getDemangledName(const std::string &mangledName);
+std::string getDemangledName(const std::string &MangledName);
 
 typedef enum {
   LLVMIR = 0,
