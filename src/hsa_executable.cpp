@@ -96,12 +96,11 @@ Executable::getSymbols(const GpuAgent &agent) const {
       LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
       auto LoadedMemory = lco.getLoadedMemory();
       LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
-      auto hostElfOrError = getELFObjectFileBase(*StorageMemory);
+      auto hostElfOrError = getAMDGCNObjectFile(*StorageMemory);
       LUTHIER_RETURN_ON_ERROR(hostElfOrError.takeError());
       auto HostElf = hostElfOrError->get();
 
-      auto Syms = HostElf->symbols();
-      for (llvm::object::ELFSymbolRef ElfSymbol : Syms) {
+      for (llvm::object::ELFSymbolRef ElfSymbol : HostElf->symbols()) {
         auto typeOrError = ElfSymbol.getELFType();
         auto nameOrError = ElfSymbol.getName();
         LUTHIER_RETURN_ON_ERROR(nameOrError.takeError());
@@ -142,7 +141,7 @@ Executable::getSymbolByName(const luthier::hsa::GpuAgent &agent,
       auto loadedMemory = lco.getLoadedMemory();
       LUTHIER_RETURN_ON_ERROR(loadedMemory.takeError());
 
-      auto hostElfOrError = getELFObjectFileBase(*storageMemory);
+      auto hostElfOrError = getAMDGCNObjectFile(*storageMemory);
       LUTHIER_RETURN_ON_ERROR(hostElfOrError.takeError());
 
       auto hostElf = hostElfOrError->get();

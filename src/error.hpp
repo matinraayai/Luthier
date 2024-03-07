@@ -42,7 +42,7 @@
  */
 #define LUTHIER_RETURN_ON_ERROR(Error)                                         \
   do {                                                                         \
-    if (llvm::errorToBool(Error)) {                                            \
+    if (Error) {                                            \
       return (Error);                                                          \
     }                                                                          \
   } while (0)

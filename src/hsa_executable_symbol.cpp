@@ -116,7 +116,7 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
     for (const auto &Lco : *LoadedCodeObjects) {
       auto StorageMemoryOrError = Lco.getStorageMemory();
       LUTHIER_RETURN_ON_ERROR(StorageMemoryOrError.takeError());
-      auto HostElfOrError = getELFObjectFileBase(*StorageMemoryOrError);
+      auto HostElfOrError = getAMDGCNObjectFile(*StorageMemoryOrError);
       LUTHIER_RETURN_ON_ERROR(HostElfOrError.takeError());
 
       auto hostElf = HostElfOrError->get();

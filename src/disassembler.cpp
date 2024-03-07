@@ -1,8 +1,10 @@
 #include "disassembler.hpp"
 
 #include <GCNSubtarget.h>
+#include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
+#include <llvm/BinaryFormat/MsgPackDocument.h>
 #include <llvm/CodeGen/AsmPrinter.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -11,6 +13,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCContext.h>
+#include <llvm/MC/MCFixupKindInfo.h>
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/MCInstrAnalysis.h>
 #include <llvm/MC/MCInstrDesc.h>
@@ -22,8 +25,6 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
-#include <llvm/MC/MCFixupKindInfo.h>
-#include <SIInstrInfo.h>
 
 #include <memory>
 
@@ -307,12 +308,33 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   auto StorageMemory = (*LCO)[0].getStorageMemory();
   LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
-  auto storageElfOrError = getELFObjectFileBase(*StorageMemory);
+  auto StorageElf = getAMDGCNObjectFile(*StorageMemory);
 
-  LUTHIER_RETURN_ON_ERROR(storageElfOrError.takeError());
+  LUTHIER_RETURN_ON_ERROR(StorageElf.takeError());
 
-  auto noteSectionOrError = getElfNoteMetadataRoot(storageElfOrError->get());
-  LUTHIER_RETURN_ON_ERROR(noteSectionOrError.takeError());
+  auto MetaData = parseNoteMetaData(StorageElf->get());
+  LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MetaData->has_value()));
+
+  //  (**NoteSection).toYAML(llvm::outs());
+
+  llvm::outs() << "\n";
+
+  //  auto MetaData = parseMetaDoc(**NoteSection);
+  //  LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
+
+//  llvm::outs() << "Code Object Version: " << (*MetaData)->Version.Major << ", "
+//               << (*MetaData)->Version.Minor << "\n";
+//  llvm::outs() << "Kernels: \n";
+//  for (const auto& it: (*MetaData)->Kernels) {
+//    llvm::outs() << "Name: " << it.first << "\n";
+//    if (it.second.Args.has_value()) {
+//      llvm::outs() << "Number of args: " << it.second.Args->size() << "\n";
+//      llvm::outs() << "Type of args: " << (*it.second.Args)[0]
+//    };
+//  }
+//  llvm::outs() << "Number of arguments: "
+//               << (*MetaData)->Kernels[*SymbolName].Args->size() << "\n";
 
   llvm::Type *const returnType = llvm::Type::getVoidTy(Module->getContext());
   LUTHIER_CHECK(returnType);
@@ -384,7 +406,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
 
   llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
   MF.push_back(MBB);
-//  MBB->setLabelMustBeEmitted();
+  //  MBB->setLabelMustBeEmitted();
   llvm::MCContext &MCContext = mmiwp->getMMI().getContext();
 
   llvm::DenseMap<luthier_address_t, llvm::SmallVector<llvm::MachineInstr *>>
@@ -407,7 +429,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
       auto OldMBB = MBB;
       MBB = MF.CreateMachineBasicBlock();
       MF.push_back(MBB);
-//      MBB->setLabelMustBeEmitted();
+      //      MBB->setLabelMustBeEmitted();
       OldMBB->addSuccessor(MBB);
       TargetMBBs.insert({inst.getAddress(), MBB});
       mcInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
@@ -475,7 +497,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
       auto OldMBB = MBB;
       MBB = MF.CreateMachineBasicBlock();
       MF.push_back(MBB);
-//      MBB->setLabelMustBeEmitted();
+      //      MBB->setLabelMustBeEmitted();
       OldMBB->addSuccessor(MBB);
     }
   }
@@ -484,8 +506,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   for (auto &[TargetAddress, BranchMIs] : UnresolvedMIs) {
     MBB = TargetMBBs[TargetAddress];
     for (auto &MI : BranchMIs) {
-      MI->addOperand(llvm::MachineOperand::CreateMBB(
-          MBB));
+      MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
       MI->getParent()->addSuccessor(MBB);
       MI->print(llvm::outs());
       llvm::outs() << "\n";
