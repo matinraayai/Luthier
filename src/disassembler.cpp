@@ -34,6 +34,7 @@
 #include "hsa_executable.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
+#include "object_utils.hpp"
 #include "target_manager.hpp"
 
 namespace luthier {
@@ -112,6 +113,47 @@ luthier::CodeLifter::resolveAddressToExecutableSymbol(
   if (SymbolAddressInfo.contains(Address))
     return SymbolAddressInfo.at(Address);
   return std::nullopt;
+}
+
+llvm::Expected<const HSAMD::Kernel::Metadata &>
+CodeLifter::getKernelMetaData(const hsa::ExecutableSymbol &Symbol) {
+  if (!KernelsMetaData.contains(Symbol)) {
+    LUTHIER_RETURN_ON_ERROR(
+        getExecutableMetaData(Symbol.getExecutable(), Symbol.getAgent())
+            .takeError());
+  }
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelsMetaData.contains(Symbol)));
+  return KernelsMetaData[Symbol];
+}
+
+llvm::Expected<const HSAMD::Metadata &>
+CodeLifter::getExecutableMetaData(const hsa::Executable &Exec,
+                                  const hsa::GpuAgent &Agent) {
+  if (!ExecutableMetaData.contains({Exec, Agent})) {
+    auto LCO = Exec.getLoadedCodeObjects();
+    LUTHIER_RETURN_ON_ERROR(LCO.takeError());
+
+    auto StorageMemory = (*LCO)[0].getStorageMemory();
+    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+
+    auto StorageElf = getAMDGCNObjectFile(*StorageMemory);
+    LUTHIER_RETURN_ON_ERROR(StorageElf.takeError());
+
+    auto MetaData = parseNoteMetaData(StorageElf->get());
+    LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
+
+    llvm::outs() << *MetaData << "\n";
+    for (auto &KernelMD : MetaData->Kernels) {
+      LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
+          std::optional<hsa::ExecutableSymbol>, KernelSymbol,
+          Exec.getSymbolByName(Agent, KernelMD.Symbol));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelSymbol.has_value()));
+      KernelsMetaData.insert({*KernelSymbol, KernelMD});
+    }
+    MetaData->Kernels.clear();
+    ExecutableMetaData.insert({{Exec, Agent}, *MetaData});
+  }
+  return ExecutableMetaData[{Exec, Agent}];
 }
 
 llvm::SymbolInfoTy luthier::CodeLifter::getOrCreateNewAddressLabel(
@@ -250,14 +292,14 @@ luthier::CodeLifter::disassemble(const llvm::object::ELFSymbolRef &Symbol,
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ARGUMENT_ERROR_CHECK(Symbol.getELFType() != llvm::ELF::STT_FUNC));
 
-  auto triple = Symbol.getObject()->makeTriple();
-  auto isa = hsa::ISA::fromName(triple.normalize().c_str());
+  auto Triple = Symbol.getObject()->makeTriple();
+  auto isa = hsa::ISA::fromName(Triple.normalize().c_str());
   LUTHIER_RETURN_ON_ERROR(isa.takeError());
 
-  auto addressOrError = Symbol.getAddress();
-  LUTHIER_RETURN_ON_ERROR(addressOrError.takeError());
+  auto AddressOrError = Symbol.getAddress();
+  LUTHIER_RETURN_ON_ERROR(AddressOrError.takeError());
 
-  llvm::StringRef code(reinterpret_cast<const char *>(*addressOrError),
+  llvm::StringRef code(reinterpret_cast<const char *>(*AddressOrError),
                        Symbol.getSize());
 
   if (Size.has_value())
@@ -272,94 +314,74 @@ luthier::CodeLifter::~CodeLifter() {
   DisassembledSymbolsRaw.clear();
 }
 
-llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
-                          std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>>
-luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
+llvm::Expected<llvm::Function *>
+luthier::CodeLifter::createLLVMFunction(const hsa::ExecutableSymbol &Symbol,
+                                        llvm::Module &Module) {
   LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_symbol_kind_t, SymbolType,
                                    Symbol.getType());
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ARGUMENT_ERROR_CHECK(SymbolType == HSA_SYMBOL_KIND_KERNEL));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(
+      SymbolType == HSA_SYMBOL_KIND_KERNEL ||
+      SymbolType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION));
 
-  //  if (!KernelModules.contains(Symbol)) {
-  auto Agent = Symbol.getAgent();
+  // Populate the Arguments
+  bool IsKernel = SymbolType == HSA_SYMBOL_KIND_KERNEL;
+  llvm::Function *F;
+  if (IsKernel) {
+    auto KernelMD = getKernelMetaData(Symbol);
+    LUTHIER_RETURN_ON_ERROR(KernelMD.takeError());
 
-  auto ISA = Agent.getIsa();
-  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+    // Kernel's return type is always void
+    llvm::Type *const ReturnType = llvm::Type::getVoidTy(Module.getContext());
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ReturnType != nullptr));
 
-  auto TargetInfo = luthier::TargetManager::instance().getTargetInfo(*ISA);
-  LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
+    // Populate the Kernel Arguments
+    llvm::SmallVector<llvm::Type *> Params;
+    if (KernelMD->Args.has_value()) {
+      Params.reserve(KernelMD->Args->size());
+      for (const auto &ArgMD : *KernelMD->Args) {
+        llvm::Type *MemParamType;
+        // TODO: Resolve the other arguments if necessary
+        if (ArgMD.ValueKind == HSAMD::ValueKind::GlobalBuffer ||
+            ArgMD.ValueKind == HSAMD::ValueKind::DynamicSharedPointer) {
+          auto AddressSpace = ArgMD.AddressSpace;
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(AddressSpace.has_value()));
+          // TODO: Special provision for when the TypeName is present??
+          MemParamType = llvm::PointerType::get(
+              llvm::Type::getIntNTy(Module.getContext(), ArgMD.Size),
+              llvm::AMDGPUAS::GLOBAL_ADDRESS);
+        } else if (ArgMD.ValueKind == HSAMD::ValueKind::ByValue) {
+          MemParamType = llvm::Type::getIntNTy(Module.getContext(), ArgMD.Size);
+        }
+        Params.push_back(MemParamType);
+      }
+    }
 
-  auto TM = TargetInfo->getTargetMachine();
+    llvm::FunctionType *FunctionType =
+        llvm::FunctionType::get(ReturnType, Params, false);
 
-  auto MCInstInfo = TM->getMCInstrInfo();
+    LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, SymbolName, Symbol.getName());
 
-  auto SymbolName = Symbol.getName();
-  LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+    F = llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage,
+                               SymbolName.substr(0, SymbolName.rfind(".kd")),
+                               Module);
 
-  auto Module = std::make_unique<llvm::Module>(*SymbolName,
-                                               *TargetInfo->getLLVMContext());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Module != nullptr));
+    F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
 
-  Module->setDataLayout(TM->createDataLayout());
-
-  auto LCO = Symbol.getExecutable().getLoadedCodeObjects();
-  LUTHIER_RETURN_ON_ERROR(LCO.takeError());
-
-  auto StorageMemory = (*LCO)[0].getStorageMemory();
-  LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
-
-  auto StorageElf = getAMDGCNObjectFile(*StorageMemory);
-
-  LUTHIER_RETURN_ON_ERROR(StorageElf.takeError());
-
-  auto MetaData = parseNoteMetaData(StorageElf->get());
-  LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MetaData->has_value()));
-
-  //  (**NoteSection).toYAML(llvm::outs());
-
-  llvm::outs() << "\n";
-
-  //  auto MetaData = parseMetaDoc(**NoteSection);
-  //  LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
-
-//  llvm::outs() << "Code Object Version: " << (*MetaData)->Version.Major << ", "
-//               << (*MetaData)->Version.Minor << "\n";
-//  llvm::outs() << "Kernels: \n";
-//  for (const auto& it: (*MetaData)->Kernels) {
-//    llvm::outs() << "Name: " << it.first << "\n";
-//    if (it.second.Args.has_value()) {
-//      llvm::outs() << "Number of args: " << it.second.Args->size() << "\n";
-//      llvm::outs() << "Type of args: " << (*it.second.Args)[0]
-//    };
-//  }
-//  llvm::outs() << "Number of arguments: "
-//               << (*MetaData)->Kernels[*SymbolName].Args->size() << "\n";
-
-  llvm::Type *const returnType = llvm::Type::getVoidTy(Module->getContext());
-  LUTHIER_CHECK(returnType);
-
-  llvm::Type *const memParamType =
-      llvm::PointerType::get(llvm::Type::getInt32Ty(Module->getContext()),
-                             llvm::AMDGPUAS::GLOBAL_ADDRESS);
-
-  LUTHIER_CHECK(memParamType);
-  llvm::FunctionType *FunctionType =
-      llvm::FunctionType::get(returnType, {memParamType}, false);
-  LUTHIER_CHECK(FunctionType);
-  llvm::Function *F = llvm::Function::Create(
-      FunctionType, llvm::GlobalValue::ExternalLinkage,
-      SymbolName->substr(0, SymbolName->size() - 3), *Module);
-  LUTHIER_CHECK(F);
-  F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-
-  llvm::outs() << "Number of arguments: " << F->arg_size() << "\n";
+    if (KernelMD->UniformWorkgroupSize.has_value() &&
+        *KernelMD->UniformWorkgroupSize) {
+      F->addFnAttr("uniform-work-group-size", "true");
+    } else {
+      F->addFnAttr("uniform-work-group-size", "false");
+    }
+  } else {
+    llvm_unreachable("Creating indirect functions is not implemented yet");
+  }
 
   // Very important to have a dummy IR BasicBlock; Otherwise Passes won't
   // function
-  llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module->getContext(), "", F);
+  llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module.getContext(), "", F);
   LUTHIER_CHECK(BB);
-  new llvm::UnreachableInst(Module->getContext(), BB);
+  new llvm::UnreachableInst(Module.getContext(), BB);
 
   // Construct the attributes of the Function, which will result in the MF
   // attributes getting populated
@@ -383,39 +405,75 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   if ((*KdOnHost)->getKernelCodePropertiesEnableSgprQueuePtr() == 0) {
     F->addFnAttr("amdgpu-no-queue-ptr");
   }
-  F->addFnAttr("amdgpu-no-workgroup-id-y");
-  F->addFnAttr("amdgpu-no-workitem-id-y");
-  F->addFnAttr("amdgpu-no-workgroup-id-z");
-  F->addFnAttr("amdgpu-no-workitem-id-z");
+  F->addFnAttr("amdgpu-ieee",
+               (*KdOnHost)->getRsrc1EnableIeeeMode() ? "true" : "false");
+  F->addFnAttr("amdgpu-dx10-clamp",
+               (*KdOnHost)->getRsrc1EnableDx10Clamp() ? "true" : "false");
+  if ((*KdOnHost)->getRsrc2EnableSgprWorkgroupIdX() == 0) {
+    F->addFnAttr("amdgpu-no-workgroup-id-x");
+  }
+  if ((*KdOnHost)->getRsrc2EnableSgprWorkgroupIdY() == 0) {
+    F->addFnAttr("amdgpu-no-workgroup-id-y");
+  }
+  if ((*KdOnHost)->getRsrc2EnableSgprWorkgroupIdZ() == 0) {
+    F->addFnAttr("amdgpu-no-workgroup-id-z");
+  }
+  switch ((*KdOnHost)->getRsrc2EnableVgprWorkitemId()) {
+  case 0:
+    F->addFnAttr("amdgpu-no-workitem-id-y");
+  case 1:
+    F->addFnAttr("amdgpu-no-workitem-id-z");
+    break;
+  default:
+    llvm_unreachable("KD's VGPR workitem ID is not valid");
+  }
+
+  // TODO: Check the args metadata to set this correctly
   F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
-  F->addFnAttr("uniform-work-group-size", "true");
 
+  // TODO: Set the rest of the attributes
   llvm::outs() << "Preloaded Args: " << (*KdOnHost)->KernArgPreload << "\n";
+  return F;
+};
 
-  auto mmiwp = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
+llvm::Error
+luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
+                                        llvm::Module &Module,
+                                        llvm::MachineModuleInfo &MMI) {
+  auto ISA = Symbol.getAgent().getIsa();
+  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
 
-  LUTHIER_CHECK(mmiwp);
+  auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
 
-  auto &MF = mmiwp->getMMI().getOrCreateMachineFunction(*F);
+  LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
+
+  auto F = createLLVMFunction(Symbol, Module);
+  LUTHIER_RETURN_ON_ERROR(F.takeError());
+
+  auto &MF = MMI.getOrCreateMachineFunction(**F);
 
   MF.setAlignment(llvm::Align(4096));
 
-  auto targetFunctionInstsOrError = CodeLifter::instance().disassemble(Symbol);
+  auto TargetFunction = CodeLifter::instance().disassemble(Symbol);
 
-  LUTHIER_RETURN_ON_ERROR(targetFunctionInstsOrError.takeError());
+  LUTHIER_RETURN_ON_ERROR(TargetFunction.takeError());
 
   llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
   MF.push_back(MBB);
-  //  MBB->setLabelMustBeEmitted();
-  llvm::MCContext &MCContext = mmiwp->getMMI().getContext();
+
+  llvm::MCContext &MCContext = MMI.getContext();
+
+  auto Agent = Symbol.getAgent();
+
+  auto MCInstInfo = TargetInfo->getMCInstrInfo();
 
   llvm::DenseMap<luthier_address_t, llvm::SmallVector<llvm::MachineInstr *>>
       UnresolvedMIs;
   llvm::DenseMap<luthier_address_t, llvm::MachineBasicBlock *> TargetMBBs;
   auto MIA = TargetInfo->getMCInstrAnalysis();
-  for (const auto &inst : **targetFunctionInstsOrError) {
-    auto mcInst = inst.getInstr();
-    const unsigned Opcode = mcInst.getOpcode();
+  for (const auto &inst : **TargetFunction) {
+    auto McInst = inst.getInstr();
+    const unsigned Opcode = McInst.getOpcode();
 
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
     bool IsBranch = MCID.isBranch();
@@ -432,7 +490,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
       //      MBB->setLabelMustBeEmitted();
       OldMBB->addSuccessor(MBB);
       TargetMBBs.insert({inst.getAddress(), MBB});
-      mcInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
+      McInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
                          TargetInfo->getMCRegisterInfo());
       llvm::outs() << "\n";
     }
@@ -441,9 +499,9 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
         llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
     Builder.getInstr();
 
-    for (unsigned OpIndex = 0, E = mcInst.getNumOperands(); OpIndex < E;
+    for (unsigned OpIndex = 0, E = McInst.getNumOperands(); OpIndex < E;
          ++OpIndex) {
-      const llvm::MCOperand &Op = mcInst.getOperand(OpIndex);
+      const llvm::MCOperand &Op = McInst.getOperand(OpIndex);
       if (Op.isReg()) {
         const bool IsDef = OpIndex < MCID.getNumDefs();
         unsigned Flags = 0;
@@ -485,14 +543,14 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
       llvm::outs() << llvm::formatv("Address: {0:x}\n", inst.getAddress());
       llvm::outs() << "Found a branch!\n";
       luthier_address_t BranchTarget;
-      MIA->evaluateBranch(mcInst, inst.getAddress(), inst.getSize(),
+      MIA->evaluateBranch(McInst, inst.getAddress(), inst.getSize(),
                           BranchTarget);
       if (!UnresolvedMIs.contains(BranchTarget)) {
         UnresolvedMIs.insert({BranchTarget, {Builder.getInstr()}});
       } else {
         UnresolvedMIs[BranchTarget].push_back(Builder.getInstr());
       }
-      mcInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
+      McInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
                          TargetInfo->getMCRegisterInfo());
       auto OldMBB = MBB;
       MBB = MF.CreateMachineBasicBlock();
@@ -515,12 +573,13 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
 
   //        MBB->dump();
 
+  auto TM = TargetInfo->getTargetMachine();
   llvm::outs() << "Number of blocks : " << MF.getNumBlockIDs() << "\n";
   //        MF.dump();
   auto TII = reinterpret_cast<const llvm::SIInstrInfo *>(
-      TM->getSubtargetImpl(*F)->getInstrInfo());
+      TM->getSubtargetImpl(**F)->getInstrInfo());
   auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
-      TM->getSubtargetImpl(*F)->getRegisterInfo());
+      TM->getSubtargetImpl(**F)->getRegisterInfo());
   auto MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
   MFI->addPrivateSegmentBuffer(*TRI);
   MFI->addKernargSegmentPtr(*TRI);
@@ -599,8 +658,7 @@ luthier::CodeLifter::liftKernelModule(const hsa::ExecutableSymbol &Symbol) {
   ////        MF.dump();
   //        properties.print(llvm::outs());
   //        llvm::outs() << "\n";
-
-  return std::make_tuple(std::move(Module), std::move(mmiwp));
+  return llvm::Error::success();
   //  }
 }
 

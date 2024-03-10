@@ -269,7 +269,7 @@ struct Metadata final {
   /// Printf metadata. Optional.
   std::optional<std::vector<std::string>> Printf{std::nullopt};
   /// Kernels metadata. Required.
-  std::unordered_map<std::string, Kernel::Metadata> Kernels{};
+  std::vector<Kernel::Metadata> Kernels{};
   /// Default constructor.
   Metadata() = default;
 };
@@ -298,10 +298,9 @@ llvm::Expected<luthier::HSAMD::Metadata>
 parseMetaDoc(llvm::msgpack::Document &KernelMetaNode);
 
 template <class ELFT>
-static bool processNote(const typename ELFT::Note &Note,
-                        const std::string &NoteDescString,
-                        llvm::msgpack::Document &Doc,
-                        llvm::msgpack::DocNode &Root) {
+static bool
+processNote(const typename ELFT::Note &Note, const std::string &NoteDescString,
+            llvm::msgpack::Document &Doc, llvm::msgpack::DocNode &Root) {
 
   if (Note.getName() == "AMD" &&
       Note.getType() == llvm::ELF::NT_AMD_HSA_METADATA) {
@@ -327,21 +326,22 @@ static bool processNote(const typename ELFT::Note &Note,
 }
 
 template <typename ELFT>
-llvm::Expected<std::optional<luthier::HSAMD::Metadata>>
+llvm::Expected<luthier::HSAMD::Metadata>
 parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> *Obj) {
   bool Found = false;
   llvm::msgpack::Document Doc;
-  auto& Root = Doc.getRoot();
+  auto &Root = Doc.getRoot();
   const llvm::object::ELFFile<ELFT> &ELFFile = Obj->getELFFile();
   auto ProgramHeaders = ELFFile.program_headers();
+  std::string DescString;
   LUTHIER_RETURN_ON_ERROR(ProgramHeaders.takeError());
   for (const auto &Phdr : *ProgramHeaders) {
     if (Phdr.p_type == llvm::ELF::PT_NOTE) {
       llvm::Error Err = llvm::Error::success();
       for (const auto &Note : ELFFile.notes(Phdr, Err)) {
-        std::string DescString{Note.getDescAsStringRef(4)};
+        DescString = Note.getDescAsStringRef(4);
         if (processNote<ELFT>(Note, DescString, Doc, Root)) {
-//          Doc.getRoot() = Root;
+          //          Doc.getRoot() = Root;
           llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
           Found = true;
         }
@@ -363,7 +363,7 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> *Obj) {
     }
     llvm::Error Err = llvm::Error::success();
     for (const auto &Note : ELFFile.notes(Shdr, Err)) {
-      std::string DescString{Note.getDescAsStringRef(4)};
+      DescString = Note.getDescAsStringRef(4);
       if (processNote<ELFT>(Note, DescString, Doc, Root)) {
         Found = true;
       }
@@ -374,9 +374,15 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> *Obj) {
   if (Found)
     return parseMetaDoc(Doc);
   else
-    return std::nullopt;
+    return LUTHIER_ASSERTION(Found);
 }
 
 } // namespace luthier
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream &OS,
+                              const luthier::HSAMD::Kernel::Metadata &MD);
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream &OS,
+                             const luthier::HSAMD::Metadata &MD);
 
 #endif

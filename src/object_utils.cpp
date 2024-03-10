@@ -49,6 +49,7 @@ llvm::Error parseStringMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
     Out = NodeMD->second.getString();
+    llvm::outs() << Out << "\n";
   }
   return llvm::Error::success();
 }
@@ -59,6 +60,7 @@ llvm::Error parseStringMDRequired(MapDocNode &Map, llvm::StringRef Key,
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
   Out = NodeMD->second.getString();
+  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
@@ -133,6 +135,7 @@ llvm::Error parseEnumMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (EnumString.has_value()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(*EnumString)));
     Out = EnumMap[*EnumString];
+    llvm::outs() << EnumString << "\n";
   }
   return llvm::Error::success();
 }
@@ -145,6 +148,7 @@ llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(EnumString)));
   Out = EnumMap[EnumString];
+  llvm::outs() << EnumString << "\n";
   return llvm::Error::success();
 }
 
@@ -168,6 +172,8 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
     Out = {static_cast<uint32_t>(XMD.getUInt()),
            static_cast<uint32_t>(YMD.getUInt()),
            static_cast<uint32_t>(ZMD.getUInt())};
+    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << ","
+                 << "\n";
   }
   return llvm::Error::success();
 }
@@ -192,6 +198,8 @@ llvm::Error parseDim3MDRequired(MapDocNode &Map, llvm::StringRef Key,
   Out = {static_cast<uint32_t>(XMD.getUInt()),
          static_cast<uint32_t>(YMD.getUInt()),
          static_cast<uint32_t>(ZMD.getUInt())};
+  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << ","
+               << "\n";
   return llvm::Error::success();
 }
 
@@ -202,6 +210,7 @@ llvm::Error parseUIntMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
     Out = static_cast<T>(NodeMD->second.getUInt());
+    llvm::outs() << Out << "\n";
   }
   return llvm::Error::success();
 }
@@ -212,6 +221,7 @@ llvm::Error parseUIntMDRequired(MapDocNode &Map, llvm::StringRef Key, T &Out) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
   Out = static_cast<T>(NodeMD->second.getUInt());
+  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
@@ -222,6 +232,7 @@ llvm::Error parseBoolMDOptional(MapDocNode &Map, llvm::StringRef Key,
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
     Out = NodeMD->second.getBool();
   }
+  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
@@ -372,7 +383,7 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
       KernelMetaNode, luthier::HSAMD::Kernel::Key::KernelKind,
       KernelKindEnumMap, Out.KernelKind));
 
-  LUTHIER_RETURN_ON_ERROR(parseBoolMDOptional(
+  LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
       KernelMetaNode, luthier::HSAMD::Kernel::Key::UniformWorkgroupSize,
       Out.UniformWorkgroupSize));
 
@@ -404,9 +415,17 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
   }
 
   auto KernelsMD = RootMap.find(HSAMD::Key::Kernels);
+  llvm::outs() << "Is kernel MD found? " << (KernelsMD != RootMap.end())
+               << "\n";
+  for (auto &[k, v] : RootMap) {
+    llvm::outs() << "Key is string: " << k.isString() << "\n";
+    llvm::outs() << k.toString() << "\n";
+  }
+  //  llvm::outs() << RootMap.toString() << "\n";
   if (KernelsMD != RootMap.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelsMD->second.isArray()));
     auto KernelsMDAsArray = KernelsMD->second.getArray();
+    Out.Kernels.reserve(KernelsMDAsArray.size());
     for (auto &KernelMD : KernelsMDAsArray) {
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelMD.isMap()));
 
@@ -414,10 +433,8 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
       auto SymbolMD = KernelMDAsMap.find(HSAMD::Kernel::Key::Symbol);
       LUTHIER_RETURN_ON_ERROR(
           LUTHIER_ASSERTION(SymbolMD != KernelMDAsMap.end()));
-      auto It =
-          Out.Kernels.insert({std::string{SymbolMD->second.getString()}, {}});
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(It.second));
-      LUTHIER_RETURN_ON_ERROR(parseKernelMD(KernelMDAsMap, It.first->second));
+      Out.Kernels.emplace_back();
+      LUTHIER_RETURN_ON_ERROR(parseKernelMD(KernelMDAsMap, Out.Kernels.back()));
     }
   }
   return Out;
@@ -550,3 +567,34 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 }
 
 } // namespace luthier
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream &OS,
+                              const luthier::HSAMD::Kernel::Metadata &MD) {
+  OS << luthier::HSAMD::Kernel::Key::Name << ": " << MD.Name << "\n";
+  OS << luthier::HSAMD::Kernel::Key::Symbol << ": " << MD.Symbol << "\n";
+  return OS;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+                              const luthier::HSAMD::Metadata &MD) {
+  OS << luthier::HSAMD::Key::Version << ": " << MD.Version.Major << ", "
+     << MD.Version.Minor << "\n";
+
+  if (MD.Printf.has_value()) {
+    OS << luthier::HSAMD::Key::Printf << ": \n";
+    for (const auto& P: *MD.Printf) {
+      OS.indent(2);
+      OS << P << "\n";
+    }
+  }
+
+  if (!MD.Kernels.empty()) {
+    OS << luthier::HSAMD::Key::Kernels << ": \n";
+    for (const auto& Kernel: MD.Kernels) {
+      OS.indent(2);
+      OS << Kernel << "\n";
+    }
+  }
+
+  return OS;
+}

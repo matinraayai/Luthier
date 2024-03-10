@@ -82,7 +82,7 @@ private:
   llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
                  llvm::DenseMap<luthier_address_t, llvm::SymbolInfoTy>>
       LabelAddressInfoMap;
-  //TODO: Invalidate this cache once an Executable is destroyed
+  // TODO: Invalidate this cache once an Executable is destroyed
 
   std::optional<llvm::SymbolInfoTy>
   resolveAddressToLabel(const hsa::Executable &Executable,
@@ -91,6 +91,12 @@ private:
   llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
                  llvm::DenseMap<luthier_address_t, hsa::ExecutableSymbol>>
       ExecutableSymbolAddressInfoMap;
+
+  llvm::DenseMap<hsa::ExecutableSymbol, HSAMD::Kernel::Metadata>
+      KernelsMetaData;
+
+  llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>, HSAMD::Metadata>
+      ExecutableMetaData;
 
   llvm::Expected<std::optional<hsa::ExecutableSymbol>>
   resolveAddressToExecutableSymbol(const hsa::Executable &Executable,
@@ -101,6 +107,16 @@ private:
   getOrCreateNewAddressLabel(const hsa::Executable &Executable,
                              const hsa::GpuAgent &Agent,
                              luthier_address_t Address);
+
+  llvm::Expected<const HSAMD::Kernel::Metadata &>
+  getKernelMetaData(const hsa::ExecutableSymbol &Symbol);
+
+  llvm::Expected<const HSAMD::Metadata &>
+  getExecutableMetaData(const hsa::Executable &Exec,
+                        const hsa::GpuAgent &Agent);
+
+  llvm::Expected<llvm::Function *>
+  createLLVMFunction(const hsa::ExecutableSymbol &Symbol, llvm::Module &Module);
 
   /**
    * Cache of \p hsa::ExecutableSymbol 's already disassembled by \p
@@ -176,10 +192,9 @@ public:
   llvm::Expected<std::vector<llvm::MCInst>>
   disassemble(const hsa::ISA &Isa, llvm::ArrayRef<uint8_t> Code);
 
-  llvm::Expected<
-      std::tuple<std::unique_ptr<llvm::Module>,
-                 std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>>
-  liftKernelModule(const hsa::ExecutableSymbol &Symbol);
+  llvm::Error liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
+                                 llvm::Module &Module,
+                                 llvm::MachineModuleInfo &MMI);
 };
 
 } // namespace luthier
