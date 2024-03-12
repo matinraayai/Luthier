@@ -721,7 +721,7 @@ llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> findSymbolInELF(cons
      *      eg. llvm::object::SymbolRef symbolRef(elfObjectFile->getSymbol(symbolIndex));
      * Option 2: Modify the getSymbolFromGNUHashTable() & getSymbolFromSysVHashTable() to return a ELFSymbolRef
      *      Note: Some comments have been left on how to attempt resolving this throughout code above
-     *      Specifically lines:
+     *      Specifically lines: 1229, 1260, 1270, 1288
      * */
 
     // IF THE HASH_LOOKUP FAILS: (symbol iteration)
