@@ -377,6 +377,25 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> *Obj) {
     return std::nullopt;
 }
 
+/**
+ * \brief Parses the ELF file pointed to by \p elf into a \p llvm::object::ELFObjectFileBase.
+ * @param elf \p llvm::ArrayRef encompassing the ELF file in memory
+ * @return a \p std::unique_ptr pointing to a \p llvm::object::ELFObjectFileBase
+ */
+llvm::Expected<std::unique_ptr<llvm::object::ELFObjectFileBase>> getELFObjectFileBase(llvm::StringRef elf);
+
+/**
+ * \brief Parses the ELF file pointed to by \p elf into a \p llvm::object::ELFObjectFileBase.
+ * @param elf \p llvm::ArrayRef encompassing the ELF file in memory
+ * @return a \p std::unique_ptr pointing to a \p llvm::object::ELFObjectFileBase
+ */
+llvm::Expected<std::unique_ptr<llvm::object::ELFObjectFileBase>> getELFObjectFileBase(llvm::ArrayRef<uint8_t> elf);
+
+
+llvm::Expected<llvm::msgpack::Document> getElfNoteMetadataRoot(const llvm::object::ELFObjectFileBase* elf);
+
+llvm::Expected<std::unique_ptr<llvm::object::ELFSymbolRef>> getSymbolByName(const llvm::object::ELFObjectFileBase* elf, const char * symbolName);
+
 } // namespace luthier
 
 #endif
