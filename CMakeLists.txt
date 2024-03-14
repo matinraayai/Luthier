@@ -24,6 +24,8 @@ add_library(luthier SHARED
         src/hsa_kernel_descriptor.hpp src/target_manager.cpp src/hsa_instr.hpp src/hsa_instr.cpp
         src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/hsa_kernel_descriptor.cpp
         src/hsa.hpp src/hsa.cpp
+#        src/resolve_get_pc_pass.hpp
+#        src/resolve_get_pc_pass.cpp
 
 )
 # ======================================================================================================================
@@ -86,9 +88,9 @@ target_compile_definitions(luthier PUBLIC "-D_GLIBCXX_DEBUG")
 target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 target_link_libraries(luthier hip::host stdc++fs hsa-runtime64::hsa-runtime64
-        LLVMAMDGPUAsmParser LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
-        LLVMAMDGPUUtils LLVMAsmParser LLVMAsmPrinter LLVMCodeGen LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA
-        LLVMMCDisassembler LLVMMCParser LLVMMIRParser LLVMObject LLVMPasses LLVMSupport LLVMTarget LLVMTargetParser)
+        LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
+        LLVMAMDGPUUtils LLVMAsmPrinter LLVMCodeGen LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA
+        LLVMMCDisassembler LLVMObject LLVMPasses LLVMSupport LLVMTarget LLVMTargetParser)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================

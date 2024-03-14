@@ -20,8 +20,8 @@ public:
   CodeGenerator &operator=(const CodeGenerator &) = delete;
 
   static inline CodeGenerator &instance() {
-    static CodeGenerator instance;
-    return instance;
+    static CodeGenerator Instance;
+    return Instance;
   }
 
   static llvm::Error

@@ -98,11 +98,13 @@ private:
   llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>, HSAMD::Metadata>
       ExecutableMetaData;
 
+public:
   llvm::Expected<std::optional<hsa::ExecutableSymbol>>
   resolveAddressToExecutableSymbol(const hsa::Executable &Executable,
                                    const hsa::GpuAgent &Agent,
                                    luthier_address_t Address);
 
+private:
   llvm::SymbolInfoTy
   getOrCreateNewAddressLabel(const hsa::Executable &Executable,
                              const hsa::GpuAgent &Agent,
@@ -118,15 +120,19 @@ private:
   llvm::Expected<llvm::Function *>
   createLLVMFunction(const hsa::ExecutableSymbol &Symbol, llvm::Module &Module);
 
-  /**
-   * Cache of \p hsa::ExecutableSymbol 's already disassembled by \p
-   * CodeLifter The vectors have to be allocated as a smart pointer to stop
-   * it from calling its destructor prematurely The disassembler is in
-   * charge of clearing the map
-   */
-  llvm::DenseMap<hsa::ExecutableSymbol,
-                 std::unique_ptr<std::vector<hsa::Instr>>>
-      DisassembledSymbolsRaw;
+  llvm::Expected<llvm::MachineFunction *>
+  createLLVMMachineFunction(const hsa::ExecutableSymbol &Symbol,
+                            llvm::MachineModuleInfo &MMI, llvm::Function &F);
+
+      /**
+       * Cache of \p hsa::ExecutableSymbol 's already disassembled by \p
+       * CodeLifter The vectors have to be allocated as a smart pointer to stop
+       * it from calling its destructor prematurely The disassembler is in
+       * charge of clearing the map
+       */
+      llvm::DenseMap<
+          hsa::ExecutableSymbol,
+          std::unique_ptr<std::vector<hsa::Instr>>> DisassembledSymbolsRaw;
 
   llvm::DenseMap<hsa::ExecutableSymbol,
                  std::unique_ptr<std::vector<hsa::Instr>>>

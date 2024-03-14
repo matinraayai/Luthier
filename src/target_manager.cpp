@@ -30,7 +30,6 @@ TargetManager::TargetManager() {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUDisassembler();
-  LLVMInitializeAMDGPUAsmParser();
   LLVMInitializeAMDGPUAsmPrinter();
   LLVMInitializeAMDGPUTargetMCA();
   auto Argv = "";

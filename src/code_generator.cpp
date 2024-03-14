@@ -9,7 +9,12 @@
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/PassRegistry.h>
 
+
+#include <AMDGPU.h>
+#include "SIInstrInfo.h"
+#include <SIMachineFunctionInfo.h>
 #include "code_object_manager.hpp"
 #include "disassembler.hpp"
 #include "error.hpp"
@@ -45,9 +50,8 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
-#include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
-#include "SIInstrInfo.h"
+#include <llvm/CodeGen/MachineInstrBuilder.h>
 
 // #define GET_REGINFO_ENUM
 // #include "AMDGPUGenRegisterInfo.inc"
@@ -65,64 +69,64 @@
 namespace luthier {
 
 llvm::Error CodeGenerator::compileRelocatableToExecutable(
-    const llvm::ArrayRef<uint8_t> &code, const hsa::ISA &isa,
-    llvm::SmallVectorImpl<uint8_t> &out) {
-  amd_comgr_data_t dataIn;
-  amd_comgr_data_set_t dataSetIn, dataSetOut;
-  amd_comgr_action_info_t dataAction;
+    const llvm::ArrayRef<uint8_t> &Code, const hsa::ISA &Isa,
+    llvm::SmallVectorImpl<uint8_t> &Out) {
+  amd_comgr_data_t DataIn;
+  amd_comgr_data_set_t DataSetIn, dataSetOut;
+  amd_comgr_action_info_t DataAction;
 
-  auto isaName = isa.getName();
-  LUTHIER_RETURN_ON_ERROR(isaName.takeError());
+  auto IsaName = Isa.getName();
+  LUTHIER_RETURN_ON_ERROR(IsaName.takeError());
 
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_create_data_set(&dataSetIn)));
+      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_create_data_set(&DataSetIn)));
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      amd_comgr_create_data(AMD_COMGR_DATA_KIND_RELOCATABLE, &dataIn)));
+      amd_comgr_create_data(AMD_COMGR_DATA_KIND_RELOCATABLE, &DataIn)));
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_set_data(
-      dataIn, code.size(), reinterpret_cast<const char *>(code.data()))));
+      DataIn, Code.size(), reinterpret_cast<const char *>(Code.data()))));
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_set_data_name(dataIn, "source.o"))));
+      (amd_comgr_set_data_name(DataIn, "source.o"))));
 
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_data_set_add(dataSetIn, dataIn))));
+      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_data_set_add(DataSetIn, DataIn))));
 
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_create_data_set(&dataSetOut))));
 
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_create_action_info(&dataAction))));
+      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_create_action_info(&DataAction))));
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_action_info_set_isa_name(dataAction, isaName->c_str()))));
+      (amd_comgr_action_info_set_isa_name(DataAction, IsaName->c_str()))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_action_info_set_option_list(dataAction, nullptr, 0))));
+      (amd_comgr_action_info_set_option_list(DataAction, nullptr, 0))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
-                           dataAction, dataSetIn, dataSetOut))));
+                           DataAction, DataSetIn, dataSetOut))));
 
-  amd_comgr_data_t dataOut;
-  size_t dataOutSize;
+  amd_comgr_data_t DataOut;
+  size_t DataOutSize;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_action_data_get_data(
-          dataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &dataOut))));
+          dataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &DataOut))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_get_data(dataOut, &dataOutSize, nullptr))));
-  out.resize(dataOutSize);
+      (amd_comgr_get_data(DataOut, &DataOutSize, nullptr))));
+  Out.resize(DataOutSize);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_get_data(
-      dataOut, &dataOutSize, reinterpret_cast<char *>(out.data())))));
+      DataOut, &DataOutSize, reinterpret_cast<char *>(Out.data())))));
 
   return llvm::Error::success();
 }
 
 llvm::Error CodeGenerator::compileRelocatableToExecutable(
-    const llvm::ArrayRef<uint8_t> &code, const hsa::GpuAgent &agent,
-    llvm::SmallVectorImpl<uint8_t> &out) {
+    const llvm::ArrayRef<uint8_t> &Code, const hsa::GpuAgent &agent,
+    llvm::SmallVectorImpl<uint8_t> &Out) {
   auto Isa = agent.getIsa();
   LUTHIER_RETURN_ON_ERROR(Isa.takeError());
-  return compileRelocatableToExecutable(code, *Isa, out);
+  return compileRelocatableToExecutable(Code, *Isa, Out);
 }
 
 template <class ELFT>
@@ -197,21 +201,21 @@ getRelocationValueString(const llvm::object::ELFObjectFile<ELFT> *Obj,
   return llvm::Error::success();
 }
 
-llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
-                                               const void *deviceFunc,
-                                               luthier_ipoint_t point) {
+llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &Instr,
+                                               const void *DeviceFunc,
+                                               luthier_ipoint_t Point) {
   LUTHIER_LOG_FUNCTION_CALL_START
-  auto Agent = instr.getAgent();
+  auto Agent = Instr.getAgent();
   auto &CodeObjectManager = luthier::CodeObjectManager::instance();
-  auto &contextManager = luthier::TargetManager::instance();
+  auto &ContextManager = luthier::TargetManager::instance();
 
   auto Isa = Agent.getIsa();
   LUTHIER_RETURN_ON_ERROR(Isa.takeError());
 
-  auto TargetInfo = contextManager.getTargetInfo(*Isa);
+  auto TargetInfo = ContextManager.getTargetInfo(*Isa);
   LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
-  auto KernelName = instr.getExecutableSymbol().getName();
+  auto KernelName = Instr.getExecutableSymbol().getName();
   LUTHIER_RETURN_ON_ERROR(KernelName.takeError());
 
   auto TM = TargetInfo->getTargetMachine();
@@ -219,98 +223,167 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
   auto Module = std::make_unique<llvm::Module>(*KernelName,
                                                *TargetInfo->getLLVMContext());
 
-
-
   Module->setDataLayout(TM->createDataLayout());
 
   auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
-  llvm::SmallVector<char> reloc;
-  llvm::SmallVector<uint8_t> executable;
-
-
+  llvm::SmallVector<char> Reloc;
+  llvm::SmallVector<uint8_t> Executable;
 
   LUTHIER_CHECK(MMIWP);
 
-
   LUTHIER_RETURN_ON_ERROR(luthier::CodeLifter::instance().liftAndAddToModule(
-      instr.getExecutableSymbol(), *Module, MMIWP->getMMI()));
+      Instr.getExecutableSymbol(), *Module, MMIWP->getMMI()));
 
-  auto MCInstInfo = TM->getMCInstrInfo();
-
-  llvm::Expected<hsa::ExecutableSymbol> instrumentationFunc =
-      CodeObjectManager.getInstrumentationFunction(deviceFunc, Agent);
-  LUTHIER_RETURN_ON_ERROR(instrumentationFunc.takeError());
+//  llvm::Expected<hsa::ExecutableSymbol> InstrumentationFunc =
+//      CodeObjectManager.getInstrumentationFunction(DeviceFunc, Agent);
+//  LUTHIER_RETURN_ON_ERROR(InstrumentationFunc.takeError());
+//
+//  LUTHIER_RETURN_ON_ERROR(luthier::CodeLifter::instance().liftAndAddToModule(
+//      *InstrumentationFunc, *Module, MMIWP->getMMI()
+//      ));
+//
+//  auto MCInstInfo = TM->getMCInstrInfo();
 
   // Get the Symbol
-
-
-
+//  auto InstLLVMFunction = Module->getFunction(llvm::cantFail(InstrumentationFunc->getName()));
+////  for (auto& MBB: *MMIWP->getMMI().getMachineFunction(*InstLLVMFunction)) {
+////    for (auto& MI: MBB) {
+////      if (MI.getOpcode() == llvm::AMDGPU::S_GETPC_B64_vi) {
+////        MI.getNextNode()
+////      }
+////    }
+////  }
 //  for (auto &F : *Module) {
-//    auto MF = MMIWP->getMMI().getMachineFunction(F);
-//    auto TII = reinterpret_cast<const llvm::SIInstrInfo *>(
-//        TM->getSubtargetImpl(F)->getInstrInfo());
-////    MF->getProperties().reset(
-////        llvm::MachineFunctionProperties::Property::NoVRegs);
-//    auto &MRI = MF->getRegInfo();
-//    auto MBBIter = MF->end();
-//    MBBIter--;
-//    auto& MBB = *MBBIter;
-////      llvm::Register PCReg =
-////          MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
+//    if (F.getName() == KernelName->substr(0, KernelName->rfind(".kd"))) {
+//      auto MF = MMIWP->getMMI().getMachineFunction(F);
+//      MF->getFrameInfo().setHasCalls(true);
+//      MF->getProperties().set(llvm::MachineFunctionProperties::Property::TracksLiveness);
+//      auto MFI = MF->getInfo<llvm::SIMachineFunctionInfo>();
+//      //    MFI->setScratchRSrcReg(llvm::AMDGPU::SGPR6_SGPR7);
+//      auto TII = reinterpret_cast<const llvm::SIInstrInfo *>(
+//          TM->getSubtargetImpl(F)->getInstrInfo());
+//      //    MF->getProperties().reset(
+//      //        llvm::MachineFunctionProperties::Property::NoVRegs);
+//      auto &MRI = MF->getRegInfo();
+//      auto MBBIter = MF->end();
+//      MBBIter--;
+//      auto &MBB = *MBBIter;
+//      //      llvm::Register PCReg =
+//      //          MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
 //      auto I = MBB.end();
 //      I--;
+//      llvm::MachineInstrBuilder Builder; // =
+//      BuildMI(MBB, I, llvm::DebugLoc(),
+//              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
+//          .addImm(0)
+//          .addImm(0);
+//      auto Address = reinterpret_cast<luthier_address_t>(
+//          llvm::cantFail(InstrumentationFunc->getMachineCode()).data());
+//      llvm::outs() << llvm::formatv("Address: {0:x}\n", Address);
 //
-//      // We need to compute the offset relative to the instruction immediately
-//      // after s_getpc_b64. Insert pc arithmetic code before last terminator.
-////      llvm::MachineInstr *GetPC =
-////          BuildMI(MBB, I, llvm::DebugLoc(),
-////                  MCInstInfo->get(llvm::AMDGPU::S_GETPC_B64), llvm::AMDGPU::SGPR4_SGPR5);
+//      auto MIB = llvm::BuildMI(MBB, I, llvm::DebugLoc(), MCInstInfo->get(llvm::AMDGPU::SI_PC_ADD_REL_OFFSET))
+//                                    .addDef(llvm::AMDGPU::SGPR4_SGPR5, llvm::RegState::Define);
+//      MIB.addGlobalAddress(InstLLVMFunction, 0, llvm::SIInstrInfo::MO_REL32);
+//      MIB.addGlobalAddress(InstLLVMFunction, 0, llvm::SIInstrInfo::MO_REL32 + 1);
+//
+//      Builder = BuildMI(MBB, I, llvm::DebugLoc(),
+//                        MCInstInfo->get(llvm::AMDGPU::SI_CALL_ISEL))
+//                    .addReg(llvm::AMDGPU::SGPR4_SGPR5,
+//                            llvm::RegState::Kill).addGlobalAddress(InstLLVMFunction);
+////      Builder; // =
+//      BuildMI(MBB, I, llvm::DebugLoc(),
+//              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
+//          .addImm(0)
+//          .addImm(0);
+//    }
+
+
+//    //	s_add_u32 s4, s4, myCounter@rel32@lo+4
+//    //	s_addc_u32 s5, s5, myCounter@rel32@hi+12
+//    //	global_load_dwordx2 v[0:1], v0, s[4:5]
+//    //	s_waitcnt vmcnt(0)
+//    //	global_load_dword v2, v[0:1], off
+//    //	s_waitcnt vmcnt(0)
+//    //	v_add_u32_e32 v2, 1, v2
+//    //	global_store_dword v[0:1], v2, off
+//    //	s_waitcnt vmcnt(0)
 //
 //
+//    //
+//    //      // We need to compute the offset relative to the instruction
+//    //      immediately
+//    //      // after s_getpc_b64. Insert pc arithmetic code before last
+//    //      terminator.
+//    //    llvm::MachineInstr *GetPC =
+//    //        BuildMI(MBB, I, llvm::DebugLoc(),
+//    //                MCInstInfo->get(llvm::AMDGPU::S_GETPC_B64),
+//    //                llvm::AMDGPU::SGPR4_SGPR5);
+//    //
+//    //
+//    //
+//    ////      auto SymLow =
+//    /// llvm::MachineOperand::CreateES(llvm::cantFail(instrumentationFunc->getName()).c_str(),
+//    /// llvm::SIInstrInfo::MO_REL32_LO);
+//    //
+//    ////      auto SymHigh =
+//    /// llvm::MachineOperand::CreateES(llvm::cantFail(instrumentationFunc->getName()).c_str(),
+//    /// llvm::SIInstrInfo::MO_REL32_HI);
+//    //
+//    //      llvm::outs() <<
+//    //      llvm::cantFail(instrumentationFunc->getName()).c_str() << "\n";
+//    //
 //
-////      auto SymLow = llvm::MachineOperand::CreateES(llvm::cantFail(instrumentationFunc->getName()).c_str(), llvm::SIInstrInfo::MO_REL32_LO);
+
+////    Builder->addOperand(llvm::MachineOperand::CreateReg(
+////        llvm::AMDGPU::EXEC, false, false, false, true));
+//    std::string error;
+//    llvm::StringRef errorRef(error);
+//    //
+////    bool isInstCorrect = TII->verifyInstruction(*Builder, errorRef);
+//    //
+////    llvm::outs() << "Is inst correct? " << isInstCorrect << "\n";
+////    llvm::outs() << errorRef << "\n";
 //
-////      auto SymHigh = llvm::MachineOperand::CreateES(llvm::cantFail(instrumentationFunc->getName()).c_str(), llvm::SIInstrInfo::MO_REL32_HI);
+
+    ////          .addReg(llvm::AMDGPU::SGPR4, llvm::RegState::Define);
 //
-//      llvm::outs() << llvm::cantFail(instrumentationFunc->getName()).c_str() << "\n";
+//    Builder = BuildMI(MBB, I, llvm::DebugLoc(),
+//                      MCInstInfo->get(llvm::AMDGPU::S_MOV_B32_vi))
+//                  .addReg(llvm::AMDGPU::SGPR5, llvm::RegState::Define)
+//                  .addImm(static_cast<int64_t>(Address >> 32));
 //
-//      auto Address = reinterpret_cast<luthier_address_t>(llvm::cantFail(instrumentationFunc->getMachineCode()).data());
-//      llvm::MachineInstrBuilder Builder = BuildMI(MBB, I, llvm::DebugLoc(), MCInstInfo->get(llvm::AMDGPU::S_MOV_B32_vi))
-//          .addReg(llvm::AMDGPU::SGPR4, llvm::RegState::Define)
-//                                              .addImm(static_cast<int64_t>(Address & 0xFFFFFFFF));
-////          .addReg(llvm::AMDGPU::SGPR4, llvm::RegState::Define);
+//    auto VirtReg = MRI.createVirtualRegister(&llvm::AMDGPU::SReg_128RegClass);
+//    Builder = BuildMI(MBB, I, llvm::DebugLoc(),
+//                      MCInstInfo->get(llvm::AMDGPU::WWM_COPY))
+//                  .addReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, llvm::RegState::Define)
+//                  .addReg(llvm::AMDGPU::PRIVATE_RSRC_REG);
+
+//    //    .addReg(llvm::AMDGPU::SGPR5, llvm::RegState::Define)
+//    //        .addImm(static_cast<int64_t>(Address >> 32));
 //
-//      std::string error;
-//      llvm::StringRef errorRef(error);
+
+
+            //
+//            //          .addReg(llvm::AMDGPU::SGPR5, llvm::RegState::Define);
+//            ////      Builder->addOperand(SymHigh);
+//            ////
+//            bool isInstCorrect = TII->verifyInstruction(*Builder, errorRef);
+//    ////
+//    //      llvm::outs() << "Is inst correct? " << isInstCorrect << "\n";
+//    //      llvm::outs() << errorRef << "\n";
+//    Builder = llvm::BuildMI(MBB, I, llvm::DebugLoc(),
+//                            MCInstInfo->get(llvm::AMDGPU::S_SWAPPC_B64_vi))
+//                  .addReg(llvm::AMDGPU::SGPR30_SGPR31, llvm::RegState::Define)
+//                  .addReg(llvm::AMDGPU::SGPR4_SGPR5);
 //
-//      bool isInstCorrect = TII->verifyInstruction(*Builder, errorRef);
-//
-//      llvm::outs() << "Is inst correct? " << isInstCorrect << "\n";
-//      llvm::outs() << errorRef << "\n";
-//
-//      Builder = BuildMI(MBB, I, llvm::DebugLoc(), MCInstInfo->get(llvm::AMDGPU::S_MOV_B32_vi))
-//          .addReg(llvm::AMDGPU::SGPR5, llvm::RegState::Define)
-//                .addImm(static_cast<int64_t>(Address >> 32));
-////          .addReg(llvm::AMDGPU::SGPR5, llvm::RegState::Define);
-////      Builder->addOperand(SymHigh);
-////
-//      isInstCorrect = TII->verifyInstruction(*Builder, errorRef);
-////
-//      llvm::outs() << "Is inst correct? " << isInstCorrect << "\n";
-//      llvm::outs() << errorRef << "\n";
-//
-//      const llvm::MCInstrDesc &MCID = MCInstInfo->get(llvm::AMDGPU::S_SWAPPC_B64_vi);
-//      Builder =
-//          llvm::BuildMI(MBB, I, llvm::DebugLoc(), MCID).addReg(llvm::AMDGPU::SGPR30_SGPR31).addReg(llvm::AMDGPU::SGPR4_SGPR5);
-//
-//      isInstCorrect = TII->verifyInstruction(*Builder, errorRef);
-//
-//      llvm::outs() << "Is inst correct? " << isInstCorrect << "\n";
-//      llvm::outs() << errorRef << "\n";
-//      I--;
-//      auto LastMBB = MBB.splitAt(*I);
-//      MF->getFrameInfo().setHasCalls(true);
-//    MF->print(llvm::outs());
+//    isInstCorrect = TII->verifyInstruction(*Builder, errorRef);
+//    //
+//    llvm::outs() << "Is inst correct? " << isInstCorrect << "\n";
+//    llvm::outs() << errorRef << "\n";
+    //      I--;
+    //      auto LastMBB = MBB.splitAt(*I);
+    //      MF->getFrameInfo().setHasCalls(true);
+    //    MF->print(llvm::outs());
 //  }
   //  Module->getFunctionList().begin()->ge
   //  MMIWP->getMMI().get
@@ -319,6 +392,7 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
   //  auto TM = targetInfo->getTargetMachine();
 
   llvm::legacy::PassManager PM;
+  TM->setOptLevel(llvm::CodeGenOptLevel::None);
 
   llvm::TargetLibraryInfoImpl TLII(llvm::Triple(Module->getTargetTriple()));
   PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
@@ -326,14 +400,29 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
   llvm::TargetPassConfig *TPC = TM->createPassConfig(PM);
 
   PM.add(TPC);
-//  TPC->addISelPasses();
-//  TPC->addPrintPass("My stuff:");
+  //  TPC->addISelPasses();
+  //  TPC->addPrintPass("My stuff:");
   PM.add(MMIWP.release());
+  TPC->addISelPasses();
+  PM.add(llvm::createMachineFunctionPrinterPass(llvm::outs(), "After ISEL Passes"));
+  TPC->printAndVerify("After ISEL Passes");
+//  PM.add(llvm::Pass::createPass(&llvm::FinalizeISelID));
+//  PM.add(llvm::Pass::createPass(&llvm::SIFixSGPRCopiesID));
+//  PM.add(llvm::createSILowerI1CopiesPass());
+  TPC->addMachinePasses();
+  PM.add(llvm::createMachineFunctionPrinterPass(llvm::outs(), "After Machine Passes"));
+//  TPC->printAndVerify("After Machine Passes");
+
+  //  TPC->addPass(&llvm::FinalizeISelID);
+
   //        TPC->printAndVerify("MachineFunctionGenerator::assemble");
 
   //        auto usageAnalysis =
   //        std::make_unique<llvm::AMDGPUResourceUsageAnalysis>();
-  PM.add(new llvm::AMDGPUResourceUsageAnalysis());
+  auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
+  PM.add(UsageAnalysis);
+  PM.add(llvm::createMachineFunctionPrinterPass(llvm::outs(), "After Usage Analysis"));
+//  TPC->printAndVerify("After Resource Usage");
   // Add target-specific passes.
   //        ET.addTargetSpecificPasses(PM);
   //        TPC->printAndVerify("After
@@ -347,15 +436,17 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
   //            if (addPass(PM, PassName, *TPC))
   //                return make_error<Failure>("Unable to add a mandatory
   //                pass");
-  TPC->setInitialized();
+//  TPC->setInitialized();
 
   //        llvm::SmallVector<char> o;
   //        std::string out;
   //        llvm::raw_string_ostream outOs(out);
-  llvm::raw_svector_ostream OutOS(reloc);
+
+  TPC->setInitialized();
+  llvm::raw_svector_ostream OutOS(Reloc);
 
   // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-  if (TM->addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::ObjectFile,
+  if (TM->addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::AssemblyFile,
                         MCContext))
     llvm::outs() << "Failed to add pass manager\n";
   //            return make_error<llvm::Failure>("Cannot add AsmPrinter
@@ -363,145 +454,33 @@ llvm::Error luthier::CodeGenerator::instrument(hsa::Instr &instr,
 
   PM.run(*Module); // Run all the passes
 
-  llvm::outs() << reloc << "\n";
+  llvm::outs() << Reloc << "\n";
 
   LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
-      llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(reloc.data()),
-                              reloc.size()),
-      *Isa, executable));
+      llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(Reloc.data()),
+                              Reloc.size()),
+      *Isa, Executable));
   llvm::outs() << "Compiled to executable\n";
 
-
-
-  llvm::outs() << llvm::toStringRef(executable) << "\n";
+  llvm::outs() << llvm::toStringRef(Executable) << "\n";
 
   //  llvm::outs() << elfFile->get()->getRelSection();
   LUTHIER_RETURN_ON_ERROR(CodeObjectManager.loadInstrumentedKernel(
-      executable, instr.getExecutableSymbol()));
+      Executable, Instr.getExecutableSymbol()));
 
-  //  llvm::Expected<const std::vector<hsa::Instr> *> InstFunction =
-  //      CodeLifter::instance().disassemble( instr.getExecutableSymbol());
-  //    for (const auto& i: *targetFunction) {
-  //        const unsigned Opcode = i.getInstr().getOpcode();
-  //        const llvm::MCInstrDesc &MCID =
-  //        targetInfo.getMCInstrInfo()->get(Opcode); llvm::MachineInstrBuilder
-  //        Builder = llvm::BuildMI(MBB, DL, MCID); for (unsigned OpIndex = 0, E
-  //        = i.getInstr().getNumOperands(); OpIndex < E;
-  //             ++OpIndex) {
-  //            const MCOperand &Op = Inst.getOperand(OpIndex);
-  //            if (Op.isReg()) {
-  //                const bool IsDef = OpIndex < MCID.getNumDefs();
-  //                unsigned Flags = 0;
-  //                const MCOperandInfo &OpInfo =
-  //                MCID.operands().begin()[OpIndex]; if (IsDef &&
-  //                !OpInfo.isOptionalDef())
-  //                    Flags |= RegState::Define;
-  //                Builder.addReg(Op.getReg(), Flags);
-  //            } else if (Op.isImm()) {
-  //                Builder.addImm(Op.getImm());
-  //            } else if (!Op.isValid()) {
-  //                llvm_unreachable("Operand is not set");
-  //            } else {
-  //                llvm_unreachable("Not yet implemented");
-  //            }
-  //        }
-  //    }
-
-  //    new UnreachableInst(Module->getContext(), BB);
-  //    return MMI->getOrCreateMachineFunction(*F);
-
-  //        llvm::Function f;
-  //    llvm::MachineFunction func;
-  //    auto genInst = makeInstruction(
-  //        agent.getIsa(), llvm::AMDGPU::S_ADD_I32,
-  //        llvm::MCOperand::createReg(llvm::AMDGPU::VGPR3),
-  //        llvm::MCOperand::createReg(llvm::AMDGPU::SGPR6),
-  //        llvm::MCOperand::createReg(llvm::AMDGPU::VGPR1));
-
-  //    const auto targetTriple =
-  //    llvm::Triple(agent.getIsa().getLLVMTargetTriple()); llvm::MCContext
-  //    ctx(targetTriple, targetInfo.getMCAsmInfo(),
-  //    targetInfo.getMCRegisterInfo(),
-  //                        targetInfo.getMCSubTargetInfo());
-  //    auto mcEmitter =
-  //    targetInfo.getTarget()->createMCCodeEmitter(*targetInfo.getMCInstrInfo(),
-  //    ctx);
-
-  //    llvm::SmallVector<char> osBack;
-  //    llvm::SmallVector<llvm::MCFixup> fixUps;
-  //    mcEmitter->encodeInstruction(genInst, osBack, fixUps,
-  //    *targetInfo.getMCSubTargetInfo()); fmt::print("Assembled instruction
-  //    :"); for (auto s: osBack) { fmt::print("{:#x}", s); } fmt::print("\n");
-
-  //    auto oneMoreTime = Disassembler::instance().disassemble(
-  //        agent.getIsa(), {reinterpret_cast<std::byte *>(osBack.data()),
-  //        osBack.size()});
-
-  auto instFunctionInstructions =
-      CodeLifter::instance().disassemble(*instrumentationFunc);
-  LUTHIER_RETURN_ON_ERROR(instFunctionInstructions.takeError());
-  //
-  for (const auto &i : **instFunctionInstructions) {
-    std::string instStr;
-    llvm::raw_string_ostream instStream(instStr);
-    auto inst = i.getInstr();
-    TargetInfo->getMCInstPrinter()->printInst(
-        &inst, reinterpret_cast<luthier_address_t>(i.getAddress()), "",
-        *TargetInfo->getMCSubTargetInfo(), llvm::outs());
-    llvm::outs() << "\n";
-  }
-  //            targetInfo.getMCInstrInfo()->getName(inst.getOpcode()).str() <<
-  //        "\n";
-  //        //        fmt::println("Is call? {}",
-  //        targetInfo.MII_->get(inst.getOpcode()).isCall());
-  //        //        fmt::println("Is control flow? {}",
-  //        //
-  //        targetInfo.MII_->get(inst.getOpcode()).mayAffectControlFlow(inst,
-  //        *targetInfo.MRI_));
-  //        //        fmt::println("Num max operands? {}",
-  //        targetInfo.MII_->get(inst.getOpcode()).getNumOperands());
-  //        llvm::outs() << llvm::formatv("Num operands? {0:X}\n",
-  //        inst.getNumOperands());
-  //        //        fmt::println("May load? {}",
-  //        targetInfo.MII_->get(inst.getOpcode()).mayLoad()); llvm::outs() <<
-  //        llvm::formatv("Mnemonic: {0}\n",
-  //        targetInfo.getMCInstPrinter()->getMnemonic(&inst).first);
-  //
-  //        for (int j = 0; j < inst.getNumOperands(); j++) {
-  //            //            auto op = inst.getOperand(j);
-  //            //            std::string opStr;
-  //            //            llvm::raw_string_ostream opStream(opStr);
-  //            //            op.print(opStream, targetInfo.MRI_.get());
-  //            //            fmt::println("OP: {}", opStream.str());
-  //            //            if (op.isReg()) {
-  //            //                fmt::println("Reg idx: {}", op.getReg());
-  //            //                fmt::println("Reg name: {}",
-  //            targetInfo.MRI_->getName(op.getReg()));
-  //            //                auto subRegIterator =
-  //            targetInfo.MRI_->subregs(op.getReg());
-  //            //                for (auto it = subRegIterator.begin(); it !=
-  //            subRegIterator.end(); it++) {
-  //            //                    fmt::println("\tSub reg Name: {}",
-  //            targetInfo.MRI_->getName((*it)));
-  //            //                }
-  //            ////                auto superRegIterator =
-  //            targetInfo.MRI_->superregs(op.getReg());
-  //            ////                for (auto it = superRegIterator.begin();
-  //            it
-  //            != superRegIterator.end(); it++) {
-  //            ////                    fmt::println("\tSuper reg Name: {}",
-  //            targetInfo.MRI_->getName((*it)));
-  //            ////                }
-  //            //            }
-  //            //            fmt::println("Is op {} reg? {}", j, op.isReg());
-  //            //            fmt::println("Is op {} valid? {}", j,
-  //            op.isValid());
-  //        }
-
-  //        llvm::outs() << instStream.str() << "\n";
-  //        inst.getOpcode();
-  //    }
-  //    llvm::outs() << "==================================\n";*/
+//  auto instFunctionInstructions =
+//      CodeLifter::instance().disassemble(*InstrumentationFunc);
+//  LUTHIER_RETURN_ON_ERROR(instFunctionInstructions.takeError());
+//  //
+//  for (const auto &i : **instFunctionInstructions) {
+//    std::string instStr;
+//    llvm::raw_string_ostream instStream(instStr);
+//    auto inst = i.getInstr();
+//    TargetInfo->getMCInstPrinter()->printInst(
+//        &inst, reinterpret_cast<luthier_address_t>(i.getAddress()), "",
+//        *TargetInfo->getMCSubTargetInfo(), llvm::outs());
+//    llvm::outs() << "\n";
+//  }
   return llvm::Error::success();
 }
 

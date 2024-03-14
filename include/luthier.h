@@ -85,7 +85,8 @@ luthier_disassemble_kernel_object(uint64_t kernel_object, size_t *size,
 
 /**
  * \brief If the tool is compiled with HIP device code it needs to call this
- * macro once This macro will define a managed variable in the tool's code
+ * macro once
+ * This macro will define a managed variable in the tool's code
  * object Internally, Luthier looks for this variable to find the code objects
  * that belong to the tool
  */
