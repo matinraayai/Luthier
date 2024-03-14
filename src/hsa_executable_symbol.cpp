@@ -99,11 +99,8 @@ llvm::Expected<llvm::ArrayRef<uint8_t>>
 luthier::hsa::ExecutableSymbol::getMachineCode() const {
   auto SymbolType = getType();
   LUTHIER_RETURN_ON_ERROR(SymbolType.takeError());
-
-  if (auto Err = LUTHIER_ARGUMENT_ERROR_CHECK(*SymbolType !=
-                                              HSA_SYMBOL_KIND_VARIABLE)) {
-    return Err;
-  }
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ARGUMENT_ERROR_CHECK(*SymbolType != HSA_SYMBOL_KIND_VARIABLE));
 
   if (*SymbolType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
     return *IndirectFunctionCode;
@@ -119,26 +116,20 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
       auto HostElfOrError = getAMDGCNObjectFile(*StorageMemoryOrError);
       LUTHIER_RETURN_ON_ERROR(HostElfOrError.takeError());
 
-      auto hostElf = HostElfOrError->get();
+      auto ElfSymbol = getSymbolByName(**HostElfOrError, KernelSymbolName);
+      LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ElfSymbol->has_value()));
 
-      // TODO: Replace this with a hash lookup
-      auto Syms = hostElf->symbols();
-      for (llvm::object::ELFSymbolRef ElfSymbol : Syms) {
-        auto NameOrError = ElfSymbol.getName();
-        LUTHIER_RETURN_ON_ERROR(NameOrError.takeError());
-        if (NameOrError.get() == KernelSymbolName) {
-          auto addressOrError = ElfSymbol.getAddress();
-          LUTHIER_RETURN_ON_ERROR(addressOrError.takeError());
-          auto loadedMemory = Lco.getLoadedMemory();
-          LUTHIER_RETURN_ON_ERROR(loadedMemory.takeError());
-          return llvm::ArrayRef<uint8_t>{
-              reinterpret_cast<const uint8_t *>(*addressOrError +
-                                                loadedMemory->data()),
-              ElfSymbol.getSize()};
-        }
-      }
-    };
-  }
+      auto AddressOrError = ElfSymbol.get()->getAddress();
+      LUTHIER_RETURN_ON_ERROR(AddressOrError.takeError());
+      auto LoadedMemory = Lco.getLoadedMemory();
+      LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
+      return llvm::ArrayRef<uint8_t>{
+          reinterpret_cast<const uint8_t *>(*AddressOrError +
+                                            LoadedMemory->data()),
+          ElfSymbol.get()->getSize()};
+    }
+  };
   llvm_unreachable("No device code associated with the symbol was found");
 }
 
