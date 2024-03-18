@@ -1,17 +1,13 @@
 #ifndef CODE_OBJECT_MANAGER_HPP
 #define CODE_OBJECT_MANAGER_HPP
-#include <set>
+#include <llvm/ADT/DenseSet.h>
 #include <vector>
 
 #include "hsa_code_object_reader.hpp"
-#include "instrumentation_function.hpp"
+#include "hsa_agent.hpp"
+#include "hsa_executable_symbol.hpp"
+#include "hsa_executable.hpp"
 #include "luthier_types.h"
-
-namespace luthier::hsa {
-class GpuAgent;
-
-class ExecutableSymbol;
-} // namespace luthier::hsa
 
 namespace luthier {
 /**
@@ -24,73 +20,84 @@ public:
   CodeObjectManager &operator=(const CodeObjectManager &) = delete;
 
   static inline CodeObjectManager &instance() {
-    static CodeObjectManager instance;
-    return instance;
+    static CodeObjectManager Instance;
+    return Instance;
   }
 
   /**
-   * Registers the wrapper kernel of tool's instrumentation functions
+   * Registers the wrapper kernel of the tool's instrumentation functions
    * The arguments are captured by intercepting \p __hipRegisterFunction calls,
-   * and checking if \p __luthier_wrap is in the name of the kernel This
-   * function is called once per instrumentation function/kernel \param
-   * wrapperHostPtr shadow host pointer of the instrumentation function's
-   * wrapper kernel \param kernelName name of the wrapper kernel
+   * and checking if \p __luthier_wrap is in the name of the kernel
+   * This function is called once per instrumentation function/kernel
+   * \param WrapperShadowHostPtr shadow host pointer of the instrumentation
+   * function's wrapper kernel
+   * \param KernelName name of the wrapper kernel
    */
-  void registerInstrumentationFunctionWrapper(const void *wrapperHostPtr,
-                                              const char *kernelName);
+  void registerInstrumentationFunctionWrapper(const void *WrapperShadowHostPtr,
+                                              const char *KernelName);
 
   /**
    * Returns the \p hsa::ExecutableSymbol of the instrumentation function, given
-   * its HSA agent and wrapper kernel host ptr \param wrapperHostPtr shadow host
-   * pointer of the wrapper kernel \param agent the GPU HSA agent where the
-   * instrumentation function is loaded on \return the instrumentation function
-   * symbol
+   * its HSA agent and wrapper kernel shadow host ptr
+   * \param WrapperShadowHostPtr shadow host pointer of the wrapper kernel
+   * \param Agent the GPU HSA agent where the instrumentation function is loaded
+   * on
+   * \return the instrumentation function symbol or \p llvm::Error
    */
   llvm::Expected<const hsa::ExecutableSymbol &>
-  getInstrumentationFunction(const void *wrapperHostPtr,
-                             hsa::GpuAgent agent) const;
+  getInstrumentationFunction(const void *WrapperShadowHostPtr,
+                             const hsa::GpuAgent &Agent) const;
 
   /**
    * Returns the \p hsa::ExecutableSymbol of the wrapper kernel associated with
-   * an instrumentation function, given its wrapper kernel shadow host pointer
-   * and the HSA GPU Agent it is loaded on \param wrapperHostPtr shadow host
-   * pointer of the wrapper kernel \param agent the HSA GPU Agent the wrapper
-   * kernel (and instrumentation function) is loaded on \return the
-   * instrumentation function wrapper kernel's \p hsa::ExecutableSymbol
+   * an instrumentation function, given its wrapper kernel's shadow host pointer
+   * and the HSA GPU Agent it is loaded on
+   * \param WrapperHostPtr shadow host pointer of the wrapper kernel
+   * \param Agent the HSA GPU Agent the wrapper kernel
+   * (and instrumentation function) is loaded on
+   * \return the instrumentation function wrapper kernel's
+   * \p hsa::ExecutableSymbol, or \p llvm::Error
    */
   llvm::Expected<const hsa::ExecutableSymbol &>
-  getInstrumentationKernel(const void *wrapperHostPtr,
-                           hsa::GpuAgent agent) const;
+  getInstrumentationFunctionWrapperKernel(const void *WrapperHostPtr,
+                                          hsa::GpuAgent Agent) const;
 
   /**
    * Loads an instrumented \p hsa::Executable, containing the instrumented
-   * version of the \p originalKernel Called by \p CodeGenerator after it has
-   * compiled an instrumentation ELF \param instrumentedElf reference to the
-   * instrumented ELF file in memory \param originalKernel the symbol of the
-   * target instrumented kernel
+   * version of the \p OriginalKernel
+   * Called by \p CodeGenerator after it has compiled an instrumentation ELF
+   * \param InstrumentedElf reference to the instrumented ELF file in memory
+   * \param OriginalKernel the symbol of the target instrumented kernel
+   * \return \p llvm::Error
    */
   llvm::Error
-  loadInstrumentedKernel(const llvm::ArrayRef<uint8_t> &instrumentedElf,
-                         const hsa::ExecutableSymbol &originalKernel);
+  loadInstrumentedKernel(const llvm::ArrayRef<uint8_t> &InstrumentedElf,
+                         const hsa::ExecutableSymbol &OriginalKernel);
 
   /**
    * Returns the instrumented kernel's \p hsa::ExecutableSymbol given its
-   * original un-instrumented version's KD Used to run the instrumented version
-   * of the kernel when requested by the user \param originalKernel symbol of
-   * the un-instrumented original kernel \return symbol of the instrumented
-   * version of the target kernel \throws std::runtime_error if the
-   * originalKernelKD is not found internally
+   * original un-instrumented version's \p hsa::ExecutableSymbol
+   * Used to run the instrumented version of the kernel when requested by the
+   * user
+   * \param OriginalKernel symbol of the un-instrumented original kernel
+   * \return symbol of the instrumented version of the target kernel, or
+   * \p llvm::Error
    */
-  const hsa::ExecutableSymbol &
-  getInstrumentedKernel(const hsa::ExecutableSymbol &originalKernel) const;
+  llvm::Expected<const hsa::ExecutableSymbol &>
+  getInstrumentedKernel(const hsa::ExecutableSymbol &OriginalKernel) const;
 
 private:
   CodeObjectManager() = default;
   ~CodeObjectManager();
 
+  struct ToolFunctionInfo {
+    const hsa::ExecutableSymbol InstrumentationFunction;
+    const hsa::ExecutableSymbol WrapperKernel;
+  };
+
   /**
-   * Iterates over all the frozen HSA executables in the HSA Runtime and
-   * registers the ones that belong to the Luthier tool
+   * Iterates over all the frozen HSA executables in the HSA Runtime,
+   * finds the ones that belong to the Luthier tool, and registers them
    */
   llvm::Error registerLuthierHsaExecutables() const;
 
@@ -100,28 +107,27 @@ private:
    * A set of all \p hsa::Executable handles that belong to the Luthier tool,
    * containing the instrumentation function and their wrapper kernels
    */
-  // TODO: Replace these containers with LLVM-based containers
-  mutable std::set<hsa::Executable> toolExecutables_{};
+  mutable llvm::DenseSet<hsa::Executable> ToolExecutables{};
 
   /**
    * \brief A list of device functions captured by \p __hipRegisterFunction, not
-   * yet processed by \p CodeObjectManager The first \p std::tuple element is
-   * the "host shadow pointer" of the instrumentation function wrapper kernel,
-   * created via the macro \p LUTHIER_EXPORT_FUNC
+   * yet processed by \p CodeObjectManager
+   * The first \p std::tuple element is the "host shadow pointer" of
+   * the instrumentation function's wrapper kernel, created via the macro
+   * \p LUTHIER_EXPORT_FUNC
    * The second \p std::tuple element is the name of the dummy kernel
    */
   mutable std::vector<std::tuple<const void *, const char *>>
-      unprocessedFunctions_{};
+      UnprocessedFunctions{};
 
-  mutable std::unordered_map<
-      const void *,
-      std::unordered_map<hsa::GpuAgent, luthier::InstrumentationFunction>>
-      functions_{};
+  mutable llvm::DenseMap<std::pair<const void *, hsa::GpuAgent>,
+                         ToolFunctionInfo>
+      ToolFunctions{};
 
-  std::unordered_map<
+  llvm::DenseMap<
       hsa::ExecutableSymbol,
       std::tuple<hsa::ExecutableSymbol, hsa::Executable, hsa::CodeObjectReader>>
-      instrumentedKernels_{};
+      InstrumentedKernels{};
 };
 }; // namespace luthier
 

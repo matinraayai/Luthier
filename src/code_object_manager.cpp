@@ -23,114 +23,112 @@ llvm::Error CodeObjectManager::registerLuthierHsaExecutables() const {
   llvm::SmallVector<hsa::GpuAgent> Agents;
   LUTHIER_RETURN_ON_ERROR(hsa::getGpuAgents(Agents));
 
-  for (const auto &e : Executables) {
-    for (const auto &a : Agents) {
+  for (const auto &Exec : Executables) {
+    for (const auto &Agent : Agents) {
       auto LuthierReservedSymbolWithoutManaged =
-          e.getSymbolByName(a, LUTHIER_RESERVED_MANAGED_VAR);
+          Exec.getSymbolByName(Agent, LUTHIER_RESERVED_MANAGED_VAR);
       LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbolWithoutManaged.takeError());
-      auto LuthierReservedSymbolWithManaged = e.getSymbolByName(
-          a, std::string(LUTHIER_RESERVED_MANAGED_VAR) + ".managed");
+      auto LuthierReservedSymbolWithManaged = Exec.getSymbolByName(
+          Agent, std::string(LUTHIER_RESERVED_MANAGED_VAR) + ".managed");
       LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbolWithManaged.takeError());
 
       if (LuthierReservedSymbolWithManaged->has_value() ||
           LuthierReservedSymbolWithoutManaged->has_value()) {
-        toolExecutables_.insert(e);
+        ToolExecutables.insert(Exec);
       }
     }
   }
   LuthierLogDebug("Number of executables captured: {0}",
-                  toolExecutables_.size());
+                  ToolExecutables.size());
   return llvm::Error::success();
 }
 
 llvm::Error CodeObjectManager::processFunctions() const {
   LUTHIER_RETURN_ON_ERROR(registerLuthierHsaExecutables());
 
-  llvm::SmallVector<hsa::GpuAgent> agents;
-  LUTHIER_RETURN_ON_ERROR(hsa::getGpuAgents(agents));
+  llvm::SmallVector<hsa::GpuAgent> Agents;
+  LUTHIER_RETURN_ON_ERROR(hsa::getGpuAgents(Agents));
 
-  for (const auto &e : toolExecutables_) {
-    for (const auto &a : agents) {
-      std::unordered_map<std::string, hsa::ExecutableSymbol> instKernelSymbols;
-      std::unordered_map<std::string, hsa::ExecutableSymbol>
-          instFunctionSymbols;
-      auto symbols = e.getSymbols(a);
-      LUTHIER_RETURN_ON_ERROR(symbols.takeError());
-      for (const auto &s : *symbols) {
-        auto sType = s.getType();
-        LUTHIER_RETURN_ON_ERROR(sType.takeError());
-        auto sName = s.getName();
-        LUTHIER_RETURN_ON_ERROR(sName.takeError());
-        if (*sType == HSA_SYMBOL_KIND_KERNEL)
-          instKernelSymbols.insert({sName->substr(0, sName->find(".kd")), s});
-        else if (*sType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
-          instFunctionSymbols.insert(
-              {LUTHIER_DEVICE_FUNCTION_WRAP + *sName, s});
+  for (const auto &Exec : ToolExecutables) {
+    for (const auto &Agent : Agents) {
+      llvm::DenseMap<llvm::StringRef, hsa::ExecutableSymbol>
+          WrapperKernelSymbols;
+      llvm::DenseMap<llvm::StringRef, hsa::ExecutableSymbol>
+          InstFunctionSymbols;
+      auto Symbols = Exec.getSymbols(Agent);
+      LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
+      for (const auto &Symbol : *Symbols) {
+        auto SType = Symbol.getType();
+        LUTHIER_RETURN_ON_ERROR(SType.takeError());
+        auto SName = Symbol.getName();
+        LUTHIER_RETURN_ON_ERROR(SName.takeError());
+        if (*SType == HSA_SYMBOL_KIND_KERNEL)
+          WrapperKernelSymbols.insert(
+              {SName->substr(0, SName->rfind(".kd")), Symbol});
+        else if (*SType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
+          InstFunctionSymbols.insert(
+              {LUTHIER_DEVICE_FUNCTION_WRAP + *SName, Symbol});
       }
-      for (const auto &[instKerShadowPtr, instKerName] :
-           unprocessedFunctions_) {
-        if (instKernelSymbols.contains(instKerName)) {
-          auto kernelSymbol = instKernelSymbols.at(instKerName);
-          auto functionSymbol = instFunctionSymbols.at(instKerName);
-          if (functions_.contains(instKerShadowPtr)) {
-            functions_.at(instKerShadowPtr)
-                .insert({a, {functionSymbol, kernelSymbol}});
-          } else {
-            functions_.insert(
-                {instKerShadowPtr, {{a, {functionSymbol, kernelSymbol}}}});
-          }
-        }
+      for (const auto &[WrapKerShadowPtr, WrapKerName] : UnprocessedFunctions) {
+        LUTHIER_RETURN_ON_ERROR(
+            LUTHIER_ASSERTION(WrapperKernelSymbols.contains(WrapKerName)));
+        auto &KernelSymbol = WrapperKernelSymbols.at(WrapKerName);
+        auto &functionSymbol = InstFunctionSymbols.at(WrapKerName);
+        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+            ToolFunctions.contains({WrapKerShadowPtr, Agent})));
+        ToolFunctions.insert(
+            {{WrapKerShadowPtr, Agent}, {functionSymbol, KernelSymbol}});
       }
     }
   }
-  LuthierLogDebug("Number of functions registered: {0}\n", functions_.size());
-  unprocessedFunctions_.clear();
+  LuthierLogDebug("Number of functions registered: {0}\n",
+                  ToolFunctions.size());
+  UnprocessedFunctions.clear();
   return llvm::Error::success();
 }
 
 void CodeObjectManager::registerInstrumentationFunctionWrapper(
-    const void *wrapperHostPtr, const char *kernelName) {
-  unprocessedFunctions_.emplace_back(wrapperHostPtr, kernelName);
+    const void *WrapperShadowHostPtr, const char *KernelName) {
+  UnprocessedFunctions.emplace_back(WrapperShadowHostPtr, KernelName);
 }
 
 llvm::Expected<const hsa::ExecutableSymbol &>
-CodeObjectManager::getInstrumentationFunction(const void *wrapperHostPtr,
-                                              hsa::GpuAgent agent) const {
-  if (!unprocessedFunctions_.empty()) {
+CodeObjectManager::getInstrumentationFunction(
+    const void *WrapperShadowHostPtr, const hsa::GpuAgent &Agent) const {
+  if (!UnprocessedFunctions.empty()) {
     LUTHIER_RETURN_ON_ERROR(processFunctions());
   }
-  return functions_.at(wrapperHostPtr).at(agent).getInstrumentationFunction();
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(ToolFunctions.contains({WrapperShadowHostPtr, Agent})));
+  return ToolFunctions.at({WrapperShadowHostPtr, Agent})
+      .InstrumentationFunction;
 }
 
-const hsa::ExecutableSymbol &CodeObjectManager::getInstrumentedKernel(
-    const hsa::ExecutableSymbol &originalKernel) const {
-  if (!instrumentedKernels_.contains(originalKernel)) {
-    auto OriginalKD = originalKernel.getKernelDescriptor();
-    LUTHIER_CHECK(llvm::errorToBool(OriginalKD.takeError()) == false);
-    llvm::report_fatal_error(
-        llvm::formatv("The Kernel Descriptor {0:x} has not been instrumented.",
-                      reinterpret_cast<luthier_address_t>(*OriginalKD)));
-  }
+llvm::Expected<const hsa::ExecutableSymbol &>
+CodeObjectManager::getInstrumentedKernel(
+    const hsa::ExecutableSymbol &OriginalKernel) const {
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(InstrumentedKernels.contains(OriginalKernel)));
   return std::get<hsa::ExecutableSymbol>(
-      instrumentedKernels_.at(originalKernel));
+      InstrumentedKernels.at(OriginalKernel));
 }
 
 llvm::Error CodeObjectManager::loadInstrumentedKernel(
-    const llvm::ArrayRef<uint8_t> &instrumentedElf,
-    const hsa::ExecutableSymbol &originalKernel) {
-  if (!instrumentedKernels_.contains(originalKernel)) {
+    const llvm::ArrayRef<uint8_t> &InstrumentedElf,
+    const hsa::ExecutableSymbol &OriginalKernel) {
+  if (!InstrumentedKernels.contains(OriginalKernel)) {
     auto executable = hsa::Executable::create();
     LUTHIER_RETURN_ON_ERROR(executable.takeError());
 
-    auto agent = originalKernel.getAgent();
+    auto agent = OriginalKernel.getAgent();
 
-    auto reader = hsa::CodeObjectReader::createFromMemory(instrumentedElf);
+    auto reader = hsa::CodeObjectReader::createFromMemory(InstrumentedElf);
     LUTHIER_RETURN_ON_ERROR(reader.takeError());
     LUTHIER_RETURN_ON_ERROR(
         executable->loadCodeObject(*reader, agent).takeError());
     LUTHIER_RETURN_ON_ERROR(executable->freeze());
 
-    auto originalSymbolName = originalKernel.getName();
+    auto originalSymbolName = OriginalKernel.getName();
     LUTHIER_RETURN_ON_ERROR(originalSymbolName.takeError());
     auto instrumentedKernel =
         executable->getSymbolByName(agent, *originalSymbolName);
@@ -142,25 +140,27 @@ llvm::Error CodeObjectManager::loadInstrumentedKernel(
     LUTHIER_RETURN_ON_ERROR(
         LUTHIER_ASSERTION(*instrumentedKernelType == HSA_SYMBOL_KIND_KERNEL));
 
-    instrumentedKernels_.insert(
-        {originalKernel,
+    InstrumentedKernels.insert(
+        {OriginalKernel,
          std::make_tuple(**instrumentedKernel, *executable, *reader)});
   }
   return llvm::Error::success();
 }
 
 llvm::Expected<const hsa::ExecutableSymbol &>
-CodeObjectManager::getInstrumentationKernel(const void *wrapperHostPtr,
-                                            hsa::GpuAgent agent) const {
-  if (!unprocessedFunctions_.empty()) {
+CodeObjectManager::getInstrumentationFunctionWrapperKernel(
+    const void *WrapperHostPtr, hsa::GpuAgent Agent) const {
+  if (!UnprocessedFunctions.empty()) {
     LUTHIER_RETURN_ON_ERROR(processFunctions());
   }
-  return functions_.at(wrapperHostPtr).at(agent).getInstrumentationKernel();
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(ToolFunctions.contains({WrapperHostPtr, Agent})));
+  return ToolFunctions.at({WrapperHostPtr, Agent}).WrapperKernel;
 }
 
 CodeObjectManager::~CodeObjectManager() {
   // TODO: Fix the destructor
-  for (auto &[origSymbol, instInfo] : instrumentedKernels_) {
+  for (auto &[origSymbol, instInfo] : InstrumentedKernels) {
     auto &[s, e, r] = instInfo;
     //        r.destroy();
     //        e.destroy();
