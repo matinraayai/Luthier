@@ -443,7 +443,6 @@ getSymbolFromSysVHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
   return std::nullopt;
 }
 
-
 template <typename ELFT>
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
 hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
@@ -521,22 +520,69 @@ getSymbolByName(const llvm::object::ELFObjectFile<ELFT> &Elf,
       return hashLookup<ELFT>(Elf, SectionAsSHdr, SymbolName);
     }
   }
+  llvm_unreachable("Symbol hash table was not found");
 
-  // Symbol iteration as fallback
-  for (const auto &Symbol : Elf.symbols()) {
-    llvm::Expected<llvm::StringRef> NameOrErr = Symbol.getName();
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    if (*NameOrErr == SymbolName)
-      return llvm::object::ELFSymbolRef(Symbol);
-  }
-  for (auto Symbol = Elf.dynamic_symbol_begin();
-       Symbol != Elf.dynamic_symbol_end(); ++Symbol) {
-    llvm::Expected<llvm::StringRef> NameOrErr = Symbol->getName();
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    if (*NameOrErr == SymbolName)
-      return llvm::object::ELFSymbolRef(*Symbol);
-  }
-  return std::nullopt;
+  //  // Symbol iteration as fallback
+  //  for (const auto &Symbol : Elf.symbols()) {
+  //    llvm::Expected<llvm::StringRef> NameOrErr = Symbol.getName();
+  //    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
+  //    if (*NameOrErr == SymbolName)
+  //      return llvm::object::ELFSymbolRef(Symbol);
+  //  }
+  //  for (auto Symbol = Elf.dynamic_symbol_begin();
+  //       Symbol != Elf.dynamic_symbol_end(); ++Symbol) {
+  //    llvm::Expected<llvm::StringRef> NameOrErr = Symbol->getName();
+  //    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
+  //    if (*NameOrErr == SymbolName)
+  //      return llvm::object::ELFSymbolRef(*Symbol);
+  //  }
+  //  return std::nullopt;
+}
+
+template <class ELFT>
+llvm::Expected<uint64_t> getSectionLMA(const llvm::object::ELFFile<ELFT> &Obj,
+                                       const llvm::object::ELFSectionRef &Sec) {
+  auto PhdrRange = Obj.program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+
+  // Search for a PT_LOAD segment containing the requested section. Use this
+  // segment's p_addr to calculate the section's LMA.
+  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
+    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
+        (llvm::object::isSectionInSegment<ELFT>(
+            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
+                       Sec.getObject())
+                       ->getSection(Sec.getRawDataRefImpl()))))
+      return Sec.getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
+
+  // Return section's VMA if it isn't in a PT_LOAD segment.
+  return Sec.getAddress();
+}
+
+template <class ELFT>
+llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
+                                       const llvm::object::ELFSymbolRef &Sym) {
+  auto PhdrRange = Obj.program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+
+  auto SymbolSection = Sym.getSection();
+  LUTHIER_RETURN_ON_ERROR(SymbolSection.takeError());
+
+  auto SymbolAddress = Sym.getAddress();
+  LUTHIER_RETURN_ON_ERROR(SymbolAddress.takeError());
+
+  // Search for a PT_LOAD segment containing the requested section. Use this
+  // segment's p_addr to calculate the section's LMA.
+  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
+    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
+        (llvm::object::isSectionInSegment<ELFT>(
+            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
+                       Sym.getObject())
+                       ->getSection(SymbolSection.get()->getRawDataRefImpl()))))
+      return *SymbolAddress - Phdr.p_vaddr + Phdr.p_paddr;
+
+  // Return section's VMA if it isn't in a PT_LOAD segment.
+  return *SymbolAddress;
 }
 
 } // namespace luthier
