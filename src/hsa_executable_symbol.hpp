@@ -16,6 +16,8 @@ class GpuAgent;
 
 class Executable;
 
+class LoadedCodeObject;
+
 class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
 private:
   hsa_agent_t Agent;
@@ -85,6 +87,9 @@ public:
   [[nodiscard]] GpuAgent getAgent() const;
 
   [[nodiscard]] hsa::Executable getExecutable() const;
+
+  [[nodiscard]] llvm::Expected<std::optional<LoadedCodeObject>>
+  getLoadedCodeObject() const;
 
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getMachineCode() const;
 };

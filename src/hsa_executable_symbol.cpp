@@ -88,11 +88,35 @@ ExecutableSymbol::fromKernelDescriptor(const hsa::KernelDescriptor *KD) {
       "Kernel descriptor {0:x} does not have a symbol associated with it.",
       reinterpret_cast<const void *>(KD)));
 }
-luthier::hsa::GpuAgent luthier::hsa::ExecutableSymbol::getAgent() const {
+
+GpuAgent ExecutableSymbol::getAgent() const {
   return luthier::hsa::GpuAgent(Agent);
 }
-luthier::hsa::Executable luthier::hsa::ExecutableSymbol::getExecutable() const {
+
+Executable ExecutableSymbol::getExecutable() const {
   return luthier::hsa::Executable(Executable);
+}
+
+llvm::Expected<std::optional<LoadedCodeObject>>
+ExecutableSymbol::getLoadedCodeObject() const {
+  auto LoadedCodeObjects = hsa::Executable(Executable).getLoadedCodeObjects();
+  LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
+  auto Name = getName();
+  LUTHIER_RETURN_ON_ERROR(Name.takeError());
+  for (const auto &LCO : *LoadedCodeObjects) {
+    auto StorageMemory = LCO.getStorageMemory();
+    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+
+    auto HostElf = getAMDGCNObjectFile(*StorageMemory);
+    LUTHIER_RETURN_ON_ERROR(HostElf.takeError());
+
+    auto ElfSymbol = getSymbolByName(**HostElf, *Name);
+    LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
+
+    if (ElfSymbol->has_value())
+      return LCO;
+  }
+  return std::nullopt;
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
@@ -105,32 +129,42 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
   if (*SymbolType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
     return *IndirectFunctionCode;
   else {
-    auto LoadedCodeObjects = hsa::Executable(Executable).getLoadedCodeObjects();
-    LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
+    auto LCO = getLoadedCodeObject();
+    LUTHIER_RETURN_ON_ERROR(LCO.takeError());
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCO->has_value()));
+
     auto KdSymbolName = getName();
     LUTHIER_RETURN_ON_ERROR(KdSymbolName.takeError());
+
     auto KernelSymbolName = KdSymbolName->substr(0, KdSymbolName->find(".kd"));
-    for (const auto &Lco : *LoadedCodeObjects) {
-      auto StorageMemoryOrError = Lco.getStorageMemory();
-      LUTHIER_RETURN_ON_ERROR(StorageMemoryOrError.takeError());
-      auto HostElfOrError = getAMDGCNObjectFile(*StorageMemoryOrError);
-      LUTHIER_RETURN_ON_ERROR(HostElfOrError.takeError());
 
-      auto ElfSymbol = getSymbolByName(**HostElfOrError, KernelSymbolName);
-      LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ElfSymbol->has_value()));
+    auto StorageMemory = LCO.get()->getStorageMemory();
+    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
-      auto AddressOrError = ElfSymbol.get()->getAddress();
-      LUTHIER_RETURN_ON_ERROR(AddressOrError.takeError());
-      auto LoadedMemory = Lco.getLoadedMemory();
-      LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
-      return llvm::ArrayRef<uint8_t>{
-          reinterpret_cast<const uint8_t *>(*AddressOrError +
+    auto HostELF = getAMDGCNObjectFile(*StorageMemory);
+    LUTHIER_RETURN_ON_ERROR(HostELF.takeError());
+
+    auto ElfSymbol = getSymbolByName(**HostELF, KernelSymbolName);
+    LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ElfSymbol->has_value()));
+
+    auto SymbolAddress = ElfSymbol.get()->getAddress();
+    LUTHIER_RETURN_ON_ERROR(SymbolAddress.takeError());
+
+    auto TextSection = ElfSymbol.get()->getSection();
+    LUTHIER_RETURN_ON_ERROR(TextSection.takeError());
+
+    auto SymbolLMA = getSymbolLMA(HostELF.get()->getELFFile(), **ElfSymbol);
+    LUTHIER_RETURN_ON_ERROR(SymbolLMA.takeError());
+
+    auto LoadedMemory = LCO.get()->getLoadedMemory();
+    LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
+
+    return llvm::ArrayRef<uint8_t>{
+          reinterpret_cast<const uint8_t *>(*SymbolLMA +
                                             LoadedMemory->data()),
           ElfSymbol.get()->getSize()};
     }
-  };
-  llvm_unreachable("No device code associated with the symbol was found");
-}
+};
 
 } // namespace luthier::hsa

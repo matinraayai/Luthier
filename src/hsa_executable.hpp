@@ -31,14 +31,15 @@ private:
          const char *Options = "");
 
   llvm::Expected<hsa::LoadedCodeObject>
-  loadCodeObject(hsa::CodeObjectReader Reader, hsa::GpuAgent Agent);
+  loadCodeObject(const hsa::CodeObjectReader &Reader,
+                 const hsa::GpuAgent &Agent);
 
   llvm::Error freeze(const char *Options = "");
 
   llvm::Error destroy();
 
 public:
-  explicit Executable(hsa_executable_t Executable);
+  explicit Executable(hsa_executable_t Exec);
 
   llvm::Expected<hsa_profile_t> getProfile();
 
@@ -50,13 +51,22 @@ public:
   getSymbols(const luthier::hsa::GpuAgent &Agent) const;
 
   [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
-  getSymbolByName(const luthier::hsa::GpuAgent &Agent,
-                  const std::string &Name) const;
+  getSymbolByName(const luthier::hsa::GpuAgent &agent,
+                  llvm::StringRef name) const;
 
+  /**
+   * \return the \p hsa::LoadedCodeObject's in the executable
+   */
   [[nodiscard]] llvm::Expected<std::vector<LoadedCodeObject>>
   getLoadedCodeObjects() const;
 
-  [[nodiscard]] llvm::Expected<std::vector<hsa::GpuAgent>> getAgents() const;
+  /**
+   * Returns the \p hsa::GpuAgent's that have a \p hsa::LoadedCodeObject in
+   * this executable
+   * @return an \p std::unordered_st of \p hsa::GpuAgent's
+   */
+  [[nodiscard]] llvm::Expected<std::unordered_set<hsa::GpuAgent>>
+  getAgents() const;
 };
 
 } // namespace hsa
