@@ -2,6 +2,8 @@
 #define HSA_ISA_HPP
 #include "hsa_handle_type.hpp"
 #include <llvm/Support/Error.h>
+#include <llvm/TargetParser/SubtargetFeature.h>
+#include <llvm/TargetParser/Triple.h>
 
 namespace luthier::hsa {
 
@@ -10,6 +12,10 @@ public:
   explicit ISA(hsa_isa_t Isa) : HandleType<hsa_isa_t>(Isa){};
 
   static llvm::Expected<ISA> fromName(const char *IsaName);
+
+  static llvm::Expected<ISA> fromLLVM(const llvm::Triple &TT,
+                                      llvm::StringRef CPU,
+                                      const llvm::SubtargetFeatures &Features);
 
   [[nodiscard]] llvm::Expected<std::string> getName() const;
 
@@ -27,11 +33,10 @@ public:
 
   [[nodiscard]] llvm::Expected<bool> isSRAMECCSupported() const;
 
-  [[nodiscard]] llvm::Expected<std::string> getLLVMTarget() const;
+  [[nodiscard]] llvm::Expected<llvm::Triple> getTargetTriple() const;
 
-  [[nodiscard]] llvm::Expected<std::string> getLLVMTargetTriple() const;
-
-  [[nodiscard]] llvm::Expected<std::string> getFeatureString() const;
+  [[nodiscard]] llvm::Expected<llvm::SubtargetFeatures>
+  getSubTargetFeatures() const;
 };
 
 } // namespace luthier::hsa
