@@ -4,25 +4,39 @@
 
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
+#include "hsa_loaded_code_object.hpp"
 
 namespace luthier::hsa {
 
 luthier::hsa::Instr::Instr(llvm::MCInst Inst,
-                           const luthier::hsa::ExecutableSymbol& Symbol,
+                           hsa::LoadedCodeObject  LCO,
+                           const hsa::ExecutableSymbol & Symbol,
                            luthier_address_t Address, size_t Size)
-    : Inst(std::move(Inst)), Symbol(Symbol), Address(Address),
+    : Inst(std::move(Inst)), LCO(std::move(LCO)),
+      Symbol(Symbol), LoadedDeviceAddress(Address),
       Size(Size) {}
 
-hsa::Executable Instr::getExecutable() const { return Symbol.getExecutable(); }
+hsa::Executable Instr::getExecutable() const {
+  return Symbol.getExecutable(); }
 
-hsa::GpuAgent Instr::getAgent() const { return Symbol.getAgent(); }
+hsa::LoadedCodeObject Instr::getLoadedCodeObject() const {
+  return LCO;
+}
 
-hsa::ExecutableSymbol Instr::getExecutableSymbol() const { return Symbol; }
+hsa::GpuAgent Instr::getAgent() const {
+  return Symbol.getAgent(); }
 
-llvm::MCInst Instr::getInstr() const { return Inst; }
+hsa::ExecutableSymbol Instr::getExecutableSymbol() const {
+  return Symbol; }
 
-luthier_address_t Instr::getAddress() const { return Address; }
+llvm::MCInst Instr::getInstr() const {
+  return Inst; }
 
-size_t Instr::getSize() const { return Size; }
+luthier_address_t Instr::getLoadedDeviceAddress() const {
+  return LoadedDeviceAddress;
+}
+
+size_t Instr::getSize() const {
+  return Size; }
 
 } // namespace luthier::hsa
