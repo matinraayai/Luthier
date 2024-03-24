@@ -154,7 +154,6 @@ public:
   /*****************************************************************************
    * \brief Code Lifting Functionality
    ****************************************************************************/
-public:
 private:
   /**
    * \brief contains the \ref llvm::Module and \ref llvm::MachineModuleInfo
@@ -253,6 +252,9 @@ private:
   llvm::Expected<std::optional<LCORelocationInfo>>
   resolveRelocation(const hsa::LoadedCodeObject &LCO,
                     luthier_address_t Address);
+
+  llvm::Expected<LiftedFunctionInfo>
+      liftSymbol(const hsa::ExecutableSymbol &Symbol);
 
 public:
   llvm::Expected<LiftedFunctionInfo>

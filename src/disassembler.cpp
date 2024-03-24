@@ -456,6 +456,7 @@ llvm::Expected<llvm::MachineFunction &> CodeLifter::createLLVMMachineFunction(
     MFI->addFlatScratchInit(*TRI);
     MFI->addPrivateSegmentWaveByteOffset();
   }
+  MF.getRegInfo().freezeReservedRegs(MF);
   return MF;
 }
 
@@ -512,10 +513,28 @@ llvm::Error cloneMachineFunction(const llvm::MachineFunction &MF,
                                  llvm::Module &Module,
                                  llvm::MachineModuleInfo &MMI) {}
 
+llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
+                              llvm::MachineFunction &MF,
+                              llvm::GCNTargetMachine &TM) {
+  Builder->addImplicitDefUseOperands(MF);
+  std::string Error;
+  llvm::StringRef errorRef(Error);
+  auto TII = reinterpret_cast<const llvm::SIInstrInfo *>(
+      TM.getSubtargetImpl(MF.getFunction())->getInstrInfo());
+  //      llvm::outs() << "Number of operands: " <<
+  //      Inst.getNumOperands()
+  //      <<
+  //      "\n"; Inst.print(llvm::outs()); llvm::outs() << "\n";
+  bool isInstCorrect = TII->verifyInstruction(*Builder.getInstr(), errorRef);
+  //                llvm::outs() << "Is instruction correct: " <<
+  //                isInstCorrect << "\n";
+  if (!isInstCorrect) {
+    llvm::outs() << errorRef << "\n";
+  }
+}
+
 llvm::Expected<LiftedFunctionInfo>
-luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
-                                        llvm::Module &Module,
-                                        llvm::MachineModuleInfo &MMI) {
+luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
   auto ISA = Symbol.getAgent().getIsa();
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
 
@@ -527,9 +546,9 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
   hsa::Executable Exec = Symbol.getExecutable();
 
   if (!ExecutableModuleInfoEntries.contains(Exec)) {
-    // At this point this is the first time the Executable has been encountered
-    // by the CodeLifter. Create a Module and MachineModuleInfo to store its
-    // lifted representation
+    // At this point this is the first time the Executable has been
+    // encountered by the CodeLifter. Create a Module and MachineModuleInfo
+    // to store its lifted representation
     auto ExecModule =
         std::make_unique<llvm::Module>("", *TargetInfo->getLLVMContext());
 
@@ -541,8 +560,6 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
         {Exec, LiftedModuleInfo{std::move(ExecModule), std::move(ExecMMI)}});
   }
   auto &LiftedModuleInfo = ExecutableModuleInfoEntries[Exec];
-
-  luthier::LiftedFunctionInfo Out;
 
   if (!LiftedModuleInfo.Functions.contains(Symbol)) {
 
@@ -574,7 +591,8 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
     auto MCInstInfo = TargetInfo->getMCInstrInfo();
 
-    llvm::DenseMap<luthier_address_t, llvm::SmallVector<llvm::MachineInstr *>>
+    llvm::DenseMap<luthier_address_t,
+                   llvm::SmallVector<llvm::MachineInstr *>>
         UnresolvedBranchMIs; // < Set of branch instructions located at a
                              // luthier_address_t waiting for their
                              // target to be resolved after MBBs and MIs
@@ -668,8 +686,8 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
               if (*TargetSymbolType == HSA_SYMBOL_KIND_VARIABLE) {
                 // Add this Symbol to the related variables
                 LiftedModuleInfo.RelatedVariables[Symbol].insert(TargetSymbol);
-                // Add the Global Variable to the Executable Module if it hasn't
-                // been already
+                // Add the Global Variable to the Executable Module if it
+                // hasn't been already
                 if (!LiftedModuleInfo.GlobalVariables.contains(TargetSymbol)) {
                   LiftedModuleInfo.GlobalVariables.insert(
                       {Symbol, new llvm::GlobalVariable(
@@ -684,23 +702,20 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                     GV, *Addend, RelocationInfo.get()->RelocRef.getType());
               } else if (*TargetSymbolType ==
                          HSA_SYMBOL_KIND_INDIRECT_FUNCTION) {
-                // Add this Symbol to the related functions
+                // Add this Symbol to the related functions of the current
+                // function
                 LiftedModuleInfo.RelatedFunctions[Symbol].insert(TargetSymbol);
                 // Lift the function and cache it
-                auto IndirectFunctionLiftedInfo =
-                    liftAndAddToModule(TargetSymbol, Module, MMI);
-                LUTHIER_RETURN_ON_ERROR(IndirectFunctionLiftedInfo.takeError());
-                // Add the function and its related variables to the parent
-                // function
-                LiftedModuleInfo.Functions.insert(
-                    {TargetSymbol, IndirectFunctionLiftedInfo->MF});
-                LiftedModuleInfo.RelatedFunctions[Symbol].insert(TargetSymbol);
-                for (const auto &RF :
-                     IndirectFunctionLiftedInfo->RelatedFunctions) {
+                auto IndirectFunctionInfo = liftSymbol(TargetSymbol);
+                LUTHIER_RETURN_ON_ERROR(IndirectFunctionInfo.takeError());
+
+                // Add the child's related functions to the parent
+                for (const auto &RF : IndirectFunctionInfo->RelatedFunctions) {
                   LiftedModuleInfo.RelatedFunctions[Symbol].insert(RF.first);
                 }
+                // Add the child's related variables to the parent
                 for (const auto &V :
-                     IndirectFunctionLiftedInfo->RelatedGlobalVariables) {
+                     IndirectFunctionInfo->RelatedGlobalVariables) {
                   LiftedModuleInfo.RelatedVariables[Symbol].insert(V.first);
                 }
               } else {
@@ -721,21 +736,7 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
           llvm_unreachable("Not yet implemented");
         }
       }
-      Builder->addImplicitDefUseOperands(*MF);
-      std::string error;
-      llvm::StringRef errorRef(error);
-      auto TII = reinterpret_cast<const llvm::SIInstrInfo *>(
-          TM->getSubtargetImpl(**F)->getInstrInfo());
-      //      llvm::outs() << "Number of operands: " << Inst.getNumOperands()
-      //      <<
-      //      "\n"; Inst.print(llvm::outs()); llvm::outs() << "\n";
-      bool isInstCorrect =
-          TII->verifyInstruction(*Builder.getInstr(), errorRef);
-      //                llvm::outs() << "Is instruction correct: " <<
-      //                isInstCorrect << "\n";
-      if (!isInstCorrect) {
-        llvm::outs() << errorRef << "\n";
-      }
+      LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder, *MF, *TM));
       // Basic Block resolving
 
       if (IsBranch) {
@@ -760,8 +761,7 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       }
     }
 
-    llvm::outs() << "Number of unresolved MIs: " << UnresolvedBranchMIs.size()
-                 << "\n";
+    // Resolve the branch and target MIs/MBBs
     for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
       MBB = BranchTargetMBBs[TargetAddress];
       for (auto &MI : BranchMIs) {
@@ -771,94 +771,37 @@ luthier::CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
         llvm::outs() << "\n";
       }
     }
+
+    // Add the Live-ins to the MF
     auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
         TM->getSubtargetImpl(**F)->getRegisterInfo());
     for (auto &LiveIn : LiveIns) {
       MF->addLiveIn(LiveIn, TRI->getPhysRegBaseClass(LiveIn));
     }
 
-    //        MBB->dump();
-
-    llvm::outs() << "Number of blocks : " << MF->getNumBlockIDs() << "\n";
-    //        MF.dump();
-
-    for (auto &BB : *MF) {
-      for (auto &Inst : BB) {
-        //                llvm::outs() << "MIR: ";
-        //
-
-        //                    llvm::outs() << "May read Exec : " <<
-        //                    TII->mayReadEXEC(MF.getRegInfo(), Inst) << "\n";
-        //        Inst.addOperand(
-        //            llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC,
-        //            false, true));
-        //        TII->fixImplicitOperands(Inst);
-        //        Inst.addImplicitDefUseOperands(MF);
-        //                    llvm::outs() << "After correction: ";
-        //                    Inst.print(llvm::outs(), true, false, false,
-        //                    true, TII);
-
-        //                    llvm::outs() << "Is correct now: " <<
-        //                    TII->verifyInstruction(Inst, errorRef) << "\n";
-      }
-      //                llvm::outs() << "Error: " << errorRef << "\n";
-      /*                for (auto &op: Inst.operands()) {
-                          if (op.isReg()) {
-                              llvm::outs() << "Reg: ";
-                              op.print(llvm::outs(), TRI);
-                              llvm::outs() << "\n";
-                              llvm::outs() << "is implicit: " <<
-         op.isImplicit() << "\n";
-                              //                        if (op.isImplicit() &&
-         op.readsReg() && op.isUse() && op.getReg().id() ==
-         llvm::AMDGPU::EXEC) {
-                              // op.setImplicit(true);
-                              //
-                              //                        }
-                          }
-                      }*/
-      //                llvm::outs() <<
-      //                "==============================================================\n";
-      //      Inst.print(llvm::outs(), true, false, false, true, TII);
-    }
-    //    llvm::outs() << "======================================\n";
+    // Populate the properties of MF
     llvm::MachineFunctionProperties &Properties = MF.getProperties();
-    //  Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
+    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
     Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
     Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
     Properties.reset(llvm::MachineFunctionProperties::Property::TracksLiveness);
     Properties.set(llvm::MachineFunctionProperties::Property::Selected);
-    MF.getRegInfo().freezeReservedRegs(MF);
-
-    MF.print(llvm::outs());
-    llvm::outs() << "\n";
-
-    //        auto elfOrError =
-    //        getELFObjectFileBase(symbol.getExecutable().getLoadedCodeObjects()[0].getStorageMemory());
-    //        if (llvm::errorToBool(elfOrError.takeError())) {
-    //            llvm::report_fatal_error("Failed to parse the elf.");
-    //        }
-    //        auto noteOrError =
-    //        getElfNoteMetadataRoot(elfOrError.get().get()); if
-    //        (llvm::errorToBool(noteOrError.takeError())) {
-    //            llvm::report_fatal_error("Failed to parse the note
-    //            section");
-    //        }
-    //        noteOrError.get().toYAML(llvm::outs());
-    //        llvm::outs() << "\n";
-    ////        MF.dump();
-    //        properties.print(llvm::outs());
-    //        llvm::outs() << "\n";
-    ExecutableModuleInfoEntries.insert(
-        {Symbol,
-         LiftedModuleInfo{std::move(SymbolModule), std::move(SymbolMMI)}});
   }
-  // Clone the content of the SymbolModuleInfo to the passed Module and
-  // MachineModuleInfo
-  const auto &SymbolModuleInfo = ExecutableModuleInfoEntries[Symbol];
 
-  return llvm::Error::success();
-  //  }
+  luthier::LiftedFunctionInfo Out;
+
+  // Add the function itself
+  Out.MF = LiftedModuleInfo.Functions[Symbol];
+  // Add the related functions
+  for (const auto &RF : LiftedModuleInfo.RelatedFunctions[Symbol]) {
+    Out.RelatedFunctions.insert({RF, LiftedModuleInfo.Functions[RF]});
+  }
+  // Add the related variables
+  for (const auto &V : LiftedModuleInfo.RelatedVariables[Symbol]) {
+    Out.RelatedGlobalVariables.insert({V, LiftedModuleInfo.GlobalVariables[V]});
+  }
+
+  return Out;
 }
 
 } // namespace luthier
