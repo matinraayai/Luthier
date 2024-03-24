@@ -689,6 +689,9 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
                 // Add the Global Variable to the Executable Module if it
                 // hasn't been already
                 if (!LiftedModuleInfo.GlobalVariables.contains(TargetSymbol)) {
+                  // TODO: Detect the size of the variable, and other relevant
+                  // parameters. Right now we assume the variable fits in an
+                  // int32
                   LiftedModuleInfo.GlobalVariables.insert(
                       {Symbol, new llvm::GlobalVariable(
                                    *LiftedModuleInfo.Module,
@@ -718,6 +721,10 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
                      IndirectFunctionInfo->RelatedGlobalVariables) {
                   LiftedModuleInfo.RelatedVariables[Symbol].insert(V.first);
                 }
+                // Add the function as the operand
+                Builder.addGlobalAddress(
+                    &IndirectFunctionInfo->MF->getFunction(), *Addend,
+                    RelocationInfo.get()->RelocRef.getType());
               } else {
                 // For now, we don't handle calling kernels from kernels
                 llvm_unreachable("not implemented");
@@ -780,7 +787,7 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
     }
 
     // Populate the properties of MF
-    llvm::MachineFunctionProperties &Properties = MF.getProperties();
+    llvm::MachineFunctionProperties &Properties = MF->getProperties();
     Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
     Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
     Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
@@ -800,6 +807,97 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
   for (const auto &V : LiftedModuleInfo.RelatedVariables[Symbol]) {
     Out.RelatedGlobalVariables.insert({V, LiftedModuleInfo.GlobalVariables[V]});
   }
+
+  return Out;
+}
+llvm::Expected<LiftedFunctionInfo>
+CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
+                               llvm::Module &Module,
+                               llvm::MachineModuleInfo &MMI) {
+  auto LiftedFunctionInfo = liftSymbol(Symbol);
+  luthier::LiftedFunctionInfo Out;
+  LUTHIER_RETURN_ON_ERROR(LiftedFunctionInfo.takeError());
+  // Clone the variables first as it is the easiest
+  for (const auto &[SV, V] : LiftedFunctionInfo->RelatedGlobalVariables) {
+    // Only clone if not already in the module
+    if (Module.getGlobalVariable(V->getName()) == nullptr) {
+      new llvm::GlobalVariable(Module, V->getValueType(), V->isConstant(),
+                               V->getLinkage(), V->getInitializer(),
+                               V->getName());
+    }
+    Out.RelatedGlobalVariables.insert(
+        {SV, Module.getGlobalVariable(V->getName())});
+  }
+
+  llvm::DenseSet<hsa::ExecutableSymbol> AlreadyClonedMFs{};
+  // Clone the functions but don't clone their content yet
+  llvm::Function *DestF;
+  for (const auto &[SF, MF] : LiftedFunctionInfo->RelatedFunctions) {
+    // Only clone if not already in the module
+    if (Module.getFunction(MF->getName()) == nullptr) {
+      auto &SourceF = MF->getFunction();
+      DestF = llvm::Function::Create(SourceF.getFunctionType(),
+                                     SourceF.getLinkage(), SourceF.getName(),
+                                     Module);
+      DestF->setCallingConv(SourceF.getCallingConv());
+      DestF->setAttributes(SourceF.getAttributes());
+      // Don't forget to add the dummy IR Inst
+      llvm::BasicBlock *BB =
+          llvm::BasicBlock::Create(Module.getContext(), "", DestF);
+      LUTHIER_CHECK(BB);
+      new llvm::UnreachableInst(Module.getContext(), BB);
+    } else {
+      AlreadyClonedMFs.insert(SF);
+    }
+    DestF = Module.getFunction(MF->getName());
+    // Insert it in the output
+    Out.RelatedFunctions.insert({SF, &MMI.getOrCreateMachineFunction(*DestF)});
+  }
+  // Do the same thing with the target Symbol's MF
+  if (Module.getFunction(LiftedFunctionInfo->MF->getName()) == nullptr) {
+    auto &SourceF = LiftedFunctionInfo->MF->getFunction();
+    DestF =
+        llvm::Function::Create(SourceF.getFunctionType(), SourceF.getLinkage(),
+                               SourceF.getName(), Module);
+    DestF->setCallingConv(SourceF.getCallingConv());
+    DestF->setAttributes(SourceF.getAttributes());
+    // Don't forget to add the dummy IR Inst
+    llvm::BasicBlock *BB =
+        llvm::BasicBlock::Create(Module.getContext(), "", DestF);
+    LUTHIER_CHECK(BB);
+    new llvm::UnreachableInst(Module.getContext(), BB);
+  } else {
+    AlreadyClonedMFs.insert(Symbol);
+  }
+  DestF = Module.getFunction(LiftedFunctionInfo->MF->getName());
+  // Create the MF associated with the function
+  Out.MF = &MMI.getOrCreateMachineFunction(*DestF);
+  // Clone the content of each MF
+  for (const auto &[SF, SrcMF] : LiftedFunctionInfo->RelatedFunctions) {
+    if (!AlreadyClonedMFs.contains(SF)) {
+      auto DestMF = Out.RelatedFunctions[SF];
+
+      llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
+          MBBMap{SrcMF->getNumBlockIDs()};
+      // Initializing the MBBs first will make it easier to create the branch
+      // instructions
+      for (auto &SrcMBB : *SrcMF) {
+        MBBMap.insert({&SrcMBB, DestMF->CreateMachineBasicBlock()});
+      }
+      for (const auto &[SrcMBB, DestMBB] : MBBMap) {
+        // Insert the successors
+        for (auto Succ = SrcMBB->succ_begin(); Succ != SrcMBB->succ_end();
+             Succ++) {
+          DestMBB->addSuccessor(MBBMap[*Succ]);
+        }
+        // Insert the instructions
+        for (const auto &MI : *SrcMBB) {
+          DestMBB
+        }
+      }
+    }
+  }
+  // Finally clone the target MF
 
   return Out;
 }

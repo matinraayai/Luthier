@@ -113,13 +113,13 @@ private:
 
 public:
   /**
-   * Disassembles the content of the given \p hsa::ExecutableSymbol
-   * and returns a \p std::vector of \p hsa::Instr
+   * Disassembles the content of the given \ref hsa::ExecutableSymbol
+   * and returns a \p std::vector of \ref hsa::Instr
    * Does not perform any control flow analysis
    * Further invocations will return the cached results
-   * \param Symbol the \p hsa::ExecutableSymbol to be disassembled
+   * \param Symbol the \ref hsa::ExecutableSymbol to be disassembled
    * \return on success, a const pointer to the cached \p std::vector of
-   * \p hsa::Instr
+   * \ref hsa::Instr
    * \see luthier::hsa::Instr
    */
   llvm::Expected<const std::vector<hsa::Instr> *>
