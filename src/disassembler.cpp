@@ -506,12 +506,90 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
   return std::nullopt;
 }
 
-llvm::Error cloneLLVMFunction(const llvm::Function &F, llvm::Module &Module,
-                              llvm::MachineModuleInfo &MMI) {}
+llvm::Expected<llvm::Function *>
+cloneLLVMFunction(const llvm::Function &SourceF, llvm::Module &Module,
+                  llvm::MachineModuleInfo &MMI) {
+  auto DestF =
+      llvm::Function::Create(SourceF.getFunctionType(), SourceF.getLinkage(),
+                             SourceF.getName(), Module);
+  DestF->setCallingConv(SourceF.getCallingConv());
+  DestF->setAttributes(SourceF.getAttributes());
+  // Don't forget to add the dummy IR Inst
+  llvm::BasicBlock *BB =
+      llvm::BasicBlock::Create(Module.getContext(), "", DestF);
+  LUTHIER_CHECK(BB);
+  new llvm::UnreachableInst(Module.getContext(), BB);
+  return DestF;
+}
 
-llvm::Error cloneMachineFunction(const llvm::MachineFunction &MF,
-                                 llvm::Module &Module,
-                                 llvm::MachineModuleInfo &MMI) {}
+llvm::Error cloneMachineFunctionContent(
+    const llvm::MachineFunction &SrcMF, llvm::MachineFunction &DestMF,
+    const llvm::DenseMap<llvm::MachineFunction *, llvm::MachineFunction *>
+        &MFMap,
+    const llvm::DenseMap<llvm::GlobalVariable *, llvm::GlobalVariable *> &VMap,
+    llvm::Module &Module, llvm::MachineModuleInfo &MMI) {
+  auto &TM = MMI.getTarget();
+  llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *> MBBMap{
+      SrcMF.getNumBlockIDs()};
+  // Initializing the MBBs first will make it easier to create the branch
+  // instructions
+  for (const auto &SrcMBB : SrcMF) {
+    MBBMap.insert({const_cast<llvm::MachineBasicBlock *>(&SrcMBB),
+                   DestMF.CreateMachineBasicBlock()});
+  }
+  // Add the Live-ins to the MF
+  auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
+      TM.getSubtargetImpl(DestMF.getFunction())->getRegisterInfo());
+  for (auto &LiveIn : SrcMF.getRegInfo().liveins()) {
+    DestMF.addLiveIn(LiveIn.first, TRI->getPhysRegBaseClass(LiveIn.first));
+  }
+
+  for (const auto &[SrcMBB, DestMBB] : MBBMap) {
+    // Insert the successors of the Src MBB into Dest's MBB
+    for (const auto SrcSuccessor : SrcMBB->successors()) {
+      DestMBB->addSuccessor(MBBMap[SrcSuccessor]);
+    }
+    // Insert the instructions
+    for (const auto &SrcMI : *SrcMBB) {
+      llvm::MachineInstrBuilder DestBuilder =
+          llvm::BuildMI(DestMBB, SrcMI.getDebugLoc(), SrcMI.getDesc());
+      for (const auto &SrcOp : SrcMI.operands()) {
+        if (SrcOp.isReg()) {
+          DestBuilder->addOperand(llvm::MachineOperand::CreateReg(
+              SrcOp.getReg(), SrcOp.isDef(), SrcOp.isImplicit(), SrcOp.isKill(),
+              SrcOp.isDead(), SrcOp.isUndef(), SrcOp.isEarlyClobber(), 0,
+              SrcOp.isDebug(), SrcOp.isInternalRead(), SrcOp.isRenamable()));
+        } else if (SrcOp.isMBB()) {
+          DestBuilder.addMBB(MBBMap[SrcOp.getMBB()]);
+        } else if (SrcOp.isGlobal()) {
+          auto GlobalValue = SrcOp.getGlobal();
+          if (llvm::dyn_cast<llvm::Function>(GlobalValue)) {
+            auto SrcOpMF = MMI.getMachineFunction(
+                *llvm::dyn_cast<llvm::Function>(GlobalValue));
+            auto DestOpMF = MFMap.at(SrcOpMF);
+            DestBuilder.addGlobalAddress(&DestOpMF->getFunction(),
+                                         SrcOp.getOffset(),
+                                         SrcOp.getTargetFlags());
+          } else if (llvm::dyn_cast<llvm::GlobalVariable>(GlobalValue)) {
+            auto SrcOpGV = llvm::dyn_cast<llvm::GlobalVariable>(GlobalValue);
+            auto DestOpGV = VMap.at(SrcOpGV);
+            DestBuilder.addGlobalAddress(DestOpGV, SrcOp.getOffset(),
+                                         SrcOp.getTargetFlags());
+          }
+
+        } else if (SrcOp.isImm()) {
+          DestBuilder.addImm(SrcOp.getImm());
+        } else {
+          llvm_unreachable(
+              "The operand's cloning logic hasn't been implemented yet");
+        }
+      }
+    }
+  }
+  // Clone the properties
+  DestMF.getProperties() = SrcMF.getProperties();
+  return llvm::Error::success();
+}
 
 llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
                               llvm::MachineFunction &MF,
@@ -815,8 +893,13 @@ CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                llvm::Module &Module,
                                llvm::MachineModuleInfo &MMI) {
   auto LiftedFunctionInfo = liftSymbol(Symbol);
-  luthier::LiftedFunctionInfo Out;
   LUTHIER_RETURN_ON_ERROR(LiftedFunctionInfo.takeError());
+
+  luthier::LiftedFunctionInfo Out;
+
+  llvm::DenseMap<llvm::GlobalVariable *, llvm::GlobalVariable *> VMap{
+      LiftedFunctionInfo->RelatedGlobalVariables.size()};
+
   // Clone the variables first as it is the easiest
   for (const auto &[SV, V] : LiftedFunctionInfo->RelatedGlobalVariables) {
     // Only clone if not already in the module
@@ -827,77 +910,60 @@ CodeLifter::liftAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     }
     Out.RelatedGlobalVariables.insert(
         {SV, Module.getGlobalVariable(V->getName())});
+    VMap.insert({V, Module.getGlobalVariable(V->getName())});
   }
 
-  llvm::DenseSet<hsa::ExecutableSymbol> AlreadyClonedMFs{};
+  llvm::DenseSet<hsa::ExecutableSymbol> AlreadyClonedMFs{}; // < Set of MFs that
+  // are already in the target module, therefore do not require cloning
+  llvm::DenseMap<llvm::MachineFunction *, llvm::MachineFunction *> MFMap{
+      LiftedFunctionInfo->RelatedFunctions.size()}; // < A map from the source
+  // MF to the dest MF, used for cloning instruction operands
+
   // Clone the functions but don't clone their content yet
   llvm::Function *DestF;
+  llvm::MachineFunction *DestMF;
   for (const auto &[SF, MF] : LiftedFunctionInfo->RelatedFunctions) {
     // Only clone if not already in the module
     if (Module.getFunction(MF->getName()) == nullptr) {
-      auto &SourceF = MF->getFunction();
-      DestF = llvm::Function::Create(SourceF.getFunctionType(),
-                                     SourceF.getLinkage(), SourceF.getName(),
-                                     Module);
-      DestF->setCallingConv(SourceF.getCallingConv());
-      DestF->setAttributes(SourceF.getAttributes());
-      // Don't forget to add the dummy IR Inst
-      llvm::BasicBlock *BB =
-          llvm::BasicBlock::Create(Module.getContext(), "", DestF);
-      LUTHIER_CHECK(BB);
-      new llvm::UnreachableInst(Module.getContext(), BB);
+      LUTHIER_RETURN_ON_ERROR(
+          cloneLLVMFunction(MF->getFunction(), Module, MMI).moveInto(DestF));
     } else {
       AlreadyClonedMFs.insert(SF);
     }
     DestF = Module.getFunction(MF->getName());
-    // Insert it in the output
-    Out.RelatedFunctions.insert({SF, &MMI.getOrCreateMachineFunction(*DestF)});
+    // Create the MF for the F (if not already created) and
+    // insert it in the output
+    DestMF = &MMI.getOrCreateMachineFunction(*DestF);
+    Out.RelatedFunctions.insert({SF, DestMF});
+    // Keep track of the correspondence of source and dest MFs
+    MFMap.insert({MF, DestMF});
   }
+
   // Do the same thing with the target Symbol's MF
   if (Module.getFunction(LiftedFunctionInfo->MF->getName()) == nullptr) {
-    auto &SourceF = LiftedFunctionInfo->MF->getFunction();
-    DestF =
-        llvm::Function::Create(SourceF.getFunctionType(), SourceF.getLinkage(),
-                               SourceF.getName(), Module);
-    DestF->setCallingConv(SourceF.getCallingConv());
-    DestF->setAttributes(SourceF.getAttributes());
-    // Don't forget to add the dummy IR Inst
-    llvm::BasicBlock *BB =
-        llvm::BasicBlock::Create(Module.getContext(), "", DestF);
-    LUTHIER_CHECK(BB);
-    new llvm::UnreachableInst(Module.getContext(), BB);
+    LUTHIER_RETURN_ON_ERROR(
+        cloneLLVMFunction(LiftedFunctionInfo->MF->getFunction(), Module, MMI)
+            .moveInto(DestF));
   } else {
     AlreadyClonedMFs.insert(Symbol);
   }
   DestF = Module.getFunction(LiftedFunctionInfo->MF->getName());
   // Create the MF associated with the function
   Out.MF = &MMI.getOrCreateMachineFunction(*DestF);
-  // Clone the content of each MF
+  MFMap.insert({LiftedFunctionInfo->MF, Out.MF});
+
+  // Now clone the content of each MF
+  auto &TM = MMI.getTarget();
   for (const auto &[SF, SrcMF] : LiftedFunctionInfo->RelatedFunctions) {
     if (!AlreadyClonedMFs.contains(SF)) {
-      auto DestMF = Out.RelatedFunctions[SF];
-
-      llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
-          MBBMap{SrcMF->getNumBlockIDs()};
-      // Initializing the MBBs first will make it easier to create the branch
-      // instructions
-      for (auto &SrcMBB : *SrcMF) {
-        MBBMap.insert({&SrcMBB, DestMF->CreateMachineBasicBlock()});
-      }
-      for (const auto &[SrcMBB, DestMBB] : MBBMap) {
-        // Insert the successors
-        for (auto Succ = SrcMBB->succ_begin(); Succ != SrcMBB->succ_end();
-             Succ++) {
-          DestMBB->addSuccessor(MBBMap[*Succ]);
-        }
-        // Insert the instructions
-        for (const auto &MI : *SrcMBB) {
-          DestMBB
-        }
-      }
+      DestMF = Out.RelatedFunctions[SF];
+      LUTHIER_RETURN_ON_ERROR(cloneMachineFunctionContent(
+          *SrcMF, *DestMF, MFMap, VMap, Module, MMI));
     }
   }
   // Finally clone the target MF
+  LUTHIER_RETURN_ON_ERROR(cloneMachineFunctionContent(
+      *LiftedFunctionInfo->MF, *Out.MF, MFMap, VMap, Module, MMI));
 
   return Out;
 }
