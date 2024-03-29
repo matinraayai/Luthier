@@ -59,6 +59,23 @@ private:
   llvm::DenseSet<ApiEvtID> EnabledUserOps{};
   llvm::DenseSet<ApiEvtID> EnabledInternalOps{};
 
+  // create thread local variable here to switch between using/not using 20 and 21
+
+  /* Task Steps:
+     * 1. Define thread_local variable (bool) in hsa_interceptor.hpp & cpp
+         *  If enable_temp_callback is false (disable) --> temporaily ignore enabledUserOps_ & enabledInternalOps_
+         *  If enable_temp_callback is true (enable) --> leave enabledUserOps_ & enabledInternalOps_ alone
+         *  Add #include<thread> to use thread-local (?)
+     * 2. Create function luthier_temp_disable_hsa_callback()
+         * set enable_temp_callback to false
+     * 3. Create function luthier_temp_enable_hsa_callback()
+         * set enable_temp_callback to true
+     * 4. Create function isCallbackTempEnabled()
+         * return enable_temp_callback
+     * 5. Add isCallbackTempEnabled to shouldCallback variable in hsa_intercept.cpp
+         * Q: Do we need to add it to every instance of shouldCallback within the hsa_intercept.cpp file?
+     * */
+
   user_callback_t UserCallback{};
   internal_callback_t InternalCallback{};
 
