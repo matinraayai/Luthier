@@ -35,6 +35,7 @@ static hsa_status_t hsa_init_callback() {
 	bool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);
 	bool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);
 	bool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;
+    // Step 5. bool shouldCallback = (isUserCallbackEnabled || isInternalCallbackEnabled) && isCallbackTempEnabled;
 	hsa_status_t out{};
 	if (shouldCallback) {
 		auto& hsaUserCallback = hsaInterceptor.getUserCallback();
