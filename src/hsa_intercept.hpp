@@ -86,6 +86,9 @@ private:
          * return enable_temp_callback
      * 5. Add isCallbackTempEnabled to shouldCallback variable in hsa_intercept.cpp
          * Q: Do we need to add it to every instance of shouldCallback within the hsa_intercept.cpp file?
+         * // Step 5. don't touch this update python script
+            bool isCallbackTempEnabled = hsaInterceptor.isCallbackTempEnabled();
+            bool shouldCallback = (isUserCallbackEnabled || isInternalCallbackEnabled) && isCallbackTempEnabled;
      * */
 
   user_callback_t UserCallback{};
