@@ -10,6 +10,8 @@
 #include "error.hpp"
 #include "luthier_types.h"
 
+#include <thread>
+
 namespace luthier {
 class HsaInterceptor {
  private:
@@ -20,10 +22,20 @@ class HsaInterceptor {
     std::unordered_set<hsa_api_evt_id_t> enabledUserOps_;
     std::unordered_set<hsa_api_evt_id_t> enabledInternalOps_;
     // create thread local variable here to switch between using/not using 20 and 21
+    // needs to be static to be accepted by the class
+    static thread_local bool enable_temp_callback;
+
+    void luthier_temp_disable_hsa_callback() {
+        enable_temp_callback = false;
+    }
+
+    void luthier_temp_enable_hsa_callback() {
+        enable_temp_callback = true;
+    }
 
     /* Task Steps:
      * 1. Define thread_local variable (bool) in hsa_interceptor.hpp & cpp
-         *  If enable_temp_callback is false (disable) --> temporaily ignore enabledUserOps_ & enabledInternalOps_
+         *  If enable_temp_callback is false (disable) --> temporarily ignore enabledUserOps_ & enabledInternalOps_
          *  If enable_temp_callback is true (enable) --> leave enabledUserOps_ & enabledInternalOps_ alone
          *  Add #include<thread> to use thread-local (?)
      * 2. Create function luthier_temp_disable_hsa_callback()
@@ -95,6 +107,9 @@ class HsaInterceptor {
 
     [[nodiscard]] bool isInternalCallbackEnabled(hsa_api_evt_id_t op) const { return enabledInternalOps_.contains(op); }
 
+    // Step 4.
+    bool isCallbackTempEnabled() { return enable_temp_callback; }
+
     void enableUserCallback(hsa_api_evt_id_t op) { enabledUserOps_.insert(op); }
 
     void disableUserCallback(hsa_api_evt_id_t op) { enabledUserOps_.erase(op); }
@@ -139,7 +154,7 @@ class HsaInterceptor {
     }
 
     static inline HsaInterceptor &instance() {
-        static HsaInterceptor instance;
+        static HsaInterceptor instance(false);
         return instance;
     }
 };
