@@ -154,7 +154,7 @@ class HsaInterceptor {
     }
 
     static inline HsaInterceptor &instance() {
-        static HsaInterceptor instance(false);
+        static HsaInterceptor instance;
         return instance;
     }
 };
