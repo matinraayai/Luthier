@@ -359,7 +359,19 @@ class ApiDescrParser:
                          'hsa_amd_memory_copy_engine_status',
                          'hsa_amd_spm_acquire',
                          'hsa_amd_spm_release',
-                         'hsa_amd_spm_set_dest_buffer']
+                         'hsa_amd_spm_set_dest_buffer',
+                         'hsa_amd_vmem_address_reserve',
+                         'hsa_amd_vmem_address_free',
+                         'hsa_amd_vmem_handle_create',
+                         'hsa_amd_vmem_handle_release',
+                         'hsa_amd_vmem_map',
+                         'hsa_amd_vmem_unmap',
+                         'hsa_amd_vmem_set_access',
+                         'hsa_amd_vmem_get_access',
+                         'hsa_amd_vmem_export_shareable_handle',
+                         'hsa_amd_vmem_import_shareable_handle',
+                         'hsa_amd_vmem_retain_alloc_handle',
+                         'hsa_amd_vmem_get_alloc_properties_from_handle']
         if n == -1:
             content += '/* section: Static declarations */\n'
             content += '\n'
