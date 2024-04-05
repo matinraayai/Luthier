@@ -134,6 +134,16 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
   return llvm::Error::success();
 }
 
+DisableInterceptScope::DisableInterceptScope() {
+  luthier::HsaInterceptor::instance().luthier_temp_disable_hsa_callback();
+  std::cout << "Callbacks have been disabled." << std::endl;
+}
+
+DisableInterceptScope::~DisableInterceptScope() {
+  luthier::HsaInterceptor::instance().luthier_temp_enable_hsa_callback();
+  std::cout << "Callbacks have been enabled." << std::endl;
+}
+
 } // namespace luthier
 
 extern "C" {

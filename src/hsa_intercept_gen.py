@@ -324,6 +324,7 @@ class ApiDescrParser:
         self.cpp_content += '#include <hsa/hsa_api_trace.h>\n'
         self.cpp_content += '#include "hsa_intercept.hpp"\n'
         self.cpp_content += '#include "luthier_types.h"\n'
+        self.cpp_content += '#include <iostream> \n'
 
         self.cpp_content += self.add_section('API callback functions', '', self.gen_callbacks)
         self.cpp_content += self.add_section('API intercepting code', '', self.gen_intercept)
@@ -388,6 +389,7 @@ class ApiDescrParser:
             if ret_type != 'void':
                 content += f'\t{ret_type} out{{}};\n'
             content += "\tif (shouldCallback) {\n" \
+                       "\t\tstd::cout << \"CALLBACK CALLED\" << std::endl; \n" \
                        "\t\tauto& hsaUserCallback = hsaInterceptor.getUserCallback();\n" \
                        "\t\tauto& hsaInternalCallback = hsaInterceptor.getInternalCallback();\n" \
                        "\t\thsa_api_evt_args_t args;\n" \

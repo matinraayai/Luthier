@@ -65,14 +65,6 @@ private:
   // needs to be static to be accepted by the class
   static thread_local bool EnableTempCallback;
 
-  void tempDisableCallback() {
-    EnableTempCallback = false;
-  }
-
-  void tempEnableCallback() {
-    EnableTempCallback = true;
-  }
-
   /* Task Steps:
      * 1. Define thread_local variable (bool) in hsa_interceptor.hpp & cpp
          *  If enable_temp_callback is false (disable) --> temporarily ignore enabledUserOps_ & enabledInternalOps_
@@ -149,6 +141,14 @@ public:
 
   [[nodiscard]] bool isInternalCallbackEnabled(ApiEvtID Op) const {
     return EnabledInternalOps.contains(Op);
+  }
+
+  void tempDisableCallback() {
+    EnableTempCallback = false;
+  }
+
+  void tempEnableCallback() {
+    EnableTempCallback = true;
   }
 
   void enableUserCallback(ApiEvtID Op) { EnabledUserOps.insert(Op); }
