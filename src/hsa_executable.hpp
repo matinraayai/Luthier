@@ -31,10 +31,24 @@ private:
          const char *Options = "");
 
   llvm::Expected<hsa::LoadedCodeObject>
-  loadCodeObject(const hsa::CodeObjectReader &Reader,
-                 const hsa::GpuAgent &Agent);
+  loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
+                      const hsa::GpuAgent &Agent, llvm::StringRef Options = "");
+
+  llvm::Expected<hsa::LoadedCodeObject>
+  loadProgramCodeObject(const hsa::CodeObjectReader &Reader,
+                        llvm::StringRef Options = "");
+
+  llvm::Error
+  defineExternalProgramGlobalVariable(const hsa::ExecutableSymbol &Symbol);
+
+  llvm::Error
+  defineExternalAgentGlobalVariable(const hsa::ExecutableSymbol &Symbol);
+
+  llvm::Error defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol);
 
   llvm::Error freeze(const char *Options = "");
+
+  llvm::Expected<bool> validate(llvm::StringRef Options = "");
 
   llvm::Error destroy();
 
@@ -48,11 +62,14 @@ public:
   llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
 
   [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getSymbols(const luthier::hsa::GpuAgent &Agent) const;
+  getAgentSymbols(const luthier::hsa::GpuAgent &Agent) const;
+
+  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
+  getProgramSymbols(const luthier::hsa::GpuAgent &Agent) const;
 
   [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
-  getSymbolByName(const luthier::hsa::GpuAgent &agent,
-                  llvm::StringRef name) const;
+  getAgentSymbolByName(const luthier::hsa::GpuAgent &Agent,
+                       llvm::StringRef Name) const;
 
   /**
    * \return the \p hsa::LoadedCodeObject's in the executable

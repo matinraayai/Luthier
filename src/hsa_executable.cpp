@@ -58,18 +58,72 @@ Executable::getRoundingMode() {
 }
 
 llvm::Expected<std::vector<ExecutableSymbol>>
-Executable::getSymbols(const GpuAgent &Agent) const {
+Executable::getAgentSymbols(const luthier::hsa::GpuAgent &Agent) const {
   std::vector<ExecutableSymbol> Out;
   auto Iterator = [](hsa_executable_t Exec, hsa_agent_t Agent,
                      hsa_executable_symbol_t Symbol, void *Data) {
     auto out = reinterpret_cast<std::vector<ExecutableSymbol> *>(Data);
-    out->emplace_back(Symbol, Agent, Exec);
+    out->emplace_back(Symbol, Exec);
     return HSA_STATUS_SUCCESS;
   };
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_iterate_agent_symbols_fn(
           asHsaType(), Agent.asHsaType(), Iterator, &Out)));
+
+  auto LoadedCodeObjects = getLoadedCodeObjects();
+  LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
+
+  for (const auto &LCO : *LoadedCodeObjects) {
+    auto LCOAgent = LCO.getAgent();
+    LUTHIER_RETURN_ON_ERROR(LCOAgent.takeError());
+    if (*LCOAgent == Agent) {
+      auto StorageMemory = LCO.getStorageMemory();
+      LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+
+      auto LoadedMemory = LCO.getLoadedMemory();
+      LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
+
+      auto HostElf = getAMDGCNObjectFile(*StorageMemory);
+      LUTHIER_RETURN_ON_ERROR(HostElf.takeError());
+
+      for (llvm::object::ELFSymbolRef ElfSymbol : HostElf.get()->symbols()) {
+        auto SymbolType = ElfSymbol.getELFType();
+        auto Binding = ElfSymbol.getBinding();
+        // Indirect functions have a local binding
+        if (SymbolType == llvm::ELF::STT_FUNC &&
+            Binding == llvm::ELF::STB_LOCAL) {
+          auto SymbolName = ElfSymbol.getName();
+          LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+          auto LoadedAddress =
+              getSymbolLMA(HostElf.get()->getELFFile(), ElfSymbol);
+          LUTHIER_RETURN_ON_ERROR(LoadedAddress.takeError());
+          Out.emplace_back(
+              std::string(*SymbolName),
+              arrayRefFromStringRef(
+                  toStringRef(*LoadedMemory)
+                      .substr(*LoadedAddress, ElfSymbol.getSize())),
+              this->asHsaType());
+        }
+      }
+    }
+  }
+  return Out;
+}
+
+llvm::Expected<std::vector<ExecutableSymbol>>
+Executable::getProgramSymbols(const GpuAgent &Agent) const {
+  std::vector<ExecutableSymbol> Out;
+  auto Iterator = [](hsa_executable_t Exec,
+                     hsa_executable_symbol_t Symbol, void *Data) {
+    auto out = reinterpret_cast<std::vector<ExecutableSymbol> *>(Data);
+    out->emplace_back(Symbol, Exec);
+    return HSA_STATUS_SUCCESS;
+  };
+
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+      getApiTable().core.hsa_executable_iterate_program_symbols_fn(
+          asHsaType(), Iterator, &Out)));
 
   auto LoadedCodeObjects = getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
@@ -112,7 +166,7 @@ Executable::getSymbols(const GpuAgent &Agent) const {
 }
 
 llvm::Expected<std::optional<ExecutableSymbol>>
-Executable::getSymbolByName(const luthier::hsa::GpuAgent &Agent,
+Executable::getAgentSymbolByName(const luthier::hsa::GpuAgent &Agent,
                             llvm::StringRef Name) const {
   hsa_executable_symbol_t Symbol;
   hsa_agent_t HsaAgent = Agent.asHsaType();
@@ -192,8 +246,9 @@ Executable::getAgents() const {
 }
 
 llvm::Expected<hsa::LoadedCodeObject>
-Executable::loadCodeObject(const hsa::CodeObjectReader &Reader,
-                           const hsa::GpuAgent &Agent) {
+Executable::loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
+                                const hsa::GpuAgent &Agent,
+                                llvm::StringRef Options) {
   hsa_loaded_code_object_t LCO;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_load_agent_code_object_fn(
@@ -201,9 +256,79 @@ Executable::loadCodeObject(const hsa::CodeObjectReader &Reader,
   return hsa::LoadedCodeObject(LCO);
 }
 
+llvm::Expected<hsa::LoadedCodeObject>
+Executable::loadProgramCodeObject(const CodeObjectReader &Reader,
+                                  llvm::StringRef Options) {
+  hsa_loaded_code_object_t LCO;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+      getApiTable().core.hsa_executable_load_program_code_object_fn(
+          asHsaType(), Reader.asHsaType(), Options.data(), &LCO)));
+  return hsa::LoadedCodeObject(LCO);
+}
+
+llvm::Error Executable::defineExternalProgramGlobalVariable(
+    const ExecutableSymbol &Symbol) {
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_symbol_kind_t, SymbolType,
+                                   Symbol.getType());
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(SymbolType == HSA_SYMBOL_KIND_VARIABLE));
+
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier_address_t, VariableAddress,
+                                   Symbol.getVariableAddress());
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, VariableName, Symbol.getName());
+
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+      getApiTable().core.hsa_executable_global_variable_define_fn(
+          asHsaType(), VariableName.c_str(),
+          reinterpret_cast<void *>(VariableAddress))));
+  return llvm::Error::success();
+}
+
+llvm::Error
+Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol) {
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_symbol_kind_t, SymbolType,
+                                   Symbol.getType());
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(SymbolType == HSA_SYMBOL_KIND_VARIABLE));
+
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier_address_t, VariableAddress,
+                                   Symbol.getVariableAddress());
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, VariableName, Symbol.getName());
+
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+      getApiTable().core.hsa_executable_agent_global_variable_define_fn(
+          asHsaType(), Symbol.getAgent().asHsaType(), VariableName.c_str(),
+          reinterpret_cast<void *>(VariableAddress))));
+  return llvm::Error::success();
+}
+
+llvm::Error Executable::defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol) {
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_symbol_kind_t, SymbolType,
+                                   Symbol.getType());
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(SymbolType == HSA_SYMBOL_KIND_VARIABLE));
+
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier_address_t, VariableAddress,
+                                   Symbol.getVariableAddress());
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, VariableName, Symbol.getName());
+
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+      getApiTable().core.hsa_executable_readonly_variable_define_fn(
+          asHsaType(), Symbol.getAgent().asHsaType(), VariableName.c_str(),
+          reinterpret_cast<void *>(VariableAddress))));
+  return llvm::Error::success();
+}
+
 llvm::Error Executable::destroy() {
   return LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_destroy_fn(asHsaType()));
+}
+llvm::Expected<bool> Executable::validate(llvm::StringRef Options) {
+  uint32_t Result;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+      getApiTable().core.hsa_executable_validate_alt_fn(
+          asHsaType(), Options.data(), &Result)));
+  return Result == 0;
 }
 
 } // namespace luthier::hsa
