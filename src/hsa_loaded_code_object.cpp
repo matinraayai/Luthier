@@ -113,4 +113,14 @@ llvm::Expected<std::string> LoadedCodeObject::getUri() const {
   return URI;
 }
 
+llvm::Expected<hsa_ven_amd_loader_loaded_code_object_kind_t>
+LoadedCodeObject::getKind() {
+  hsa_ven_amd_loader_loaded_code_object_kind_t Kind;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+      getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
+          asHsaType(), HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_KIND,
+          &Kind)));
+  return Kind;
+}
+
 } // namespace luthier::hsa

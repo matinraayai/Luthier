@@ -19,6 +19,9 @@ public:
   [[nodiscard]] llvm::Expected<hsa_ven_amd_loader_code_object_storage_type_t>
   getStorageType() const;
 
+  [[nodiscard]] llvm::Expected<hsa_ven_amd_loader_loaded_code_object_kind_t>
+      getKind();
+
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getStorageMemory() const;
 

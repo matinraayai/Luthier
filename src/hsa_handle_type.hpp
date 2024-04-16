@@ -9,7 +9,7 @@ protected:
   explicit HandleType(HT Primitive) : Type<HT>(Primitive){};
 
 public:
-  [[nodiscard]] virtual uint64_t hsaHandle() const {
+  [[nodiscard]] decltype(HT::handle) hsaHandle() const {
     return this->asHsaType().handle;
   }
 
