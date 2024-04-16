@@ -39,6 +39,7 @@ private:
   static llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
                         IndirectFunctionInfo>
       IndirectFunctionHandleCache;
+  //TODO: Invalidate this cache
 
   explicit ExecutableSymbol(hsa_executable_symbol_t Symbol)
       : HandleType<hsa_executable_symbol_t>(Symbol){};
@@ -52,6 +53,8 @@ public:
                 IndirectFunctionCode.data())}) {
     IFO.emplace(LCO.asHsaType(), std::move(IndirectFunctionName),
                 IndirectFunctionCode);
+    // Cache the indirect function calls to allow conversion from hsa handles
+    IndirectFunctionHandleCache.insert({hsaHandle(), *IFO});
   }
 
   ExecutableSymbol(const ExecutableSymbol &Symbol)
