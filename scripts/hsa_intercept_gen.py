@@ -278,19 +278,22 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
   if (ShouldCallback) {{
 """)
                 if return_type != "void":
-                    callback_defs.append(f'\t\t{return_type} Out{{}};\n')
-                callback_defs.append("\t\tauto& HsaUserCallback = HsaInterceptor.getUserCallback();\n"
-                                     "\t\tauto& HsaInternalCallback = HsaInterceptor.getInternalCallback();\n"
-                                     "\t\thsa_api_evt_args_t Args;\n"
-                                     "\t\tbool SkipFunction{false};\n")
+                    callback_defs.append(f"""    {return_type} Out{{}};
+""")
+                callback_defs.append("""    auto& HsaUserCallback = HsaInterceptor.getUserCallback();
+    auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
+    hsa_api_evt_args_t Args;
+    bool SkipFunction{false};
+""")
                 for p in hsa_function_cxx.parameters:
-                    callback_defs.append(f"\t\tArgs.{hsa_function_name}.{p.name} = {p.name};\n")
-                callback_defs.append("\t\tif (IsUserCallbackEnabled)\n"
-                                     "\t\t\tHsaUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);\n"
-                                     "\t\tif (IsInternalCallbackEnabled)\n"
-                                     "\t\t\tHsaInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, "
-                                     "&SkipFunction);\n"
-                                     "\t\tif (!SkipFunction)\n")
+                    callback_defs.append(f"""    Args.{hsa_function_name}.{p.name} = {p.name};
+""")
+                callback_defs.append("""    if (IsUserCallbackEnabled)
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
+    if (IsInternalCallbackEnabled)
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
+    if (!SkipFunction)
+""")
                 if hsa_function_name == "hsa_queue_create":  # Create intercept queues instead
                     callback_defs.append("{\t\t\tOut = HsaInterceptor.getSavedHsaTables("
                                          ").amd_ext.hsa_amd_queue_intercept_create_fn("
