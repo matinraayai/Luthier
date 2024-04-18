@@ -288,7 +288,8 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                 for p in hsa_function_cxx.parameters:
                     callback_defs.append(f"""    Args.{hsa_function_name}.{p.name} = {p.name};
 """)
-                callback_defs.append("""    if (IsUserCallbackEnabled)
+                callback_defs.append(
+                    """    if (IsUserCallbackEnabled)
       HsaUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
     if (IsInternalCallbackEnabled)
       HsaInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
@@ -309,34 +310,32 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                          "*Args.hsa_queue_create.queue);\n"
                                          "\t\t\tif (Out != HSA_STATUS_SUCCESS)}\n")
                 else:
-                    if return_type != "void":
-                        callback_defs.append(f'\t\t\tOut = ')
-                    else:
-                        callback_defs.append("\t\t\t")
                     callback_defs.append(
-                        f'HsaInterceptor.getSavedHsaTables().{api_container_field_name}.{api_table_function_name}(')
+                        f"""      {"Out =" if return_type != "void" else ""} HsaInterceptor.getSavedHsaTables().{api_container_field_name}.{api_table_function_name}(""")
                     for i, p in enumerate(hsa_function_cxx.parameters):
                         callback_defs.append(f'Args.{hsa_function_name}.{p.name}')
                         if i != len(hsa_function_cxx.parameters) - 1:
                             callback_defs.append(", ")
                     callback_defs.append(");\n")
-                callback_defs.append("\t\tif (IsUserCallbackEnabled)\n"
-                                     "\t\t\tHsaUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);\n"
-                                     "\t\tif (IsInternalCallbackEnabled)\n"
-                                     "\t\t\tHsaInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, "
-                                     "&SkipFunction);\n")
-                if return_type != "void":
-                    callback_defs.append("\t\treturn Out;\n")
-                callback_defs.append("\t}\n"
-                                     "\telse {\n")
-                callback_defs.append(f'\t\treturn HsaInterceptor.getSavedHsaTables().{api_container_field_name}' \
-                                     f'.{api_table_function_name}(')
+                callback_defs.append(
+                    f"""    if (IsUserCallbackEnabled)
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
+    if (IsInternalCallbackEnabled)
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
+    {"return Out;" if return_type != "void" else ""}
+  }}
+  else {{
+    return HsaInterceptor.getSavedHsaTables().{api_container_field_name}.{api_table_function_name}(""")
+
                 for i, p in enumerate(hsa_function_cxx.parameters):
                     callback_defs.append(f'{p.name}')
                     if i != len(hsa_function_cxx.parameters) - 1:
                         callback_defs.append(", ")
-                callback_defs.append(");\n")
-                callback_defs.append("\n\t}\n}\n")
+                callback_defs.append(""");
+  }
+}
+
+""")
 
     # Write the generated code into appropriate files
     with open(args.hpp_structs_save_path, "w") as f:
