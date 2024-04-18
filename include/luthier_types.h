@@ -99,7 +99,10 @@ typedef struct {
  * POD struct to provide an abstraction over HSA AQL packets and some
  * convenience methods
  * This should not be constructed directly. It should be constructed using
- * reinterpret_cast over the address of a packet
+ * reinterpret_cast over the address of a packet:
+ * \code
+ * auto& Packet = *reinterpret_cast<HsaAqlPacket*>(PacketAddress);
+ * \endcode
  */
 struct HsaAqlPacket {
   struct {
