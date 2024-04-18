@@ -248,7 +248,6 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
 }}
 
 """]
-    # Create the Queue Packet Submit Event first for later
 
     for api_name in api_table_names:
         api_table = api_tables[api_name]
@@ -269,18 +268,18 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                 formatted_params = [p.format() for p in hsa_functions[hsa_function_name].parameters]
                 # Generate the callback
                 return_type = hsa_function_cxx.return_type.format()
-                callback_defs.append(f'static {return_type} '
-                                     f'{hsa_function_name}_callback({", ".join(formatted_params)}) {{\n'
-                                     "\tauto& HsaInterceptor = luthier::hsa::Interceptor::instance();\n"
-                                     f"\tauto ApiId = HSA_API_EVT_ID_{hsa_function_name};\n"
-                                     "\tbool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);\n"
-                                     "\tbool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled("
-                                     "ApiId);\n"
-                                     "\tbool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;\n")
+                callback_defs.append(
+                    f"""static {return_type} {hsa_function_name}_callback({", ".join(formatted_params)}) {{
+  auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
+  auto ApiId = HSA_API_EVT_ID_{hsa_function_name};
+  bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
+  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  if (ShouldCallback) {{
+""")
                 if return_type != "void":
-                    callback_defs.append(f'\t{return_type} Out{{}};\n')
-                callback_defs.append("\tif (ShouldCallback) {\n"
-                                     "\t\tauto& HsaUserCallback = HsaInterceptor.getUserCallback();\n"
+                    callback_defs.append(f'\t\t{return_type} Out{{}};\n')
+                callback_defs.append("\t\tauto& HsaUserCallback = HsaInterceptor.getUserCallback();\n"
                                      "\t\tauto& HsaInternalCallback = HsaInterceptor.getInternalCallback();\n"
                                      "\t\thsa_api_evt_args_t Args;\n"
                                      "\t\tbool SkipFunction{false};\n")
