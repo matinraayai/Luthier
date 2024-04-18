@@ -206,7 +206,7 @@ enum hsa_api_evt_id_t: unsigned int {{
                 # The field of the API Table this function corresponds to (e.g.) hsa_init_fn
                 api_table_function_name = f.name
                 # Install the callback
-                wrapper_install_defs.append(f'\tTable->{api_table_function_name} = {hsa_function_name};\n')
+                wrapper_install_defs.append(f'\tTable->{api_table_function_name} = {hsa_function_name}_callback;\n')
         wrapper_install_defs.append("};\n\n")
 
     # Generate the callback functions that will replace the original HSA functions
