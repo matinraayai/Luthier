@@ -470,18 +470,33 @@ def get_api_table_container(parsed_hsa_api_trace_header: ParsedData, table_conta
 
 
 def main():
+    # Name of the API tables to capture in HSA
     api_table_names = ["CoreApiTable", "AmdExtTable", "ImageExtTable", "FinalizerExtTable"]
+
     args = parse_and_validate_args()
+    # All possible HSA API functions are located in these headers
     hsa_include_files = tuple(os.path.join(args.hsa_include_dir, header_file) for header_file in
                               ("hsa.h", "hsa_ext_amd.h", "hsa_ext_image.h", "hsa_ext_finalize.h", "hsa_api_trace.h"))
+    # This returns a Dict that contains all HSA API functions and other functions not of interest to us.
+    # It maps the name of the function (e.g. hsa_init) to its cxxheaderparser Function type
     hsa_functions = parse_hsa_functions(hsa_include_files)
 
     parsed_api_trace_header = parse_header_file(os.path.join(args.hsa_include_dir, "hsa_api_trace.h"))
 
+    # Parse the API tables in hsa_api_trace.h
     api_tables = get_api_tables(parsed_api_trace_header, api_table_names)
 
+    # Parse the HsaApiTableContainer.
+    # HsaApiTableContainer is a master struct that contains all the API tables. It is used to save the original
+    # APIs before installing the callbacks
     api_table_container = get_api_table_container(parsed_api_trace_header, "HsaApiTableContainer")
 
+    # We need to know which field name in HsaApiTableContainer corresponds to which API table
+    # struct type. Here we construct the following in a Dict:
+    #  core -> CoreApiTable
+    #  amd_ext -> AmdExtTable
+    #  finalizer_ext -> FinalizerExtTable
+    #  image_ext -> ImageExtTable
     api_table_container_fields = {}
     for table_container_field in api_table_container.fields:
         field_type = table_container_field.type.typename.segments[0].name
@@ -492,146 +507,169 @@ def main():
                      "#include <hsa/hsa_api_trace.h>",
                      '#include "hsa_intercept.hpp"',
                      '#include "luthier_types.h"']
-    callback_arguments_struct = ["typedef union {"]
+
+    """
+    The following loops could have been fused together in a single loop, but they're kept separate for 
+    better readability
+    """
+
+    # Create the HSA_API_EVT_ID enums, enumerating all HSA APIs and EVTs used in Luthier
     callback_enums = ["enum hsa_api_evt_id_t: unsigned int {",
                       "\tHSA_API_EVT_ID_FIRST = 0,"]
-    wrapper_install_defs = []
-
     enum_idx = 0
     for api_name in api_table_names:
         api_table = api_tables[api_name]
-        # Mark the beginning of the API Table in the enum and the argument struct
+        # Mark the beginning of the API Table in the enum
         callback_enums.append(f"\t// {api_name} API")
-        # First create the wrapper install function's prototype
-        print(api_name)
-        wrapper_install_defs.append(f'void luthier::hsa::Interceptor::install{api_name}Wrappers({api_name} *Table) {{')
-        wrapper_install_defs.append(f'\tSavedTable.{api_table_container_fields[api_name]}')
-        # content = ''
-        # if n > 0 and call == '-':
-        #     # if name != '-':
-        #     #     content += f'  interceptTables_.{API_TABLE_NAMES[name]} = *table;\n'
-        #     # else:
-        #     content += '};\n'
-        # if n == 0 or (call == '-' and name != '-'):
-        #     content += 'void luthier::HsaInterceptor::install' + name + 'Wrappers(' + name + 'Table* table) {\n'
-        #     content += f'  savedTables_.{API_TABLE_NAMES[name]}' + ' = *table;\n'
-        # if call != '-':
-        #     if call != 'hsa_shut_down':
-        #         content += '  table->' + call + '_fn = ' + call + '_callback;\n'
-        #     else:
-        #         content += '  { void* p = (void*)' + call + '_callback; (void)p; }\n'
-        # return content
         for f in api_table.fields:
             # look for functions in the API Tables, not fields
             # function fields in the API table are defined as pointers to the decltype of their target HSA function
             if isinstance(f.type, cxx_types.Pointer) and isinstance(f.type.ptr_to.typename.segments[0],
                                                                     cxx_types.DecltypeSpecifier):
+                # Name of the hsa function (e.g.) hsa_init
                 hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
+                # The field of the API Table this function corresponds to (e.g.) hsa_init_fn
                 api_table_function_name = f.name
-                hsa_function = hsa_functions[hsa_function_name]
-                print(hsa_functions[hsa_function_name].return_type.format())
-                # Format the args for later
-                formatted_params = [p.format for p in hsa_functions[hsa_function_name].parameters]
-                # params = ""
-                # p_type = p.type
-                # if isinstance(p_type, cxx_types.Type):
-                #     params = f"{p_type.typename.segments[0].name} {p.name}"
-                #     formatted_params.append(params)
-                # elif isinstance(p_type, cxx_types.Pointer):
-                #     ptr = p_type.ptr_to
-                #     if isinstance(ptr, cxx_types.FunctionType):
-                #         print(ptr)
-                #     elif isinstance(ptr, cxx_types.Type):
-                #         print(p.format())
-                #         params = f"{ptr.const} {ptr.typename.segments[0].name} *{p.name}"
-                # # if hasattr(p_type, "type_name"):
-                # #     print(len(p_type.typename.segments))
-                # # elif hasattr(p_type, "ptr_to"):
-                # #     print(p_type.ptr_to.)
-                # print(params)
                 # Add the function to the enums list
                 callback_enums.append(f"\tHSA_API_EVT_ID_{hsa_function_name} = {enum_idx},")
-                # Generate the argument struct field
-                callback_arguments_struct.append("\tstruct {")
-                for p in formatted_params:
-                    callback_arguments_struct.append(f"\t\t{p},")
-                callback_arguments_struct.append("\t},")
-                # Generate the callback
-                # callback_defs.append(f'static {hsa_function.return_type.format()}'
-                #                      f'{hsa_function_name}_callback({', '.format(formatted_params)}) {{')
-                # callback_defs.append("\tauto& HsaInterceptor = luthier::Hsa::Interceptor::instance();")
-                # callback_defs.append(f"\tauto apiId = HSA_API_ID_{hsa_function_name};")
-                # callback_defs.append("\tbool isUserCallbackEnabled = hsaInterceptor.isUserCallbackEnabled(apiId);\n"
-                #                      "\tbool isInternalCallbackEnabled = hsaInterceptor.isInternalCallbackEnabled(apiId);\n"
-                #                      "\tbool shouldCallback = isUserCallbackEnabled || isInternalCallbackEnabled;\n")
-                # if ret_type != 'void':
-                #     content += f'\t{ret_type} out{{}};\n'
-                # content += "\tif (shouldCallback) {\n" \
-                #            "\t\tauto& hsaUserCallback = hsaInterceptor.getUserCallback();\n" \
-                #            "\t\tauto& hsaInternalCallback = hsaInterceptor.getInternalCallback();\n" \
-                #            "\t\thsa_api_evt_args_t args;\n" \
-                #            "\t\tbool skipFunction{false};\n"
-                # for var in struct['alst']:
-                #     item = struct['astr'][var]
-                # content += f"\t\targs.api_args.{call}.{var} = {var};\n"
-                # content += "\t\tif (isUserCallbackEnabled)\n" \
-                #            "\t\t\thsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);\n" \
-                #            "\t\tif (isInternalCallbackEnabled)\n" \
-                #            "\t\t\thsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction);\n" \
-                #            "\t\tif (!skipFunction)\n"
-                # if ret_type != 'void':
-                #     content += f'\t\t\tout = '
-                # else:
-                #     content += "\t\t\t"
-                # content += f'hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
-                # for i, var in enumerate(struct['alst']):
-                #     content += f'args.api_args.{call}.{var}'
-                # if i != len(struct['alst']) - 1:
-                #     content += ", "
-                # content += ');\n'
-                # content += "\t\tif (isUserCallbackEnabled)\n" \
-                #            "\t\t\thsaUserCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId);\n" \
-                #            "\t\tif (isInternalCallbackEnabled)\n" \
-                #            "\t\t\thsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_EXIT, apiId, &skipFunction);\n"
-                # if ret_type != 'void':
-                #     content += "\t\treturn out;\n"
-                # content += "\t}\n" \
-                #            "\telse {\n"
-                # if ret_type != 'void':
-                #     content += f'\t\tout = '
-                # else:
-                #     content += "\t\t"
-                # content += f'hsaInterceptor.getSavedHsaTables().{API_TABLE_NAMES[name]}.{call}_fn('
-                # for i, var in enumerate(struct['alst']):
-                #     content += f'{var}'
-                # if i != len(struct['alst']) - 1:
-                #     content += ", "
-                # content += ');\n'
-                # if ret_type != 'void':
-                #     content += '\t\treturn out;\n\t}\n}\n\n'
-                # else:
-                #     content += "\n\t}\n}\n\n"
-
-                # Install the callback
-                wrapper_install_defs.append(f'\tTable.{api_table_function_name} = {hsa_function_name};')
-                # print(api_table.fields[1].type.ptr_to.typename.segments[0].tokens[0].value)
-
-                # descr = ApiDescrParser(H_OUT, HSA_DIR, API_TABLES_H, API_HEADERS_H, LICENSE)
-                #
-                # out_file = PREFIX + CPP_OUT
-                # print('Generating "' + out_file + '"')
-                # f = open(out_file, 'w')
-                # f.write(descr.cpp_content[:-1])
-                # f.close()
                 enum_idx += 1
-            wrapper_install_defs.append("};")
     # Handle the kernel launch event separately
     callback_enums.append(f"\tHSA_API_EVT_ID_hsa_queue_packet_submit = {enum_idx}")
     # Finalize the API EVT ID Enum
     callback_enums.append(f"\tHSA_API_EVT_ID_LAST = {enum_idx},")
     callback_enums.append("}")
-    # print(callback_enums)
-    print("\n".join(callback_enums))
+
+    # Create a union struct containing the arguments to all HSA APIs and EVTs used in Luthier
+    callback_arguments_struct = ["typedef union {"]
+    for api_name in api_table_names:
+        api_table = api_tables[api_name]
+        for f in api_table.fields:
+            # look for functions in the API Tables, not fields
+            # function fields in the API table are defined as pointers to the decltype of their target HSA function
+            if isinstance(f.type, cxx_types.Pointer) and isinstance(f.type.ptr_to.typename.segments[0],
+                                                                    cxx_types.DecltypeSpecifier):
+                # Name of the hsa function (e.g.) hsa_init
+                hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
+                # The hsa function representation parsed by cxxheaderparser
+                hsa_function_cxx = hsa_functions[hsa_function_name]
+                # Format the args for later
+                formatted_params = [p.format() for p in hsa_function_cxx.parameters]
+                # Generate the argument struct field
+                callback_arguments_struct.append("\tstruct {")
+                for p in formatted_params:
+                    callback_arguments_struct.append(f"\t\t{p};")
+                callback_arguments_struct.append(f"\t}} {hsa_function_name},")
+    # Handle the kernel launch event separately
+    callback_arguments_struct.append("\tstruct {\n"
+                                     "\t\tstd::vector<luthier::HsaAqlPacket> packets;\n"
+                                     "\t\tuint64_t user_pkt_index;\n"
+                                     "\t} hsa_queue_packet_submit;")
+    callback_arguments_struct.append("} hsa_api_evt_args_t;\n")
+
+    # Generate functions that install the wrapper callbacks when HSA is loaded
+    wrapper_install_defs = []
+    for api_name in api_table_names:
+        api_table = api_tables[api_name]
+        # First create the wrapper install function's prototype
+        wrapper_install_defs.append(f'void luthier::hsa::Interceptor::install{api_name}Wrappers({api_name} *Table) {{')
+        wrapper_install_defs.append(f'\tSavedTable.{api_table_container_fields[api_name]}')
+        for f in api_table.fields:
+            # look for functions in the API Tables, not fields
+            # function fields in the API table are defined as pointers to the decltype of their target HSA function
+            if isinstance(f.type, cxx_types.Pointer) and isinstance(f.type.ptr_to.typename.segments[0],
+                                                                    cxx_types.DecltypeSpecifier):
+                # Name of the hsa function (e.g.) hsa_init
+                hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
+                # The field of the API Table this function corresponds to (e.g.) hsa_init_fn
+                api_table_function_name = f.name
+                # Install the callback
+                wrapper_install_defs.append(f'\tTable.{api_table_function_name} = {hsa_function_name};')
+        wrapper_install_defs.append("};")
+
+    # Generate the callback functions that will replace the original HSA functions
+    for api_name in api_table_names:
+        api_table = api_tables[api_name]
+        # The field in the API Container this table corresponds to
+        api_container_field_name = api_table_container_fields[api_name]
+        for f in api_table.fields:
+            # look for functions in the API Tables, not fields
+            # function fields in the API table are defined as pointers to the decltype of their target HSA function
+            if isinstance(f.type, cxx_types.Pointer) and isinstance(f.type.ptr_to.typename.segments[0],
+                                                                    cxx_types.DecltypeSpecifier):
+                # Name of the hsa function (e.g.) hsa_init
+                hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
+                # The field of the API Table this function corresponds to (e.g.) hsa_init_fn
+                api_table_function_name = f.name
+                # The hsa function representation parsed by cxxheaderparser
+                hsa_function_cxx = hsa_functions[hsa_function_name]
+                print(hsa_functions[hsa_function_name].return_type.format())
+                # Format the args for later
+                formatted_params = [p.format() for p in hsa_functions[hsa_function_name].parameters]
+                # Generate the callback
+                return_type = hsa_function_cxx.return_type.format()
+                callback_defs.append(f'static {return_type}'
+                                     f'{hsa_function_name}_callback({', '.format(formatted_params)}) {{'
+                                     "\tauto& HsaInterceptor = luthier::Hsa::Interceptor::instance();"
+                                     f"\tauto ApiId = HSA_API_ID_{hsa_function_name};"
+                                     "\tbool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);\n"
+                                     "\tbool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);\n"
+                                     "\tbool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;\n")
+                if return_type != "void":
+                    callback_defs.append(f'\t{return_type} Out{{}};')
+                callback_defs.append("\tif (ShouldCallback) {\n"
+                                     "\t\tauto& HsaUserCallback = HsaInterceptor.getUserCallback();\n"
+                                     "\t\tauto& HsaInternalCallback = HsaInterceptor.getInternalCallback();\n"
+                                     "\t\thsa_api_evt_args_t Args;\n"
+                                     "\t\tbool SkipFunction{false};\n")
+                for p in hsa_function_cxx.parameters:
+                    callback_defs.append(f"\t\tArgs.{hsa_function_name}.{p.name} = {p.name};")
+                callback_defs.append("\t\tif (IsUserCallbackEnabled)\n"
+                                     "\t\t\tHsaUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);\n"
+                                     "\t\tif (IsInternalCallbackEnabled)\n"
+                                     "\t\t\tHsaInternalCallback(Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);\n"
+                                     "\t\tif (!SkipFunction)\n")
+                if return_type != "void":
+                    callback_defs.append(f'\t\t\tout = ')
+                else:
+                    callback_defs.append("\t\t\t")
+                callback_defs.append(
+                    f'HsaInterceptor.getSavedHsaTables().{api_container_field_name}.{api_table_function_name}(')
+                for i, p in enumerate(hsa_function_cxx.parameters):
+                    callback_defs.append(f'Args.{hsa_function_name}.{p.name}')
+                    if i != len(hsa_function_cxx.parameters) - 1:
+                        callback_defs[-1] += ","
+                callback_defs.append(")")
+                callback_defs.append("\t\tif (IsUserCallbackEnabled)\n"
+                                     "\t\t\tHsaUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);\n"
+                                     "\t\tif (IsInternalCallbackEnabled)\n"
+                                     "\t\t\tHsaInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);\n")
+                if return_type != "void":
+                    callback_defs.append("\t\treturn out;")
+                callback_defs.append("\t}\n"
+                                     "\telse {\n")
+                if return_type != "void":
+                    callback_defs.append(f'\t\tout = ')
+                else:
+                    callback_defs.append("\t\t")
+                callback_defs.append(f'HsaInterceptor.getSavedHsaTables().{api_container_field_name}.{api_table_function_name}(')
+                for i, p in enumerate(hsa_function_cxx.parameters):
+                    callback_defs.append(f'Args.{hsa_function_name}.{p.name}')
+                    if i != len(hsa_function_cxx.parameters) - 1:
+                        callback_defs[-1] += ","
+                    callback_defs.append(")")
+                if return_type != "void":
+                    callback_defs.append('\t\treturn out;\n\t}\n}\n')
+                else:
+                    callback_defs.append("\n\t}\n}\n")
+    # Handle the kernel launch event separately
+    callback_enums.append(f"\tHSA_API_EVT_ID_hsa_queue_packet_submit = {enum_idx}")
+    # Finalize the API EVT ID Enum
+    callback_enums.append(f"\tHSA_API_EVT_ID_LAST = {enum_idx},")
+    callback_enums.append("}")
+
+
+    print("\n".join(callback_arguments_struct))
+
 
 if __name__ == "__main__":
     main()
