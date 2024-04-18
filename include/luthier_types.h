@@ -71,54 +71,99 @@ THE SOFTWARE.
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ext_amd.h>
 
-typedef uint64_t luthier_address_t;
+namespace luthier {
+
+constexpr const char *DeviceFunctionWrap = "__luthier_wrap__";
+
+constexpr const char *ReservedManagedVar = "__luthier_reserved";
+
+typedef unsigned long address_t;
+
+enum ApiEvtPhase : unsigned short {
+  API_EVT_PHASE_ENTER = 0,
+  API_EVT_PHAE_EXIT = 1
+};
+
+enum InstrPoint : unsigned short {
+  INSTR_POINT_BEFORE = 0,
+  INSTR_POINT_AFTER = 1
+};
 
 typedef struct {
-  uint64_t handle;
-} luthier_instruction_t;
+  uint16_t Header;
+  uint8_t Format;
+  uint8_t Rest[61];
+} hsa_amd_vendor_packet_t;
 
-constexpr const char *LUTHIER_DEVICE_FUNCTION_WRAP = "__luthier_wrap__";
-
-constexpr const char *LUTHIER_RESERVED_MANAGED_VAR = "__luthier_reserved";
-
-enum luthier_status_t {
-  LUTHIER_STATUS_SUCCESS = 0,
-  LUTHIER_STATUS_ERROR = 1,
-  LUTHIER_STATUS_INVALID_ARGUMENT = 2,
-  LUTHIER_STATUS_ASSERTION_ERROR = 3,
-  LUTHIER_STATUS_HSA_ERROR = 4,
-  LUTHIER_STATUS_COMGR_ERROR = 5,
-  LUTHIER_STATUS_LLVM_ERROR =
-      6, // TODO: How to detect error originated from LLVM?
-};
-
-enum luthier_api_evt_phase_t {
-  LUTHIER_API_EVT_PHASE_ENTER,
-  LUTHIER_API_EVT_PHASE_EXIT
-};
-
-enum luthier_ipoint_t { LUTHIER_IPOINT_BEFORE, LUTHIER_IPOINT_AFTER };
-
-// Taken from ROCr
-struct luthier_hsa_aql_packet_t {
-  union {
+/**
+ * POD struct to provide an abstraction over HSA AQL packets and some
+ * convenience methods
+ * This should not be constructed directly. It should be constructed using
+ * reinterpret_cast over the address of a packet
+ */
+struct HsaAqlPacket {
+  struct {
+    uint16_t Header;
     struct {
-      uint16_t header;
-      struct {
-        uint8_t user_data[62];
-      } body;
-    } packet;
-    struct {
-      uint16_t header;
-      uint8_t format;
-      uint8_t rest[61];
-    } amd_vendor;
-    hsa_kernel_dispatch_packet_t dispatch;
-    hsa_barrier_and_packet_t barrier_and;
-    hsa_barrier_or_packet_t barrier_or;
-    hsa_agent_dispatch_packet_t agent;
-  };
+      uint8_t UserData[62];
+    } Body;
+  } Packet;
+
+  hsa_agent_dispatch_packet_t Agent;
+
+  /**
+   * \returns the HSA packet type of the AQL packet
+   */
+  [[nodiscard]] hsa_packet_type_t getPacketType() const {
+    return static_cast<hsa_packet_type_t>(
+        (Packet.Header >> HSA_PACKET_HEADER_TYPE) &
+        ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
+  }
+  /*
+   *
+   */
+  [[nodiscard]] hsa_amd_vendor_packet_t &asAMDVendor() {
+    return *reinterpret_cast<hsa_amd_vendor_packet_t *>(&Packet);
+  }
+  [[nodiscard]] const hsa_amd_vendor_packet_t &asAMDVendor() const {
+    return *reinterpret_cast<const hsa_amd_vendor_packet_t *>(&Packet);
+  }
+  [[nodiscard]] hsa_kernel_dispatch_packet_t &asKernelDispatch() {
+    return *reinterpret_cast<hsa_kernel_dispatch_packet_t *>(&Packet);
+  }
+  [[nodiscard]] const hsa_kernel_dispatch_packet_t &asKernelDispatch() const {
+    return *reinterpret_cast<const hsa_kernel_dispatch_packet_t *>(&Packet);
+  }
+
+  [[nodiscard]] hsa_barrier_and_packet_t &asBarrierAnd() {
+    return *reinterpret_cast<hsa_barrier_and_packet_t *>(&Packet);
+  }
+
+  [[nodiscard]] const hsa_barrier_and_packet_t &asBarrierAnd() const {
+    return *reinterpret_cast<const hsa_barrier_and_packet_t *>(&Packet);
+  }
+
+  [[nodiscard]] hsa_barrier_or_packet_t &asBarrierOr() {
+    return *reinterpret_cast<hsa_barrier_or_packet_t *>(&Packet);
+  }
+
+  [[nodiscard]] const hsa_barrier_or_packet_t &asBarrierOr() const {
+    return *reinterpret_cast<const hsa_barrier_or_packet_t *>(&Packet);
+  }
+
+  [[nodiscard]] hsa_agent_dispatch_packet_t &asAgentDispatch() {
+    return *reinterpret_cast<hsa_agent_dispatch_packet_t *>(&Packet);
+  }
+
+  [[nodiscard]] const hsa_agent_dispatch_packet_t &asAgentDispatch() const {
+    return *reinterpret_cast<const hsa_agent_dispatch_packet_t *>(&Packet);
+  }
+
+
+
 };
+
+} // namespace luthier
 
 enum hsa_api_evt_id_t {
   HSA_API_ID_FIRST = 0,
