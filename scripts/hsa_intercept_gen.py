@@ -1,32 +1,34 @@
-#!/usr/bin/env python3
-
-################################################################################
-# Copyright (c) 2018-2022 Advanced Micro Devices, Inc.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to
-# deal in the Software without restriction, including without limitation the
-# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-# sell copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-# IN THE SOFTWARE.
-################################################################################
-
+# !/usr/bin/env python3
 from __future__ import print_function
 
 import os
+import io
 import re
 import sys
+
+import argparse
+
+from cxxheaderparser.simple import parse_string, ClassScope, ParsedData, Function
+from header_preprocessor import ROCmPreprocessor
+from typing import *
+
+
+def parse_and_validate_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser("HSA API interception generation script for Luthier; Originally used by AMD in "
+                                     "the Roctracer project")
+    parser.add_argument("--hsa-include-dir", type=str,
+                        default="/opt/rocm/include/hsa",
+                        help="location of the HSA include directory")
+    parser.add_argument("--cpp-callback-save-path", type=str,
+                        default="./hsa_intercept.cpp",
+                        help="location of where the generated C++ callback file will be saved")
+    parser.add_argument("--hpp-structs-save-path", type=str,
+                        default="../include/hsa_trace_api.hpp",
+                        help="location of where the generated C++ header file containing the callback args struct "
+                             "and callback enumerators will be saved")
+    args = parser.parse_args()
+    return args
+
 
 H_OUT = 'hsa_prof_str.h'
 CPP_OUT = 'hsa_intercept.cpp'
@@ -40,7 +42,7 @@ API_HEADERS_H = (
 )
 API_TABLE_NAMES = {'CoreApi': 'core', 'AmdExt': 'amd_ext', 'ImageExt': 'image_ext'}
 
-LICENSE = """/* Copyright (c) 2018-2023 Advanced Micro Devices, Inc.
+LICENSE = """/* Copyright (c) 2018-2024 Advanced Micro Devices, Inc.
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -104,8 +106,6 @@ def NextBlock(pos, record):
 #############################################################
 # API table parser class
 class ApiTableParser:
-    def fatal(self, msg):
-        fatal('API_TableParser', msg)
 
     def __init__(self, header, name):
         self.name = name
@@ -442,20 +442,84 @@ class ApiDescrParser:
 
 
 #############################################################
-# main
-# Usage
-if len(sys.argv) != 3:
-    print("Usage:", sys.argv[0], " <OUT prefix> <HSA runtime include path>", file=sys.stderr)
-    sys.exit(1)
-else:
-    PREFIX = sys.argv[1] + '/'
-    HSA_DIR = sys.argv[2] + '/'
+def parse_header_file(header_file: str) -> ParsedData:
+    preprocessor = ROCmPreprocessor()
+    preprocessor.line_directive = None
+    preprocessor.passthru_unfound_includes = True
+    preprocessor.passthru_includes = re.compile(r".*")
+    preprocessor.define("__GNUC__")
+    preprocessor.define("LITTLEENDIAN_CPU")
+    preprocessor.define("_M_X64")
+    api_tables = {}
+    with open(header_file, 'r') as hf:
+        preprocessor.parse(hf)
+        str_io = io.StringIO()
+        preprocessor.write(str_io)
+    preprocessed_header = str_io.getvalue()
+    parsed = parse_string(preprocessed_header)
+    str_io.close()
+    return parsed
 
-descr = ApiDescrParser(H_OUT, HSA_DIR, API_TABLES_H, API_HEADERS_H, LICENSE)
 
-out_file = PREFIX + CPP_OUT
-print('Generating "' + out_file + '"')
-f = open(out_file, 'w')
-f.write(descr.cpp_content[:-1])
-f.close()
-#############################################################
+def parse_hsa_functions(header_files: Iterable[str]) -> dict[str, Function]:
+    functions = {}
+    for header in header_files:
+        phf = parse_header_file(header)
+        for f in phf.namespace.functions:
+            functions[f.name.segments[0].name] = f
+    return functions
+
+
+def parse_api_tables(hsa_api_trace_header_path: str, api_table_names: List[str]) -> Dict[str, ClassScope]:
+    """
+    Parses the "hsa_api_trace.h" header file and returns the HSA API Table structs
+    :param hsa_api_trace_header_path: path to "hsa_api_trace.h" (can be found under include/hsa/ folder)
+    :param api_table_names name of the API table structs
+    :return:
+    """
+    api_tables = {}
+    parsed_header = parse_header_file(hsa_api_trace_header_path)
+    for cls in parsed_header.namespace.classes:
+        typename = cls.class_decl.typename
+        if typename.classkey == "struct" and len(typename.segments) == 1 \
+                and typename.segments[0].name in api_table_names:
+            # print(typename)
+            api_tables[typename.segments[0].name] = cls
+            # [3].class_decl.typename.segments[0].name)
+        # print(parsed.namespace.classes[3].fields[1])
+        # print(f["parameters"])
+    return api_tables
+
+
+def main():
+    args = parse_and_validate_args()
+    hsa_include_files = tuple(os.path.join(args.hsa_include_dir, header_file) for header_file in
+                              ("hsa.h", "hsa_ext_amd.h", "hsa_ext_image.h", "hsa_ext_finalize.h", "hsa_api_trace.h"))
+    parse_hsa_functions(hsa_include_files)
+    api_tables = parse_api_tables(os.path.join(args.hsa_include_dir, "hsa_api_trace.h"),
+                                  ["FinalizerExtTable", "ImageExtTable", "AmdExtTable", "CoreApiTable"])
+    print(len(api_tables))
+    for api_name, api_table in api_tables.items():
+
+        for f in api_table.fields:
+            # look for functions in the API Tables, not fields
+            # API tables usually have a version field as well which needs to be skipped
+            # functions
+            if hasattr(f.type, "ptr_to"):
+            # print(vars(f))
+            # print(f.type)
+                print(f.type.ptr_to.typename.segments[0].tokens[0].value)
+                print(f.name)
+        # print(api_table.fields[1].type.ptr_to.typename.segments[0].tokens[0].value)
+
+    # descr = ApiDescrParser(H_OUT, HSA_DIR, API_TABLES_H, API_HEADERS_H, LICENSE)
+    #
+    # out_file = PREFIX + CPP_OUT
+    # print('Generating "' + out_file + '"')
+    # f = open(out_file, 'w')
+    # f.write(descr.cpp_content[:-1])
+    # f.close()
+
+
+if __name__ == "__main__":
+    main()
