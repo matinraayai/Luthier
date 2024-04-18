@@ -20,7 +20,7 @@ private:
                                     // CodeLifter is an internal component and
                                     // cannot be accessed externally
   const llvm::MCInst Inst; // < The MC representation of the instruction
-  const luthier_address_t LoadedDeviceAddress; // < The address on the device
+  const address_t LoadedDeviceAddress; // < The address on the device
                                                // this instruction is loaded at
   const hsa_executable_symbol_t
       Symbol; // < The symbol this instruction belongs to
@@ -31,7 +31,7 @@ private:
   const size_t Size; // < Size of the instruction
 
   Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
-        hsa_executable_symbol_t Symbol, luthier_address_t Address,
+        hsa_executable_symbol_t Symbol, address_t Address,
         size_t Size);
 
 public:
@@ -47,7 +47,7 @@ public:
 
   [[nodiscard]] llvm::MCInst getInstr() const;
 
-  [[nodiscard]] luthier_address_t getLoadedDeviceAddress() const;
+  [[nodiscard]] address_t getLoadedDeviceAddress() const;
 
   [[nodiscard]] size_t getSize() const;
 };
