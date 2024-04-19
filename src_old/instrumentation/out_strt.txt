@@ -1,8 +1,0 @@
-
-String dump of section '.strtab':
-  [     1]  incr_counter
-  [     e]  counter
-  [    16]  incr_counter.kd
-  [    26]  counter.managed
-  [    36]  _DYNAMIC
-

@@ -11,12 +11,12 @@ protected:
   explicit Type(HT HsaType) : HsaType(HsaType){};
 
   [[nodiscard]] inline const HsaApiTableContainer &getApiTable() const {
-    return HsaInterceptor::instance().getSavedHsaTables();
+    return hsa::Interceptor::instance().getSavedHsaTables();
   }
 
   [[nodiscard]] inline const hsa_ven_amd_loader_1_03_pfn_t &
   getLoaderTable() const {
-    return HsaInterceptor::instance().getHsaVenAmdLoaderTable();
+    return hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
   }
 
 public:
