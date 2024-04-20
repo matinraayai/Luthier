@@ -1,6 +1,7 @@
 #ifndef CODE_LIFTER_HPP
 #define CODE_LIFTER_HPP
 #include <llvm/ADT/DenseMap.h>
+#include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Module.h>
 #include <llvm/MC/MCContext.h>
@@ -16,10 +17,10 @@
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"
-#include "hsa_instr.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "luthier_types.h"
+#include "luthier/instr.hpp"
+#include "luthier/types.h"
 #include "object_utils.hpp"
 
 namespace luthier {
@@ -34,12 +35,14 @@ namespace luthier {
  * the functions and variables of the parent \ref hsa::LoadedCodeObject will
  * be considered related
  */
-struct LiftedFunctionInfo {
+struct LiftedSymbolInfo {
   llvm::MachineFunction *MF{nullptr};
   llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *>
-      RelatedFunctions;
+      RelatedFunctions{};
   llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable *>
-      RelatedGlobalVariables;
+      RelatedGlobalVariables{};
+  llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
+  llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineInstrToMCMap{};
 };
 
 /**
@@ -97,7 +100,8 @@ private:
   };
 
   llvm::DenseMap<hsa::ISA, DisassemblyInfo>
-      DisassemblyInfoMap; // < Contains the cached DisassemblyInfo for each ISA
+      DisassemblyInfoMap{}; // < Contains the cached DisassemblyInfo for each
+                            // ISA
 
   llvm::Expected<DisassemblyInfo &> getDisassemblyInfo(const hsa::ISA &ISA);
 
@@ -108,8 +112,8 @@ private:
    * charge of clearing the map
    */
   llvm::DenseMap<hsa::ExecutableSymbol,
-                 std::unique_ptr<std::vector<hsa::Instr>>>
-      DisassembledSymbolsRaw;
+                 std::unique_ptr<std::vector<Instr>>>
+      DisassembledSymbolsRaw{};
 
 public:
   /**
@@ -122,7 +126,7 @@ public:
    * \ref hsa::Instr
    * \see luthier::hsa::Instr
    */
-  llvm::Expected<const std::vector<hsa::Instr> *>
+  llvm::Expected<const std::vector<Instr> &>
   disassemble(const hsa::ExecutableSymbol &Symbol);
 
   /**
@@ -135,7 +139,7 @@ public:
    * a \p std::vector containing the address of every instruction
    */
   llvm::Expected<
-      std::pair<std::vector<llvm::MCInst>, std::vector<luthier_address_t>>>
+      std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
   disassemble(const llvm::object::ELFSymbolRef &Symbol,
               std::optional<size_t> Size = std::nullopt);
 
@@ -148,7 +152,7 @@ public:
    * a \p std::vector containing the start address of each instruction
    */
   llvm::Expected<
-      std::pair<std::vector<llvm::MCInst>, std::vector<luthier_address_t>>>
+      std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
   disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code);
 
   /*****************************************************************************
@@ -169,7 +173,7 @@ private:
    * executable, that when run instead of the original kernel, will produce
    * identical results
    */
-  struct LiftedModuleInfo {
+  struct LiftedExecutableInfo {
     std::unique_ptr<llvm::Module> Module;
     std::unique_ptr<llvm::MachineModuleInfo> MMI;
     llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *> Functions{};
@@ -179,45 +183,47 @@ private:
         RelatedFunctions{};
     llvm::DenseMap<hsa::ExecutableSymbol, llvm::DenseSet<hsa::ExecutableSymbol>>
         RelatedVariables{};
+    llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
+    llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineToMCInstrMap{};
   };
 
   /**
    * Cache of \p KernelModuleInfo for each kernel function lifted by the
    * \p CodeLifter
    */
-  llvm::DenseMap<hsa::Executable, LiftedModuleInfo> ExecutableModuleInfoEntries;
+  llvm::DenseMap<hsa::Executable, LiftedExecutableInfo> LiftedExecutables{};
 
   // TODO: Invalidate these caches once an Executable is destroyed
 
   llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
-                 llvm::DenseSet<luthier_address_t>>
-      BranchesAndTargetsLocations; // < Contains the addresses of the branch
-                                   // targets and branch instructions
+                 llvm::DenseSet<address_t>>
+      BranchAndTargetLocations{}; // < Contains the addresses of the branch
+                                  // targets and branch instructions
 
   bool isAddressBranchOrBranchTarget(const hsa::Executable &Executable,
                                      const hsa::GpuAgent &Agent,
-                                     luthier_address_t Address);
+                                     address_t Address);
 
   llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
-                 llvm::DenseMap<luthier_address_t, hsa::ExecutableSymbol>>
-      ExecutableSymbolAddressInfoMap;
+                 llvm::DenseMap<address_t, hsa::ExecutableSymbol>>
+      ExecutableSymbolAddressInfoMap{};
 
   llvm::DenseMap<hsa::ExecutableSymbol, HSAMD::Kernel::Metadata>
-      KernelsMetaData;
+      KernelsMetaData{};
 
   llvm::DenseMap<hsa::LoadedCodeObject, HSAMD::Metadata>
-      LoadedCodeObjectsMetaData;
+      LoadedCodeObjectsMetaData{};
 
 public:
   llvm::Expected<std::optional<hsa::ExecutableSymbol>>
   resolveAddressToExecutableSymbol(const hsa::Executable &Executable,
                                    const hsa::GpuAgent &Agent,
-                                   luthier_address_t Address);
+                                   address_t Address);
 
 private:
   void addBranchOrBranchTargetAddress(const hsa::Executable &Executable,
                                       const hsa::GpuAgent &Agent,
-                                      luthier_address_t Address);
+                                      address_t Address);
 
   llvm::Expected<const HSAMD::Kernel::Metadata &>
   getKernelMetaData(const hsa::ExecutableSymbol &Symbol);
@@ -241,23 +247,23 @@ private:
   /**
    * Cache of relocation information, per LoadedCodeObject
    */
-  llvm::DenseMap<hsa::LoadedCodeObject,            // < All LCOs lifted so far
-                 llvm::DenseMap<luthier_address_t, // < Address of the
-                                                   // relocation on the device
-                                LCORelocationInfo  // < Relocation info per
-                                                   // device address
+  llvm::DenseMap<hsa::LoadedCodeObject,           // < All LCOs lifted so far
+                 llvm::DenseMap<address_t,        // < Address of the
+                                                  // relocation on the device
+                                LCORelocationInfo // < Relocation info per
+                                                  // device address
                                 >>
-      Relocations;
+      Relocations{};
 
   llvm::Expected<std::optional<LCORelocationInfo>>
   resolveRelocation(const hsa::LoadedCodeObject &LCO,
-                    luthier_address_t Address);
+                    address_t Address);
 
-  llvm::Expected<LiftedFunctionInfo>
-      liftSymbol(const hsa::ExecutableSymbol &Symbol);
+  llvm::Expected<LiftedSymbolInfo>
+  liftSymbol(const hsa::ExecutableSymbol &Symbol);
 
 public:
-  llvm::Expected<LiftedFunctionInfo>
+  llvm::Expected<LiftedSymbolInfo>
   liftAndAddToModule(const hsa::ExecutableSymbol &Symbol, llvm::Module &Module,
                      llvm::MachineModuleInfo &MMI);
 };
