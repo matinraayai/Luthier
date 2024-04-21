@@ -8,7 +8,7 @@
 #include <unordered_set>
 
 #include "error.hpp"
-#include "luthier_types.h"
+#include <luthier/types.h>
 
 namespace luthier::hsa {
 class Interceptor {
@@ -132,22 +132,22 @@ public:
 
   void disableAllInternalCallbacks() { EnabledInternalOps.clear(); }
 
-  bool captureHsaApiTable(HsaApiTable *table) {
-    InternalHsaApiTable = table;
-    installCoreApiTableWrappers(table->core_);
-    installAmdExtTableWrappers(table->amd_ext_);
-    installImageExtTableWrappers(table->image_ext_);
-    installFinalizerExtTableWrappers(table->finalizer_ext_);
+  bool captureHsaApiTable(HsaApiTable *Table) {
+    InternalHsaApiTable = Table;
+    installCoreApiTableWrappers(Table->core_);
+    installAmdExtTableWrappers(Table->amd_ext_);
+    installImageExtTableWrappers(Table->image_ext_);
+    installFinalizerExtTableWrappers(Table->finalizer_ext_);
 
-    return (table->core_->hsa_system_get_major_extension_table_fn(
+    return (Table->core_->hsa_system_get_major_extension_table_fn(
                 HSA_EXTENSION_AMD_LOADER, 1,
                 sizeof(hsa_ven_amd_loader_1_03_pfn_t),
                 &AmdTable) == HSA_STATUS_SUCCESS);
   }
 
   static inline hsa::Interceptor &instance() {
-    static hsa::Interceptor instance;
-    return instance;
+    static hsa::Interceptor Instance;
+    return Instance;
   }
 };
 } // namespace luthier::hsa
