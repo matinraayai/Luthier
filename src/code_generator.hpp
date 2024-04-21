@@ -1,18 +1,45 @@
 #ifndef CODE_GENERATOR_HPP
 #define CODE_GENERATOR_HPP
 
-#include "luthier_types.h"
+#include "hsa_executable.hpp"
+#include "hsa_executable_symbol.hpp"
+#include "luthier/instr.hpp"
+#include "luthier/types.h"
 #include "object_utils.hpp"
+#include <luthier/pass.h>
+
+#include <llvm/IR/Type.h>
+
+#include <llvm/Pass.h>
+#include <queue>
 
 namespace luthier {
 
 namespace hsa {
+
 class GpuAgent;
 
 class ISA;
 
-class Instr;
 } // namespace hsa
+
+class LiftedSymbolInfoWrapperPass : public llvm::ImmutablePass {
+private:
+  const LiftedSymbolInfo &LSI;
+
+public:
+  static char ID;
+
+  explicit LiftedSymbolInfoWrapperPass(const LiftedSymbolInfo &LSI);
+
+  virtual void anchor();
+
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override {
+    AU.setPreservesAll();
+  }
+
+  const LiftedSymbolInfo &getLSI() { return LSI; }
+};
 
 class CodeGenerator {
 public:
@@ -25,17 +52,20 @@ public:
   }
 
   static llvm::Error
-  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code,
-                                 const hsa::GpuAgent &agent,
-                                 llvm::SmallVectorImpl<uint8_t> &out);
+  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &Code,
+                                 const hsa::GpuAgent &Agent,
+                                 llvm::SmallVectorImpl<uint8_t> &Out);
 
   static llvm::Error
-  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &code,
-                                 const hsa::ISA &isa,
-                                 llvm::SmallVectorImpl<uint8_t> &out);
+  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &Code,
+                                 const hsa::ISA &ISA,
+                                 llvm::SmallVectorImpl<uint8_t> &Out);
 
-  llvm::Error instrument(hsa::Instr &instr, const void *devFunc,
-                         luthier_ipoint_t point);
+  llvm::Error
+  instrument(std::unique_ptr<llvm::Module> &Module,
+             std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
+             const LiftedSymbolInfo &LSO,
+             std::unique_ptr<luthier::InstrumentationPass> IPass);
 
 private:
   CodeGenerator() = default;

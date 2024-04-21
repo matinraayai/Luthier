@@ -1,16 +1,16 @@
-#include "hsa_kernel_descriptor.hpp"
+#include <luthier/kernel_descriptor.h>
 
+#include "hsa_executable_symbol.hpp"
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
 
 #define REG_BIT_GETTER(registerName, registerVar, propName, prop)              \
-  uint32_t luthier::hsa::KernelDescriptor::get##registerName##propName()       \
-      const {                                                                  \
+  uint32_t luthier::KernelDescriptor::get##registerName##propName() const {    \
     return AMD_HSA_BITS_GET(registerVar, prop);                                \
   };
 
 #define REG_BIT_SETTER(registerName, registerVar, propFuncName, prop)          \
-  void luthier::hsa::KernelDescriptor::set##registerName##propFuncName(        \
+  void luthier::KernelDescriptor::set##registerName##propFuncName(             \
       uint32_t value) {                                                        \
     AMD_HSA_BITS_SET(registerVar, prop, value);                                \
   }
@@ -250,7 +250,17 @@ REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, Reserved2,
 #undef REG_BIT_SETTER
 #undef REG_BIT_GETTER
 
-luthier_address_t luthier::hsa::KernelDescriptor::getEntryPoint() const {
-  return reinterpret_cast<luthier_address_t>(this) +
+luthier::address_t luthier::KernelDescriptor::getEntryPoint() const {
+  return reinterpret_cast<luthier::address_t>(this) +
          this->KernelCodeEntryByteOffset;
+}
+luthier::KernelDescriptor *
+luthier::KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
+  return reinterpret_cast<luthier::KernelDescriptor *>(KernelObject);
+}
+llvm::Expected<hsa_executable_symbol_t>
+luthier::KernelDescriptor::getHsaExecutableSymbol() {
+  auto Symbol = hsa::ExecutableSymbol::fromKernelDescriptor(this);
+  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
+  return Symbol->asHsaType();
 }

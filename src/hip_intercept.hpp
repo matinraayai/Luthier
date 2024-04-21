@@ -12,7 +12,7 @@
 #include <unordered_set>
 
 #include "error.hpp"
-#include "luthier_types.h"
+#include <luthier/types.h>
 
 namespace fs = std::experimental::filesystem;
 
@@ -20,39 +20,38 @@ namespace fs = std::experimental::filesystem;
 namespace luthier {
 class HipInterceptor {
 private:
-  void *handle_{nullptr};
-  std::function<void(void *, const luthier_api_evt_phase_t, const int)>
-      userCallback_{};
-  std::function<void(void *, const luthier_api_evt_phase_t, const int, bool *,
+  void *Handle{nullptr};
+  std::function<void(void *, const ApiEvtPhase, const int)> UserCallback{};
+  std::function<void(void *, const ApiEvtPhase, const int, bool *,
                      std::optional<std::any> *)>
-      internalCallback_{};
+      InternalCallback{};
   std::unordered_set<unsigned int> enabledUserCallbacks_;
   std::unordered_set<unsigned int> enabledInternalCallbacks_;
 
   HipInterceptor();
 
   ~HipInterceptor() {
-    if (handle_ != nullptr)
-      ::dlclose(handle_);
+    if (Handle != nullptr)
+      ::dlclose(Handle);
   }
 
 public:
   HipInterceptor(const HipInterceptor &) = delete;
   HipInterceptor &operator=(const HipInterceptor &) = delete;
 
-  [[nodiscard]] bool isEnabled() const { return handle_ != nullptr; }
+  [[nodiscard]] bool isEnabled() const { return Handle != nullptr; }
 
-  [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t,
+  [[nodiscard]] const std::function<void(void *, const ApiEvtPhase,
                                          const int)> &
   getUserCallback() const {
-    return userCallback_;
+    return UserCallback;
   }
 
-  [[nodiscard]] const std::function<void(void *, const luthier_api_evt_phase_t,
+  [[nodiscard]] const std::function<void(void *, const ApiEvtPhase,
                                          const int, bool *,
                                          std::optional<std::any> *)> &
   getInternalCallback() const {
-    return internalCallback_;
+    return InternalCallback;
   }
 
   [[nodiscard]] bool isUserCallbackEnabled(uint32_t op) const {
@@ -64,16 +63,15 @@ public:
   }
 
   void setUserCallback(
-      const std::function<void(void *, const luthier_api_evt_phase_t,
+      const std::function<void(void *, const ApiEvtPhase,
                                const int)> &callback) {
-    userCallback_ = callback;
+    UserCallback = callback;
   }
 
   void setInternalCallback(
-      const std::function<void(void *, const luthier_api_evt_phase_t, const int,
-                               bool *, std::optional<std::any> *)>
-          &internalCallback) {
-    internalCallback_ = internalCallback;
+      const std::function<void(void *, const luthier::Api, const int, bool *,
+                               std::optional<std::any> *)> &internalCallback) {
+    InternalCallback = internalCallback;
   }
 
   void enableUserCallback(uint32_t op) {
@@ -145,7 +143,7 @@ public:
   void *getHipFunction(const char *symbol) const {
     LUTHIER_CHECK(isEnabled());
 
-    void *functionPtr = ::dlsym(handle_, symbol);
+    void *functionPtr = ::dlsym(Handle, symbol);
     if (functionPtr == nullptr)
       llvm::report_fatal_error(
           llvm::formatv("symbol lookup '{0:s}' failed: {1:s}",

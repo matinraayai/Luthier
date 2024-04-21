@@ -2,7 +2,7 @@
 #define INSTR_HPP
 #include <llvm/MC/MCInst.h>
 
-#include "luthier_types.h"
+#include "types.h"
 
 namespace luthier {
 
@@ -16,12 +16,12 @@ class CodeLifter;
 class Instr {
 private:
   friend class luthier::CodeLifter; // CodeLifter is the only class allowed to
-                                    // construct a luthier::Instr
-                                    // CodeLifter is an internal component and
-                                    // cannot be accessed externally
+                                       // construct a luthier::Instr
+                                       // CodeLifter is an internal component and
+                                       // cannot be accessed externally
   const llvm::MCInst Inst; // < The MC representation of the instruction
   const address_t LoadedDeviceAddress; // < The address on the device
-                                               // this instruction is loaded at
+                                       // this instruction is loaded at
   const hsa_executable_symbol_t
       Symbol; // < The symbol this instruction belongs to
   const hsa_loaded_code_object_t LCO; // < The Loaded Code Object this
@@ -45,12 +45,13 @@ public:
 
   [[nodiscard]] hsa_executable_symbol_t getExecutableSymbol() const;
 
-  [[nodiscard]] llvm::MCInst getInstr() const;
+  [[nodiscard]] llvm::MCInst getMCInst() const;
 
   [[nodiscard]] address_t getLoadedDeviceAddress() const;
 
   [[nodiscard]] size_t getSize() const;
 };
+
 } // namespace luthier
 
 #endif

@@ -3,11 +3,8 @@
 
 #include "hip_arg_types.h"
 #include "hip_private_api.h"
-#include <hip/amd_detail/hip_prof_str.h>
-#include <hip/hip_runtime_api.h>
+#include <llvm/CodeGen/MachineFunction.h>
 #include <hsa/hsa.h>
-#include <hsa/hsa_api_trace.h>
-#include <hsa/hsa_ext_amd.h>
 
 namespace luthier {
 
@@ -49,8 +46,6 @@ struct HsaAqlPacket {
       uint8_t UserData[62];
     } Body;
   } Packet;
-
-  hsa_agent_dispatch_packet_t Agent;
 
   /**
    * \returns the HSA packet type of the AQL packet

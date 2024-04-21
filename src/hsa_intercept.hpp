@@ -10,115 +10,114 @@
 #include "error.hpp"
 #include "luthier_types.h"
 
-namespace luthier {
-class HsaInterceptor {
+namespace luthier::hsa {
+class Interceptor {
 private:
-  HsaApiTable *internalHsaApiTable_;
-  HsaApiTableContainer savedTables_;
-  HsaApiTableContainer interceptTables_;
-  hsa_ven_amd_loader_1_03_pfn_s amdTable_;
-  std::unordered_set<hsa_api_evt_id_t> enabledUserOps_;
-  std::unordered_set<hsa_api_evt_id_t> enabledInternalOps_;
+  HsaApiTable *InternalHsaApiTable;
+  HsaApiTableContainer SavedTables;
+  hsa_ven_amd_loader_1_03_pfn_s AmdTable;
+  std::unordered_set<hsa_api_evt_id_t> EnabledUserOps;
+  std::unordered_set<hsa_api_evt_id_t> EnabledInternalOps;
 
-  std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t,
+  std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
                      const hsa_api_evt_id_t)>
       userCallback_{};
-  std::function<void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t,
+  std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
                      const hsa_api_evt_id_t, bool *)>
       internalCallback_{};
 
-  void installCoreApiWrappers(CoreApiTable *table);
+  void installCoreApiTableWrappers(CoreApiTable *table);
 
-  void installAmdExtWrappers(AmdExtTable *table);
+  void installAmdExtTableWrappers(AmdExtTable *table);
 
-  void installImageExtWrappers(ImageExtTable *table);
+  void installImageExtTableWrappers(ImageExtTable *table);
 
-  HsaInterceptor() {}
-  ~HsaInterceptor() {
+  void installFinalizerExtTableWrappers(FinalizerExtTable *Table);
+
+  Interceptor() {}
+  ~Interceptor() {
     uninstallApiTables();
-    savedTables_ = {};
-    interceptTables_ = {};
-    amdTable_ = {};
+    SavedTables = {};
+    AmdTable = {};
   }
 
 public:
-  HsaInterceptor(const HsaInterceptor &) = delete;
-  HsaInterceptor &operator=(const HsaInterceptor &) = delete;
+  Interceptor(const Interceptor &) = delete;
+  Interceptor &operator=(const Interceptor &) = delete;
 
   [[nodiscard]] const HsaApiTableContainer &getSavedHsaTables() const {
-    return savedTables_;
+    return SavedTables;
   }
 
   [[nodiscard]] const hsa_ven_amd_loader_1_03_pfn_t &
   getHsaVenAmdLoaderTable() const {
-    return amdTable_;
+    return AmdTable;
   }
 
   void uninstallApiTables() {
-    *internalHsaApiTable_->core_ = savedTables_.core;
-    *internalHsaApiTable_->amd_ext_ = savedTables_.amd_ext;
-    *internalHsaApiTable_->finalizer_ext_ = savedTables_.finalizer_ext;
-    *internalHsaApiTable_->image_ext_ = savedTables_.image_ext;
+    *InternalHsaApiTable->core_ = SavedTables.core;
+    *InternalHsaApiTable->amd_ext_ = SavedTables.amd_ext;
+    *InternalHsaApiTable->finalizer_ext_ = SavedTables.finalizer_ext;
+    *InternalHsaApiTable->image_ext_ = SavedTables.image_ext;
   }
 
-  void setUserCallback(const std::function<
-                       void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t,
-                            const hsa_api_evt_id_t)> &callback) {
+  void setUserCallback(
+      const std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
+                               const hsa_api_evt_id_t)> &callback) {
     userCallback_ = callback;
   }
 
   void setInternalCallback(
-      const std::function<void(hsa_api_evt_args_t *,
-                               const luthier_api_evt_phase_t,
+      const std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
                                const hsa_api_evt_id_t, bool *)> &callback) {
     internalCallback_ = callback;
   }
 
   [[nodiscard]] const inline std::function<void(hsa_api_evt_args_t *,
-                                                const luthier_api_evt_phase_t,
+                                                const luthier::ApiEvtPhase,
                                                 const hsa_api_evt_id_t)> &
   getUserCallback() const {
     return userCallback_;
   }
 
   [[nodiscard]] const inline std::function<
-      void(hsa_api_evt_args_t *, const luthier_api_evt_phase_t,
+      void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
            const hsa_api_evt_id_t, bool *)> &
   getInternalCallback() const {
     return internalCallback_;
   }
 
   [[nodiscard]] bool isUserCallbackEnabled(hsa_api_evt_id_t op) const {
-    return enabledUserOps_.contains(op);
+    return EnabledUserOps.contains(op);
   }
 
   [[nodiscard]] bool isInternalCallbackEnabled(hsa_api_evt_id_t op) const {
-    return enabledInternalOps_.contains(op);
+    return EnabledInternalOps.contains(op);
   }
 
-  void enableUserCallback(hsa_api_evt_id_t op) { enabledUserOps_.insert(op); }
+  void enableUserCallback(hsa_api_evt_id_t op) { EnabledUserOps.insert(op); }
 
-  void disableUserCallback(hsa_api_evt_id_t op) { enabledUserOps_.erase(op); }
+  void disableUserCallback(hsa_api_evt_id_t op) { EnabledUserOps.erase(op); }
 
   void enableInternalCallback(hsa_api_evt_id_t op) {
-    enabledInternalOps_.insert(op);
+    EnabledInternalOps.insert(op);
   }
 
   void disableInternalCallback(hsa_api_evt_id_t op) {
-    enabledInternalOps_.erase(op);
+    EnabledInternalOps.erase(op);
   }
 
   void enableAllUserCallbacks() {
-    for (auto i = static_cast<unsigned int>(HSA_API_ID_FIRST);
-         i <= static_cast<unsigned int>(HSA_API_ID_LAST); ++i) {
+    for (auto i = HSA_API_EVT_ID_FIRST;
+         i <= HSA_API_EVT_ID_LAST; ++i) {
       enableUserCallback(static_cast<hsa_api_evt_id_t>(i));
     }
-    for (auto i = static_cast<unsigned int>(HSA_EVT_ID_FIRST);
-         i <= static_cast<unsigned int>(HSA_EVT_ID_LAST); ++i) {
+    for (auto i = static_cast<unsigned int>(HSA_API_EVT_ID_FIRST);
+         i <= static_cast<unsigned int>(HSA_API_EVT_ID_LAST); ++i) {
       enableUserCallback(static_cast<hsa_api_evt_id_t>(i));
     }
   }
-  void disableAllUserCallbacks() { enabledUserOps_.clear(); }
+  void disableAllUserCallbacks() { EnabledUserOps.clear(); }
 
   void enableAllInternalCallbacks() {
     for (auto i = static_cast<unsigned int>(HSA_API_ID_FIRST);
@@ -131,25 +130,26 @@ public:
     }
   }
 
-  void disableAllInternalCallbacks() { enabledInternalOps_.clear(); }
+  void disableAllInternalCallbacks() { EnabledInternalOps.clear(); }
 
   bool captureHsaApiTable(HsaApiTable *table) {
-    internalHsaApiTable_ = table;
-    installCoreApiWrappers(table->core_);
-    installAmdExtWrappers(table->amd_ext_);
-    installImageExtWrappers(table->image_ext_);
-    LUTHIER_CHECK(
-        (table->core_->hsa_system_get_major_extension_table_fn(
-             HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_03_pfn_t),
-             &amdTable_) == HSA_STATUS_SUCCESS));
-    return true;
+    InternalHsaApiTable = table;
+    installCoreApiTableWrappers(table->core_);
+    installAmdExtTableWrappers(table->amd_ext_);
+    installImageExtTableWrappers(table->image_ext_);
+    installFinalizerExtTableWrappers(table->finalizer_ext_);
+
+    return (table->core_->hsa_system_get_major_extension_table_fn(
+                HSA_EXTENSION_AMD_LOADER, 1,
+                sizeof(hsa_ven_amd_loader_1_03_pfn_t),
+                &AmdTable) == HSA_STATUS_SUCCESS);
   }
 
-  static inline HsaInterceptor &instance() {
-    static HsaInterceptor instance;
+  static inline hsa::Interceptor &instance() {
+    static hsa::Interceptor instance;
     return instance;
   }
 };
-} // namespace luthier
+} // namespace luthier::hsa
 
 #endif

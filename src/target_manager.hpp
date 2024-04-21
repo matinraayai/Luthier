@@ -100,8 +100,8 @@ public:
   TargetManager &operator=(const TargetManager &) = delete;
 
   static inline TargetManager &instance() {
-    static TargetManager instance;
-    return instance;
+    static TargetManager Instance;
+    return Instance;
   }
 
   llvm::Expected<const TargetInfo &> getTargetInfo(const hsa::ISA &Isa) const;

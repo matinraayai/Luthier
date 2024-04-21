@@ -1,4 +1,4 @@
-#include "instr.hpp"
+#include <luthier/instr.hpp>
 
 #include <utility>
 
@@ -9,7 +9,7 @@
 namespace luthier {
 
 Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
-             hsa_executable_symbol_t Symbol, luthier_address_t Address,
+             hsa_executable_symbol_t Symbol, luthier::address_t Address,
              size_t Size)
     : Inst(std::move(Inst)), LCO(LCO), Symbol(Symbol),
       LoadedDeviceAddress(Address), Size(Size) {}
@@ -26,9 +26,9 @@ hsa_agent_t Instr::getAgent() const {
 
 hsa_executable_symbol_t Instr::getExecutableSymbol() const { return Symbol; }
 
-llvm::MCInst Instr::getInstr() const { return Inst; }
+llvm::MCInst Instr::getMCInst() const { return Inst; }
 
-luthier_address_t Instr::getLoadedDeviceAddress() const {
+luthier::address_t Instr::getLoadedDeviceAddress() const {
   return LoadedDeviceAddress;
 }
 

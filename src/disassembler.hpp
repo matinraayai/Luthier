@@ -20,30 +20,11 @@
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
 #include "luthier/instr.hpp"
+#include "luthier/pass.h"
 #include "luthier/types.h"
 #include "object_utils.hpp"
 
 namespace luthier {
-
-/**
- * \brief contains information regarding a lifted \ref hsa::ExecutableSymbol
- * of type \ref HSA_SYMBOL_KIND_INDIRECT_FUNCTION or
- * \ref HSA_SYMBOL_KIND_KERNEL, plus:
- * 1. All functions it can possibly call (i.e. related functions)
- * 2. All variables it can possibly address (i.e. related variables)
- * If the related variables or functions can't be statically determined, all
- * the functions and variables of the parent \ref hsa::LoadedCodeObject will
- * be considered related
- */
-struct LiftedSymbolInfo {
-  llvm::MachineFunction *MF{nullptr};
-  llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *>
-      RelatedFunctions{};
-  llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable *>
-      RelatedGlobalVariables{};
-  llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
-  llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineInstrToMCMap{};
-};
 
 /**
  * \brief a singleton class in charge of:
@@ -111,8 +92,7 @@ private:
    * it from calling its destructor prematurely The disassembler is in
    * charge of clearing the map
    */
-  llvm::DenseMap<hsa::ExecutableSymbol,
-                 std::unique_ptr<std::vector<Instr>>>
+  llvm::DenseMap<hsa::ExecutableSymbol, std::unique_ptr<std::vector<Instr>>>
       DisassembledSymbolsRaw{};
 
 public:
@@ -138,8 +118,7 @@ public:
    * \return on Success, returns a \p std::vector of \p llvm::MCInst and
    * a \p std::vector containing the address of every instruction
    */
-  llvm::Expected<
-      std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
+  llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
   disassemble(const llvm::object::ELFSymbolRef &Symbol,
               std::optional<size_t> Size = std::nullopt);
 
@@ -151,8 +130,7 @@ public:
    * \return on success, returns a \p std::vector of \p llvm::MCInst and
    * a \p std::vector containing the start address of each instruction
    */
-  llvm::Expected<
-      std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
+  llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
   disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code);
 
   /*****************************************************************************
@@ -173,25 +151,25 @@ private:
    * executable, that when run instead of the original kernel, will produce
    * identical results
    */
-  struct LiftedExecutableInfo {
-    std::unique_ptr<llvm::Module> Module;
-    std::unique_ptr<llvm::MachineModuleInfo> MMI;
-    llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *> Functions{};
-    llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable *>
-        GlobalVariables{};
-    llvm::DenseMap<hsa::ExecutableSymbol, llvm::DenseSet<hsa::ExecutableSymbol>>
-        RelatedFunctions{};
-    llvm::DenseMap<hsa::ExecutableSymbol, llvm::DenseSet<hsa::ExecutableSymbol>>
-        RelatedVariables{};
-    llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
-    llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineToMCInstrMap{};
-  };
+//  struct LiftedExecutableInfo {
+//    std::unique_ptr<llvm::Module> Module;
+//    std::unique_ptr<llvm::MachineModuleInfo> MMI;
+//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *> Functions{};
+//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable *>
+//        GlobalVariables{};
+//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::DenseSet<hsa::ExecutableSymbol>>
+//        RelatedFunctions{};
+//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::DenseSet<hsa::ExecutableSymbol>>
+//        RelatedVariables{};
+//    llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
+//    llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineToMCInstrMap{};
+//  };
 
-  /**
-   * Cache of \p KernelModuleInfo for each kernel function lifted by the
-   * \p CodeLifter
-   */
-  llvm::DenseMap<hsa::Executable, LiftedExecutableInfo> LiftedExecutables{};
+//  /**
+//   * Cache of \p KernelModuleInfo for each kernel function lifted by the
+//   * \p CodeLifter
+//   */
+//  llvm::DenseMap<hsa::Executable, LiftedExecutableInfo> LiftedExecutables{};
 
   // TODO: Invalidate these caches once an Executable is destroyed
 
@@ -232,10 +210,9 @@ private:
   getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO);
 
   llvm::Expected<llvm::Function *>
-  createLLVMFunction(const hsa::ExecutableSymbol &Symbol, llvm::Module &Module);
+  createLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol, llvm::Module &Module);
 
-  llvm::Expected<llvm::MachineFunction &>
-  createLLVMMachineFunction(const hsa::ExecutableSymbol &Symbol,
+  llvm::Expected<llvm::MachineFunction &> createLLVMMachineFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
                             llvm::MachineModuleInfo &MMI,
                             llvm::LLVMTargetMachine &TM, llvm::Function &F);
 
@@ -256,16 +233,17 @@ private:
       Relocations{};
 
   llvm::Expected<std::optional<LCORelocationInfo>>
-  resolveRelocation(const hsa::LoadedCodeObject &LCO,
-                    address_t Address);
-
-  llvm::Expected<LiftedSymbolInfo>
-  liftSymbol(const hsa::ExecutableSymbol &Symbol);
+  resolveRelocation(const hsa::LoadedCodeObject &LCO, address_t Address);
 
 public:
+  llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
+                            std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
+                            LiftedSymbolInfo>>
+  liftSymbol(const hsa::ExecutableSymbol &Symbol);
+
   llvm::Expected<LiftedSymbolInfo>
-  liftAndAddToModule(const hsa::ExecutableSymbol &Symbol, llvm::Module &Module,
-                     llvm::MachineModuleInfo &MMI);
+  liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
+                           llvm::Module &Module, llvm::MachineModuleInfo &MMI);
 };
 
 } // namespace luthier

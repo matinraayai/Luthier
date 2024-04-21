@@ -26,10 +26,10 @@ llvm::Error CodeObjectManager::registerLuthierHsaExecutables() const {
   for (const auto &Exec : Executables) {
     for (const auto &Agent : Agents) {
       auto LuthierReservedSymbolWithoutManaged =
-          Exec.getSymbolByName(Agent, LUTHIER_RESERVED_MANAGED_VAR);
+          Exec.getAgentSymbolByName(Agent, luthier::ReservedManagedVar);
       LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbolWithoutManaged.takeError());
-      auto LuthierReservedSymbolWithManaged = Exec.getSymbolByName(
-          Agent, std::string(LUTHIER_RESERVED_MANAGED_VAR) + ".managed");
+      auto LuthierReservedSymbolWithManaged = Exec.getAgentSymbolByName(
+          Agent, std::string(luthier::ReservedManagedVar) + ".managed");
       LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbolWithManaged.takeError());
 
       if (LuthierReservedSymbolWithManaged->has_value() ||
@@ -55,7 +55,7 @@ llvm::Error CodeObjectManager::processFunctions() const {
           WrapperKernelSymbols;
       llvm::DenseMap<llvm::StringRef, hsa::ExecutableSymbol>
           InstFunctionSymbols;
-      auto Symbols = Exec.getSymbols(Agent);
+      auto Symbols = Exec.getAgentSymbols(Agent);
       LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
       for (const auto &Symbol : *Symbols) {
         auto SType = Symbol.getType();
@@ -67,7 +67,7 @@ llvm::Error CodeObjectManager::processFunctions() const {
               {SName->substr(0, SName->rfind(".kd")), Symbol});
         else if (*SType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION)
           InstFunctionSymbols.insert(
-              {LUTHIER_DEVICE_FUNCTION_WRAP + *SName, Symbol});
+              {luthier::DeviceFunctionWrap + *SName, Symbol});
       }
       for (const auto &[WrapKerShadowPtr, WrapKerName] : UnprocessedFunctions) {
         LUTHIER_RETURN_ON_ERROR(
@@ -121,17 +121,18 @@ llvm::Error CodeObjectManager::loadInstrumentedKernel(
     LUTHIER_RETURN_ON_ERROR(executable.takeError());
 
     auto agent = OriginalKernel.getAgent();
+    LUTHIER_RETURN_ON_ERROR(agent.takeError());
 
     auto reader = hsa::CodeObjectReader::createFromMemory(InstrumentedElf);
     LUTHIER_RETURN_ON_ERROR(reader.takeError());
     LUTHIER_RETURN_ON_ERROR(
-        executable->loadCodeObject(*reader, agent).takeError());
+        executable->loadAgentCodeObject(*reader, *agent, "").takeError());
     LUTHIER_RETURN_ON_ERROR(executable->freeze());
 
     auto originalSymbolName = OriginalKernel.getName();
     LUTHIER_RETURN_ON_ERROR(originalSymbolName.takeError());
     auto instrumentedKernel =
-        executable->getSymbolByName(agent, *originalSymbolName);
+        executable->getAgentSymbolByName(*agent, *originalSymbolName);
     LUTHIER_RETURN_ON_ERROR(instrumentedKernel.takeError());
 
     auto instrumentedKernelType = (*instrumentedKernel)->getType();

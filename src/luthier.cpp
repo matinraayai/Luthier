@@ -1,4 +1,4 @@
-#include "luthier.h"
+#include <luthier/luthier.h>
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/CommandLine.h>
@@ -12,97 +12,37 @@
 #include "error.hpp"
 #include "hip_intercept.hpp"
 #include "hsa_executable_symbol.hpp"
-#include "hsa_instr.hpp"
 #include "hsa_intercept.hpp"
 #include "log.hpp"
+#include "target_manager.hpp"
+#include <luthier/instr.hpp>
 
-namespace luthier::impl {
+namespace luthier {
 
-void hipApiInternalCallback(void *cbData, luthier_api_evt_phase_t phase,
-                            int apiId, bool *skipFunc,
-                            std::optional<std::any> *out) {
+void hipApiInternalCallback(void *CBData, ApiEvtPhase Phase, int ApiId,
+                            bool *SkipFunc, std::optional<std::any> *Out) {
   LUTHIER_LOG_FUNCTION_CALL_START
-  if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
-    if (apiId == HIP_PRIVATE_API_ID___hipRegisterFunction) {
-      auto &coManager = CodeObjectManager::instance();
-      auto lastRFuncArgs =
-          reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(cbData);
+  if (Phase == API_EVT_PHASE_ENTER) {
+    if (ApiId == HIP_PRIVATE_API_ID___hipRegisterFunction) {
+      auto &COM = CodeObjectManager::instance();
+      auto LastRFuncArgs =
+          reinterpret_cast<hip___hipRegisterFunction_api_args_t *>(CBData);
       // If the function doesn't have __luthier_wrap__ in its name then it
       // belongs to the instrumented application or HIP can manage it on its own
       // since no device function is present to strip from it
-      if (llvm::StringRef(lastRFuncArgs->deviceFunction)
-              .find(LUTHIER_DEVICE_FUNCTION_WRAP) != llvm::StringRef::npos) {
-        coManager.registerInstrumentationFunctionWrapper(
-            lastRFuncArgs->hostFunction, lastRFuncArgs->deviceFunction);
+      if (llvm::StringRef(LastRFuncArgs->deviceFunction)
+              .find(luthier::DeviceFunctionWrap) != llvm::StringRef::npos) {
+        COM.registerInstrumentationFunctionWrapper(
+            LastRFuncArgs->hostFunction, LastRFuncArgs->deviceFunction);
       }
     }
   }
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-void hipApiUserCallback(void *cbData, luthier_api_evt_phase_t phase,
-                        int apiId) {
-  ::luthier_at_hip_event(cbData, phase, apiId);
-}
-
-void hsaApiUserCallback(hsa_api_evt_args_t *cbData,
-                        luthier_api_evt_phase_t phase, hsa_api_evt_id_t apiId) {
-  ::luthier_at_hsa_event(cbData, phase, apiId);
-}
-
-void queueSubmitWriteInterceptor(const void *packets, uint64_t pktCount,
-                                 uint64_t userPktIndex, void *data,
-                                 hsa_amd_queue_intercept_packet_writer writer) {
-  auto &HsaInterceptor = luthier::HsaInterceptor::instance();
-  auto &hsaUserCallback = HsaInterceptor.getUserCallback();
-  auto &hsaInternalCallback = HsaInterceptor.getInternalCallback();
-  auto apiId = HSA_EVT_ID_hsa_queue_packet_submit;
-  hsa_api_evt_args_t args;
-  bool isUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(apiId);
-  bool isInternalCallbackEnabled =
-      HsaInterceptor.isInternalCallbackEnabled(apiId);
-  if (isUserCallbackEnabled || isInternalCallbackEnabled) {
-    // Copy the packets to a non-const buffer
-    std::vector<luthier_hsa_aql_packet_t> modifiedPackets(
-        reinterpret_cast<const luthier_hsa_aql_packet_t *>(packets),
-        reinterpret_cast<const luthier_hsa_aql_packet_t *>(packets) + pktCount);
-
-    args.evt_args.hsa_queue_packet_submit.packets = modifiedPackets.data();
-    args.evt_args.hsa_queue_packet_submit.pkt_count = pktCount;
-    args.evt_args.hsa_queue_packet_submit.user_pkt_index = userPktIndex;
-    if (isUserCallbackEnabled)
-      hsaUserCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId);
-    if (isInternalCallbackEnabled)
-      hsaInternalCallback(&args, LUTHIER_API_EVT_PHASE_ENTER, apiId, nullptr);
-
-    // Write the packets to hardware queue
-    // Even if the packets are not modified, this call has to be made to ensure
-    // the packets are copied to the hardware queue
-    writer(modifiedPackets.data(), pktCount);
-  } else {
-    writer(packets, pktCount);
-  }
-}
-
-void hsaApiInternalCallback(hsa_api_evt_args_t *cbData,
-                            luthier_api_evt_phase_t phase,
-                            hsa_api_evt_id_t apiId, bool *skipFunction) {
+void hsaApiInternalCallback(hsa_api_evt_args_t *CBData, ApiEvtPhase Phase,
+                            hsa_api_evt_id_t ApiId, bool *SkipFunction) {
   LUTHIER_LOG_FUNCTION_CALL_START
-  if (phase == LUTHIER_API_EVT_PHASE_ENTER) {
-    if (apiId == HSA_API_ID_hsa_queue_create) {
-      auto &args = cbData->api_args.hsa_queue_create;
-      LUTHIER_CHECK(
-          luthier_get_hsa_table()->amd_ext_->hsa_amd_queue_intercept_create_fn(
-              args.agent, args.size, args.type, args.callback, args.data,
-              args.private_segment_size, args.group_segment_size,
-              args.queue) == HSA_STATUS_SUCCESS);
-      LUTHIER_CHECK(luthier_get_hsa_table()
-                        ->amd_ext_->hsa_amd_queue_intercept_register_fn(
-                            *args.queue, queueSubmitWriteInterceptor,
-                            *args.queue) == HSA_STATUS_SUCCESS);
-      *skipFunction = true;
-    }
-  }
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
@@ -111,8 +51,8 @@ __attribute__((constructor)) void init() {
   auto &HipInterceptor = HipInterceptor::instance();
   LUTHIER_CHECK_WITH_MSG(HipInterceptor.isEnabled(),
                          "HIP Interceptor failed to initialize");
-  HipInterceptor.setInternalCallback(luthier::impl::hipApiInternalCallback);
-  HipInterceptor.setUserCallback(luthier::impl::hipApiUserCallback);
+  HipInterceptor.setInternalCallback(luthier::hipApiInternalCallback);
+  HipInterceptor.setUserCallback(luthier::hipApiUserCallback);
   HipInterceptor.enableInternalCallback(
       HIP_PRIVATE_API_ID___hipRegisterFunction);
   LUTHIER_LOG_FUNCTION_CALL_END
@@ -120,78 +60,95 @@ __attribute__((constructor)) void init() {
 
 __attribute__((destructor)) void finalize() {
   LUTHIER_LOG_FUNCTION_CALL_START
-  luthier_at_term();
+  luthier::atHsaApiTableUnload();
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-} // namespace luthier::impl
+llvm::Expected<const std::vector<Instr> &>
+disassembleKernel(hsa_executable_symbol_t Symbol) {
+  return luthier::CodeLifter::instance().disassemble(
+      hsa::ExecutableSymbol::fromHandle(Symbol));
+}
+
+llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
+                          std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
+                          luthier::LiftedSymbolInfo>>
+liftSymbol(hsa_executable_symbol_t Symbol) {
+  return luthier::CodeLifter::instance().liftSymbol(
+      hsa::ExecutableSymbol::fromHandle(Symbol));
+}
+
+llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
+  auto Symbol = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
+      reinterpret_cast<const luthier::KernelDescriptor *>(
+          Packet.kernel_object));
+  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
+
+  const auto InstrumentedKernel =
+      luthier::CodeObjectManager::instance().getInstrumentedKernel(*Symbol);
+
+  auto InstrumentedKD = InstrumentedKernel->getKernelDescriptor();
+
+  LUTHIER_RETURN_ON_ERROR(InstrumentedKD.takeError());
+
+  Packet.kernel_object = reinterpret_cast<uint64_t>(*InstrumentedKD);
+  return llvm::Error::success();
+}
+
+} // namespace luthier
 
 extern "C" {
 const HsaApiTable *luthier_get_hsa_table() {
-  return &luthier::HsaInterceptor::instance().getSavedHsaTables().root;
+  return &luthier::hsa::Interceptor::instance().getSavedHsaTables().root;
 }
 
 const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader() {
-  return &luthier::HsaInterceptor::instance().getHsaVenAmdLoaderTable();
-}
-
-luthier_status_t
-luthier_disassemble_kernel_object(uint64_t kernel_object, size_t *size,
-                                  luthier_instruction_t *instructions) {
-  auto kdSymbol = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
-      reinterpret_cast<const luthier::hsa::KernelDescriptor *>(kernel_object));
-  luthier_status_t Out{LUTHIER_STATUS_SUCCESS};
-  if (auto Err = kdSymbol.takeError()) {
-    Out = luthier::convertErrorToStatusCode(Err);
-    return Out;
-  }
-  auto hsaInstructions = luthier::CodeLifter::instance().disassemble(*kdSymbol);
-  if (auto Err = hsaInstructions.takeError()) {
-    Out = luthier::convertErrorToStatusCode(Err);
-    return Out;
-  }
-
-  if (instructions == nullptr) {
-    *size = (*hsaInstructions)->size();
-  } else {
-    for (unsigned int i = 0; i < *size; i++) {
-      instructions[i] = luthier::hsa::Instr::toHandle(&(**hsaInstructions)[i]);
-    }
-  }
-  return Out;
+  return &luthier::hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
 }
 
 void *luthier_get_hip_function(const char *funcName) {
   return luthier::HipInterceptor::instance().getHipFunction(funcName);
 }
 
-void luthier_insert_call(luthier_instruction_t instr, const void *dev_func,
-                         luthier_ipoint_t point) {
-  llvm::consumeError(luthier::CodeGenerator::instance().instrument(
-      *luthier::hsa::Instr::fromHandle(instr), dev_func, point));
+luthier_status_t
+luthier_create_instrumented_kernel(hsa_executable_symbol_t symbol) {
+  auto Error = luthier::CodeGenerator::instance().createInstrumentationTask(
+      luthier::hsa::ExecutableSymbol::fromHandle(symbol));
+  return luthier::convertErrorToStatusCode(Error);
 }
 
-hsa_packet_type_t
-luthier_get_packet_type(luthier_hsa_aql_packet_t *aql_packet) {
-  return static_cast<hsa_packet_type_t>(
-      (aql_packet->packet.header >> HSA_PACKET_HEADER_TYPE) &
-      ((1 << HSA_PACKET_HEADER_WIDTH_TYPE) - 1));
+luthier_status_t luthier_insert_call(luthier_instruction_t instr,
+                                     const void *dev_func,
+                                     luthier_ipoint_t point) {
+  auto Error = luthier::CodeGenerator::instance().insertCall(
+      *luthier::hsa::Instr::fromHandle(instr), dev_func, point);
+  return luthier::convertErrorToStatusCode(Error);
+}
+
+void luthier_add_call_arg_const_val32(luthier_instruction_t instr,
+                                      uint32_t val) {
+  luthier::CodeGenerator::instance().addArgToLastCall();
+}
+
+void luthier_add_call_arg_const_val64(luthier_instruction_t instr,
+                                      uint64_t val) {
+  luthier::CodeGenerator::instance().addArgToLastCall();
 }
 
 void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op) {
-  luthier::HsaInterceptor::instance().enableUserCallback(op);
+  luthier::hsa::Interceptor::instance().enableUserCallback(op);
 }
 
 void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op) {
-  luthier::HsaInterceptor::instance().disableUserCallback(op);
+  luthier::hsa::Interceptor::instance().disableUserCallback(op);
 }
 
 void luthier_enable_all_hsa_callbacks() {
-  luthier::HsaInterceptor::instance().enableAllUserCallbacks();
+  luthier::hsa::Interceptor::instance().enableAllUserCallbacks();
 }
 
 void luthier_disable_all_hsa_callbacks() {
-  luthier::HsaInterceptor::instance().disableAllUserCallbacks();
+  luthier::hsa::Interceptor::instance().disableAllUserCallbacks();
 }
 
 void luthier_enable_hip_op_callback(uint32_t op) {
@@ -210,33 +167,6 @@ void luthier_disable_all_hip_callbacks() {
   luthier::HipInterceptor::instance().disableAllUserCallbacks();
 }
 
-luthier_status_t luthier_override_with_instrumented(
-    hsa_kernel_dispatch_packet_t *dispatch_packet) {
-  luthier_status_t out{LUTHIER_STATUS_SUCCESS};
-
-  auto symbolOrError = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
-      reinterpret_cast<const luthier::hsa::KernelDescriptor *>(
-          dispatch_packet->kernel_object));
-
-  if (auto Err = symbolOrError.takeError()) {
-    out = luthier::convertErrorToStatusCode(Err);
-    return out;
-  }
-  const auto InstrumentedKernel =
-      luthier::CodeObjectManager::instance().getInstrumentedKernel(
-          *symbolOrError);
-
-  auto InstrumentedKDOrError = InstrumentedKernel.getKernelDescriptor();
-
-  if (auto Err = InstrumentedKDOrError.takeError()) {
-    out = luthier::convertErrorToStatusCode(Err);
-    return out;
-  }
-  dispatch_packet->kernel_object =
-      reinterpret_cast<uint64_t>(*InstrumentedKDOrError);
-  return out;
-}
-
 // NOLINTBEGIN
 
 __attribute__((
@@ -247,19 +177,18 @@ OnLoad(HsaApiTable *table, uint64_t runtime_version, uint64_t failed_tool_count,
        const char *const *failed_tool_names) {
   LUTHIER_LOG_FUNCTION_CALL_START
   [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
-  bool res = luthier::HsaInterceptor::instance().captureHsaApiTable(table);
-  luthier_at_init();
-  auto &hsaInterceptor = luthier::HsaInterceptor::instance();
-  hsaInterceptor.setInternalCallback(luthier::impl::hsaApiInternalCallback);
-  hsaInterceptor.setUserCallback(luthier::impl::hsaApiUserCallback);
-  hsaInterceptor.enableInternalCallback(HSA_API_ID_hsa_queue_create);
+  bool res = luthier::hsa::Interceptor::instance().captureHsaApiTable(table);
+  luthier::atHsaApiTableLoad();
+  auto &hsaInterceptor = luthier::hsa::Interceptor::instance();
+  hsaInterceptor.setInternalCallback(luthier::hsaApiInternalCallback);
+  hsaInterceptor.setUserCallback(luthier::atHsaEvt);
   return res;
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
 __attribute__((visibility("default"))) void OnUnload() {
   LUTHIER_LOG_FUNCTION_CALL_START
-  luthier::HsaInterceptor::instance().uninstallApiTables();
+  luthier::hsa::Interceptor::instance().uninstallApiTables();
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 }

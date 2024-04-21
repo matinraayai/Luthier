@@ -8,9 +8,9 @@
 #include <string>
 
 #include "hsa_handle_type.hpp"
-#include "hsa_kernel_descriptor.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "luthier_types.h"
+#include <luthier/kernel_descriptor.h>
+#include <luthier/types.h>
 
 namespace luthier::hsa {
 
@@ -39,7 +39,7 @@ private:
   static llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
                         IndirectFunctionInfo>
       IndirectFunctionHandleCache;
-  //TODO: Invalidate this cache
+  // TODO: Invalidate this cache
 
   explicit ExecutableSymbol(hsa_executable_symbol_t Symbol)
       : HandleType<hsa_executable_symbol_t>(Symbol){};
@@ -76,7 +76,7 @@ public:
   static ExecutableSymbol fromHandle(hsa_executable_symbol_t Symbol);
 
   static llvm::Expected<ExecutableSymbol>
-  fromKernelDescriptor(const hsa::KernelDescriptor *KD);
+  fromKernelDescriptor(const KernelDescriptor *KD);
 
   [[nodiscard]] llvm::Expected<hsa_symbol_kind_t> getType() const;
 
@@ -87,7 +87,7 @@ public:
   [[nodiscard]] llvm::Expected<hsa_variable_allocation_t>
   getVariableAllocation() const;
 
-  [[nodiscard]] llvm::Expected<luthier_address_t> getVariableAddress() const;
+  [[nodiscard]] llvm::Expected<luthier::address_t> getVariableAddress() const;
 
   [[nodiscard]] llvm::Expected<const KernelDescriptor *>
   getKernelDescriptor() const;

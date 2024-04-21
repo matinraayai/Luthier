@@ -58,16 +58,15 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
   if (!LLVMTargetInfo.contains(Isa)) {
     auto Info = LLVMTargetInfo.insert({Isa, TargetInfo()}).first;
 
-    auto TT = Isa.getLLVMTargetTriple();
+    auto TT = Isa.getTargetTriple();
     LUTHIER_RETURN_ON_ERROR(TT.takeError());
 
     std::string Error;
 
-    auto Target = llvm::TargetRegistry::lookupTarget(
-        llvm::Triple(*TT).normalize(), Error);
+    auto Target = llvm::TargetRegistry::lookupTarget(TT->normalize(), Error);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Target));
 
-    auto MRI = Target->createMCRegInfo(*TT);
+    auto MRI = Target->createMCRegInfo(TT->getTriple());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MRI));
 
     auto TargetOptions = new llvm::TargetOptions();
@@ -76,7 +75,8 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
 
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(TargetOptions));
 
-    auto MAI = Target->createMCAsmInfo(*MRI, *TT, TargetOptions->MCOptions);
+    auto MAI = Target->createMCAsmInfo(*MRI, TT->getTriple(),
+                                       TargetOptions->MCOptions);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MAI));
 
     auto MII = Target->createMCInstrInfo();
@@ -88,10 +88,11 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
     auto CPU = Isa.getProcessor();
     LUTHIER_RETURN_ON_ERROR(CPU.takeError());
 
-    auto FeatureString = Isa.getFeatureString();
+    auto FeatureString = Isa.getSubTargetFeatures();
     LUTHIER_RETURN_ON_ERROR(FeatureString.takeError());
 
-    auto STI = Target->createMCSubtargetInfo(*TT, *CPU, *FeatureString);
+    auto STI = Target->createMCSubtargetInfo(TT->getTriple(), *CPU,
+                                             FeatureString->getString());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(STI));
 
     auto IP = Target->createMCInstPrinter(
@@ -100,8 +101,8 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
 
     auto TM =
         reinterpret_cast<llvm::GCNTargetMachine *>(Target->createTargetMachine(
-            llvm::Triple(*TT).normalize(), *CPU, *FeatureString, *TargetOptions,
-            llvm::Reloc::PIC_));
+            llvm::Triple(*TT).normalize(), *CPU, FeatureString->getString(),
+            *TargetOptions, llvm::Reloc::PIC_));
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(TM));
 
     auto LLVMContext = new llvm::LLVMContext();

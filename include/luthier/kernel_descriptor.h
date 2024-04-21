@@ -1,9 +1,9 @@
 #ifndef KERNEL_DESCRIPTOR_HPP
 #define KERNEL_DESCRIPTOR_HPP
 #include <cstdint>
-#include "luthier_types.h"
+#include "luthier/types.h"
 
-namespace luthier::hsa {
+namespace luthier {
 
 struct KernelDescriptor {
     uint32_t GroupSegmentFixedSize;
@@ -133,7 +133,11 @@ struct KernelDescriptor {
 #undef REG_BIT_SETTER
 #undef REG_BIT_GETTER
 
-  [[nodiscard]] luthier_address_t getEntryPoint() const;
+  [[nodiscard]] luthier::address_t getEntryPoint() const;
+
+  static KernelDescriptor* fromKernelObject(uint64_t KernelObject);
+
+  llvm::Expected<hsa_executable_symbol_t> getHsaExecutableSymbol();
 };
 }// namespace luthier::hsa
 

@@ -2,11 +2,14 @@
 #define LUTHIER_H
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Support/Error.h>
 
 #include "hsa_trace_api.hpp"
 #include "instr.hpp"
-#include "luthier_types.h"
+#include "pass.h"
+#include "types.h"
 
 namespace luthier {
 
@@ -22,6 +25,9 @@ void atHsaApiTableLoad();
  */
 void atHsaApiTableUnload();
 
+void atHsaEvt(hsa_api_evt_args_t *CBData, ApiEvtPhase Phase,
+              hsa_api_evt_id_t ApiID);
+
 void atHipEvt(void *Args, ApiEvtPhase Phase, int HipApiID);
 
 /**
@@ -35,15 +41,36 @@ void atHipEvt(void *Args, ApiEvtPhase Phase, int HipApiID);
 llvm::Expected<const std::vector<Instr> &>
 disassembleKernel(hsa_executable_symbol_t Kernel);
 
-void atHsaEvt(hsa_api_evt_args_t *cb_data, ApiEvtPhase phase,
-              hsa_api_evt_id_t api_id);
+/**
+ *
+ * @return
+ */
+llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
+                          std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
+                          luthier::LiftedSymbolInfo>>
+liftSymbol(hsa_executable_symbol_t Symbol);
+
+/**
+ * Overrides the kernel object field of the Packet with its
+ * instrumented version, forcing HSA to launch the instrumented version instead.
+ * Note that this function should be called every time an instrumented kernel
+ * needs to be launched, since the content of the dispatch packet will always be
+ * set by the target application to the original, un-instrumented version
+ * To launch the original version of the kernel, simply refrain from calling
+ * this function
+ * \param Packet the HSA dispatch packet intercepted from an HSA queue,
+ * containing the kernel launch parameters/configuration
+ */
+llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet);
+
+
+llvm::Error
+instrument(std::unique_ptr<llvm::Module> &Module,
+           std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
+           const LiftedSymbolInfo &LSO,
+           std::unique_ptr<luthier::InstrumentationPass> IPass);
 
 } // namespace luthier
-
-#ifdef __cplusplus
-
-// NOLINTBEGIN
-extern "C" {
 
 // static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
 //     if (hip_api_id < 1000)
@@ -107,9 +134,6 @@ void *luthier_get_hip_function(const char *funcName);
 //// *          NVBit inspection APIs  (provided by NVBit)
 //// *
 //// **********************************************************************/
-/////* Get vector of related functions */
-////std::vector<CUfunction> nvbit_get_related_functions(CUcontext ctx,
-////                                                    CUfunction func);
 
 /////* Get control flow graph (CFG) */
 ////const CFG_t& nvbit_get_CFG(CUcontext ctx, CUfunction func);
@@ -166,23 +190,15 @@ void *luthier_get_hip_function(const char *funcName);
 //// * they have been inserted. */
 ////
 
-/**
- * Creates an instrumented version of \ref symbol
- * \param symbol target
- * \return
- */
-luthier_status_t
-luthier_create_instrumented_kernel(hsa_executable_symbol_t symbol);
-
-/**
- *
- * \param instr
- * \param dev_func
- * \param point
- */
-luthier_status_t luthier_insert_call(luthier_instruction_t instr,
-                                     const void *dev_func,
-                                     luthier_ipoint_t point);
+///**
+// *
+// * \param instr
+// * \param dev_func
+// * \param point
+// */
+//luthier_status_t luthier_insert_call(luthier_instruction_t instr,
+//                                     const void *dev_func,
+//                                     luthier_ipoint_t point);
 
 /////* Add int32_t argument to last injected call, value of the predicate for
 /// this / * instruction */ /
@@ -195,12 +211,12 @@ luthier_status_t luthier_insert_call(luthier_instruction_t instr,
 ////                                 bool is_variadic_arg = false);
 ////
 /* Add uint32_t argument to last injected call, constant 32-bit value */
-void luthier_add_call_arg_const_val32(luthier_instruction_t instr,
-                                      uint32_t val);
+//void luthier_add_call_arg_const_val32(luthier_instruction_t instr,
+//                                      uint32_t val);
 ////
 /////* Add uint64_t argument to last injected call, constant 64-bit value */
-void luthier_add_call_arg_const_val64(luthier_instruction_t instr,
-                                      uint64_t val);
+//void luthier_add_call_arg_const_val64(luthier_instruction_t instr,
+//                                      uint64_t val);
 ////
 /////* Add uint32_t argument to last injected call, content of the register
 /// reg_num / */ /void nvbit_add_call_arg_reg_val(const Instr* instr, int
@@ -233,7 +249,7 @@ void luthier_add_call_arg_const_val64(luthier_instruction_t instr,
 ////                                    bool is_variadic_arg = false);
 ////
 /* Remove the original instruction */
-void luthier_remove_orig(luthier_instruction_t instr);
+//void luthier_remove_orig(luthier_instruction_t instr);
 
 ////
 /////*********************************************************************
@@ -270,18 +286,6 @@ void luthier_remove_orig(luthier_instruction_t instr);
 //// **********************************************************************/
 ////
 
-/**
- * Overrides the kernel object field of the @param dispatch_packet with its
- * instrumented version, forcing HSA to launch the instrumented version instead.
- * Note that this function should be called every time an instrumented kernel
- * needs to be launched, since the content of the dispatch packet will always be
- * set by the target application to the original version. To launch the original
- * version of the kernel, simply refrain from calling this function.
- * \param dispatch_packet the HSA dispatch packet intercepted from an HSA queue,
- * containing the kernel launch parameters/configuration
- */
-luthier_status_t luthier_override_with_instrumented(
-    hsa_kernel_dispatch_packet_t *dispatch_packet);
 ////
 /////* Set arguments at launch time, that will be loaded on input argument of
 //// * the instrumentation function */
@@ -294,8 +298,6 @@ luthier_status_t luthier_override_with_instrumented(
 ////void nvbit_set_tool_pthread(pthread_t tool_pthread);
 ////void nvbit_unset_tool_pthread(pthread_t tool_pthread);
 ////
-}
 // NOLINTEND
-#endif
 
 #endif
