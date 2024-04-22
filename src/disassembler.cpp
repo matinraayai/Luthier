@@ -619,7 +619,10 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
   //                llvm::outs() << "Is instruction correct: " <<
   //                isInstCorrect << "\n";
   if (!isInstCorrect) {
-    llvm::outs() << errorRef << "\n";
+    llvm::outs() << errorRef << ": ";
+    Builder.getInstr()->print(llvm::outs(), true, false,
+                              false, true, TII);
+    llvm::outs() << "\n";
   }
   return llvm::Error::success();
 }
@@ -860,9 +863,12 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
   // Add the Live-ins to the MF
   auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
       TM->getSubtargetImpl(**F)->getRegisterInfo());
-  for (auto &LiveIn : LiveIns) {
-    MF->addLiveIn(LiveIn, TRI->getPhysRegBaseClass(LiveIn));
-  }
+//  for (auto &LiveIn : LiveIns) {
+//    MF->getRegInfo();
+//    llvm::outs() << printReg(llvm::Register(LiveIn), TRI) << "\n";
+//    llvm::outs() << printRegClassOrBank(llvm::Register(LiveIn),MF->getRegInfo(), TRI) << "\n";
+//    MF->addLiveIn(LiveIn, TRI->getPhysRegBaseClass(llvm::MCRegister(LiveIn)));
+//  }
 
   // Populate the properties of MF
   llvm::MachineFunctionProperties &Properties = MF->getProperties();

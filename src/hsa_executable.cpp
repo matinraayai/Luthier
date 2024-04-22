@@ -175,38 +175,45 @@ Executable::getAgentSymbolByName(const luthier::hsa::GpuAgent &Agent,
       this->asHsaType(), Name.data(), &HsaAgent, &Symbol);
   if (Status == HSA_STATUS_SUCCESS)
     return ExecutableSymbol::fromHandle(Symbol);
-  // Possible indirect function symbol
   else if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME) {
-    auto LoadedCodeObjects = getLoadedCodeObjects();
-    LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
-    for (const auto &LCO : *LoadedCodeObjects) {
-      auto StorageMemory = LCO.getStorageMemory();
-      LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
-      auto LoadedMemory = LCO.getLoadedMemory();
-      LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
+    // Try again, this time with ".kd" attached to the name
+    Status = getApiTable().core.hsa_executable_get_symbol_by_name_fn(
+        this->asHsaType(), (Name + ".kd").str().c_str(), &HsaAgent, &Symbol);
+    if (Status == HSA_STATUS_SUCCESS)
+      return ExecutableSymbol::fromHandle(Symbol);
+    // Possible indirect function symbol
+    else if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME) {
+      auto LoadedCodeObjects = getLoadedCodeObjects();
+      LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
+      for (const auto &LCO : *LoadedCodeObjects) {
+        auto StorageMemory = LCO.getStorageMemory();
+        LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+        auto LoadedMemory = LCO.getLoadedMemory();
+        LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
-      auto HostELF = getAMDGCNObjectFile(*StorageMemory);
-      LUTHIER_RETURN_ON_ERROR(HostELF.takeError());
+        auto HostELF = getAMDGCNObjectFile(*StorageMemory);
+        LUTHIER_RETURN_ON_ERROR(HostELF.takeError());
 
-      auto ELFSymbol = luthier::getSymbolByName(**HostELF, Name);
-      LUTHIER_RETURN_ON_ERROR(ELFSymbol.takeError());
+        auto ELFSymbol = luthier::getSymbolByName(**HostELF, Name);
+        LUTHIER_RETURN_ON_ERROR(ELFSymbol.takeError());
 
-      if (ELFSymbol->has_value()) {
-        auto Type = ELFSymbol.get()->getELFType();
-        auto Binding = ELFSymbol.get()->getBinding();
-        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-            Type == llvm::ELF::STT_FUNC && Binding == llvm::ELF::STB_LOCAL));
+        if (ELFSymbol->has_value()) {
+          auto Type = ELFSymbol.get()->getELFType();
+          auto Binding = ELFSymbol.get()->getBinding();
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+              Type == llvm::ELF::STT_FUNC && Binding == llvm::ELF::STB_LOCAL));
 
-        auto LoadedAddress =
-            getSymbolLMA(HostELF.get()->getELFFile(), **ELFSymbol);
-        LUTHIER_RETURN_ON_ERROR(LoadedAddress.takeError());
+          auto LoadedAddress =
+              getSymbolLMA(HostELF.get()->getELFFile(), **ELFSymbol);
+          LUTHIER_RETURN_ON_ERROR(LoadedAddress.takeError());
 
-        return ExecutableSymbol{
-            std::string(Name),
-            arrayRefFromStringRef(
-                toStringRef(*LoadedMemory)
-                    .substr(*LoadedAddress, ELFSymbol.get()->getSize())),
-            LCO};
+          return ExecutableSymbol{
+              std::string(Name),
+              arrayRefFromStringRef(
+                  toStringRef(*LoadedMemory)
+                      .substr(*LoadedAddress, ELFSymbol.get()->getSize())),
+              LCO};
+        }
       }
     }
   }
