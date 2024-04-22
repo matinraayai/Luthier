@@ -190,7 +190,7 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
         arrayRefFromStringRef(toStringRef(Code).substr(Idx, ReadSize));
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
         DisAsm->getInstruction(Inst, InstSize, ReadBytes, CurrentAddress,
-                               llvm::nulls()) !=
+                               llvm::nulls()) ==
         llvm::MCDisassembler::Success));
 
     Addresses.push_back(CurrentAddress);
@@ -228,6 +228,9 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
     llvm::SubtargetFeatures Features;
     LUTHIER_RETURN_ON_ERROR(StorageELF.get()->getFeatures().moveInto(Features));
 
+    auto Agent = Symbol.getAgent();
+    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
+
     auto ISA = hsa::ISA::fromLLVM(TT, *CPU, Features);
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
 
@@ -253,8 +256,6 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
 
     luthier::address_t PrevInstAddress = 0;
 
-    auto Agent = Symbol.getAgent();
-    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
     auto Executable = Symbol.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
@@ -482,6 +483,7 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
     LUTHIER_RETURN_ON_ERROR(ELF.takeError());
 
     auto Exec = LCO.getExecutable();
+    LUTHIER_RETURN_ON_ERROR(Exec.takeError());
     auto Agent = LCO.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
@@ -619,6 +621,7 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
   if (!isInstCorrect) {
     llvm::outs() << errorRef << "\n";
   }
+  return llvm::Error::success();
 }
 
 llvm::Expected<LiftedSymbolInfo>
@@ -898,6 +901,7 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
 
   llvm::GCNTargetMachine *TM = TargetInfo->getTargetMachine();
   auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
+  Module->setDataLayout(TM->createDataLayout());
   auto LiftedSymbolInfo =
       liftSymbolAndAddToModule(Symbol, *Module, MMIWP->getMMI());
   LUTHIER_RETURN_ON_ERROR(LiftedSymbolInfo.takeError());

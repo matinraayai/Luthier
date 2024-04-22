@@ -18,11 +18,16 @@ llvm::Expected<ISA> ISA::fromName(const char *IsaName) {
 
 llvm::Expected<ISA> ISA::fromLLVM(const llvm::Triple &TT, llvm::StringRef CPU,
                                   const llvm::SubtargetFeatures &Features) {
-  llvm::Twine ISAName(TT.getTriple() + CPU + ":");
-  for (const auto &Feature : Features.getFeatures()) {
-    ISAName.concat(Feature.substr(1) + Feature[0]);
+  auto ISAName = (TT.getTriple() + llvm::Twine("--") + CPU).str();
+  auto FeatureStrings = Features.getFeatures();
+  if (!FeatureStrings.empty()) {
+    ISAName += ":";
+    for (const auto &Feature : FeatureStrings) {
+      llvm::outs() << Feature.substr(1) << " " << Feature[0] << "\n";
+      ISAName += (Feature.substr(1) + Feature[0]);
+    }
   }
-  return fromName(ISAName.str().c_str());
+  return fromName(ISAName.c_str());
 }
 
 llvm::Expected<std::string> ISA::getName() const {
