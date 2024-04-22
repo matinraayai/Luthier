@@ -1,8 +1,7 @@
 #include <hip/hip_runtime_api.h>
 #include <hsa/hsa.h>
-#include <hsa/hsa_ven_amd_aqlprofile.h>
 #include <hsa/hsa_ven_amd_loader.h>
-#include <luthier.h>
+#include <luthier/luthier.h>
 
 #include <fstream>
 #include <functional>
@@ -12,102 +11,133 @@
 static bool instrumented{false};
 
 void check(bool pred) {
-    if (!pred)
-        std::exit(-1);
+  if (!pred)
+    std::exit(-1);
 }
 
 MARK_LUTHIER_DEVICE_MODULE
 
 __managed__ int globalCounter = 20;
 
-LUTHIER_DECLARE_FUNC void instrumentation_kernel() {
-    //    int i = 0;
-    //    i = i + 4;
-    //    i = i * 40;
-    //    return i;
-    //    return 1;
-//    atomicAdd(globalCounter, 1);
-    globalCounter++;
-    //    printf("Hello from LUTHIER!\n");
+static int *globalCounterDynamic;
+
+// instrumentation function:
+
+// myFunc(int p1, int* p2)
+
+// load p3, ... // Define p3
+// Instrumentation starts:======================================================
+// save p1, save p2, save p3 -> (v1, v2, v3)
+// ADJSTACKUP
+// Insert arguments: p1 -> v3, p2 -> address of output
+// SI_CALL  <mask preserved: v1, v2, v3>
+// ADJSTACKDOWN
+// restore p1, restore p2, restore p3
+// Instrumentation ends:========================================================
+// add v1 v2 v3
+
+// add v2 v1 v3
+// v3 killed
+
+LUTHIER_DECLARE_FUNC void instrumentation_function() {
+  //    int i = 0;
+  //    i = i + 4;
+  //    i = i * 40;
+  //    return i;
+  //    return 1;
+  //    atomicAdd(globalCounter, 1);
+
+  globalCounter++;
+  //    printf("Hello from LUTHIER!\n");
 }
 
-LUTHIER_EXPORT_FUNC(instrumentation_kernel)
+LUTHIER_EXPORT_FUNC(instrumentation_function)
 
+namespace luthier {
 
-void luthier_at_init() {
-    std::cout << "Kernel Instrument Tool is launching." << std::endl;
-    luthier_enable_hsa_op_callback(HSA_API_ID_hsa_queue_create);
-    luthier_enable_hsa_op_callback(HSA_API_ID_hsa_signal_store_screlease);
-    luthier_enable_hsa_op_callback(HSA_API_ID_hsa_executable_freeze);
-    luthier_enable_hsa_op_callback(HSA_EVT_ID_hsa_queue_packet_submit);
+void hsa::atHsaApiTableLoad() {
+  std::cout << "Kernel Instrument Tool is launching." << std::endl;
+  hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_create);
+  hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_signal_store_screlease);
+  hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_executable_freeze);
+  hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
 }
 
-void luthier_at_term() {
-    std::cout << "Counter Value: " << globalCounter << std::endl;
-    std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
+class KernelInstrumentPass : public luthier::InstrumentationPass {
+
+  bool runOnModule(llvm::Module &M) override {}
+};
+
+void luthier::hsa::atHsaApiTableUnload() {
+  std::cout << "Counter Value: " << globalCounter << std::endl;
+  std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 
-void luthier_at_hsa_event(hsa_api_evt_args_t* args, luthier_api_evt_phase_t phase, hsa_api_evt_id_t api_id) {
-    if (phase == LUTHIER_API_EVT_PHASE_EXIT) {
-        if (api_id == HSA_API_ID_hsa_queue_create) {
-            std::cout << "Queue created called!" << std::endl;
-            std::cout << "Signal handle: " << (*(args->api_args.hsa_queue_create.queue))->doorbell_signal.handle
-                      << std::endl;
-        } else if (api_id == HSA_API_ID_hsa_signal_store_screlease) {
-            fprintf(stdout, "<call to (%s)\t on %s> ", "hsa_signal_store_relaxed", "entry");
-            std::cout << "Signal handle" << args->api_args.hsa_signal_store_relaxed.signal.handle << std::endl;
+void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
+                            luthier::ApiEvtPhase Phase,
+                            luthier::hsa::ApiEvtID ApiID) {
+  if (Phase == luthier::API_EVT_PHASE_EXIT) {
+    if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_create) {
+      std::cout << "Queue created called!" << std::endl;
+      std::cout << "Signal handle: "
+                << (*(CBData->hsa_queue_create.queue))->doorbell_signal.handle
+                << " \n";
+    } else if (ApiID == hsa::HSA_API_EVT_ID_hsa_signal_store_screlease) {
+      std::cout << "Signal handle Store: "
+                << CBData->hsa_signal_store_relaxed.signal.handle << std::endl;
 
-        } else if (api_id == HSA_API_ID_hsa_executable_freeze) {
-            auto executable = args->api_args.hsa_executable_freeze.executable;
-            fprintf(stdout, "HSA Executable Freeze Callback\n");
-            // Get the state of the executable (frozen or not frozen)
-            hsa_executable_state_t e_state;
-            check(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE, &e_state) == HSA_STATUS_SUCCESS);
+    } else if (ApiID == hsa::HSA_API_EVT_ID_hsa_executable_freeze) {
+      auto executable = CBData->hsa_executable_freeze.executable;
+      fprintf(stdout, "HSA Executable Freeze Callback\n");
+      // Get the state of the executable (frozen or not frozen)
+      hsa_executable_state_t e_state;
+      check(hsa_executable_get_info(executable, HSA_EXECUTABLE_INFO_STATE,
+                                    &e_state) == HSA_STATUS_SUCCESS);
 
-            fprintf(stdout, "Is executable frozen: %s\n", (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
-            auto& coreTable = luthier_get_hsa_table()->core_;
-            fprintf(stdout, "Executable handle: %lX\n", executable.handle);
-        }
+      fprintf(stdout, "Is executable frozen: %s\n",
+              (e_state == HSA_EXECUTABLE_STATE_FROZEN ? "yes" : "no"));
+      fprintf(stdout, "Executable handle: %lX\n", executable.handle);
     }
-    if (api_id == HSA_EVT_ID_hsa_queue_packet_submit) {
-        std::cout << "In packet submission callback" << std::endl;
-        auto packets = args->evt_args.hsa_queue_packet_submit.packets;
-        for (unsigned int i = 0; i < args->evt_args.hsa_queue_packet_submit.pkt_count; i++) {
-            auto& packet = packets[i];
-            hsa_packet_type_t packetType = luthier_get_packet_type(&packet);
+  }
+  if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
+    std::cout << "In packet submission callback" << std::endl;
+    auto packets = CBData->hsa_queue_packet_submit.packets;
+    for (unsigned int i = 0; i < CBData->hsa_queue_packet_submit.pkt_count;
+         i++) {
+      auto &packet = packets[i];
+      hsa_packet_type_t packetType = packet.getPacketType();
 
-            if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
-                std::cout << "Dispatch packet's kernel arg address: " << packet.dispatch.kernarg_address << std::endl;
-                std::cout << "Size of private segment: " << packet.dispatch.private_segment_size << std::endl;
-                packet.dispatch.private_segment_size = 100000;
-                if (!instrumented) {
-                    size_t instSize = 0;
-                    luthier_status_t status;
-                    status = luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, nullptr);
-                    std::cout << "LUTHIER STATUS: " << status << "\n";
-                    std::vector<luthier_instruction_t> instrVec(instSize);
-
-                    status = luthier_disassemble_kernel_object(packet.dispatch.kernel_object, &instSize, instrVec.data());
-                    std::cout << "LUTHIER_STATUS: " << status << "\n";
-                    luthier_insert_call(instrVec[0], LUTHIER_GET_EXPORTED_FUNC(instrumentation_kernel),
-                                        LUTHIER_IPOINT_AFTER);
-                    instrumented = true;
-                    luthier_override_with_instrumented(&packet.dispatch);
-                }
-            }
+      if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
+        auto &DispatchPacket = packet.asKernelDispatch();
+        std::cout << "Dispatch packet's kernel arg address: "
+                  << DispatchPacket.kernarg_address << std::endl;
+        std::cout << "Size of private segment: "
+                  << DispatchPacket.private_segment_size << std::endl;
+        DispatchPacket.private_segment_size = 100000;
+        if (!instrumented) {
+          auto KD = luthier::KernelDescriptor::fromKernelObject(
+              DispatchPacket.kernel_object);
+          auto Symbol = KD->getHsaExecutableSymbol();
+          if (Symbol)
+            exit(-1);
+          auto LiftedSymbol = luthier::liftSymbol(*Symbol);
+          if (LiftedSymbol)
+            exit(-1);
+          auto &[Module, MMIWP, LSI] = *LiftedSymbol;
+//          auto Res =
+//              luthier::instrument(std::move(Module), std::move(MMIWP), LSI,
+//                                  std::make_unique<KernelInstrumentPass>());
+//          if (Res)
+//            exit(-1);
+          instrumented = true;
         }
-        std::cout << "End of callback" << std::endl;
+//        auto Res = luthier::overrideWithInstrumented(DispatchPacket);
+//        if (Res)
+//          exit(-1);
+      }
     }
+    std::cout << "End of callback" << std::endl;
+  }
 }
 
-void luthier_at_hip_event(void* args, luthier_api_evt_phase_t phase, int hip_api_id) {
-    fprintf(stdout, "<call to (%s)\t on %s> ", hip_api_name(hip_api_id),
-            phase == LUTHIER_API_EVT_PHASE_ENTER ? "entry" : "exit");
-//    if (hip_api_id == HIP_API_ID_hipLaunchKernel) {
-//        auto kern_args = reinterpret_cast<hip_hipLaunchKernel_api_args_t*>(args);
-//        fprintf(stdout, "kernel(\"%s\") stream(%p)",
-//                hipKernelNameRefByPtr(kern_args->function_address, kern_args->stream), kern_args->stream);
-//    }
-    fprintf(stdout, "\n");
-    fflush(stdout);
-}
+} // namespace luthier

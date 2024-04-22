@@ -1,17 +1,20 @@
 #ifndef LUTHIER_H
 #define LUTHIER_H
-#include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/Error.h>
 
-#include "hsa_trace_api.hpp"
-#include "instr.hpp"
-#include "pass.h"
-#include "types.h"
+#include <luthier/hip_trace_api.h>
+#include <luthier/hsa_trace_api.h>
+#include <luthier/instr.h>
+#include <luthier/kernel_descriptor.h>
+#include <luthier/pass.h>
+#include <luthier/types.h>
 
 namespace luthier {
+
+namespace hsa {
 
 /**
  * A callback made by Luthier during its initialization, after the HSA API
@@ -20,15 +23,41 @@ namespace luthier {
 void atHsaApiTableLoad();
 
 /**
- * A callback made by Luthier during its finalization, after the HSA API tables
+ * A callback made by Luthier during its finalization, before the HSA API tables
  * are unloaded and released.
  */
 void atHsaApiTableUnload();
 
-void atHsaEvt(hsa_api_evt_args_t *CBData, ApiEvtPhase Phase,
-              hsa_api_evt_id_t ApiID);
+void atHsaEvt(ApiEvtArgs *CBData, ApiEvtPhase Phase, ApiEvtID ApiID);
 
-void atHipEvt(void *Args, ApiEvtPhase Phase, int HipApiID);
+/**
+ * Returns the original HSA API table to avoid re-instrumentation of HSA
+ * functions.
+ * @return saved HSA API Table
+ */
+const HsaApiTable &getHsaApiTable();
+
+const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
+
+void enableHsaOpCallback(hsa::ApiEvtID Op);
+
+void disableHsaOpCallback(hsa::ApiEvtID Op);
+
+void enableAllHsaCallbacks();
+
+void disableAllHsaCallbacks();
+
+} // namespace hsa
+
+namespace hip {
+
+void *getHipFunctionPtr(llvm::StringRef FuncName);
+
+template <typename FunctionPtr>
+FunctionPtr getHipFunctionPtr(llvm::StringRef FuncName) {
+  return reinterpret_cast<FunctionPtr>(getHipFunctionPtr(FuncName));
+}
+} // namespace hip
 
 /**
  * Disassembles the Kernel into a std::vector of luthier::Instr.
@@ -39,7 +68,7 @@ void atHipEvt(void *Args, ApiEvtPhase Phase, int HipApiID);
  * \returns a reference to the cached disassembly result
  */
 llvm::Expected<const std::vector<Instr> &>
-disassembleKernel(hsa_executable_symbol_t Kernel);
+disassembleSymbol(hsa_executable_symbol_t Kernel);
 
 /**
  *
@@ -63,47 +92,11 @@ liftSymbol(hsa_executable_symbol_t Symbol);
  */
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet);
 
-
 llvm::Error
-instrument(std::unique_ptr<llvm::Module> &Module,
-           std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
+instrument(std::unique_ptr<llvm::Module> Module,
+           std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
            const LiftedSymbolInfo &LSO,
            std::unique_ptr<luthier::InstrumentationPass> IPass);
-
-} // namespace luthier
-
-// static inline const char* luthier_hip_api_name(uint32_t hip_api_id) {
-//     if (hip_api_id < 1000)
-//         return hip_api_name(hip_api_id);
-//     else
-//         return
-// }
-
-void luthier_enable_hsa_op_callback(hsa_api_evt_id_t op);
-
-void luthier_disable_hsa_op_callback(hsa_api_evt_id_t op);
-
-void luthier_enable_all_hsa_callbacks();
-
-void luthier_disable_all_hsa_callbacks();
-
-void luthier_enable_hip_op_callback(uint32_t op);
-
-void luthier_disable_hip_op_callback(uint32_t op);
-
-void luthier_enable_all_hip_callbacks();
-
-void luthier_disable_all_hip_callbacks();
-/**
- * Returns the original HSA API table to avoid re-instrumentation of HSA
- * functions.
- * @return saved HSA API Table
- */
-const HsaApiTable *luthier_get_hsa_table();
-
-const hsa_ven_amd_loader_1_03_pfn_s *luthier_get_hsa_ven_amd_loader();
-
-void *luthier_get_hip_function(const char *funcName);
 
 /**
  * \brief If the tool is compiled with HIP device code it needs to call this
@@ -127,6 +120,8 @@ void *luthier_get_hip_function(const char *funcName);
 // unique identifier
 #define LUTHIER_GET_EXPORTED_FUNC(f)                                           \
   reinterpret_cast<const void *>(__luthier_wrap__##f)
+
+} // namespace luthier
 
 ////
 /////*********************************************************************
@@ -196,7 +191,7 @@ void *luthier_get_hip_function(const char *funcName);
 // * \param dev_func
 // * \param point
 // */
-//luthier_status_t luthier_insert_call(luthier_instruction_t instr,
+// luthier_status_t luthier_insert_call(luthier_instruction_t instr,
 //                                     const void *dev_func,
 //                                     luthier_ipoint_t point);
 
@@ -211,12 +206,12 @@ void *luthier_get_hip_function(const char *funcName);
 ////                                 bool is_variadic_arg = false);
 ////
 /* Add uint32_t argument to last injected call, constant 32-bit value */
-//void luthier_add_call_arg_const_val32(luthier_instruction_t instr,
-//                                      uint32_t val);
+// void luthier_add_call_arg_const_val32(luthier_instruction_t instr,
+//                                       uint32_t val);
 ////
 /////* Add uint64_t argument to last injected call, constant 64-bit value */
-//void luthier_add_call_arg_const_val64(luthier_instruction_t instr,
-//                                      uint64_t val);
+// void luthier_add_call_arg_const_val64(luthier_instruction_t instr,
+//                                       uint64_t val);
 ////
 /////* Add uint32_t argument to last injected call, content of the register
 /// reg_num / */ /void nvbit_add_call_arg_reg_val(const Instr* instr, int
@@ -249,7 +244,7 @@ void *luthier_get_hip_function(const char *funcName);
 ////                                    bool is_variadic_arg = false);
 ////
 /* Remove the original instruction */
-//void luthier_remove_orig(luthier_instruction_t instr);
+// void luthier_remove_orig(luthier_instruction_t instr);
 
 ////
 /////*********************************************************************

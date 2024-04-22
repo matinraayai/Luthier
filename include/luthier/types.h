@@ -1,8 +1,6 @@
 #ifndef LUTHIER_TYPES_H
 #define LUTHIER_TYPES_H
 
-#include "hip_private_api.h"
-#include "hip_trace_api.h"
 #include <hsa/hsa.h>
 #include <llvm/CodeGen/MachineFunction.h>
 

@@ -3,12 +3,9 @@
 
 #include <dlfcn.h>
 
-#include <any>
 #include <experimental/filesystem>
 #include <functional>
 #include <llvm/ADT/DenseSet.h>
-#include <optional>
-#include <unordered_set>
 
 #include "error.hpp"
 #include <luthier/hip_trace_api.h>
@@ -49,12 +46,11 @@ template <> struct DenseMapInfo<luthier::hip::ApiID> {
 // Borrowed from RocTracer's BaseLoader
 namespace luthier::hip {
 
-class Interceptor {
-public:
-  typedef std::function<void(ApiArgs &, ApiReturn *,
-                             const ApiEvtPhase, const int)>
-      internal_callback_t;
+typedef std::function<void(ApiArgs &, ApiReturn *, const ApiEvtPhase,
+                           const int)>
+    internal_callback_t;
 
+class Interceptor {
 private:
   void *Handle{nullptr};
   //  std::function<void(void *, const ApiEvtPhase, const int)> UserCallback{};
@@ -132,9 +128,7 @@ public:
     return EnabledInternalCallbacks.contains(Op);
   }
 
-  void setInternalCallback(
-      const std::function<void(ApiArgs &, const luthier::ApiEvtPhase,
-                               const int)> &CB) {
+  void setInternalCallback(const internal_callback_t &CB) {
     InternalCallback = CB;
   }
 

@@ -41,7 +41,7 @@ LoadedCodeObject::getStorageType() const {
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 LoadedCodeObject::getStorageMemory() const {
-  luthier_address_t StorageBase;
+  luthier::address_t StorageBase;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),
@@ -80,7 +80,7 @@ llvm::Expected<long> LoadedCodeObject::getLoadDelta() const {
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 LoadedCodeObject::getLoadedMemory() const {
-  luthier_address_t LoadBase;
+  luthier::address_t LoadBase;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getLoaderTable().hsa_ven_amd_loader_loaded_code_object_get_info(
           this->asHsaType(),

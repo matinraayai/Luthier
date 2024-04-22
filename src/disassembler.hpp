@@ -19,7 +19,7 @@
 #include "hsa_executable_symbol.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "luthier/instr.hpp"
+#include "luthier/instr.h"
 #include "luthier/pass.h"
 #include "luthier/types.h"
 #include "object_utils.hpp"

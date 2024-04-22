@@ -35,7 +35,7 @@
 #include "hsa_executable.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
-#include "luthier/instr.hpp"
+#include "luthier/instr.h"
 #include "luthier/types.h"
 #include "object_utils.hpp"
 #include "target_manager.hpp"
@@ -311,7 +311,7 @@ luthier::CodeLifter::disassemble(const llvm::object::ELFSymbolRef &Symbol,
 
 luthier::CodeLifter::~CodeLifter() {
   DisassemblyInfoMap.clear();
-  LiftedExecutables.clear();
+//  LiftedExecutables.clear();
   DisassembledSymbolsRaw.clear();
 }
 
@@ -656,7 +656,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
   llvm::MachineFunction *MFPtr = &(MF.get());
 
   Out.Symbol = Symbol.asHsaType();
-  Out.MF = MFPtr;
+  Out.SymbolMF = MFPtr;
 
   llvm::MachineBasicBlock *MBB = MF->CreateMachineBasicBlock();
   MF->push_back(MBB);
@@ -798,7 +798,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
               }
               // Add the function as the operand
               Builder.addGlobalAddress(
-                  &IndirectFunctionInfo->MF->getFunction(), *Addend,
+                  &IndirectFunctionInfo->SymbolMF->getFunction(), *Addend,
                   RelocationInfo.get()->RelocRef.getType());
             } else {
               // For now, we don't handle calling kernels from kernels
@@ -899,11 +899,11 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
   auto LiftedSymbolInfo =
       liftSymbolAndAddToModule(Symbol, *Module, MMIWP->getMMI());
   LUTHIER_RETURN_ON_ERROR(LiftedSymbolInfo.takeError());
-
+  auto Out = *LiftedSymbolInfo;
   return std::make_tuple<std::unique_ptr<llvm::Module>,
                          std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                          luthier::LiftedSymbolInfo>(
-      std::move(Module), std::move(MMIWP), *LiftedSymbolInfo);
+      std::move(Module), std::move(MMIWP), std::move(Out));
 }
 
 } // namespace luthier

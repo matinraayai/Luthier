@@ -137,8 +137,8 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 }
 
 llvm::Error CodeGenerator::instrument(
-    std::unique_ptr<llvm::Module> &Module,
-    std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
+    std::unique_ptr<llvm::Module> Module,
+    std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
     const LiftedSymbolInfo &LSO,
     std::unique_ptr<luthier::InstrumentationPass> IPass) {
   LUTHIER_LOG_FUNCTION_CALL_START

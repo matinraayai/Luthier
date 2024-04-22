@@ -4,7 +4,7 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
-#include <luthier/instr.hpp>
+#include <luthier/instr.h>
 
 namespace luthier {
 
@@ -92,7 +92,7 @@ public:
 
 
   llvm::Error insertCallTo(llvm::MachineInstr &MI, const void *DevFunc,
-                           InstrPoint IPoint, llvm::SmallVectorImpl<llvm::Constant);
+                           InstrPoint IPoint);
 };
 
 } // namespace luthier

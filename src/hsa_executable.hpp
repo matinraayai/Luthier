@@ -82,7 +82,7 @@ public:
    * this executable
    * @return an \p std::unordered_st of \p hsa::GpuAgent's
    */
-  [[nodiscard]] llvm::Expected<std::unordered_set<hsa::GpuAgent>>
+  [[nodiscard]] llvm::Expected<llvm::DenseSet<hsa::GpuAgent>>
   getAgents() const;
 };
 

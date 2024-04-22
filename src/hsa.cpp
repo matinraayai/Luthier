@@ -4,7 +4,7 @@
 namespace luthier::hsa {
 
 llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
-  const auto &CoreTable = HsaInterceptor::instance().getSavedHsaTables().core;
+  const auto &CoreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
   auto ReturnGpuAgentsCallback = [](hsa_agent_t agent, void *data) {
     auto AgentMap = reinterpret_cast<llvm::SmallVector<GpuAgent> *>(data);
     hsa_device_type_t DevType = HSA_DEVICE_TYPE_CPU;
@@ -24,7 +24,7 @@ llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
 }
 
 llvm::Error getAllExecutables(llvm::SmallVectorImpl<Executable> &Executables) {
-  const auto &LoaderApi = HsaInterceptor::instance().getHsaVenAmdLoaderTable();
+  const auto &LoaderApi = hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
   auto Iterator = [](hsa_executable_t exec, void *data) {
     auto Out = reinterpret_cast<llvm::SmallVectorImpl<Executable> *>(data);
     Out->emplace_back(exec);

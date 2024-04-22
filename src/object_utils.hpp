@@ -14,7 +14,7 @@
 #include <utility>
 
 #include "error.hpp"
-#include "luthier_types.h"
+#include <luthier/types.h>
 
 namespace llvm::AMDGPU::HSAMD {
 
@@ -118,7 +118,7 @@ struct Metadata final {
   /// Offset in bytes. Required for code object v3, unused for code object v2.
   uint32_t Offset{0};
   /// Value kind. Required.
-  ValueKind ValueKind = ValueKind::Unknown;
+  HSAMD::ValueKind ValueKind{ValueKind::Unknown};
   /// Pointee alignment in bytes. Optional.
   std::optional<uint32_t> PointeeAlign = 0;
   /// Address space qualifier. Optional.
@@ -241,7 +241,7 @@ struct Metadata final {
   /// Number of VGPRs spilled by a workitem. Optional.
   std::optional<uint32_t> VGPRSpillCount{0};
   /// The kind of the kernel
-  std::optional<KernelKind> KernelKind{KernelKind::Normal};
+  std::optional<HSAMD::KernelKind> KernelKind{KernelKind::Normal};
   /// Indicates if the kernel requires that each dimension of global size
   /// is a multiple of corresponding dimension of work-group size.
   /// Only emitted when value is 1.

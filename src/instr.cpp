@@ -1,4 +1,4 @@
-#include <luthier/instr.hpp>
+#include <luthier/instr.h>
 
 #include <utility>
 

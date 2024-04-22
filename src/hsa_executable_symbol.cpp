@@ -12,6 +12,10 @@
 
 namespace luthier::hsa {
 
+llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
+               hsa::ExecutableSymbol::IndirectFunctionInfo>
+    hsa::ExecutableSymbol::IndirectFunctionHandleCache{};
+
 ExecutableSymbol ExecutableSymbol::fromHandle(hsa_executable_symbol_t Symbol) {
   if (IndirectFunctionHandleCache.contains(Symbol.handle)) {
     auto &IndirectFunctionInfo = IndirectFunctionHandleCache[Symbol.handle];
@@ -71,8 +75,8 @@ ExecutableSymbol::getVariableAllocation() const {
   return Out;
 }
 
-llvm::Expected<luthier_address_t> ExecutableSymbol::getVariableAddress() const {
-  luthier_address_t Out;
+llvm::Expected<luthier::address_t> ExecutableSymbol::getVariableAddress() const {
+  luthier::address_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_symbol_get_info_fn(
           asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS, &Out)));
@@ -80,7 +84,7 @@ llvm::Expected<luthier_address_t> ExecutableSymbol::getVariableAddress() const {
 }
 llvm::Expected<const KernelDescriptor *>
 ExecutableSymbol::getKernelDescriptor() const {
-  luthier_address_t KernelObject;
+  luthier::address_t KernelObject;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_symbol_get_info_fn(
           this->asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
@@ -89,10 +93,10 @@ ExecutableSymbol::getKernelDescriptor() const {
 }
 
 llvm::Expected<ExecutableSymbol>
-ExecutableSymbol::fromKernelDescriptor(const hsa::KernelDescriptor *KD) {
+ExecutableSymbol::fromKernelDescriptor(const KernelDescriptor *KD) {
   hsa_executable_t Executable;
   const auto &LoaderTable =
-      HsaInterceptor::instance().getHsaVenAmdLoaderTable();
+      hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
 
   // Check which executable this kernel object (address) belongs to
   LUTHIER_RETURN_ON_ERROR(
@@ -128,15 +132,15 @@ llvm::Expected<GpuAgent> ExecutableSymbol::getAgent() const {
 llvm::Expected<Executable> ExecutableSymbol::getExecutable() const {
   auto Type = getType();
   LUTHIER_RETURN_ON_ERROR(Type.takeError());
-  luthier_address_t Address;
+  luthier::address_t Address;
   if (*Type == HSA_SYMBOL_KIND_VARIABLE)
     LUTHIER_RETURN_ON_ERROR(getVariableAddress().moveInto(Address));
   else if (*Type == HSA_SYMBOL_KIND_KERNEL) {
     auto KD = getKernelDescriptor();
     LUTHIER_RETURN_ON_ERROR(KD.takeError());
-    Address = reinterpret_cast<luthier_address_t>(*KD);
+    Address = reinterpret_cast<luthier::address_t>(*KD);
   } else {
-    Address = reinterpret_cast<luthier_address_t>(IFO->Code.data());
+    Address = reinterpret_cast<luthier::address_t>(IFO->Code.data());
   }
   hsa_executable_t Executable;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(

@@ -7,7 +7,7 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/FormatVariadicDetails.h>
 
-#include "luthier_types.h"
+#include <luthier/types.h>
 
 // Workaround for GCC or other compilers that don't have this macro built-in
 // Source:
@@ -42,7 +42,7 @@
  */
 #define LUTHIER_RETURN_ON_ERROR(Error)                                         \
   do {                                                                         \
-    if (Error) {                                            \
+    if (Error) {                                                               \
       return (Error);                                                          \
     }                                                                          \
   } while (0)
@@ -72,8 +72,7 @@ public:
                                           bool Expr, llvm::StringRef ExprStr);
 
   void log(llvm::raw_ostream &OS) const override {
-    OS << "File " << FileName << ", "
-       << "line: " << LineNumber << ": ";
+    OS << "File " << FileName << ", " << "line: " << LineNumber << ": ";
     OS << "Invalid argument passed to function " << FunctionName << "; ";
     OS << "Failed argument check: " << Expr;
   }
@@ -113,7 +112,7 @@ public:
 #define LUTHIER_ASSERTION(Expr)                                                \
   luthier::AssertionError::assertionCheck(__FILE_NAME__, __LINE__, Expr, #Expr)
 
-//class DisassemblerError : public llvm::ErrorInfo<DisassemblerError> {};
+// class DisassemblerError : public llvm::ErrorInfo<DisassemblerError> {};
 
 /**
  * \brief Errors caused by the COMGR library
@@ -262,16 +261,6 @@ public:
 
 #define LUTHIER_HSA_SUCCESS_CHECK(Expr)                                        \
   luthier::HsaError::hsaErrorCheck(__FILE_NAME__, __LINE__, Expr, #Expr)
-
-/**
- * Returns a \p luthier_status_t associated with the \p llvm::Error
- * Used by luthier.cpp to implement user-facing functions. Consumes the
- * errors, meaning they can be safely destroyed without making the program
- * abort
- * \param Error to be reported to the user
- * \return the status code that can be returned to the user
- */
-luthier_status_t convertErrorToStatusCode(llvm::Error &Error);
 
 } // namespace luthier
 

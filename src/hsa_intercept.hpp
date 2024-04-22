@@ -1,40 +1,76 @@
 #ifndef HSA_INTERCEPT_HPP
 #define HSA_INTERCEPT_HPP
 
-#include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 
 #include <functional>
-#include <unordered_set>
+
+#include <llvm/ADT/DenseSet.h>
 
 #include "error.hpp"
+#include <luthier/hsa_trace_api.h>
 #include <luthier/types.h>
 
+// Helper to store ApiEvtID in llvm::DenseSets
+namespace llvm {
+
+template <> struct DenseMapInfo<luthier::hsa::ApiEvtID> {
+  static inline luthier::hsa::ApiEvtID getEmptyKey() {
+    return luthier::hsa::ApiEvtID(
+        DenseMapInfo<
+            std::underlying_type_t<luthier::hsa::ApiEvtID>>::getEmptyKey());
+  }
+
+  static inline luthier::hsa::ApiEvtID getTombstoneKey() {
+    return luthier::hsa::ApiEvtID(
+        DenseMapInfo<
+            std::underlying_type_t<luthier::hsa::ApiEvtID>>::getTombstoneKey());
+  }
+
+  static unsigned getHashValue(const luthier::hsa::ApiEvtID &ApiID) {
+    return DenseMapInfo<std::underlying_type_t<luthier::hsa::ApiEvtID>>::
+        getHashValue(
+            static_cast<std::underlying_type_t<luthier::hsa::ApiEvtID>>(ApiID));
+  }
+
+  static bool isEqual(const luthier::hsa::ApiEvtID &LHS,
+                      const luthier::hsa::ApiEvtID &RHS) {
+    return LHS == RHS;
+  }
+};
+
+} // namespace llvm
+
 namespace luthier::hsa {
+
+typedef std::function<void(ApiEvtArgs *, const luthier::ApiEvtPhase,
+                           const ApiEvtID)>
+    user_callback_t;
+
+typedef std::function<void(ApiEvtArgs *, const luthier::ApiEvtPhase,
+                           const ApiEvtID, bool *)>
+    internal_callback_t;
+
 class Interceptor {
 private:
-  HsaApiTable *InternalHsaApiTable;
-  HsaApiTableContainer SavedTables;
-  hsa_ven_amd_loader_1_03_pfn_s AmdTable;
-  std::unordered_set<hsa_api_evt_id_t> EnabledUserOps;
-  std::unordered_set<hsa_api_evt_id_t> EnabledInternalOps;
+  HsaApiTable *InternalHsaApiTable{};
+  HsaApiTableContainer SavedTables{};
+  hsa_ven_amd_loader_1_03_pfn_s AmdTable{};
+  llvm::DenseSet<ApiEvtID> EnabledUserOps{};
+  llvm::DenseSet<ApiEvtID> EnabledInternalOps{};
 
-  std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
-                     const hsa_api_evt_id_t)>
-      userCallback_{};
-  std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
-                     const hsa_api_evt_id_t, bool *)>
-      internalCallback_{};
+  user_callback_t UserCallback{};
+  internal_callback_t InternalCallback{};
 
-  void installCoreApiTableWrappers(CoreApiTable *table);
+  void installCoreApiTableWrappers(CoreApiTable *Table);
 
-  void installAmdExtTableWrappers(AmdExtTable *table);
+  void installAmdExtTableWrappers(AmdExtTable *Table);
 
-  void installImageExtTableWrappers(ImageExtTable *table);
+  void installImageExtTableWrappers(ImageExtTable *Table);
 
   void installFinalizerExtTableWrappers(FinalizerExtTable *Table);
 
-  Interceptor() {}
+  Interceptor() = default;
   ~Interceptor() {
     uninstallApiTables();
     SavedTables = {};
@@ -61,72 +97,48 @@ public:
     *InternalHsaApiTable->image_ext_ = SavedTables.image_ext;
   }
 
-  void setUserCallback(
-      const std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
-                               const hsa_api_evt_id_t)> &callback) {
-    userCallback_ = callback;
+  void setUserCallback(const user_callback_t &CB) { UserCallback = CB; }
+
+  void setInternalCallback(const internal_callback_t &Callback) {
+    InternalCallback = Callback;
   }
 
-  void setInternalCallback(
-      const std::function<void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
-                               const hsa_api_evt_id_t, bool *)> &callback) {
-    internalCallback_ = callback;
+  [[nodiscard]] const inline user_callback_t &getUserCallback() const {
+    return UserCallback;
   }
 
-  [[nodiscard]] const inline std::function<void(hsa_api_evt_args_t *,
-                                                const luthier::ApiEvtPhase,
-                                                const hsa_api_evt_id_t)> &
-  getUserCallback() const {
-    return userCallback_;
+  [[nodiscard]] const inline internal_callback_t &getInternalCallback() const {
+    return InternalCallback;
   }
 
-  [[nodiscard]] const inline std::function<
-      void(hsa_api_evt_args_t *, const luthier::ApiEvtPhase,
-           const hsa_api_evt_id_t, bool *)> &
-  getInternalCallback() const {
-    return internalCallback_;
+  [[nodiscard]] bool isUserCallbackEnabled(ApiEvtID Op) const {
+    return EnabledUserOps.contains(Op);
   }
 
-  [[nodiscard]] bool isUserCallbackEnabled(hsa_api_evt_id_t op) const {
-    return EnabledUserOps.contains(op);
+  [[nodiscard]] bool isInternalCallbackEnabled(ApiEvtID Op) const {
+    return EnabledInternalOps.contains(Op);
   }
 
-  [[nodiscard]] bool isInternalCallbackEnabled(hsa_api_evt_id_t op) const {
-    return EnabledInternalOps.contains(op);
-  }
+  void enableUserCallback(ApiEvtID Op) { EnabledUserOps.insert(Op); }
 
-  void enableUserCallback(hsa_api_evt_id_t op) { EnabledUserOps.insert(op); }
+  void disableUserCallback(ApiEvtID Op) { EnabledUserOps.erase(Op); }
 
-  void disableUserCallback(hsa_api_evt_id_t op) { EnabledUserOps.erase(op); }
+  void enableInternalCallback(ApiEvtID Op) { EnabledInternalOps.insert(Op); }
 
-  void enableInternalCallback(hsa_api_evt_id_t op) {
-    EnabledInternalOps.insert(op);
-  }
-
-  void disableInternalCallback(hsa_api_evt_id_t op) {
-    EnabledInternalOps.erase(op);
-  }
+  void disableInternalCallback(ApiEvtID Op) { EnabledInternalOps.erase(Op); }
 
   void enableAllUserCallbacks() {
-    for (auto i = HSA_API_EVT_ID_FIRST;
-         i <= HSA_API_EVT_ID_LAST; ++i) {
-      enableUserCallback(static_cast<hsa_api_evt_id_t>(i));
-    }
-    for (auto i = static_cast<unsigned int>(HSA_API_EVT_ID_FIRST);
-         i <= static_cast<unsigned int>(HSA_API_EVT_ID_LAST); ++i) {
-      enableUserCallback(static_cast<hsa_api_evt_id_t>(i));
+    for (std::underlying_type<ApiEvtID>::type I = HSA_API_EVT_ID_FIRST;
+         I <= HSA_API_EVT_ID_LAST; ++I) {
+      enableUserCallback(ApiEvtID(I));
     }
   }
   void disableAllUserCallbacks() { EnabledUserOps.clear(); }
 
   void enableAllInternalCallbacks() {
-    for (auto i = static_cast<unsigned int>(HSA_API_ID_FIRST);
-         i <= static_cast<unsigned int>(HSA_API_ID_LAST); ++i) {
-      enableInternalCallback(static_cast<hsa_api_evt_id_t>(i));
-    }
-    for (auto i = static_cast<unsigned int>(HSA_EVT_ID_FIRST);
-         i <= static_cast<unsigned int>(HSA_EVT_ID_LAST); ++i) {
-      enableInternalCallback(static_cast<hsa_api_evt_id_t>(i));
+    for (std::underlying_type<ApiEvtID>::type I = HSA_API_EVT_ID_FIRST;
+         I <= HSA_API_EVT_ID_LAST; ++I) {
+      enableInternalCallback(ApiEvtID(I));
     }
   }
 

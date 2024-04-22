@@ -3,6 +3,10 @@
 #include "code_generator.hpp"
 #include "code_object_manager.hpp"
 
+namespace luthier {
+
+char InstrumentationPass::ID = 0;
+
 llvm::Error luthier::InstrumentationPass::insertCallTo(
     llvm::MachineInstr &MI, const void *DevFunc, luthier::InstrPoint IPoint) {
   auto& LSI = getAnalysis<luthier::LiftedSymbolInfoWrapperPass>().getLSI();
@@ -15,4 +19,6 @@ llvm::Error luthier::InstrumentationPass::insertCallTo(
   LUTHIER_RETURN_ON_ERROR(InstrumentationFunction.takeError());
 
   return llvm::Error::success();
+}
+
 }

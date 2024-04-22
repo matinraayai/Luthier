@@ -3,11 +3,11 @@
 #include <llvm/ADT/DenseSet.h>
 #include <vector>
 
-#include "hsa_code_object_reader.hpp"
 #include "hsa_agent.hpp"
-#include "hsa_executable_symbol.hpp"
+#include "hsa_code_object_reader.hpp"
 #include "hsa_executable.hpp"
-#include "luthier_types.h"
+#include "hsa_executable_symbol.hpp"
+#include <luthier/types.h>
 
 namespace luthier {
 /**
