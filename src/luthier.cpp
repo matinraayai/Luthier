@@ -108,6 +108,15 @@ liftSymbol(hsa_executable_symbol_t Symbol) {
       hsa::ExecutableSymbol::fromHandle(Symbol));
 }
 
+llvm::Error
+instrument(std::unique_ptr<llvm::Module> Module,
+           std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
+           const LiftedSymbolInfo &LSO,
+           std::unique_ptr<luthier::InstrumentationPass> IPass) {
+  return CodeGenerator::instance().instrument(
+      std::move(Module), std::move(MMIWP), LSO, std::move(IPass));
+}
+
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
   auto Symbol = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
       reinterpret_cast<const luthier::KernelDescriptor *>(

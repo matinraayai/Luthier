@@ -14,18 +14,16 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 add_library(luthier SHARED
         src/luthier.cpp include/luthier/luthier.h src/hip_intercept.hpp src/hip_intercept.cpp
         include/luthier/types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
-        src/code_object_manager.cpp include/luthier/hip_arg_types.h include/luthier/hip_private_api.h src/error.hpp
+        src/code_object_manager.cpp include/luthier/hip_trace_api.h src/error.hpp
         src/error.cpp
         src/disassembler.hpp src/disassembler.cpp src/target_manager.hpp src/code_generator.hpp
         src/code_generator.cpp src/log.hpp src/hsa_executable.hpp
         src/hsa_executable.cpp src/hsa_executable_symbol.hpp src/hsa_agent.hpp src/hsa_handle_type.hpp
         src/hsa_type.hpp src/hsa_agent.cpp src/hsa_executable_symbol.cpp src/hsa_loaded_code_object.hpp
         src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp src/object_utils.hpp src/object_utils.cpp
-        include/luthier/kernel_descriptor.h src/target_manager.cpp include/luthier/instr.hpp src/instr.cpp
+        include/luthier/kernel_descriptor.h src/target_manager.cpp include/luthier/instr.h src/instr.cpp
         src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/kernel_descriptor.cpp
-        src/hsa.hpp src/hsa.cpp
-        include/luthier/hsa_trace_api.hpp
-        include/luthier/pass.h
+        src/hsa.hpp src/hsa.cpp include/luthier/hsa_trace_api.h include/luthier/pass.h
         src/pass.cpp
 
 )

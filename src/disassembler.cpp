@@ -632,7 +632,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
   LUTHIER_RETURN_ON_ERROR(Exec.takeError());
 
   // TODO: ISA of the Symbol is determined from the LCO, not the Agent
-  auto ISA = Symbol.getAgent()->getIsa();
+  auto ISA = Agent->getIsa();
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
 
   auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
@@ -883,7 +883,9 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
   LUTHIER_RETURN_ON_ERROR(Exec.takeError());
 
   // TODO: ISA of the Symbol is determined from the LCO, not the Agent
-  auto ISA = Symbol.getAgent()->getIsa();
+  auto ISA = Agent->getIsa();
+  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
 
   auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);

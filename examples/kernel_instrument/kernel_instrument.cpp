@@ -65,7 +65,7 @@ void hsa::atHsaApiTableLoad() {
 
 class KernelInstrumentPass : public luthier::InstrumentationPass {
 
-  bool runOnModule(llvm::Module &M) override {}
+  bool runOnModule(llvm::Module &M) override { return false; }
 };
 
 void luthier::hsa::atHsaApiTableUnload() {
@@ -118,22 +118,23 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           auto KD = luthier::KernelDescriptor::fromKernelObject(
               DispatchPacket.kernel_object);
           auto Symbol = KD->getHsaExecutableSymbol();
-          if (Symbol)
+          if (auto Err = Symbol.takeError())
             exit(-1);
           auto LiftedSymbol = luthier::liftSymbol(*Symbol);
-          if (LiftedSymbol)
+          if (auto Err = LiftedSymbol.takeError())
             exit(-1);
           auto &[Module, MMIWP, LSI] = *LiftedSymbol;
 //          auto Res =
 //              luthier::instrument(std::move(Module), std::move(MMIWP), LSI,
 //                                  std::make_unique<KernelInstrumentPass>());
-//          if (Res)
+//          if (!Res.operator bool())
 //            exit(-1);
+          std::cout << "Instrumented thingy works\n";
           instrumented = true;
         }
-//        auto Res = luthier::overrideWithInstrumented(DispatchPacket);
-//        if (Res)
-//          exit(-1);
+        //        auto Res = luthier::overrideWithInstrumented(DispatchPacket);
+        //        if (Res)
+        //          exit(-1);
       }
     }
     std::cout << "End of callback" << std::endl;
