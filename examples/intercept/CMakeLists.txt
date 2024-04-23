@@ -18,10 +18,10 @@ target_include_directories(intercept_hsa PUBLIC ../../src/luthier/)
 
 target_link_libraries(intercept_hsa PUBLIC luthier hip::host)
 
-add_library(intercept_hip SHARED intercept_hip.cpp)
+#add_library(intercept_hip SHARED intercept_hip.cpp)
 
-set_property(TARGET intercept_hip PROPERTY COMPILE_FLAGS "-fPIC")
+#set_property(TARGET intercept_hip PROPERTY COMPILE_FLAGS "-fPIC")
 
-target_include_directories(intercept_hip PUBLIC ../../src/luthier/)
+#target_include_directories(intercept_hip PUBLIC ../../src/luthier/)
 
-target_link_libraries(intercept_hip PUBLIC luthier hip::host)
+#target_link_libraries(intercept_hip PUBLIC luthier hip::host)
