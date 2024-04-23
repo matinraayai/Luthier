@@ -5,6 +5,8 @@
 #include "hsa_intercept.hpp"
 #include "luthier/types.h"
 
+//bool luthier::hsa::Interceptor::EnableTempCallback = true;
+
 void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                  uint64_t UserPktIndex, void *Data, 
                                  hsa_amd_queue_intercept_packet_writer Writer) {
@@ -59,8 +61,9 @@ static hsa_status_t hsa_init_callback() {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_init;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -88,8 +91,9 @@ static hsa_status_t hsa_shut_down_callback() {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_shut_down;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -117,8 +121,9 @@ static hsa_status_t hsa_system_get_info_callback(hsa_system_info_t attribute, vo
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_system_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -148,8 +153,9 @@ static hsa_status_t hsa_system_extension_supported_callback(uint16_t extension, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_system_extension_supported;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -181,8 +187,9 @@ static hsa_status_t hsa_system_get_extension_table_callback(uint16_t extension, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_system_get_extension_table;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -214,8 +221,9 @@ static hsa_status_t hsa_iterate_agents_callback(hsa_status_t (* callback)(hsa_ag
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_iterate_agents;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -245,8 +253,9 @@ static hsa_status_t hsa_agent_get_info_callback(hsa_agent_t agent, hsa_agent_inf
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_agent_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -277,8 +286,9 @@ static hsa_status_t hsa_queue_create_callback(hsa_agent_t agent, uint32_t size, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -330,8 +340,9 @@ static hsa_status_t hsa_soft_queue_create_callback(hsa_region_t region, uint32_t
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_soft_queue_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -365,8 +376,9 @@ static hsa_status_t hsa_queue_destroy_callback(hsa_queue_t* queue) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -395,8 +407,9 @@ static hsa_status_t hsa_queue_inactivate_callback(hsa_queue_t* queue) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_inactivate;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -425,8 +438,9 @@ static uint64_t hsa_queue_load_read_index_scacquire_callback(const hsa_queue_t* 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_read_index_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -455,8 +469,9 @@ static uint64_t hsa_queue_load_read_index_relaxed_callback(const hsa_queue_t* qu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_read_index_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -485,8 +500,9 @@ static uint64_t hsa_queue_load_write_index_scacquire_callback(const hsa_queue_t*
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_write_index_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -515,8 +531,9 @@ static uint64_t hsa_queue_load_write_index_relaxed_callback(const hsa_queue_t* q
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_write_index_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -545,8 +562,9 @@ static void hsa_queue_store_write_index_relaxed_callback(const hsa_queue_t* queu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_write_index_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -575,8 +593,9 @@ static void hsa_queue_store_write_index_screlease_callback(const hsa_queue_t* qu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_write_index_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -605,8 +624,9 @@ static uint64_t hsa_queue_cas_write_index_scacq_screl_callback(const hsa_queue_t
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -637,8 +657,9 @@ static uint64_t hsa_queue_cas_write_index_scacquire_callback(const hsa_queue_t* 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -669,8 +690,9 @@ static uint64_t hsa_queue_cas_write_index_relaxed_callback(const hsa_queue_t* qu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -701,8 +723,9 @@ static uint64_t hsa_queue_cas_write_index_screlease_callback(const hsa_queue_t* 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -733,8 +756,9 @@ static uint64_t hsa_queue_add_write_index_scacq_screl_callback(const hsa_queue_t
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -764,8 +788,9 @@ static uint64_t hsa_queue_add_write_index_scacquire_callback(const hsa_queue_t* 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -795,8 +820,9 @@ static uint64_t hsa_queue_add_write_index_relaxed_callback(const hsa_queue_t* qu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -826,8 +852,9 @@ static uint64_t hsa_queue_add_write_index_screlease_callback(const hsa_queue_t* 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint64_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -857,8 +884,9 @@ static void hsa_queue_store_read_index_relaxed_callback(const hsa_queue_t* queue
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_read_index_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -887,8 +915,9 @@ static void hsa_queue_store_read_index_screlease_callback(const hsa_queue_t* que
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_read_index_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -917,8 +946,9 @@ static hsa_status_t hsa_agent_iterate_regions_callback(hsa_agent_t agent, hsa_st
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_agent_iterate_regions;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -949,8 +979,9 @@ static hsa_status_t hsa_region_get_info_callback(hsa_region_t region, hsa_region
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_region_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -981,8 +1012,9 @@ static hsa_status_t hsa_agent_get_exception_policies_callback(hsa_agent_t agent,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_agent_get_exception_policies;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1013,8 +1045,9 @@ static hsa_status_t hsa_agent_extension_supported_callback(uint16_t extension, h
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_agent_extension_supported;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1047,8 +1080,9 @@ static hsa_status_t hsa_memory_register_callback(void* ptr, size_t size) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_memory_register;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1078,8 +1112,9 @@ static hsa_status_t hsa_memory_deregister_callback(void* ptr, size_t size) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_memory_deregister;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1109,8 +1144,9 @@ static hsa_status_t hsa_memory_allocate_callback(hsa_region_t region, size_t siz
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_memory_allocate;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1141,8 +1177,9 @@ static hsa_status_t hsa_memory_free_callback(void* ptr) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_memory_free;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1171,8 +1208,9 @@ static hsa_status_t hsa_memory_copy_callback(void* dst, const void* src, size_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_memory_copy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1203,8 +1241,9 @@ static hsa_status_t hsa_memory_assign_agent_callback(void* ptr, hsa_agent_t agen
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_memory_assign_agent;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1235,8 +1274,9 @@ static hsa_status_t hsa_signal_create_callback(hsa_signal_value_t initial_value,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1268,8 +1308,9 @@ static hsa_status_t hsa_signal_destroy_callback(hsa_signal_t signal) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1298,8 +1339,9 @@ static hsa_signal_value_t hsa_signal_load_relaxed_callback(hsa_signal_t signal) 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_load_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1328,8 +1370,9 @@ static hsa_signal_value_t hsa_signal_load_scacquire_callback(hsa_signal_t signal
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_load_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1358,8 +1401,9 @@ static void hsa_signal_store_relaxed_callback(hsa_signal_t signal, hsa_signal_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_store_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1388,8 +1432,9 @@ static void hsa_signal_store_screlease_callback(hsa_signal_t signal, hsa_signal_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_store_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1418,8 +1463,9 @@ static hsa_signal_value_t hsa_signal_wait_relaxed_callback(hsa_signal_t signal, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_wait_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1452,8 +1498,9 @@ static hsa_signal_value_t hsa_signal_wait_scacquire_callback(hsa_signal_t signal
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_wait_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1486,8 +1533,9 @@ static void hsa_signal_and_relaxed_callback(hsa_signal_t signal, hsa_signal_valu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1516,8 +1564,9 @@ static void hsa_signal_and_scacquire_callback(hsa_signal_t signal, hsa_signal_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1546,8 +1595,9 @@ static void hsa_signal_and_screlease_callback(hsa_signal_t signal, hsa_signal_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1576,8 +1626,9 @@ static void hsa_signal_and_scacq_screl_callback(hsa_signal_t signal, hsa_signal_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1606,8 +1657,9 @@ static void hsa_signal_or_relaxed_callback(hsa_signal_t signal, hsa_signal_value
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1636,8 +1688,9 @@ static void hsa_signal_or_scacquire_callback(hsa_signal_t signal, hsa_signal_val
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1666,8 +1719,9 @@ static void hsa_signal_or_screlease_callback(hsa_signal_t signal, hsa_signal_val
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1696,8 +1750,9 @@ static void hsa_signal_or_scacq_screl_callback(hsa_signal_t signal, hsa_signal_v
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1726,8 +1781,9 @@ static void hsa_signal_xor_relaxed_callback(hsa_signal_t signal, hsa_signal_valu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1756,8 +1812,9 @@ static void hsa_signal_xor_scacquire_callback(hsa_signal_t signal, hsa_signal_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1786,8 +1843,9 @@ static void hsa_signal_xor_screlease_callback(hsa_signal_t signal, hsa_signal_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1816,8 +1874,9 @@ static void hsa_signal_xor_scacq_screl_callback(hsa_signal_t signal, hsa_signal_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -1846,8 +1905,9 @@ static hsa_signal_value_t hsa_signal_exchange_relaxed_callback(hsa_signal_t sign
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1877,8 +1937,9 @@ static hsa_signal_value_t hsa_signal_exchange_scacquire_callback(hsa_signal_t si
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1908,8 +1969,9 @@ static hsa_signal_value_t hsa_signal_exchange_screlease_callback(hsa_signal_t si
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1939,8 +2001,9 @@ static hsa_signal_value_t hsa_signal_exchange_scacq_screl_callback(hsa_signal_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -1970,8 +2033,9 @@ static void hsa_signal_add_relaxed_callback(hsa_signal_t signal, hsa_signal_valu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2000,8 +2064,9 @@ static void hsa_signal_add_scacquire_callback(hsa_signal_t signal, hsa_signal_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2030,8 +2095,9 @@ static void hsa_signal_add_screlease_callback(hsa_signal_t signal, hsa_signal_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2060,8 +2126,9 @@ static void hsa_signal_add_scacq_screl_callback(hsa_signal_t signal, hsa_signal_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2090,8 +2157,9 @@ static void hsa_signal_subtract_relaxed_callback(hsa_signal_t signal, hsa_signal
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2120,8 +2188,9 @@ static void hsa_signal_subtract_scacquire_callback(hsa_signal_t signal, hsa_sign
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2150,8 +2219,9 @@ static void hsa_signal_subtract_screlease_callback(hsa_signal_t signal, hsa_sign
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2180,8 +2250,9 @@ static void hsa_signal_subtract_scacq_screl_callback(hsa_signal_t signal, hsa_si
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -2210,8 +2281,9 @@ static hsa_signal_value_t hsa_signal_cas_relaxed_callback(hsa_signal_t signal, h
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2242,8 +2314,9 @@ static hsa_signal_value_t hsa_signal_cas_scacquire_callback(hsa_signal_t signal,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2274,8 +2347,9 @@ static hsa_signal_value_t hsa_signal_cas_screlease_callback(hsa_signal_t signal,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2306,8 +2380,9 @@ static hsa_signal_value_t hsa_signal_cas_scacq_screl_callback(hsa_signal_t signa
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_scacq_screl;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_signal_value_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2338,8 +2413,9 @@ static hsa_status_t hsa_isa_from_name_callback(const char* name, hsa_isa_t* isa)
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_isa_from_name;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2369,8 +2445,9 @@ static hsa_status_t hsa_isa_get_info_callback(hsa_isa_t isa, hsa_isa_info_t attr
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2402,8 +2479,9 @@ static hsa_status_t hsa_isa_compatible_callback(hsa_isa_t code_object_isa, hsa_i
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_isa_compatible;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2434,8 +2512,9 @@ static hsa_status_t hsa_code_object_serialize_callback(hsa_code_object_t code_ob
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_serialize;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2469,8 +2548,9 @@ static hsa_status_t hsa_code_object_deserialize_callback(void* serialized_code_o
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_deserialize;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2502,8 +2582,9 @@ static hsa_status_t hsa_code_object_destroy_callback(hsa_code_object_t code_obje
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2532,8 +2613,9 @@ static hsa_status_t hsa_code_object_get_info_callback(hsa_code_object_t code_obj
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2564,8 +2646,9 @@ static hsa_status_t hsa_code_object_get_symbol_callback(hsa_code_object_t code_o
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_get_symbol;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2596,8 +2679,9 @@ static hsa_status_t hsa_code_symbol_get_info_callback(hsa_code_symbol_t code_sym
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_symbol_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2628,8 +2712,9 @@ static hsa_status_t hsa_code_object_iterate_symbols_callback(hsa_code_object_t c
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_iterate_symbols;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2660,8 +2745,9 @@ static hsa_status_t hsa_executable_create_callback(hsa_profile_t profile, hsa_ex
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2693,8 +2779,9 @@ static hsa_status_t hsa_executable_destroy_callback(hsa_executable_t executable)
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2723,8 +2810,9 @@ static hsa_status_t hsa_executable_load_code_object_callback(hsa_executable_t ex
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_code_object;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2756,8 +2844,9 @@ static hsa_status_t hsa_executable_freeze_callback(hsa_executable_t executable, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2787,8 +2876,9 @@ static hsa_status_t hsa_executable_get_info_callback(hsa_executable_t executable
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2819,8 +2909,9 @@ static hsa_status_t hsa_executable_global_variable_define_callback(hsa_executabl
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_global_variable_define;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2851,8 +2942,9 @@ static hsa_status_t hsa_executable_agent_global_variable_define_callback(hsa_exe
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_agent_global_variable_define;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2884,8 +2976,9 @@ static hsa_status_t hsa_executable_readonly_variable_define_callback(hsa_executa
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_readonly_variable_define;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2917,8 +3010,9 @@ static hsa_status_t hsa_executable_validate_callback(hsa_executable_t executable
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_validate;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2948,8 +3042,9 @@ static hsa_status_t hsa_executable_get_symbol_callback(hsa_executable_t executab
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_get_symbol;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -2983,8 +3078,9 @@ static hsa_status_t hsa_executable_symbol_get_info_callback(hsa_executable_symbo
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_symbol_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3015,8 +3111,9 @@ static hsa_status_t hsa_executable_iterate_symbols_callback(hsa_executable_t exe
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_iterate_symbols;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3047,8 +3144,9 @@ static hsa_status_t hsa_status_string_callback(hsa_status_t status, const char**
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_status_string;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3078,8 +3176,9 @@ static hsa_status_t hsa_extension_get_name_callback(uint16_t extension, const ch
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_extension_get_name;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3109,8 +3208,9 @@ static hsa_status_t hsa_system_major_extension_supported_callback(uint16_t exten
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_system_major_extension_supported;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3142,8 +3242,9 @@ static hsa_status_t hsa_system_get_major_extension_table_callback(uint16_t exten
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_system_get_major_extension_table;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3175,8 +3276,9 @@ static hsa_status_t hsa_agent_major_extension_supported_callback(uint16_t extens
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_agent_major_extension_supported;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3209,8 +3311,9 @@ static hsa_status_t hsa_cache_get_info_callback(hsa_cache_t cache, hsa_cache_inf
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_cache_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3241,8 +3344,9 @@ static hsa_status_t hsa_agent_iterate_caches_callback(hsa_agent_t agent, hsa_sta
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_agent_iterate_caches;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3273,8 +3377,9 @@ static void hsa_signal_silent_store_relaxed_callback(hsa_signal_t signal, hsa_si
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_silent_store_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -3303,8 +3408,9 @@ static void hsa_signal_silent_store_screlease_callback(hsa_signal_t signal, hsa_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_silent_store_screlease;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
     auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
@@ -3333,8 +3439,9 @@ static hsa_status_t hsa_signal_group_create_callback(uint32_t num_signals, const
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3367,8 +3474,9 @@ static hsa_status_t hsa_signal_group_destroy_callback(hsa_signal_group_t signal_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3397,8 +3505,9 @@ static hsa_status_t hsa_signal_group_wait_any_scacquire_callback(hsa_signal_grou
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_wait_any_scacquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3432,8 +3541,9 @@ static hsa_status_t hsa_signal_group_wait_any_relaxed_callback(hsa_signal_group_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_wait_any_relaxed;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3467,8 +3577,9 @@ static hsa_status_t hsa_agent_iterate_isas_callback(hsa_agent_t agent, hsa_statu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_agent_iterate_isas;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3499,8 +3610,9 @@ static hsa_status_t hsa_isa_get_info_alt_callback(hsa_isa_t isa, hsa_isa_info_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_info_alt;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3531,8 +3643,9 @@ static hsa_status_t hsa_isa_get_exception_policies_callback(hsa_isa_t isa, hsa_p
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_exception_policies;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3563,8 +3676,9 @@ static hsa_status_t hsa_isa_get_round_method_callback(hsa_isa_t isa, hsa_fp_type
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_round_method;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3596,8 +3710,9 @@ static hsa_status_t hsa_wavefront_get_info_callback(hsa_wavefront_t wavefront, h
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_wavefront_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3628,8 +3743,9 @@ static hsa_status_t hsa_isa_iterate_wavefronts_callback(hsa_isa_t isa, hsa_statu
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_isa_iterate_wavefronts;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3660,8 +3776,9 @@ static hsa_status_t hsa_code_object_get_symbol_from_name_callback(hsa_code_objec
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_get_symbol_from_name;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3693,8 +3810,9 @@ static hsa_status_t hsa_code_object_reader_create_from_file_callback(hsa_file_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_reader_create_from_file;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3724,8 +3842,9 @@ static hsa_status_t hsa_code_object_reader_create_from_memory_callback(const voi
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_reader_create_from_memory;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3756,8 +3875,9 @@ static hsa_status_t hsa_code_object_reader_destroy_callback(hsa_code_object_read
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_code_object_reader_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3786,8 +3906,9 @@ static hsa_status_t hsa_executable_create_alt_callback(hsa_profile_t profile, hs
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_create_alt;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3819,8 +3940,9 @@ static hsa_status_t hsa_executable_load_program_code_object_callback(hsa_executa
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_program_code_object;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3852,8 +3974,9 @@ static hsa_status_t hsa_executable_load_agent_code_object_callback(hsa_executabl
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3886,8 +4009,9 @@ static hsa_status_t hsa_executable_validate_alt_callback(hsa_executable_t execut
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_validate_alt;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3918,8 +4042,9 @@ static hsa_status_t hsa_executable_get_symbol_by_name_callback(hsa_executable_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_get_symbol_by_name;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3951,8 +4076,9 @@ static hsa_status_t hsa_executable_iterate_agent_symbols_callback(hsa_executable
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_iterate_agent_symbols;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -3984,8 +4110,9 @@ static hsa_status_t hsa_executable_iterate_program_symbols_callback(hsa_executab
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_executable_iterate_program_symbols;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4016,8 +4143,9 @@ static hsa_status_t hsa_amd_coherency_get_type_callback(hsa_agent_t agent, hsa_a
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_coherency_get_type;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4047,8 +4175,9 @@ static hsa_status_t hsa_amd_coherency_set_type_callback(hsa_agent_t agent, hsa_a
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_coherency_set_type;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4078,8 +4207,9 @@ static hsa_status_t hsa_amd_profiling_set_profiler_enabled_callback(hsa_queue_t*
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_set_profiler_enabled;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4109,8 +4239,9 @@ static hsa_status_t hsa_amd_profiling_async_copy_enable_callback(bool enable) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_async_copy_enable;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4139,8 +4270,9 @@ static hsa_status_t hsa_amd_profiling_get_dispatch_time_callback(hsa_agent_t age
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_get_dispatch_time;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4171,8 +4303,9 @@ static hsa_status_t hsa_amd_profiling_get_async_copy_time_callback(hsa_signal_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_get_async_copy_time;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4202,8 +4335,9 @@ static hsa_status_t hsa_amd_profiling_convert_tick_to_system_domain_callback(hsa
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_convert_tick_to_system_domain;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4234,8 +4368,9 @@ static hsa_status_t hsa_amd_signal_async_handler_callback(hsa_signal_t signal, h
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_async_handler;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4268,8 +4403,9 @@ static hsa_status_t hsa_amd_async_function_callback(void (* callback)(void* arg)
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_async_function;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4299,8 +4435,9 @@ static uint32_t hsa_amd_signal_wait_any_callback(uint32_t signal_count, hsa_sign
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_wait_any;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     uint32_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4335,8 +4472,9 @@ static hsa_status_t hsa_amd_queue_cu_set_mask_callback(const hsa_queue_t* queue,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_cu_set_mask;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4367,8 +4505,9 @@ static hsa_status_t hsa_amd_memory_pool_get_info_callback(hsa_amd_memory_pool_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4399,8 +4538,9 @@ static hsa_status_t hsa_amd_agent_iterate_memory_pools_callback(hsa_agent_t agen
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_agent_iterate_memory_pools;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4431,8 +4571,9 @@ static hsa_status_t hsa_amd_memory_pool_allocate_callback(hsa_amd_memory_pool_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_allocate;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4464,8 +4605,9 @@ static hsa_status_t hsa_amd_memory_pool_free_callback(void* ptr) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_free;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4494,8 +4636,9 @@ static hsa_status_t hsa_amd_memory_async_copy_callback(void* dst, hsa_agent_t ds
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_async_copy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4531,8 +4674,9 @@ static hsa_status_t hsa_amd_memory_async_copy_on_engine_callback(void* dst, hsa_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_async_copy_on_engine;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4570,8 +4714,9 @@ static hsa_status_t hsa_amd_memory_copy_engine_status_callback(hsa_agent_t dst_a
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_copy_engine_status;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4602,8 +4747,9 @@ static hsa_status_t hsa_amd_agent_memory_pool_get_info_callback(hsa_agent_t agen
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_agent_memory_pool_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4635,8 +4781,9 @@ static hsa_status_t hsa_amd_agents_allow_access_callback(uint32_t num_agents, co
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_agents_allow_access;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4668,8 +4815,9 @@ static hsa_status_t hsa_amd_memory_pool_can_migrate_callback(hsa_amd_memory_pool
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_can_migrate;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4700,8 +4848,9 @@ static hsa_status_t hsa_amd_memory_migrate_callback(const void* ptr, hsa_amd_mem
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_migrate;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4732,8 +4881,9 @@ static hsa_status_t hsa_amd_memory_lock_callback(void* host_ptr, size_t size, hs
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_lock;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4766,8 +4916,9 @@ static hsa_status_t hsa_amd_memory_unlock_callback(void* host_ptr) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_unlock;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4796,8 +4947,9 @@ static hsa_status_t hsa_amd_memory_fill_callback(void* ptr, uint32_t value, size
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_fill;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4828,8 +4980,9 @@ static hsa_status_t hsa_amd_interop_map_buffer_callback(uint32_t num_agents, hsa
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_interop_map_buffer;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4865,8 +5018,9 @@ static hsa_status_t hsa_amd_interop_unmap_buffer_callback(void* ptr) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_interop_unmap_buffer;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4895,8 +5049,9 @@ static hsa_status_t hsa_amd_image_create_callback(hsa_agent_t agent, const hsa_e
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_image_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4930,8 +5085,9 @@ static hsa_status_t hsa_amd_pointer_info_callback(const void* ptr, hsa_amd_point
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_pointer_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4964,8 +5120,9 @@ static hsa_status_t hsa_amd_pointer_info_set_userdata_callback(const void* ptr, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_pointer_info_set_userdata;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -4995,8 +5152,9 @@ static hsa_status_t hsa_amd_ipc_memory_create_callback(void* ptr, size_t len, hs
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_memory_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5027,8 +5185,9 @@ static hsa_status_t hsa_amd_ipc_memory_attach_callback(const hsa_amd_ipc_memory_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_memory_attach;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5061,8 +5220,9 @@ static hsa_status_t hsa_amd_ipc_memory_detach_callback(void* mapped_ptr) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_memory_detach;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5091,8 +5251,9 @@ static hsa_status_t hsa_amd_signal_create_callback(hsa_signal_value_t initial_va
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5125,8 +5286,9 @@ static hsa_status_t hsa_amd_ipc_signal_create_callback(hsa_signal_t signal, hsa_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_signal_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5156,8 +5318,9 @@ static hsa_status_t hsa_amd_ipc_signal_attach_callback(const hsa_amd_ipc_signal_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_signal_attach;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5187,8 +5350,9 @@ static hsa_status_t hsa_amd_register_system_event_handler_callback(hsa_amd_syste
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_register_system_event_handler;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5218,8 +5382,9 @@ static hsa_status_t hsa_amd_queue_intercept_create_callback(hsa_agent_t agent_ha
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_intercept_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5255,8 +5420,9 @@ static hsa_status_t hsa_amd_queue_intercept_register_callback(hsa_queue_t* queue
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_intercept_register;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5287,8 +5453,9 @@ static hsa_status_t hsa_amd_queue_set_priority_callback(hsa_queue_t* queue, hsa_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_set_priority;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5318,8 +5485,9 @@ static hsa_status_t hsa_amd_memory_async_copy_rect_callback(const hsa_pitched_pt
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_async_copy_rect;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5357,8 +5525,9 @@ static hsa_status_t hsa_amd_runtime_queue_create_register_callback(hsa_amd_runti
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_runtime_queue_create_register;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5388,8 +5557,9 @@ static hsa_status_t hsa_amd_memory_lock_to_pool_callback(void* host_ptr, size_t 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_lock_to_pool;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5424,8 +5594,9 @@ static hsa_status_t hsa_amd_register_deallocation_callback_callback(void* ptr, h
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_register_deallocation_callback;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5456,8 +5627,9 @@ static hsa_status_t hsa_amd_deregister_deallocation_callback_callback(void* ptr,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_deregister_deallocation_callback;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5487,8 +5659,9 @@ static hsa_status_t hsa_amd_signal_value_pointer_callback(hsa_signal_t signal, v
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_value_pointer;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5518,8 +5691,9 @@ static hsa_status_t hsa_amd_svm_attributes_set_callback(void* ptr, size_t size, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_svm_attributes_set;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5551,8 +5725,9 @@ static hsa_status_t hsa_amd_svm_attributes_get_callback(void* ptr, size_t size, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_svm_attributes_get;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5584,8 +5759,9 @@ static hsa_status_t hsa_amd_svm_prefetch_async_callback(void* ptr, size_t size, 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_svm_prefetch_async;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5619,8 +5795,9 @@ static hsa_status_t hsa_amd_spm_acquire_callback(hsa_agent_t preferred_agent) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_spm_acquire;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5649,8 +5826,9 @@ static hsa_status_t hsa_amd_spm_release_callback(hsa_agent_t preferred_agent) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_spm_release;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5679,8 +5857,9 @@ static hsa_status_t hsa_amd_spm_set_dest_buffer_callback(hsa_agent_t preferred_a
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_spm_set_dest_buffer;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5714,8 +5893,9 @@ static hsa_status_t hsa_amd_queue_cu_get_mask_callback(const hsa_queue_t* queue,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_cu_get_mask;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5746,8 +5926,9 @@ static hsa_status_t hsa_amd_portable_export_dmabuf_callback(const void* ptr, siz
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_portable_export_dmabuf;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5779,8 +5960,9 @@ static hsa_status_t hsa_amd_portable_close_dmabuf_callback(int dmabuf) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_portable_close_dmabuf;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5809,8 +5991,9 @@ static hsa_status_t hsa_amd_vmem_address_reserve_callback(void** va, size_t size
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_address_reserve;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5842,8 +6025,9 @@ static hsa_status_t hsa_amd_vmem_address_free_callback(void* va, size_t size) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_address_free;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5873,8 +6057,9 @@ static hsa_status_t hsa_amd_vmem_handle_create_callback(hsa_amd_memory_pool_t po
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_handle_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5907,8 +6092,9 @@ static hsa_status_t hsa_amd_vmem_handle_release_callback(hsa_amd_vmem_alloc_hand
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_handle_release;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5937,8 +6123,9 @@ static hsa_status_t hsa_amd_vmem_map_callback(void* va, size_t size, size_t in_o
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_map;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -5971,8 +6158,9 @@ static hsa_status_t hsa_amd_vmem_unmap_callback(void* va, size_t size) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_unmap;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6002,8 +6190,9 @@ static hsa_status_t hsa_amd_vmem_set_access_callback(void* va, size_t size, cons
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_set_access;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6035,8 +6224,9 @@ static hsa_status_t hsa_amd_vmem_get_access_callback(void* va, hsa_access_permis
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_get_access;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6067,8 +6257,9 @@ static hsa_status_t hsa_amd_vmem_export_shareable_handle_callback(int* dmabuf_fd
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_export_shareable_handle;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6099,8 +6290,9 @@ static hsa_status_t hsa_amd_vmem_import_shareable_handle_callback(int dmabuf_fd,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_import_shareable_handle;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6130,8 +6322,9 @@ static hsa_status_t hsa_amd_vmem_retain_alloc_handle_callback(hsa_amd_vmem_alloc
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_retain_alloc_handle;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6161,8 +6354,9 @@ static hsa_status_t hsa_amd_vmem_get_alloc_properties_from_handle_callback(hsa_a
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_get_alloc_properties_from_handle;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6193,8 +6387,9 @@ static hsa_status_t hsa_ext_image_get_capability_callback(hsa_agent_t agent, hsa
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_get_capability;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6226,8 +6421,9 @@ static hsa_status_t hsa_ext_image_data_get_info_callback(hsa_agent_t agent, cons
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_data_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6259,8 +6455,9 @@ static hsa_status_t hsa_ext_image_create_callback(hsa_agent_t agent, const hsa_e
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6293,8 +6490,9 @@ static hsa_status_t hsa_ext_image_import_callback(hsa_agent_t agent, const void*
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_import;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6328,8 +6526,9 @@ static hsa_status_t hsa_ext_image_export_callback(hsa_agent_t agent, hsa_ext_ima
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_export;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6363,8 +6562,9 @@ static hsa_status_t hsa_ext_image_copy_callback(hsa_agent_t agent, hsa_ext_image
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_copy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6398,8 +6598,9 @@ static hsa_status_t hsa_ext_image_clear_callback(hsa_agent_t agent, hsa_ext_imag
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_clear;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6431,8 +6632,9 @@ static hsa_status_t hsa_ext_image_destroy_callback(hsa_agent_t agent, hsa_ext_im
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6462,8 +6664,9 @@ static hsa_status_t hsa_ext_sampler_create_callback(hsa_agent_t agent, const hsa
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_sampler_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6494,8 +6697,9 @@ static hsa_status_t hsa_ext_sampler_destroy_callback(hsa_agent_t agent, hsa_ext_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_sampler_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6525,8 +6729,9 @@ static hsa_status_t hsa_ext_image_get_capability_with_layout_callback(hsa_agent_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_get_capability_with_layout;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6559,8 +6764,9 @@ static hsa_status_t hsa_ext_image_data_get_info_with_layout_callback(hsa_agent_t
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_data_get_info_with_layout;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6595,8 +6801,9 @@ static hsa_status_t hsa_ext_image_create_with_layout_callback(hsa_agent_t agent,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_create_with_layout;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6632,8 +6839,9 @@ static hsa_status_t hsa_ext_program_create_callback(hsa_machine_model_t machine_
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_create;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6666,8 +6874,9 @@ static hsa_status_t hsa_ext_program_destroy_callback(hsa_ext_program_t program) 
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_destroy;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6696,8 +6905,9 @@ static hsa_status_t hsa_ext_program_add_module_callback(hsa_ext_program_t progra
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_add_module;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6727,8 +6937,9 @@ static hsa_status_t hsa_ext_program_iterate_modules_callback(hsa_ext_program_t p
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_iterate_modules;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6759,8 +6970,9 @@ static hsa_status_t hsa_ext_program_get_info_callback(hsa_ext_program_t program,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_get_info;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();
@@ -6791,8 +7003,9 @@ static hsa_status_t hsa_ext_program_finalize_callback(hsa_ext_program_t program,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_finalize;
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {
     hsa_status_t Out{};
     auto& HsaUserCallback = HsaInterceptor.getUserCallback();

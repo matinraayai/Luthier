@@ -1,14 +1,13 @@
-#include <assert.h>
-#include <stdio.h>
 #include <algorithm>
-#include <stdlib.h>
-#include<iostream>
-#include "hip/hip_runtime.h"
+#include <iostream>
+#include <hip/hip_runtime.h>
+
 #ifdef NDEBUG
 #define HIP_ASSERT(x) x
 #else
 #define HIP_ASSERT(x) (assert((x)==hipSuccess))
 #endif
+
 #define WIDTH     1024
 #define HEIGHT    1024
 #define NUM       (WIDTH*HEIGHT)
@@ -16,15 +15,18 @@
 #define THREADS_PER_BLOCK_Y  16
 #define THREADS_PER_BLOCK_Z  1
 
-_global_ void vectoradd_float(float* _restrict_ a, const float* _restrict_ b, const float* _restrict_ c, int width, int height)
+__global__ void
+vectoradd_float(float* __restrict__ a, const float* __restrict__ b, const float* __restrict__ c, int width, int height)
 {
     int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
     int y = hipBlockDim_y * hipBlockIdx_y + hipThreadIdx_y;
+
     int i = y * width + x;
     if ( i < (width * height)) {
         a[i] = b[i] + c[i];
     }
 }
+
 #if 0
 _kernel_ void vectoradd_float(float* a, const float* b, const float* c, int width, int height) {
   int x = blockDimX * blockIdx.x + threadIdx.x;

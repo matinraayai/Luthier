@@ -226,6 +226,8 @@ enum ApiEvtID: unsigned int {{
 #include "hsa_intercept.hpp"
 #include "luthier/types.h"
 
+//bool luthier::hsa::Interceptor::EnableTempCallback = true;
+
 void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                  uint64_t UserPktIndex, void *Data, 
                                  hsa_amd_queue_intercept_packet_writer Writer) {{
@@ -302,8 +304,9 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_{hsa_function_name};
   bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId); 
+  bool IsCallbackTempEnabled = HsaInterceptor.isCallbackTempEnabled();
+  bool ShouldCallback = (IsUserCallbackEnabled || IsInternalCallbackEnabled) && IsCallbackTempEnabled;
   if (ShouldCallback) {{
 """)
                 if return_type != "void":

@@ -94,7 +94,7 @@ target_link_libraries(luthier hip::host stdc++fs hsa-runtime64::hsa-runtime64
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-    set(SUB_DIRS examples/intercept examples/kernel_instrument examples/iterate_all_executable_symbols)
+    set(SUB_DIRS examples/intercept examples/kernel_instrument)
     foreach (DIR ${SUB_DIRS})
         add_subdirectory(${DIR})
     endforeach (DIR)

@@ -17,6 +17,7 @@ void hsa::atHsaApiTableUnload() {
   std::cout << "HSA Intercept Tool is terminating!" << std::endl;
 }
 
+// Below should not print if callbacks are disabled
 void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
                    luthier::hsa::ApiEvtID ApiID) {
   // if (api_id == HSA_API_ID_hsa_signal_load_relaxed)
