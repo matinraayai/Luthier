@@ -92,6 +92,14 @@ void disableAllHsaCallbacks() {
   hsa::Interceptor::instance().disableAllUserCallbacks();
 }
 
+DisableInterceptScope::DisableInterceptScope() {
+  hsa::Interceptor::instance().tempDisableCallback();
+}
+
+DisableInterceptScope::~DisableInterceptScope() {
+  hsa::Interceptor::instance().tempEnableCallback();
+}
+
 } // namespace hsa
 
 llvm::Expected<const std::vector<Instr> &>
@@ -132,16 +140,6 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
 
   Packet.kernel_object = reinterpret_cast<uint64_t>(*InstrumentedKD);
   return llvm::Error::success();
-}
-
-DisableInterceptScope::DisableInterceptScope() {
-  luthier::HsaInterceptor::instance().luthier_temp_disable_hsa_callback();
-  std::cout << "Callbacks have been disabled." << std::endl;
-}
-
-DisableInterceptScope::~DisableInterceptScope() {
-  luthier::HsaInterceptor::instance().luthier_temp_enable_hsa_callback();
-  std::cout << "Callbacks have been enabled." << std::endl;
 }
 
 } // namespace luthier

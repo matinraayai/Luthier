@@ -47,6 +47,12 @@ void enableAllHsaCallbacks();
 
 void disableAllHsaCallbacks();
 
+class DisableInterceptScope {
+public:
+  DisableInterceptScope();
+  ~DisableInterceptScope();
+};
+
 } // namespace hsa
 
 namespace hip {
