@@ -35,10 +35,41 @@ public:
   virtual void anchor();
 
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const override {
+    AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
     AU.setPreservesAll();
   }
 
   const LiftedSymbolInfo &getLSI() { return LSI; }
+};
+
+class InstrumentationSymbolsInfoWrapperPass : public llvm::ImmutablePass {
+private:
+  llvm::DenseMap<const void *, llvm::MachineFunction *> WrapperHandleToMFMap{};
+  llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *>
+      SymbolToMFMap{};
+  llvm::DenseMap<llvm::MachineFunction *, LiftedSymbolInfo> MFToLSIMap{};
+
+public:
+  static char ID;
+
+  InstrumentationSymbolsInfoWrapperPass() : llvm::ImmutablePass(ID){};
+
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override {
+    AU.setPreservesAll();
+  }
+
+  void addInstrumentationFunctionInfo(const void *Wrapper,
+                                      const llvm::MachineFunction &MF,
+                                      LiftedSymbolInfo LSI);
+
+  llvm::MachineFunction &getInstrumentationMF(const void *Wrapper);
+
+  llvm::MachineFunction &
+  getInstrumentationMF(const hsa::ExecutableSymbol &Symbol);
+
+  const LiftedSymbolInfo &getLiftedSymbolInfo(llvm::MachineFunction *MF);
+
+  Instr &getHsaInstrOfMachineInstr(llvm::MachineInstr *MI);
 };
 
 class CodeGenerator {
@@ -64,12 +95,21 @@ public:
   llvm::Error
   instrument(std::unique_ptr<llvm::Module> Module,
              std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-             const LiftedSymbolInfo &LSO,
-             std::unique_ptr<luthier::InstrumentationPass> IPass);
+             const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask);
 
 private:
   CodeGenerator() = default;
   ~CodeGenerator() = default;
+
+  llvm::Error applyInstrumentation(llvm::Module &Module,
+                                   llvm::MachineModuleInfo &MMI,
+                                   const LiftedSymbolInfo &LSO,
+                                   const InstrumentationTask &ITask);
+
+  llvm::Error
+  insertFunctionCalls(llvm::Module &Module, llvm::MachineModuleInfo &MMI,
+                      const LiftedSymbolInfo &LSI,
+                      const InstrumentationTask::insert_call_tasks &Tasks);
 };
 } // namespace luthier
 

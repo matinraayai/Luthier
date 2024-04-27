@@ -20,8 +20,10 @@ hsa_executable_t Instr::getExecutable() const {
 
 hsa_loaded_code_object_t Instr::getLoadedCodeObject() const { return LCO; }
 
-hsa_agent_t Instr::getAgent() const {
-  return hsa::ExecutableSymbol::fromHandle(Symbol).getAgent()->asHsaType();
+llvm::Expected<hsa_agent_t> Instr::getAgent() const {
+  auto Agent = hsa::LoadedCodeObject(LCO).getAgent();
+  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
+  return Agent->asHsaType();
 }
 
 hsa_executable_symbol_t Instr::getExecutableSymbol() const { return Symbol; }

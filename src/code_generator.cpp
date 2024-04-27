@@ -10,6 +10,8 @@
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/PassRegistry.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include "SIInstrInfo.h"
 #include "code_object_manager.hpp"
@@ -69,11 +71,20 @@ namespace luthier {
 
 char LiftedSymbolInfoWrapperPass::ID = 0;
 
+static llvm::RegisterPass<LiftedSymbolInfoWrapperPass>
+    X("", "Lifted Symbol Info Pass");
+
 LiftedSymbolInfoWrapperPass::LiftedSymbolInfoWrapperPass(
     const LiftedSymbolInfo &LSI)
     : llvm::ImmutablePass(ID), LSI(LSI) {}
 
 void LiftedSymbolInfoWrapperPass::anchor() {}
+
+char InstrumentationSymbolsInfoWrapperPass::ID = 0;
+
+void InstrumentationSymbolsInfoWrapperPass::addInstrumentationFunctionInfo(
+    const void *Wrapper, const llvm::MachineFunction &MF,
+    LiftedSymbolInfo LSI) {}
 
 llvm::Error CodeGenerator::compileRelocatableToExecutable(
     const llvm::ArrayRef<uint8_t> &Code, const hsa::ISA &ISA,
@@ -108,8 +119,10 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_action_info_set_isa_name(DataAction, IsaName->c_str()))));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_action_info_set_option_list(DataAction, nullptr, 0))));
+//  std::vector<const char *> MyOptions{"-Wl", "--unresolved-symbols=ignore-all", "-shared", "--undefined-glob=1"};
+  const char * MyOptions[]{"-shared", "-Wl,--unresolved-symbols=ignore-all"};
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK((
+      amd_comgr_action_info_set_option_list(DataAction, MyOptions, 2))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
                            DataAction, DataSetIn, DataSetOut))));
@@ -139,8 +152,7 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 llvm::Error CodeGenerator::instrument(
     std::unique_ptr<llvm::Module> Module,
     std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-    const LiftedSymbolInfo &LSO,
-    std::unique_ptr<luthier::InstrumentationPass> IPass) {
+    const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask) {
   LUTHIER_LOG_FUNCTION_CALL_START
   auto Symbol = hsa::ExecutableSymbol::fromHandle(LSO.getSymbol());
   auto Agent = Symbol.getAgent();
@@ -152,7 +164,7 @@ llvm::Error CodeGenerator::instrument(
   auto TargetInfo = ContextManager.getTargetInfo(*Isa);
   LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
-  auto& TM = *TargetInfo->getTargetMachine();
+  auto &TM = *TargetInfo->getTargetMachine();
 
   llvm::SmallVector<char> Reloc;
   llvm::SmallVector<uint8_t> Executable;
@@ -317,6 +329,8 @@ llvm::Error CodeGenerator::instrument(
   //  MMIWP->getMMI().get
   llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
 
+  LUTHIER_RETURN_ON_ERROR(
+      applyInstrumentation(*Module, MMIWP->getMMI(), LSO, ITask));
   //  auto TM = targetInfo->getTargetMachine();
 
   llvm::legacy::PassManager PM;
@@ -331,8 +345,6 @@ llvm::Error CodeGenerator::instrument(
   //  TPC->addISelPasses();
   //  TPC->addPrintPass("My stuff:");
   PM.add(MMIWP.release());
-  PM.add(new luthier::LiftedSymbolInfoWrapperPass(LSO));
-  PM.add(IPass.release());
   TPC->addISelPasses();
   PM.add(llvm::createMachineFunctionPrinterPass(llvm::outs(),
                                                 "After ISEL Passes"));
@@ -380,13 +392,15 @@ llvm::Error CodeGenerator::instrument(
 
   // AsmPrinter is responsible for generating the assembly into AsmBuffer.
   if (TM.addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::AssemblyFile,
-                        MCContext))
+                       MCContext))
     llvm::outs() << "Failed to add pass manager\n";
   //            return make_error<llvm::Failure>("Cannot add AsmPrinter
   //            passes");
 
   PM.run(*Module); // Run all the passes
-
+  std::error_code code;
+  llvm::raw_fd_ostream("my_reloc.hsaco", code) << Reloc;
+//  llvm::outs()
   llvm::outs() << Reloc << "\n";
 
   LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
@@ -398,8 +412,8 @@ llvm::Error CodeGenerator::instrument(
   llvm::outs() << llvm::toStringRef(Executable) << "\n";
 
   //  llvm::outs() << elfFile->get()->getRelSection();
-  LUTHIER_RETURN_ON_ERROR(CodeObjectManager.loadInstrumentedKernel(
-      Executable, Symbol));
+  LUTHIER_RETURN_ON_ERROR(
+      CodeObjectManager.loadInstrumentedKernel(Executable, Symbol));
 
   //  auto instFunctionInstructions =
   //      CodeLifter::instance().disassemble(*InstrumentationFunc);
@@ -414,6 +428,115 @@ llvm::Error CodeGenerator::instrument(
   //        *TargetInfo->getMCSubTargetInfo(), llvm::outs());
   //    llvm::outs() << "\n";
   //  }
+  return llvm::Error::success();
+}
+
+llvm::Error CodeGenerator::applyInstrumentation(
+    llvm::Module &Module, llvm::MachineModuleInfo &MMI,
+    const LiftedSymbolInfo &LSO, const InstrumentationTask &ITask) {
+  return insertFunctionCalls(Module, MMI, LSO, ITask.getInsertCallTasks());
+}
+
+llvm::Error CodeGenerator::insertFunctionCalls(
+    llvm::Module &Module, llvm::MachineModuleInfo &MMI,
+    const LiftedSymbolInfo &LSI,
+    const InstrumentationTask::insert_call_tasks &Tasks) {
+  for (const auto &[MI, V] : Tasks) {
+    auto &[DevFunc, IPoint] = V;
+    const auto &HsaInst = LSI.getHSAInstrOfMachineInstr(*MI);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HsaInst.has_value()));
+    auto Agent = (**HsaInst).getAgent();
+    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
+    auto InstrumentationFunction =
+        luthier::CodeObjectManager::instance().getInstrumentationFunction(
+            DevFunc, hsa::GpuAgent(*Agent));
+    LUTHIER_RETURN_ON_ERROR(InstrumentationFunction.takeError());
+    auto IFLSI = luthier::CodeLifter::instance().liftSymbolAndAddToModule(
+        *InstrumentationFunction, Module, MMI);
+    LUTHIER_RETURN_ON_ERROR(IFLSI.takeError());
+
+    auto MCInstInfo = MMI.getTarget().getMCInstrInfo();
+    MI->getParent()->getParent()->getProperties().reset(
+        llvm::MachineFunctionProperties::Property::NoVRegs);
+    llvm::MachineInstrBuilder Builder;
+    auto MBB = MI->getParent();
+    auto PCReg = MBB->getParent()->getRegInfo().createVirtualRegister(
+        &llvm::AMDGPU::SReg_64RegClass);
+    auto InstPoint = IPoint == INSTR_POINT_BEFORE ? MI : MI->getNextNode();
+    Builder = llvm::BuildMI(*MBB, InstPoint, llvm::DebugLoc(),
+                            MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
+                  .addImm(0)
+                  .addImm(0);
+    auto &CalleeMF = IFLSI->getMFofSymbol();
+    auto &CalleeFunction = CalleeMF.getFunction();
+    MBB->getParent()->dump();
+    llvm::outs() << " ======== \n";
+    Builder =
+        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+                      MCInstInfo->get(llvm::AMDGPU::SI_PC_ADD_REL_OFFSET))
+            .addDef(PCReg)
+            .addGlobalAddress(&CalleeFunction, 0,
+                              llvm::SIInstrInfo::MO_REL32_LO)
+            .addGlobalAddress(&CalleeFunction, 0,
+                              llvm::SIInstrInfo::MO_REL32_HI);
+    MBB->getParent()->dump();
+    llvm::outs() << " ======== \n";
+    auto SaveReg = MBB->getParent()->getRegInfo().createVirtualRegister(
+        &llvm::AMDGPU::SGPR_128RegClass);
+    Builder =
+        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+                      MCInstInfo->get(llvm::AMDGPU::COPY))
+            .addDef(SaveReg)
+            .addReg(llvm::AMDGPU::PRIVATE_RSRC_REG);
+    MBB->getParent()->dump();
+    llvm::outs() << " ======== \n";
+    Builder =
+        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+                      MCInstInfo->get(llvm::AMDGPU::COPY))
+            .addDef(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3)
+            .addReg(SaveReg);
+    MBB->getParent()->dump();
+    llvm::outs() << " ======== \n";
+    auto TRI = CalleeMF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
+    auto RegMask =
+        TRI->getCallPreservedMask(CalleeMF, CalleeFunction.getCallingConv());
+
+    Builder =
+        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+                      MCInstInfo->get(llvm::AMDGPU::SI_CALL))
+            .addReg(llvm::AMDGPU::SGPR30_SGPR31, llvm::RegState::Define)
+            .addReg(PCReg, llvm::RegState::Kill)
+            .addGlobalAddress(&CalleeFunction)
+            .add(llvm::MachineOperand::CreateReg(
+                llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, false, true))
+            .addRegMask(RegMask);
+
+    MBB->getParent()->dump();
+    llvm::outs() << " ======== \n";
+    Builder =
+        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+                      MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
+            .addImm(0)
+            .addImm(0);
+    MBB->getParent()->dump();
+    llvm::outs() << " ======== \n";
+    //                                    .addDef(llvm::AMDGPU::SGPR4_SGPR5,
+    //                                    llvm::RegState::Define);
+    //      MIB.addGlobalAddress(InstLLVMFunction, 0,
+    //      llvm::SIInstrInfo::MO_REL32); MIB.addGlobalAddress(InstLLVMFunction,
+    //      0, llvm::SIInstrInfo::MO_REL32 + 1);
+    //
+    //      Builder = BuildMI(MBB, I, llvm::DebugLoc(),
+    //                        MCInstInfo->get(llvm::AMDGPU::SI_CALL_ISEL))
+    //                    .addReg(llvm::AMDGPU::SGPR4_SGPR5,
+    //                            llvm::RegState::Kill).addGlobalAddress(InstLLVMFunction);
+    ////      Builder; // =
+    //      BuildMI(MBB, I, llvm::DebugLoc(),
+    //              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
+    //          .addImm(0)
+    //          .addImm(0);
+  }
+
   return llvm::Error::success();
 }
 

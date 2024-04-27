@@ -12,7 +12,7 @@
 
 namespace luthier::hsa {
 
-llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
+std::unordered_map<decltype(hsa_executable_symbol_t::handle),
                hsa::ExecutableSymbol::IndirectFunctionInfo>
     hsa::ExecutableSymbol::IndirectFunctionHandleCache{};
 
@@ -122,11 +122,15 @@ ExecutableSymbol::fromKernelDescriptor(const KernelDescriptor *KD) {
 }
 
 llvm::Expected<GpuAgent> ExecutableSymbol::getAgent() const {
-  hsa_agent_t Agent;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_symbol_get_info_fn(
-          asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_AGENT, &Agent)));
-  return luthier::hsa::GpuAgent(Agent);
+  if (IFO.has_value()) {
+    return hsa::LoadedCodeObject(IFO->LCO).getAgent();
+  } else {
+    hsa_agent_t Agent;
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+        getApiTable().core.hsa_executable_symbol_get_info_fn(
+            asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_AGENT, &Agent)));
+    return hsa::GpuAgent(Agent);
+  }
 }
 
 llvm::Expected<Executable> ExecutableSymbol::getExecutable() const {
@@ -151,27 +155,31 @@ llvm::Expected<Executable> ExecutableSymbol::getExecutable() const {
 
 llvm::Expected<std::optional<LoadedCodeObject>>
 ExecutableSymbol::getLoadedCodeObject() const {
-  auto Executable = getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Executable.takeError());
+  if (IFO.has_value())
+    return LoadedCodeObject(IFO->LCO);
+  else {
+    auto Executable = getExecutable();
+    LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
-  auto LoadedCodeObjects = Executable->getLoadedCodeObjects();
-  LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
-  auto Name = getName();
-  LUTHIER_RETURN_ON_ERROR(Name.takeError());
-  for (const auto &LCO : *LoadedCodeObjects) {
-    auto StorageMemory = LCO.getStorageMemory();
-    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+    auto LoadedCodeObjects = Executable->getLoadedCodeObjects();
+    LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
+    auto Name = getName();
+    LUTHIER_RETURN_ON_ERROR(Name.takeError());
+    for (const auto &LCO : *LoadedCodeObjects) {
+      auto StorageMemory = LCO.getStorageMemory();
+      LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
-    auto HostElf = getAMDGCNObjectFile(*StorageMemory);
-    LUTHIER_RETURN_ON_ERROR(HostElf.takeError());
+      auto HostElf = getAMDGCNObjectFile(*StorageMemory);
+      LUTHIER_RETURN_ON_ERROR(HostElf.takeError());
 
-    auto ElfSymbol = getSymbolByName(**HostElf, *Name);
-    LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
+      auto ElfSymbol = getSymbolByName(**HostElf, *Name);
+      LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
 
-    if (ElfSymbol->has_value())
-      return LCO;
+      if (ElfSymbol->has_value())
+        return LCO;
+    }
+    return std::nullopt;
   }
-  return std::nullopt;
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>

@@ -218,7 +218,9 @@ private:
 
   struct LCORelocationInfo {
     hsa::ExecutableSymbol Symbol; // < The Symbol referenced by the relocation
-    llvm::object::ELFRelocationRef RelocRef; // < Relocation Info
+    int64_t Addend;
+    uint64_t Type;
+    //llvm::object::ELFRelocationRef RelocRef; // < Relocation Info
   };
 
   /**

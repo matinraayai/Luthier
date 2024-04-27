@@ -32,6 +32,10 @@ void internalApiCallback(ApiArgs &Args, ApiReturn *Out, ApiEvtPhase Phase,
       // since no device function is present to strip from it
       if (llvm::StringRef(LastRFuncArgs.deviceFunction)
               .find(luthier::DeviceFunctionWrap) != llvm::StringRef::npos) {
+        llvm::outs() << "Register function: " << LastRFuncArgs.hostFunction
+                     << "\n";
+        llvm::outs() << "Register function: " << LastRFuncArgs.deviceFunction
+                     << "\n";
         COM.registerInstrumentationFunctionWrapper(
             LastRFuncArgs.hostFunction, LastRFuncArgs.deviceFunction);
       }
@@ -65,6 +69,14 @@ namespace hsa {
 void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                          hsa::ApiEvtID ApiId, bool *SkipFunction) {
   LUTHIER_LOG_FUNCTION_CALL_START
+  if (Phase == API_EVT_PHASE_EXIT &&
+      ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
+    if (auto Err = CodeObjectManager::instance()
+                       .checkIfLuthierToolExecutableAndRegister(hsa::Executable(
+                           CBData->hsa_executable_freeze.executable))) {
+      llvm::report_fatal_error("Tool executable check failed");
+    }
+  }
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
@@ -112,9 +124,9 @@ llvm::Error
 instrument(std::unique_ptr<llvm::Module> Module,
            std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
            const LiftedSymbolInfo &LSO,
-           std::unique_ptr<luthier::InstrumentationPass> IPass) {
+           luthier::InstrumentationTask& ITask) {
   return CodeGenerator::instance().instrument(
-      std::move(Module), std::move(MMIWP), LSO, std::move(IPass));
+      std::move(Module), std::move(MMIWP), LSO, ITask);
 }
 
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
@@ -153,6 +165,8 @@ OnLoad(HsaApiTable *table, uint64_t runtime_version, uint64_t failed_tool_count,
   auto &hsaInterceptor = luthier::hsa::Interceptor::instance();
   hsaInterceptor.setInternalCallback(luthier::hsa::internalApiCallback);
   hsaInterceptor.setUserCallback(luthier::hsa::atHsaEvt);
+  hsaInterceptor.enableInternalCallback(
+      luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze);
   return res;
   LUTHIER_LOG_FUNCTION_CALL_END
 }

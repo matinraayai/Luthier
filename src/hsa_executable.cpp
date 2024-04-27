@@ -124,44 +124,6 @@ Executable::getProgramSymbols(const GpuAgent &Agent) const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_iterate_program_symbols_fn(
           asHsaType(), Iterator, &Out)));
-
-  auto LoadedCodeObjects = getLoadedCodeObjects();
-  LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
-
-  for (const auto &LCO : *LoadedCodeObjects) {
-    auto LCOAgent = LCO.getAgent();
-    LUTHIER_RETURN_ON_ERROR(LCOAgent.takeError());
-    if (*LCOAgent == Agent) {
-      auto StorageMemory = LCO.getStorageMemory();
-      LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
-
-      auto LoadedMemory = LCO.getLoadedMemory();
-      LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
-
-      auto HostElf = getAMDGCNObjectFile(*StorageMemory);
-      LUTHIER_RETURN_ON_ERROR(HostElf.takeError());
-
-      for (llvm::object::ELFSymbolRef ElfSymbol : HostElf.get()->symbols()) {
-        auto SymbolType = ElfSymbol.getELFType();
-        auto Binding = ElfSymbol.getBinding();
-        // Indirect functions have a local binding
-        if (SymbolType == llvm::ELF::STT_FUNC &&
-            Binding == llvm::ELF::STB_LOCAL) {
-          auto SymbolName = ElfSymbol.getName();
-          LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
-          auto LoadedAddress =
-              getSymbolLMA(HostElf.get()->getELFFile(), ElfSymbol);
-          LUTHIER_RETURN_ON_ERROR(LoadedAddress.takeError());
-          Out.emplace_back(
-              std::string(*SymbolName),
-              arrayRefFromStringRef(
-                  toStringRef(*LoadedMemory)
-                      .substr(*LoadedAddress, ElfSymbol.getSize())),
-              LCO);
-        }
-      }
-    }
-  }
   return Out;
 }
 
@@ -172,7 +134,7 @@ Executable::getAgentSymbolByName(const luthier::hsa::GpuAgent &Agent,
   hsa_agent_t HsaAgent = Agent.asHsaType();
 
   auto Status = getApiTable().core.hsa_executable_get_symbol_by_name_fn(
-      this->asHsaType(), Name.data(), &HsaAgent, &Symbol);
+      this->asHsaType(), Name.str().c_str(), &HsaAgent, &Symbol);
   if (Status == HSA_STATUS_SUCCESS)
     return ExecutableSymbol::fromHandle(Symbol);
   else if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME) {
@@ -200,8 +162,12 @@ Executable::getAgentSymbolByName(const luthier::hsa::GpuAgent &Agent,
         if (ELFSymbol->has_value()) {
           auto Type = ELFSymbol.get()->getELFType();
           auto Binding = ELFSymbol.get()->getBinding();
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-              Type == llvm::ELF::STT_FUNC && Binding == llvm::ELF::STB_LOCAL));
+
+          if (!(Type == llvm::ELF::STT_FUNC &&
+                Binding == llvm::ELF::STB_LOCAL)) {
+            // This is not an indirect function, return
+            return std::nullopt;
+          }
 
           auto LoadedAddress =
               getSymbolLMA(HostELF.get()->getELFFile(), **ELFSymbol);

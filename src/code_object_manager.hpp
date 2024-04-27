@@ -36,6 +36,9 @@ public:
   void registerInstrumentationFunctionWrapper(const void *WrapperShadowHostPtr,
                                               const char *KernelName);
 
+  llvm::Error
+  checkIfLuthierToolExecutableAndRegister(const hsa::Executable &Exec);
+
   /**
    * Returns the \p hsa::ExecutableSymbol of the instrumentation function, given
    * its HSA agent and wrapper kernel shadow host ptr
@@ -96,18 +99,11 @@ private:
   };
 
   /**
-   * Iterates over all the frozen HSA executables in the HSA Runtime,
-   * finds the ones that belong to the Luthier tool, and registers them
-   */
-  llvm::Error registerLuthierHsaExecutables() const;
-
-  llvm::Error processFunctions() const;
-
-  /**
    * A set of all \p hsa::Executable handles that belong to the Luthier tool,
    * containing the instrumentation function and their wrapper kernels
    */
-  mutable llvm::DenseSet<hsa::Executable> ToolExecutables{};
+  mutable llvm::DenseSet<std::pair<hsa::Executable, hsa::GpuAgent>>
+      ToolExecutables{};
 
   /**
    * \brief A list of device functions captured by \p __hipRegisterFunction, not
@@ -117,8 +113,8 @@ private:
    * \p LUTHIER_EXPORT_FUNC
    * The second \p std::tuple element is the name of the dummy kernel
    */
-  mutable std::vector<std::tuple<const void *, const char *>>
-      UnprocessedFunctions{};
+  mutable llvm::DenseMap<const char *, const void *>
+      StaticInstrumentationFunctions{};
 
   mutable llvm::DenseMap<std::pair<const void *, hsa::GpuAgent>,
                          ToolFunctionInfo>

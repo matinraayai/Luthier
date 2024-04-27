@@ -36,7 +36,7 @@ private:
    * encountered so far, in order to expose them to the tool writer seamlessly
    * as an \ref hsa_executable_symbol
    */
-  static llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
+  static std::unordered_map<decltype(hsa_executable_symbol_t::handle),
                         IndirectFunctionInfo>
       IndirectFunctionHandleCache;
   // TODO: Invalidate this cache
