@@ -76,23 +76,36 @@ public:
 
   std::optional<Instr *>
   getHSAInstrOfMachineInstr(const llvm::MachineInstr &MI) const {
-    if (MachineInstrToMCMap.contains(&MI))
+    for (const auto &[k, v] : MachineInstrToMCMap) {
+      llvm::outs() << "Address of MI: " << k << ", Address of hsa::Instr: " << v
+                   << "\n";
+    }
+    llvm::outs() << "Requested address: " << &MI << "\n";
+    if (MachineInstrToMCMap.contains(const_cast<llvm::MachineInstr *>(&MI)))
       return MachineInstrToMCMap.at(const_cast<llvm::MachineInstr *>(&MI));
     else
       return std::nullopt;
   }
 };
 
-class InstrumentationPass : public llvm::ModulePass {
+class InstrumentationTask {
+public:
+  typedef llvm::DenseMap<llvm::MachineInstr *,
+                         std::tuple<const void *, InstrPoint>>
+      insert_call_tasks;
+
+private:
+  insert_call_tasks InsertCallTasks;
 
 public:
-  static char ID;
+  InstrumentationTask() = default;
 
-  InstrumentationPass() : llvm::ModulePass(ID){};
+  void insertCallTo(llvm::MachineInstr &MI, const void *DevFunc,
+                    InstrPoint IPoint);
 
-
-  llvm::Error insertCallTo(llvm::MachineInstr &MI, const void *DevFunc,
-                           InstrPoint IPoint);
+  const insert_call_tasks &getInsertCallTasks() const {
+    return InsertCallTasks;
+  }
 };
 
 } // namespace luthier
