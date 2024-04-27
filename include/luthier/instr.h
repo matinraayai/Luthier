@@ -36,7 +36,7 @@ private:
 public:
   Instr() = delete;
 
-  [[nodiscard]] hsa_agent_t getAgent() const;
+  [[nodiscard]] llvm::Expected<hsa_agent_t> getAgent() const;
 
   [[nodiscard]] hsa_executable_t getExecutable() const;
 

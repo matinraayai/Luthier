@@ -63,10 +63,36 @@ void hsa::atHsaApiTableLoad() {
   hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
 }
 
-class KernelInstrumentPass : public luthier::InstrumentationPass {
-
-  bool runOnModule(llvm::Module &M) override { return false; }
-};
+// class KernelInstrumentPass : public luthier::InstrumentationTask {
+//
+//   bool runOnModule(llvm::Module &M) override {
+//     auto &MMI = getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
+//     auto& F = *M.begin();
+////    for (auto& F : M) {
+//    llvm::outs() << F.getName() << "\n";
+////    }
+////    F++;
+//    auto &MBB = *MMI.getMachineFunction(F)->begin();
+//    auto &MI = *MBB.begin();
+//    MBB.insert(MI, nullptr);
+//    llvm::cantFail(
+//        insertCallTo(MI, LUTHIER_GET_EXPORTED_FUNC(instrumentation_function),
+//                     INSTR_POINT_BEFORE));
+//
+//    //    for (auto & MBB : MF) {
+//    //      for (auto & MI : MBB) {
+//    //        MI.getOpcode() // physical (part of app), virtual (part of inst)
+//    //            // get me actual instruction
+//    //        insertCallTo();
+//    //
+//    //      }
+//    //    }
+//    //    auto& MMI =
+//    //    getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI(); MMI.get
+//
+//    return false;
+//  }
+//};
 
 void luthier::hsa::atHsaApiTableUnload() {
   std::cout << "Counter Value: " << globalCounter << std::endl;
@@ -124,11 +150,21 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           if (auto Err = LiftedSymbol.takeError())
             exit(-1);
           auto &[Module, MMIWP, LSI] = *LiftedSymbol;
-//          auto Res =
-//              luthier::instrument(std::move(Module), std::move(MMIWP), LSI,
-//                                  std::make_unique<KernelInstrumentPass>());
-//          if (!Res.operator bool())
-//            exit(-1);
+          InstrumentationTask IT;
+          for (auto &F : *Module) {
+            auto &MF = *(MMIWP->getMMI().getMachineFunction(F));
+            auto &MBB = *MF.begin();
+            auto &MI = *MBB.begin();
+            IT.insertCallTo(MI,
+                            LUTHIER_GET_EXPORTED_FUNC(instrumentation_function),
+                            INSTR_POINT_AFTER);
+          }
+
+          auto Res =
+              luthier::instrument(std::move(Module), std::move(MMIWP), LSI,
+                                  IT);
+          if (!Res.operator bool())
+            exit(-1);
           std::cout << "Instrumented thingy works\n";
           instrumented = true;
         }
