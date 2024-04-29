@@ -23,55 +23,6 @@ class ISA;
 
 } // namespace hsa
 
-class LiftedSymbolInfoWrapperPass : public llvm::ImmutablePass {
-private:
-  const LiftedSymbolInfo &LSI;
-
-public:
-  static char ID;
-
-  explicit LiftedSymbolInfoWrapperPass(const LiftedSymbolInfo &LSI);
-
-  virtual void anchor();
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override {
-    AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-    AU.setPreservesAll();
-  }
-
-  const LiftedSymbolInfo &getLSI() { return LSI; }
-};
-
-class InstrumentationSymbolsInfoWrapperPass : public llvm::ImmutablePass {
-private:
-  llvm::DenseMap<const void *, llvm::MachineFunction *> WrapperHandleToMFMap{};
-  llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *>
-      SymbolToMFMap{};
-  llvm::DenseMap<llvm::MachineFunction *, LiftedSymbolInfo> MFToLSIMap{};
-
-public:
-  static char ID;
-
-  InstrumentationSymbolsInfoWrapperPass() : llvm::ImmutablePass(ID){};
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override {
-    AU.setPreservesAll();
-  }
-
-  void addInstrumentationFunctionInfo(const void *Wrapper,
-                                      const llvm::MachineFunction &MF,
-                                      LiftedSymbolInfo LSI);
-
-  llvm::MachineFunction &getInstrumentationMF(const void *Wrapper);
-
-  llvm::MachineFunction &
-  getInstrumentationMF(const hsa::ExecutableSymbol &Symbol);
-
-  const LiftedSymbolInfo &getLiftedSymbolInfo(llvm::MachineFunction *MF);
-
-  Instr &getHsaInstrOfMachineInstr(llvm::MachineInstr *MI);
-};
-
 class CodeGenerator {
 public:
   CodeGenerator(const CodeGenerator &) = delete;

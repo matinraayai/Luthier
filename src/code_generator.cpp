@@ -69,23 +69,6 @@
 
 namespace luthier {
 
-char LiftedSymbolInfoWrapperPass::ID = 0;
-
-static llvm::RegisterPass<LiftedSymbolInfoWrapperPass>
-    X("", "Lifted Symbol Info Pass");
-
-LiftedSymbolInfoWrapperPass::LiftedSymbolInfoWrapperPass(
-    const LiftedSymbolInfo &LSI)
-    : llvm::ImmutablePass(ID), LSI(LSI) {}
-
-void LiftedSymbolInfoWrapperPass::anchor() {}
-
-char InstrumentationSymbolsInfoWrapperPass::ID = 0;
-
-void InstrumentationSymbolsInfoWrapperPass::addInstrumentationFunctionInfo(
-    const void *Wrapper, const llvm::MachineFunction &MF,
-    LiftedSymbolInfo LSI) {}
-
 llvm::Error CodeGenerator::compileRelocatableToExecutable(
     const llvm::ArrayRef<uint8_t> &Code, const hsa::ISA &ISA,
     llvm::SmallVectorImpl<uint8_t> &Out) {
@@ -120,9 +103,9 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_action_info_set_isa_name(DataAction, IsaName->c_str()))));
 //  std::vector<const char *> MyOptions{"-Wl", "--unresolved-symbols=ignore-all", "-shared", "--undefined-glob=1"};
-  const char * MyOptions[]{"-shared", "-Wl,--unresolved-symbols=ignore-all"};
+  const char * MyOptions[]{"-Wl,--unresolved-symbols=ignore-all", "-Wl,--emit-relocs", "-Wl,--undefined-glob=1"};
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK((
-      amd_comgr_action_info_set_option_list(DataAction, MyOptions, 2))));
+      amd_comgr_action_info_set_option_list(DataAction, MyOptions, 5))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
                            DataAction, DataSetIn, DataSetOut))));
@@ -391,7 +374,7 @@ llvm::Error CodeGenerator::instrument(
   llvm::raw_svector_ostream OutOS(Reloc);
 
   // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-  if (TM.addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::AssemblyFile,
+  if (TM.addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::ObjectFile,
                        MCContext))
     llvm::outs() << "Failed to add pass manager\n";
   //            return make_error<llvm::Failure>("Cannot add AsmPrinter

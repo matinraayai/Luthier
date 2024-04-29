@@ -436,8 +436,8 @@ luthier::CodeLifter::createLLVMFunctionFromSymbol(
     llvm::FunctionType *FunctionType =
         llvm::FunctionType::get(ReturnType, {}, false);
 
-    F = llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage,
-                               SymbolName.substr(0, SymbolName.rfind(".kd")),
+    F = llvm::Function::Create(FunctionType, llvm::GlobalValue::PrivateLinkage,
+                               SymbolName,
                                Module);
     F->setCallingConv(llvm::CallingConv::C);
   }
