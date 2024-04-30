@@ -17,7 +17,7 @@ void check(bool pred) {
 
 MARK_LUTHIER_DEVICE_MODULE
 
-__managed__ int globalCounter = 20;
+__device__ int globalCounter = 20;
 
 static int *globalCounterDynamic;
 
@@ -95,7 +95,12 @@ void hsa::atHsaApiTableLoad() {
 //};
 
 void luthier::hsa::atHsaApiTableUnload() {
-  std::cout << "Counter Value: " << globalCounter << std::endl;
+  int FinalCounterValue;
+  hipMemcpy(reinterpret_cast<void *>(&FinalCounterValue),
+            reinterpret_cast<const void *>(globalCounter),
+            4,
+            hipMemcpyDeviceToHost);
+  std::cout << "Counter Value: " << FinalCounterValue << std::endl;
   std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 
@@ -160,17 +165,14 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                             INSTR_POINT_AFTER);
           }
 
-          auto Res =
-              luthier::instrument(std::move(Module), std::move(MMIWP), LSI,
-                                  IT);
-          if (!Res.operator bool())
+          if (auto Res = luthier::instrument(std::move(Module),
+                                             std::move(MMIWP), LSI, IT))
             exit(-1);
           std::cout << "Instrumented thingy works\n";
           instrumented = true;
         }
-        //        auto Res = luthier::overrideWithInstrumented(DispatchPacket);
-        //        if (Res)
-        //          exit(-1);
+        if (auto Res = luthier::overrideWithInstrumented(DispatchPacket))
+          exit(-1);
       }
     }
     std::cout << "End of callback" << std::endl;

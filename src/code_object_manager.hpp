@@ -73,9 +73,10 @@ public:
    * \param OriginalKernel the symbol of the target instrumented kernel
    * \return \p llvm::Error
    */
-  llvm::Error
-  loadInstrumentedKernel(const llvm::ArrayRef<uint8_t> &InstrumentedElf,
-                         const hsa::ExecutableSymbol &OriginalKernel);
+  llvm::Error loadInstrumentedKernel(
+      const llvm::ArrayRef<uint8_t> &InstrumentedElf,
+      const hsa::ExecutableSymbol &OriginalKernel,
+      const std::vector<hsa::ExecutableSymbol> &ExternVariables);
 
   /**
    * Returns the instrumented kernel's \p hsa::ExecutableSymbol given its

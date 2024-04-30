@@ -52,12 +52,12 @@ private:
   CodeGenerator() = default;
   ~CodeGenerator() = default;
 
-  llvm::Error applyInstrumentation(llvm::Module &Module,
-                                   llvm::MachineModuleInfo &MMI,
-                                   const LiftedSymbolInfo &LSO,
-                                   const InstrumentationTask &ITask);
+  llvm::Expected<std::vector<LiftedSymbolInfo>>
+  applyInstrumentation(llvm::Module &Module, llvm::MachineModuleInfo &MMI,
+                       const LiftedSymbolInfo &LSO,
+                       const InstrumentationTask &ITask);
 
-  llvm::Error
+  llvm::Expected<std::vector<LiftedSymbolInfo>>
   insertFunctionCalls(llvm::Module &Module, llvm::MachineModuleInfo &MMI,
                       const LiftedSymbolInfo &LSI,
                       const InstrumentationTask::insert_call_tasks &Tasks);

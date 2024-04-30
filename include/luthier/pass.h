@@ -60,16 +60,16 @@ public:
     std::vector<hsa_executable_symbol_t> Out;
     Out.reserve(RelatedFunctions.size());
     for (const auto &[Handle, MF] : RelatedFunctions) {
-      Out.reserve(Handle);
+      Out.push_back({Handle});
     }
     return Out;
   }
 
   std::vector<hsa_executable_symbol_t> getRelatedVariables() const {
     std::vector<hsa_executable_symbol_t> Out;
-    Out.reserve(RelatedFunctions.size());
+    Out.reserve(RelatedGlobalVariables.size());
     for (const auto &[Handle, GV] : RelatedGlobalVariables) {
-      Out.reserve(Handle);
+      Out.push_back({Handle});
     }
     return Out;
   }

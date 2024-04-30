@@ -262,21 +262,27 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
     for (unsigned int I = 0; I < Instructions.size(); ++I) {
       auto &Inst = Instructions[I];
       auto &Address = Addresses[I];
-
       auto Size = Address - PrevInstAddress;
       if (MII->get(Inst.getOpcode()).isBranch()) {
         if (!isAddressBranchOrBranchTarget(*Executable, *Agent, Address)) {
           luthier::address_t Target;
+          TargetInfo->getMCInstPrinter()->printInst(
+              &Inst, Address, "", *TargetInfo->getMCSubTargetInfo(),
+              llvm::outs());
+          //          Inst.dump_pretty(llvm::outs(), nullptr, " ",
+          //                           TargetInfo->getMCRegisterInfo());
           if (MIA->evaluateBranch(Inst, Address, Size, Target)) {
             llvm::outs() << llvm::formatv(
                 "Resolved branches: Address: {0:x}, Target: {1:x}\n", Address,
                 Target);
-            addBranchOrBranchTargetAddress(*Executable, *Agent, Address);
+
             addBranchOrBranchTargetAddress(*Executable, *Agent, Target);
-          } else {
-            // TODO: properly handle this error instead of fatal_error
-            llvm::report_fatal_error("Was not able to resolve the branch!!!");
           }
+          addBranchOrBranchTargetAddress(*Executable, *Agent, Address);
+//          else {
+//            // TODO: properly handle this error instead of fatal_error
+//            llvm::report_fatal_error("Was not able to resolve the branch!!!");
+//          }
         }
       }
       PrevInstAddress = Address;
@@ -437,8 +443,7 @@ luthier::CodeLifter::createLLVMFunctionFromSymbol(
         llvm::FunctionType::get(ReturnType, {}, false);
 
     F = llvm::Function::Create(FunctionType, llvm::GlobalValue::PrivateLinkage,
-                               SymbolName,
-                               Module);
+                               SymbolName, Module);
     F->setCallingConv(llvm::CallingConv::C);
   }
 
@@ -531,7 +536,8 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
                        << reinterpret_cast<luthier::address_t>(
                               LoadedMemory->data()) +
                               Reloc.getOffset()
-                       << ", " << *SymbolName << " Addened " << *Addend << "Type :" << Type << "\n";
+                       << ", " << *SymbolName << " Addened " << *Addend
+                       << "Type :" << Type << "\n";
           LCORelocationsMapIt->second.insert(
               {reinterpret_cast<luthier::address_t>(LoadedMemory->data()) +
                    Reloc.getOffset(),
@@ -852,31 +858,31 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
               //                  llvm::GlobalVariable(
               ////                         Module,
               //// llvm::Type::getInt32Ty(*TargetInfo->getLLVMContext()), /
-              ///false, llvm::GlobalValue::ExternalLinkage, nullptr, /
+              /// false, llvm::GlobalValue::ExternalLinkage, nullptr, /
               ///*TargetSymbolName)
               //                    });
               //              }
-                            auto GV = llvm::dyn_cast<llvm::GlobalVariable>(
-                                Module.getOrInsertGlobal(
-                                    *TargetSymbolName,
-                                    llvm::Type::getInt32Ty(
-                                        *TargetInfo->getLLVMContext())));
-//                            GV->hasAttribute(llvm::Attribute::ZExt)
-//                            GV->setVisibility(llvm::GlobalVariable::ProtectedVisibility);
+              auto GV =
+                  llvm::dyn_cast<llvm::GlobalVariable>(Module.getOrInsertGlobal(
+                      *TargetSymbolName,
+                      llvm::Type::getInt32Ty(*TargetInfo->getLLVMContext())));
+              //                            GV->hasAttribute(llvm::Attribute::ZExt)
+              //                            GV->setVisibility(llvm::GlobalVariable::ProtectedVisibility);
               //              llvm::outs() << "Name of global variable: " <<
               //              GV->getName() << "\n"; llvm::outs() << "Has name:
               //              " << GV->hasName() << "\n";
-                            if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
-                              Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
-                            else if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
-                              Type = llvm::SIInstrInfo::MO_GOTPCREL32_HI;
-                            Builder.addGlobalAddress(
-                                GV, Addend, Type);
+              if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
+                Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
+              else if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
+                Type = llvm::SIInstrInfo::MO_GOTPCREL32_HI;
+              Builder.addGlobalAddress(GV, Addend, Type);
+              Out.RelatedGlobalVariables.insert({TargetSymbol.hsaHandle(), GV});
 
-//              llvm::outs() << "Type of flag : " << RelocationInfo.get()->Type << "\n";
-//              Builder.addExternalSymbol("globalCounter",
-//                                        llvm::SIInstrInfo::MO_REL32_LO
-//                                        );
+              //              llvm::outs() << "Type of flag : " <<
+              //              RelocationInfo.get()->Type << "\n";
+              //              Builder.addExternalSymbol("globalCounter",
+              //                                        llvm::SIInstrInfo::MO_REL32_LO
+              //                                        );
             } else if (*TargetSymbolType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION) {
               // Add this Symbol to the related functions of the current
               // function
@@ -900,8 +906,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
               if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
                 Type = llvm::SIInstrInfo::MO_REL32_HI;
               Builder.addGlobalAddress(
-                  &IndirectFunctionInfo->SymbolMF->getFunction(), Addend,
-                  Type);
+                  &IndirectFunctionInfo->SymbolMF->getFunction(), Addend, Type);
             } else {
               // For now, we don't handle calling kernels from kernels
               llvm_unreachable("not implemented");
@@ -929,12 +934,13 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                     Inst.getLoadedDeviceAddress());
       llvm::outs() << "Found a branch!\n";
       luthier::address_t BranchTarget;
-      MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(), Inst.getSize(),
-                          BranchTarget);
-      if (!UnresolvedBranchMIs.contains(BranchTarget)) {
-        UnresolvedBranchMIs.insert({BranchTarget, {Builder.getInstr()}});
-      } else {
-        UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
+      if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(), Inst.getSize(),
+                          BranchTarget)) {
+        if (!UnresolvedBranchMIs.contains(BranchTarget)) {
+          UnresolvedBranchMIs.insert({BranchTarget, {Builder.getInstr()}});
+        } else {
+          UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
+        }
       }
       MCInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
                          TargetInfo->getMCRegisterInfo());

@@ -135,8 +135,9 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
           Packet.kernel_object));
   LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
 
-  const auto InstrumentedKernel =
+  auto InstrumentedKernel =
       luthier::CodeObjectManager::instance().getInstrumentedKernel(*Symbol);
+  LUTHIER_RETURN_ON_ERROR(InstrumentedKernel.takeError());
 
   auto InstrumentedKD = InstrumentedKernel->getKernelDescriptor();
 

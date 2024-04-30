@@ -60,8 +60,8 @@ llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
             LUTHIER_ASSERTION(WrapperKernelSymbols.contains(WrapKerName)));
         auto &KernelSymbol = WrapperKernelSymbols.at(WrapKerName);
         auto &functionSymbol = InstFunctionSymbols.at(WrapKerName);
-//        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-//            ToolFunctions.contains({WrapKerShadowPtr, Agent})));
+        //        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+        //            ToolFunctions.contains({WrapKerShadowPtr, Agent})));
         ToolFunctions.insert(
             {{WrapKerShadowPtr, Agent}, {functionSymbol, KernelSymbol}});
       }
@@ -92,10 +92,23 @@ CodeObjectManager::getInstrumentedKernel(
 
 llvm::Error CodeObjectManager::loadInstrumentedKernel(
     const llvm::ArrayRef<uint8_t> &InstrumentedElf,
-    const hsa::ExecutableSymbol &OriginalKernel) {
+    const hsa::ExecutableSymbol &OriginalKernel,
+    const std::vector<hsa::ExecutableSymbol> &ExternVariables) {
   if (!InstrumentedKernels.contains(OriginalKernel)) {
     auto executable = hsa::Executable::create();
     LUTHIER_RETURN_ON_ERROR(executable.takeError());
+
+    for (const auto &EV : ExternVariables) {
+//      LUTHIER_RETURN_ON_ERROR(
+//          executable->defineExternalProgramGlobalVariable(EV));
+      LUTHIER_RETURN_ON_ERROR(
+          executable->defineExternalAgentGlobalVariable(EV));
+      auto GVAddress = EV.getVariableAddress();
+      LUTHIER_RETURN_ON_ERROR(GVAddress.takeError());
+      auto GVAllocation = EV.getVariableAllocation();
+      LUTHIER_RETURN_ON_ERROR(GVAllocation.takeError());
+      llvm::outs() << "Variable Address: " << llvm::format_hex(*GVAddress, 8) << ", Allocation: " << *GVAllocation << "\n";
+    }
 
     auto agent = OriginalKernel.getAgent();
     LUTHIER_RETURN_ON_ERROR(agent.takeError());

@@ -102,10 +102,11 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_action_info_set_isa_name(DataAction, IsaName->c_str()))));
-//  std::vector<const char *> MyOptions{"-Wl", "--unresolved-symbols=ignore-all", "-shared", "--undefined-glob=1"};
-  const char * MyOptions[]{"-Wl,--unresolved-symbols=ignore-all", "-Wl,--emit-relocs", "-Wl,--undefined-glob=1"};
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK((
-      amd_comgr_action_info_set_option_list(DataAction, MyOptions, 5))));
+  //  std::vector<const char *> MyOptions{"-Wl",
+  //  "--unresolved-symbols=ignore-all", "-shared", "--undefined-glob=1"};
+  const char *MyOptions[]{"-Wl,--unresolved-symbols=ignore-all"};
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
+      (amd_comgr_action_info_set_option_list(DataAction, MyOptions, 1))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
                            DataAction, DataSetIn, DataSetOut))));
@@ -312,8 +313,8 @@ llvm::Error CodeGenerator::instrument(
   //  MMIWP->getMMI().get
   llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
 
-  LUTHIER_RETURN_ON_ERROR(
-      applyInstrumentation(*Module, MMIWP->getMMI(), LSO, ITask));
+  auto AddedLSIs = applyInstrumentation(*Module, MMIWP->getMMI(), LSO, ITask);
+  LUTHIER_RETURN_ON_ERROR(AddedLSIs.takeError());
   //  auto TM = targetInfo->getTargetMachine();
 
   llvm::legacy::PassManager PM;
@@ -383,7 +384,7 @@ llvm::Error CodeGenerator::instrument(
   PM.run(*Module); // Run all the passes
   std::error_code code;
   llvm::raw_fd_ostream("my_reloc.hsaco", code) << Reloc;
-//  llvm::outs()
+  //  llvm::outs()
   llvm::outs() << Reloc << "\n";
 
   LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
@@ -395,8 +396,17 @@ llvm::Error CodeGenerator::instrument(
   llvm::outs() << llvm::toStringRef(Executable) << "\n";
 
   //  llvm::outs() << elfFile->get()->getRelSection();
-  LUTHIER_RETURN_ON_ERROR(
-      CodeObjectManager.loadInstrumentedKernel(Executable, Symbol));
+
+  std::vector<hsa::ExecutableSymbol> ExternGVs;
+  for (const auto& GV: LSO.getRelatedVariables())
+    ExternGVs.push_back(hsa::ExecutableSymbol::fromHandle(GV));
+
+  for (const auto& L : *AddedLSIs)
+    for (const auto& GV : L.getRelatedVariables())
+      ExternGVs.push_back(hsa::ExecutableSymbol::fromHandle(GV));
+
+  LUTHIER_RETURN_ON_ERROR(CodeObjectManager.loadInstrumentedKernel(
+      Executable, Symbol, ExternGVs));
 
   //  auto instFunctionInstructions =
   //      CodeLifter::instance().disassemble(*InstrumentationFunc);
@@ -414,16 +424,20 @@ llvm::Error CodeGenerator::instrument(
   return llvm::Error::success();
 }
 
-llvm::Error CodeGenerator::applyInstrumentation(
-    llvm::Module &Module, llvm::MachineModuleInfo &MMI,
-    const LiftedSymbolInfo &LSO, const InstrumentationTask &ITask) {
+llvm::Expected<std::vector<LiftedSymbolInfo>>
+CodeGenerator::applyInstrumentation(llvm::Module &Module,
+                                    llvm::MachineModuleInfo &MMI,
+                                    const LiftedSymbolInfo &LSO,
+                                    const InstrumentationTask &ITask) {
   return insertFunctionCalls(Module, MMI, LSO, ITask.getInsertCallTasks());
 }
 
-llvm::Error CodeGenerator::insertFunctionCalls(
+llvm::Expected<std::vector<LiftedSymbolInfo>>
+CodeGenerator::insertFunctionCalls(
     llvm::Module &Module, llvm::MachineModuleInfo &MMI,
     const LiftedSymbolInfo &LSI,
     const InstrumentationTask::insert_call_tasks &Tasks) {
+  std::vector<LiftedSymbolInfo> Out;
   for (const auto &[MI, V] : Tasks) {
     auto &[DevFunc, IPoint] = V;
     const auto &HsaInst = LSI.getHSAInstrOfMachineInstr(*MI);
@@ -518,9 +532,9 @@ llvm::Error CodeGenerator::insertFunctionCalls(
     //              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
     //          .addImm(0)
     //          .addImm(0);
+    Out.push_back(*IFLSI);
   }
-
-  return llvm::Error::success();
+  return Out;
 }
 
 } // namespace luthier
