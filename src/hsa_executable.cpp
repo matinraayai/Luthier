@@ -257,7 +257,8 @@ llvm::Error Executable::defineExternalProgramGlobalVariable(
 }
 
 llvm::Error
-Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol) {
+Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol,
+                                              int *Addr) {
   LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_symbol_kind_t, SymbolType,
                                    Symbol.getType());
   LUTHIER_RETURN_ON_ERROR(
@@ -273,7 +274,7 @@ Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_agent_global_variable_define_fn(
           asHsaType(), Agent->asHsaType(), VariableName.c_str(),
-          reinterpret_cast<void *>(VariableAddress))));
+          reinterpret_cast<void *>(Addr))));
   return llvm::Error::success();
 }
 

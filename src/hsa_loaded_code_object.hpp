@@ -8,6 +8,8 @@ class Executable;
 
 class GpuAgent;
 
+class ISA;
+
 class LoadedCodeObject : public HandleType<hsa_loaded_code_object_t> {
 public:
   explicit LoadedCodeObject(hsa_loaded_code_object_t LCO);
@@ -32,6 +34,8 @@ public:
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getLoadedMemory() const;
 
   [[nodiscard]] llvm::Expected<std::string> getUri() const;
+
+//  llvm::Expected<ISA> getISA() const;
 };
 
 } // namespace luthier::hsa

@@ -3,6 +3,7 @@
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_intercept.hpp"
+#include "object_utils.hpp"
 
 namespace luthier::hsa {
 
@@ -122,5 +123,19 @@ LoadedCodeObject::getKind() {
           &Kind)));
   return Kind;
 }
+
+//llvm::Expected<ISA> LoadedCodeObject::getISA() const {
+//  auto StorageMemory = getStorageMemory();
+//  LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+//  auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
+//  LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
+//
+//  llvm::Triple TT = StorageELF.get()->makeTriple();
+//  std::optional<llvm::StringRef> CPU = StorageELF.get()->tryGetCPUName();
+//  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
+//  llvm::SubtargetFeatures Features;
+//  LUTHIER_RETURN_ON_ERROR(StorageELF.get()->getFeatures().moveInto(Features));
+//  return hsa::ISA::fromLLVM(TT, *CPU, Features);
+//}
 
 } // namespace luthier::hsa

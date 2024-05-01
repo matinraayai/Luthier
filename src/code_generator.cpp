@@ -136,7 +136,8 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 llvm::Error CodeGenerator::instrument(
     std::unique_ptr<llvm::Module> Module,
     std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-    const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask) {
+    const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask,
+    int *Addrs) {
   LUTHIER_LOG_FUNCTION_CALL_START
   auto Symbol = hsa::ExecutableSymbol::fromHandle(LSO.getSymbol());
   auto Agent = Symbol.getAgent();
@@ -406,7 +407,7 @@ llvm::Error CodeGenerator::instrument(
       ExternGVs.push_back(hsa::ExecutableSymbol::fromHandle(GV));
 
   LUTHIER_RETURN_ON_ERROR(CodeObjectManager.loadInstrumentedKernel(
-      Executable, Symbol, ExternGVs));
+      Executable, Symbol, ExternGVs, Addrs));
 
   //  auto instFunctionInstructions =
   //      CodeLifter::instance().disassemble(*InstrumentationFunc);

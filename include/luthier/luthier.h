@@ -95,8 +95,8 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet);
 llvm::Error
 instrument(std::unique_ptr<llvm::Module> Module,
            std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-           const LiftedSymbolInfo &LSO,
-           luthier::InstrumentationTask &ITask);
+           const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask,
+           int *Addrs);
 
 /**
  * \brief If the tool is compiled with HIP device code it needs to call this
@@ -262,9 +262,14 @@ instrument(std::unique_ptr<llvm::Module> Module,
 // Read content of register to SGPR[30:31]
 // return SGPR[30:31]
 // SGPR3 (where it actually is in the app) -> SGRP[30:31]
-////__device__ __noinline__ int32_t nvbit_read_reg(uint64_t reg_num);
+//
+//
+// __device__ __noinline__ int32_t nvbit_read_reg(uint64_t reg_num);
 ////__device__ __noinline__ void nvbit_write_reg(uint64_t reg_num, int32_t
 /// reg_val);
+// -> instrmnt -> nvbit_write_reg(R2, 2000);
+// R5 = R5 + 2
+// -> instrmnt -> nvbit_write_reg(R2, 2000); R5 = 2000;
 ////__device__ __noinline__ int32_t nvbit_read_ureg(uint64_t reg_num);
 ////__device__ __noinline__ void nvbit_write_ureg(uint64_t reg_num, int32_t
 /// reg_val);

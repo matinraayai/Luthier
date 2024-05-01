@@ -63,7 +63,7 @@ public:
    */
   llvm::Expected<const hsa::ExecutableSymbol &>
   getInstrumentationFunctionWrapperKernel(const void *WrapperHostPtr,
-                                          hsa::GpuAgent Agent) const;
+                                          const hsa::GpuAgent& Agent) const;
 
   /**
    * Loads an instrumented \p hsa::Executable, containing the instrumented
@@ -76,7 +76,7 @@ public:
   llvm::Error loadInstrumentedKernel(
       const llvm::ArrayRef<uint8_t> &InstrumentedElf,
       const hsa::ExecutableSymbol &OriginalKernel,
-      const std::vector<hsa::ExecutableSymbol> &ExternVariables);
+      const std::vector<hsa::ExecutableSymbol> &ExternVariables, int *Addr);
 
   /**
    * Returns the instrumented kernel's \p hsa::ExecutableSymbol given its

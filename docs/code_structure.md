@@ -17,7 +17,7 @@ Any other component can query this information.
 object-oriented abstraction over the C-API of the HSA library, to provide a less-verbose interface to Luthier, 
 and implement any required features not currently implemented in HSA (e.g. indirect function support). 
 APIs called by this layer are not intercepted. Other components should not use the HSA library directly.
-6. **Disassembler**: can be found in [```src/disassembler.hpp```](../src/disassembler.hpp) and 
+6. **CodeLifter**: can be found in [```src/disassembler.hpp```](../src/disassembler.hpp) and
 [```src/disassembler.hpp```](../src/disassembler.cpp). It disassembles every ```hsa::ExecutableSymbol``` using LLVM, 
 and caches the results. It is the only component allowed to create ```hsa::Instr``` objects. 
 7. **Code Generator**: Under [```src/code_generator.hpp```](../src/code_generator.hpp) and 

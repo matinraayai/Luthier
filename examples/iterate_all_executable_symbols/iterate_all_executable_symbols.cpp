@@ -3,11 +3,11 @@
 #include <vector>
 #include <string>
 
-void luthier_at_init() {
+void luthier::atHsaApiTableLoad() {
     fprintf(stdout, "HSA Symbol Disassembly tool is starting.\n");
 }
 
-void luthier_at_term() {
+void luthier::atHsaApiTableUnload() {
     fprintf(stdout, "HSA Symbol Disassembly tool is exiting.\n");
 }
 

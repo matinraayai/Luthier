@@ -61,7 +61,9 @@ __attribute__((constructor)) void init() {
 }
 
 __attribute__((destructor)) void finalize() {
-  LUTHIER_LOG_FUNCTION_CALL_START LUTHIER_LOG_FUNCTION_CALL_END
+  LUTHIER_LOG_FUNCTION_CALL_START
+  luthier::hsa::atHsaApiTableUnload();
+  LUTHIER_LOG_FUNCTION_CALL_END
 }
 
 namespace hsa {
@@ -123,10 +125,10 @@ liftSymbol(hsa_executable_symbol_t Symbol) {
 llvm::Error
 instrument(std::unique_ptr<llvm::Module> Module,
            std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-           const LiftedSymbolInfo &LSO,
-           luthier::InstrumentationTask& ITask) {
+           const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask,
+           int *Addrs) {
   return CodeGenerator::instance().instrument(
-      std::move(Module), std::move(MMIWP), LSO, ITask);
+      std::move(Module), std::move(MMIWP), LSO, ITask, Addrs);
 }
 
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
@@ -174,7 +176,6 @@ OnLoad(HsaApiTable *table, uint64_t runtime_version, uint64_t failed_tool_count,
 
 __attribute__((visibility("default"))) void OnUnload() {
   LUTHIER_LOG_FUNCTION_CALL_START
-  luthier::hsa::atHsaApiTableUnload();
   luthier::hsa::Interceptor::instance().uninstallApiTables();
   LUTHIER_LOG_FUNCTION_CALL_END
 }

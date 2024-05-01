@@ -32,7 +32,6 @@ llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
     LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbol.takeError());
 
     if (LuthierReservedSymbol->has_value()) {
-      ToolExecutables.insert({Exec, Agent});
 
       std::unordered_map<std::string, hsa::ExecutableSymbol>
           WrapperKernelSymbols;
@@ -52,6 +51,17 @@ llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
         } else if (*SType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION) {
           InstFunctionSymbols.insert(
               {luthier::DeviceFunctionWrap + *SName, Symbol});
+        } else {
+          llvm::outs() << "Found a variable named: " << *SName << "\n";
+          auto Address = Symbol.getVariableAddress();
+          LUTHIER_RETURN_ON_ERROR(Address.takeError());
+          llvm::outs() << "Incrementing Address content: " << *reinterpret_cast<int*>(*Address) << "\n";
+          auto Allocation = Symbol.getVariableAllocation();
+          LUTHIER_RETURN_ON_ERROR(Allocation.takeError());
+          llvm::outs() << "Allocation: " << *Allocation << "\n";
+          llvm::outs() << "Address: " << llvm::format_hex(*Address, 8) << "\n";
+          *reinterpret_cast<int*>(*Address) = 1;
+          llvm::outs() << "After increment: " << *reinterpret_cast<int*>(*Address) << "\n";
         }
       }
       for (const auto &[WrapKerName, WrapKerShadowPtr] :
@@ -93,21 +103,23 @@ CodeObjectManager::getInstrumentedKernel(
 llvm::Error CodeObjectManager::loadInstrumentedKernel(
     const llvm::ArrayRef<uint8_t> &InstrumentedElf,
     const hsa::ExecutableSymbol &OriginalKernel,
-    const std::vector<hsa::ExecutableSymbol> &ExternVariables) {
+    const std::vector<hsa::ExecutableSymbol> &ExternVariables, int *Addr) {
   if (!InstrumentedKernels.contains(OriginalKernel)) {
-    auto executable = hsa::Executable::create();
-    LUTHIER_RETURN_ON_ERROR(executable.takeError());
+    auto Executable = hsa::Executable::create();
+    LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
     for (const auto &EV : ExternVariables) {
-//      LUTHIER_RETURN_ON_ERROR(
-//          executable->defineExternalProgramGlobalVariable(EV));
+//            LUTHIER_RETURN_ON_ERROR(
+//          Executable->defineExternalProgramGlobalVariable(EV));
       LUTHIER_RETURN_ON_ERROR(
-          executable->defineExternalAgentGlobalVariable(EV));
+    Executable->defineExternalAgentGlobalVariable(EV, Addr));
       auto GVAddress = EV.getVariableAddress();
       LUTHIER_RETURN_ON_ERROR(GVAddress.takeError());
       auto GVAllocation = EV.getVariableAllocation();
       LUTHIER_RETURN_ON_ERROR(GVAllocation.takeError());
-      llvm::outs() << "Variable Address: " << llvm::format_hex(*GVAddress, 8) << ", Allocation: " << *GVAllocation << "\n";
+      llvm::outs() << "Variable Address: " << llvm::format_hex(reinterpret_cast<uint64_t>(Addr), 8)
+                   << ", Allocation: " << *GVAllocation << "\n";
+      *GVAddress += 1;
     }
 
     auto agent = OriginalKernel.getAgent();
@@ -116,13 +128,13 @@ llvm::Error CodeObjectManager::loadInstrumentedKernel(
     auto reader = hsa::CodeObjectReader::createFromMemory(InstrumentedElf);
     LUTHIER_RETURN_ON_ERROR(reader.takeError());
     LUTHIER_RETURN_ON_ERROR(
-        executable->loadAgentCodeObject(*reader, *agent, "").takeError());
-    LUTHIER_RETURN_ON_ERROR(executable->freeze());
+        Executable->loadAgentCodeObject(*reader, *agent, "").takeError());
+    LUTHIER_RETURN_ON_ERROR(Executable->freeze());
 
     auto originalSymbolName = OriginalKernel.getName();
     LUTHIER_RETURN_ON_ERROR(originalSymbolName.takeError());
     auto instrumentedKernel =
-        executable->getAgentSymbolByName(*agent, *originalSymbolName);
+        Executable->getAgentSymbolByName(*agent, *originalSymbolName);
     LUTHIER_RETURN_ON_ERROR(instrumentedKernel.takeError());
 
     auto instrumentedKernelType = (*instrumentedKernel)->getType();
@@ -133,14 +145,14 @@ llvm::Error CodeObjectManager::loadInstrumentedKernel(
 
     InstrumentedKernels.insert(
         {OriginalKernel,
-         std::make_tuple(**instrumentedKernel, *executable, *reader)});
+         std::make_tuple(**instrumentedKernel, *Executable, *reader)});
   }
   return llvm::Error::success();
 }
 
 llvm::Expected<const hsa::ExecutableSymbol &>
 CodeObjectManager::getInstrumentationFunctionWrapperKernel(
-    const void *WrapperHostPtr, hsa::GpuAgent Agent) const {
+    const void *WrapperHostPtr, const hsa::GpuAgent& Agent) const {
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(ToolFunctions.contains({WrapperHostPtr, Agent})));
   return ToolFunctions.at({WrapperHostPtr, Agent}).WrapperKernel;

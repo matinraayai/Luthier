@@ -64,7 +64,7 @@ void luthier_at_hsa_event(hsa_api_args_t* args, luthier_api_phase_t phase, hsa_a
     }
 }
 
-void luthier_at_hip_event(void* args, luthier_api_phase_t phase, int hip_api_id) {}
+void atHipEvt(void* args, luthier_api_phase_t phase, int hip_api_id) {}
 ```
 A few notable points:
 1. When making device-side instrumentation tools with Luthier, the macro ```MARK_LUTHIER_DEVICE_MODULE``` must be called
@@ -208,8 +208,8 @@ HIP, triggering the loading of Luthier HIP FAT binaries into HSA.
 
 
 
-## Disassembler
-Disassembler is in charge of lifting the instructions in a kernel object, and provide a high-level view of them to the tool writer. 
+## CodeLifter
+CodeLifter is in charge of lifting the instructions in a kernel object, and provide a high-level view of them to the tool writer.
 
 
 ## Context Manager

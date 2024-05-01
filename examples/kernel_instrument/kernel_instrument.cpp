@@ -17,7 +17,7 @@ void check(bool pred) {
 
 MARK_LUTHIER_DEVICE_MODULE
 
-__device__ int globalCounter = 20;
+__managed__ int globalCounter = 20;
 
 static int *globalCounterDynamic;
 
@@ -47,7 +47,7 @@ LUTHIER_DECLARE_FUNC void instrumentation_function() {
   //    return 1;
   //    atomicAdd(globalCounter, 1);
 
-  globalCounter++;
+  globalCounter *= 30;
   //    printf("Hello from LUTHIER!\n");
 }
 
@@ -56,6 +56,7 @@ LUTHIER_EXPORT_FUNC(instrumentation_function)
 namespace luthier {
 
 void hsa::atHsaApiTableLoad() {
+//  std::cout << "Pointer to device function: " << &instrumentation_function << "\n";
   std::cout << "Kernel Instrument Tool is launching." << std::endl;
   hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_create);
   hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_signal_store_screlease);
@@ -95,12 +96,12 @@ void hsa::atHsaApiTableLoad() {
 //};
 
 void luthier::hsa::atHsaApiTableUnload() {
-  int FinalCounterValue;
-  hipMemcpy(reinterpret_cast<void *>(&FinalCounterValue),
-            reinterpret_cast<const void *>(globalCounter),
-            4,
-            hipMemcpyDeviceToHost);
-  std::cout << "Counter Value: " << FinalCounterValue << std::endl;
+  //  int FinalCounterValue;
+//  hipMemcpy(reinterpret_cast<void *>(&FinalCounterValue),
+//            reinterpret_cast<const void *>(&globalCounter),
+//            sizeof(decltype(globalCounter)),
+//            hipMemcpyDeviceToHost);
+  std::cout << "Counter Value: " << globalCounter << std::endl;
   std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
 }
 
@@ -116,6 +117,8 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
     } else if (ApiID == hsa::HSA_API_EVT_ID_hsa_signal_store_screlease) {
       std::cout << "Signal handle Store: "
                 << CBData->hsa_signal_store_relaxed.signal.handle << std::endl;
+//      globalCounter++;
+//      std::cout << "Counter Value: " << globalCounter << std::endl;
 
     } else if (ApiID == hsa::HSA_API_EVT_ID_hsa_executable_freeze) {
       auto executable = CBData->hsa_executable_freeze.executable;
@@ -144,7 +147,7 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                   << DispatchPacket.kernarg_address << std::endl;
         std::cout << "Size of private segment: "
                   << DispatchPacket.private_segment_size << std::endl;
-        DispatchPacket.private_segment_size = 100000;
+//        DispatchPacket.private_segment_size = 100000;
         if (!instrumented) {
           auto KD = luthier::KernelDescriptor::fromKernelObject(
               DispatchPacket.kernel_object);
@@ -164,9 +167,17 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                             LUTHIER_GET_EXPORTED_FUNC(instrumentation_function),
                             INSTR_POINT_AFTER);
           }
+          hipPointerAttribute_t Attrs;
+          assert(hipPointerGetAttributes(&Attrs, reinterpret_cast<const void*>(&globalCounter)) == hipSuccess);
+          llvm::outs() << "Device Address: " << llvm::format_hex(
+                                                    reinterpret_cast<uint64_t>(Attrs.devicePointer), 8) << "\n";
+          llvm::outs() << "Host Address: " << llvm::format_hex(
+                                                  reinterpret_cast<uint64_t>(Attrs.hostPointer), 8) << "\n";
+          llvm::outs() << "Is managed? " << Attrs.isManaged << "\n";
+          llvm::outs() << "Value on Host: " << *reinterpret_cast<int*>(Attrs.hostPointer) << "\n";
 
-          if (auto Res = luthier::instrument(std::move(Module),
-                                             std::move(MMIWP), LSI, IT))
+          if (auto Res = luthier::instrument(
+                  std::move(Module), std::move(MMIWP), LSI, IT, reinterpret_cast<int*>(Attrs.hostPointer)))
             exit(-1);
           std::cout << "Instrumented thingy works\n";
           instrumented = true;

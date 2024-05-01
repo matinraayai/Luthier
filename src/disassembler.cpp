@@ -205,12 +205,13 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
 llvm::Expected<const std::vector<luthier::Instr> &>
 luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
   if (!DisassembledSymbolsRaw.contains(Symbol)) {
-    LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_symbol_kind_t, SymbolType,
-                                     Symbol.getType());
+    auto SymbolType = Symbol.getType();
+    LUTHIER_RETURN_ON_ERROR(SymbolType.takeError());
     LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ARGUMENT_ERROR_CHECK(SymbolType != HSA_SYMBOL_KIND_VARIABLE));
+        LUTHIER_ARGUMENT_ERROR_CHECK(*SymbolType != HSA_SYMBOL_KIND_VARIABLE));
 
-    LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, SymbolName, Symbol.getName());
+    auto SymbolName = Symbol.getName();
+    LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
 
     // The ISA associated with the Symbol is
     auto LCO = Symbol.getLoadedCodeObject();
@@ -279,10 +280,11 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
             addBranchOrBranchTargetAddress(*Executable, *Agent, Target);
           }
           addBranchOrBranchTargetAddress(*Executable, *Agent, Address);
-//          else {
-//            // TODO: properly handle this error instead of fatal_error
-//            llvm::report_fatal_error("Was not able to resolve the branch!!!");
-//          }
+          //          else {
+          //            // TODO: properly handle this error instead of
+          //            fatal_error llvm::report_fatal_error("Was not able to
+          //            resolve the branch!!!");
+          //          }
         }
       }
       PrevInstAddress = Address;
@@ -672,24 +674,6 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
     MI.addOperand(
         llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
   }
-  //  Builder->addImplicitDefUseOperands(MF);
-  //  std::string Error;
-  //  llvm::StringRef errorRef(Error);
-  //  auto TII = reinterpret_cast<const llvm::SIInstrInfo *>(
-  //      TM.getSubtargetImpl(MF.getFunction())->getInstrInfo());
-  //  //      llvm::outs() << "Number of operands: " <<
-  //  //      Inst.getNumOperands()
-  //  //      <<
-  //  //      "\n"; Inst.print(llvm::outs()); llvm::outs() << "\n";
-  //  bool isInstCorrect = TII->verifyInstruction(*Builder.getInstr(),
-  //  errorRef);
-  //  //                llvm::outs() << "Is instruction correct: " <<
-  //  //                isInstCorrect << "\n";
-  //  if (!isInstCorrect) {
-  //    llvm::outs() << errorRef << ": ";
-  //    Builder.getInstr()->print(llvm::outs(), true, false, false, true, TII);
-  //    llvm::outs() << "\n";
-  //  }
   return llvm::Error::success();
 }
 
@@ -765,12 +749,13 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
 
-    bool IsBranch = MCID.isBranch();
-    bool IsBranchTarget = isAddressBranchOrBranchTarget(
-                              *Exec, *Agent, Inst.getLoadedDeviceAddress()) &&
-                          !IsBranch;
+    bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
+    bool IsDirectBranchTarget =
+        isAddressBranchOrBranchTarget(*Exec, *Agent,
+                                      Inst.getLoadedDeviceAddress()) &&
+        !IsDirectBranch;
 
-    if (IsBranchTarget) {
+    if (IsDirectBranchTarget) {
       // Branch targets mark the beginning of an MBB
       auto OldMBB = MBB;
       MBB = MF->CreateMachineBasicBlock();
@@ -928,14 +913,14 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder, *MF, *TM));
     // Basic Block resolving
 
-    if (IsBranch) {
+    if (IsDirectBranch) {
       // Branches signal the end of the current Machine Basic Block
       llvm::outs() << llvm::formatv("Address: {0:x}\n",
                                     Inst.getLoadedDeviceAddress());
       llvm::outs() << "Found a branch!\n";
       luthier::address_t BranchTarget;
-      if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(), Inst.getSize(),
-                          BranchTarget)) {
+      if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
+                              Inst.getSize(), BranchTarget)) {
         if (!UnresolvedBranchMIs.contains(BranchTarget)) {
           UnresolvedBranchMIs.insert({BranchTarget, {Builder.getInstr()}});
         } else {
