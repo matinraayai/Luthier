@@ -122,9 +122,9 @@ template <> struct DenseMapInfo<luthier::hsa::ExecutableSymbol> {
         getHashValue(ISA.hsaHandle());
   }
 
-  static bool isEqual(const luthier::hsa::ExecutableSymbol &lhs,
-                      const luthier::hsa::ExecutableSymbol &rhs) {
-    return lhs.hsaHandle() == rhs.hsaHandle();
+  static bool isEqual(const luthier::hsa::ExecutableSymbol &Lhs,
+                      const luthier::hsa::ExecutableSymbol &Rhs) {
+    return Lhs.hsaHandle() == Rhs.hsaHandle();
   }
 };
 
@@ -133,22 +133,22 @@ template <> struct DenseMapInfo<luthier::hsa::ExecutableSymbol> {
 namespace std {
 
 template <> struct hash<luthier::hsa::ExecutableSymbol> {
-  size_t operator()(const luthier::hsa::ExecutableSymbol &obj) const {
-    return hash<unsigned long>()(obj.hsaHandle());
+  size_t operator()(const luthier::hsa::ExecutableSymbol &Obj) const {
+    return hash<unsigned long>()(Obj.hsaHandle());
   }
 };
 
 template <> struct less<luthier::hsa::ExecutableSymbol> {
-  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
-                  const luthier::hsa::ExecutableSymbol &rhs) const {
-    return lhs.hsaHandle() < rhs.hsaHandle();
+  bool operator()(const luthier::hsa::ExecutableSymbol &Lhs,
+                  const luthier::hsa::ExecutableSymbol &Rhs) const {
+    return Lhs.hsaHandle() < Rhs.hsaHandle();
   }
 };
 
 template <> struct equal_to<luthier::hsa::ExecutableSymbol> {
-  bool operator()(const luthier::hsa::ExecutableSymbol &lhs,
-                  const luthier::hsa::ExecutableSymbol &rhs) const {
-    return lhs.hsaHandle() == rhs.hsaHandle();
+  bool operator()(const luthier::hsa::ExecutableSymbol &Lhs,
+                  const luthier::hsa::ExecutableSymbol &Rhs) const {
+    return Lhs.hsaHandle() == Rhs.hsaHandle();
   }
 };
 
