@@ -167,17 +167,9 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                             LUTHIER_GET_EXPORTED_FUNC(instrumentation_function),
                             INSTR_POINT_AFTER);
           }
-          hipPointerAttribute_t Attrs;
-          assert(hipPointerGetAttributes(&Attrs, reinterpret_cast<const void*>(&globalCounter)) == hipSuccess);
-          llvm::outs() << "Device Address: " << llvm::format_hex(
-                                                    reinterpret_cast<uint64_t>(Attrs.devicePointer), 8) << "\n";
-          llvm::outs() << "Host Address: " << llvm::format_hex(
-                                                  reinterpret_cast<uint64_t>(Attrs.hostPointer), 8) << "\n";
-          llvm::outs() << "Is managed? " << Attrs.isManaged << "\n";
-          llvm::outs() << "Value on Host: " << *reinterpret_cast<int*>(Attrs.hostPointer) << "\n";
 
           if (auto Res = luthier::instrument(
-                  std::move(Module), std::move(MMIWP), LSI, IT, reinterpret_cast<int*>(Attrs.hostPointer)))
+                  std::move(Module), std::move(MMIWP), LSI, IT))
             exit(-1);
           std::cout << "Instrumented thingy works\n";
           instrumented = true;

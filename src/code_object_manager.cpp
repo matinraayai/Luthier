@@ -51,17 +51,6 @@ llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
         } else if (*SType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION) {
           InstFunctionSymbols.insert(
               {luthier::DeviceFunctionWrap + *SName, Symbol});
-        } else {
-          llvm::outs() << "Found a variable named: " << *SName << "\n";
-          auto Address = Symbol.getVariableAddress();
-          LUTHIER_RETURN_ON_ERROR(Address.takeError());
-          llvm::outs() << "Incrementing Address content: " << *reinterpret_cast<int*>(*Address) << "\n";
-          auto Allocation = Symbol.getVariableAllocation();
-          LUTHIER_RETURN_ON_ERROR(Allocation.takeError());
-          llvm::outs() << "Allocation: " << *Allocation << "\n";
-          llvm::outs() << "Address: " << llvm::format_hex(*Address, 8) << "\n";
-          *reinterpret_cast<int*>(*Address) = 1;
-          llvm::outs() << "After increment: " << *reinterpret_cast<int*>(*Address) << "\n";
         }
       }
       for (const auto &[WrapKerName, WrapKerShadowPtr] :
