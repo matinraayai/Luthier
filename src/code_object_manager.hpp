@@ -76,7 +76,7 @@ public:
   llvm::Error loadInstrumentedKernel(
       const llvm::ArrayRef<uint8_t> &InstrumentedElf,
       const hsa::ExecutableSymbol &OriginalKernel,
-      const std::vector<hsa::ExecutableSymbol> &ExternVariables, int *Addr);
+      const std::vector<hsa::ExecutableSymbol> &ExternVariables);
 
   /**
    * Returns the instrumented kernel's \p hsa::ExecutableSymbol given its
