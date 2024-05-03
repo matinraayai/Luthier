@@ -42,8 +42,8 @@ llvm::Error Platform::unregisterFrozenExecutable(hsa_executable_t Exec) {
   return llvm::Error::success();
 }
 llvm::object::ELF64LEObjectFile &
-Platform::getStorgeELFofLCO(hsa_loaded_code_object_t LCO) {
-  return *StorageELFOfLCOs[LCO.handle];
+Platform::getStorgeELFofLCO(hsa_loaded_code_object_t LCO) const {
+  return *StorageELFOfLCOs.at(LCO.handle);
 }
 
 } // namespace luthier::hsa

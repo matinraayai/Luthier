@@ -27,7 +27,7 @@ public:
   llvm::Error unregisterFrozenExecutable(hsa_executable_t Exec);
 
   llvm::object::ELF64LEObjectFile &
-  getStorgeELFofLCO(hsa_loaded_code_object_t LCO);
+  getStorgeELFofLCO(hsa_loaded_code_object_t LCO) const;
 
 private:
   Platform() = default;

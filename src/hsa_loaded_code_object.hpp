@@ -38,7 +38,7 @@ public:
 
   [[nodiscard]] llvm::Expected<std::string> getUri() const;
 
-    llvm::Expected<ISA> getISA() const;
+  [[nodiscard]] llvm::Expected<ISA> getISA() const;
 };
 
 } // namespace luthier::hsa
