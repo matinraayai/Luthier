@@ -32,10 +32,6 @@ void internalApiCallback(ApiArgs &Args, ApiReturn *Out, ApiEvtPhase Phase,
       // since no device function is present to strip from it
       if (llvm::StringRef(LastRFuncArgs.deviceFunction)
               .find(luthier::DeviceFunctionWrap) != llvm::StringRef::npos) {
-        llvm::outs() << "Register function: " << LastRFuncArgs.hostFunction
-                     << "\n";
-        llvm::outs() << "Register function: " << LastRFuncArgs.deviceFunction
-                     << "\n";
         COM.registerInstrumentationFunctionWrapper(
             LastRFuncArgs.hostFunction, LastRFuncArgs.deviceFunction);
       }
@@ -44,8 +40,8 @@ void internalApiCallback(ApiArgs &Args, ApiReturn *Out, ApiEvtPhase Phase,
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-void *getHipFunctionPtr(llvm::StringRef funcName) {
-  return hip::Interceptor::instance().getHipFunction(funcName);
+void *getHipFunctionPtr(llvm::StringRef FuncName) {
+  return hip::Interceptor::instance().getHipFunction(FuncName);
 }
 
 } // namespace hip
@@ -125,10 +121,9 @@ liftSymbol(hsa_executable_symbol_t Symbol) {
 llvm::Error
 instrument(std::unique_ptr<llvm::Module> Module,
            std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-           const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask,
-           int *Addrs) {
-  return CodeGenerator::instance().instrument(
-      std::move(Module), std::move(MMIWP), LSO, ITask, Addrs);
+           const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask) {
+  return CodeGenerator::instance().instrument(std::move(Module),
+                                              std::move(MMIWP), LSO, ITask);
 }
 
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
