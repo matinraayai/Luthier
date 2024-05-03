@@ -95,8 +95,7 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet);
 llvm::Error
 instrument(std::unique_ptr<llvm::Module> Module,
            std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-           const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask,
-           int *Addrs);
+           const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask);
 
 /**
  * \brief If the tool is compiled with HIP device code it needs to call this
