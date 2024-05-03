@@ -24,7 +24,7 @@ add_library(luthier SHARED
         include/luthier/kernel_descriptor.h src/target_manager.cpp include/luthier/instr.h src/instr.cpp
         src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/kernel_descriptor.cpp
         src/hsa.hpp src/hsa.cpp include/luthier/hsa_trace_api.h include/luthier/pass.h
-        src/pass.cpp
+        src/pass.cpp src/hip_platform.hpp src/hsa_platform.hpp src/hsa_platform.cpp
 
 )
 # ======================================================================================================================
