@@ -327,11 +327,11 @@ processNote(const typename ELFT::Note &Note, const std::string &NoteDescString,
 
 template <typename ELFT>
 llvm::Expected<luthier::HSAMD::Metadata>
-parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> *Obj) {
+parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
   bool Found = false;
   llvm::msgpack::Document Doc;
   auto &Root = Doc.getRoot();
-  const llvm::object::ELFFile<ELFT> &ELFFile = Obj->getELFFile();
+  const llvm::object::ELFFile<ELFT> &ELFFile = Obj.getELFFile();
   auto ProgramHeaders = ELFFile.program_headers();
   std::string DescString;
   LUTHIER_RETURN_ON_ERROR(ProgramHeaders.takeError());
@@ -561,7 +561,7 @@ llvm::Expected<uint64_t> getSectionLMA(const llvm::object::ELFFile<ELFT> &Obj,
 
 template <class ELFT>
 llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
-                                       const llvm::object::ELFSymbolRef &Sym) {
+                                      const llvm::object::ELFSymbolRef &Sym) {
   auto PhdrRange = Obj.program_headers();
   LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
 

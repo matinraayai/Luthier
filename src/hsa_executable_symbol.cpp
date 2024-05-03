@@ -13,7 +13,7 @@
 namespace luthier::hsa {
 
 std::unordered_map<decltype(hsa_executable_symbol_t::handle),
-               hsa::ExecutableSymbol::IndirectFunctionInfo>
+                   hsa::ExecutableSymbol::IndirectFunctionInfo>
     hsa::ExecutableSymbol::IndirectFunctionHandleCache{};
 
 ExecutableSymbol ExecutableSymbol::fromHandle(hsa_executable_symbol_t Symbol) {
@@ -75,7 +75,8 @@ ExecutableSymbol::getVariableAllocation() const {
   return Out;
 }
 
-llvm::Expected<luthier::address_t> ExecutableSymbol::getVariableAddress() const {
+llvm::Expected<luthier::address_t>
+ExecutableSymbol::getVariableAddress() const {
   luthier::address_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_symbol_get_info_fn(
@@ -169,10 +170,9 @@ ExecutableSymbol::getLoadedCodeObject() const {
       auto StorageMemory = LCO.getStorageMemory();
       LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
-      auto HostElf = getAMDGCNObjectFile(*StorageMemory);
-      LUTHIER_RETURN_ON_ERROR(HostElf.takeError());
+      auto &HostElf = LCO.getStorageELF();
 
-      auto ElfSymbol = getSymbolByName(**HostElf, *Name);
+      auto ElfSymbol = getSymbolByName(HostElf, *Name);
       LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
 
       if (ElfSymbol->has_value())
@@ -204,10 +204,9 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
     auto StorageMemory = LCO.get()->getStorageMemory();
     LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
-    auto HostELF = getAMDGCNObjectFile(*StorageMemory);
-    LUTHIER_RETURN_ON_ERROR(HostELF.takeError());
+    auto &HostELF = (*LCO)->getStorageELF();
 
-    auto ElfSymbol = getSymbolByName(**HostELF, KernelSymbolName);
+    auto ElfSymbol = getSymbolByName(HostELF, KernelSymbolName);
     LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ElfSymbol->has_value()));
 
@@ -217,7 +216,7 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
     auto TextSection = ElfSymbol.get()->getSection();
     LUTHIER_RETURN_ON_ERROR(TextSection.takeError());
 
-    auto SymbolLMA = getSymbolLMA(HostELF.get()->getELFFile(), **ElfSymbol);
+    auto SymbolLMA = getSymbolLMA(HostELF.getELFFile(), **ElfSymbol);
     LUTHIER_RETURN_ON_ERROR(SymbolLMA.takeError());
 
     auto LoadedMemory = LCO.get()->getLoadedMemory();

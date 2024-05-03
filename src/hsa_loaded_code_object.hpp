@@ -1,6 +1,7 @@
 #ifndef HSA_LOADED_CODE_OBJECT_HPP
 #define HSA_LOADED_CODE_OBJECT_HPP
 #include "hsa_handle_type.hpp"
+#include <llvm/Object/ELFObjectFile.h>
 #include <llvm/Support/Error.h>
 
 namespace luthier::hsa {
@@ -22,10 +23,12 @@ public:
   getStorageType() const;
 
   [[nodiscard]] llvm::Expected<hsa_ven_amd_loader_loaded_code_object_kind_t>
-      getKind();
+  getKind();
 
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getStorageMemory() const;
+
+  [[nodiscard]] llvm::object::ELF64LEObjectFile &getStorageELF() const;
 
   [[nodiscard]] llvm::Expected<int> getStorageFile() const;
 
@@ -35,11 +38,10 @@ public:
 
   [[nodiscard]] llvm::Expected<std::string> getUri() const;
 
-//  llvm::Expected<ISA> getISA() const;
+    llvm::Expected<ISA> getISA() const;
 };
 
 } // namespace luthier::hsa
-
 
 namespace llvm {
 
@@ -118,7 +120,5 @@ template <> struct greater_equal<luthier::hsa::LoadedCodeObject> {
 };
 
 } // namespace std
-
-
 
 #endif

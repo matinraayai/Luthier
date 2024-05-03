@@ -13,6 +13,7 @@
 #include "hip_intercept.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
+#include "hsa_platform.hpp"
 #include "log.hpp"
 #include "target_manager.hpp"
 #include <luthier/instr.h>
@@ -69,10 +70,21 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
   LUTHIER_LOG_FUNCTION_CALL_START
   if (Phase == API_EVT_PHASE_EXIT &&
       ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
+    if (auto Err = Platform::instance().registerFrozenExecutable(
+            CBData->hsa_executable_destroy.executable))
+      llvm::report_fatal_error("Tool executable register failed");
+
     if (auto Err = CodeObjectManager::instance()
                        .checkIfLuthierToolExecutableAndRegister(hsa::Executable(
                            CBData->hsa_executable_freeze.executable))) {
       llvm::report_fatal_error("Tool executable check failed");
+    }
+  }
+  if (Phase == API_EVT_PHASE_ENTER &&
+      ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
+    if (auto Err = Platform::instance().unregisterFrozenExecutable(
+            CBData->hsa_executable_destroy.executable)) {
+      llvm::report_fatal_error("Tool executable unregister failed");
     }
   }
   LUTHIER_LOG_FUNCTION_CALL_END
@@ -165,6 +177,8 @@ OnLoad(HsaApiTable *table, uint64_t runtime_version, uint64_t failed_tool_count,
   hsaInterceptor.setUserCallback(luthier::hsa::atHsaEvt);
   hsaInterceptor.enableInternalCallback(
       luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze);
+  hsaInterceptor.enableInternalCallback(
+      luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy);
   return res;
   LUTHIER_LOG_FUNCTION_CALL_END
 }

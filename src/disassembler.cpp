@@ -126,8 +126,6 @@ CodeLifter::getKernelMetaData(const hsa::ExecutableSymbol &Symbol) {
 llvm::Expected<const HSAMD::Metadata &>
 CodeLifter::getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO) {
   if (!LoadedCodeObjectsMetaData.contains(LCO)) {
-    auto StorageMemory = LCO.getStorageMemory();
-    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
     auto Agent = LCO.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
@@ -135,10 +133,9 @@ CodeLifter::getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO) {
     auto Exec = LCO.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Exec.takeError());
 
-    auto StorageElf = getAMDGCNObjectFile(*StorageMemory);
-    LUTHIER_RETURN_ON_ERROR(StorageElf.takeError());
+    auto &StorageELF = LCO.getStorageELF();
 
-    auto MetaData = parseNoteMetaData(StorageElf->get());
+    auto MetaData = parseNoteMetaData(StorageELF);
     LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
 
     llvm::outs() << *MetaData << "\n";
@@ -218,31 +215,20 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
     LUTHIER_RETURN_ON_ERROR(LCO.takeError());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCO->has_value()));
 
-    auto StorageMemory = LCO.get()->getStorageMemory();
-    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
-    auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
-    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
-
-    llvm::Triple TT = StorageELF.get()->makeTriple();
-    std::optional<llvm::StringRef> CPU = StorageELF.get()->tryGetCPUName();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
-    llvm::SubtargetFeatures Features;
-    LUTHIER_RETURN_ON_ERROR(StorageELF.get()->getFeatures().moveInto(Features));
-
     auto Agent = Symbol.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
-    auto ISA = hsa::ISA::fromLLVM(TT, *CPU, Features);
+    auto ISA = (*LCO)->getISA();
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
 
-    auto CodeOrErrorOnDevice = Symbol.getMachineCode();
-    LUTHIER_RETURN_ON_ERROR(CodeOrErrorOnDevice.takeError());
-    auto CodeOrErrorOnHost = hsa::convertToHostEquivalent(*CodeOrErrorOnDevice);
-    LUTHIER_RETURN_ON_ERROR(CodeOrErrorOnHost.takeError());
+    auto MachineCodeOnDevice = Symbol.getMachineCode();
+    LUTHIER_RETURN_ON_ERROR(MachineCodeOnDevice.takeError());
+    auto MachineCodeOnHost = hsa::convertToHostEquivalent(*MachineCodeOnDevice);
+    LUTHIER_RETURN_ON_ERROR(MachineCodeOnHost.takeError());
 
-    auto InstructionsOrError = disassemble(*ISA, *CodeOrErrorOnHost);
-    LUTHIER_RETURN_ON_ERROR(InstructionsOrError.takeError());
-    auto [Instructions, Addresses] = *InstructionsOrError;
+    auto InstructionsAndAddresses = disassemble(*ISA, *MachineCodeOnHost);
+    LUTHIER_RETURN_ON_ERROR(InstructionsAndAddresses.takeError());
+    auto [Instructions, Addresses] = *InstructionsAndAddresses;
 
     DisassembledSymbolsRaw.insert(
         {Symbol, std::make_unique<std::vector<Instr>>()});
@@ -290,7 +276,7 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
       PrevInstAddress = Address;
       Out->push_back(Instr(Inst, (**LCO).asHsaType(), Symbol.asHsaType(),
                            Address + reinterpret_cast<luthier::address_t>(
-                                         CodeOrErrorOnDevice->data()),
+                                         MachineCodeOnDevice->data()),
                            Size));
     }
   }
@@ -506,15 +492,14 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
     auto LoadedMemory = LCO.getLoadedMemory();
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
-    auto ELF = getAMDGCNObjectFile(*StorageMemory);
-    LUTHIER_RETURN_ON_ERROR(ELF.takeError());
+    auto &StorageELF = LCO.getStorageELF();
 
     auto Exec = LCO.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Exec.takeError());
     auto Agent = LCO.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
-    auto Sections = ELF.get()->sections();
+    auto Sections = StorageELF.sections();
 
     auto [LCORelocationsMapIt, MapInsertionStatus] = Relocations.insert(
         {LCO, llvm::DenseMap<luthier::address_t, LCORelocationInfo>{}});
