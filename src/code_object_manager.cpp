@@ -103,23 +103,14 @@ CodeObjectManager::getInstrumentedKernel(
 llvm::Error CodeObjectManager::loadInstrumentedKernel(
     const llvm::ArrayRef<uint8_t> &InstrumentedElf,
     const hsa::ExecutableSymbol &OriginalKernel,
-    const std::vector<hsa::ExecutableSymbol> &ExternVariables, int *Addr) {
+    const std::vector<hsa::ExecutableSymbol> &ExternVariables) {
   if (!InstrumentedKernels.contains(OriginalKernel)) {
     auto Executable = hsa::Executable::create();
     LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
     for (const auto &EV : ExternVariables) {
-//            LUTHIER_RETURN_ON_ERROR(
-//          Executable->defineExternalProgramGlobalVariable(EV));
       LUTHIER_RETURN_ON_ERROR(
-    Executable->defineExternalAgentGlobalVariable(EV, Addr));
-      auto GVAddress = EV.getVariableAddress();
-      LUTHIER_RETURN_ON_ERROR(GVAddress.takeError());
-      auto GVAllocation = EV.getVariableAllocation();
-      LUTHIER_RETURN_ON_ERROR(GVAllocation.takeError());
-      llvm::outs() << "Variable Address: " << llvm::format_hex(reinterpret_cast<uint64_t>(Addr), 8)
-                   << ", Allocation: " << *GVAllocation << "\n";
-      *GVAddress += 1;
+          Executable->defineExternalAgentGlobalVariable(EV));
     }
 
     auto agent = OriginalKernel.getAgent();
