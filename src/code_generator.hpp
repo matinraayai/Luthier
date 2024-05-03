@@ -46,8 +46,7 @@ public:
   llvm::Error
   instrument(std::unique_ptr<llvm::Module> Module,
              std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-             const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask,
-             int *Addrs);
+             const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask);
 
 private:
   CodeGenerator() = default;
