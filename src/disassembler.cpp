@@ -962,10 +962,6 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
   Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
   Properties.set(llvm::MachineFunctionProperties::Property::TracksLiveness);
   Properties.set(llvm::MachineFunctionProperties::Property::Selected);
-  for (auto &MBB : *MF) {
-    MBB.dump();
-  }
-  MF->dump();
   return Out;
 }
 
