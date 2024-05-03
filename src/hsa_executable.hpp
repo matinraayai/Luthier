@@ -41,8 +41,7 @@ private:
   llvm::Error
   defineExternalProgramGlobalVariable(const hsa::ExecutableSymbol &Symbol);
 
-  llvm::Error defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol,
-                                                int *Addr);
+  llvm::Error defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol);
 
   llvm::Error defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol);
 

@@ -62,8 +62,8 @@ Executable::getAgentSymbols(const luthier::hsa::GpuAgent &Agent) const {
   std::vector<ExecutableSymbol> Out;
   auto Iterator = [](hsa_executable_t Exec, hsa_agent_t Agent,
                      hsa_executable_symbol_t Symbol, void *Data) {
-    auto out = reinterpret_cast<std::vector<ExecutableSymbol> *>(Data);
-    out->push_back(ExecutableSymbol::fromHandle(Symbol));
+    auto Out = reinterpret_cast<std::vector<ExecutableSymbol> *>(Data);
+    Out->push_back(ExecutableSymbol::fromHandle(Symbol));
     return HSA_STATUS_SUCCESS;
   };
 
@@ -257,8 +257,7 @@ llvm::Error Executable::defineExternalProgramGlobalVariable(
 }
 
 llvm::Error
-Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol,
-                                              int *Addr) {
+Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol) {
   LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_symbol_kind_t, SymbolType,
                                    Symbol.getType());
   LUTHIER_RETURN_ON_ERROR(
@@ -274,7 +273,8 @@ Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol,
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_agent_global_variable_define_fn(
           asHsaType(), Agent->asHsaType(), VariableName.c_str(),
-          reinterpret_cast<void *>(Addr))));
+          reinterpret_cast<void *>(
+              *reinterpret_cast<uint64_t *>(VariableAddress)))));
   return llvm::Error::success();
 }
 
