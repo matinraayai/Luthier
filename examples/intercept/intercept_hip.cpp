@@ -27,6 +27,8 @@ void hsa::atHsaApiTableLoad() {
   // luthier_enable_hsa_op_callback(HSA_API_ID_hsa_amd_memory_pool_free);
   // luthier_disable_hsa_op_callback(HSA_EVT_ID_hsa_queue_packet_submit);
   hsa::enableAllHsaCallbacks();
+
+  std::cout << "Done calling enableHsaOpCallback" << std::endl;
 }
 
 void hsa::atHsaApiTableUnload() {
@@ -36,10 +38,11 @@ void hsa::atHsaApiTableUnload() {
 // Below should not print if callbacks are disabled
 void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
                    luthier::hsa::ApiEvtID ApiID){
-
+  std::cout << "Line 41" << std::endl;
   // Test to see if disabling callbacks works
   int *pointer;
   {
+    std::cout << "Line 45" << std::endl;
     DisableInterceptScope mtx;
     // want to call hipMalloc and check all the hip functions for their error codes and
     // make sure they equate to success
@@ -51,6 +54,8 @@ void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
               mallocError, __FILE__, __LINE__);                                      \
       exit(EXIT_FAILURE);
     }
+
+    std::cout << "Line 58" << std::endl;
 
     hipError_t memsetError = hipMemset(pointer, 5, 4);
 
@@ -65,7 +70,13 @@ void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
     // TODO:  If this works properly, the above will print first and below second
     // TODO:  test by appending to preload
 
-    hipFree(pointer);
+    hipError_t freeError = hipFree(pointer);
+
+    if(freeError != hipSuccess) {
+      fprintf(stderr, "error: '%s'(%d) at %s:%d\n",
+              hipGetErrorString(freeError), freeError, __FILE__, __LINE__);
+      exit(EXIT_FAILURE);
+    }
   }
   // if (api_id == HSA_API_ID_hsa_signal_load_relaxed)
   // luthier_disable_hsa_op_callback(HSA_API_ID_hsa_signal_load_relaxed); if

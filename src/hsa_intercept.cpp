@@ -5,7 +5,7 @@
 #include "hsa_intercept.hpp"
 #include "luthier/types.h"
 
-//bool luthier::hsa::Interceptor::EnableTempCallback = true;
+thread_local bool luthier::hsa::Interceptor::EnableTempCallback = true;
 
 void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                  uint64_t UserPktIndex, void *Data, 
