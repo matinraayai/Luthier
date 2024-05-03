@@ -124,7 +124,8 @@ LoadedCodeObject::getKind() {
           &Kind)));
   return Kind;
 }
-llvm::object::ELF64LEObjectFile &LoadedCodeObject::getStorageELF() const {
+
+const llvm::object::ELF64LEObjectFile &LoadedCodeObject::getStorageELF() const {
   return Platform::instance().getStorgeELFofLCO(asHsaType());
 }
 

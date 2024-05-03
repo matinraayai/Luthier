@@ -28,7 +28,7 @@ public:
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getStorageMemory() const;
 
-  [[nodiscard]] llvm::object::ELF64LEObjectFile &getStorageELF() const;
+  [[nodiscard]] const llvm::object::ELF64LEObjectFile &getStorageELF() const;
 
   [[nodiscard]] llvm::Expected<int> getStorageFile() const;
 
