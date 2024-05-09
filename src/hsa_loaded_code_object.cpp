@@ -135,17 +135,9 @@ LoadedCodeObject::getStorageELF() const {
 llvm::Expected<ISA> LoadedCodeObject::getISA() const {
   std::lock_guard Lock(getMutex());
   if (!ISAOfLCOs.contains(hsaHandle())) {
-    auto StorageELF = getStorageELF();
-    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
-
-    llvm::Triple TT = StorageELF->makeTriple();
-    std::optional<llvm::StringRef> CPU = StorageELF->tryGetCPUName();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
-    llvm::SubtargetFeatures Features;
-    LUTHIER_RETURN_ON_ERROR(StorageELF->getFeatures().moveInto(Features));
-    return hsa::ISA::fromLLVM(TT, *CPU, Features);
-  } else
-    return ISA(ISAOfLCOs.at(hsaHandle()));
+    LUTHIER_RETURN_ON_ERROR(cache());
+  }
+  return ISA(ISAOfLCOs.at(hsaHandle()));
 }
 
 llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
@@ -162,9 +154,16 @@ llvm::Error LoadedCodeObject::cache() const {
   LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
   auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
-  StorageELFOfLCOs.insert({this->hsaHandle(), std::move(*StorageELF)});
+  auto &CachedELF =
+      *(StorageELFOfLCOs.insert({this->hsaHandle(), std::move(*StorageELF)})
+            .first->second);
   // Cache the ISA of the ELF
-  auto ISA = this->getISA();
+  llvm::Triple TT = CachedELF.makeTriple();
+  std::optional<llvm::StringRef> CPU = CachedELF.tryGetCPUName();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
+  llvm::SubtargetFeatures Features;
+  LUTHIER_RETURN_ON_ERROR(CachedELF.getFeatures().moveInto(Features));
+  auto ISA = hsa::ISA::fromLLVM(TT, *CPU, Features);
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
   ISAOfLCOs.insert({this->hsaHandle(), ISA->asHsaType()});
   return llvm::Error::success();

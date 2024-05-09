@@ -37,7 +37,7 @@ public:
 
   [[nodiscard]] llvm::Expected<std::string> getUri() const;
 
-  llvm::Expected<ISA> getISA() const;
+  [[nodiscard]] llvm::Expected<ISA> getISA() const;
 
 private:
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
