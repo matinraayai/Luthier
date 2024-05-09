@@ -49,7 +49,7 @@ llvm::Error parseStringMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
     Out = NodeMD->second.getString();
-    llvm::outs() << Out << "\n";
+//    llvm::outs() << Out << "\n";
   }
   return llvm::Error::success();
 }
@@ -60,7 +60,7 @@ llvm::Error parseStringMDRequired(MapDocNode &Map, llvm::StringRef Key,
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
   Out = NodeMD->second.getString();
-  llvm::outs() << Out << "\n";
+//  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
@@ -135,7 +135,7 @@ llvm::Error parseEnumMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (EnumString.has_value()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(*EnumString)));
     Out = EnumMap[*EnumString];
-    llvm::outs() << EnumString << "\n";
+//    llvm::outs() << EnumString << "\n";
   }
   return llvm::Error::success();
 }
@@ -148,7 +148,7 @@ llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(EnumString)));
   Out = EnumMap[EnumString];
-  llvm::outs() << EnumString << "\n";
+//  llvm::outs() << EnumString << "\n";
   return llvm::Error::success();
 }
 
@@ -172,8 +172,8 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
     Out = {static_cast<uint32_t>(XMD.getUInt()),
            static_cast<uint32_t>(YMD.getUInt()),
            static_cast<uint32_t>(ZMD.getUInt())};
-    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << ","
-                 << "\n";
+//    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << ","
+//                 << "\n";
   }
   return llvm::Error::success();
 }
@@ -198,8 +198,8 @@ llvm::Error parseDim3MDRequired(MapDocNode &Map, llvm::StringRef Key,
   Out = {static_cast<uint32_t>(XMD.getUInt()),
          static_cast<uint32_t>(YMD.getUInt()),
          static_cast<uint32_t>(ZMD.getUInt())};
-  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << ","
-               << "\n";
+//  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << ","
+//               << "\n";
   return llvm::Error::success();
 }
 
@@ -210,7 +210,7 @@ llvm::Error parseUIntMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
     Out = static_cast<T>(NodeMD->second.getUInt());
-    llvm::outs() << Out << "\n";
+//    llvm::outs() << Out << "\n";
   }
   return llvm::Error::success();
 }
@@ -221,7 +221,7 @@ llvm::Error parseUIntMDRequired(MapDocNode &Map, llvm::StringRef Key, T &Out) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
   Out = static_cast<T>(NodeMD->second.getUInt());
-  llvm::outs() << Out << "\n";
+//  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
@@ -232,7 +232,7 @@ llvm::Error parseBoolMDOptional(MapDocNode &Map, llvm::StringRef Key,
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
     Out = NodeMD->second.getBool();
   }
-  llvm::outs() << Out << "\n";
+//  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
@@ -415,11 +415,11 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
   }
 
   auto KernelsMD = RootMap.find(HSAMD::Key::Kernels);
-  llvm::outs() << "Is kernel MD found? " << (KernelsMD != RootMap.end())
-               << "\n";
+//  llvm::outs() << "Is kernel MD found? " << (KernelsMD != RootMap.end())
+//               << "\n";
   for (auto &[k, v] : RootMap) {
-    llvm::outs() << "Key is string: " << k.isString() << "\n";
-    llvm::outs() << k.toString() << "\n";
+//    llvm::outs() << "Key is string: " << k.isString() << "\n";
+//    llvm::outs() << k.toString() << "\n";
   }
   //  llvm::outs() << RootMap.toString() << "\n";
   if (KernelsMD != RootMap.end()) {

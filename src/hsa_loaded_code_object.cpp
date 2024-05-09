@@ -124,19 +124,44 @@ LoadedCodeObject::getKind() {
           &Kind)));
   return Kind;
 }
-llvm::object::ELF64LEObjectFile &LoadedCodeObject::getStorageELF() const {
-  return Platform::instance().getStorgeELFofLCO(asHsaType());
+llvm::Expected<llvm::object::ELF64LEObjectFile &>
+LoadedCodeObject::getStorageELF() const {
+  std::lock_guard Lock(getMutex());
+  if (!StorageELFOfLCOs.contains(hsaHandle()))
+    LUTHIER_RETURN_ON_ERROR(cache());
+  return *StorageELFOfLCOs.at(hsaHandle());
 }
 
 llvm::Expected<ISA> LoadedCodeObject::getISA() const {
-  auto &StorageELF = getStorageELF();
+  auto StorageELF = getStorageELF();
+  LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
-  llvm::Triple TT = StorageELF.makeTriple();
-  std::optional<llvm::StringRef> CPU = StorageELF.tryGetCPUName();
+  llvm::Triple TT = StorageELF->makeTriple();
+  std::optional<llvm::StringRef> CPU = StorageELF->tryGetCPUName();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
   llvm::SubtargetFeatures Features;
-  LUTHIER_RETURN_ON_ERROR(StorageELF.getFeatures().moveInto(Features));
+  LUTHIER_RETURN_ON_ERROR(StorageELF->getFeatures().moveInto(Features));
   return hsa::ISA::fromLLVM(TT, *CPU, Features);
+}
+
+llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+               std::unique_ptr<llvm::object::ELF64LEObjectFile>>
+    LoadedCodeObject::StorageELFOfLCOs{};
+
+llvm::Error LoadedCodeObject::cache() const {
+  std::lock_guard Lock(getMutex());
+  // Cache the Storage ELF
+  auto StorageMemory = this->getStorageMemory();
+  LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+  auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
+  LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
+  StorageELFOfLCOs.insert({this->hsaHandle(), std::move(*StorageELF)});
+  return llvm::Error::success();
+}
+llvm::Error LoadedCodeObject::invalidate() const {
+  std::lock_guard Lock(getMutex());
+  StorageELFOfLCOs.erase(hsaHandle());
+  return llvm::Error::success();
 }
 
 } // namespace luthier::hsa

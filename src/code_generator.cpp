@@ -182,16 +182,16 @@ llvm::Error CodeGenerator::instrument(
     llvm::outs() << "Failed to add pass manager\n";
 
   PM.run(*Module); // Run all the passes
-  std::error_code code;
-  llvm::raw_fd_ostream("my_reloc.hsaco", code) << Reloc;
+//  std::error_code code;
+//  llvm::raw_fd_ostream("my_reloc.hsaco", code) << Reloc;
 
   LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
       llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(Reloc.data()),
                               Reloc.size()),
       *Isa, Executable));
-  llvm::outs() << "Compiled to executable\n";
+//  llvm::outs() << "Compiled to executable\n";
 
-  llvm::outs() << llvm::toStringRef(Executable) << "\n";
+//  llvm::outs() << llvm::toStringRef(Executable) << "\n";
 
   std::vector<hsa::ExecutableSymbol> ExternGVs;
   for (const auto &GV : LSO.getRelatedVariables())

@@ -70,20 +70,21 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
   LUTHIER_LOG_FUNCTION_CALL_START
   if (Phase == API_EVT_PHASE_EXIT &&
       ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
-    if (auto Err = Platform::instance().registerFrozenExecutable(
-            CBData->hsa_executable_destroy.executable))
+    hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
+    // Cache the executable and its items
+    if (auto Err = Platform::instance().registerFrozenExecutable(Exec))
       llvm::report_fatal_error("Tool executable register failed");
-
+    // Check if the executable belongs to the tool and not the app
     if (auto Err = CodeObjectManager::instance()
-                       .checkIfLuthierToolExecutableAndRegister(hsa::Executable(
-                           CBData->hsa_executable_freeze.executable))) {
+                       .checkIfLuthierToolExecutableAndRegister(Exec)) {
       llvm::report_fatal_error("Tool executable check failed");
     }
   }
   if (Phase == API_EVT_PHASE_ENTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
-    if (auto Err = Platform::instance().unregisterFrozenExecutable(
-            CBData->hsa_executable_destroy.executable)) {
+    hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
+
+    if (auto Err = Platform::instance().unregisterFrozenExecutable(Exec)) {
       llvm::report_fatal_error("Tool executable unregister failed");
     }
   }

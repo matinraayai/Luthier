@@ -133,12 +133,14 @@ CodeLifter::getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO) {
     auto Exec = LCO.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Exec.takeError());
 
-    auto &StorageELF = LCO.getStorageELF();
+    auto StorageELF = LCO.getStorageELF();
+    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
-    auto MetaData = parseNoteMetaData(StorageELF);
+
+    auto MetaData = parseNoteMetaData(*StorageELF);
     LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
 
-    llvm::outs() << *MetaData << "\n";
+//    llvm::outs() << *MetaData << "\n";
     for (auto &KernelMD : MetaData->Kernels) {
       LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
           std::optional<hsa::ExecutableSymbol>, KernelSymbol,
@@ -253,15 +255,15 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
       if (MII->get(Inst.getOpcode()).isBranch()) {
         if (!isAddressBranchOrBranchTarget(*Executable, *Agent, Address)) {
           luthier::address_t Target;
-          TargetInfo->getMCInstPrinter()->printInst(
-              &Inst, Address, "", *TargetInfo->getMCSubTargetInfo(),
-              llvm::outs());
+//          TargetInfo->getMCInstPrinter()->printInst(
+//              &Inst, Address, "", *TargetInfo->getMCSubTargetInfo(),
+//              llvm::outs());
           //          Inst.dump_pretty(llvm::outs(), nullptr, " ",
           //                           TargetInfo->getMCRegisterInfo());
           if (MIA->evaluateBranch(Inst, Address, Size, Target)) {
-            llvm::outs() << llvm::formatv(
-                "Resolved branches: Address: {0:x}, Target: {1:x}\n", Address,
-                Target);
+//            llvm::outs() << llvm::formatv(
+//                "Resolved branches: Address: {0:x}, Target: {1:x}\n", Address,
+//                Target);
 
             addBranchOrBranchTargetAddress(*Executable, *Agent, Target);
           }
@@ -421,7 +423,7 @@ luthier::CodeLifter::createLLVMFunctionFromSymbol(
     F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
 
     // TODO: Set the rest of the attributes
-    llvm::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload << "\n";
+//    llvm::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload << "\n";
     F->addFnAttr("amdgpu-calls");
 
   } else {
@@ -461,20 +463,20 @@ CodeLifter::createLLVMMachineFunctionFromSymbol(
                                      hsa::queryHostAddress(KDOnDevice));
     if (KDOnHost->getKernelCodePropertiesEnableSgprPrivateSegmentBuffer() ==
         1) {
-      llvm::outs() << "Private segment buffer\n";
+//      llvm::outs() << "Private segment buffer\n";
       MFI->addPrivateSegmentBuffer(*TRI);
     }
     if (KDOnHost->getKernelCodePropertiesEnableSgprKernArgSegmentPtr() == 1) {
-      llvm::outs() << "KernArg\n";
+//      llvm::outs() << "KernArg\n";
       MFI->addKernargSegmentPtr(*TRI);
     }
     //    if (KDOnHost->getKernelCodePropertiesEnableSgprFlatScratchInit() == 1)
     //    {
-    llvm::outs() << "Flat scracth\n";
+//    llvm::outs() << "Flat scracth\n";
     MFI->addFlatScratchInit(*TRI);
     //    }
     //    if (KDOnHost->getRsrc2EnableSgprPrivateSegmentWaveByteOffset() == 1) {
-    llvm::outs() << "Private segment Wave offset\n";
+//    llvm::outs() << "Private segment Wave offset\n";
     MFI->addPrivateSegmentWaveByteOffset();
     //    }
   }
@@ -492,14 +494,15 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
     auto LoadedMemory = LCO.getLoadedMemory();
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
-    auto &StorageELF = LCO.getStorageELF();
+    auto StorageELF = LCO.getStorageELF();
+    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
     auto Exec = LCO.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Exec.takeError());
     auto Agent = LCO.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
-    auto Sections = StorageELF.sections();
+    auto Sections = StorageELF->sections();
 
     auto [LCORelocationsMapIt, MapInsertionStatus] = Relocations.insert(
         {LCO, llvm::DenseMap<luthier::address_t, LCORelocationInfo>{}});
@@ -519,12 +522,12 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
           LUTHIER_RETURN_ON_ERROR(Addend.takeError());
           auto Type = ELFReloc.getType();
           //          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Symbol->has_value()));
-          llvm::outs() << "Relocation: "
-                       << reinterpret_cast<luthier::address_t>(
-                              LoadedMemory->data()) +
-                              Reloc.getOffset()
-                       << ", " << *SymbolName << " Addened " << *Addend
-                       << "Type :" << Type << "\n";
+//          llvm::outs() << "Relocation: "
+//                       << reinterpret_cast<luthier::address_t>(
+//                              LoadedMemory->data()) +
+//                              Reloc.getOffset()
+//                       << ", " << *SymbolName << " Addened " << *Addend
+//                       << "Type :" << Type << "\n";
           LCORelocationsMapIt->second.insert(
               {reinterpret_cast<luthier::address_t>(LoadedMemory->data()) +
                    Reloc.getOffset(),
@@ -534,9 +537,9 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
     }
   }
   const auto &LCORelocationsMap = Relocations.at(LCO);
-  llvm::outs() << "Looking for relocation at address " << Address << "\n";
+//  llvm::outs() << "Looking for relocation at address " << Address << "\n";
   if (LCORelocationsMap.contains(Address)) {
-    llvm::outs() << "Relocation was found for address " << Address << "\n";
+//    llvm::outs() << "Relocation was found for address " << Address << "\n";
     return LCORelocationsMap.at(Address);
   }
   return std::nullopt;
@@ -757,11 +760,11 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
     for (unsigned OpIndex = 0, E = MCInst.getNumOperands(); OpIndex < E;
          ++OpIndex) {
-      llvm::outs() << "Number of operands in MCID: " << MCID.operands().size()
-                   << "\n";
+//      llvm::outs() << "Number of operands in MCID: " << MCID.operands().size()
+//                   << "\n";
       const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
       if (Op.isReg()) {
-        llvm::outs() << "Reg Op detected \n";
+//        llvm::outs() << "Reg Op detected \n";
         unsigned RegNum = Op.getReg();
         const bool IsDef = OpIndex < MCID.getNumDefs();
         unsigned Flags = 0;
@@ -771,15 +774,15 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
           Defines.insert(RegNum);
         } else if (!Defines.contains(RegNum)) {
           LiveIns.insert(RegNum);
-          llvm::outs() << "Live in detected: \n";
-          llvm::outs() << "Register: ";
-          Op.print(llvm::outs(), TargetInfo->getMCRegisterInfo());
-          llvm::outs() << "\n";
-          llvm::outs() << "Flags: " << Flags << "\n";
+//          llvm::outs() << "Live in detected: \n";
+//          llvm::outs() << "Register: ";
+//          Op.print(llvm::outs(), TargetInfo->getMCRegisterInfo());
+//          llvm::outs() << "\n";
+//          llvm::outs() << "Flags: " << Flags << "\n";
         }
         Builder.addReg(Op.getReg(), Flags);
       } else if (Op.isImm()) {
-        llvm::outs() << "Imm Op detected \n";
+//        llvm::outs() << "Imm Op detected \n";
         // TODO: Resolve immediate load/store operands if they don't have
         // relocations associated with them (e.g. when they happen in the
         // text section)
@@ -793,10 +796,10 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
           auto RelocationInfo = resolveRelocation(LCO, I);
           LUTHIER_RETURN_ON_ERROR(RelocationInfo.takeError());
           if (RelocationInfo->has_value()) {
-            llvm::outs() << "Relocation found at " << InstAddr << "for "
-                         << llvm::cantFail(
-                                RelocationInfo.get()->Symbol.getName())
-                         << "\n";
+//            llvm::outs() << "Relocation found at " << InstAddr << "for "
+//                         << llvm::cantFail(
+//                                RelocationInfo.get()->Symbol.getName())
+//                         << "\n";
             hsa::ExecutableSymbol TargetSymbol = RelocationInfo.get()->Symbol;
 
             auto TargetSymbolType = TargetSymbol.getType();
@@ -900,9 +903,9 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
     if (IsDirectBranch) {
       // Branches signal the end of the current Machine Basic Block
-      llvm::outs() << llvm::formatv("Address: {0:x}\n",
-                                    Inst.getLoadedDeviceAddress());
-      llvm::outs() << "Found a branch!\n";
+//      llvm::outs() << llvm::formatv("Address: {0:x}\n",
+//                                    Inst.getLoadedDeviceAddress());
+//      llvm::outs() << "Found a branch!\n";
       luthier::address_t BranchTarget;
       if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
                               Inst.getSize(), BranchTarget)) {
@@ -912,8 +915,8 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
           UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
         }
       }
-      MCInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
-                         TargetInfo->getMCRegisterInfo());
+//      MCInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(), " ",
+//                         TargetInfo->getMCRegisterInfo());
       auto OldMBB = MBB;
       MBB = MF->CreateMachineBasicBlock();
       MF->push_back(MBB);
@@ -927,8 +930,8 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     for (auto &MI : BranchMIs) {
       MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
       MI->getParent()->addSuccessor(MBB);
-      MI->print(llvm::outs());
-      llvm::outs() << "\n";
+//      MI->print(llvm::outs());
+//      llvm::outs() << "\n";
     }
   }
 

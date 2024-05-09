@@ -1,12 +1,29 @@
 #ifndef HSA_PLATFORM_HPP
 #define HSA_PLATFORM_HPP
-#include "hsa.hpp"
-#include "hsa_executable_symbol.hpp"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/Object/ELFObjectFile.h>
 #include <luthier/kernel_descriptor.h>
 
+#include <mutex>
+
 namespace luthier::hsa {
+
+class Platform;
+
+class Executable;
+
+class ExecutableBackedCachableItem {
+  friend Platform;
+
+private:
+  static std::recursive_mutex CacheMutex;
+  virtual llvm::Error cache() const = 0;
+
+  virtual llvm::Error invalidate() const = 0;
+
+protected:
+  static std::recursive_mutex &getMutex() { return CacheMutex; }
+};
 
 /**
  * \brief in charge of caching useful information about the HSA runtime state
@@ -22,34 +39,27 @@ public:
     return Instance;
   }
 
-  llvm::Error registerFrozenExecutable(hsa_executable_t Exec);
+  llvm::Error registerFrozenExecutable(const Executable &Exec);
 
-  llvm::Error unregisterFrozenExecutable(hsa_executable_t Exec);
-
-  llvm::object::ELF64LEObjectFile &
-  getStorgeELFofLCO(hsa_loaded_code_object_t LCO);
+  llvm::Error unregisterFrozenExecutable(const Executable &Exec);
 
 private:
   Platform() = default;
   ~Platform() = default;
 
-  llvm::DenseSet<decltype(hsa_executable_t::handle)> FrozenExecs{};
-
-  llvm::DenseMap<decltype(hsa_executable_t::handle),
-                 llvm::DenseSet<decltype(hsa_executable_symbol_t::handle)>>
-      AgentSymbolsOfFrozenExecs{};
-
-  llvm::DenseMap<decltype(hsa_executable_t::handle),
-                 llvm::DenseSet<decltype(hsa_executable_symbol_t::handle)>>
-      ProgramSymbolsOfFrozenExecs{};
-
-  llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
-                 hsa_loaded_code_object_t>
-      LCOofSymbols{};
-
-  llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
-                 std::unique_ptr<llvm::object::ELF64LEObjectFile>>
-      StorageELFOfLCOs{};
+//  llvm::DenseSet<decltype(hsa_executable_t::handle)> FrozenExecs{};
+//
+//  llvm::DenseMap<decltype(hsa_executable_t::handle),
+//                 llvm::DenseSet<decltype(hsa_executable_symbol_t::handle)>>
+//      AgentSymbolsOfFrozenExecs{};
+//
+//  llvm::DenseMap<decltype(hsa_executable_t::handle),
+//                 llvm::DenseSet<decltype(hsa_executable_symbol_t::handle)>>
+//      ProgramSymbolsOfFrozenExecs{};
+//
+//  llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
+//                 hsa_loaded_code_object_t>
+//      LCOofSymbols{};
 
   /**
    * \brief Keeps track of the Indirect functions

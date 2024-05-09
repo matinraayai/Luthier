@@ -1,17 +1,18 @@
 #ifndef HSA_LOADED_CODE_OBJECT_HPP
 #define HSA_LOADED_CODE_OBJECT_HPP
 #include "hsa_handle_type.hpp"
+#include "hsa_platform.hpp"
 #include <llvm/Object/ELFObjectFile.h>
 #include <llvm/Support/Error.h>
 
 namespace luthier::hsa {
-class Executable;
 
 class GpuAgent;
 
 class ISA;
 
-class LoadedCodeObject : public HandleType<hsa_loaded_code_object_t> {
+class LoadedCodeObject : public ExecutableBackedCachableItem,
+                         public HandleType<hsa_loaded_code_object_t> {
 public:
   explicit LoadedCodeObject(hsa_loaded_code_object_t LCO);
 
@@ -28,7 +29,8 @@ public:
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getStorageMemory() const;
 
-  [[nodiscard]] llvm::object::ELF64LEObjectFile &getStorageELF() const;
+  [[nodiscard]] llvm::Expected<llvm::object::ELF64LEObjectFile &>
+  getStorageELF() const;
 
   [[nodiscard]] llvm::Expected<int> getStorageFile() const;
 
@@ -38,7 +40,16 @@ public:
 
   [[nodiscard]] llvm::Expected<std::string> getUri() const;
 
-    llvm::Expected<ISA> getISA() const;
+  llvm::Expected<ISA> getISA() const;
+
+private:
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+                        std::unique_ptr<llvm::object::ELF64LEObjectFile>>
+      StorageELFOfLCOs;
+
+  llvm::Error cache() const override;
+
+  llvm::Error invalidate() const override;
 };
 
 } // namespace luthier::hsa

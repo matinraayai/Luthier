@@ -319,7 +319,7 @@ processNote(const typename ELFT::Note &Note, const std::string &NoteDescString,
     if (!Doc.readFromBlob(NoteDescString, false)) {
       return false;
     }
-    Doc.toYAML(llvm::outs());
+//    Doc.toYAML(llvm::outs());
     return true;
   }
   return false;
@@ -342,7 +342,7 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
         DescString = Note.getDescAsStringRef(4);
         if (processNote<ELFT>(Note, DescString, Doc, Root)) {
           //          Doc.getRoot() = Root;
-          llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
+//          llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
           Found = true;
         }
       }
@@ -350,7 +350,7 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
     }
   }
   if (Found) {
-    llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
+//    llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
     return parseMetaDoc(Doc);
   }
 

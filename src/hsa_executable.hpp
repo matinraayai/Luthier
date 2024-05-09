@@ -7,6 +7,7 @@
 
 #include "hsa_code_object_reader.hpp"
 #include "hsa_handle_type.hpp"
+#include "hsa_platform.hpp"
 
 namespace luthier {
 
@@ -20,8 +21,16 @@ class ExecutableSymbol;
 
 class LoadedCodeObject;
 
-class Executable : public HandleType<hsa_executable_t> {
-  friend class luthier::CodeObjectManager;
+class Executable final : public ExecutableBackedCachableItem,
+                         public HandleType<hsa_executable_t> {
+  /*****************************************************************************
+   * \brief Instrumented \b hsa_executable_t creation and destruction
+   * functionality
+   ****************************************************************************/
+
+  friend class luthier::CodeObjectManager; // < CodeObjectManager is the only
+                                           // object capable of creating and
+                                           // destroying executables
 
 private:
   static llvm::Expected<Executable>
@@ -51,12 +60,20 @@ private:
 
   llvm::Error destroy();
 
+  /*****************************************************************************
+   * \brief implementation of the \b ExecutableBackedCachableItem interface
+   ****************************************************************************/
+private:
+  llvm::Error cache() const override;
+
+  llvm::Error invalidate() const override;
+
 public:
   explicit Executable(hsa_executable_t Exec);
 
   llvm::Expected<hsa_profile_t> getProfile();
 
-  llvm::Expected<hsa_executable_state_t> getState();
+  [[nodiscard]] llvm::Expected<hsa_executable_state_t> getState() const;
 
   llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
 
@@ -81,8 +98,7 @@ public:
    * this executable
    * @return an \p std::unordered_st of \p hsa::GpuAgent's
    */
-  [[nodiscard]] llvm::Expected<llvm::DenseSet<hsa::GpuAgent>>
-  getAgents() const;
+  [[nodiscard]] llvm::Expected<llvm::DenseSet<hsa::GpuAgent>> getAgents() const;
 };
 
 } // namespace hsa

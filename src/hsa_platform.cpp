@@ -1,49 +1,45 @@
 #include "hsa_platform.hpp"
+#include "hsa_executable.hpp"
+#include "hsa_loaded_code_object.hpp"
 #include "object_utils.hpp"
 
 namespace luthier::hsa {
 
-llvm::Error Platform::registerFrozenExecutable(hsa_executable_t Exec) {
-  hsa::Executable ExecWrap(Exec);
+std::recursive_mutex ExecutableBackedCachableItem::CacheMutex;
+
+llvm::Error Platform::registerFrozenExecutable(const Executable &Exec) {
   // Check if executable is indeed frozen
-  auto State = ExecWrap.getState();
+  auto State = Exec.getState();
   LUTHIER_RETURN_ON_ERROR(State.takeError());
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(*State == HSA_EXECUTABLE_STATE_FROZEN));
-  // Add the Exec to the set of frozen executables
-  FrozenExecs.insert(Exec.handle);
+  LUTHIER_RETURN_ON_ERROR(
+      llvm::dyn_cast<const ExecutableBackedCachableItem>(&Exec)->cache());
   // Get a list of the executable's loaded code objects
-  auto LCOs = ExecWrap.getLoadedCodeObjects();
+  auto LCOs = Exec.getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
   // Create an LLVM ELF Object for each Loaded Code Object's storage memory
   // and cache it for later use
   for (const auto &LCO : *LCOs) {
-    auto StorageMemory = LCO.getStorageMemory();
-    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
-    auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
-    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
-    StorageELFOfLCOs.insert({LCO.hsaHandle(), std::move(*StorageELF)});
+    LUTHIER_RETURN_ON_ERROR(
+        llvm::dyn_cast<const ExecutableBackedCachableItem>(&LCO)->cache());
   }
 
   return llvm::Error::success();
 }
-llvm::Error Platform::unregisterFrozenExecutable(hsa_executable_t Exec) {
-  hsa::Executable ExecWrap(Exec);
-  // Remove the executable from the frozen set
-  FrozenExecs.erase(Exec.handle);
-
-  auto LCOs = ExecWrap.getLoadedCodeObjects();
+llvm::Error Platform::unregisterFrozenExecutable(const Executable &Exec) {
+  // Get a list of handles to invalidate before actually starting the
+  // invalidation process
+  auto LCOs = Exec.getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
-  // delete the ELF file for the storage memory of each LCO
+  // Actually start invalidating
+  LUTHIER_RETURN_ON_ERROR(
+      llvm::dyn_cast<const ExecutableBackedCachableItem>(&Exec)->invalidate());
   for (const auto &LCO : *LCOs) {
-    StorageELFOfLCOs.erase(LCO.hsaHandle());
+    LUTHIER_RETURN_ON_ERROR(
+        llvm::dyn_cast<const ExecutableBackedCachableItem>(&LCO)->invalidate());
   }
 
   return llvm::Error::success();
 }
-llvm::object::ELF64LEObjectFile &
-Platform::getStorgeELFofLCO(hsa_loaded_code_object_t LCO) {
-  return *StorageELFOfLCOs[LCO.handle];
-}
-
 } // namespace luthier::hsa
