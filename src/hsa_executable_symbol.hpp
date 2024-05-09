@@ -9,6 +9,7 @@
 
 #include "hsa_handle_type.hpp"
 #include "hsa_loaded_code_object.hpp"
+#include "hsa_platform.hpp"
 #include <luthier/kernel_descriptor.h>
 #include <luthier/types.h>
 
@@ -16,30 +17,37 @@ namespace luthier::hsa {
 
 class GpuAgent;
 
-class Executable;
-
-class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
+class ExecutableSymbol final : public ExecutableBackedCachableItem,
+                               public HandleType<hsa_executable_symbol_t> {
 private:
   typedef struct {
     hsa_loaded_code_object_t LCO;
     std::string Name;
     llvm::ArrayRef<uint8_t> Code;
-  } IndirectFunctionInfo; // < Information required to represent an indirect
-                          // function in HSA, since it is not implemented in
-                          // ROCr yet
+  } DeviceFunctionInfo; // < Information required to represent an indirect
+                        // function in HSA, since it is not implemented in
+                        // ROCr yet
 
-  std::optional<IndirectFunctionInfo> IFO{std::nullopt}; // < Will only be used
-                                                         // if the symbol is
-                                                         // an indirect function
+  std::optional<DeviceFunctionInfo> DFO{std::nullopt}; // < Will only be used
+                                                       // if the symbol is
+                                                       // an indirect function
+
+  /*****************************************************************************
+   * \brief implementation of the \b ExecutableBackedCachableItem interface
+   ****************************************************************************/
+private:
   /**
    * \brief Keeps track of the Indirect functions
    * encountered so far, in order to expose them to the tool writer seamlessly
    * as an \ref hsa_executable_symbol
    */
   static std::unordered_map<decltype(hsa_executable_symbol_t::handle),
-                        IndirectFunctionInfo>
-      IndirectFunctionHandleCache;
-  // TODO: Invalidate this cache
+                            DeviceFunctionInfo>
+      DeviceFunctionHandleCache;
+
+  llvm::Error cache() const override;
+
+  llvm::Error invalidate() const override;
 
   explicit ExecutableSymbol(hsa_executable_symbol_t Symbol)
       : HandleType<hsa_executable_symbol_t>(Symbol){};
@@ -51,25 +59,28 @@ public:
       : HandleType<hsa_executable_symbol_t>(
             {reinterpret_cast<decltype(hsa_executable_symbol_t::handle)>(
                 IndirectFunctionCode.data())}) {
-    IFO.emplace(LCO.asHsaType(), std::move(IndirectFunctionName),
+    DFO.emplace(LCO.asHsaType(), std::move(IndirectFunctionName),
                 IndirectFunctionCode);
     // Cache the indirect function calls to allow conversion from hsa handles
-    IndirectFunctionHandleCache.insert({hsaHandle(), *IFO});
+    {
+      std::lock_guard Lock(getMutex());
+      DeviceFunctionHandleCache.insert({hsaHandle(), *DFO});
+    }
   }
 
   ExecutableSymbol(const ExecutableSymbol &Symbol)
       : HandleType<hsa_executable_symbol_t>(Symbol.asHsaType()),
-        IFO(Symbol.IFO){};
+        DFO(Symbol.DFO){};
 
   ExecutableSymbol &operator=(const ExecutableSymbol &Other) {
     Type<hsa_executable_symbol_t>::operator=(Other);
-    this->IFO = Other.IFO;
+    this->DFO = Other.DFO;
     return *this;
   }
 
   ExecutableSymbol &operator=(ExecutableSymbol &&Other) noexcept {
     HandleType<hsa_executable_symbol_t>::operator=(Other);
-    this->IFO = Other.IFO;
+    this->DFO = Other.DFO;
     return *this;
   }
 
