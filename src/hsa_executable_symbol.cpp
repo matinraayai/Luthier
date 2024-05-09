@@ -167,15 +167,12 @@ ExecutableSymbol::getLoadedCodeObject() const {
     auto Name = getName();
     LUTHIER_RETURN_ON_ERROR(Name.takeError());
     for (const auto &LCO : *LoadedCodeObjects) {
-      auto StorageMemory = LCO.getStorageMemory();
-      LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
       auto HostElf = LCO.getStorageELF();
       LUTHIER_RETURN_ON_ERROR(HostElf.takeError());
 
       auto ElfSymbol = getSymbolByName(*HostElf, *Name);
       LUTHIER_RETURN_ON_ERROR(ElfSymbol.takeError());
-
       if (ElfSymbol->has_value())
         return LCO;
     }

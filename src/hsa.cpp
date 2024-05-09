@@ -23,15 +23,20 @@ llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
       CoreTable.hsa_iterate_agents_fn(ReturnGpuAgentsCallback, &agents));
 }
 
-llvm::Error getAllExecutables(llvm::SmallVectorImpl<Executable> &Executables) {
-  const auto &LoaderApi = hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
+llvm::Expected<std::vector<Executable>> getAllExecutables() {
+  const auto &LoaderApi =
+      hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
+  typedef std::vector<Executable> OutType;
+  OutType Out;
   auto Iterator = [](hsa_executable_t exec, void *data) {
-    auto Out = reinterpret_cast<llvm::SmallVectorImpl<Executable> *>(data);
-    Out->emplace_back(exec);
+    if (exec.handle != 0) {
+      auto Out = reinterpret_cast<OutType *>(data);
+      Out->emplace_back(exec);
+    }
     return HSA_STATUS_SUCCESS;
   };
   return LUTHIER_HSA_SUCCESS_CHECK(
-      LoaderApi.hsa_ven_amd_loader_iterate_executables(Iterator, &Executables));
+      LoaderApi.hsa_ven_amd_loader_iterate_executables(Iterator, &Out));
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
@@ -41,8 +46,7 @@ convertToHostEquivalent(llvm::ArrayRef<uint8_t> code) {
   return llvm::ArrayRef<uint8_t>{*CodeStartHostAddress, code.size()};
 }
 
-llvm::Expected<llvm::StringRef>
-convertToHostEquivalent(llvm::StringRef Code) {
+llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code) {
   auto Out = convertToHostEquivalent(llvm::arrayRefFromStringRef(Code));
   LUTHIER_RETURN_ON_ERROR(Out.takeError());
   return llvm::toStringRef(*Out);

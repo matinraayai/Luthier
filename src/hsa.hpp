@@ -8,7 +8,7 @@ namespace luthier::hsa {
 
 llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agents);
 
-llvm::Error getAllExecutables(llvm::SmallVectorImpl<Executable> &Executables);
+llvm::Expected<std::vector<Executable>> getAllExecutables();
 
 template <typename T> llvm::Expected<T *> queryHostAddress(T *DeviceAddress) {
   const auto &LoaderApi = Interceptor::instance().getHsaVenAmdLoaderTable();
