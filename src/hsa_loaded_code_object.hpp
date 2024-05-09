@@ -26,9 +26,6 @@ public:
   [[nodiscard]] llvm::Expected<hsa_ven_amd_loader_loaded_code_object_kind_t>
   getKind();
 
-  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
-  getStorageMemory() const;
-
   [[nodiscard]] llvm::Expected<llvm::object::ELF64LEObjectFile &>
   getStorageELF() const;
 
@@ -43,9 +40,15 @@ public:
   llvm::Expected<ISA> getISA() const;
 
 private:
+  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
+  getStorageMemory() const;
+
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                         std::unique_ptr<llvm::object::ELF64LEObjectFile>>
       StorageELFOfLCOs;
+
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle), hsa_isa_t>
+      ISAOfLCOs;
 
   llvm::Error cache() const override;
 

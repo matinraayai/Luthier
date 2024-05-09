@@ -199,9 +199,6 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
 
     auto KernelSymbolName = KdSymbolName->substr(0, KdSymbolName->find(".kd"));
 
-    auto StorageMemory = LCO.get()->getStorageMemory();
-    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
-
     auto HostELF = (*LCO)->getStorageELF();
     LUTHIER_RETURN_ON_ERROR(HostELF.takeError());
 

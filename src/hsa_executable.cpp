@@ -144,8 +144,6 @@ Executable::getAgentSymbolByName(const GpuAgent &Agent,
       auto LoadedCodeObjects = getLoadedCodeObjects();
       LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
       for (const auto &LCO : *LoadedCodeObjects) {
-        auto StorageMemory = LCO.getStorageMemory();
-        LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
         auto LoadedMemory = LCO.getLoadedMemory();
         LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 

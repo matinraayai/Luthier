@@ -133,20 +133,27 @@ LoadedCodeObject::getStorageELF() const {
 }
 
 llvm::Expected<ISA> LoadedCodeObject::getISA() const {
-  auto StorageELF = getStorageELF();
-  LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
+  std::lock_guard Lock(getMutex());
+  if (!ISAOfLCOs.contains(hsaHandle())) {
+    auto StorageELF = getStorageELF();
+    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
-  llvm::Triple TT = StorageELF->makeTriple();
-  std::optional<llvm::StringRef> CPU = StorageELF->tryGetCPUName();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
-  llvm::SubtargetFeatures Features;
-  LUTHIER_RETURN_ON_ERROR(StorageELF->getFeatures().moveInto(Features));
-  return hsa::ISA::fromLLVM(TT, *CPU, Features);
+    llvm::Triple TT = StorageELF->makeTriple();
+    std::optional<llvm::StringRef> CPU = StorageELF->tryGetCPUName();
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
+    llvm::SubtargetFeatures Features;
+    LUTHIER_RETURN_ON_ERROR(StorageELF->getFeatures().moveInto(Features));
+    return hsa::ISA::fromLLVM(TT, *CPU, Features);
+  } else
+    return ISA(ISAOfLCOs.at(hsaHandle()));
 }
 
 llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                std::unique_ptr<llvm::object::ELF64LEObjectFile>>
     LoadedCodeObject::StorageELFOfLCOs{};
+
+llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle), hsa_isa_t>
+    LoadedCodeObject::ISAOfLCOs;
 
 llvm::Error LoadedCodeObject::cache() const {
   std::lock_guard Lock(getMutex());
@@ -156,11 +163,16 @@ llvm::Error LoadedCodeObject::cache() const {
   auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
   StorageELFOfLCOs.insert({this->hsaHandle(), std::move(*StorageELF)});
+  // Cache the ISA of the ELF
+  auto ISA = this->getISA();
+  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+  ISAOfLCOs.insert({this->hsaHandle(), ISA->asHsaType()});
   return llvm::Error::success();
 }
 llvm::Error LoadedCodeObject::invalidate() const {
   std::lock_guard Lock(getMutex());
-  StorageELFOfLCOs.erase(hsaHandle());
+  StorageELFOfLCOs.erase(this->hsaHandle());
+  ISAOfLCOs.erase(this->hsaHandle());
   return llvm::Error::success();
 }
 

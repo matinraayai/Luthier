@@ -488,8 +488,6 @@ llvm::Expected<std::optional<CodeLifter::LCORelocationInfo>>
 CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
                               luthier::address_t Address) {
   if (!Relocations.contains(LCO)) {
-    auto StorageMemory = LCO.getStorageMemory();
-    LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
 
     auto LoadedMemory = LCO.getLoadedMemory();
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
