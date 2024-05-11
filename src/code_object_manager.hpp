@@ -63,7 +63,7 @@ public:
    */
   llvm::Expected<const hsa::ExecutableSymbol &>
   getInstrumentationFunctionWrapperKernel(const void *WrapperHostPtr,
-                                          const hsa::GpuAgent& Agent) const;
+                                          const hsa::GpuAgent &Agent) const;
 
   /**
    * Loads an instrumented \p hsa::Executable, containing the instrumented
@@ -121,7 +121,7 @@ private:
                          ToolFunctionInfo>
       ToolFunctions{};
 
-  llvm::DenseMap<
+  std::unordered_map<
       hsa::ExecutableSymbol,
       std::tuple<hsa::ExecutableSymbol, hsa::Executable, hsa::CodeObjectReader>>
       InstrumentedKernels{};

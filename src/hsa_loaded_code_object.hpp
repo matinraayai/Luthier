@@ -2,16 +2,21 @@
 #define HSA_LOADED_CODE_OBJECT_HPP
 #include "hsa_handle_type.hpp"
 #include "hsa_platform.hpp"
-#include <llvm/Object/ELFObjectFile.h>
+#include "object_utils.hpp"
+#include <llvm/ADT/StringMap.h>
 #include <llvm/Support/Error.h>
+
+namespace object = llvm::object;
 
 namespace luthier::hsa {
 
 class GpuAgent;
 
+class ExecutableSymbol;
+
 class ISA;
 
-class LoadedCodeObject : public ExecutableBackedCachableItem,
+class LoadedCodeObject : public ExecutableBackedCachable,
                          public HandleType<hsa_loaded_code_object_t> {
 public:
   explicit LoadedCodeObject(hsa_loaded_code_object_t LCO);
@@ -23,11 +28,14 @@ public:
   [[nodiscard]] llvm::Expected<hsa_ven_amd_loader_code_object_storage_type_t>
   getStorageType() const;
 
-  [[nodiscard]] llvm::Expected<hsa_ven_amd_loader_loaded_code_object_kind_t>
-  getKind();
-
-  [[nodiscard]] llvm::Expected<llvm::object::ELF64LEObjectFile &>
+  [[nodiscard]] llvm::Expected<luthier::AMDGCNObjectFile &>
   getStorageELF() const;
+
+  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
+  getExecutableSymbols() const;
+
+  [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
+  getExecutableSymbolByName(llvm::StringRef Name) const;
 
   [[nodiscard]] llvm::Expected<int> getStorageFile() const;
 
@@ -43,14 +51,37 @@ private:
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getStorageMemory() const;
 
+  [[nodiscard]] llvm::Expected<hsa_executable_symbol_t>
+  getSymbolByNameFromExecutable(llvm::StringRef Name) const;
+
+  static llvm::DenseSet<decltype(hsa_loaded_code_object_t::handle)> CachedLCOs;
+
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
-                        std::unique_ptr<llvm::object::ELF64LEObjectFile>>
+                        std::unique_ptr<luthier::AMDGCNObjectFile>>
       StorageELFOfLCOs;
 
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle), hsa_isa_t>
       ISAOfLCOs;
 
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+                        llvm::StringMap<object::ELFSymbolRef>>
+      KernelDescSymbols;
+
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+                        llvm::StringMap<object::ELFSymbolRef>>
+      KernelFuncSymbols;
+
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+                        llvm::StringMap<object::ELFSymbolRef>>
+      DeviceFuncSymbols;
+
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+                        llvm::StringMap<object::ELFSymbolRef>>
+      VariableSymbols;
+
   llvm::Error cache() const override;
+
+  bool isCached() const override;
 
   llvm::Error invalidate() const override;
 };

@@ -21,16 +21,14 @@ class ExecutableSymbol;
 
 class LoadedCodeObject;
 
-class Executable final : public ExecutableBackedCachableItem,
-                         public HandleType<hsa_executable_t> {
+class Executable final : public HandleType<hsa_executable_t> {
   /*****************************************************************************
    * \brief Instrumented \b hsa_executable_t creation and destruction
    * functionality
+   * Creation and destruction of Executables is only allowed through
+   * \b CodeObjectManager
    ****************************************************************************/
-
-  friend class luthier::CodeObjectManager; // < CodeObjectManager is the only
-                                           // object capable of creating and
-                                           // destroying executables
+  friend class luthier::CodeObjectManager;
 
 private:
   static llvm::Expected<Executable>
@@ -43,13 +41,6 @@ private:
   loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
                       const hsa::GpuAgent &Agent, llvm::StringRef Options = "");
 
-  llvm::Expected<hsa::LoadedCodeObject>
-  loadProgramCodeObject(const hsa::CodeObjectReader &Reader,
-                        llvm::StringRef Options = "");
-
-  llvm::Error
-  defineExternalProgramGlobalVariable(const hsa::ExecutableSymbol &Symbol);
-
   llvm::Error defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol);
 
   llvm::Error defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol);
@@ -60,14 +51,6 @@ private:
 
   llvm::Error destroy();
 
-  /*****************************************************************************
-   * \brief implementation of the \b ExecutableBackedCachableItem interface
-   ****************************************************************************/
-private:
-  llvm::Error cache() const override;
-
-  llvm::Error invalidate() const override;
-
 public:
   explicit Executable(hsa_executable_t Exec);
 
@@ -77,28 +60,11 @@ public:
 
   llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
 
-  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getAgentSymbols(const luthier::hsa::GpuAgent &Agent) const;
-
-  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getProgramSymbols(const luthier::hsa::GpuAgent &Agent) const;
-
-  [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
-  getAgentSymbolByName(const luthier::hsa::GpuAgent &Agent,
-                       llvm::StringRef Name) const;
-
   /**
    * \return the \p hsa::LoadedCodeObject's in the executable
    */
   [[nodiscard]] llvm::Expected<std::vector<LoadedCodeObject>>
   getLoadedCodeObjects() const;
-
-  /**
-   * Returns the \p hsa::GpuAgent's that have a \p hsa::LoadedCodeObject in
-   * this executable
-   * @return an \p std::unordered_st of \p hsa::GpuAgent's
-   */
-  [[nodiscard]] llvm::Expected<llvm::DenseSet<hsa::GpuAgent>> getAgents() const;
 };
 
 } // namespace hsa

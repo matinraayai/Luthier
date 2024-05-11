@@ -23,34 +23,31 @@ void CodeObjectManager::registerInstrumentationFunctionWrapper(
 
 llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
     const hsa::Executable &Exec) {
-  llvm::SmallVector<hsa::GpuAgent, 8> Agents;
-  LUTHIER_RETURN_ON_ERROR(hsa::getGpuAgents(Agents));
-
-  for (const auto &Agent : Agents) {
+  auto LCOs = Exec.getLoadedCodeObjects();
+  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
+  for (const auto &LCO : *LCOs) {
     auto LuthierReservedSymbol =
-        Exec.getAgentSymbolByName(Agent, luthier::ReservedManagedVar);
+        LCO.getExecutableSymbolByName(luthier::ReservedManagedVar);
     LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbol.takeError());
-
     if (LuthierReservedSymbol->has_value()) {
+      auto Agent = LCO.getAgent();
+      LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
-      std::unordered_map<std::string, hsa::ExecutableSymbol>
-          WrapperKernelSymbols;
-      std::unordered_map<std::string, hsa::ExecutableSymbol>
-          InstFunctionSymbols;
-      auto Symbols = Exec.getAgentSymbols(Agent);
+      llvm::StringMap<hsa::ExecutableSymbol> WrapperKernelSymbols;
+      llvm::StringMap<hsa::ExecutableSymbol> InstFunctionSymbols;
+      auto Symbols = LCO.getExecutableSymbols();
       LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
       for (const auto &Symbol : *Symbols) {
         auto SType = Symbol.getType();
-        LUTHIER_RETURN_ON_ERROR(SType.takeError());
         auto SName = Symbol.getName();
         LUTHIER_RETURN_ON_ERROR(SName.takeError());
-        if (*SType == HSA_SYMBOL_KIND_KERNEL) {
+        if (SType == hsa::KERNEL) {
           WrapperKernelSymbols.insert(
               {SName->substr(0, SName->rfind(".kd")), Symbol});
 
-        } else if (*SType == HSA_SYMBOL_KIND_INDIRECT_FUNCTION) {
+        } else if (SType == hsa::DEVICE_FUNCTION) {
           InstFunctionSymbols.insert(
-              {luthier::DeviceFunctionWrap + *SName, Symbol});
+              {(luthier::DeviceFunctionWrap + *SName).str(), Symbol});
         }
       }
       for (const auto &[WrapKerName, WrapKerShadowPtr] :
@@ -62,7 +59,7 @@ llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
         //        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
         //            ToolFunctions.contains({WrapKerShadowPtr, Agent})));
         ToolFunctions.insert(
-            {{WrapKerShadowPtr, Agent}, {functionSymbol, KernelSymbol}});
+            {{WrapKerShadowPtr, *Agent}, {functionSymbol, KernelSymbol}});
       }
     }
   }
@@ -107,21 +104,20 @@ llvm::Error CodeObjectManager::loadInstrumentedKernel(
 
     auto reader = hsa::CodeObjectReader::createFromMemory(InstrumentedElf);
     LUTHIER_RETURN_ON_ERROR(reader.takeError());
-    LUTHIER_RETURN_ON_ERROR(
-        Executable->loadAgentCodeObject(*reader, *agent, "").takeError());
+    auto LCO = Executable->loadAgentCodeObject(*reader, *agent, "");
+    LUTHIER_RETURN_ON_ERROR(LCO.takeError());
     LUTHIER_RETURN_ON_ERROR(Executable->freeze());
 
     auto originalSymbolName = OriginalKernel.getName();
     LUTHIER_RETURN_ON_ERROR(originalSymbolName.takeError());
     auto instrumentedKernel =
-        Executable->getAgentSymbolByName(*agent, *originalSymbolName);
+        LCO->getExecutableSymbolByName(*originalSymbolName);
     LUTHIER_RETURN_ON_ERROR(instrumentedKernel.takeError());
 
     auto instrumentedKernelType = (*instrumentedKernel)->getType();
-    LUTHIER_RETURN_ON_ERROR(instrumentedKernelType.takeError());
 
     LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(*instrumentedKernelType == HSA_SYMBOL_KIND_KERNEL));
+        LUTHIER_ASSERTION(instrumentedKernelType == hsa::KERNEL));
 
     InstrumentedKernels.insert(
         {OriginalKernel,
@@ -132,7 +128,7 @@ llvm::Error CodeObjectManager::loadInstrumentedKernel(
 
 llvm::Expected<const hsa::ExecutableSymbol &>
 CodeObjectManager::getInstrumentationFunctionWrapperKernel(
-    const void *WrapperHostPtr, const hsa::GpuAgent& Agent) const {
+    const void *WrapperHostPtr, const hsa::GpuAgent &Agent) const {
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(ToolFunctions.contains({WrapperHostPtr, Agent})));
   return ToolFunctions.at({WrapperHostPtr, Agent}).WrapperKernel;

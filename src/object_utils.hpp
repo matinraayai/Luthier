@@ -276,22 +276,24 @@ struct Metadata final {
 
 }; // namespace HSAMD
 
+typedef llvm::object::ELF64LEObjectFile AMDGCNObjectFile;
+
 /**
- * \brief Parses the ELF file pointed to by \p elf into a \p
- * llvm::object::ELF64LEObjectFile.
+ * \brief Parses the ELF file pointed to by \b Elf into a \b
+ * AMDGCNObjectFile.
  * @param Elf \p llvm::ArrayRef encompassing the ELF file in memory
  * @return a \p std::unique_ptr pointing to a \p llvm::object::ELF64LEObjectFile
  */
-llvm::Expected<std::unique_ptr<llvm::object::ELF64LEObjectFile>>
+llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
 getAMDGCNObjectFile(llvm::StringRef Elf);
 
 /**
- * \brief Parses the ELF file pointed to by \p elf into a \p
- * llvm::object::ELF64LEObjectFile.
+ * \brief Parses the ELF file pointed to by \b Elf into a \b
+ * AMDGCNObjectFile.
  * @param Elf \p llvm::ArrayRef encompassing the ELF file in memory
  * @return a \p std::unique_ptr pointing to a \p llvm::object::ELF64LEObjectFile
  */
-llvm::Expected<std::unique_ptr<llvm::object::ELF64LEObjectFile>>
+llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
 getAMDGCNObjectFile(llvm::ArrayRef<uint8_t> Elf);
 
 llvm::Expected<luthier::HSAMD::Metadata>
@@ -319,7 +321,6 @@ processNote(const typename ELFT::Note &Note, const std::string &NoteDescString,
     if (!Doc.readFromBlob(NoteDescString, false)) {
       return false;
     }
-//    Doc.toYAML(llvm::outs());
     return true;
   }
   return false;
@@ -342,7 +343,8 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
         DescString = Note.getDescAsStringRef(4);
         if (processNote<ELFT>(Note, DescString, Doc, Root)) {
           //          Doc.getRoot() = Root;
-//          llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
+          //          llvm::outs() << "Is Map? " << Doc.getRoot().isMap() <<
+          //          "\n";
           Found = true;
         }
       }
@@ -350,7 +352,7 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
     }
   }
   if (Found) {
-//    llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
+    //    llvm::outs() << "Is Map? " << Doc.getRoot().isMap() << "\n";
     return parseMetaDoc(Doc);
   }
 
@@ -510,7 +512,6 @@ template <typename ELFT>
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
 getSymbolByName(const llvm::object::ELFObjectFile<ELFT> &Elf,
                 llvm::StringRef SymbolName) {
-  // Do a Hash Lookup here. If fails, we do the iteration
   for (auto Section = llvm::object::elf_section_iterator(Elf.section_begin());
        Section != llvm::object::elf_section_iterator(Elf.section_end());
        ++Section) {
@@ -521,22 +522,6 @@ getSymbolByName(const llvm::object::ELFObjectFile<ELFT> &Elf,
     }
   }
   llvm_unreachable("Symbol hash table was not found");
-
-  //  // Symbol iteration as fallback
-  //  for (const auto &Symbol : Elf.symbols()) {
-  //    llvm::Expected<llvm::StringRef> NameOrErr = Symbol.getName();
-  //    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-  //    if (*NameOrErr == SymbolName)
-  //      return llvm::object::ELFSymbolRef(Symbol);
-  //  }
-  //  for (auto Symbol = Elf.dynamic_symbol_begin();
-  //       Symbol != Elf.dynamic_symbol_end(); ++Symbol) {
-  //    llvm::Expected<llvm::StringRef> NameOrErr = Symbol->getName();
-  //    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-  //    if (*NameOrErr == SymbolName)
-  //      return llvm::object::ELFSymbolRef(*Symbol);
-  //  }
-  //  return std::nullopt;
 }
 
 template <class ELFT>

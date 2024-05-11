@@ -92,7 +92,7 @@ private:
    * it from calling its destructor prematurely The disassembler is in
    * charge of clearing the map
    */
-  llvm::DenseMap<hsa::ExecutableSymbol, std::unique_ptr<std::vector<Instr>>>
+  std::unordered_map<hsa::ExecutableSymbol, std::unique_ptr<std::vector<Instr>>>
       DisassembledSymbolsRaw{};
 
 public:
@@ -151,25 +151,28 @@ private:
    * executable, that when run instead of the original kernel, will produce
    * identical results
    */
-//  struct LiftedExecutableInfo {
-//    std::unique_ptr<llvm::Module> Module;
-//    std::unique_ptr<llvm::MachineModuleInfo> MMI;
-//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *> Functions{};
-//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable *>
-//        GlobalVariables{};
-//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::DenseSet<hsa::ExecutableSymbol>>
-//        RelatedFunctions{};
-//    llvm::DenseMap<hsa::ExecutableSymbol, llvm::DenseSet<hsa::ExecutableSymbol>>
-//        RelatedVariables{};
-//    llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
-//    llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineToMCInstrMap{};
-//  };
+  //  struct LiftedExecutableInfo {
+  //    std::unique_ptr<llvm::Module> Module;
+  //    std::unique_ptr<llvm::MachineModuleInfo> MMI;
+  //    llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *>
+  //    Functions{}; llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable
+  //    *>
+  //        GlobalVariables{};
+  //    llvm::DenseMap<hsa::ExecutableSymbol,
+  //    llvm::DenseSet<hsa::ExecutableSymbol>>
+  //        RelatedFunctions{};
+  //    llvm::DenseMap<hsa::ExecutableSymbol,
+  //    llvm::DenseSet<hsa::ExecutableSymbol>>
+  //        RelatedVariables{};
+  //    llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
+  //    llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineToMCInstrMap{};
+  //  };
 
-//  /**
-//   * Cache of \p KernelModuleInfo for each kernel function lifted by the
-//   * \p CodeLifter
-//   */
-//  llvm::DenseMap<hsa::Executable, LiftedExecutableInfo> LiftedExecutables{};
+  //  /**
+  //   * Cache of \p KernelModuleInfo for each kernel function lifted by the
+  //   * \p CodeLifter
+  //   */
+  //  llvm::DenseMap<hsa::Executable, LiftedExecutableInfo> LiftedExecutables{};
 
   // TODO: Invalidate these caches once an Executable is destroyed
 
@@ -186,7 +189,7 @@ private:
                  llvm::DenseMap<address_t, hsa::ExecutableSymbol>>
       ExecutableSymbolAddressInfoMap{};
 
-  llvm::DenseMap<hsa::ExecutableSymbol, HSAMD::Kernel::Metadata>
+  std::unordered_map<hsa::ExecutableSymbol, HSAMD::Kernel::Metadata>
       KernelsMetaData{};
 
   llvm::DenseMap<hsa::LoadedCodeObject, HSAMD::Metadata>
@@ -210,17 +213,18 @@ private:
   getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO);
 
   llvm::Expected<llvm::Function *>
-  createLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol, llvm::Module &Module);
+  createLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
+                               llvm::Module &Module);
 
-  llvm::Expected<llvm::MachineFunction &> createLLVMMachineFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
-                            llvm::MachineModuleInfo &MMI,
-                            llvm::LLVMTargetMachine &TM, llvm::Function &F);
+  llvm::Expected<llvm::MachineFunction &> createLLVMMachineFunctionFromSymbol(
+      const hsa::ExecutableSymbol &Symbol, llvm::MachineModuleInfo &MMI,
+      llvm::LLVMTargetMachine &TM, llvm::Function &F);
 
   struct LCORelocationInfo {
     hsa::ExecutableSymbol Symbol; // < The Symbol referenced by the relocation
     int64_t Addend;
     uint64_t Type;
-    //llvm::object::ELFRelocationRef RelocRef; // < Relocation Info
+    // llvm::object::ELFRelocationRef RelocRef; // < Relocation Info
   };
 
   /**

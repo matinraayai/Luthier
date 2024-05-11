@@ -80,6 +80,19 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
       llvm::report_fatal_error("Tool executable check failed");
     }
   }
+  if (Phase == API_EVT_PHASE_EXIT &&
+      ApiId == HSA_API_EVT_ID_hsa_executable_load_agent_code_object) {
+    // because the output of hsa_executable_load_agent_code_object can be set to
+    // nullptr by the app, we have to access it by iterating over the LCOs of
+    // the Exec it was created for
+    hsa::Executable Exec(
+        CBData->hsa_executable_load_agent_code_object.executable);
+    llvm::outs() << "Here?\n";
+    if (auto Err =
+            Platform::instance().cacheCreatedLoadedCodeObjectOfExec(Exec)) {
+      llvm::report_fatal_error("Caching of Loaded Code Object failed!");
+    }
+  }
   if (Phase == API_EVT_PHASE_ENTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
     hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
@@ -119,16 +132,18 @@ void disableAllHsaCallbacks() {
 
 llvm::Expected<const std::vector<Instr> &>
 disassembleSymbol(hsa_executable_symbol_t Symbol) {
-  return luthier::CodeLifter::instance().disassemble(
-      hsa::ExecutableSymbol::fromHandle(Symbol));
+  auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+  return luthier::CodeLifter::instance().disassemble(*SymbolWrapper);
 }
 
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                           luthier::LiftedSymbolInfo>>
 liftSymbol(hsa_executable_symbol_t Symbol) {
-  return luthier::CodeLifter::instance().liftSymbol(
-      hsa::ExecutableSymbol::fromHandle(Symbol));
+  auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+  return luthier::CodeLifter::instance().liftSymbol(*SymbolWrapper);
 }
 
 llvm::Error
@@ -180,6 +195,8 @@ OnLoad(HsaApiTable *table, uint64_t runtime_version, uint64_t failed_tool_count,
       luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze);
   hsaInterceptor.enableInternalCallback(
       luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy);
+  hsaInterceptor.enableInternalCallback(
+      luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object);
   return res;
   LUTHIER_LOG_FUNCTION_CALL_END
 }

@@ -14,9 +14,9 @@ Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
     : Inst(std::move(Inst)), LCO(LCO), Symbol(Symbol),
       LoadedDeviceAddress(Address), Size(Size) {}
 
-hsa_executable_t Instr::getExecutable() const {
-  return hsa::ExecutableSymbol::fromHandle(Symbol).getExecutable()->asHsaType();
-}
+//hsa_executable_t Instr::getExecutable() const {
+//  return hsa::ExecutableSymbol::fromHandle(Symbol).getExecutable()->asHsaType();
+//}
 
 hsa_loaded_code_object_t Instr::getLoadedCodeObject() const { return LCO; }
 

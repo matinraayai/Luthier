@@ -139,7 +139,8 @@ llvm::Error CodeGenerator::instrument(
     const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask) {
   LUTHIER_LOG_FUNCTION_CALL_START
   auto Symbol = hsa::ExecutableSymbol::fromHandle(LSO.getSymbol());
-  auto Agent = Symbol.getAgent();
+  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
+  auto Agent = Symbol->getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
   auto Isa = Agent->getIsa();
   LUTHIER_RETURN_ON_ERROR(Isa.takeError());
@@ -194,15 +195,22 @@ llvm::Error CodeGenerator::instrument(
 //  llvm::outs() << llvm::toStringRef(Executable) << "\n";
 
   std::vector<hsa::ExecutableSymbol> ExternGVs;
-  for (const auto &GV : LSO.getRelatedVariables())
-    ExternGVs.push_back(hsa::ExecutableSymbol::fromHandle(GV));
+  for (const auto &GV : LSO.getRelatedVariables()) {
+    auto GVWrapper = hsa::ExecutableSymbol::fromHandle(GV);
+    LUTHIER_RETURN_ON_ERROR(GVWrapper.takeError());
+    ExternGVs.push_back(*GVWrapper);
+  }
 
   for (const auto &L : *AddedLSIs)
-    for (const auto &GV : L.getRelatedVariables())
-      ExternGVs.push_back(hsa::ExecutableSymbol::fromHandle(GV));
+    for (const auto &GV : L.getRelatedVariables()) {
+      auto GVWrapper = hsa::ExecutableSymbol::fromHandle(GV);
+      LUTHIER_RETURN_ON_ERROR(GVWrapper.takeError());
+      ExternGVs.push_back(*GVWrapper);
+    }
+
 
   LUTHIER_RETURN_ON_ERROR(
-      CodeObjectManager.loadInstrumentedKernel(Executable, Symbol, ExternGVs));
+      CodeObjectManager.loadInstrumentedKernel(Executable, *Symbol, ExternGVs));
 
   return llvm::Error::success();
 }

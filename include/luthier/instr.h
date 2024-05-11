@@ -38,7 +38,7 @@ public:
 
   [[nodiscard]] llvm::Expected<hsa_agent_t> getAgent() const;
 
-  [[nodiscard]] hsa_executable_t getExecutable() const;
+//  [[nodiscard]] hsa_executable_t getExecutable() const;
 
   [[nodiscard]] hsa_loaded_code_object_t getLoadedCodeObject() const;
 
