@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "error.hpp"
+#include "hsa_isa.hpp"
 #include <luthier/types.h>
 
 namespace llvm::AMDGPU::HSAMD {
@@ -568,6 +569,17 @@ llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
 
   // Return section's VMA if it isn't in a PT_LOAD segment.
   return *SymbolAddress;
+}
+
+template <typename ELFT>
+llvm::Expected<hsa::ISA>
+getELFObjectFileISA(const llvm::object::ELFObjectFile<ELFT> &Obj) {
+  llvm::Triple TT = Obj.makeTriple();
+  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
+  llvm::SubtargetFeatures Features;
+  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
+  return hsa::ISA::fromLLVM(TT, *CPU, Features);
 }
 
 } // namespace luthier

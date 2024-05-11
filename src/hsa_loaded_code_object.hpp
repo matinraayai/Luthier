@@ -16,28 +16,47 @@ class ExecutableSymbol;
 
 class ISA;
 
+/**
+ * Notes:
+ * 1. Even though the API mentions both file-backed and
+ * memory-backed Loaded Code Objects exists, only memory-backed ones are
+ * actually implemented. Therefore, querying the storage type and querying the
+ * FD of the storage has been removed.
+ */
+
 class LoadedCodeObject : public ExecutableBackedCachable,
                          public HandleType<hsa_loaded_code_object_t> {
+  /*****************************************************************************
+   * \brief Public-facing methods
+   ****************************************************************************/
 public:
   explicit LoadedCodeObject(hsa_loaded_code_object_t LCO);
 
+  /**
+   * Queries the \b Executable associated with this \b LoadedCodeObject.
+   * Performs an HSA call to complete this operation
+   * \return the \b Executable of this \b LoadedCodeObject, or an \b llvm::Error
+   * reporting any HSA errors occurred during this operation
+   */
   [[nodiscard]] llvm::Expected<Executable> getExecutable() const;
 
+  /**
+   * Queries the \b GpuAgent associated with this \b LoadedCodeObject.
+   * Performs an HSA call to complete this operation
+   * \return the \b GpuAgent of this \b LoadedCodeObject, or an \b llvm::Error
+   * reporting any HSA errors occurred during this operation
+   */
   [[nodiscard]] llvm::Expected<GpuAgent> getAgent() const;
 
-  [[nodiscard]] llvm::Expected<hsa_ven_amd_loader_code_object_storage_type_t>
-  getStorageType() const;
-
+  /**
+   * Returns the \b luthier::AMDGCNObjectFile of this \b LoadedCodeObject,
+   * obtained by parsing its Storage memory
+   * This operation relies on the object being cached beforehand
+   * \return the \b luthier::AMDGCNObjectFile of this \b LoadedCodeObject, or
+   * an \b llvm::Error if this \b LoadedCodeObject has not been cached properly
+   */
   [[nodiscard]] llvm::Expected<luthier::AMDGCNObjectFile &>
   getStorageELF() const;
-
-  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getExecutableSymbols() const;
-
-  [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
-  getExecutableSymbolByName(llvm::StringRef Name) const;
-
-  [[nodiscard]] llvm::Expected<int> getStorageFile() const;
 
   [[nodiscard]] llvm::Expected<long> getLoadDelta() const;
 
@@ -47,13 +66,53 @@ public:
 
   [[nodiscard]] llvm::Expected<ISA> getISA() const;
 
+  /**
+   *
+   * @return
+   */
+  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
+  getExecutableSymbols() const;
+
+  [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
+  getExecutableSymbolByName(llvm::StringRef Name) const;
+
+  /*****************************************************************************
+   * \brief Private functionality specific to \b LoadedCodeObject only
+   ****************************************************************************/
 private:
+  /**
+   * Queries where the ELF of this \b LoadedCodeObject is stored, and its size
+   * from HSA
+   * This function is not public, since the primary reason for querying this
+   * is to inspect the ELF of the \b LoadedCodeObject, which is exposed through
+   * \b getStorageELF. The storage memory can be obtained externally from the
+   * \b luthier::AMDGCNObjectFile if needed.
+   * \return An \b llvm::ArrayRef pointing to the beginning and the end of the
+   * storage memory on success, or an \b llvm::Error reporting any HSA errors
+   * encountered during this operation
+   */
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getStorageMemory() const;
 
-  [[nodiscard]] llvm::Expected<hsa_executable_symbol_t>
-  getSymbolByNameFromExecutable(llvm::StringRef Name) const;
+  /**
+   * Tries to find the \b hsa_executable_symbol_t of a symbol given its name
+   * It queries the \b hsa_executable_t of this LCO using the HSA API
+   * \b hsa_executable_get_symbol_by_name
+   * Primarily used to find a connection between the
+   * \b llvm::object::ELFSymbolRef found by inspecting the ELF of the storage
+   * memory
+   * \param Name Name of the symbol
+   * \return if the symbol is found, an \b hsa_executable_symbol_t. If not,
+   * an \b std::nullopt. If an error is occurred, an \b llvm::Error of
+   * appropriate kind.
+   */
+  [[nodiscard]] llvm::Expected<std::optional<hsa_executable_symbol_t>>
+  getHSASymbolHandleByNameFromExecutable(llvm::StringRef Name) const;
 
+  /*****************************************************************************
+   * \brief Implementation of \b hsa::ExecutableBackedCachable
+   ****************************************************************************/
+private:
   static llvm::DenseSet<decltype(hsa_loaded_code_object_t::handle)> CachedLCOs;
 
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
