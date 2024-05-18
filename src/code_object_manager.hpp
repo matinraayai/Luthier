@@ -79,16 +79,23 @@ public:
       const std::vector<hsa::ExecutableSymbol> &ExternVariables);
 
   /**
-   * Returns the instrumented kernel's \p hsa::ExecutableSymbol given its
-   * original un-instrumented version's \p hsa::ExecutableSymbol
+   * Returns the instrumented kernel's \b hsa::ExecutableSymbol given its
+   * original un-instrumented version's \b hsa::ExecutableSymbol
    * Used to run the instrumented version of the kernel when requested by the
    * user
    * \param OriginalKernel symbol of the un-instrumented original kernel
    * \return symbol of the instrumented version of the target kernel, or
-   * \p llvm::Error
+   * \b llvm::Error
    */
   llvm::Expected<const hsa::ExecutableSymbol &>
   getInstrumentedKernel(const hsa::ExecutableSymbol &OriginalKernel) const;
+
+  /**
+   * checks if the given \p Kernel is instrumented
+   * \param Kernel the queried kernel
+   * \return \p true if it's instrumented, \p false otherwise
+   */
+  bool isKernelInstrumented(const hsa::ExecutableSymbol &Kernel) const;
 
 private:
   CodeObjectManager() = default;
@@ -100,15 +107,15 @@ private:
   };
 
   /**
-   * A set of all \p hsa::Executable handles that belong to the Luthier tool,
+   * A set of all \c hsa::Executable handles that belong to the Luthier tool,
    * containing the instrumentation function and their wrapper kernels
    */
   mutable llvm::DenseSet<std::pair<hsa::Executable, hsa::GpuAgent>>
       ToolExecutables{};
 
   /**
-   * \brief A list of device functions captured by \p __hipRegisterFunction, not
-   * yet processed by \p CodeObjectManager
+   * \brief A list of device functions captured by \c __hipRegisterFunction, not
+   * yet processed by \c CodeObjectManager
    * The first \p std::tuple element is the "host shadow pointer" of
    * the instrumentation function's wrapper kernel, created via the macro
    * \p LUTHIER_EXPORT_FUNC

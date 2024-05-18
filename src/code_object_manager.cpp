@@ -145,5 +145,9 @@ CodeObjectManager::~CodeObjectManager() {
   //    toolExecutables_.clear();
   //    functions_.clear();
 }
+bool CodeObjectManager::isKernelInstrumented(
+    const hsa::ExecutableSymbol &Kernel) const {
+  return InstrumentedKernels.contains(Kernel);
+}
 
 } // namespace luthier
