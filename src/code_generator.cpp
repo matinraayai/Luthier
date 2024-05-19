@@ -2,16 +2,43 @@
 
 #include <memory>
 
+#include "llvm/Analysis/BasicAliasAnalysis.h"
+#include "llvm/Analysis/CallGraphSCCPass.h"
+#include "llvm/Analysis/ScopedNoAliasAA.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Analysis/TypeBasedAliasAnalysis.h"
+#include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
+#include "llvm/CodeGen/CSEConfigBase.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachinePassRegistry.h"
+#include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/RegAllocRegistry.h"
+#include "llvm/IR/IRPrintingPasses.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/PassInstrumentation.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/InitializePasses.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/SaveAndRestore.h"
 #include <AMDGPUResourceUsageAnalysis.h>
 #include <AMDGPUTargetMachine.h>
 #include <amd_comgr/amd_comgr.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringExtras.h>
+#include <llvm/Analysis/BasicAliasAnalysis.h>
+#include <llvm/Analysis/ScopedNoAliasAA.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
+#include <llvm/Analysis/TargetTransformInfo.h>
+#include <llvm/Analysis/TypeBasedAliasAnalysis.h>
+#include <llvm/CodeGen/LiveIntervals.h>
+#include <llvm/CodeGen/Passes.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/PassRegistry.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/Utils.h>
 
 #include "SIInstrInfo.h"
 #include "code_object_manager.hpp"
@@ -54,20 +81,13 @@
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 
-// #define GET_REGINFO_ENUM
-// #include "AMDGPUGenRegisterInfo.inc"
-//
-// #define GET_SUBTARGETINFO_ENUM
-// #include "AMDGPUGenSubtargetInfo.inc"
-//
-// #define GET_INSTRINFO_ENUM
-// #define GET_AVAILABLE_OPCODE_CHECKER
-
 #include "AMDGPUGenInstrInfo.inc"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Instructions.h"
 
 namespace luthier {
+
+template<> CodeGenerator* Singleton<CodeGenerator>::Instance{nullptr};
 
 llvm::Error CodeGenerator::compileRelocatableToExecutable(
     const llvm::ArrayRef<uint8_t> &Code, const hsa::ISA &ISA,
@@ -125,14 +145,6 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
   return llvm::Error::success();
 }
 
-llvm::Error CodeGenerator::compileRelocatableToExecutable(
-    const llvm::ArrayRef<uint8_t> &Code, const hsa::GpuAgent &Agent,
-    llvm::SmallVectorImpl<uint8_t> &Out) {
-  auto Isa = Agent.getIsa();
-  LUTHIER_RETURN_ON_ERROR(Isa.takeError());
-  return compileRelocatableToExecutable(Code, *Isa, Out);
-}
-
 llvm::Error CodeGenerator::instrument(
     std::unique_ptr<llvm::Module> Module,
     std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
@@ -140,12 +152,12 @@ llvm::Error CodeGenerator::instrument(
   LUTHIER_LOG_FUNCTION_CALL_START
   auto Symbol = hsa::ExecutableSymbol::fromHandle(LSO.getSymbol());
   LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-  auto Agent = Symbol->getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-  auto Isa = Agent->getIsa();
+  auto LCO = Symbol->getLoadedCodeObject();
+  LUTHIER_RETURN_ON_ERROR(LCO.takeError());
+  auto Isa = LCO->getISA();
   LUTHIER_RETURN_ON_ERROR(Isa.takeError());
-  auto &CodeObjectManager = luthier::CodeObjectManager::instance();
-  auto &ContextManager = luthier::TargetManager::instance();
+  auto &CodeObjectManager = CodeObjectManager::instance();
+  auto &ContextManager = TargetManager::instance();
   auto TargetInfo = ContextManager.getTargetInfo(*Isa);
   LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
@@ -183,16 +195,14 @@ llvm::Error CodeGenerator::instrument(
     llvm::outs() << "Failed to add pass manager\n";
 
   PM.run(*Module); // Run all the passes
-//  std::error_code code;
-//  llvm::raw_fd_ostream("my_reloc.hsaco", code) << Reloc;
 
   LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
       llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(Reloc.data()),
                               Reloc.size()),
       *Isa, Executable));
-//  llvm::outs() << "Compiled to executable\n";
+  //  llvm::outs() << "Compiled to executable\n";
 
-//  llvm::outs() << llvm::toStringRef(Executable) << "\n";
+  //  llvm::outs() << llvm::toStringRef(Executable) << "\n";
 
   std::vector<hsa::ExecutableSymbol> ExternGVs;
   for (const auto &GV : LSO.getRelatedVariables()) {
@@ -207,7 +217,6 @@ llvm::Error CodeGenerator::instrument(
       LUTHIER_RETURN_ON_ERROR(GVWrapper.takeError());
       ExternGVs.push_back(*GVWrapper);
     }
-
 
   LUTHIER_RETURN_ON_ERROR(
       CodeObjectManager.loadInstrumentedKernel(Executable, *Symbol, ExternGVs));
@@ -226,31 +235,45 @@ CodeGenerator::applyInstrumentation(llvm::Module &Module,
 llvm::Expected<std::vector<LiftedSymbolInfo>>
 CodeGenerator::insertFunctionCalls(
     llvm::Module &Module, llvm::MachineModuleInfo &MMI,
-    const LiftedSymbolInfo &LSI,
+    const LiftedSymbolInfo &TargetLSI,
     const InstrumentationTask::insert_call_tasks &Tasks) {
   std::vector<LiftedSymbolInfo> Out;
-  for (const auto &[MI, V] : Tasks) {
-    auto &[DevFunc, IPoint] = V;
-    const auto &HsaInst = LSI.getHSAInstrOfMachineInstr(*MI);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HsaInst.has_value()));
-    auto Agent = (**HsaInst).getAgent();
+  for (const auto &[IPointMI, IFuncAndIPoint] : Tasks) {
+    auto &[IFuncShadowHostPtr, IPoint] = IFuncAndIPoint;
+    // Get the hsa::GpuAgent of the Target Kernel
+    auto TargetKernelSymbol =
+        hsa::ExecutableSymbol::fromHandle(TargetLSI.getSymbol());
+    LUTHIER_RETURN_ON_ERROR(TargetKernelSymbol.takeError());
+    auto Agent = TargetKernelSymbol->getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-    auto InstrumentationFunction =
+    // Figure out the hsa::ExecutableSymbol of the instrumentation function
+    // loaded on the target kernel's hsa::GpuAgent
+    auto IFunctionSymbol =
         luthier::CodeObjectManager::instance().getInstrumentationFunction(
-            DevFunc, hsa::GpuAgent(*Agent));
-    LUTHIER_RETURN_ON_ERROR(InstrumentationFunction.takeError());
+            IFuncShadowHostPtr, *Agent);
+    LUTHIER_RETURN_ON_ERROR(IFunctionSymbol.takeError());
+    // Lift the instrumentation function's symbol and add it to the compilation
+    // module
     auto IFLSI = luthier::CodeLifter::instance().liftSymbolAndAddToModule(
-        *InstrumentationFunction, Module, MMI);
+        *IFunctionSymbol, Module, MMI);
     LUTHIER_RETURN_ON_ERROR(IFLSI.takeError());
 
     auto MCInstInfo = MMI.getTarget().getMCInstrInfo();
-    MI->getParent()->getParent()->getProperties().reset(
+    auto ToBeInstrumentedMF = IPointMI->getParent()->getParent();
+    auto TRI = ToBeInstrumentedMF->getSubtarget<llvm::GCNSubtarget>()
+                   .getRegisterInfo();
+    // Start of instrumentation logic
+    // Spill the registers to the stack before calling the instrumentation
+    // function
+
+    IPointMI->getParent()->getParent()->getProperties().reset(
         llvm::MachineFunctionProperties::Property::NoVRegs);
     llvm::MachineInstrBuilder Builder;
-    auto MBB = MI->getParent();
+    auto MBB = IPointMI->getParent();
     auto PCReg = MBB->getParent()->getRegInfo().createVirtualRegister(
         &llvm::AMDGPU::SReg_64RegClass);
-    auto InstPoint = IPoint == INSTR_POINT_BEFORE ? MI : MI->getNextNode();
+    auto InstPoint =
+        IPoint == INSTR_POINT_BEFORE ? IPointMI : IPointMI->getNextNode();
     Builder = llvm::BuildMI(*MBB, InstPoint, llvm::DebugLoc(),
                             MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
                   .addImm(0)
@@ -285,7 +308,7 @@ CodeGenerator::insertFunctionCalls(
             .addReg(SaveReg);
     //    MBB->getParent()->dump();
     //    llvm::outs() << " ======== \n";
-    auto TRI = CalleeMF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
+
     auto RegMask =
         TRI->getCallPreservedMask(CalleeMF, CalleeFunction.getCallingConv());
 
@@ -326,6 +349,66 @@ CodeGenerator::insertFunctionCalls(
     Out.push_back(*IFLSI);
   }
   return Out;
+}
+llvm::Error CodeGenerator::convertToVirtual(Module &Module,
+                                            MachineModuleInfo &MMI,
+                                            const LiftedSymbolInfo &LSI) {
+  auto &MF = LSI.getMFofSymbol();
+  auto &MFI = *MF.getInfo<llvm::SIMachineFunctionInfo>();
+  llvm::DenseMap<llvm::Register, llvm::Register> PhysToVirtReg;
+  for (auto &MBB : MF) {
+    for (auto &MI : MBB) {
+      MI.print(llvm::outs(), true, false, true, true,
+               MF.getSubtarget().getInstrInfo());
+      llvm::outs() << "\n";
+
+      const llvm::MCInstrDesc &MCID =
+          MF.getTarget().getMCInstrInfo()->get(MI.getOpcode());
+      for (int I = 0; I < MI.getNumOperands(); I++) {
+        auto &Op = MI.getOperand(I);
+        if (Op.isReg() && !Op.isImplicit()) {
+          auto PhysReg = Op.getReg();
+          if (!PhysToVirtReg.contains(PhysReg)) {
+            //            MF.getFrameInfo().CreateFixedObject()
+            auto *TRI = MF.getSubtarget().getRegisterInfo();
+            //            TRI->getSubRegIndex();
+            auto OpRegClassFromMCID = MCID.operands()[I].RegClass;
+            auto RegClass =
+                MF.getSubtarget().getRegisterInfo()->getMinimalPhysRegClass(
+                    PhysReg.asMCReg());
+            llvm::outs()
+                << "Reg class selected for "
+                << printReg(PhysReg, MF.getSubtarget().getRegisterInfo())
+                << "is "
+                << MF.getSubtarget().getRegisterInfo()->getRegClassName(
+                       RegClass)
+                << " \n";
+            llvm::outs() << "What MCInstDesc tells me is: "
+                         << TRI->getRegClassName(
+                                TRI->getRegClass(OpRegClassFromMCID))
+                         << "\n";
+            //          auto RegClass = MF.getRegInfo().getRegClass(PhysReg);
+            PhysToVirtReg.insert(
+                {Op.getReg(), MF.getRegInfo().createVirtualRegister(RegClass)});
+          }
+          //          auto& VirtReg = PhysToVirtReg.at(PhysReg);
+          //          Op.setReg(VirtReg);
+        }
+      }
+      MI.print(llvm::outs(), true, false, true, true,
+               MF.getSubtarget().getInstrInfo());
+      llvm::outs() << "\n";
+    };
+  }
+  //  MF.addLiveIn()
+  for (const auto &[PhysReg, VirtReg] : PhysToVirtReg) {
+    llvm::outs() << "Regs that I found: \n";
+    llvm::outs() << printReg(PhysReg, MF.getSubtarget().getRegisterInfo())
+                 << "\n";
+    llvm::outs() << printReg(VirtReg, MF.getSubtarget().getRegisterInfo())
+                 << "\n";
+  }
+  return llvm::Error::success();
 }
 
 } // namespace luthier

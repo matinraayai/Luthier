@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "hsa_isa.hpp"
+#include "singleton.hpp"
 
 namespace llvm {
 
@@ -88,21 +89,16 @@ public:
  * among different components of Luthier (e.g. Disassembler, CodeGenerator)
  * Initializes the AMDGPU LLVM target upon construction
  */
-class TargetManager {
+class TargetManager: public Singleton<TargetManager> {
 private:
   mutable std::unordered_map<hsa::ISA, TargetInfo> LLVMTargetInfo{};
-
-  TargetManager();
-  ~TargetManager();
 
 public:
   TargetManager(const TargetManager &) = delete;
   TargetManager &operator=(const TargetManager &) = delete;
 
-  static inline TargetManager &instance() {
-    static TargetManager Instance;
-    return Instance;
-  }
+  TargetManager();
+  ~TargetManager();
 
   llvm::Expected<const TargetInfo &> getTargetInfo(const hsa::ISA &Isa) const;
 };

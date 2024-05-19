@@ -1,3 +1,30 @@
+/**
+ * \file object_utils.hpp
+ * \brief contains all operations related to dealing with parsing and processing
+ * AMDGPU code objects using LLVM object file and DWARF utilities
+ *
+ * Luthier uses LLVM's object library (under llvm/Object folder in LLVM)
+ * to parse and inspect AMDGPU code objects, and if present, uses LLVM's
+ * DebugInfo library (under llvm/DebugInfo) to parse and process DWARF
+ * information from them.
+ *
+ * object_utils.hpp is meant to \b only include functionality that:
+ * - concerns ELF object files and ELF file section parsing and processing,
+ *   including DWARF debug information.
+ * - is specific to AMDGPU GCN code objects. Some examples include
+ *   parsing an AMDGCN object file and converting them to
+ *   \p llvm::object::ELF64LEObjectFile, or parsing the note section
+ *   of an AMDGPU code object into a \c luthier::hsa::md::Metadata.
+ * - does not exist in LLVM's object library, and/or is implemented in other
+ *   LLVM-based tools or project. Some examples include retrieving symbols by
+ *   name, or getting the loaded address of a symbol.
+ *
+ * Although not strictly restricted for this specific purpose, object_utils.hpp
+ * is only used to supplement ROCr functionality, by parsing the Storage
+ * memory ELF of an \c luthier::hsa::LoadedCodeObject, which is exposed in
+ * hsa wrapper primitives in the \c luthier::hsa namespace.
+ *
+ */
 #ifndef OBJECT_UTILS_HPP
 #define OBJECT_UTILS_HPP
 #include <hip/hip_runtime_api.h>
@@ -24,7 +51,100 @@ enum class AccessQualifier : uint8_t;
 
 namespace luthier {
 
-namespace HSAMD {
+/**
+ * As per <a href="https://llvm.org/docs/AMDGPUUsage.html#elf-code-object">
+ * AMDGPU backend documentation</a>, AMDGCN object files are 64-bit LSB.
+ * Luthier does not support the R600 target, hence it is safe to assume for now
+ * all ELF object files encountered by Luthier are of this type.
+ */
+typedef llvm::object::ELF64LEObjectFile AMDGCNObjectFile;
+
+/**
+ * Parses the ELF file pointed to by \p Elf into a \c AMDGCNObjectFile.
+ * \param Elf \c llvm::StringRef encompassing the ELF file in memory
+ * \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
+ * parsing, an \c llvm::Error on failure
+ */
+llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
+getAMDGCNObjectFile(llvm::StringRef Elf);
+
+/**
+ * Parses the ELF file pointed to by \b Elf into a \b AMDGCNObjectFile.
+ * \param Elf \p llvm::ArrayRef<uint8_t> encompassing the ELF file in memory
+ * \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
+ * parsing, an \c llvm::Error on failure
+ */
+llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
+getAMDGCNObjectFile(llvm::ArrayRef<uint8_t> Elf);
+
+/**
+ * Looks up a symbol by its name in the given ELF from its symbol hash table.
+ * \param Elf
+ * \param SymbolName
+ * \return
+ */
+llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+lookupSymbolByName(const luthier::AMDGCNObjectFile &Elf,
+                   llvm::StringRef SymbolName);
+
+template <class ELFT>
+llvm::Expected<uint64_t> getSectionLMA(const llvm::object::ELFFile<ELFT> &Obj,
+                                       const llvm::object::ELFSectionRef &Sec) {
+  auto PhdrRange = Obj.program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+
+  // Search for a PT_LOAD segment containing the requested section. Use this
+  // segment's p_addr to calculate the section's LMA.
+  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
+    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
+        (llvm::object::isSectionInSegment<ELFT>(
+            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
+                       Sec.getObject())
+                       ->getSection(Sec.getRawDataRefImpl()))))
+      return Sec.getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
+
+  // Return section's VMA if it isn't in a PT_LOAD segment.
+  return Sec.getAddress();
+}
+
+template <class ELFT>
+llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
+                                      const llvm::object::ELFSymbolRef &Sym) {
+  auto PhdrRange = Obj.program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+
+  auto SymbolSection = Sym.getSection();
+  LUTHIER_RETURN_ON_ERROR(SymbolSection.takeError());
+
+  auto SymbolAddress = Sym.getAddress();
+  LUTHIER_RETURN_ON_ERROR(SymbolAddress.takeError());
+
+  // Search for a PT_LOAD segment containing the requested section. Use this
+  // segment's p_addr to calculate the section's LMA.
+  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
+    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
+        (llvm::object::isSectionInSegment<ELFT>(
+            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
+                       Sym.getObject())
+                       ->getSection(SymbolSection.get()->getRawDataRefImpl()))))
+      return *SymbolAddress - Phdr.p_vaddr + Phdr.p_paddr;
+
+  // Return section's VMA if it isn't in a PT_LOAD segment.
+  return *SymbolAddress;
+}
+
+template <typename ELFT>
+llvm::Expected<hsa::ISA>
+getELFObjectFileISA(const llvm::object::ELFObjectFile<ELFT> &Obj) {
+  llvm::Triple TT = Obj.makeTriple();
+  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
+  llvm::SubtargetFeatures Features;
+  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
+  return hsa::ISA::fromLLVM(TT, *CPU, Features);
+}
+
+namespace hsa::md {
 
 struct Version {
   uint64_t Major{0};
@@ -119,25 +239,24 @@ struct Metadata final {
   /// Offset in bytes. Required for code object v3, unused for code object v2.
   uint32_t Offset{0};
   /// Value kind. Required.
-  HSAMD::ValueKind ValueKind{ValueKind::Unknown};
+  hsa::md::ValueKind ValueKind{ValueKind::Unknown};
   /// Pointee alignment in bytes. Optional.
-  std::optional<uint32_t> PointeeAlign = 0;
+  std::optional<uint32_t> PointeeAlign{0};
   /// Address space qualifier. Optional.
-  std::optional<decltype(llvm::AMDGPUAS::MAX_AMDGPU_ADDRESS)> AddressSpace =
-      std::nullopt;
+  std::optional<unsigned> AddressSpace{std::nullopt};
   /// Access qualifier. Optional.
   std::optional<llvm::AMDGPU::HSAMD::AccessQualifier> AccQual{std::nullopt};
   /// Actual access qualifier. Optional.
   std::optional<llvm::AMDGPU::HSAMD::AccessQualifier> ActualAccQual{
       std::nullopt};
   /// True if 'const' qualifier is specified. Optional.
-  std::optional<bool> IsConst = false;
+  bool IsConst{false};
   /// True if 'restrict' qualifier is specified. Optional.
-  std::optional<bool> IsRestrict = false;
+  bool IsRestrict{false};
   /// True if 'volatile' qualifier is specified. Optional.
-  std::optional<bool> IsVolatile = false;
+  bool IsVolatile = false;
   /// True if 'pipe' qualifier is specified. Optional.
-  std::optional<bool> IsPipe = false;
+  bool IsPipe = false;
 
   /// Default constructor.
   Metadata() = default;
@@ -210,10 +329,10 @@ struct Metadata final {
   /// 'work_group_size_hint' attribute. Optional.
   std::optional<dim3> WorkGroupSizeHint{std::nullopt};
   /// 'vec_type_hint' attribute. Optional.
-  std::optional<std::string> VecTypeHint{};
+  std::optional<std::string> VecTypeHint{std::nullopt};
   /// External symbol created by runtime to store the kernel address
   /// for enqueued blocks.
-  std::optional<std::string> DeviceEnqueueSymbol{};
+  std::optional<std::string> DeviceEnqueueSymbol{std::nullopt};
   /// Size in bytes of the kernarg segment memory. Kernarg segment memory
   /// holds the values of the arguments to the kernel. Required.
   uint32_t KernArgSegmentSize{};
@@ -242,11 +361,11 @@ struct Metadata final {
   /// Number of VGPRs spilled by a workitem. Optional.
   std::optional<uint32_t> VGPRSpillCount{0};
   /// The kind of the kernel
-  std::optional<HSAMD::KernelKind> KernelKind{KernelKind::Normal};
+  std::optional<hsa::md::KernelKind> KernelKind{KernelKind::Normal};
   /// Indicates if the kernel requires that each dimension of global size
   /// is a multiple of corresponding dimension of work-group size.
   /// Only emitted when value is 1.
-  std::optional<bool> UniformWorkgroupSize{false};
+  bool UniformWorkgroupSize{false};
 
   /// Default constructor.
   Metadata() = default;
@@ -266,7 +385,7 @@ constexpr char Kernels[] = "amdhsa.kernels";
 /// In-memory representation of HSA metadata.
 struct Metadata final {
   /// HSA metadata version. Required.
-  HSAMD::Version Version;
+  hsa::md::Version Version;
   /// Printf metadata. Optional.
   std::optional<std::vector<std::string>> Printf{std::nullopt};
   /// Kernels metadata. Required.
@@ -275,29 +394,9 @@ struct Metadata final {
   Metadata() = default;
 };
 
-}; // namespace HSAMD
+}; // namespace hsa::md
 
-typedef llvm::object::ELF64LEObjectFile AMDGCNObjectFile;
-
-/**
- * \brief Parses the ELF file pointed to by \b Elf into a \b
- * AMDGCNObjectFile.
- * @param Elf \p llvm::ArrayRef encompassing the ELF file in memory
- * @return a \p std::unique_ptr pointing to a \p llvm::object::ELF64LEObjectFile
- */
-llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
-getAMDGCNObjectFile(llvm::StringRef Elf);
-
-/**
- * \brief Parses the ELF file pointed to by \b Elf into a \b
- * AMDGCNObjectFile.
- * @param Elf \p llvm::ArrayRef encompassing the ELF file in memory
- * @return a \p std::unique_ptr pointing to a \p llvm::object::ELF64LEObjectFile
- */
-llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
-getAMDGCNObjectFile(llvm::ArrayRef<uint8_t> Elf);
-
-llvm::Expected<luthier::HSAMD::Metadata>
+llvm::Expected<hsa::md::Metadata>
 parseMetaDoc(llvm::msgpack::Document &KernelMetaNode);
 
 template <class ELFT>
@@ -328,7 +427,7 @@ processNote(const typename ELFT::Note &Note, const std::string &NoteDescString,
 }
 
 template <typename ELFT>
-llvm::Expected<luthier::HSAMD::Metadata>
+llvm::Expected<hsa::md::Metadata>
 parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
   bool Found = false;
   llvm::msgpack::Document Doc;
@@ -380,214 +479,12 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
     return LUTHIER_ASSERTION(Found);
 }
 
-template <class ELFT>
-static llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-getSymbolFromGnuHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
-                          llvm::StringRef Name, const typename ELFT::Shdr *Sec,
-                          const typename ELFT::GnuHash &HashTab,
-                          llvm::ArrayRef<typename ELFT::Sym> SymTab,
-                          llvm::StringRef StrTab) {
-  const uint32_t NameHash = llvm::object::hashGnu(Name);
-  const typename ELFT::Word NBucket = HashTab.nbuckets;
-  const typename ELFT::Word SymOffset = HashTab.symndx;
-  llvm::ArrayRef<typename ELFT::Off> Filter = HashTab.filter();
-  llvm::ArrayRef<typename ELFT::Word> Bucket = HashTab.buckets();
-  llvm::ArrayRef<typename ELFT::Word> Chain = HashTab.values(SymTab.size());
-
-  // Check the bloom filter and exit early if the symbol is not present.
-  uint64_t ElfClassBits = ELFT::Is64Bits ? 64 : 32;
-  typename ELFT::Off Word =
-      Filter[(NameHash / ElfClassBits) % HashTab.maskwords];
-  uint64_t Mask = (0x1ull << (NameHash % ElfClassBits)) |
-                  (0x1ull << ((NameHash >> HashTab.shift2) % ElfClassBits));
-  if ((Word & Mask) != Mask)
-    return std::nullopt;
-
-  // The symbol may or may not be present, check the hash values.
-  for (typename ELFT::Word I = Bucket[NameHash % NBucket];
-       I >= SymOffset && I < SymTab.size(); I = I + 1) {
-    const uint32_t ChainHash = Chain[I - SymOffset];
-
-    if ((NameHash | 0x1) != (ChainHash | 0x1))
-      continue;
-
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(SymTab[I].st_name < StrTab.size()));
-
-    if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
-      return Elf.toSymbolRef(Sec, I);
-
-    if (ChainHash & 0x1)
-      return std::nullopt;
-  }
-  return std::nullopt;
-}
-
-template <class ELFT>
-static llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-getSymbolFromSysVHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
-                           llvm::StringRef Name, const typename ELFT::Shdr *Sec,
-                           const typename ELFT::Hash &HashTab,
-                           llvm::ArrayRef<typename ELFT::Sym> SymTab,
-                           llvm::StringRef StrTab) {
-  const uint32_t Hash = llvm::object::hashSysV(Name);
-  const typename ELFT::Word NBucket = HashTab.nbucket;
-  llvm::ArrayRef<typename ELFT::Word> Bucket = HashTab.buckets();
-  llvm::ArrayRef<typename ELFT::Word> Chain = HashTab.chains();
-  for (typename ELFT::Word I = Bucket[Hash % NBucket];
-       I != llvm::ELF::STN_UNDEF; I = Chain[I]) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(I < SymTab.size()));
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(SymTab[I].st_name < StrTab.size()));
-
-    if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
-      return Elf.toSymbolRef(Sec, I);
-  }
-  return std::nullopt;
-}
-
-template <typename ELFT>
-llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
-           const typename ELFT::Shdr *Sec, llvm::StringRef SymbolName) {
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ARGUMENT_ERROR_CHECK(Sec->sh_type == llvm::ELF::SHT_HASH ||
-                                   Sec->sh_type == llvm::ELF::SHT_GNU_HASH));
-
-  auto ElfFile = Elf.getELFFile();
-
-  llvm::Expected<typename ELFT::ShdrRange> SectionsOrError = ElfFile.sections();
-  LUTHIER_RETURN_ON_ERROR(SectionsOrError.takeError());
-
-  auto SymTabOrErr = getSection<ELFT>(*SectionsOrError, Sec->sh_link);
-  LUTHIER_RETURN_ON_ERROR(SymTabOrErr.takeError());
-
-  auto StrTabOrErr =
-      ElfFile.getStringTableForSymtab(**SymTabOrErr, *SectionsOrError);
-  LUTHIER_RETURN_ON_ERROR(StrTabOrErr.takeError());
-
-  llvm::StringRef StrTab = *StrTabOrErr;
-  auto SymsOrErr = ElfFile.symbols(*SymTabOrErr);
-  LUTHIER_RETURN_ON_ERROR(SymsOrErr.takeError());
-
-  llvm::ArrayRef<typename ELFT::Sym> SymTab = *SymsOrErr;
-
-  // If this is a GNU hash table we verify its size and search the symbol
-  // table using the GNU hash table format.
-  if (Sec->sh_type == llvm::ELF::SHT_GNU_HASH) {
-    const auto *HashTab = reinterpret_cast<const typename ELFT::GnuHash *>(
-        ElfFile.base() + Sec->sh_offset);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Sec->sh_offset + Sec->sh_size <
-                                              ElfFile.getBufSize()));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        Sec->sh_size >= sizeof(typename ELFT::GnuHash) &&
-        Sec->sh_size >= sizeof(typename ELFT::GnuHash) +
-                            sizeof(typename ELFT::Word) * HashTab->maskwords +
-                            sizeof(typename ELFT::Word) * HashTab->nbuckets +
-                            sizeof(typename ELFT::Word) *
-                                (SymTab.size() - HashTab->symndx)));
-    return getSymbolFromGnuHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
-                                           *HashTab, SymTab, StrTab);
-  }
-
-  // If this is a Sys-V hash table we verify its size and search the symbol
-  // table using the Sys-V hash table format.
-  if (Sec->sh_type == llvm::ELF::SHT_HASH) {
-    const auto *HashTab = reinterpret_cast<const typename ELFT::Hash *>(
-        ElfFile.base() + Sec->sh_offset);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Sec->sh_offset + Sec->sh_size <
-                                              ElfFile.getBufSize()));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        Sec->sh_size >= sizeof(typename ELFT::Hash) &&
-        Sec->sh_size >= sizeof(typename ELFT::Hash) +
-                            sizeof(typename ELFT::Word) * HashTab->nbucket +
-                            sizeof(typename ELFT::Word) * HashTab->nchain));
-    return getSymbolFromSysVHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
-                                            *HashTab, SymTab, StrTab);
-  }
-
-  return std::nullopt;
-}
-
-template <typename ELFT>
-llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-getSymbolByName(const llvm::object::ELFObjectFile<ELFT> &Elf,
-                llvm::StringRef SymbolName) {
-  for (auto Section = llvm::object::elf_section_iterator(Elf.section_begin());
-       Section != llvm::object::elf_section_iterator(Elf.section_end());
-       ++Section) {
-    auto SectionAsSHdr = Elf.getSection(Section->getRawDataRefImpl());
-    if ((SectionAsSHdr->sh_type == llvm::ELF::SHT_HASH) ||
-        (SectionAsSHdr->sh_type == llvm::ELF::SHT_GNU_HASH)) {
-      return hashLookup<ELFT>(Elf, SectionAsSHdr, SymbolName);
-    }
-  }
-  llvm_unreachable("Symbol hash table was not found");
-}
-
-template <class ELFT>
-llvm::Expected<uint64_t> getSectionLMA(const llvm::object::ELFFile<ELFT> &Obj,
-                                       const llvm::object::ELFSectionRef &Sec) {
-  auto PhdrRange = Obj.program_headers();
-  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
-
-  // Search for a PT_LOAD segment containing the requested section. Use this
-  // segment's p_addr to calculate the section's LMA.
-  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
-    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
-        (llvm::object::isSectionInSegment<ELFT>(
-            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
-                       Sec.getObject())
-                       ->getSection(Sec.getRawDataRefImpl()))))
-      return Sec.getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
-
-  // Return section's VMA if it isn't in a PT_LOAD segment.
-  return Sec.getAddress();
-}
-
-template <class ELFT>
-llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
-                                      const llvm::object::ELFSymbolRef &Sym) {
-  auto PhdrRange = Obj.program_headers();
-  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
-
-  auto SymbolSection = Sym.getSection();
-  LUTHIER_RETURN_ON_ERROR(SymbolSection.takeError());
-
-  auto SymbolAddress = Sym.getAddress();
-  LUTHIER_RETURN_ON_ERROR(SymbolAddress.takeError());
-
-  // Search for a PT_LOAD segment containing the requested section. Use this
-  // segment's p_addr to calculate the section's LMA.
-  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
-    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
-        (llvm::object::isSectionInSegment<ELFT>(
-            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
-                       Sym.getObject())
-                       ->getSection(SymbolSection.get()->getRawDataRefImpl()))))
-      return *SymbolAddress - Phdr.p_vaddr + Phdr.p_paddr;
-
-  // Return section's VMA if it isn't in a PT_LOAD segment.
-  return *SymbolAddress;
-}
-
-template <typename ELFT>
-llvm::Expected<hsa::ISA>
-getELFObjectFileISA(const llvm::object::ELFObjectFile<ELFT> &Obj) {
-  llvm::Triple TT = Obj.makeTriple();
-  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
-  llvm::SubtargetFeatures Features;
-  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
-  return hsa::ISA::fromLLVM(TT, *CPU, Features);
-}
-
 } // namespace luthier
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
-                              const luthier::HSAMD::Kernel::Metadata &MD);
+                              const luthier::hsa::md::Kernel::Metadata &MD);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
-                              const luthier::HSAMD::Metadata &MD);
+                              const luthier::hsa::md::Metadata &MD);
 
 #endif

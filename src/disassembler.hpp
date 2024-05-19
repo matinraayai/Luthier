@@ -14,6 +14,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "global_singleton_manager.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"
@@ -28,40 +29,57 @@ namespace luthier {
 
 /**
  * \brief a singleton class in charge of:
- * 1. disassembling device instructions inside functions (both direct and
- * indirect) and returning them as a vector of \ref hsa::Instr or
- * plain \ref llvm::MCInst, depending on its origin
- * It doesn't try to symbolize any of the operands
- * 2. Creating a standalone \ref llvm::Module and
- * \ref llvm::MachineModuleInfo, which isolates the requirements
- * a single kernel function needs to run independently from its parent
- * un-instrumented \ref hsa::Executable and \ref hsa::LoadedCodeObject
- * Both operations are cached to the best ability to reduce execution time
- * All operands are symbolized
+ * 1. disassembling the instructions of a \p hsa::ExecutableSymbol of type
+ * \p KERNEL and \p DEVICE_FUNCTION) using LLVM MC and returning them
+ * as a vector of \p hsa::Instr, all without symbolizing any of the
+ * instructions' operands.
+ * 2. Converting the disassembled information obtained from LLVM MC plus
+ * additional information from the backing \p hsa::LoadedCodeObject to
+ * LLVM Machine IR (MIR) and placing them inside a
+ * \c llvm::Module and \c llvm::MachineModuleInfo (MMI). This then will be used
+ * by the tool and \c luthier::CodeGenerator to compile an instrumented
+ * code object.
+ * 3. TODO: In the presence of debug information in the disassembled/lifted
+ * \p hsa::LoadedCodeObject, both the MC representation and MIR representation
+ * will also contain the debug information, if requested by the tool.
+ *
+ * \details The MIR lifted by the \p CodeLifter can have the following levels
+ * of granularity:
+ * 1. Kernel-level, in which the Module and MMI only contains enough information
+ * to make a single kernel run independently from its parent
+ * un-instrumented \c hsa::Executable and \c hsa::LoadedCodeObject
+ * 2. LoadedCodeObject-level, in which the Module and MMI contain all the
+ * information that could be extracted from a single \p hsa::LoadedCodeObject
+ *
+ * All operations done by the \p CodeLifter is meant to be cached to the
+ * best of ability, and invalidated once the \p hsa::Executable containing all
+ * the inspected items are destroyed by the runtime.
  */
-class CodeLifter {
-
+class CodeLifter : public Singleton<CodeLifter> {
+  /*****************************************************************************
+   * \brief Generic and shared functionality among all components of the
+   * \p CodeLifter
+   ****************************************************************************/
 private:
-  CodeLifter() = default;
-
-  ~CodeLifter();
+  //
+  //  std::shared_mutex CacheMutex{}; //< Mutex to protect all cached items
 
 public:
-  // Delete the copy and assignment constructors for Singleton object
-  CodeLifter(const CodeLifter &) = delete;
-  CodeLifter &operator=(const CodeLifter &) = delete;
 
   /**
-   * Singleton accessor, which constructs the instance on first invocation
-   * \return the singleton \p CodeLifter
+   * Must be invoked by the internal HSA callback to notify \p CodeLifter
+   * that \p Exec has been destroyed by the HSA runtime, and therefore any
+   * cached information related to \p Exec must be removed since it is no
+   * longer valid
+   * \param Exec the \p hsa::Executable that is about to be destroyed by the
+   * HSA runtime
+   * \return \p llvm::Error describing whether the operation succeeded or
+   * faced an error
    */
-  static inline CodeLifter &instance() {
-    static CodeLifter Instance;
-    return Instance;
-  }
+  llvm::Error invalidateCachedExecutableItems(hsa::Executable &Exec);
 
   /*****************************************************************************
-   * \brief Disassembly Functionality
+   * \brief MC-backed Disassembly Functionality
    ****************************************************************************/
 private:
   /**
@@ -87,40 +105,32 @@ private:
   llvm::Expected<DisassemblyInfo &> getDisassemblyInfo(const hsa::ISA &ISA);
 
   /**
-   * Cache of \ref hsa::ExecutableSymbol 's already disassembled by \ref
+   * Cache of \c hsa::ExecutableSymbol 's already disassembled by \c
    * CodeLifter The vectors have to be allocated as a smart pointer to stop
    * it from calling its destructor prematurely The disassembler is in
    * charge of clearing the map
    */
-  std::unordered_map<hsa::ExecutableSymbol, std::unique_ptr<std::vector<Instr>>>
-      DisassembledSymbolsRaw{};
+  std::unordered_map<hsa::ExecutableSymbol,
+                     std::unique_ptr<std::vector<hsa::Instr>>>
+      MCDisassembledSymbols{};
 
 public:
   /**
-   * Disassembles the content of the given \ref hsa::ExecutableSymbol
-   * and returns a \p std::vector of \ref hsa::Instr
+   * Disassembles the content of the given \p hsa::ExecutableSymbol
+   * and returns a reference to a \p std::vector<hsa::Instr>
    * Does not perform any control flow analysis
-   * Further invocations will return the cached results
-   * \param Symbol the \ref hsa::ExecutableSymbol to be disassembled
-   * \return on success, a const pointer to the cached \p std::vector of
-   * \ref hsa::Instr
-   * \see luthier::hsa::Instr
+   * The \p hsa::ISA used for disassembly will of the \p Symbol 's
+   * \p hsa::LoadedCodeObject
+   * Further invocations will return a cached result
+   * \param Symbol the \p hsa::ExecutableSymbol to be disassembled. Must be of
+   * type \p KERNEL or \p DEVICE_FUNCTION
+   * \return on success, a const reference to the cached
+   * \p std::vector<hsa::Instr>. on failure, an \p llvm::Error.
+   * \see hsa::Instr
    */
-  llvm::Expected<const std::vector<Instr> &>
+  llvm::Expected<const std::vector<hsa::Instr> &>
   disassemble(const hsa::ExecutableSymbol &Symbol);
 
-  /**
-   * Disassembles the code associated with the \p llvm::object::ELFSymbolRef
-   * \param Symbol the symbol to disassemble. Must be of type
-   * \p llvm::ELF::STT_FUNC
-   * \param Size if given, will only disassemble the first \p Size-bytes of the
-   * code
-   * \return on Success, returns a \p std::vector of \p llvm::MCInst and
-   * a \p std::vector containing the address of every instruction
-   */
-  llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
-  disassemble(const llvm::object::ELFSymbolRef &Symbol,
-              std::optional<size_t> Size = std::nullopt);
 
   /**
    * Disassembles the machine code encapsulated by \p code for the given \p Isa
@@ -134,7 +144,7 @@ public:
   disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code);
 
   /*****************************************************************************
-   * \brief Code Lifting Functionality
+   * \brief Beginning of Code Lifting Functionality
    ****************************************************************************/
 private:
   /**
@@ -158,12 +168,12 @@ private:
   //    Functions{}; llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable
   //    *>
   //        GlobalVariables{};
-  //    llvm::DenseMap<hsa::ExecutableSymbol,
-  //    llvm::DenseSet<hsa::ExecutableSymbol>>
-  //        RelatedFunctions{};
-  //    llvm::DenseMap<hsa::ExecutableSymbol,
-  //    llvm::DenseSet<hsa::ExecutableSymbol>>
-  //        RelatedVariables{};
+  //    llvm::Symbol>>
+  //        RelatedVariables{};DenseMap<hsa::ExecutableSymbol,
+  //  //    llvm::DenseSet<hsa::ExecutableSymbol>>
+  //  //        RelatedFunctions{};
+  //  //    llvm::DenseMap<hsa::ExecutableSymbol,
+  //  //    llvm::DenseSet<hsa::Executable
   //    llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
   //    llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineToMCInstrMap{};
   //  };
@@ -176,40 +186,51 @@ private:
 
   // TODO: Invalidate these caches once an Executable is destroyed
 
-  llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
-                 llvm::DenseSet<address_t>>
-      BranchAndTargetLocations{}; // < Contains the addresses of the branch
-                                  // targets and branch instructions
+  /*****************************************************************************
+   * \brief \p llvm::MachineBasicBlock resolving
+   ****************************************************************************/
 
-  bool isAddressBranchOrBranchTarget(const hsa::Executable &Executable,
-                                     const hsa::GpuAgent &Agent,
+  /**
+   * \brief Contains the addresses of the instructions that are either branches
+   * or target of other branch instructions
+   * \details This map is used during lifting of MC instructions to MIR to
+   * indicate start/end of each \p llvm::MachineBasicBlock
+   */
+  llvm::DenseMap<hsa::LoadedCodeObject, llvm::DenseSet<address_t>>
+      BranchAndTargetLocations{};
+
+  /**
+   * Checks whether the given \p Address is the start of either a branch
+   * instruction or a branch target of another branch instruction
+   * in the given \p LCO
+   * \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
+   * in its loaded region
+   * @param Address a device address in the \p hsa::LoadedCodeObject
+   * @return \p true if the Address
+   */
+  bool isAddressBranchOrBranchTarget(const hsa::LoadedCodeObject &LCO,
                                      address_t Address);
-
-  llvm::DenseMap<std::pair<hsa::Executable, hsa::GpuAgent>,
-                 llvm::DenseMap<address_t, hsa::ExecutableSymbol>>
-      ExecutableSymbolAddressInfoMap{};
-
-  std::unordered_map<hsa::ExecutableSymbol, HSAMD::Kernel::Metadata>
-      KernelsMetaData{};
-
-  llvm::DenseMap<hsa::LoadedCodeObject, HSAMD::Metadata>
-      LoadedCodeObjectsMetaData{};
-
-public:
-  llvm::Expected<std::optional<hsa::ExecutableSymbol>>
-  resolveAddressToExecutableSymbol(const hsa::Executable &Executable,
-                                   const hsa::GpuAgent &Agent,
-                                   address_t Address);
-
-private:
-  void addBranchOrBranchTargetAddress(const hsa::Executable &Executable,
-                                      const hsa::GpuAgent &Agent,
+  /**
+   * Used by the MC disassembler functionality to notify \p CodeLifter about the
+   * loaded address of an instruction that is either a branch or the target
+   * of another branch instruction
+   * \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
+   * in its loaded region
+   * @param Address a device address in the \p hsa::LoadedCodeObject
+   */
+  void addBranchOrBranchTargetAddress(const hsa::LoadedCodeObject &LCO,
                                       address_t Address);
 
-  llvm::Expected<const HSAMD::Kernel::Metadata &>
+  std::unordered_map<hsa::ExecutableSymbol, hsa::md::Kernel::Metadata>
+      KernelsMetaData{};
+
+  llvm::DenseMap<hsa::LoadedCodeObject, hsa::md::Metadata>
+      LoadedCodeObjectsMetaData{};
+
+  llvm::Expected<const hsa::md::Kernel::Metadata &>
   getKernelMetaData(const hsa::ExecutableSymbol &Symbol);
 
-  llvm::Expected<const HSAMD::Metadata &>
+  llvm::Expected<const hsa::md::Metadata &>
   getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO);
 
   llvm::Expected<llvm::Function *>
@@ -230,12 +251,12 @@ private:
   /**
    * Cache of relocation information, per LoadedCodeObject
    */
-  llvm::DenseMap<hsa::LoadedCodeObject,           // < All LCOs lifted so far
-                 llvm::DenseMap<address_t,        // < Address of the
-                                                  // relocation on the device
-                                LCORelocationInfo // < Relocation info per
-                                                  // device address
-                                >>
+  std::unordered_map<hsa::LoadedCodeObject,        // < All LCOs lifted so far
+                     std::unordered_map<address_t, // < Address of the
+                                                   // relocation on the device
+                                        LCORelocationInfo // < Relocation info
+                                                          // per device address
+                                        >>
       Relocations{};
 
   llvm::Expected<std::optional<LCORelocationInfo>>

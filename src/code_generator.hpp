@@ -6,6 +6,7 @@
 #include "luthier/instr.h"
 #include "luthier/types.h"
 #include "object_utils.hpp"
+#include "singleton.hpp"
 #include <luthier/pass.h>
 
 #include <llvm/IR/Type.h>
@@ -23,20 +24,8 @@ class ISA;
 
 } // namespace hsa
 
-class CodeGenerator {
+class CodeGenerator: public Singleton<CodeGenerator> {
 public:
-  CodeGenerator(const CodeGenerator &) = delete;
-  CodeGenerator &operator=(const CodeGenerator &) = delete;
-
-  static inline CodeGenerator &instance() {
-    static CodeGenerator Instance;
-    return Instance;
-  }
-
-  static llvm::Error
-  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &Code,
-                                 const hsa::GpuAgent &Agent,
-                                 llvm::SmallVectorImpl<uint8_t> &Out);
 
   static llvm::Error
   compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &Code,
@@ -49,18 +38,20 @@ public:
              const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask);
 
 private:
-  CodeGenerator() = default;
-  ~CodeGenerator() = default;
 
-  llvm::Expected<std::vector<LiftedSymbolInfo>>
+  static llvm::Expected<std::vector<LiftedSymbolInfo>>
   applyInstrumentation(llvm::Module &Module, llvm::MachineModuleInfo &MMI,
                        const LiftedSymbolInfo &LSO,
                        const InstrumentationTask &ITask);
 
-  llvm::Expected<std::vector<LiftedSymbolInfo>>
+  static llvm::Expected<std::vector<LiftedSymbolInfo>>
   insertFunctionCalls(llvm::Module &Module, llvm::MachineModuleInfo &MMI,
-                      const LiftedSymbolInfo &LSI,
+                      const LiftedSymbolInfo &TargetLSI,
                       const InstrumentationTask::insert_call_tasks &Tasks);
+
+  static llvm::Error convertToVirtual(llvm::Module &Module,
+                                      llvm::MachineModuleInfo &MMI,
+                                      const LiftedSymbolInfo &LSI);
 };
 } // namespace luthier
 

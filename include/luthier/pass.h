@@ -32,8 +32,8 @@ private:
   llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
                  llvm::GlobalVariable *>
       RelatedGlobalVariables{};
-  llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
-  llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineInstrToMCMap{};
+  llvm::DenseMap<hsa::Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
+  llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> MachineInstrToMCMap{};
 
 public:
   hsa_executable_symbol_t getSymbol() const { return Symbol; };
@@ -74,13 +74,8 @@ public:
     return Out;
   }
 
-  std::optional<Instr *>
+  std::optional<hsa::Instr *>
   getHSAInstrOfMachineInstr(const llvm::MachineInstr &MI) const {
-//    for (const auto &[k, v] : MachineInstrToMCMap) {
-//      llvm::outs() << "Address of MI: " << k << ", Address of hsa::Instr: " << v
-//                   << "\n";
-//    }
-//    llvm::outs() << "Requested address: " << &MI << "\n";
     if (MachineInstrToMCMap.contains(const_cast<llvm::MachineInstr *>(&MI)))
       return MachineInstrToMCMap.at(const_cast<llvm::MachineInstr *>(&MI));
     else

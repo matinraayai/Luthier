@@ -8,6 +8,7 @@
 #include <llvm/ADT/DenseSet.h>
 
 #include "error.hpp"
+#include "singleton.hpp"
 #include <luthier/hip_trace_api.h>
 #include <luthier/types.h>
 
@@ -50,7 +51,7 @@ typedef std::function<void(ApiArgs &, ApiReturn *, const ApiEvtPhase,
                            const int)>
     internal_callback_t;
 
-class Interceptor {
+class Interceptor : public Singleton<Interceptor> {
 private:
   void *Handle{nullptr};
   //  std::function<void(void *, const ApiEvtPhase, const int)> UserCallback{};
@@ -59,14 +60,15 @@ private:
   internal_callback_t InternalCallback{};
   llvm::DenseSet<ApiID> EnabledInternalCallbacks{};
 
+public:
   Interceptor();
 
   ~Interceptor() {
     if (Handle != nullptr)
       ::dlclose(Handle);
+    Singleton<Interceptor>::~Singleton();
   }
 
-public:
   Interceptor(const Interceptor &) = delete;
   Interceptor &operator=(const Interceptor &) = delete;
 
@@ -160,11 +162,6 @@ public:
   FunctionPtr getHipFunction(const char *Symbol) const {
     LUTHIER_CHECK(isEnabled());
     return reinterpret_cast<FunctionPtr>(getHipFunction(Symbol));
-  }
-
-  static inline Interceptor &instance() {
-    static Interceptor Instance;
-    return Instance;
   }
 };
 

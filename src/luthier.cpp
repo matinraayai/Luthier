@@ -10,6 +10,7 @@
 #include "code_object_manager.hpp"
 #include "disassembler.hpp"
 #include "error.hpp"
+#include "global_singleton_manager.hpp"
 #include "hip_intercept.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
@@ -19,6 +20,8 @@
 #include <luthier/instr.h>
 
 namespace luthier {
+
+static GlobalSingletonManager *GSM{nullptr};
 
 namespace hip {
 void internalApiCallback(ApiArgs &Args, ApiReturn *Out, ApiEvtPhase Phase,
@@ -49,6 +52,7 @@ void *getHipFunctionPtr(llvm::StringRef FuncName) {
 
 __attribute__((constructor)) void init() {
   LUTHIER_LOG_FUNCTION_CALL_START
+  GSM = new GlobalSingletonManager();
   auto &HipInterceptor = hip::Interceptor::instance();
   LUTHIER_CHECK_WITH_MSG(HipInterceptor.isEnabled(),
                          "HIP Interceptor failed to initialize");
@@ -59,7 +63,10 @@ __attribute__((constructor)) void init() {
 
 __attribute__((destructor)) void finalize() {
   LUTHIER_LOG_FUNCTION_CALL_START
+  delete GSM;
   luthier::hsa::atHsaApiTableUnload();
+  luthier::hsa::Interceptor::instance().uninstallApiTables();
+  llvm::llvm_shutdown();
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
@@ -87,7 +94,6 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
     // the Exec it was created for
     hsa::Executable Exec(
         CBData->hsa_executable_load_agent_code_object.executable);
-    llvm::outs() << "Here?\n";
     if (auto Err =
             Platform::instance().cacheCreatedLoadedCodeObjectOfExec(Exec)) {
       llvm::report_fatal_error("Caching of Loaded Code Object failed!");
@@ -96,9 +102,14 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
   if (Phase == API_EVT_PHASE_ENTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
     hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
+        if (auto Err =
+                CodeLifter::instance().invalidateCachedExecutableItems(Exec))
+                {
+          llvm::report_fatal_error("Executable cache invalidation failed");
+        }
 
     if (auto Err = Platform::instance().unregisterFrozenExecutable(Exec)) {
-      llvm::report_fatal_error("Tool executable unregister failed");
+      llvm::report_fatal_error("Executable cache invalidation failed");
     }
   }
   LUTHIER_LOG_FUNCTION_CALL_END
@@ -130,7 +141,7 @@ void disableAllHsaCallbacks() {
 
 } // namespace hsa
 
-llvm::Expected<const std::vector<Instr> &>
+llvm::Expected<const std::vector<hsa::Instr> &>
 disassembleSymbol(hsa_executable_symbol_t Symbol) {
   auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
   LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
@@ -152,6 +163,12 @@ instrument(std::unique_ptr<llvm::Module> Module,
            const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask) {
   return CodeGenerator::instance().instrument(std::move(Module),
                                               std::move(MMIWP), LSO, ITask);
+}
+
+llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel) {
+  auto Symbol = hsa::ExecutableSymbol::fromHandle(Kernel);
+  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
+  return CodeObjectManager::instance().isKernelInstrumented(*Symbol);
 }
 
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
@@ -203,7 +220,7 @@ OnLoad(HsaApiTable *table, uint64_t runtime_version, uint64_t failed_tool_count,
 
 __attribute__((visibility("default"))) void OnUnload() {
   LUTHIER_LOG_FUNCTION_CALL_START
-  luthier::hsa::Interceptor::instance().uninstallApiTables();
+
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 }

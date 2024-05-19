@@ -16,6 +16,8 @@
 
 namespace luthier {
 
+template<> CodeObjectManager* Singleton<CodeObjectManager>::Instance{nullptr};
+
 void CodeObjectManager::registerInstrumentationFunctionWrapper(
     const void *WrapperShadowHostPtr, const char *KernelName) {
   StaticInstrumentationFunctions.insert({KernelName, WrapperShadowHostPtr});

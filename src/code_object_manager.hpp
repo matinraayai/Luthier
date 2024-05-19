@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "hsa_agent.hpp"
+#include "singleton.hpp"
 #include "hsa_code_object_reader.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"
@@ -14,15 +15,8 @@ namespace luthier {
  * \brief A singleton object that keeps track of instrumentation functions and
  * instrumented kernels (per un-instrumented application kernel) in Luthier.
  */
-class CodeObjectManager {
+class CodeObjectManager: public Singleton<CodeObjectManager> {
 public:
-  CodeObjectManager(const CodeObjectManager &) = delete;
-  CodeObjectManager &operator=(const CodeObjectManager &) = delete;
-
-  static inline CodeObjectManager &instance() {
-    static CodeObjectManager Instance;
-    return Instance;
-  }
 
   /**
    * Registers the wrapper kernel of the tool's instrumentation functions
@@ -97,9 +91,8 @@ public:
    */
   bool isKernelInstrumented(const hsa::ExecutableSymbol &Kernel) const;
 
-private:
-  CodeObjectManager() = default;
   ~CodeObjectManager();
+private:
 
   struct ToolFunctionInfo {
     const hsa::ExecutableSymbol InstrumentationFunction;

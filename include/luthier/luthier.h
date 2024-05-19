@@ -67,7 +67,7 @@ FunctionPtr getHipFunctionPtr(llvm::StringRef FuncName) {
  * \param [in] Kernel the kernel object to be disassembled
  * \returns a reference to the cached disassembly result
  */
-llvm::Expected<const std::vector<Instr> &>
+llvm::Expected<const std::vector<hsa::Instr> &>
 disassembleSymbol(hsa_executable_symbol_t Kernel);
 
 /**
