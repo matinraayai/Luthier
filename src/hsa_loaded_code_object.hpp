@@ -19,10 +19,24 @@ class ISA;
 /**
  * \brief Wraps functionality related to \c hsa_loaded_code_object_t in Luthier
  *
- * \details
- * \note Even though the API mentions both file-backed and memory-backed Loaded Code Objects exists, only memory-backed ones are
+ * \note This wrapper is implemented with the following assumptions based on
+ * the current state of ROCr:
+ * 1. Even though the ROCr HSA vendor loader API
+ * (under <hsa/hsa_ven_amd_loader.h>) acknowledge both file-backed and
+ * memory-backed Loaded Code Objects exists, only memory-backed ones are
  * actually implemented. Therefore, querying the storage type and querying the
- * FD of the storage has been removed.
+ * FD of the storage is not included. Luthier assumes all Loaded Code Objects
+ * have a memory storage in order to return its associated ELF.
+ * In the event that file-backed storage is implemented in the loader, the
+ * code needs to be updated.
+ * 2. Program Loaded Code Objects has been deprecated and are not used anywhere
+ * in the ROCm stack. ROCr does not even allow using Loaded Code Objects with
+ * program allocations. Therefore, it is safe to assume all Loaded Code Objects
+ * are backed by a \c GpuAgent.
+ *
+ * \note This wrapper relies on cached functionality as described by the
+ * \c hsa::ExecutableBackedCachable interface and backed by the \c hsa::Platform
+ * Singleton.
  */
 class LoadedCodeObject : public ExecutableBackedCachable,
                          public HandleType<hsa_loaded_code_object_t> {
@@ -33,10 +47,10 @@ public:
   explicit LoadedCodeObject(hsa_loaded_code_object_t LCO);
 
   /**
-   * Queries the \b Executable associated with this \b LoadedCodeObject.
-   * Performs an HSA call to complete this operation
-   * \return the \b Executable of this \b LoadedCodeObject, or an \b llvm::Error
-   * reporting any HSA errors occurred during this operation
+   * Queries the \c Executable associated with this \c LoadedCodeObject.
+   * \return the \c Executable of this \c LoadedCodeObject, or an \c llvm::Error
+   * reporting any HSA errors occurred
+   * \note Performs an HSA call to complete this operation
    */
   [[nodiscard]] llvm::Expected<Executable> getExecutable() const;
 
