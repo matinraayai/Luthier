@@ -17,13 +17,13 @@ class ExecutableSymbol;
 class ISA;
 
 /**
- * Notes:
- * 1. Even though the API mentions both file-backed and
- * memory-backed Loaded Code Objects exists, only memory-backed ones are
+ * \brief Wraps functionality related to \c hsa_loaded_code_object_t in Luthier
+ *
+ * \details
+ * \note Even though the API mentions both file-backed and memory-backed Loaded Code Objects exists, only memory-backed ones are
  * actually implemented. Therefore, querying the storage type and querying the
  * FD of the storage has been removed.
  */
-
 class LoadedCodeObject : public ExecutableBackedCachable,
                          public HandleType<hsa_loaded_code_object_t> {
   /*****************************************************************************
@@ -66,12 +66,50 @@ public:
 
   [[nodiscard]] llvm::Expected<ISA> getISA() const;
 
+  [[nodiscard]] llvm::Expected<const hsa::md::Metadata &> getMetadata() const;
+
+  /**
+   * Appends all the \c hsa::ExecutableSymbols in this LCO that are of type
+   * \c hsa::KERNEL to \c Out
+   * \param Out [out] an \c llvm::SmallVectorImpl pointing to a sequential
+   * container that will contain the symbols returned by the operation
+   * \return \c llvm::Error describing whether the operation has succeeded or
+   * not
+   * \note this operation requires the LCO to be cached.
+   */
+  [[nodiscard]] llvm::Error
+  getKernelSymbols(llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const;
+
+  /**
+   * Appends all the \c hsa::ExecutableSymbols in this LCO that are of type
+   * \c hsa::VARIABLE to \c Out
+   * \param Out [out] an \c llvm::SmallVectorImpl pointing to a sequential
+   * container that will contain the symbols returned by the operation
+   * \return \c llvm::Error describing whether the operation has succeeded or
+   * not
+   * \note this operation requires the LCO to be cached.
+   */
+  [[nodiscard]] llvm::Error
+  getVariableSymbols(llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const;
+
+  /**
+   * Appends all the \c hsa::ExecutableSymbols in this LCO that are of type
+   * \c hsa::DEVICE_FUNCTION to \c Out
+   * \param Out [out] an \c llvm::SmallVectorImpl pointing to a sequential
+   * container that will contain the symbols returned by the operation
+   * \return \c llvm::Error describing whether the operation has succeeded or
+   * not
+   * \note this operation requires the LCO to be cached.
+   */
+  [[nodiscard]] llvm::Error getDeviceFunctionSymbols(
+      llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const;
+
   /**
    *
    * @return
    */
-  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getExecutableSymbols() const;
+  [[nodiscard]] llvm::Error
+  getExecutableSymbols(llvm::SmallVectorImpl<ExecutableSymbol> Out) const;
 
   [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
   getExecutableSymbolByName(llvm::StringRef Name) const;
@@ -109,6 +147,38 @@ private:
   [[nodiscard]] llvm::Expected<std::optional<hsa_executable_symbol_t>>
   getHSASymbolHandleByNameFromExecutable(llvm::StringRef Name) const;
 
+  /**
+   * Looks up the given \p Name in the internal kernel symbol information cache
+   * and constructs an \c hsa::ExecutableSymbol for it
+   * \param NameWithKDAtTheEnd Name of the kernel symbol, with ".kd" at the end
+   * \return on success, an \c hsa::ExecutableSymbol associated with the given
+   * kernel name, or an \c llvm::Error describing the failure
+   */
+  [[nodiscard]] llvm::Expected<hsa::ExecutableSymbol>
+  constructKernelSymbolUsingName(llvm::StringRef NameWithKDAtTheEnd) const;
+
+  /**
+   * Looks up the given \p Name in the internal variable symbol information
+   * cache and constructs an \c hsa::ExecutableSymbol for it
+   * \param Name Name of the variable symbol
+   * \return on success, an \c hsa::ExecutableSymbol associated with the given
+   * \c Name, or an \c llvm::Error describing the failure. If the variable
+   * symbol is external to this LCO and HSA returns no handles for the symbol,
+   * then it returns \c std::nullopt
+   */
+  [[nodiscard]] llvm::Expected<std::optional<hsa::ExecutableSymbol>>
+  constructVariableSymbolUsingName(llvm::StringRef Name) const;
+
+  /**
+   * Looks up the given \p Name in the internal device function symbol
+   * information cache and constructs an \c hsa::ExecutableSymbol for it
+   * \param Name Name of the device function symbol
+   * \return on success, an \c hsa::ExecutableSymbol associated with the given
+   * \c Name, or an \c llvm::Error describing the failure
+   */
+  [[nodiscard]] llvm::Expected<hsa::ExecutableSymbol>
+  constructDeviceFunctionSymbolUsingName(llvm::StringRef Name) const;
+
   /*****************************************************************************
    * \brief Implementation of \b hsa::ExecutableBackedCachable
    ****************************************************************************/
@@ -124,19 +194,27 @@ private:
 
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                         llvm::StringMap<object::ELFSymbolRef>>
-      KernelDescSymbols;
+      KernelDescSymbolsOfLCOs;
 
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                         llvm::StringMap<object::ELFSymbolRef>>
-      KernelFuncSymbols;
+      KernelFuncSymbolsOfLCOs;
 
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                         llvm::StringMap<object::ELFSymbolRef>>
-      DeviceFuncSymbols;
+      DeviceFuncSymbolsOfLCOs;
 
   static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                         llvm::StringMap<object::ELFSymbolRef>>
-      VariableSymbols;
+      VariableSymbolsOfLCOs;
+
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+                        hsa::md::Metadata>
+      MetadataOfLCOs;
+
+  static llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+                        llvm::StringMap<hsa::md::Kernel::Metadata *>>
+      KernelSymbolsMetadataOfLCOs;
 
   llvm::Error cache() const override;
 

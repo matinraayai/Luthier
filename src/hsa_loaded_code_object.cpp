@@ -93,113 +93,52 @@ llvm::Expected<ISA> LoadedCodeObject::getISA() const {
   return ISA(ISAOfLCOs.at(hsaHandle()));
 }
 
-llvm::Expected<std::vector<ExecutableSymbol>>
-LoadedCodeObject::getExecutableSymbols() const {
+llvm::Error LoadedCodeObject::getExecutableSymbols(
+    llvm::SmallVectorImpl<ExecutableSymbol> Out) const {
   std::lock_guard Lock(getCacheMutex());
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(StorageELFOfLCOs.contains(hsaHandle())));
-  auto Agent = this->getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-  auto Exec = this->getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-  const auto &KernelDescSymbolsOfLCO = KernelDescSymbols.at(hsaHandle());
-  const auto &KernelFuncSymbolsOfLCO = KernelFuncSymbols.at(hsaHandle());
-  const auto &VariableSymbolsOfLCO = VariableSymbols.at(hsaHandle());
-  const auto &DeviceFuncSymbolsOfLCO = DeviceFuncSymbols.at(hsaHandle());
+  // Ensure this LCO is cached before anything
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  // Retrieve symbol information associated with this LCO
+  const auto &KernelDescSymbolsOfThisLCO =
+      KernelDescSymbolsOfLCOs.at(hsaHandle());
+  const auto &VariableSymbolsOfThisLCO = VariableSymbolsOfLCOs.at(hsaHandle());
+  const auto &DeviceFuncSymbolsOfThisLCO =
+      DeviceFuncSymbolsOfLCOs.at(hsaHandle());
 
-  std::vector<ExecutableSymbol> Out;
-  Out.reserve(KernelDescSymbolsOfLCO.size() + VariableSymbolsOfLCO.size() +
-              DeviceFuncSymbolsOfLCO.size());
-  // Kernels
-  for (const auto &[NameWithKD, KDSymbol] : KernelDescSymbolsOfLCO) {
-    llvm::outs() << "Returning Kernel name: " << NameWithKD << "\n";
-    auto NameWithoutKD = NameWithKD.substr(0, NameWithKD.rfind(".kd"));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        KernelFuncSymbols.at(hsaHandle()).contains(NameWithoutKD)));
-    auto KFuncSymbol = KernelFuncSymbolsOfLCO.at(NameWithoutKD);
-    auto KernelSymbolHandle =
-        getHSASymbolHandleByNameFromExecutable(NameWithKD);
-    LUTHIER_RETURN_ON_ERROR(KernelSymbolHandle.takeError());
-    Out.emplace_back(**KernelSymbolHandle, this->asHsaType(), KDSymbol,
-                     KFuncSymbol);
-  }
-  // Variables
-  for (const auto &[Name, Sym] : VariableSymbolsOfLCO) {
-    llvm::outs() << "Returning Variable name: " << Name << "\n";
-    auto VariableSymbolHandle = getHSASymbolHandleByNameFromExecutable(Name);
-    LUTHIER_RETURN_ON_ERROR(VariableSymbolHandle.takeError());
-    Out.emplace_back(**VariableSymbolHandle, this->asHsaType(), Sym);
-  }
-  // Device Functions
-  for (const auto &[Name, Sym] : DeviceFuncSymbolsOfLCO) {
-    llvm::outs() << "Returning Device function name: " << Name << "\n";
-    auto Symbol =
-        ExecutableSymbol::createDeviceFunctionSymbol(this->asHsaType(), Sym);
-    LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-    Out.push_back(*Symbol);
-  }
-  return Out;
+  Out.reserve(Out.size() + KernelDescSymbolsOfThisLCO.size() +
+              VariableSymbolsOfThisLCO.size() +
+              DeviceFuncSymbolsOfThisLCO.size());
+
+  LUTHIER_RETURN_ON_ERROR(this->getKernelSymbols(Out));
+  LUTHIER_RETURN_ON_ERROR(this->getVariableSymbols(Out));
+  LUTHIER_RETURN_ON_ERROR(this->getDeviceFunctionSymbols(Out));
+  return llvm::Error::success();
 }
 
 llvm::Expected<std::optional<ExecutableSymbol>>
 LoadedCodeObject::getExecutableSymbolByName(llvm::StringRef Name) const {
   std::lock_guard Lock(getCacheMutex());
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(StorageELFOfLCOs.contains(hsaHandle())));
-  auto Agent = this->getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-  auto Exec = this->getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-  const auto &KernelDescSymbolsOfLCO = KernelDescSymbols.at(hsaHandle());
-  const auto &KernelFuncSymbolsOfLCO = KernelFuncSymbols.at(hsaHandle());
-  const auto &VariableSymbolsOfLCO = VariableSymbols.at(hsaHandle());
-  const auto &DeviceFuncSymbolsOfLCO = DeviceFuncSymbols.at(hsaHandle());
-  // Check if name is a kernel
-  if (KernelDescSymbolsOfLCO.contains(Name)) {
-    auto NameWithoutKD = Name.substr(0, Name.rfind(".kd"));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        KernelFuncSymbols.at(hsaHandle()).contains(NameWithoutKD)));
-    auto KDescSymbol = KernelDescSymbolsOfLCO.at(Name);
-    auto KFuncSymbol = KernelFuncSymbolsOfLCO.at(NameWithoutKD);
-    auto KernelSymbolHandle = getHSASymbolHandleByNameFromExecutable(Name);
-    LUTHIER_RETURN_ON_ERROR(KernelSymbolHandle.takeError());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelSymbolHandle->has_value()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  const auto &KernelDescSymbolsOfThisLCO =
+      KernelDescSymbolsOfLCOs.at(hsaHandle());
+  const auto &KernelFuncSymbolsOfThisLCO =
+      KernelFuncSymbolsOfLCOs.at(hsaHandle());
+  const auto &VariableSymbolsOfThisLCO = VariableSymbolsOfLCOs.at(hsaHandle());
+  const auto &DeviceFuncSymbolsOfThisLCO =
+      DeviceFuncSymbolsOfLCOs.at(hsaHandle());
 
-    return ExecutableSymbol{**KernelSymbolHandle, this->asHsaType(),
-                            KDescSymbol, KFuncSymbol};
-  } else if (KernelFuncSymbolsOfLCO.contains(Name)) {
+  if (KernelDescSymbolsOfThisLCO.contains(Name)) {
+    return constructKernelSymbolUsingName(Name);
+  } else if (KernelFuncSymbolsOfThisLCO.contains(Name)) {
     auto NameWithKD = (Name + ".kd").str();
-    auto KDescSymbol = KernelDescSymbolsOfLCO.at(NameWithKD);
-    auto KFuncSymbol = KernelFuncSymbolsOfLCO.at(Name);
-
-    auto KernelSymbolHandle =
-        getHSASymbolHandleByNameFromExecutable(NameWithKD);
-    LUTHIER_RETURN_ON_ERROR(KernelSymbolHandle.takeError());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelSymbolHandle->has_value()));
-
-    return ExecutableSymbol{**KernelSymbolHandle, this->asHsaType(),
-                            KDescSymbol, KFuncSymbol};
-
-  } else if (VariableSymbolsOfLCO.contains(Name)) {
-    auto VarSym = VariableSymbolsOfLCO.at(Name);
-    auto VariableSymbolHandle = getHSASymbolHandleByNameFromExecutable(Name);
-    LUTHIER_RETURN_ON_ERROR(VariableSymbolHandle.takeError());
-    if (!VariableSymbolHandle->has_value()) {
-      // Maybe the external symbol in HSA is not defined yet
-      LUTHIER_RETURN_ON_ERROR(
-          LUTHIER_ASSERTION(VarSym.getELFType() == llvm::ELF::STT_NOTYPE));
-    } else {
-      return ExecutableSymbol{**VariableSymbolHandle, this->asHsaType(),
-                              VarSym};
-    }
-  } else if (DeviceFuncSymbolsOfLCO.contains(Name)) {
-    auto DevFuncSym = DeviceFuncSymbolsOfLCO.at(Name);
-    auto Symbol = ExecutableSymbol::createDeviceFunctionSymbol(
-        this->asHsaType(), DevFuncSym);
-    LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-    return *Symbol;
+    return constructKernelSymbolUsingName(NameWithKD);
+  } else if (VariableSymbolsOfThisLCO.contains(Name)) {
+    return constructVariableSymbolUsingName(Name);
+  } else if (DeviceFuncSymbolsOfThisLCO.contains(Name)) {
+    return constructDeviceFunctionSymbolUsingName(Name);
+  } else {
+    return std::nullopt;
   }
-  return std::nullopt;
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
@@ -253,16 +192,22 @@ llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle), hsa_isa_t>
 
 llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                llvm::StringMap<object::ELFSymbolRef>>
-    LoadedCodeObject::KernelDescSymbols{};
+    LoadedCodeObject::KernelDescSymbolsOfLCOs{};
 llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                llvm::StringMap<object::ELFSymbolRef>>
-    LoadedCodeObject::KernelFuncSymbols{};
+    LoadedCodeObject::KernelFuncSymbolsOfLCOs{};
 llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                llvm::StringMap<object::ELFSymbolRef>>
-    LoadedCodeObject::DeviceFuncSymbols{};
+    LoadedCodeObject::DeviceFuncSymbolsOfLCOs{};
 llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
                llvm::StringMap<object::ELFSymbolRef>>
-    LoadedCodeObject::VariableSymbols{};
+    LoadedCodeObject::VariableSymbolsOfLCOs{};
+llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle), hsa::md::Metadata>
+    LoadedCodeObject::MetadataOfLCOs{};
+
+llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
+               llvm::StringMap<hsa::md::Kernel::Metadata *>>
+    LoadedCodeObject::KernelSymbolsMetadataOfLCOs{};
 
 llvm::Error LoadedCodeObject::cache() const {
   std::lock_guard Lock(getCacheMutex());
@@ -282,13 +227,13 @@ llvm::Error LoadedCodeObject::cache() const {
 
   // Cache the ELF Symbols
   auto &KernelDescSymbolsOfLCO =
-      KernelDescSymbols.insert({hsaHandle(), {}}).first->second;
+      KernelDescSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
   auto &KernelFuncSymbolsOfLCO =
-      KernelFuncSymbols.insert({hsaHandle(), {}}).first->second;
+      KernelDescSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
   auto &VariableSymbolsOfLCO =
-      VariableSymbols.insert({hsaHandle(), {}}).first->second;
+      VariableSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
   auto &DeviceFuncSymbolsOfLCO =
-      DeviceFuncSymbols.insert({hsaHandle(), {}}).first->second;
+      DeviceFuncSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
 
   for (const object::ELFSymbolRef &Symbol : CachedELF.symbols()) {
     auto Type = Symbol.getELFType();
@@ -325,8 +270,28 @@ llvm::Error LoadedCodeObject::cache() const {
       llvm::outs() << "Found device function\n";
     }
   }
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(KernelDescSymbols.size() == KernelFuncSymbols.size()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelDescSymbolsOfLCO.size() ==
+                                            KernelFuncSymbolsOfLCO.size()));
+  // Cache the LCO and Kernel Symbols Metadata
+  auto MetaData = parseNoteMetaData(CachedELF);
+  LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
+  auto &LCOCachedMetaData =
+      MetadataOfLCOs.insert({this->hsaHandle(), *MetaData}).first->getSecond();
+  auto &LCOKernelMetaDataMap =
+      KernelSymbolsMetadataOfLCOs
+          .insert(
+              {this->hsaHandle(), llvm::StringMap<md::Kernel::Metadata *>{}})
+          .first->getSecond();
+  for (auto &KernelMD : LCOCachedMetaData.Kernels) {
+    LCOKernelMetaDataMap.insert({KernelMD.Symbol, &KernelMD});
+    llvm::outs() << "Kernel MD symbol: " << KernelMD.Symbol << "\n";
+  }
+  llvm::outs() << "Size of KD symbols: " << KernelDescSymbolsOfLCOs.size()
+               << "\n";
+  llvm::outs() << "Size of MD Symbols: " << LCOKernelMetaDataMap.size() << "\n";
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelFuncSymbolsOfLCO.size() ==
+                                            LCOKernelMetaDataMap.size()));
+
   CachedLCOs.insert(hsaHandle());
   return llvm::Error::success();
 }
@@ -334,10 +299,12 @@ llvm::Error LoadedCodeObject::invalidate() const {
   std::lock_guard Lock(getCacheMutex());
   StorageELFOfLCOs.erase(this->hsaHandle());
   ISAOfLCOs.erase(this->hsaHandle());
-  KernelDescSymbols.erase(this->hsaHandle());
-  KernelFuncSymbols.erase(this->hsaHandle());
-  DeviceFuncSymbols.erase(this->hsaHandle());
-  VariableSymbols.erase(this->hsaHandle());
+  KernelDescSymbolsOfLCOs.erase(this->hsaHandle());
+  KernelFuncSymbolsOfLCOs.erase(this->hsaHandle());
+  DeviceFuncSymbolsOfLCOs.erase(this->hsaHandle());
+  VariableSymbolsOfLCOs.erase(this->hsaHandle());
+  MetadataOfLCOs.erase(this->hsaHandle());
+  KernelSymbolsMetadataOfLCOs.erase(this->hsaHandle());
   return llvm::Error::success();
 }
 
@@ -345,8 +312,180 @@ bool LoadedCodeObject::isCached() const {
   std::lock_guard Lock(getCacheMutex());
   return CachedLCOs.contains(this->hsaHandle());
 }
+llvm::Expected<const hsa::md::Metadata &>
+LoadedCodeObject::getMetadata() const {
+  std::lock_guard Lock(getCacheMutex());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  return MetadataOfLCOs.at(this->hsaHandle());
+}
+llvm::Error LoadedCodeObject::getKernelSymbols(
+    llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const {
+  std::lock_guard Lock(getCacheMutex());
+  // Ensure this LCO is cached before doing anything
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  // Retrieve kernel symbol names associated with this LCO
+  const auto &KernelDescSymbolsOfThisLCO =
+      KernelDescSymbolsOfLCOs.at(hsaHandle());
+  // Construct hsa::ExecutableSymbols from the cached ELF information
+  for (const auto &NameWithKDAtTheEnd : KernelDescSymbolsOfThisLCO.keys()) {
+    // Append the HSA symbol to the output vector
+    auto KernelHSASymbol = constructKernelSymbolUsingName(NameWithKDAtTheEnd);
+    LUTHIER_RETURN_ON_ERROR(KernelHSASymbol.takeError());
+    Out.push_back(*KernelHSASymbol);
+  }
+  return llvm::Error::success();
+}
 
+llvm::Error LoadedCodeObject::getVariableSymbols(
+    llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const {
+  std::lock_guard Lock(getCacheMutex());
+  // Ensure this LCO is cached before doing anything
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  // Retrieve variable symbols associated with this LCO
+  const auto &VariableSymbolsOfThisLCO = VariableSymbolsOfLCOs.at(hsaHandle());
 
+  // Construct hsa::ExecutableSymbols from the cached ELF information
+  for (const auto &Name : VariableSymbolsOfThisLCO.keys()) {
+    auto VariableHSASymbol = constructVariableSymbolUsingName(Name);
+    LUTHIER_RETURN_ON_ERROR(VariableHSASymbol.takeError());
+    if (VariableHSASymbol->has_value())
+      Out.push_back(**VariableHSASymbol);
+  }
+  return llvm::Error::success();
+}
 
+llvm::Expected<hsa::ExecutableSymbol>
+LoadedCodeObject::constructKernelSymbolUsingName(
+    llvm::StringRef NameWithKDAtTheEnd) const {
+  std::lock_guard Lock(getCacheMutex());
+  // Ensure this LCO is cached before doing anything
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  // Retrieve kernel symbol information associated with this LCO
+  const auto &KernelDescSymbolsOfThisLCO =
+      KernelDescSymbolsOfLCOs.at(hsaHandle());
+  const auto &KernelFuncSymbolsOfThisLCO =
+      KernelFuncSymbolsOfLCOs.at(hsaHandle());
+  const auto &KernelMetaDataOfThisLCO =
+      KernelSymbolsMetadataOfLCOs.at(hsaHandle());
+
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+      KernelDescSymbolsOfThisLCO.contains(NameWithKDAtTheEnd)));
+
+  const auto &KDSymbol = KernelDescSymbolsOfThisLCO.at(NameWithKDAtTheEnd);
+  auto NameWithoutKDAtTheEnd =
+      NameWithKDAtTheEnd.substr(0, NameWithKDAtTheEnd.rfind(".kd"));
+
+  // Check if other maps also have this entry
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+      KernelFuncSymbolsOfThisLCO.contains(NameWithoutKDAtTheEnd)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+      KernelMetaDataOfThisLCO.contains(NameWithoutKDAtTheEnd)));
+
+  // Get the function symbol, hsa symbol handle, and the Metadata associated
+  // with this kernel
+  auto &KFuncSymbol = KernelFuncSymbolsOfThisLCO.at(NameWithoutKDAtTheEnd);
+  auto SymbolHandle =
+      getHSASymbolHandleByNameFromExecutable(NameWithKDAtTheEnd);
+  LUTHIER_RETURN_ON_ERROR(SymbolHandle.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(SymbolHandle->has_value()));
+  auto KernelMD = KernelMetaDataOfThisLCO.at(NameWithoutKDAtTheEnd);
+
+  // Append the HSA symbol to the output vector
+  return hsa::ExecutableSymbol{**SymbolHandle, this->asHsaType(), &KDSymbol,
+                               &KFuncSymbol, KernelMD};
+}
+
+llvm::Expected<std::optional<hsa::ExecutableSymbol>>
+LoadedCodeObject::constructVariableSymbolUsingName(llvm::StringRef Name) const {
+  std::lock_guard Lock(getCacheMutex());
+  // Ensure this LCO is cached before doing anything
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  // Retrieve variable symbols associated with this LCO
+  const auto &VariableSymbolsOfThisLCO = VariableSymbolsOfLCOs.at(hsaHandle());
+  // Check if the Name is in the variable Map
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(VariableSymbolsOfThisLCO.contains(Name)));
+  // Get the ELF Symbol
+  auto &VariableELFSymbol = VariableSymbolsOfThisLCO.at(Name);
+  // Get the HSA handle to the symbol
+  auto VariableSymbolHandle = getHSASymbolHandleByNameFromExecutable(Name);
+  LUTHIER_RETURN_ON_ERROR(VariableSymbolHandle.takeError());
+
+  // If the variable has no ELF type associated with it, then it is external
+  // to this LCO
+  if (VariableELFSymbol.getELFType() == llvm::ELF::STT_NOTYPE) {
+    // if no HSA handle is found, then the external symbol hasn't been defined
+    // yet, and we return nothing
+    if (!VariableSymbolHandle->has_value()) {
+      return std::nullopt;
+    }
+    // if HSA is reporting a handle associated with this symbol, then it
+    // has been defined, either externally
+    // (for example using hsa_executable_agent_global_variable_define), or
+    // in another LCO inside the current executable
+    else {
+      // Check if other LCOs in the current executable have this variable
+      // defined
+      auto Exec = this->getExecutable();
+      LUTHIER_RETURN_ON_ERROR(Exec.takeError());
+      auto LCOs = Exec->getLoadedCodeObjects();
+      LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
+      for (const auto &LCO : *LCOs) {
+        if (LCO != *this) {
+          const auto &VariableSymbolsOfOtherLCO =
+              VariableSymbolsOfLCOs.at(LCO.hsaHandle());
+          if (VariableSymbolsOfOtherLCO.contains(Name)) {
+            const auto &VariableSymbolELFInOtherLCO =
+                VariableSymbolsOfOtherLCO.at(Name);
+            if (VariableSymbolELFInOtherLCO.getELFType() !=
+                llvm::ELF::STT_NOTYPE) {
+              return hsa::ExecutableSymbol{**VariableSymbolHandle,
+                                           LCO.asHsaType(), &VariableELFSymbol};
+            }
+          }
+        }
+      }
+      // We have checked all other LCOs for the parent executable and didn't
+      // find any LCOs that has defined this symbol, hence this is symbol
+      // is external and doesn't have a parent LCO
+      return hsa::ExecutableSymbol{
+          **VariableSymbolHandle, {0}, &VariableELFSymbol};
+    }
+  }
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VariableSymbolHandle->has_value()));
+
+  return hsa::ExecutableSymbol{**VariableSymbolHandle, this->asHsaType(),
+                               &VariableELFSymbol};
+}
+
+llvm::Expected<hsa::ExecutableSymbol>
+LoadedCodeObject::constructDeviceFunctionSymbolUsingName(
+    llvm::StringRef Name) const {
+  std::lock_guard Lock(getCacheMutex());
+  // Ensure this LCO is cached before doing anything
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
+  const auto &DeviceFuncSymbolsOfThisLCO =
+      DeviceFuncSymbolsOfLCOs.at(hsaHandle());
+  // Check if the name is found in the device functions of this LCO
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(DeviceFuncSymbolsOfThisLCO.contains(Name)));
+  auto &DeviceFunctionELFSymbol = DeviceFuncSymbolsOfThisLCO.at(Name);
+  // return the device function
+  return ExecutableSymbol::createDeviceFunctionSymbol(this->asHsaType(),
+                                                      DeviceFunctionELFSymbol);
+}
+llvm::Error LoadedCodeObject::getDeviceFunctionSymbols(
+    llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const {
+  const auto &DeviceFuncSymbolsOfThisLCO =
+      DeviceFuncSymbolsOfLCOs.at(hsaHandle());
+
+  // Device Functions
+  for (const auto &Name : DeviceFuncSymbolsOfThisLCO.keys()) {
+    auto DeviceFunctionHSASymbol = constructDeviceFunctionSymbolUsingName(Name);
+    LUTHIER_RETURN_ON_ERROR(DeviceFunctionHSASymbol.takeError());
+    Out.push_back(*DeviceFunctionHSASymbol);
+  }
+  return llvm::Error::success();
+}
 
 } // namespace luthier::hsa
