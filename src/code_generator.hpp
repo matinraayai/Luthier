@@ -7,6 +7,7 @@
 #include "luthier/types.h"
 #include "object_utils.hpp"
 #include "singleton.hpp"
+#include "llvm/CodeGen/TargetPassConfig.h"
 #include <luthier/pass.h>
 
 #include <llvm/IR/Type.h>
@@ -52,6 +53,30 @@ private:
   static llvm::Error convertToVirtual(llvm::Module &Module,
                                       llvm::MachineModuleInfo &MMI,
                                       const LiftedSymbolInfo &LSI);
+    
+  // AnalysisID TargetPassConfig::addPass(AnalysisID PassID) {
+  // llvm::Pass* addPass(llvm::TargetPassConfig *TPC, llvm::AnalysisID PassID) {
+  llvm::Pass* getPass(llvm::TargetPassConfig *TPC, llvm::AnalysisID PassID) {
+    llvm::IdentifyingPassPtr TargetID = TPC->getPassSubstitution(PassID);
+    // llvm::IdentifyingPassPtr FinalPtr = TPC->overridePass(PassID, TargetID);
+    // if (!FinalPtr.isValid())
+    //   return nullptr;
+  
+    llvm::Pass *P;
+    // if (FinalPtr.isInstance())
+    //   P = FinalPtr.getInstance();
+    // else {
+      // P = llvm::Pass::createPass(FinalPtr.getID());
+      
+    P = llvm::Pass::createPass(TargetID.getID());
+      
+    if (!P)
+      llvm_unreachable("Pass ID not registered");
+
+    return P;
+    // }
+    // addPass(P); // Ends the lifetime of P.
+  }
 };
 } // namespace luthier
 
