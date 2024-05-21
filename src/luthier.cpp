@@ -79,7 +79,7 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
       ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
     hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
     // Cache the executable and its items
-    if (auto Err = Platform::instance().registerFrozenExecutable(Exec))
+    if (auto Err = Platform::instance().cacheExecutableOnExecutableFreeze(Exec))
       llvm::report_fatal_error("Tool executable register failed");
     // Check if the executable belongs to the tool and not the app
     if (auto Err = CodeObjectManager::instance()
@@ -95,7 +95,8 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
     hsa::Executable Exec(
         CBData->hsa_executable_load_agent_code_object.executable);
     if (auto Err =
-            Platform::instance().cacheCreatedLoadedCodeObjectOfExec(Exec)) {
+            Platform::instance().cacheExecutableOnLoadedCodeObjectCreation(
+                Exec)) {
       llvm::report_fatal_error("Caching of Loaded Code Object failed!");
     }
   }
@@ -108,7 +109,9 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           llvm::report_fatal_error("Executable cache invalidation failed");
         }
 
-    if (auto Err = Platform::instance().unregisterFrozenExecutable(Exec)) {
+    if (auto Err =
+                Platform::instance().invalidateExecutableOnExecutableDestroy(
+                    Exec)) {
       llvm::report_fatal_error("Executable cache invalidation failed");
     }
   }

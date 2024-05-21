@@ -37,9 +37,9 @@ llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
 
       llvm::StringMap<hsa::ExecutableSymbol> WrapperKernelSymbols;
       llvm::StringMap<hsa::ExecutableSymbol> InstFunctionSymbols;
-      auto Symbols = LCO.getExecutableSymbols();
-      LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
-      for (const auto &Symbol : *Symbols) {
+      llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
+      LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
+      for (const auto &Symbol : Symbols) {
         auto SType = Symbol.getType();
         auto SName = Symbol.getName();
         LUTHIER_RETURN_ON_ERROR(SName.takeError());

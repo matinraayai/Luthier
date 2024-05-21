@@ -234,7 +234,7 @@ private:
   getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO);
 
   llvm::Expected<llvm::Function *>
-  createLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
+  initializeLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
                                llvm::Module &Module);
 
   llvm::Expected<llvm::MachineFunction &> createLLVMMachineFunctionFromSymbol(

@@ -94,7 +94,7 @@ llvm::Expected<ISA> LoadedCodeObject::getISA() const {
 }
 
 llvm::Error LoadedCodeObject::getExecutableSymbols(
-    llvm::SmallVectorImpl<ExecutableSymbol> Out) const {
+    llvm::SmallVectorImpl<ExecutableSymbol> &Out) const {
   std::lock_guard Lock(getCacheMutex());
   // Ensure this LCO is cached before anything
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->isCached()));
@@ -226,13 +226,13 @@ llvm::Error LoadedCodeObject::cache() const {
   ISAOfLCOs.insert({this->hsaHandle(), ISA->asHsaType()});
 
   // Cache the ELF Symbols
-  auto &KernelDescSymbolsOfLCO =
+  auto &KernelDescELFSymbolsOfThisLCO =
       KernelDescSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
-  auto &KernelFuncSymbolsOfLCO =
-      KernelDescSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
-  auto &VariableSymbolsOfLCO =
+  auto &KernelFuncELFSymbolsOfThisLCO =
+      KernelFuncSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
+  auto &VariableELFSymbolsOfThisLCO =
       VariableSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
-  auto &DeviceFuncSymbolsOfLCO =
+  auto &DeviceFuncELFSymbolsOfThisLCO =
       DeviceFuncSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
 
   for (const object::ELFSymbolRef &Symbol : CachedELF.symbols()) {
@@ -247,31 +247,39 @@ llvm::Error LoadedCodeObject::cache() const {
     if (Binding == llvm::ELF::STB_GLOBAL) {
       // Kernel Function Symbol
       if (Type == llvm::ELF::STT_FUNC) {
-        KernelFuncSymbolsOfLCO.insert({*SymbolName, Symbol});
+        KernelFuncELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
         llvm::outs() << "Found kernel function\n";
+        llvm::outs() << "new size: " << KernelFuncELFSymbolsOfThisLCO.size()
+                     << "\n";
       } else if (Type == llvm::ELF::STT_OBJECT) {
         // Kernel Descriptor Symbol
         if (SymbolName->ends_with(".kd") && Size == 64) {
-          KernelDescSymbolsOfLCO.insert({*SymbolName, Symbol});
+          KernelDescELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
           llvm::outs() << "found a kernel!\n";
+          llvm::outs() << "new size: " << KernelDescELFSymbolsOfThisLCO.size()
+                       << "\n";
         }
         // Variable Symbol
         else {
-          VariableSymbolsOfLCO.insert({*SymbolName, Symbol});
+          VariableELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
         }
       } else if (Type == llvm::ELF::STT_AMDGPU_HSA_KERNEL && Size == 64) {
-        KernelDescSymbolsOfLCO.insert({*SymbolName, Symbol});
+        KernelDescELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
+        llvm::outs() << "Found a kernel!\n";
+        llvm::outs() << "new size: " << KernelDescELFSymbolsOfThisLCO.size()
+                     << "\n";
       } else if (Type == llvm::ELF::STT_NOTYPE) {
         llvm::outs() << "Found an external Symbol\n";
-        VariableSymbolsOfLCO.insert({*SymbolName, Symbol});
+        VariableELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
       }
     } else if (Binding == llvm::ELF::STB_LOCAL && Type == llvm::ELF::STT_FUNC) {
-      DeviceFuncSymbolsOfLCO.insert({*SymbolName, Symbol});
+      DeviceFuncELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
       llvm::outs() << "Found device function\n";
     }
   }
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelDescSymbolsOfLCO.size() ==
-                                            KernelFuncSymbolsOfLCO.size()));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(KernelDescELFSymbolsOfThisLCO.size() ==
+                        KernelFuncELFSymbolsOfThisLCO.size()));
   // Cache the LCO and Kernel Symbols Metadata
   auto MetaData = parseNoteMetaData(CachedELF);
   LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
@@ -286,11 +294,20 @@ llvm::Error LoadedCodeObject::cache() const {
     LCOKernelMetaDataMap.insert({KernelMD.Symbol, &KernelMD});
     llvm::outs() << "Kernel MD symbol: " << KernelMD.Symbol << "\n";
   }
-  llvm::outs() << "Size of KD symbols: " << KernelDescSymbolsOfLCOs.size()
+
+  for (const auto &KD : KernelDescELFSymbolsOfThisLCO.keys()) {
+    llvm::outs() << "KD: " << KD << "\n";
+  }
+
+  for (const auto &Kernel : KernelFuncELFSymbolsOfThisLCO.keys()) {
+    llvm::outs() << "Kfunc: " << Kernel << "\n";
+  }
+
+  llvm::outs() << "Size of KD symbols: " << KernelDescELFSymbolsOfThisLCO.size()
                << "\n";
   llvm::outs() << "Size of MD Symbols: " << LCOKernelMetaDataMap.size() << "\n";
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelFuncSymbolsOfLCO.size() ==
-                                            LCOKernelMetaDataMap.size()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+      KernelFuncELFSymbolsOfThisLCO.size() == LCOKernelMetaDataMap.size()));
 
   CachedLCOs.insert(hsaHandle());
   return llvm::Error::success();
@@ -379,7 +396,7 @@ LoadedCodeObject::constructKernelSymbolUsingName(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
       KernelFuncSymbolsOfThisLCO.contains(NameWithoutKDAtTheEnd)));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-      KernelMetaDataOfThisLCO.contains(NameWithoutKDAtTheEnd)));
+      KernelMetaDataOfThisLCO.contains(NameWithKDAtTheEnd)));
 
   // Get the function symbol, hsa symbol handle, and the Metadata associated
   // with this kernel
@@ -388,7 +405,7 @@ LoadedCodeObject::constructKernelSymbolUsingName(
       getHSASymbolHandleByNameFromExecutable(NameWithKDAtTheEnd);
   LUTHIER_RETURN_ON_ERROR(SymbolHandle.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(SymbolHandle->has_value()));
-  auto KernelMD = KernelMetaDataOfThisLCO.at(NameWithoutKDAtTheEnd);
+  auto KernelMD = KernelMetaDataOfThisLCO.at(NameWithKDAtTheEnd);
 
   // Append the HSA symbol to the output vector
   return hsa::ExecutableSymbol{**SymbolHandle, this->asHsaType(), &KDSymbol,

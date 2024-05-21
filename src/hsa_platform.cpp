@@ -9,7 +9,7 @@ namespace luthier::hsa {
 
 std::recursive_mutex ExecutableBackedCachable::CacheMutex;
 
-llvm::Error Platform::registerFrozenExecutable(const Executable &Exec) {
+llvm::Error Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) {
   // Check if executable is indeed frozen
   auto State = Exec.getState();
   LUTHIER_RETURN_ON_ERROR(State.takeError());
@@ -24,9 +24,9 @@ llvm::Error Platform::registerFrozenExecutable(const Executable &Exec) {
     auto LCOAsCachable = llvm::dyn_cast<const ExecutableBackedCachable>(&LCO);
     if (!LCOAsCachable->isCached())
       LUTHIER_RETURN_ON_ERROR(LCOAsCachable->cache());
-    auto Symbols = LCO.getExecutableSymbols();
-    LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
-    for (const auto &Symbol : *Symbols) {
+    llvm::SmallVector<ExecutableSymbol> Symbols;
+    LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
+    for (const auto &Symbol : Symbols) {
       auto SymbolAsCachable =
           llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol);
       if (!SymbolAsCachable->isCached())
@@ -49,13 +49,13 @@ llvm::Error Platform::registerFrozenExecutable(const Executable &Exec) {
   }
   return llvm::Error::success();
 }
-llvm::Error Platform::unregisterFrozenExecutable(const Executable &Exec) {
+llvm::Error Platform::invalidateExecutableOnExecutableDestroy(const Executable &Exec) {
   auto LCOs = Exec.getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
   for (const auto &LCO : *LCOs) {
-    auto Symbols = LCO.getExecutableSymbols();
-    LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
-    for (const auto &Symbol : *Symbols) {
+    llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
+    LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
+    for (const auto &Symbol : Symbols) {
       luthier::address_t LoadedAddress;
       if (Symbol.getType() == VARIABLE) {
         LUTHIER_RETURN_ON_ERROR(
@@ -80,7 +80,7 @@ llvm::Error Platform::unregisterFrozenExecutable(const Executable &Exec) {
   return llvm::Error::success();
 }
 llvm::Error
-Platform::cacheCreatedLoadedCodeObjectOfExec(const Executable &Exec) {
+Platform::cacheExecutableOnLoadedCodeObjectCreation(const Executable &Exec) {
   std::lock_guard Lock(ExecutableBackedCachable::getCacheMutex());
   auto LCOs = Exec.getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
@@ -89,10 +89,10 @@ Platform::cacheCreatedLoadedCodeObjectOfExec(const Executable &Exec) {
         llvm::dyn_cast<const ExecutableBackedCachable>(&LCO);
     if (!LCOAsCachableItem->isCached()) {
       LUTHIER_RETURN_ON_ERROR(LCOAsCachableItem->cache());
-      auto Symbols = LCO.getExecutableSymbols();
-      LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
-      llvm::outs() << "Number of Symbols: " << Symbols->size() << "\n";
-      for (const auto &Symbol : *Symbols) {
+      llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
+      LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
+      llvm::outs() << "Number of Symbols: " << Symbols.size() << "\n";
+      for (const auto &Symbol : Symbols) {
         LUTHIER_RETURN_ON_ERROR(
             llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol)->cache());
       }

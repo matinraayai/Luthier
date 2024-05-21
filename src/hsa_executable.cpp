@@ -23,7 +23,7 @@ Executable::create(hsa_profile_t Profile,
 llvm::Error Executable::freeze(const char *Options) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_freeze_fn(asHsaType(), Options)));
-  return Platform::instance().registerFrozenExecutable(*this);
+  return Platform::instance().cacheExecutableOnExecutableFreeze(*this);
 }
 
 Executable::Executable(hsa_executable_t Exec)
@@ -80,7 +80,7 @@ Executable::loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
           asHsaType(), Agent.asHsaType(), Reader.asHsaType(), Options.data(),
           &LCO)));
   LUTHIER_RETURN_ON_ERROR(
-      Platform::instance().cacheCreatedLoadedCodeObjectOfExec(*this));
+      Platform::instance().cacheExecutableOnLoadedCodeObjectCreation(*this));
   return LoadedCodeObject{LCO};
 }
 
@@ -123,7 +123,7 @@ Executable::defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol) {
 
 llvm::Error Executable::destroy() {
   LUTHIER_RETURN_ON_ERROR(
-      Platform::instance().unregisterFrozenExecutable(*this));
+      Platform::instance().invalidateExecutableOnExecutableDestroy(*this));
   return LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_destroy_fn(asHsaType()));
 }

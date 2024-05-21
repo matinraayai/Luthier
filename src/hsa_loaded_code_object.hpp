@@ -33,6 +33,12 @@ class ISA;
  * in the ROCm stack. ROCr does not even allow using Loaded Code Objects with
  * program allocations. Therefore, it is safe to assume all Loaded Code Objects
  * are backed by a \c GpuAgent.
+ * 3. Internally, the vendor loader API keeps track of loaded segments, and
+ * allows for querying these segments via the
+ * \c hsa_ven_amd_loader_query_segment_descriptors function. As of right now,
+ * Luthier does not use this information to locate the load address of the
+ * symbols, and instead relies on the \c luthier::getSymbolLMA and
+ * \c luthier::getSectionLMA functions to calculate the load address.
  *
  * \note This wrapper relies on cached functionality as described by the
  * \c hsa::ExecutableBackedCachable interface and backed by the \c hsa::Platform
@@ -41,9 +47,13 @@ class ISA;
 class LoadedCodeObject : public ExecutableBackedCachable,
                          public HandleType<hsa_loaded_code_object_t> {
   /*****************************************************************************
-   * \brief Public-facing methods
+   * Public-facing methods
    ****************************************************************************/
 public:
+  /**
+   * Primary constructor for Loaded Code Objects.
+   * \param LCO HSA handle of the Loaded Code Object
+   */
   explicit LoadedCodeObject(hsa_loaded_code_object_t LCO);
 
   /**
@@ -51,31 +61,60 @@ public:
    * \return the \c Executable of this \c LoadedCodeObject, or an \c llvm::Error
    * reporting any HSA errors occurred
    * \note Performs an HSA call to complete this operation
+   * \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_EXECUTABLE
    */
   [[nodiscard]] llvm::Expected<Executable> getExecutable() const;
 
   /**
-   * Queries the \b GpuAgent associated with this \b LoadedCodeObject.
-   * Performs an HSA call to complete this operation
-   * \return the \b GpuAgent of this \b LoadedCodeObject, or an \b llvm::Error
+   * Queries the \c GpuAgent associated with this \c LoadedCodeObject
+   * \return the \c GpuAgent of this \c LoadedCodeObject, or an \c llvm::Error
    * reporting any HSA errors occurred during this operation
+   * \note As Loaded Code Objects of program allocation are deprecated in ROCr,
+   * it is safe to assume all Loaded Code Objects have agent allocation, and
+   * therefore, are backed by an HSA Agent
+   * \note performs an HSA call to complete this operation
+   * \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT
    */
   [[nodiscard]] llvm::Expected<GpuAgent> getAgent() const;
 
   /**
-   * Returns the \b luthier::AMDGCNObjectFile of this \b LoadedCodeObject,
-   * obtained by parsing its Storage memory
-   * This operation relies on the object being cached beforehand
-   * \return the \b luthier::AMDGCNObjectFile of this \b LoadedCodeObject, or
-   * an \b llvm::Error if this \b LoadedCodeObject has not been cached properly
+   * Returns a reference to the \c luthier::AMDGCNObjectFile of
+   * the ELF associated with this \c LoadedCodeObject
+   * The ELF is obtained by parsing the Loaded Code Objects'
+   * Storage memory.
+   * \note This operation relies on cached information
+   * \return the \c luthier::AMDGCNObjectFile of this \c LoadedCodeObject, or
+   * an \c llvm::Error if this \c LoadedCodeObject has not been cached
+   * \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
+   * HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE
    */
   [[nodiscard]] llvm::Expected<luthier::AMDGCNObjectFile &>
   getStorageELF() const;
 
+  /**
+   * \return the Load Delta of this Loaded Code Object, or an \c llvm::Error
+   * indicating an HSA error
+   * \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_DELTA
+   * \note performs an HSA call to complete this operation
+   */
   [[nodiscard]] llvm::Expected<long> getLoadDelta() const;
 
+  /**
+   * \return an \c llvm::ArrayRef to the portion of GPU memory that
+   * this code object has been loaded onto, \c llvm::Error
+   * indicating an HSA error
+   * \note performs an HSA call to complete this operation
+   * \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE,
+   * HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE
+   */
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getLoadedMemory() const;
 
+  /**
+   * \return The URI describing the origins of this \c LoadedCodeObject
+   * \note performs an HSA call to complete this operation
+   * \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI_LENGTH,
+   * HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI
+   */
   [[nodiscard]] llvm::Expected<std::string> getUri() const;
 
   [[nodiscard]] llvm::Expected<ISA> getISA() const;
@@ -89,7 +128,7 @@ public:
    * container that will contain the symbols returned by the operation
    * \return \c llvm::Error describing whether the operation has succeeded or
    * not
-   * \note this operation requires the LCO to be cached.
+   * \note this operation relies on cached information
    */
   [[nodiscard]] llvm::Error
   getKernelSymbols(llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const;
@@ -101,7 +140,7 @@ public:
    * container that will contain the symbols returned by the operation
    * \return \c llvm::Error describing whether the operation has succeeded or
    * not
-   * \note this operation requires the LCO to be cached.
+   * \note this operation relies on cached information
    */
   [[nodiscard]] llvm::Error
   getVariableSymbols(llvm::SmallVectorImpl<hsa::ExecutableSymbol> &Out) const;
@@ -123,13 +162,13 @@ public:
    * @return
    */
   [[nodiscard]] llvm::Error
-  getExecutableSymbols(llvm::SmallVectorImpl<ExecutableSymbol> Out) const;
+  getExecutableSymbols(llvm::SmallVectorImpl<ExecutableSymbol> &Out) const;
 
   [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
   getExecutableSymbolByName(llvm::StringRef Name) const;
 
   /*****************************************************************************
-   * \brief Private functionality specific to \b LoadedCodeObject only
+   * Private functionality specific to \c LoadedCodeObject
    ****************************************************************************/
 private:
   /**
@@ -194,7 +233,7 @@ private:
   constructDeviceFunctionSymbolUsingName(llvm::StringRef Name) const;
 
   /*****************************************************************************
-   * \brief Implementation of \b hsa::ExecutableBackedCachable
+   * Implementation of \c hsa::ExecutableBackedCachable
    ****************************************************************************/
 private:
   static llvm::DenseSet<decltype(hsa_loaded_code_object_t::handle)> CachedLCOs;

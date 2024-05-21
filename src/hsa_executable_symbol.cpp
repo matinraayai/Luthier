@@ -32,7 +32,7 @@ llvm::Expected<ExecutableSymbol> ExecutableSymbol::createDeviceFunctionSymbol(
   ExecutableSymbol Out{
       {*SymbolAddress + reinterpret_cast<luthier::address_t>(ELFBase)},
       LCO,
-      DeviceFunctionELFSymbol};
+      &DeviceFunctionELFSymbol};
   LUTHIER_RETURN_ON_ERROR(Out.cache());
   return Out;
 }
@@ -55,20 +55,20 @@ ExecutableSymbol::fromHandle(hsa_executable_symbol_t Symbol) {
 };
 
 SymbolKind ExecutableSymbol::getType() const {
-  if (SymbolInfo.KernelFunctionSymbol.has_value())
+  if (SymbolInfo.KernelFunctionSymbol != nullptr)
     return KERNEL;
-  else if (SymbolInfo.Symbol.getELFType() == llvm::ELF::STT_FUNC)
+  else if (SymbolInfo.Symbol->getELFType() == llvm::ELF::STT_FUNC)
     return DEVICE_FUNCTION;
   else
     return VARIABLE;
 }
 
 llvm::Expected<llvm::StringRef> ExecutableSymbol::getName() const {
-  return SymbolInfo.Symbol.getName();
+  return SymbolInfo.Symbol->getName();
 }
 
 llvm::Expected<hsa_symbol_linkage_t> ExecutableSymbol::getLinkage() const {
-  return SymbolInfo.Symbol.getBinding() == llvm::ELF::STB_GLOBAL
+  return SymbolInfo.Symbol->getBinding() == llvm::ELF::STB_GLOBAL
       ? HSA_SYMBOL_LINKAGE_PROGRAM
       : HSA_SYMBOL_LINKAGE_MODULE;
 }
@@ -126,7 +126,7 @@ llvm::Expected<llvm::ArrayRef<uint8_t>>
 luthier::hsa::ExecutableSymbol::getMachineCode() const {
   auto SymbolType = getType();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(SymbolType != VARIABLE));
-  auto CodeSymbol = SymbolType == KERNEL ? *SymbolInfo.KernelFunctionSymbol
+  auto CodeSymbol = SymbolType == KERNEL ? SymbolInfo.KernelFunctionSymbol
                                          : SymbolInfo.Symbol;
   auto LCO = getLoadedCodeObject();
   LUTHIER_RETURN_ON_ERROR(LCO.takeError());
@@ -138,12 +138,12 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
   auto LoadedMemory = LCO->getLoadedMemory();
   LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
-  auto CodeAddress = CodeSymbol.getAddress();
+  auto CodeAddress = CodeSymbol->getAddress();
   LUTHIER_RETURN_ON_ERROR(CodeAddress.takeError());
 
-  auto CodeSize = CodeSymbol.getSize();
+  auto CodeSize = CodeSymbol->getSize();
 
-  auto SymbolLMA = getSymbolLMA(StorageELF->getELFFile(), CodeSymbol);
+  auto SymbolLMA = getSymbolLMA(StorageELF->getELFFile(), *CodeSymbol);
   LUTHIER_RETURN_ON_ERROR(SymbolLMA.takeError());
 
   return llvm::ArrayRef<uint8_t>{
@@ -165,6 +165,11 @@ llvm::Error ExecutableSymbol::invalidate() const {
 bool ExecutableSymbol::isCached() const {
   std::lock_guard Lock(getCacheMutex());
   return SymbolHandleCache.contains(this->hsaHandle());
+}
+llvm::Expected<const hsa::md::Kernel::Metadata &>
+ExecutableSymbol::getKernelMetadata() const {
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->getType() == KERNEL));
+  return *this->SymbolInfo.KernelMD;
 }
 
 } // namespace luthier::hsa

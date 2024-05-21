@@ -42,7 +42,7 @@
 
 namespace luthier {
 
-template<> CodeLifter* Singleton<CodeLifter>::Instance{nullptr};
+template <> CodeLifter *Singleton<CodeLifter>::Instance{nullptr};
 
 llvm::Expected<CodeLifter::DisassemblyInfo &>
 luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &ISA) {
@@ -105,7 +105,6 @@ CodeLifter::getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO) {
     auto MetaData = parseNoteMetaData(*StorageELF);
     LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
 
-    //    llvm::outs() << *MetaData << "\n";
     for (auto &KernelMD : MetaData->Kernels) {
       LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
           std::optional<hsa::ExecutableSymbol>, KernelSymbol,
@@ -243,14 +242,15 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
 }
 
 llvm::Expected<llvm::Function *>
-luthier::CodeLifter::createLLVMFunctionFromSymbol(
+luthier::CodeLifter::initializeLLVMFunctionFromSymbol(
     const hsa::ExecutableSymbol &Symbol, llvm::Module &Module) {
   auto SymbolType = Symbol.getType();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(
       SymbolType == hsa::KERNEL || SymbolType == hsa::DEVICE_FUNCTION));
 
   bool IsKernel = SymbolType == hsa::KERNEL;
-  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, SymbolName, Symbol.getName());
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(llvm::StringRef, SymbolName,
+                                   Symbol.getName());
 
   llvm::Function *F;
   if (IsKernel) {
@@ -602,7 +602,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
   LiftedSymbolInfo Out;
 
-  auto F = createLLVMFunctionFromSymbol(Symbol, Module);
+  auto F = initializeLLVMFunctionFromSymbol(Symbol, Module);
 
   LUTHIER_RETURN_ON_ERROR(F.takeError());
 
@@ -925,9 +925,9 @@ llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
       Relocations.erase(LCO);
     }
 
-    auto Symbols = LCO.getExecutableSymbols();
-    LUTHIER_RETURN_ON_ERROR(Symbols.takeError());
-    for (const auto &Symbol : *Symbols) {
+    llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
+    LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
+    for (const auto &Symbol : Symbols) {
       // Remove the disassembled hsa::Instr of each hsa::ExecutableSymbol
       if (MCDisassembledSymbols.contains(Symbol))
         MCDisassembledSymbols.erase(Symbol);

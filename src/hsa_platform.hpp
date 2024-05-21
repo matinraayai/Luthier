@@ -73,11 +73,17 @@ public:
     return Instance;
   }
 
-  llvm::Error cacheCreatedLoadedCodeObjectOfExec(const Executable &Exec);
+  /**
+   * An HSA event handler that records (caches) all
+   * \c hsa::LoadedCodeObject's of \p Exec, if they are not already cached.
+   * \param Exec
+   * \return
+   */
+  llvm::Error cacheExecutableOnLoadedCodeObjectCreation(const Executable &Exec);
 
-  llvm::Error registerFrozenExecutable(const Executable &Exec);
+  llvm::Error cacheExecutableOnExecutableFreeze(const Executable &Exec);
 
-  llvm::Error unregisterFrozenExecutable(const Executable &Exec);
+  llvm::Error invalidateExecutableOnExecutableDestroy(const Executable &Exec);
 
   llvm::Expected<std::optional<hsa::ExecutableSymbol>>
   getSymbolFromLoadedAddress(luthier::address_t Address);
