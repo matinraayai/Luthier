@@ -78,46 +78,6 @@ bool CodeLifter::isAddressBranchOrBranchTarget(const hsa::LoadedCodeObject &LCO,
   return AddressInfo.contains(Address);
 }
 
-llvm::Expected<const hsa::md::Kernel::Metadata &>
-CodeLifter::getKernelMetaData(const hsa::ExecutableSymbol &Symbol) {
-  if (!KernelsMetaData.contains(Symbol)) {
-    auto Executable = Symbol.getExecutable();
-    LUTHIER_RETURN_ON_ERROR(Executable.takeError());
-    auto LoadedCodeObjects = Executable->getLoadedCodeObjects();
-    LUTHIER_RETURN_ON_ERROR(LoadedCodeObjects.takeError());
-    for (const auto &LCO : *LoadedCodeObjects)
-      LUTHIER_RETURN_ON_ERROR(getLoadedCodeObjectMetaData(LCO).takeError());
-  }
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelsMetaData.contains(Symbol)));
-  return KernelsMetaData[Symbol];
-}
-
-llvm::Expected<const hsa::md::Metadata &>
-CodeLifter::getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO) {
-  if (!LoadedCodeObjectsMetaData.contains(LCO)) {
-
-    auto Agent = LCO.getAgent();
-    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-
-    auto StorageELF = LCO.getStorageELF();
-    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
-
-    auto MetaData = parseNoteMetaData(*StorageELF);
-    LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
-
-    for (auto &KernelMD : MetaData->Kernels) {
-      LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
-          std::optional<hsa::ExecutableSymbol>, KernelSymbol,
-          LCO.getExecutableSymbolByName(KernelMD.Symbol));
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelSymbol.has_value()));
-      KernelsMetaData.insert({*KernelSymbol, KernelMD});
-    }
-    MetaData->Kernels.clear();
-    LoadedCodeObjectsMetaData.insert({LCO, *MetaData});
-  }
-  return LoadedCodeObjectsMetaData[LCO];
-}
-
 void luthier::CodeLifter::addBranchOrBranchTargetAddress(
     const hsa::LoadedCodeObject &LCO, luthier::address_t Address) {
   if (!BranchAndTargetLocations.contains(LCO)) {
@@ -255,7 +215,7 @@ luthier::CodeLifter::initializeLLVMFunctionFromSymbol(
   llvm::Function *F;
   if (IsKernel) {
     // Populate the Arguments
-    auto KernelMD = getKernelMetaData(Symbol);
+    auto KernelMD = Symbol.getKernelMetadata();
     LUTHIER_RETURN_ON_ERROR(KernelMD.takeError());
 
     // Kernel's return type is always void
@@ -910,9 +870,6 @@ llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
     // Remove the branch and branch target locations
     if (BranchAndTargetLocations.contains(LCO))
       BranchAndTargetLocations.erase(LCO);
-    // Remove the LCO Metadata
-    if (LoadedCodeObjectsMetaData.contains(LCO))
-      LoadedCodeObjectsMetaData.erase(LCO);
     // Remove relocation info
     if (Relocations.contains(LCO)) {
       llvm::outs() << "Number of things in the relocation map: "
@@ -931,9 +888,6 @@ llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
       // Remove the disassembled hsa::Instr of each hsa::ExecutableSymbol
       if (MCDisassembledSymbols.contains(Symbol))
         MCDisassembledSymbols.erase(Symbol);
-      // Remove the Symbol Metadata
-      if (KernelsMetaData.contains(Symbol))
-        KernelsMetaData.erase(Symbol);
     }
   }
   return llvm::Error::success();

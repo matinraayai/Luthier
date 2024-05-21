@@ -51,7 +51,7 @@ ExecutableSymbol::fromHandle(hsa_executable_symbol_t Symbol) {
       LUTHIER_ASSERTION(SymbolHandleCache.contains(Symbol.handle)));
   const auto &SymbolInfo = SymbolHandleCache.at(Symbol.handle);
   return ExecutableSymbol{Symbol, SymbolInfo.LCO, SymbolInfo.Symbol,
-                          SymbolInfo.KernelFunctionSymbol};
+                          SymbolInfo.KernelFunctionSymbol, SymbolInfo.KernelMD};
 };
 
 SymbolKind ExecutableSymbol::getType() const {
@@ -169,6 +169,7 @@ bool ExecutableSymbol::isCached() const {
 llvm::Expected<const hsa::md::Kernel::Metadata &>
 ExecutableSymbol::getKernelMetadata() const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->getType() == KERNEL));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->SymbolInfo.KernelMD != nullptr));
   return *this->SymbolInfo.KernelMD;
 }
 

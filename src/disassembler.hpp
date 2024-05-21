@@ -221,18 +221,6 @@ private:
   void addBranchOrBranchTargetAddress(const hsa::LoadedCodeObject &LCO,
                                       address_t Address);
 
-  std::unordered_map<hsa::ExecutableSymbol, hsa::md::Kernel::Metadata>
-      KernelsMetaData{};
-
-  llvm::DenseMap<hsa::LoadedCodeObject, hsa::md::Metadata>
-      LoadedCodeObjectsMetaData{};
-
-  llvm::Expected<const hsa::md::Kernel::Metadata &>
-  getKernelMetaData(const hsa::ExecutableSymbol &Symbol);
-
-  llvm::Expected<const hsa::md::Metadata &>
-  getLoadedCodeObjectMetaData(const hsa::LoadedCodeObject &LCO);
-
   llvm::Expected<llvm::Function *>
   initializeLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
                                llvm::Module &Module);

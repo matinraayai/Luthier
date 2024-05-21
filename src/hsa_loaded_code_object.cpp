@@ -395,8 +395,8 @@ LoadedCodeObject::constructKernelSymbolUsingName(
   // Check if other maps also have this entry
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
       KernelFuncSymbolsOfThisLCO.contains(NameWithoutKDAtTheEnd)));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-      KernelMetaDataOfThisLCO.contains(NameWithKDAtTheEnd)));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(KernelMetaDataOfThisLCO.contains(NameWithKDAtTheEnd)));
 
   // Get the function symbol, hsa symbol handle, and the Metadata associated
   // with this kernel
