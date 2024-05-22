@@ -54,6 +54,7 @@
 #include "log.hpp"
 #include "target_manager.hpp"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
@@ -187,28 +188,44 @@ llvm::Error CodeGenerator::instrument(
 
   // Commenting this out breaks things. Need to figure out which specific passes in
   // this function need to be run
-  TPC->addISelPasses();
-  llvm::outs() << "\nAdding Instruction Selection Passes\n\n";
+  // TPC->addISelPasses();
+  llvm::outs() << "\nAdd required Instruction Selection Passes\n";
 
   //// Contents of TargetPassConfig::addISelPasses
-  // auto TTIWP = new llvm::TargetTransformInfoWrapperPass(std::move(TM.getTargetIRAnalysis()));
-  // auto TTIWP = llvm::createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis());
+  PM.add(llvm::createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
+  PM.add(llvm::createPreISelIntrinsicLoweringPass());
+  PM.add(llvm::createExpandLargeDivRemPass());
+  PM.add(llvm::createExpandLargeFpConvertPass());
 
-  // PM.add(llvm::createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
-  // PM.add(new llvm::TargetTransformInfoWrapperPass(std::move(TM.getTargetIRAnalysis())));
-
-  // TPC->addPass(createPreISelIntrinsicLoweringPass());
-  // TPC->addPass(createExpandLargeDivRemPass());
-  // TPC->addPass(createExpandLargeFpConvertPass());
-  // TPC->addIRPasses();
-  // TPC->addCodeGenPrepare();
-  // TPC->addPassesToHandleExceptions();
-  // TPC->addISelPrepare();
+  /// Add common target configurable passes that perform LLVM IR to IR transforms
+  /// following machine independent optimization.
+  TPC->addIRPasses();
+  llvm::outs() << "\n ~ Added IR passes\n";
+  
+  /// Add pass to prepare the LLVM IR for code generation. This should be done
+  /// before exception handling preparation passes.
+  TPC->addCodeGenPrepare();
+  llvm::outs() << "\n ~ Added Code Gen Preperation passes\n";
+  
+  /// Turn exception handling constructs into something the code generators can
+  /// handle.
+  TPC->addPassesToHandleExceptions();
+  llvm::outs() << "\n ~ Added Passes to Handle Exceptions\n";
+  
+  /// Add common passes that perform LLVM IR to IR transforms in preparation for
+  /// instruction selection.
+  TPC->addISelPrepare();
+  llvm::outs() << "\n ~ Added Instruction Selection Preparation passes\n";
+  
+  // We shouldn't need this -- But this is the only func from addISelPasses that I'm not running and this is broken
+  // TPC->addCoreISelPasses();
+  // llvm::outs() << "\n ~ Added Instruction Selection passes\n";
   //// End of TargetPassConfig::addISelPasses
+  llvm::outs() << "\nFinished adding Instruction Selection Passes\n";
 
 
   // TPC->addMachinePasses();
-  llvm::outs() << "\n Run addISelPasses\n\n";
+  llvm::outs() << "\nAdd Machine Passes to Pass Manager:\n";
 
   //// Contents of TargetPassConfig::addMachinePasses
   //// Already cut down somewhat, but still WIP
@@ -282,7 +299,8 @@ llvm::Error CodeGenerator::instrument(
   // need to check what this does and if we need it
   PM.add(llvm::createStackFrameLayoutAnalysisPass());
   llvm::outs() << "\n ~ Added StackFrameLayoutAnalysis pass\n";
-  // end of TargetPassConfig::addMachinePasses
+  llvm::outs() << "\nFinished adding Machine Passes\n\n";
+
 
   auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
   PM.add(UsageAnalysis);
