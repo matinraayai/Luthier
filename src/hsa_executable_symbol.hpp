@@ -34,7 +34,6 @@ private:
    * \brief implementation of the \b ExecutableBackedCachableItem interface
    ****************************************************************************/
 private:
-
   static llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
                         ExecutableSymbolInfo>
       SymbolHandleCache;
@@ -46,10 +45,11 @@ private:
   llvm::Error invalidate() const override;
 
 public:
-  ExecutableSymbol(hsa_executable_symbol_t Handle, hsa_loaded_code_object_t LCO,
-                   const llvm::object::ELFSymbolRef *ELFSymbol,
-                   const llvm::object::ELFSymbolRef *KernelFunctionSymbol = nullptr,
-                   const md::Kernel::Metadata *KernelMD = nullptr)
+  ExecutableSymbol(
+      hsa_executable_symbol_t Handle, hsa_loaded_code_object_t LCO,
+      const llvm::object::ELFSymbolRef *ELFSymbol,
+      const llvm::object::ELFSymbolRef *KernelFunctionSymbol = nullptr,
+      const md::Kernel::Metadata *KernelMD = nullptr)
       : HandleType<hsa_executable_symbol_t>(Handle),
         SymbolInfo({LCO, ELFSymbol, KernelFunctionSymbol, KernelMD}) {}
 
@@ -94,7 +94,7 @@ public:
   getKernelDescriptor() const;
 
   [[nodiscard]] llvm::Expected<const hsa::md::Kernel::Metadata &>
-      getKernelMetadata() const;
+  getKernelMetadata() const;
 
   [[nodiscard]] llvm::Expected<GpuAgent> getAgent() const;
 
@@ -115,8 +115,8 @@ template <> struct DenseMapInfo<luthier::hsa::ExecutableSymbol> {
         DenseMapInfo<decltype(hsa_executable_symbol_t::handle)>::getEmptyKey()};
     hsa_loaded_code_object_t LCOHandle{DenseMapInfo<
         decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()};
-    return luthier::hsa::ExecutableSymbol{
-        SymbolHandle, LCOHandle, nullptr, nullptr, nullptr};
+    return luthier::hsa::ExecutableSymbol{SymbolHandle, LCOHandle, nullptr,
+                                          nullptr, nullptr};
   }
 
   static inline luthier::hsa::ExecutableSymbol getTombstoneKey() {
@@ -124,8 +124,8 @@ template <> struct DenseMapInfo<luthier::hsa::ExecutableSymbol> {
         decltype(hsa_executable_symbol_t::handle)>::getTombstoneKey()};
     hsa_loaded_code_object_t LCOHandle{DenseMapInfo<
         decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()};
-    return luthier::hsa::ExecutableSymbol{
-        SymbolHandle, LCOHandle, nullptr, nullptr, nullptr};
+    return luthier::hsa::ExecutableSymbol{SymbolHandle, LCOHandle, nullptr,
+                                          nullptr, nullptr};
   }
 
   static unsigned getHashValue(const luthier::hsa::ExecutableSymbol &ISA) {

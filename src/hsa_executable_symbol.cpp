@@ -13,7 +13,7 @@
 namespace luthier::hsa {
 
 llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
-                   ExecutableSymbol::ExecutableSymbolInfo>
+               ExecutableSymbol::ExecutableSymbolInfo>
     ExecutableSymbol::SymbolHandleCache{};
 
 llvm::Expected<ExecutableSymbol> ExecutableSymbol::createDeviceFunctionSymbol(
@@ -69,8 +69,8 @@ llvm::Expected<llvm::StringRef> ExecutableSymbol::getName() const {
 
 llvm::Expected<hsa_symbol_linkage_t> ExecutableSymbol::getLinkage() const {
   return SymbolInfo.Symbol->getBinding() == llvm::ELF::STB_GLOBAL
-      ? HSA_SYMBOL_LINKAGE_PROGRAM
-      : HSA_SYMBOL_LINKAGE_MODULE;
+             ? HSA_SYMBOL_LINKAGE_PROGRAM
+             : HSA_SYMBOL_LINKAGE_MODULE;
 }
 
 llvm::Expected<hsa_variable_allocation_t>
@@ -152,7 +152,8 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
 }
 llvm::Error ExecutableSymbol::cache() const {
   std::lock_guard Lock(getCacheMutex());
-  llvm::outs() << "Inserting handle " << llvm::format_hex(hsaHandle(), 8) << "\n";
+  llvm::outs() << "Inserting handle " << llvm::format_hex(hsaHandle(), 8)
+               << "\n";
   SymbolHandleCache.insert({hsaHandle(), SymbolInfo});
   return llvm::Error::success();
 }
@@ -169,7 +170,7 @@ bool ExecutableSymbol::isCached() const {
 llvm::Expected<const hsa::md::Kernel::Metadata &>
 ExecutableSymbol::getKernelMetadata() const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->getType() == KERNEL));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(this->SymbolInfo.KernelMD != nullptr));
+  assert(this->SymbolInfo.KernelMD != nullptr);
   return *this->SymbolInfo.KernelMD;
 }
 
