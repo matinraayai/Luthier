@@ -1,7 +1,8 @@
 #ifndef INSTR_HPP
 #define INSTR_HPP
 #include <llvm/MC/MCInst.h>
-
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/DebugInfo/DWARF/DWARFDie.h"
 #include "types.h"
 
 namespace luthier {
@@ -30,8 +31,17 @@ private:
 
   const size_t Size; // < Size of the instruction
 
+  const llvm::DWARFDie DWARFDebugInfoEntry; // debug info parsed from ELF's dwarf section
+
+  /**
+  TO BE DELETED: once all instances of this constructor have been replaced with the below
+  */
   Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
         hsa_executable_symbol_t Symbol, address_t Address, size_t Size);
+
+
+  Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
+        hsa_executable_symbol_t Symbol, address_t Address, size_t Size, llvm::DWARFDie &Die);
 
 public:
   Instr() = delete;
@@ -49,6 +59,8 @@ public:
   [[nodiscard]] address_t getLoadedDeviceAddress() const;
 
   [[nodiscard]] size_t getSize() const;
+
+  [[nodiscard]] llvm::DWARFDie getDWARFDie() const;
 };
 
 } // namespace luthier

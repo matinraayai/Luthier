@@ -1,6 +1,8 @@
 #include "object_utils.hpp"
 
 #include <llvm/ADT/StringExtras.h>
+#include <llvm/DebugInfo/DWARF/DWARFContext.h>
+#include <llvm/DebugInfo/DWARF/DWARFDie.h>
 #include <llvm/Support/AMDGPUMetadata.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/MemoryBuffer.h>
@@ -172,8 +174,7 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
     Out = {static_cast<uint32_t>(XMD.getUInt()),
            static_cast<uint32_t>(YMD.getUInt()),
            static_cast<uint32_t>(ZMD.getUInt())};
-    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << ","
-                 << "\n";
+    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << "," << "\n";
   }
   return llvm::Error::success();
 }
@@ -198,8 +199,7 @@ llvm::Error parseDim3MDRequired(MapDocNode &Map, llvm::StringRef Key,
   Out = {static_cast<uint32_t>(XMD.getUInt()),
          static_cast<uint32_t>(YMD.getUInt()),
          static_cast<uint32_t>(ZMD.getUInt())};
-  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << ","
-               << "\n";
+  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << "," << "\n";
   return llvm::Error::success();
 }
 
@@ -565,6 +565,57 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 
   return true;
 }
+
+// helper method (need to test this, small chance it might loop forever)
+llvm::Expected<DWARFDie> findSymbolDie(const llvm::DWARFDie Die,
+                                     std::string &symbolName) {
+  auto tag = Die.getTag();
+  // Check current DIE for symbol name
+  if (tag == dwarf::DW_TAG_subprogram ||
+      tag == dwarf::DW_TAG_variable &&
+          (Die.find(dwarf::DW_AT_name)->getAsCString() == symbolName)) {
+    return Die;
+  }
+  // check children of the current DIE
+  for (const auto &Child : Die.children()) {
+    DWARFDie Result = findSymbolDie(Child, symbolName);
+    if (Result.isValid()) {
+      return Result;
+    }
+  }
+  // default die with invalid state
+  return DWARFDie();
+}
+
+template <class ELFT>
+llvm::Expected<DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,
+                                     std::string &symbolName) {
+  DWARFDie symbolDie;
+  for (const auto &CU : ctx.compile_units()) {
+      if (auto *DIE = CU->getUnitDIE(false)) {
+          symbolDie = findSymbolDie(*DIE, SymbolName);
+          if (symbolDie.isValid()) {
+              break;
+          }
+      }
+  }
+  // Return an invalid DWARFDie if not found
+  return DWARFDie();
+}
+
+
+llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die, const llvm::DWARFContext &ctx) {
+  die.getAttributeValueAsReferencedDie(dwarf::DW_AT_decl_line, 0);
+  auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant();
+  auto col = die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant();
+  auto col = die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant();
+  auto fileIndex = die.find(dwarf::DW_AT_decl_file)->getAsUnsignedConstant();
+  // NEED TO get the MDFile and the MDNode
+  // auto cu = die.getDwarfUnit();
+  // DWARFDebugLine::LineTable *LineTable = ctx.getLineTableForUnit(cu);
+   DILocation::get(nullptr, line, col, nullptr, nullptr);
+}
+
 
 } // namespace luthier
 

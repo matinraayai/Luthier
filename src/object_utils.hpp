@@ -585,6 +585,11 @@ llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
   return *SymbolAddress;
 }
 
+// const llvm::object::ELFObjectFile<ELFT> &Elf
+template <class ELFT>
+llvm::Expected<DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,  String symbolName);
+
+llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die);
 } // namespace luthier
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,

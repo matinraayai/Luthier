@@ -662,6 +662,8 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
   return llvm::Error::success();
 }
 
+
+
 llvm::Expected<LiftedSymbolInfo>
 CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                      llvm::Module &Module,
@@ -707,6 +709,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
   auto MCInstInfo = TargetInfo->getMCInstrInfo();
 
+
   llvm::DenseMap<luthier::address_t,
                  llvm::SmallVector<llvm::MachineInstr *>>
       UnresolvedBranchMIs; // < Set of branch instructions located at a
@@ -733,6 +736,8 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
+    // get the elf file from the LCO of this Inst
+    auto elfFile = hsa::LoadedCodeObject(Inst.getLoadedCodeObject()).getStorageELF();
 
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
@@ -788,6 +793,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
         // Check if at any point in the instruction we need to apply
         // relocations
         auto LCO = hsa::LoadedCodeObject(Inst.getLoadedCodeObject());
+
         bool RelocationApplied{false};
         for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
           auto RelocationInfo = resolveRelocation(LCO, I);
