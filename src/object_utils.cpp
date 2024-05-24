@@ -1,5 +1,6 @@
 #include "object_utils.hpp"
 
+#include "llvm/IR/DIBuilder.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/DebugInfo/DWARF/DWARFContext.h>
 #include <llvm/DebugInfo/DWARF/DWARFDie.h>
@@ -568,7 +569,7 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
 
 // helper method (need to test this, small chance it might loop forever)
 llvm::Expected<DWARFDie> findSymbolDie(const llvm::DWARFDie Die,
-                                     std::string &symbolName) {
+                                       std::string &symbolName) {
   auto tag = Die.getTag();
   // Check current DIE for symbol name
   if (tag == dwarf::DW_TAG_subprogram ||
@@ -592,30 +593,71 @@ llvm::Expected<DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,
                                      std::string &symbolName) {
   DWARFDie symbolDie;
   for (const auto &CU : ctx.compile_units()) {
-      if (auto *DIE = CU->getUnitDIE(false)) {
-          symbolDie = findSymbolDie(*DIE, SymbolName);
-          if (symbolDie.isValid()) {
-              break;
-          }
+    if (auto *DIE = CU->getUnitDIE(false)) {
+      symbolDie = findSymbolDie(*DIE, symbolName);
+      if (symbolDie.isValid()) {
+        break;
       }
+    }
   }
   // Return an invalid DWARFDie if not found
   return DWARFDie();
 }
 
-
-llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die, const llvm::DWARFContext &ctx) {
+llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
+                                     const llvm::LLVMContext &ctx) {
   die.getAttributeValueAsReferencedDie(dwarf::DW_AT_decl_line, 0);
-  auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant();
-  auto col = die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant();
-  auto col = die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant();
-  auto fileIndex = die.find(dwarf::DW_AT_decl_file)->getAsUnsignedConstant();
-  // NEED TO get the MDFile and the MDNode
-  // auto cu = die.getDwarfUnit();
-  // DWARFDebugLine::LineTable *LineTable = ctx.getLineTableForUnit(cu);
-   DILocation::get(nullptr, line, col, nullptr, nullptr);
-}
+  auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant().value();
+  auto col =
+      die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
+  llvm::Metadata *Scope = nullptr;
+  // Extract scope
+  // Metadata *Scope = nullptr;
+  // if (auto ScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
+  //     if (auto ScopeDie =
+  //     die.getDwarfUnit()->getDIEForOffset(ScopeAttr->getAsReference())) {
+  //         // Create or find the corresponding DIScope
+  //         Scope = DIB.createFile(ScopeDie.getName(),
+  //         ScopeDie.getFilename().str());
+  //     }
+  // }
+  llvm::DIBuilder DIB(ctx);
 
+  // Determine the scope
+  if (auto ScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
+    const uint64_t ScopeOffset = ScopeAttr->getAsReference().value();
+    if (auto ScopeDie = die.getDwarfUnit()->getDIEForOffset(ScopeOffset)) {
+      if (ScopeDie.isValid()) {
+        // if its a subprogram (func) or lexical block /scope ({})
+        if (ScopeDie.getTag() == dwarf::DW_TAG_subprogram ||
+            ScopeDie.getTag() == dwarf::DW_TAG_lexical_block) {
+          Scope = DIB.createScope(ScopeDie);
+        } else if (ScopeDie.getTag() ==
+                   dwarf::DW_TAG_file_type) { // else, if it's a file
+          Scope =
+              DIB.createFile(ScopeDie.getName(), ScopeDie.getFilename().str());
+        }
+      }
+    }
+  }
+
+  if (!Scope) {
+    // Fallback to using the CU's file as the scope
+    auto CU = die.getDwarfUnit()->getUnitDIE();
+    if (auto FileAttr = CU.find(dwarf::DW_AT_name)) {
+      std::string FileName = CU.getName(DINameKind::ShortName);
+      if (!FileName) {
+        // return a default DebugLoc
+        // Instead, need to throw an Error (can do this by returning an Expected<DebugLoc>)
+        return DebugLoc();
+      }
+      Scope = DIB.createFile(FileName, CU.getFilename().str());
+    }
+  }
+  // get might not be returning a pointer! We need a pointer to pass into the
+  // DebugLoc constructor
+  return DebugLoc(DILocation::get(ctx, line, col, Scope));
+}
 
 } // namespace luthier
 

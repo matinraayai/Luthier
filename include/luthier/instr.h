@@ -31,17 +31,10 @@ private:
 
   const size_t Size; // < Size of the instruction
 
-  const llvm::DWARFDie DWARFDebugInfoEntry; // debug info parsed from ELF's dwarf section
+  llvm::DWARFDie DWARFDebugInfoEntry; // debug info parsed from ELF's dwarf section
 
-  /**
-  TO BE DELETED: once all instances of this constructor have been replaced with the below
-  */
   Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
         hsa_executable_symbol_t Symbol, address_t Address, size_t Size);
-
-
-  Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
-        hsa_executable_symbol_t Symbol, address_t Address, size_t Size, llvm::DWARFDie &Die);
 
 public:
   Instr() = delete;
@@ -60,7 +53,10 @@ public:
 
   [[nodiscard]] size_t getSize() const;
 
+  // Should return an Exepected<DWARFDie> instead (set it to Error if this.DWARFDebugInfoEntry is null, or !isValid())
   [[nodiscard]] llvm::DWARFDie getDWARFDie() const;
+
+  [[nodiscard]] void setDWARFDie(llvm::DWARFDie &die);
 };
 
 } // namespace luthier

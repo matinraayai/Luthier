@@ -736,8 +736,6 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
-    // get the elf file from the LCO of this Inst
-    auto elfFile = hsa::LoadedCodeObject(Inst.getLoadedCodeObject()).getStorageELF();
 
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
@@ -753,6 +751,14 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       OldMBB->addSuccessor(MBB);
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
     }
+    // Check if at any point in the instruction we need to apply
+    // relocations
+    auto LCO = hsa::LoadedCodeObject(Inst.getLoadedCodeObject());
+      // get the elf file from the LCO of this Inst
+    auto elfFile = LCO.getStorageELF();
+    // get the context from the MMI (Matin, is this right? Or should i get it from the Module?)
+    llvm::LLVMContext context = MMI.getContext();
+
     llvm::MachineInstrBuilder Builder =
         llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
     Out.MCToMachineInstrMap.insert(
@@ -790,9 +796,6 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
         // text section)
         luthier::address_t InstAddr = Inst.getLoadedDeviceAddress();
         size_t InstSize = Inst.getSize();
-        // Check if at any point in the instruction we need to apply
-        // relocations
-        auto LCO = hsa::LoadedCodeObject(Inst.getLoadedCodeObject());
 
         bool RelocationApplied{false};
         for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {

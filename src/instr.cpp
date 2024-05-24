@@ -7,9 +7,6 @@
 
 namespace luthier {
 
-/**
-TO BE REMOVED
-*/
 Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
              hsa_executable_symbol_t Symbol, luthier::address_t Address,
              size_t Size)
@@ -19,15 +16,6 @@ Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
 hsa_executable_t Instr::getExecutable() const {
   return hsa::ExecutableSymbol::fromHandle(Symbol).getExecutable()->asHsaType();
 }
-
-
-/**
- * New constructor: accepts the DWARFDie for this Instr
-*/
-Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
-        hsa_executable_symbol_t Symbol, address_t Address, size_t Size, llvm::DWARFDie &Die)
-    : Inst(std::move(Inst)), LCO(LCO), Symbol(Symbol),
-      LoadedDeviceAddress(Address), Size(Size), DWARFDebugInfoEntry(Die) {}
 
 
 hsa_loaded_code_object_t Instr::getLoadedCodeObject() const { return LCO; }
@@ -52,4 +40,8 @@ size_t Instr::getSize() const { return Size; }
  * Returns this Instr's DWARFDie (a debug info entry for some executable symbol)
 */
 llvm::DWARFDie Instr::getDWARFDie() const { return DWARFDebugInfoEntry; }
+
+void Instr::setDWARFDie(llvm::DWARFDie &die) {
+  this->DWARFDebugInfoEntry = die;
+}
 } // namespace luthier
