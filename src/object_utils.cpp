@@ -567,8 +567,10 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
   return true;
 }
 
+
+
 // helper method (need to test this, small chance it might loop forever)
-llvm::Expected<DWARFDie> findSymbolDie(const llvm::DWARFDie Die,
+DWARFDie findSymbolDie(const llvm::DWARFDie Die,
                                        std::string &symbolName) {
   auto tag = Die.getTag();
   // Check current DIE for symbol name
@@ -588,10 +590,11 @@ llvm::Expected<DWARFDie> findSymbolDie(const llvm::DWARFDie Die,
   return DWARFDie();
 }
 
-template <class ELFT>
-llvm::Expected<DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,
+// const llvm::object::ELFObjectFile<ELFT> &Elf
+//
+llvm::Expected<llvm::DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,
                                      std::string &symbolName) {
-  DWARFDie symbolDie;
+  auto symbolDie;
   for (const auto &CU : ctx.compile_units()) {
     if (auto *DIE = CU->getUnitDIE(false)) {
       symbolDie = findSymbolDie(*DIE, symbolName);
@@ -601,6 +604,11 @@ llvm::Expected<DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,
     }
   }
   // Return an invalid DWARFDie if not found
+  // For error throwing:
+  // LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+  //       DisAsm->getInstruction(Inst, InstSize, ReadBytes, CurrentAddress,
+  //                              llvm::nulls()) ==
+  //       llvm::MCDisassembler::Success));
   return DWARFDie();
 }
 
@@ -608,19 +616,8 @@ llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
                                      const llvm::LLVMContext &ctx) {
   die.getAttributeValueAsReferencedDie(dwarf::DW_AT_decl_line, 0);
   auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant().value();
-  auto col =
-      die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
+  auto col =  die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
   llvm::Metadata *Scope = nullptr;
-  // Extract scope
-  // Metadata *Scope = nullptr;
-  // if (auto ScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
-  //     if (auto ScopeDie =
-  //     die.getDwarfUnit()->getDIEForOffset(ScopeAttr->getAsReference())) {
-  //         // Create or find the corresponding DIScope
-  //         Scope = DIB.createFile(ScopeDie.getName(),
-  //         ScopeDie.getFilename().str());
-  //     }
-  // }
   llvm::DIBuilder DIB(ctx);
 
   // Determine the scope
@@ -658,7 +655,6 @@ llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
   // DebugLoc constructor
   return DebugLoc(DILocation::get(ctx, line, col, Scope));
 }
-
 } // namespace luthier
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,

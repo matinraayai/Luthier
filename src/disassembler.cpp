@@ -26,7 +26,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
-
+#include <llvm/DebugInfo/DWARF/DWARFContext.h>
 #include <memory>
 
 #include "error.hpp"
@@ -199,8 +199,17 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
   return std::make_pair(Instructions, Addresses);
 }
 
+// need to add a flag:
+// tells the disassembler (want the dwarf location)
+// here we add the DWARFDie into the Instr
+// DWARFContext-> put it in CodeLifter to be cached
+// std::optional<> ->
+// To get the context: get an instance of TargetManger.instance() -> and get the context (TargetInfo->getContext()).
+// user says: I want debugloc -> also cache the debugloc
+//            if they don't want -> we won't cache it!
+// ExecutableSymbol ->
 llvm::Expected<const std::vector<luthier::Instr> &>
-luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
+luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false) {
   if (!DisassembledSymbolsRaw.contains(Symbol)) {
     auto SymbolType = Symbol.getType();
     LUTHIER_RETURN_ON_ERROR(SymbolType.takeError());
@@ -274,10 +283,18 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
         }
       }
       PrevInstAddress = Address;
+      auto die = nullptr;
+      if (includeDebugInfo) { // think of better way! I don't want to pass a null die, because it will be "invalid" (DWARFDie has isValid method that I use, and I believe passing null will make it invalid)
+        auto elfObjectFile = (*LCO)->getStorageELF();
+        // pass in the DWARFDie here!!!
+        llvm::DWARFContext* context = DWARFContext::create(elfObjectFile); // dono if this will work, IntelliSense can't catch it
+        die = getDWARFDie(*context, SymbolName);
+        LUTHIER_RETURN_ON_ERROR(die.takeError());
+      }
       Out->push_back(Instr(Inst, (**LCO).asHsaType(), Symbol.asHsaType(),
                            Address + reinterpret_cast<luthier::address_t>(
                                          MachineCodeOnDevice->data()),
-                           Size));
+                           Size, *die)); // do i need to dereference it?
     }
   }
   return *DisassembledSymbolsRaw.at(Symbol);
@@ -667,7 +684,7 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
 llvm::Expected<LiftedSymbolInfo>
 CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                      llvm::Module &Module,
-                                     llvm::MachineModuleInfo &MMI) {
+                                     llvm::MachineModuleInfo &MMI, bool includeDebugInfo = false) {
   auto Agent = Symbol.getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
@@ -721,7 +738,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                         // UnresolvedBranchMIs
   auto MIA = TargetInfo->getMCInstrAnalysis();
 
-  auto TargetFunction = CodeLifter::instance().disassemble(Symbol);
+  auto TargetFunction = CodeLifter::instance().disassemble(Symbol, includeDebugInfo);
   LUTHIER_RETURN_ON_ERROR(TargetFunction.takeError());
 
   llvm::SmallDenseSet<unsigned>
@@ -736,13 +753,12 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
-
+    const llvm::DebugLoc debugLocation = getDebugLoc(Inst.getDWARFDie(), TargetInfo->getLLVMContext());
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
         isAddressBranchOrBranchTarget(*Exec, *Agent,
                                       Inst.getLoadedDeviceAddress()) &&
         !IsDirectBranch;
-
     if (IsDirectBranchTarget) {
       // Branch targets mark the beginning of an MBB
       auto OldMBB = MBB;
@@ -751,16 +767,8 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       OldMBB->addSuccessor(MBB);
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
     }
-    // Check if at any point in the instruction we need to apply
-    // relocations
-    auto LCO = hsa::LoadedCodeObject(Inst.getLoadedCodeObject());
-      // get the elf file from the LCO of this Inst
-    auto elfFile = LCO.getStorageELF();
-    // get the context from the MMI (Matin, is this right? Or should i get it from the Module?)
-    llvm::LLVMContext context = MMI.getContext();
-
     llvm::MachineInstrBuilder Builder =
-        llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
+        llvm::BuildMI(MBB, debugLocation, MCID);
     Out.MCToMachineInstrMap.insert(
         {const_cast<Instr *>(&Inst), Builder.getInstr()});
     Out.MachineInstrToMCMap.insert(
@@ -799,6 +807,8 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
         bool RelocationApplied{false};
         for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
+          // Check if at any point in the instruction we need to apply relocations
+          auto LCO = hsa::LoadedCodeObject(Inst.getLoadedCodeObject());
           auto RelocationInfo = resolveRelocation(LCO, I);
           LUTHIER_RETURN_ON_ERROR(RelocationInfo.takeError());
           if (RelocationInfo->has_value()) {
@@ -962,7 +972,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                           luthier::LiftedSymbolInfo>>
-luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
+luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false) {
   auto Agent = Symbol.getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 

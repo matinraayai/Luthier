@@ -117,17 +117,17 @@ void disableAllHsaCallbacks() {
 } // namespace hsa
 
 llvm::Expected<const std::vector<Instr> &>
-disassembleSymbol(hsa_executable_symbol_t Symbol) {
+disassembleSymbol(hsa_executable_symbol_t Symbol, bool includeDebugInfo = false) {
   return luthier::CodeLifter::instance().disassemble(
-      hsa::ExecutableSymbol::fromHandle(Symbol));
+      hsa::ExecutableSymbol::fromHandle(Symbol), includeDebugInfo);
 }
 
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                           luthier::LiftedSymbolInfo>>
-liftSymbol(hsa_executable_symbol_t Symbol) {
+liftSymbol(hsa_executable_symbol_t Symbol,  bool includeDebugInfo = false) {
   return luthier::CodeLifter::instance().liftSymbol(
-      hsa::ExecutableSymbol::fromHandle(Symbol));
+      hsa::ExecutableSymbol::fromHandle(Symbol), includeDebugInfo);
 }
 
 llvm::Error

@@ -7,6 +7,9 @@
 
 namespace luthier {
 
+/**
+ * To be deleted when all instnaces have been updated (OR, reuse this constructor in the other; this(), and keep both)
+*/
 Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
              hsa_executable_symbol_t Symbol, luthier::address_t Address,
              size_t Size)
@@ -17,6 +20,14 @@ hsa_executable_t Instr::getExecutable() const {
   return hsa::ExecutableSymbol::fromHandle(Symbol).getExecutable()->asHsaType();
 }
 
+/**
+ * Construcot accepts the DWARF debug info, and sets it.
+*/
+Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
+             hsa_executable_symbol_t Symbol, luthier::address_t Address,
+             size_t Size, llvm::DWARFDie &die)
+    : Inst(std::move(Inst)), LCO(LCO), Symbol(Symbol),
+      LoadedDeviceAddress(Address), Size(Size) DWARFDebugInfoEntry(die) {}
 
 hsa_loaded_code_object_t Instr::getLoadedCodeObject() const { return LCO; }
 
@@ -39,9 +50,5 @@ size_t Instr::getSize() const { return Size; }
 /**
  * Returns this Instr's DWARFDie (a debug info entry for some executable symbol)
 */
-llvm::DWARFDie Instr::getDWARFDie() const { return DWARFDebugInfoEntry; }
-
-void Instr::setDWARFDie(llvm::DWARFDie &die) {
-  this->DWARFDebugInfoEntry = die;
-}
+llvm::Expected<DWARFDie> Instr::getDie() const { return DWARFDebugInfoEntry; }
 } // namespace luthier

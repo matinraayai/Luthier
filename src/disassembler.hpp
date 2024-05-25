@@ -96,6 +96,8 @@ private:
       DisassembledSymbolsRaw{};
 
 public:
+// add flag, parseDwarf (false by default)
+// when the Instr is called ->
   /**
    * Disassembles the content of the given \ref hsa::ExecutableSymbol
    * and returns a \p std::vector of \ref hsa::Instr
