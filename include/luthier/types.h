@@ -93,7 +93,11 @@ struct HsaAqlPacket {
     return *reinterpret_cast<const hsa_agent_dispatch_packet_t *>(&Packet);
   }
 };
+namespace hsa {
 
+enum SymbolKind : uint8_t { VARIABLE = 0, KERNEL = 1, DEVICE_FUNCTION = 2 };
+
+} // namespace hsa
 } // namespace luthier
 
 #endif

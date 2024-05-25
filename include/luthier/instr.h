@@ -9,6 +9,8 @@ namespace luthier {
 
 class CodeLifter;
 
+namespace hsa {
+
 /**
  * \brief represents an AMDGPU instruction loaded by ROCr
  * It is backed by an \p hsa::ExecutableSymbol of type
@@ -32,6 +34,7 @@ private:
   const size_t Size; // < Size of the instruction
 
   const llvm::DWARFDie DWARFDebugInfoEntry; // debug info parsed from ELF's dwarf section
+  // DWARF Stuff
 
   Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
         hsa_executable_symbol_t Symbol, address_t Address, size_t Size);
@@ -43,7 +46,7 @@ public:
 
   [[nodiscard]] llvm::Expected<hsa_agent_t> getAgent() const;
 
-  [[nodiscard]] hsa_executable_t getExecutable() const;
+  //  [[nodiscard]] hsa_executable_t getExecutable() const;
 
   [[nodiscard]] hsa_loaded_code_object_t getLoadedCodeObject() const;
 
@@ -58,6 +61,8 @@ public:
   // Should return an Exepected<DWARFDie> instead (set it to Error if this.DWARFDebugInfoEntry is null, or !isValid())
   [[nodiscard]] llvm::DWARFDie getDWARFDie() const;
 };
+
+} // namespace hsa
 
 } // namespace luthier
 

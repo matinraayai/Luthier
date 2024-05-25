@@ -15,17 +15,15 @@ add_library(luthier SHARED
         src/luthier.cpp include/luthier/luthier.h src/hip_intercept.hpp src/hip_intercept.cpp
         include/luthier/types.h src/hsa_intercept.hpp src/hsa_intercept.cpp src/code_object_manager.hpp
         src/code_object_manager.cpp include/luthier/hip_trace_api.h src/error.hpp
-        src/error.cpp
-        src/disassembler.hpp src/disassembler.cpp src/target_manager.hpp src/code_generator.hpp
-        src/code_generator.cpp src/log.hpp src/hsa_executable.hpp
-        src/hsa_executable.cpp src/hsa_executable_symbol.hpp src/hsa_agent.hpp src/hsa_handle_type.hpp
+        src/error.cpp src/disassembler.hpp src/disassembler.cpp src/target_manager.hpp src/code_generator.hpp
+        src/code_generator.cpp src/log.hpp src/hsa_executable.hpp src/hsa_executable.cpp src/hsa_executable_symbol.hpp
+        src/hsa_agent.hpp src/hsa_handle_type.hpp src/global_singleton_manager.hpp src/global_singleton_manager.cpp
         src/hsa_type.hpp src/hsa_agent.cpp src/hsa_executable_symbol.cpp src/hsa_loaded_code_object.hpp
         src/hsa_loaded_code_object.cpp src/hsa_isa.hpp src/hsa_isa.cpp src/object_utils.hpp src/object_utils.cpp
         include/luthier/kernel_descriptor.h src/target_manager.cpp include/luthier/instr.h src/instr.cpp
         src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/kernel_descriptor.cpp
         src/hsa.hpp src/hsa.cpp include/luthier/hsa_trace_api.h include/luthier/pass.h
-        src/pass.cpp src/hip_platform.hpp src/hsa_platform.hpp src/hsa_platform.cpp
-
+        src/pass.cpp src/hip_platform.hpp src/hsa_platform.hpp src/hsa_platform.cpp src/singleton.hpp
 )
 # ======================================================================================================================
 
@@ -94,7 +92,7 @@ target_link_libraries(luthier hip::host stdc++fs hsa-runtime64::hsa-runtime64
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-    set(SUB_DIRS examples/intercept examples/kernel_instrument examples/iterate_all_executable_symbols)
+    set(SUB_DIRS examples/kernel_instrument)
     foreach (DIR ${SUB_DIRS})
         add_subdirectory(${DIR})
     endforeach (DIR)

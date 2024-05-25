@@ -3,7 +3,7 @@
 
   "context": "..",
 
-  "image": "rocm/dev-ubuntu-22.04:6.0-complete",
+  "image": "containers.rc.northeastern.edu/luthier/luthier-dev",
 
 
   "runArgs": ["--device=/dev/kfd",  "--device=/dev/dri", "--ipc=host", "--group-add=video", "--shm-size=16G",

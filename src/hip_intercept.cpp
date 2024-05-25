@@ -1,7 +1,14 @@
 #include "hip_intercept.hpp"
 #include <link.h>
 
-luthier::hip::Interceptor::Interceptor() {
+namespace luthier {
+
+template <>
+hip::Interceptor *luthier::Singleton<hip::Interceptor>::Instance{nullptr};
+
+namespace hip {
+
+Interceptor::Interceptor() : luthier::Singleton<Interceptor>() {
   // Iterate through the process' loaded shared objects and try to dlopen the
   // first entry with a file name starting with the given 'pattern'. This allows
   // the loader to acquire a handle to the target library iff it is already
@@ -20,6 +27,9 @@ luthier::hip::Interceptor::Interceptor() {
       },
       &Callback);
 };
+} // namespace hip
+
+} // namespace luthier
 
 extern "C" __attribute__((visibility("default"))) void
 __hipRegisterFunction(hip::FatBinaryInfo **Modules, const void *HostFunction,

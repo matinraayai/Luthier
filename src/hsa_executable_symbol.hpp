@@ -9,6 +9,8 @@
 
 #include "hsa_handle_type.hpp"
 #include "hsa_loaded_code_object.hpp"
+#include "hsa_platform.hpp"
+#include "object_utils.hpp"
 #include <luthier/kernel_descriptor.h>
 #include <luthier/types.h>
 
@@ -16,71 +18,70 @@ namespace luthier::hsa {
 
 class GpuAgent;
 
-class Executable;
-
-class ExecutableSymbol : public HandleType<hsa_executable_symbol_t> {
+class ExecutableSymbol final : public ExecutableBackedCachable,
+                               public HandleType<hsa_executable_symbol_t> {
 private:
   typedef struct {
     hsa_loaded_code_object_t LCO;
-    std::string Name;
-    llvm::ArrayRef<uint8_t> Code;
-  } IndirectFunctionInfo; // < Information required to represent an indirect
-                          // function in HSA, since it is not implemented in
-                          // ROCr yet
+    const llvm::object::ELFSymbolRef *Symbol;
+    const llvm::object::ELFSymbolRef *KernelFunctionSymbol;
+    const md::Kernel::Metadata *KernelMD;
+  } ExecutableSymbolInfo;
 
-  std::optional<IndirectFunctionInfo> IFO{std::nullopt}; // < Will only be used
-                                                         // if the symbol is
-                                                         // an indirect function
-  /**
-   * \brief Keeps track of the Indirect functions
-   * encountered so far, in order to expose them to the tool writer seamlessly
-   * as an \ref hsa_executable_symbol
-   */
-  static std::unordered_map<decltype(hsa_executable_symbol_t::handle),
-                        IndirectFunctionInfo>
-      IndirectFunctionHandleCache;
-  // TODO: Invalidate this cache
+  ExecutableSymbolInfo SymbolInfo;
 
-  explicit ExecutableSymbol(hsa_executable_symbol_t Symbol)
-      : HandleType<hsa_executable_symbol_t>(Symbol){};
+  /*****************************************************************************
+   * \brief implementation of the \b ExecutableBackedCachableItem interface
+   ****************************************************************************/
+private:
+  static llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
+                        ExecutableSymbolInfo>
+      SymbolHandleCache;
+
+  llvm::Error cache() const override;
+
+  bool isCached() const override;
+
+  llvm::Error invalidate() const override;
 
 public:
-  ExecutableSymbol(std::string IndirectFunctionName,
-                   llvm::ArrayRef<uint8_t> IndirectFunctionCode,
-                   const hsa::LoadedCodeObject &LCO)
-      : HandleType<hsa_executable_symbol_t>(
-            {reinterpret_cast<decltype(hsa_executable_symbol_t::handle)>(
-                IndirectFunctionCode.data())}) {
-    IFO.emplace(LCO.asHsaType(), std::move(IndirectFunctionName),
-                IndirectFunctionCode);
-    // Cache the indirect function calls to allow conversion from hsa handles
-    IndirectFunctionHandleCache.insert({hsaHandle(), *IFO});
-  }
+  ExecutableSymbol(
+      hsa_executable_symbol_t Handle, hsa_loaded_code_object_t LCO,
+      const llvm::object::ELFSymbolRef *ELFSymbol,
+      const llvm::object::ELFSymbolRef *KernelFunctionSymbol = nullptr,
+      const md::Kernel::Metadata *KernelMD = nullptr)
+      : HandleType<hsa_executable_symbol_t>(Handle),
+        SymbolInfo({LCO, ELFSymbol, KernelFunctionSymbol, KernelMD}) {}
+
+  static llvm::Expected<ExecutableSymbol> createDeviceFunctionSymbol(
+      hsa_loaded_code_object_t LCO,
+      const object::ELFSymbolRef &DeviceFunctionELFSymbol);
 
   ExecutableSymbol(const ExecutableSymbol &Symbol)
       : HandleType<hsa_executable_symbol_t>(Symbol.asHsaType()),
-        IFO(Symbol.IFO){};
+        SymbolInfo(Symbol.SymbolInfo){};
 
   ExecutableSymbol &operator=(const ExecutableSymbol &Other) {
     Type<hsa_executable_symbol_t>::operator=(Other);
-    this->IFO = Other.IFO;
+    this->SymbolInfo = Other.SymbolInfo;
     return *this;
   }
 
   ExecutableSymbol &operator=(ExecutableSymbol &&Other) noexcept {
     HandleType<hsa_executable_symbol_t>::operator=(Other);
-    this->IFO = Other.IFO;
+    this->SymbolInfo = Other.SymbolInfo;
     return *this;
   }
 
-  static ExecutableSymbol fromHandle(hsa_executable_symbol_t Symbol);
+  static llvm::Expected<ExecutableSymbol>
+  fromHandle(hsa_executable_symbol_t Symbol);
 
   static llvm::Expected<ExecutableSymbol>
   fromKernelDescriptor(const KernelDescriptor *KD);
 
-  [[nodiscard]] llvm::Expected<hsa_symbol_kind_t> getType() const;
+  [[nodiscard]] SymbolKind getType() const;
 
-  [[nodiscard]] llvm::Expected<std::string> getName() const;
+  [[nodiscard]] llvm::Expected<llvm::StringRef> getName() const;
 
   [[nodiscard]] llvm::Expected<hsa_symbol_linkage_t> getLinkage() const;
 
@@ -92,12 +93,14 @@ public:
   [[nodiscard]] llvm::Expected<const KernelDescriptor *>
   getKernelDescriptor() const;
 
+  [[nodiscard]] llvm::Expected<const hsa::md::Kernel::Metadata &>
+  getKernelMetadata() const;
+
   [[nodiscard]] llvm::Expected<GpuAgent> getAgent() const;
 
   [[nodiscard]] llvm::Expected<hsa::Executable> getExecutable() const;
 
-  [[nodiscard]] llvm::Expected<std::optional<LoadedCodeObject>>
-  getLoadedCodeObject() const;
+  [[nodiscard]] llvm::Expected<LoadedCodeObject> getLoadedCodeObject() const;
 
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getMachineCode() const;
 };
@@ -108,13 +111,21 @@ namespace llvm {
 
 template <> struct DenseMapInfo<luthier::hsa::ExecutableSymbol> {
   static inline luthier::hsa::ExecutableSymbol getEmptyKey() {
-    return luthier::hsa::ExecutableSymbol::fromHandle({DenseMapInfo<
-        decltype(hsa_executable_symbol_t::handle)>::getEmptyKey()});
+    hsa_executable_symbol_t SymbolHandle{
+        DenseMapInfo<decltype(hsa_executable_symbol_t::handle)>::getEmptyKey()};
+    hsa_loaded_code_object_t LCOHandle{DenseMapInfo<
+        decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()};
+    return luthier::hsa::ExecutableSymbol{SymbolHandle, LCOHandle, nullptr,
+                                          nullptr, nullptr};
   }
 
   static inline luthier::hsa::ExecutableSymbol getTombstoneKey() {
-    return luthier::hsa::ExecutableSymbol::fromHandle({DenseMapInfo<
-        decltype(hsa_executable_symbol_t::handle)>::getTombstoneKey()});
+    hsa_executable_symbol_t SymbolHandle{DenseMapInfo<
+        decltype(hsa_executable_symbol_t::handle)>::getTombstoneKey()};
+    hsa_loaded_code_object_t LCOHandle{DenseMapInfo<
+        decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()};
+    return luthier::hsa::ExecutableSymbol{SymbolHandle, LCOHandle, nullptr,
+                                          nullptr, nullptr};
   }
 
   static unsigned getHashValue(const luthier::hsa::ExecutableSymbol &ISA) {

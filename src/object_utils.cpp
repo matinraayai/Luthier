@@ -22,7 +22,7 @@ using namespace llvm::msgpack;
 
 llvm::Error
 parseVersionMDOptional(MapDocNode &Map, llvm::StringRef Key,
-                       std::optional<luthier::HSAMD::Version> &Out) {
+                       std::optional<luthier::hsa::md::Version> &Out) {
   auto VersionMD = Map.find(Key);
   if (VersionMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VersionMD->second.isArray()));
@@ -38,7 +38,7 @@ parseVersionMDOptional(MapDocNode &Map, llvm::StringRef Key,
 }
 
 llvm::Error parseVersionMDRequired(MapDocNode &Map, llvm::StringRef Key,
-                                   luthier::HSAMD::Version &Out) {
+                                   luthier::hsa::md::Version &Out) {
   auto VersionMD = Map.find(Key);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VersionMD->second.isArray()));
   auto VersionMDAsArray = VersionMD->second.getArray();
@@ -52,7 +52,6 @@ llvm::Error parseStringMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
     Out = NodeMD->second.getString();
-    llvm::outs() << Out << "\n";
   }
   return llvm::Error::success();
 }
@@ -63,95 +62,91 @@ llvm::Error parseStringMDRequired(MapDocNode &Map, llvm::StringRef Key,
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
   Out = NodeMD->second.getString();
-  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
-static llvm::DenseMap<llvm::StringRef, llvm::AMDGPU::HSAMD::AccessQualifier>
+static const llvm::StringMap<llvm::AMDGPU::HSAMD::AccessQualifier>
     AccessQualifierEnumMap = {
         {"read_only", llvm::AMDGPU::HSAMD::AccessQualifier::ReadOnly},
         {"write_only", llvm::AMDGPU::HSAMD::AccessQualifier::WriteOnly},
         {"read_write", llvm::AMDGPU::HSAMD::AccessQualifier::ReadWrite}};
 
-static llvm::DenseMap<llvm::StringRef,
-                      decltype(llvm::AMDGPUAS::MAX_AMDGPU_ADDRESS)>
-    AMDGPUAddressSpaceEnumMap = {{"private", llvm::AMDGPUAS::PRIVATE_ADDRESS},
-                                 {"global", llvm::AMDGPUAS::GLOBAL_ADDRESS},
-                                 {"constant", llvm::AMDGPUAS::CONSTANT_ADDRESS},
-                                 {"local", llvm::AMDGPUAS::LOCAL_ADDRESS},
-                                 {"generic", llvm::AMDGPUAS::FLAT_ADDRESS},
-                                 {"region", llvm::AMDGPUAS::REGION_ADDRESS}};
+static const llvm::StringMap<unsigned> AMDGPUAddressSpaceEnumMap = {
+    {"private", llvm::AMDGPUAS::PRIVATE_ADDRESS},
+    {"global", llvm::AMDGPUAS::GLOBAL_ADDRESS},
+    {"constant", llvm::AMDGPUAS::CONSTANT_ADDRESS},
+    {"local", llvm::AMDGPUAS::LOCAL_ADDRESS},
+    {"generic", llvm::AMDGPUAS::FLAT_ADDRESS},
+    {"region", llvm::AMDGPUAS::REGION_ADDRESS}};
 
-static llvm::DenseMap<llvm::StringRef, luthier::HSAMD::ValueKind>
-    ValueKindEnumMap = {
-        {"by_value", luthier::HSAMD::ValueKind::ByValue},
-        {"global_buffer", luthier::HSAMD::ValueKind::GlobalBuffer},
-        {"dynamic_shared_pointer",
-         luthier::HSAMD::ValueKind::DynamicSharedPointer},
-        {"sampler", luthier::HSAMD::ValueKind::Sampler},
-        {"image", luthier::HSAMD::ValueKind::Image},
-        {"pipe", luthier::HSAMD::ValueKind::Pipe},
-        {"queue", luthier::HSAMD::ValueKind::Queue},
-        {"hidden_global_offset_x",
-         luthier::HSAMD::ValueKind::HiddenGlobalOffsetX},
-        {"hidden_global_offset_y",
-         luthier::HSAMD::ValueKind::HiddenGlobalOffsetY},
-        {"hidden_global_offset_z",
-         luthier::HSAMD::ValueKind::HiddenGlobalOffsetZ},
-        {"hidden_none", luthier::HSAMD::ValueKind::HiddenNone},
-        {"hidden_printf_buffer", luthier::HSAMD::ValueKind::HiddenPrintfBuffer},
-        {"hidden_hostcall_buffer",
-         luthier::HSAMD::ValueKind::HiddenHostcallBuffer},
-        {"hidden_default_queue", luthier::HSAMD::ValueKind::HiddenDefaultQueue},
-        {"hidden_completion_action",
-         luthier::HSAMD::ValueKind::HiddenCompletionAction},
-        {"hidden_multigrid_sync_arg",
-         luthier::HSAMD::ValueKind::HiddenMultiGridSyncArg},
-        {"hidden_block_count_x", luthier::HSAMD::ValueKind::HiddenBlockCountX},
-        {"hidden_block_count_y", luthier::HSAMD::ValueKind::HiddenBlockCountY},
-        {"hidden_block_count_z", luthier::HSAMD::ValueKind::HiddenBlockCountZ},
-        {"hidden_group_size_x", luthier::HSAMD::ValueKind::HiddenGroupSizeX},
-        {"hidden_group_size_y", luthier::HSAMD::ValueKind::HiddenGroupSizeY},
-        {"hidden_group_size_z", luthier::HSAMD::ValueKind::HiddenGroupSizeZ},
-        {"hidden_remainder_x", luthier::HSAMD::ValueKind::HiddenRemainderX},
-        {"hidden_remainder_y", luthier::HSAMD::ValueKind::HiddenRemainderY},
-        {"hidden_remainder_z", luthier::HSAMD::ValueKind::HiddenRemainderZ},
-        {"hidden_grid_dims", luthier::HSAMD::ValueKind::HiddenGridDims},
-        {"hidden_heap_v1", luthier::HSAMD::ValueKind::HiddenHeapV1},
-        {"hidden_dynamic_lds_size",
-         luthier::HSAMD::ValueKind::HiddenDynamicLDSSize},
-        {"hidden_private_base", luthier::HSAMD::ValueKind::HiddenPrivateBase},
-        {"hidden_shared_base", luthier::HSAMD::ValueKind::HiddenSharedBase},
-        {"hidden_queue_ptr", luthier::HSAMD::ValueKind::HiddenQueuePtr}};
+static const llvm::StringMap<luthier::hsa::md::ValueKind> ValueKindEnumMap = {
+    {"by_value", luthier::hsa::md::ValueKind::ByValue},
+    {"global_buffer", luthier::hsa::md::ValueKind::GlobalBuffer},
+    {"dynamic_shared_pointer",
+     luthier::hsa::md::ValueKind::DynamicSharedPointer},
+    {"sampler", luthier::hsa::md::ValueKind::Sampler},
+    {"image", luthier::hsa::md::ValueKind::Image},
+    {"pipe", luthier::hsa::md::ValueKind::Pipe},
+    {"queue", luthier::hsa::md::ValueKind::Queue},
+    {"hidden_global_offset_x",
+     luthier::hsa::md::ValueKind::HiddenGlobalOffsetX},
+    {"hidden_global_offset_y",
+     luthier::hsa::md::ValueKind::HiddenGlobalOffsetY},
+    {"hidden_global_offset_z",
+     luthier::hsa::md::ValueKind::HiddenGlobalOffsetZ},
+    {"hidden_none", luthier::hsa::md::ValueKind::HiddenNone},
+    {"hidden_printf_buffer", luthier::hsa::md::ValueKind::HiddenPrintfBuffer},
+    {"hidden_hostcall_buffer",
+     luthier::hsa::md::ValueKind::HiddenHostcallBuffer},
+    {"hidden_default_queue", luthier::hsa::md::ValueKind::HiddenDefaultQueue},
+    {"hidden_completion_action",
+     luthier::hsa::md::ValueKind::HiddenCompletionAction},
+    {"hidden_multigrid_sync_arg",
+     luthier::hsa::md::ValueKind::HiddenMultiGridSyncArg},
+    {"hidden_block_count_x", luthier::hsa::md::ValueKind::HiddenBlockCountX},
+    {"hidden_block_count_y", luthier::hsa::md::ValueKind::HiddenBlockCountY},
+    {"hidden_block_count_z", luthier::hsa::md::ValueKind::HiddenBlockCountZ},
+    {"hidden_group_size_x", luthier::hsa::md::ValueKind::HiddenGroupSizeX},
+    {"hidden_group_size_y", luthier::hsa::md::ValueKind::HiddenGroupSizeY},
+    {"hidden_group_size_z", luthier::hsa::md::ValueKind::HiddenGroupSizeZ},
+    {"hidden_remainder_x", luthier::hsa::md::ValueKind::HiddenRemainderX},
+    {"hidden_remainder_y", luthier::hsa::md::ValueKind::HiddenRemainderY},
+    {"hidden_remainder_z", luthier::hsa::md::ValueKind::HiddenRemainderZ},
+    {"hidden_grid_dims", luthier::hsa::md::ValueKind::HiddenGridDims},
+    {"hidden_heap_v1", luthier::hsa::md::ValueKind::HiddenHeapV1},
+    {"hidden_dynamic_lds_size",
+     luthier::hsa::md::ValueKind::HiddenDynamicLDSSize},
+    {"hidden_private_base", luthier::hsa::md::ValueKind::HiddenPrivateBase},
+    {"hidden_shared_base", luthier::hsa::md::ValueKind::HiddenSharedBase},
+    {"hidden_queue_ptr", luthier::hsa::md::ValueKind::HiddenQueuePtr}};
 
-static llvm::DenseMap<llvm::StringRef, luthier::HSAMD::KernelKind>
-    KernelKindEnumMap = {{"normal", luthier::HSAMD::KernelKind::Normal},
-                         {"init", luthier::HSAMD::KernelKind::Init},
-                         {"fini", luthier::HSAMD::KernelKind::Fini}};
+static const llvm::StringMap<luthier::hsa::md::KernelKind> KernelKindEnumMap = {
+    {"normal", luthier::hsa::md::KernelKind::Normal},
+    {"init", luthier::hsa::md::KernelKind::Init},
+    {"fini", luthier::hsa::md::KernelKind::Fini}};
 
 template <typename ET>
 llvm::Error parseEnumMDOptional(MapDocNode &Map, llvm::StringRef Key,
-                                llvm::DenseMap<llvm::StringRef, ET> &EnumMap,
+                                const llvm::StringMap<ET> &EnumMap,
                                 std::optional<ET> &Out) {
   std::optional<std::string> EnumString;
   LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(Map, Key, EnumString));
   if (EnumString.has_value()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(*EnumString)));
-    Out = EnumMap[*EnumString];
-    llvm::outs() << EnumString << "\n";
+    Out = EnumMap.at(*EnumString);
   }
   return llvm::Error::success();
 }
 
 template <typename ET>
 llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
-                                llvm::DenseMap<llvm::StringRef, ET> &EnumMap,
+                                const llvm::StringMap<ET> &EnumMap,
                                 ET &Out) {
   std::string EnumString;
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(EnumString)));
-  Out = EnumMap[EnumString];
-  llvm::outs() << EnumString << "\n";
+  Out = EnumMap.at(EnumString);
+  //  llvm::outs() << EnumString << "\n";
   return llvm::Error::success();
 }
 
@@ -175,7 +170,8 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
     Out = {static_cast<uint32_t>(XMD.getUInt()),
            static_cast<uint32_t>(YMD.getUInt()),
            static_cast<uint32_t>(ZMD.getUInt())};
-    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << "," << "\n";
+    //    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << ","
+    //                 << "\n";
   }
   return llvm::Error::success();
 }
@@ -200,7 +196,8 @@ llvm::Error parseDim3MDRequired(MapDocNode &Map, llvm::StringRef Key,
   Out = {static_cast<uint32_t>(XMD.getUInt()),
          static_cast<uint32_t>(YMD.getUInt()),
          static_cast<uint32_t>(ZMD.getUInt())};
-  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << "," << "\n";
+  //  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << ","
+  //               << "\n";
   return llvm::Error::success();
 }
 
@@ -211,7 +208,7 @@ llvm::Error parseUIntMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
     Out = static_cast<T>(NodeMD->second.getUInt());
-    llvm::outs() << Out << "\n";
+    //    llvm::outs() << Out << "\n";
   }
   return llvm::Error::success();
 }
@@ -222,18 +219,16 @@ llvm::Error parseUIntMDRequired(MapDocNode &Map, llvm::StringRef Key, T &Out) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
   Out = static_cast<T>(NodeMD->second.getUInt());
-  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
 llvm::Error parseBoolMDOptional(MapDocNode &Map, llvm::StringRef Key,
-                                std::optional<bool> &Out) {
+                                bool &Out) {
   auto NodeMD = Map.find(Key);
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
     Out = NodeMD->second.getBool();
   }
-  llvm::outs() << Out << "\n";
   return llvm::Error::success();
 }
 
@@ -246,77 +241,222 @@ llvm::Error parseBoolMDRequired(MapDocNode &Map, llvm::StringRef Key,
   return llvm::Error::success();
 }
 
+template <class ELFT>
+static llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+getSymbolFromGnuHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
+                          llvm::StringRef Name, const typename ELFT::Shdr *Sec,
+                          const typename ELFT::GnuHash &HashTab,
+                          llvm::ArrayRef<typename ELFT::Sym> SymTab,
+                          llvm::StringRef StrTab) {
+  const uint32_t NameHash = llvm::object::hashGnu(Name);
+  const typename ELFT::Word NBucket = HashTab.nbuckets;
+  const typename ELFT::Word SymOffset = HashTab.symndx;
+  llvm::ArrayRef<typename ELFT::Off> Filter = HashTab.filter();
+  llvm::ArrayRef<typename ELFT::Word> Bucket = HashTab.buckets();
+  llvm::ArrayRef<typename ELFT::Word> Chain = HashTab.values(SymTab.size());
+
+  // Check the bloom filter and exit early if the symbol is not present.
+  uint64_t ElfClassBits = ELFT::Is64Bits ? 64 : 32;
+  typename ELFT::Off Word =
+      Filter[(NameHash / ElfClassBits) % HashTab.maskwords];
+  uint64_t Mask = (0x1ull << (NameHash % ElfClassBits)) |
+                  (0x1ull << ((NameHash >> HashTab.shift2) % ElfClassBits));
+  if ((Word & Mask) != Mask)
+    return std::nullopt;
+
+  // The symbol may or may not be present, check the hash values.
+  for (typename ELFT::Word I = Bucket[NameHash % NBucket];
+       I >= SymOffset && I < SymTab.size(); I = I + 1) {
+    const uint32_t ChainHash = Chain[I - SymOffset];
+
+    if ((NameHash | 0x1) != (ChainHash | 0x1))
+      continue;
+
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ASSERTION(SymTab[I].st_name < StrTab.size()));
+
+    if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
+      return Elf.toSymbolRef(Sec, I);
+
+    if (ChainHash & 0x1)
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+template <class ELFT>
+static llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+getSymbolFromSysVHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
+                           llvm::StringRef Name, const typename ELFT::Shdr *Sec,
+                           const typename ELFT::Hash &HashTab,
+                           llvm::ArrayRef<typename ELFT::Sym> SymTab,
+                           llvm::StringRef StrTab) {
+  const uint32_t Hash = llvm::object::hashSysV(Name);
+  const typename ELFT::Word NBucket = HashTab.nbucket;
+  llvm::ArrayRef<typename ELFT::Word> Bucket = HashTab.buckets();
+  llvm::ArrayRef<typename ELFT::Word> Chain = HashTab.chains();
+  for (typename ELFT::Word I = Bucket[Hash % NBucket];
+       I != llvm::ELF::STN_UNDEF; I = Chain[I]) {
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(I < SymTab.size()));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ASSERTION(SymTab[I].st_name < StrTab.size()));
+
+    if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
+      return Elf.toSymbolRef(Sec, I);
+  }
+  return std::nullopt;
+}
+
+template <typename ELFT>
+llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
+           const typename ELFT::Shdr *Sec, llvm::StringRef SymbolName) {
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ARGUMENT_ERROR_CHECK(Sec->sh_type == llvm::ELF::SHT_HASH ||
+                                   Sec->sh_type == llvm::ELF::SHT_GNU_HASH));
+
+  auto &ElfFile = Elf.getELFFile();
+
+  llvm::Expected<typename ELFT::ShdrRange> SectionsOrError = ElfFile.sections();
+  LUTHIER_RETURN_ON_ERROR(SectionsOrError.takeError());
+
+  auto SymTabOrErr = getSection<ELFT>(*SectionsOrError, Sec->sh_link);
+  LUTHIER_RETURN_ON_ERROR(SymTabOrErr.takeError());
+
+  auto StrTabOrErr =
+      ElfFile.getStringTableForSymtab(**SymTabOrErr, *SectionsOrError);
+  LUTHIER_RETURN_ON_ERROR(StrTabOrErr.takeError());
+
+  llvm::StringRef StrTab = *StrTabOrErr;
+  auto SymsOrErr = ElfFile.symbols(*SymTabOrErr);
+  LUTHIER_RETURN_ON_ERROR(SymsOrErr.takeError());
+
+  llvm::ArrayRef<typename ELFT::Sym> SymTab = *SymsOrErr;
+
+  // If this is a GNU hash table we verify its size and search the symbol
+  // table using the GNU hash table format.
+  if (Sec->sh_type == llvm::ELF::SHT_GNU_HASH) {
+    const auto *HashTab = reinterpret_cast<const typename ELFT::GnuHash *>(
+        ElfFile.base() + Sec->sh_offset);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Sec->sh_offset + Sec->sh_size <
+                                              ElfFile.getBufSize()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+        Sec->sh_size >= sizeof(typename ELFT::GnuHash) &&
+        Sec->sh_size >= sizeof(typename ELFT::GnuHash) +
+                            sizeof(typename ELFT::Word) * HashTab->maskwords +
+                            sizeof(typename ELFT::Word) * HashTab->nbuckets +
+                            sizeof(typename ELFT::Word) *
+                                (SymTab.size() - HashTab->symndx)));
+    return getSymbolFromGnuHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
+                                           *HashTab, SymTab, StrTab);
+  }
+
+  // If this is a Sys-V hash table we verify its size and search the symbol
+  // table using the Sys-V hash table format.
+  if (Sec->sh_type == llvm::ELF::SHT_HASH) {
+    const auto *HashTab = reinterpret_cast<const typename ELFT::Hash *>(
+        ElfFile.base() + Sec->sh_offset);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Sec->sh_offset + Sec->sh_size <
+                                              ElfFile.getBufSize()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+        Sec->sh_size >= sizeof(typename ELFT::Hash) &&
+        Sec->sh_size >= sizeof(typename ELFT::Hash) +
+                            sizeof(typename ELFT::Word) * HashTab->nbucket +
+                            sizeof(typename ELFT::Word) * HashTab->nchain));
+    return getSymbolFromSysVHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
+                                            *HashTab, SymTab, StrTab);
+  }
+
+  return std::nullopt;
+}
+
 namespace luthier {
 
+llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+lookupSymbolByName(const luthier::AMDGCNObjectFile &Elf,
+                llvm::StringRef SymbolName) {
+  for (auto Section = llvm::object::elf_section_iterator(Elf.section_begin());
+       Section != llvm::object::elf_section_iterator(Elf.section_end());
+       ++Section) {
+    auto SectionAsSHdr = Elf.getSection(Section->getRawDataRefImpl());
+    if ((SectionAsSHdr->sh_type == llvm::ELF::SHT_HASH) ||
+        (SectionAsSHdr->sh_type == llvm::ELF::SHT_GNU_HASH)) {
+      return hashLookup(Elf, SectionAsSHdr, SymbolName);
+    }
+  }
+  llvm_unreachable("Symbol hash table was not found");
+}
+
 llvm::Error parseArgMD(llvm::msgpack::MapDocNode &KernelMetaNode,
-                       HSAMD::Kernel::Arg::Metadata &Out) {
+                       hsa::md::Kernel::Arg::Metadata &Out) {
   LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::Name, Out.Name));
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::Name, Out.Name));
 
   LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::TypeName,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::TypeName,
       Out.TypeName));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::Size, Out.Size));
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::Size, Out.Size));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::Offset, Out.Offset));
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::Offset, Out.Offset));
 
   LUTHIER_RETURN_ON_ERROR(parseEnumMDRequired(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::ValueKind,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::ValueKind,
       ValueKindEnumMap, Out.ValueKind));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::PointeeAlign,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::PointeeAlign,
       Out.PointeeAlign));
 
   LUTHIER_RETURN_ON_ERROR(parseEnumMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::AddressSpace,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::AddressSpace,
       AMDGPUAddressSpaceEnumMap, Out.AddressSpace));
 
   LUTHIER_RETURN_ON_ERROR(parseEnumMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::AccQual,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::AccQual,
       AccessQualifierEnumMap, Out.AccQual));
 
   LUTHIER_RETURN_ON_ERROR(parseEnumMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::ActualAccQual,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::ActualAccQual,
       AccessQualifierEnumMap, Out.ActualAccQual));
 
   LUTHIER_RETURN_ON_ERROR(parseBoolMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::IsConst, Out.IsConst));
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::IsConst,
+      Out.IsConst));
 
   LUTHIER_RETURN_ON_ERROR(parseBoolMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::IsRestrict,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::IsRestrict,
       Out.IsRestrict));
 
   LUTHIER_RETURN_ON_ERROR(parseBoolMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::IsVolatile,
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::IsVolatile,
       Out.IsVolatile));
 
   LUTHIER_RETURN_ON_ERROR(parseBoolMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Arg::Key::IsPipe, Out.IsPipe));
+      KernelMetaNode, luthier::hsa::md::Kernel::Arg::Key::IsPipe, Out.IsPipe));
 
   return llvm::Error::success();
 };
 
 llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
-                          HSAMD::Kernel::Metadata &Out) {
+                          hsa::md::Kernel::Metadata &Out) {
 
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::Name, Out.Name));
+      KernelMetaNode, hsa::md::Kernel::Key::Name, Out.Name));
 
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::Symbol, Out.Symbol));
+      KernelMetaNode, hsa::md::Kernel::Key::Symbol, Out.Symbol));
 
   LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(
-      KernelMetaNode, HSAMD::Kernel::Key::Language, Out.Language));
+      KernelMetaNode, hsa::md::Kernel::Key::Language, Out.Language));
 
   LUTHIER_RETURN_ON_ERROR(parseVersionMDOptional(
-      KernelMetaNode, HSAMD::Kernel::Key::LanguageVersion,
+      KernelMetaNode, hsa::md::Kernel::Key::LanguageVersion,
       Out.LanguageVersion));
 
-  auto ArgsMD = KernelMetaNode.find(HSAMD::Kernel::Key::Args);
+  auto ArgsMD = KernelMetaNode.find(hsa::md::Kernel::Key::Args);
   if (ArgsMD != KernelMetaNode.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ArgsMD->second.isArray()));
     Out.Args.emplace();
@@ -327,85 +467,91 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
     }
   }
 
-  LUTHIER_RETURN_ON_ERROR(
-      parseDim3MDOptional(KernelMetaNode, HSAMD::Kernel::Key::ReqdWorkGroupSize,
-                          Out.ReqdWorkGroupSize));
+  LUTHIER_RETURN_ON_ERROR(parseDim3MDOptional(
+      KernelMetaNode, hsa::md::Kernel::Key::ReqdWorkGroupSize,
+      Out.ReqdWorkGroupSize));
 
-  LUTHIER_RETURN_ON_ERROR(
-      parseDim3MDOptional(KernelMetaNode, HSAMD::Kernel::Key::WorkGroupSizeHint,
-                          Out.WorkGroupSizeHint));
-
-  LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(
-      KernelMetaNode, HSAMD::Kernel::Key::VecTypeHint, Out.VecTypeHint));
+  LUTHIER_RETURN_ON_ERROR(parseDim3MDOptional(
+      KernelMetaNode, hsa::md::Kernel::Key::WorkGroupSizeHint,
+      Out.WorkGroupSizeHint));
 
   LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(
-      KernelMetaNode, HSAMD::Kernel::Key::DeviceEnqueueSymbol,
+      KernelMetaNode, hsa::md::Kernel::Key::VecTypeHint, Out.VecTypeHint));
+
+  LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(
+      KernelMetaNode, hsa::md::Kernel::Key::DeviceEnqueueSymbol,
       Out.DeviceEnqueueSymbol));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::KernArgSegmentSize,
+      KernelMetaNode, hsa::md::Kernel::Key::KernArgSegmentSize,
       Out.KernArgSegmentSize));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::GroupSegmentFixedSize,
+      KernelMetaNode, hsa::md::Kernel::Key::GroupSegmentFixedSize,
       Out.GroupSegmentFixedSize));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::PrivateSegmentFixedSize,
+      KernelMetaNode, hsa::md::Kernel::Key::PrivateSegmentFixedSize,
       Out.PrivateSegmentFixedSize));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::KernArgSegmentAlign,
+      KernelMetaNode, hsa::md::Kernel::Key::KernArgSegmentAlign,
       Out.KernArgSegmentAlign));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::WaveFrontSize, Out.WaveFrontSize));
+      KernelMetaNode, hsa::md::Kernel::Key::WaveFrontSize, Out.WaveFrontSize));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::SGPRCount, Out.SGPRCount));
+      KernelMetaNode, hsa::md::Kernel::Key::SGPRCount, Out.SGPRCount));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::VGPRCount, Out.VGPRCount));
+      KernelMetaNode, hsa::md::Kernel::Key::VGPRCount, Out.VGPRCount));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::AGPRCount, Out.AGPRCount));
+      KernelMetaNode, hsa::md::Kernel::Key::AGPRCount, Out.AGPRCount));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, HSAMD::Kernel::Key::MaxFlatWorkgroupSize,
+      KernelMetaNode, hsa::md::Kernel::Key::MaxFlatWorkgroupSize,
       Out.MaxFlatWorkgroupSize));
 
-  LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
-      KernelMetaNode, HSAMD::Kernel::Key::SGPRSpillCount, Out.SGPRSpillCount));
+  LUTHIER_RETURN_ON_ERROR(
+      parseUIntMDOptional(KernelMetaNode, hsa::md::Kernel::Key::SGPRSpillCount,
+                          Out.SGPRSpillCount));
 
-  LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
-      KernelMetaNode, HSAMD::Kernel::Key::VGPRSpillCount, Out.VGPRSpillCount));
+  LUTHIER_RETURN_ON_ERROR(
+      parseUIntMDOptional(KernelMetaNode, hsa::md::Kernel::Key::VGPRSpillCount,
+                          Out.VGPRSpillCount));
 
   LUTHIER_RETURN_ON_ERROR(parseEnumMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Key::KernelKind,
+      KernelMetaNode, luthier::hsa::md::Kernel::Key::KernelKind,
       KernelKindEnumMap, Out.KernelKind));
 
+  std::optional<unsigned> UniformWorkgroupSize{0};
+
   LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
-      KernelMetaNode, luthier::HSAMD::Kernel::Key::UniformWorkgroupSize,
-      Out.UniformWorkgroupSize));
+      KernelMetaNode, luthier::hsa::md::Kernel::Key::UniformWorkgroupSize,
+      UniformWorkgroupSize));
+
+  Out.UniformWorkgroupSize = *UniformWorkgroupSize == 1;
 
   return llvm::Error::success();
 }
 
-llvm::Expected<luthier::HSAMD::Metadata>
+llvm::Expected<luthier::hsa::md::Metadata>
 parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
-  luthier::HSAMD::Metadata Out;
+  luthier::hsa::md::Metadata Out;
   auto MetaDataRoot = KernelMetaNode.getRoot();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(MetaDataRoot.isMap()));
   auto RootMap = MetaDataRoot.getMap();
 
   LUTHIER_RETURN_ON_ERROR(
-      parseVersionMDRequired(RootMap, HSAMD::Key::Version, Out.Version));
+      parseVersionMDRequired(RootMap, hsa::md::Key::Version, Out.Version));
 
   bool IsV2 = Out.Version.Minor == 0;
   // TODO: Write a V2 Parser if needed
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!IsV2));
 
-  auto PrintfMD = RootMap.find(HSAMD::Key::Printf);
+  auto PrintfMD = RootMap.find(hsa::md::Key::Printf);
   if (PrintfMD != RootMap.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(PrintfMD->second.isArray()));
     Out.Printf.emplace();
@@ -415,12 +561,12 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
     }
   }
 
-  auto KernelsMD = RootMap.find(HSAMD::Key::Kernels);
-  llvm::outs() << "Is kernel MD found? " << (KernelsMD != RootMap.end())
-               << "\n";
+  auto KernelsMD = RootMap.find(hsa::md::Key::Kernels);
+  //  llvm::outs() << "Is kernel MD found? " << (KernelsMD != RootMap.end())
+  //               << "\n";
   for (auto &[k, v] : RootMap) {
-    llvm::outs() << "Key is string: " << k.isString() << "\n";
-    llvm::outs() << k.toString() << "\n";
+    //    llvm::outs() << "Key is string: " << k.isString() << "\n";
+    //    llvm::outs() << k.toString() << "\n";
   }
   //  llvm::outs() << RootMap.toString() << "\n";
   if (KernelsMD != RootMap.end()) {
@@ -431,7 +577,7 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelMD.isMap()));
 
       auto KernelMDAsMap = KernelMD.getMap();
-      auto SymbolMD = KernelMDAsMap.find(HSAMD::Kernel::Key::Symbol);
+      auto SymbolMD = KernelMDAsMap.find(hsa::md::Kernel::Key::Symbol);
       LUTHIER_RETURN_ON_ERROR(
           LUTHIER_ASSERTION(SymbolMD != KernelMDAsMap.end()));
       Out.Kernels.emplace_back();
@@ -658,19 +804,19 @@ llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
 } // namespace luthier
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
-                              const luthier::HSAMD::Kernel::Metadata &MD) {
-  OS << luthier::HSAMD::Kernel::Key::Name << ": " << MD.Name << "\n";
-  OS << luthier::HSAMD::Kernel::Key::Symbol << ": " << MD.Symbol << "\n";
+                              const luthier::hsa::md::Kernel::Metadata &MD) {
+  OS << luthier::hsa::md::Kernel::Key::Name << ": " << MD.Name << "\n";
+  OS << luthier::hsa::md::Kernel::Key::Symbol << ": " << MD.Symbol << "\n";
   return OS;
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
-                              const luthier::HSAMD::Metadata &MD) {
-  OS << luthier::HSAMD::Key::Version << ": " << MD.Version.Major << ", "
+                              const luthier::hsa::md::Metadata &MD) {
+  OS << luthier::hsa::md::Key::Version << ": " << MD.Version.Major << ", "
      << MD.Version.Minor << "\n";
 
   if (MD.Printf.has_value()) {
-    OS << luthier::HSAMD::Key::Printf << ": \n";
+    OS << luthier::hsa::md::Key::Printf << ": \n";
     for (const auto &P : *MD.Printf) {
       OS.indent(2);
       OS << P << "\n";
@@ -678,7 +824,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
   }
 
   if (!MD.Kernels.empty()) {
-    OS << luthier::HSAMD::Key::Kernels << ": \n";
+    OS << luthier::hsa::md::Key::Kernels << ": \n";
     for (const auto &Kernel : MD.Kernels) {
       OS.indent(2);
       OS << Kernel << "\n";

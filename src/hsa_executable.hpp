@@ -7,6 +7,7 @@
 
 #include "hsa_code_object_reader.hpp"
 #include "hsa_handle_type.hpp"
+#include "hsa_platform.hpp"
 
 namespace luthier {
 
@@ -20,7 +21,13 @@ class ExecutableSymbol;
 
 class LoadedCodeObject;
 
-class Executable : public HandleType<hsa_executable_t> {
+class Executable final : public HandleType<hsa_executable_t> {
+  /*****************************************************************************
+   * \brief Instrumented \b hsa_executable_t creation and destruction
+   * functionality
+   * Creation and destruction of Executables is only allowed through
+   * \b CodeObjectManager
+   ****************************************************************************/
   friend class luthier::CodeObjectManager;
 
 private:
@@ -33,13 +40,6 @@ private:
   llvm::Expected<hsa::LoadedCodeObject>
   loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
                       const hsa::GpuAgent &Agent, llvm::StringRef Options = "");
-
-  llvm::Expected<hsa::LoadedCodeObject>
-  loadProgramCodeObject(const hsa::CodeObjectReader &Reader,
-                        llvm::StringRef Options = "");
-
-  llvm::Error
-  defineExternalProgramGlobalVariable(const hsa::ExecutableSymbol &Symbol);
 
   llvm::Error defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol);
 
@@ -56,33 +56,15 @@ public:
 
   llvm::Expected<hsa_profile_t> getProfile();
 
-  llvm::Expected<hsa_executable_state_t> getState();
+  [[nodiscard]] llvm::Expected<hsa_executable_state_t> getState() const;
 
   llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
-
-  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getAgentSymbols(const luthier::hsa::GpuAgent &Agent) const;
-
-  [[nodiscard]] llvm::Expected<std::vector<ExecutableSymbol>>
-  getProgramSymbols(const luthier::hsa::GpuAgent &Agent) const;
-
-  [[nodiscard]] llvm::Expected<std::optional<ExecutableSymbol>>
-  getAgentSymbolByName(const luthier::hsa::GpuAgent &Agent,
-                       llvm::StringRef Name) const;
 
   /**
    * \return the \p hsa::LoadedCodeObject's in the executable
    */
   [[nodiscard]] llvm::Expected<std::vector<LoadedCodeObject>>
   getLoadedCodeObjects() const;
-
-  /**
-   * Returns the \p hsa::GpuAgent's that have a \p hsa::LoadedCodeObject in
-   * this executable
-   * @return an \p std::unordered_st of \p hsa::GpuAgent's
-   */
-  [[nodiscard]] llvm::Expected<llvm::DenseSet<hsa::GpuAgent>>
-  getAgents() const;
 };
 
 } // namespace hsa
