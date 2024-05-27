@@ -186,42 +186,45 @@ llvm::Error CodeGenerator::instrument(
   PM.add(MMIWP.release());
 
 
+  TPC->addCodeGenPrepare();
+  PM.add(getPass(TPC, &llvm::FinalizeISelID));
+
   // Commenting this out breaks things. Need to figure out which specific passes in
   // this function need to be run
   // TPC->addISelPasses();
-  llvm::outs() << "\nAdd required Instruction Selection Passes\n";
+  // llvm::outs() << "\nAdd required Instruction Selection Passes\n";
 
-  //// Contents of TargetPassConfig::addISelPasses
-  PM.add(llvm::createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
-  PM.add(llvm::createPreISelIntrinsicLoweringPass());
-  PM.add(llvm::createExpandLargeDivRemPass());
-  PM.add(llvm::createExpandLargeFpConvertPass());
+  // //// Contents of TargetPassConfig::addISelPasses
+  // PM.add(llvm::createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
+  // PM.add(llvm::createPreISelIntrinsicLoweringPass());
+  // PM.add(llvm::createExpandLargeDivRemPass());
+  // PM.add(llvm::createExpandLargeFpConvertPass());
 
-  /// Add common target configurable passes that perform LLVM IR to IR transforms
-  /// following machine independent optimization.
-  TPC->addIRPasses();
-  llvm::outs() << "\n ~ Added IR passes\n";
-  
-  /// Add pass to prepare the LLVM IR for code generation. This should be done
-  /// before exception handling preparation passes.
-  TPC->addCodeGenPrepare();
-  llvm::outs() << "\n ~ Added Code Gen Preperation passes\n";
-  
-  /// Turn exception handling constructs into something the code generators can
-  /// handle.
-  TPC->addPassesToHandleExceptions();
-  llvm::outs() << "\n ~ Added Passes to Handle Exceptions\n";
-  
-  /// Add common passes that perform LLVM IR to IR transforms in preparation for
-  /// instruction selection.
-  TPC->addISelPrepare();
-  llvm::outs() << "\n ~ Added Instruction Selection Preparation passes\n";
-  
-  // We shouldn't need this -- But this is the only func from addISelPasses that I'm not running and this is broken
-  // TPC->addCoreISelPasses();
-  // llvm::outs() << "\n ~ Added Instruction Selection passes\n";
-  //// End of TargetPassConfig::addISelPasses
-  llvm::outs() << "\nFinished adding Instruction Selection Passes\n";
+  // /// Add common target configurable passes that perform LLVM IR to IR transforms
+  // /// following machine independent optimization.
+  // TPC->addIRPasses();
+  // llvm::outs() << "\n ~ Added IR passes\n";
+  // 
+  // /// Add pass to prepare the LLVM IR for code generation. This should be done
+  // /// before exception handling preparation passes.
+  // TPC->addCodeGenPrepare();
+  // llvm::outs() << "\n ~ Added Code Gen Preperation passes\n";
+  // 
+  // /// Turn exception handling constructs into something the code generators can
+  // /// handle.
+  // TPC->addPassesToHandleExceptions();
+  // llvm::outs() << "\n ~ Added Passes to Handle Exceptions\n";
+  // 
+  // /// Add common passes that perform LLVM IR to IR transforms in preparation for
+  // /// instruction selection.
+  // TPC->addISelPrepare();
+  // llvm::outs() << "\n ~ Added Instruction Selection Preparation passes\n";
+  // 
+  // // We shouldn't need this -- But this is the only func from addISelPasses that I'm not running and this is broken
+  // // TPC->addCoreISelPasses();
+  // // llvm::outs() << "\n ~ Added Instruction Selection passes\n";
+  // //// End of TargetPassConfig::addISelPasses
+  // llvm::outs() << "\nFinished adding Instruction Selection Passes\n";
 
 
   // TPC->addMachinePasses();
