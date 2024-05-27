@@ -185,54 +185,12 @@ llvm::Error CodeGenerator::instrument(
   PM.add(TPC);
   PM.add(MMIWP.release());
 
-
+  llvm::outs() << "\nAdd required Instruction Selection Passes\n";
   TPC->addCodeGenPrepare();
   PM.add(getPass(TPC, &llvm::FinalizeISelID));
+  llvm::outs() << "\nFinished adding Instruction Selection Passes\n";
 
-  // Commenting this out breaks things. Need to figure out which specific passes in
-  // this function need to be run
-  // TPC->addISelPasses();
-  // llvm::outs() << "\nAdd required Instruction Selection Passes\n";
-
-  // //// Contents of TargetPassConfig::addISelPasses
-  // PM.add(llvm::createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
-  // PM.add(llvm::createPreISelIntrinsicLoweringPass());
-  // PM.add(llvm::createExpandLargeDivRemPass());
-  // PM.add(llvm::createExpandLargeFpConvertPass());
-
-  // /// Add common target configurable passes that perform LLVM IR to IR transforms
-  // /// following machine independent optimization.
-  // TPC->addIRPasses();
-  // llvm::outs() << "\n ~ Added IR passes\n";
-  // 
-  // /// Add pass to prepare the LLVM IR for code generation. This should be done
-  // /// before exception handling preparation passes.
-  // TPC->addCodeGenPrepare();
-  // llvm::outs() << "\n ~ Added Code Gen Preperation passes\n";
-  // 
-  // /// Turn exception handling constructs into something the code generators can
-  // /// handle.
-  // TPC->addPassesToHandleExceptions();
-  // llvm::outs() << "\n ~ Added Passes to Handle Exceptions\n";
-  // 
-  // /// Add common passes that perform LLVM IR to IR transforms in preparation for
-  // /// instruction selection.
-  // TPC->addISelPrepare();
-  // llvm::outs() << "\n ~ Added Instruction Selection Preparation passes\n";
-  // 
-  // // We shouldn't need this -- But this is the only func from addISelPasses that I'm not running and this is broken
-  // // TPC->addCoreISelPasses();
-  // // llvm::outs() << "\n ~ Added Instruction Selection passes\n";
-  // //// End of TargetPassConfig::addISelPasses
-  // llvm::outs() << "\nFinished adding Instruction Selection Passes\n";
-
-
-  // TPC->addMachinePasses();
   llvm::outs() << "\nAdd Machine Passes to Pass Manager:\n";
-
-  //// Contents of TargetPassConfig::addMachinePasses
-  //// Already cut down somewhat, but still WIP
-
   // Check what this does. I'm pretty sure we need this
   PM.add(llvm::createRegUsageInfoPropPass());
 
@@ -240,68 +198,40 @@ llvm::Error CodeGenerator::instrument(
   PM.add(llvm::createAMDGPUMachineCFGStructurizerPass());
   llvm::outs() << "\n ~ Added Pre Reg Alloc passes\n";
 
-  // Add reg alloc passes -- check if we need ALL of these passes
-  TPC->insertPass(&llvm::PHIEliminationID, &llvm::SILowerControlFlowID);
-  TPC->insertPass(&llvm::TwoAddressInstructionPassID, &llvm::SIWholeQuadModeID);
-  PM.add(getPass(TPC, &llvm::PHIEliminationID));
-  PM.add(getPass(TPC, &llvm::TwoAddressInstructionPassID));
-  
-  // We definitely need this one
+  // Add reg alloc passes -- Don't need all of these, however they might be 
+  //                         good optimizations to run
+  // TPC->insertPass(&llvm::PHIEliminationID, &llvm::SILowerControlFlowID);
+  // TPC->insertPass(&llvm::TwoAddressInstructionPassID, &llvm::SIWholeQuadModeID);
+  // PM.add(getPass(TPC, &llvm::PHIEliminationID));
+  // PM.add(getPass(TPC, &llvm::TwoAddressInstructionPassID));
   PM.add(llvm::createFastRegisterAllocator());
   llvm::outs() << "\n ~ Added Reg Alloc passes\n";
 
   // Post-ra passes.
-  PM.add(getPass(TPC, &llvm::SIFixVGPRCopiesID));
-  
-  // Need to check what these 2 do, and if we need them
-  PM.add(getPass(TPC, &llvm::RemoveRedundantDebugValuesID));
-  PM.add(getPass(TPC, &llvm::FixupStatepointCallerSavedID));
-  
-  llvm::outs() << "\n ~ Added Post Reg Alloc passes\n";
+  // Luthier runs  without these passes
+  // PM.add(getPass(TPC, &llvm::SIFixVGPRCopiesID));
+  // PM.add(getPass(TPC, &llvm::RemoveRedundantDebugValuesID));
+  // PM.add(getPass(TPC, &llvm::FixupStatepointCallerSavedID));
+  // llvm::outs() << "\n ~ Added Post Reg Alloc passes\n";
 
-  // FROM LLVM: Prolog/Epilog inserter needs a TargetMachine to instantiate. But only
-  //            do so if it hasn't been disabled, substituted, or overridden.
-  //
-  // ** Should we just always do prologue/epilogue insertion?
-  // if (!TPC->isPassSubstitutedOrOverridden(&llvm::PrologEpilogCodeInserterID)) {
   PM.add(llvm::createPrologEpilogInserterPass());
   llvm::outs() << "\n ~ Added prologue/epilogue insertion pass \n";
-  // }
 
-  // FROM LLVM: Expand pseudo instructions before second scheduling pass.
-  //  
-  // Apparently we need this. Idk what the "second scheduling pass" is
-  // bc we aren't doing a second ISel pass.
-  // But, it breaks when I comment this out... need to experiement more...
+  // Expand pseudo instructions before second scheduling pass.
+  // Apparently we need this. Idk what the "second scheduling pass" is bc 
+  // we aren't doing a second ISel pass. But it breaks when I comment this out
   PM.add(getPass(TPC, &llvm::ExpandPostRAPseudosID));
   llvm::outs() << "\n ~ Added ExpandPostRAPseudosID\n";
 
-  // Add passes for Pre-Emit
-  // Do we need ALL of these?
-  PM.add(llvm::createSIMemoryLegalizerPass());
-  PM.add(llvm::createSIInsertWaitcntsPass());
-  PM.add(llvm::createSIModeRegisterPass());
-  PM.add(getPass(TPC, &llvm::SILateBranchLoweringPassID));
-  PM.add(getPass(TPC, &llvm::PostRAHazardRecognizerID));
-  PM.add(getPass(TPC, &llvm::BranchRelaxationPassID));
-  llvm::outs() << "\n ~ Added Pre-Emit Pass\n";
-
   // FROM LLVM: Collect register usage information and produce a register mask of
   //            clobbered registers, to be used to optimize call sites.
-  //
-  // I would venture to guess that we need this for AMDGPUResourceUsageAnalysis
-  PM.add(llvm::createRegUsageInfoCollector()); 
-  llvm::outs() << "\n ~ Added createRegUsageInfoCollector pass\n";
+  // Able to run w/o this pass
+  // PM.add(llvm::createRegUsageInfoCollector()); 
+  // llvm::outs() << "\n ~ Added createRegUsageInfoCollector pass\n";
 
-  // Need to check whether or not we actually need these
-  PM.add(getPass(TPC, &llvm::LiveDebugValuesID));
-  PM.add(getPass(TPC, &llvm::MachineSanitizerBinaryMetadataID));
-  llvm::outs() << "\n ~ Added LiveDebugValues pass\n";
-  llvm::outs() << "\n ~ Added MachineSanitizerBinaryMetadata pass\n";
-
-  // need to check what this does and if we need it
-  PM.add(llvm::createStackFrameLayoutAnalysisPass());
-  llvm::outs() << "\n ~ Added StackFrameLayoutAnalysis pass\n";
+  // Keep this in case we want to dump the stack frame
+  // PM.add(llvm::createStackFrameLayoutAnalysisPass());
+  // llvm::outs() << "\n ~ Added StackFrameLayoutAnalysis pass\n";
   llvm::outs() << "\nFinished adding Machine Passes\n\n";
 
 
