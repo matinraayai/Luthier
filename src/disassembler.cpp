@@ -39,6 +39,7 @@
 #include "luthier/types.h"
 #include "object_utils.hpp"
 #include "target_manager.hpp"
+#include "llvm/Support/raw_ostream.h"
 
 namespace luthier {
 
@@ -637,6 +638,10 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
       if (Op.isReg()) {
         //        llvm::outs() << "Reg Op detected \n";
+        llvm::outs() << "Reg Op detected in INST:\n\t";
+        MCInst.print(llvm::outs());
+        llvm::outs() << "\n";
+
         unsigned RegNum = Op.getReg();
         const bool IsDef = OpIndex < MCID.getNumDefs();
         unsigned Flags = 0;
@@ -646,11 +651,11 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
           Defines.insert(RegNum);
         } else if (!Defines.contains(RegNum)) {
           LiveIns.insert(RegNum);
-          //          llvm::outs() << "Live in detected: \n";
-          //          llvm::outs() << "Register: ";
-          //          Op.print(llvm::outs(), TargetInfo->getMCRegisterInfo());
-          //          llvm::outs() << "\n";
-          //          llvm::outs() << "Flags: " << Flags << "\n";
+          llvm::outs() << " ~ Live in detected: \n";
+          llvm::outs() << " ~ Register: ";
+          Op.print(llvm::outs(), TargetInfo->getMCRegisterInfo());
+          llvm::outs() << "\n";
+          llvm::outs() << "Flags: " << Flags << "\n";
         }
         Builder.addReg(Op.getReg(), Flags);
       } else if (Op.isImm()) {

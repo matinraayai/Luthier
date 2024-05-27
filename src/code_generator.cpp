@@ -190,14 +190,7 @@ llvm::Error CodeGenerator::instrument(
   PM.add(getPass(TPC, &llvm::FinalizeISelID));
   llvm::outs() << "\nFinished adding Instruction Selection Passes\n";
 
-  llvm::outs() << "\nAdd Machine Passes to Pass Manager:\n";
-  // Check what this does. I'm pretty sure we need this
-  PM.add(llvm::createRegUsageInfoPropPass());
-
-  // Run pre-ra passes. -- AMDGPU only adds 1 pass here
-  PM.add(llvm::createAMDGPUMachineCFGStructurizerPass());
-  llvm::outs() << "\n ~ Added Pre Reg Alloc passes\n";
-
+  llvm::outs() << "\nAdd Machine Passes\n";
   // Add reg alloc passes -- Don't need all of these, however they might be 
   //                         good optimizations to run
   // TPC->insertPass(&llvm::PHIEliminationID, &llvm::SILowerControlFlowID);
@@ -206,13 +199,6 @@ llvm::Error CodeGenerator::instrument(
   // PM.add(getPass(TPC, &llvm::TwoAddressInstructionPassID));
   PM.add(llvm::createFastRegisterAllocator());
   llvm::outs() << "\n ~ Added Reg Alloc passes\n";
-
-  // Post-ra passes.
-  // Luthier runs  without these passes
-  // PM.add(getPass(TPC, &llvm::SIFixVGPRCopiesID));
-  // PM.add(getPass(TPC, &llvm::RemoveRedundantDebugValuesID));
-  // PM.add(getPass(TPC, &llvm::FixupStatepointCallerSavedID));
-  // llvm::outs() << "\n ~ Added Post Reg Alloc passes\n";
 
   PM.add(llvm::createPrologEpilogInserterPass());
   llvm::outs() << "\n ~ Added prologue/epilogue insertion pass \n";
