@@ -154,7 +154,7 @@ disassembleSymbol(hsa_executable_symbol_t Symbol, bool includeDebugInfo = false)
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                           luthier::LiftedSymbolInfo>>
-liftSymbol(hsa_executable_symbol_t Symbol, ,  bool includeDebugInfo = false) {
+liftSymbol(hsa_executable_symbol_t Symbol,  bool includeDebugInfo = false) {
   auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
   LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
   return luthier::CodeLifter::instance().liftSymbol(*SymbolWrapper, includeDebugInfo);

@@ -28,7 +28,7 @@ Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
              hsa_executable_symbol_t Symbol, luthier::address_t Address,
              size_t Size, llvm::DWARFDie &die)
     : Inst(std::move(Inst)), LCO(LCO), Symbol(Symbol),
-      LoadedDeviceAddress(Address), Size(Size) DWARFDebugInfoEntry(die) {}
+      LoadedDeviceAddress(Address), Size(Size), DWARFDebugInfoEntry(die) {}
 
 hsa_loaded_code_object_t Instr::getLoadedCodeObject() const { return LCO; }
 
@@ -51,5 +51,5 @@ size_t Instr::getSize() const { return Size; }
 /**
  * Returns this Instr's DWARFDie (a debug info entry for some executable symbol)
 */
-llvm::Expected<DWARFDie> Instr::getDie() const { return DWARFDebugInfoEntry; }
+llvm::Expected<llvm::DWARFDie> Instr::getDie() const { return DWARFDebugInfoEntry; }
 } // namespace luthier::hsa

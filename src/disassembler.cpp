@@ -134,7 +134,7 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
 //            if they don't want -> we won't cache it!
 // ExecutableSymbol ->
 llvm::Expected<const std::vector<hsa::Instr> &>
-luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false) {
+luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo) {
   if (!MCDisassembledSymbols.contains(Symbol)) {
     auto SymbolType = Symbol.getType();
     LUTHIER_RETURN_ON_ERROR(
@@ -201,18 +201,21 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool inclu
         }
       }
       PrevInstAddress = Address;
-      auto die = nullptr;
       if (includeDebugInfo) { // think of better way! I don't want to pass a null die, because it will be "invalid" (DWARFDie has isValid method that I use, and I believe passing null will make it invalid)
-        auto elfObjectFile = (*LCO)->getStorageELF();
+        auto elfObjectFile = LCO->getStorageELF();
         // pass in the DWARFDie here!!!
-        llvm::DWARFContext* context = DWARFContext::create(elfObjectFile); // dono if this will work, IntelliSense can't catch it
-        die = getDWARFDie(*context, SymbolName);
+        std::unique_ptr<llvm::DWARFContext> context = llvm::DWARFContext::create((*elfObjectFile)); // dono if this will work, IntelliSense can't catch it
+        auto die = getDWARFDie(*context, (*SymbolName).data());
         LUTHIER_RETURN_ON_ERROR(die.takeError());
+        Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
+                                Address + reinterpret_cast<luthier::address_t>(
+                                              MachineCodeOnDevice->data()),
+                                Size, (*die))); // code duplication for now, will fix later.
       }
       Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
                                 Address + reinterpret_cast<luthier::address_t>(
                                               MachineCodeOnDevice->data()),
-                                Size, *die));
+                                Size));
     }
   }
   return *MCDisassembledSymbols.at(Symbol);
@@ -559,7 +562,7 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
 llvm::Expected<LiftedSymbolInfo>
 CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                      llvm::Module &Module,
-                                     llvm::MachineModuleInfo &MMI, bool includeDebugInfo = false) {
+                                     llvm::MachineModuleInfo &MMI, bool includeDebugInfo) {
   auto Agent = Symbol.getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
   auto LCO = Symbol.getLoadedCodeObject();
@@ -629,7 +632,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
-    const llvm::DebugLoc debugLocation = getDebugLoc(Inst.getDWARFDie(), TargetInfo->getLLVMContext());
+    // const llvm::DebugLoc debugLocation = getDebugLoc(Inst.getDWARFDie(), TargetInfo->getLLVMContext());
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
         isAddressBranchOrBranchTarget(*LCO, Inst.getLoadedDeviceAddress()) &&
@@ -643,7 +646,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
     }
     llvm::MachineInstrBuilder Builder =
-        llvm::BuildMI(MBB, debugLocation, MCID);
+        llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
     Out.MCToMachineInstrMap.insert(
         {const_cast<hsa::Instr *>(&Inst), Builder.getInstr()});
     Out.MachineInstrToMCMap.insert(
@@ -849,7 +852,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                           luthier::LiftedSymbolInfo>>
-luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false) {
+luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo) {
   auto LCO = Symbol.getLoadedCodeObject();
   LUTHIER_RETURN_ON_ERROR(LCO.takeError());
 

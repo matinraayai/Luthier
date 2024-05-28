@@ -35,6 +35,8 @@
 #include <llvm/Object/ELFTypes.h>
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
+#include <llvm/DebugInfo/DWARF/DWARFContext.h>
+#include <llvm/DebugInfo/DWARF/DWARFDie.h>
 
 #include <map>
 #include <optional>
@@ -478,6 +480,9 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
   else
     return LUTHIER_ASSERTION(Found);
 }
+
+llvm::Expected<llvm::DWARFDie> getDWARFDie(llvm::DWARFContext &ctx,
+                                     std::string symbolName);
 
 } // namespace luthier
 

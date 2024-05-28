@@ -722,7 +722,7 @@ DWARFDie findSymbolDie(const llvm::DWARFDie Die,
   // Check current DIE for symbol name
   if (tag == dwarf::DW_TAG_subprogram ||
       tag == dwarf::DW_TAG_variable &&
-          (Die.find(dwarf::DW_AT_name)->getAsCString() == symbolName)) {
+          (*Die.find(dwarf::DW_AT_name)->getAsCString() == symbolName)) {
     return Die;
   }
   // check children of the current DIE
@@ -738,14 +738,14 @@ DWARFDie findSymbolDie(const llvm::DWARFDie Die,
 
 // const llvm::object::ELFObjectFile<ELFT> &Elf
 //
-llvm::Expected<llvm::DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,
-                                     std::string &symbolName) {
-  auto symbolDie;
+llvm::Expected<llvm::DWARFDie> getDWARFDie(llvm::DWARFContext &ctx,
+                                     std::string symbolName) {
+
   for (const auto &CU : ctx.compile_units()) {
-    if (auto *DIE = CU->getUnitDIE(false)) {
-      symbolDie = findSymbolDie(*DIE, symbolName);
+    if (llvm::DWARFDie DIE = CU->getUnitDIE(false)) {
+      auto symbolDie = findSymbolDie(DIE, symbolName);
       if (symbolDie.isValid()) {
-        break;
+        return symbolDie;
       }
     }
   }
@@ -758,49 +758,49 @@ llvm::Expected<llvm::DWARFDie> getDWARFDie(const llvm::DWARFContext &ctx,
   return DWARFDie();
 }
 
-llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
-                                     const llvm::LLVMContext &ctx) {
-  die.getAttributeValueAsReferencedDie(dwarf::DW_AT_decl_line, 0);
-  auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant().value();
-  auto col =  die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
-  llvm::Metadata *Scope = nullptr;
-  llvm::DIBuilder DIB(ctx);
+// llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
+//                                      const llvm::LLVMContext &ctx) {
+//   die.getAttributeValueAsReferencedDie(dwarf::DW_AT_decl_line, 0);
+//   auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant().value();
+//   auto col =  die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
+//   llvm::Metadata *Scope = nullptr;
+//   llvm::DIBuilder DIB(ctx);
 
-  // Determine the scope
-  if (auto ScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
-    const uint64_t ScopeOffset = ScopeAttr->getAsReference().value();
-    if (auto ScopeDie = die.getDwarfUnit()->getDIEForOffset(ScopeOffset)) {
-      if (ScopeDie.isValid()) {
-        // if its a subprogram (func) or lexical block /scope ({})
-        if (ScopeDie.getTag() == dwarf::DW_TAG_subprogram ||
-            ScopeDie.getTag() == dwarf::DW_TAG_lexical_block) {
-          Scope = DIB.createScope(ScopeDie);
-        } else if (ScopeDie.getTag() ==
-                   dwarf::DW_TAG_file_type) { // else, if it's a file
-          Scope =
-              DIB.createFile(ScopeDie.getName(), ScopeDie.getFilename().str());
-        }
-      }
-    }
-  }
+//   // Determine the scope
+//   if (auto ScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
+//     const uint64_t ScopeOffset = ScopeAttr->getAsReference().value();
+//     if (auto ScopeDie = die.getDwarfUnit()->getDIEForOffset(ScopeOffset)) {
+//       if (ScopeDie.isValid()) {
+//         // if its a subprogram (func) or lexical block /scope ({})
+//         if (ScopeDie.getTag() == dwarf::DW_TAG_subprogram ||
+//             ScopeDie.getTag() == dwarf::DW_TAG_lexical_block) {
+//           Scope = DIB.createScope(ScopeDie);
+//         } else if (ScopeDie.getTag() ==
+//                    dwarf::DW_TAG_file_type) { // else, if it's a file
+//           Scope =
+//               DIB.createFile(ScopeDie.getName(), ScopeDie.getFilename().str());
+//         }
+//       }
+//     }
+//   }
 
-  if (!Scope) {
-    // Fallback to using the CU's file as the scope
-    auto CU = die.getDwarfUnit()->getUnitDIE();
-    if (auto FileAttr = CU.find(dwarf::DW_AT_name)) {
-      std::string FileName = CU.getName(DINameKind::ShortName);
-      if (!FileName) {
-        // return a default DebugLoc
-        // Instead, need to throw an Error (can do this by returning an Expected<DebugLoc>)
-        return DebugLoc();
-      }
-      Scope = DIB.createFile(FileName, CU.getFilename().str());
-    }
-  }
-  // get might not be returning a pointer! We need a pointer to pass into the
-  // DebugLoc constructor
-  return DebugLoc(DILocation::get(ctx, line, col, Scope));
-}
+//   if (!Scope) {
+//     // Fallback to using the CU's file as the scope
+//     auto CU = die.getDwarfUnit()->getUnitDIE();
+//     if (auto FileAttr = CU.find(dwarf::DW_AT_name)) {
+//       std::string FileName = CU.getName(DINameKind::ShortName);
+//       if (!FileName) {
+//         // return a default DebugLoc
+//         // Instead, need to throw an Error (can do this by returning an Expected<DebugLoc>)
+//         return DebugLoc();
+//       }
+//       Scope = DIB.createFile(FileName, CU.getFilename().str());
+//     }
+//   }
+//   // get might not be returning a pointer! We need a pointer to pass into the
+//   // DebugLoc constructor
+//   return DebugLoc(DILocation::get(ctx, line, col, Scope));
+// }
 } // namespace luthier
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,

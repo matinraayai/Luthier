@@ -131,7 +131,7 @@ public:
    * \see hsa::Instr
    */
   llvm::Expected<const std::vector<hsa::Instr> &>
-  disassemble(const hsa::ExecutableSymbol &Symbol);
+  disassemble(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false);
 
 
   /**
@@ -256,11 +256,11 @@ public:
   llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                             std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                             LiftedSymbolInfo>>
-  liftSymbol(const hsa::ExecutableSymbol &Symbol);
+  liftSymbol(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false);
 
   llvm::Expected<LiftedSymbolInfo>
   liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
-                           llvm::Module &Module, llvm::MachineModuleInfo &MMI);
+                           llvm::Module &Module, llvm::MachineModuleInfo &MMI, bool includeDebugInfo = false);
 };
 
 } // namespace luthier

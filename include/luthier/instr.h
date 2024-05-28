@@ -59,7 +59,7 @@ public:
   [[nodiscard]] size_t getSize() const;
 
   // Should return an Exepected<DWARFDie> instead (set it to Error if this.DWARFDebugInfoEntry is null, or !isValid())
-  [[nodiscard]] llvm::DWARFDie getDWARFDie() const;
+  [[nodiscard]] llvm::Expected<llvm::DWARFDie> getDie() const;
 };
 
 } // namespace hsa

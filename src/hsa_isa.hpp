@@ -3,7 +3,6 @@
 #include "hsa_handle_type.hpp"
 #include <llvm/Support/Error.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
-#include <llvm/TargetParser/
 #include <llvm/TargetParser/Triple.h>
 
 namespace luthier::hsa {
