@@ -203,7 +203,7 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool inclu
       PrevInstAddress = Address;
       if (includeDebugInfo) { // think of better way! I don't want to pass a null die, because it will be "invalid" (DWARFDie has isValid method that I use, and I believe passing null will make it invalid)
         auto elfObjectFile = LCO->getStorageELF();
-        // pass in the DWARFDie here!!!
+        // In FUTURE: NEED TO CACHE THE DWARFContext for this LCO (if it's not already cached)
         std::unique_ptr<llvm::DWARFContext> context = llvm::DWARFContext::create((*elfObjectFile)); // dono if this will work, IntelliSense can't catch it
         auto die = getDWARFDie(*context, (*SymbolName).data());
         LUTHIER_RETURN_ON_ERROR(die.takeError());
@@ -616,7 +616,6 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       BranchTargetMBBs; // < Set of MBBs that will be the target of the
                         // UnresolvedBranchMIs
   auto MIA = TargetInfo->getMCInstrAnalysis();
-
   auto TargetFunction = CodeLifter::instance().disassemble(Symbol, includeDebugInfo);
   LUTHIER_RETURN_ON_ERROR(TargetFunction.takeError());
 
@@ -632,7 +631,10 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
+    // use the Module and pass it to getDebugLoc()
+    // In FUTURE: cache the MachineModuleInfo for this LCO if it's not already cached! 
     // const llvm::DebugLoc debugLocation = getDebugLoc(Inst.getDWARFDie(), TargetInfo->getLLVMContext());
+    // ISSUES WITH getDebugLoc 
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
         isAddressBranchOrBranchTarget(*LCO, Inst.getLoadedDeviceAddress()) &&

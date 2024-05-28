@@ -758,49 +758,69 @@ llvm::Expected<llvm::DWARFDie> getDWARFDie(llvm::DWARFContext &ctx,
   return DWARFDie();
 }
 
-// llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
-//                                      const llvm::LLVMContext &ctx) {
-//   die.getAttributeValueAsReferencedDie(dwarf::DW_AT_decl_line, 0);
-//   auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant().value();
-//   auto col =  die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
-//   llvm::Metadata *Scope = nullptr;
-//   llvm::DIBuilder DIB(ctx);
+llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
+                                     const llvm::LLVMContext &ctx) {
+  auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant().value();
+  auto col =  die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
+  // Issues:
+  // i need the module for the DIB
+  // llvm::Metadata *Scope = nullptr;
+  // llvm::DIBuilder DIB(); // needs the Module, and Matin said not to pass the Module...
+  // // Determine the scope
+  // if (auto ScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
+  //   const uint64_t ScopeOffset = ScopeAttr->getAsReference().value();
+  //   if (auto ScopeDie = die.getDwarfUnit()->getDIEForOffset(ScopeOffset)) {
+  //     if (ScopeDie.isValid()) {
+  //       // if its a subprogram (func) or lexical block /scope ({})
+  //       if (ScopeDie.getTag() == dwarf::DW_TAG_subprogram ||
+  //           ScopeDie.getTag() == dwarf::DW_TAG_lexical_block) {
+  //         Scope = DIB.createScope(ScopeDie);
+  //       } else if (ScopeDie.getTag() ==
+  //                  dwarf::DW_TAG_file_type) { // else, if it's a file
+  //         Scope =
+  //             DIB.createFile(ScopeDie.getName(), ScopeDie.getFilename().str());
+  //       }
+  //     }
+  //   }
+  // }
 
-//   // Determine the scope
-//   if (auto ScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
-//     const uint64_t ScopeOffset = ScopeAttr->getAsReference().value();
-//     if (auto ScopeDie = die.getDwarfUnit()->getDIEForOffset(ScopeOffset)) {
-//       if (ScopeDie.isValid()) {
-//         // if its a subprogram (func) or lexical block /scope ({})
-//         if (ScopeDie.getTag() == dwarf::DW_TAG_subprogram ||
-//             ScopeDie.getTag() == dwarf::DW_TAG_lexical_block) {
-//           Scope = DIB.createScope(ScopeDie);
-//         } else if (ScopeDie.getTag() ==
-//                    dwarf::DW_TAG_file_type) { // else, if it's a file
-//           Scope =
-//               DIB.createFile(ScopeDie.getName(), ScopeDie.getFilename().str());
-//         }
-//       }
-//     }
-//   }
+  // if (!Scope) {
+  //   // Fallback to using the CU's file as the scope
+  //   auto CU = die.getDwarfUnit()->getUnitDIE();
+  //   if (auto FileAttr = CU.find(dwarf::DW_AT_name)) {
+  //     std::string FileName = CU.getName(DINameKind::ShortName);
+  //     if (!FileName) {
+  //       // return a default DebugLoc
+  //       // Instead, need to throw an Error (can do this by returning an Expected<DebugLoc>)
+  //       return DebugLoc();
+  //     }
+  //     Scope = DIB.createFile(FileName, CU.getFilename().str());
+  //   }
+  // }
+  // get might not be returning a pointer! We need a pointer to pass into the
+  // DebugLoc constructor
+  // DIB.createBasicType()
+  // return DebugLoc(DILocation::get(line, col, scope));
+  // DIBasicType::get(unsigned Tag, StringRef Name) -> Tag -> 
+  // DebugLoc(DILocation::get(line, col, scope));
 
-//   if (!Scope) {
-//     // Fallback to using the CU's file as the scope
-//     auto CU = die.getDwarfUnit()->getUnitDIE();
-//     if (auto FileAttr = CU.find(dwarf::DW_AT_name)) {
-//       std::string FileName = CU.getName(DINameKind::ShortName);
-//       if (!FileName) {
-//         // return a default DebugLoc
-//         // Instead, need to throw an Error (can do this by returning an Expected<DebugLoc>)
-//         return DebugLoc();
-//       }
-//       Scope = DIB.createFile(FileName, CU.getFilename().str());
-//     }
-//   }
-//   // get might not be returning a pointer! We need a pointer to pass into the
-//   // DebugLoc constructor
-//   return DebugLoc(DILocation::get(ctx, line, col, Scope));
-// }
+  // Updates:
+  // disassemble(hsa::ExecutableSymbol Symbol, bool includeDebugInfo) -> creates the DWARFDie, and adds it to the Instr.
+
+
+  // scope is a Metadata* and represents the "scope" of this symbol
+  // a scope is one of: subroutine (function) / lexical scope ({}) / File
+  // Issue: I need the "scope" to create the DebugLoc
+  // - I need the Module in order to get construct a DIBuilder (I got confused and thought we could use the LLVMContext)
+  // - I need the DIBuilder to create the scope and pass it into the DILocation::get()
+  // Solutions:
+  // - the liftAndAddToModule function has access to the Module, use it to get the DIBuilder -> DebugLoc
+  // - create a dummy Metadata* scope object (check: DIBasicType, also having trouble doing that) 
+  // - Matin, any ideas on how the scope could be accessed without all this hassle? 
+  //    - I feel like scope of a symbol should be easily accessible
+  //    - I checked: Module, MachineModuleInfo, Function, MachineBasicBlock, MachineFunction....
+  return llvm::DebugLoc();
+}
 } // namespace luthier
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
