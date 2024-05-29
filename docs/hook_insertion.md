@@ -3,30 +3,51 @@
 ## Introduction
 Luthier lets tool writers insert device code instrumentation "hooks" at any point in the original application. 
 Hooks give read/write access to the ISA visible state of the insertion point, and allow tools to express
-instrumentation logic in plain HIP. Luthier then compiles the hook into machine code while guaranteeing no conflict
-with the application state occurs. This makes hooks much more flexible and easier to work with compared to 
-using LLVM's MIR builder API, and allows easier portability between different GPU architectures.
+instrumentation logic in plain HIP. Luthier then compiles the hook into machine code while guaranteeing the compiled code
+does not conflict with the application state. This makes hooks much more flexible and easier to work with compared to 
+using LLVM's MIR builder API, and allows portability between different GPU architectures.
 
-## Implementation Details
-Under the hood, hooks are written as noinline device functions in HIP. During tool compilation, the clang compiler is
-asked to embedd the LLVM bitcode of the tool compilation module in the generated code object.
+## Implementation Details and Lifetime of a Hook
+Under the hood, hooks in a Luthier tool are written as `noinline` device functions in HIP. During compilation, 
+the clang compiler is asked to also generate the LLVM bitcode of the tool device code and embedd it in all the HSA code 
+objects in the tool's FAT binary using the option `-Xclang -fembed-bitcode=all`.
 
-During instrumentation, the HIP runtime loads the instrumentation code object as usual, which gives Luthier access to 
-its storage ELF in host memory, and hence the LLVM bitcode of the tool through ROCr. Luthier then asks the 
-`CodeObjectManager` to load the bitcode into an `llvm::Module`, which serves as a starting point for generating 
-instrumented code. The LLVM Module is cached by the `CodeObjectManager` for future usage.
+During execution, the HIP runtime parses the HIP FAT binary of the tool and loads the necessary tool code object(s) via 
+ROCr as usual. Luthier can then easily access the embedded LLVM bitcode of the tool code object by inspecting its 
+storage ELF without requiring a dedicated loader. The `CodeObjectManager` in Luthier is tasked with loading the bitcode 
+into an `llvm::Module`, which serves as a starting point for generating instrumented code. The LLVM Module is cached by 
+the `CodeObjectManager` for future usage and is destroyed once the tool loaded code object's HSA executable is 
+destroyed. 
 
 It's important to emphasize that Luthier **does not** use the instrumentation functions already compiled by HIP, nor 
-tries to lift it into LLVM MIR. Starting from the LLVM IR of the instrumentation code allows more flexibility, 
-gives access to passes required by hooks including function inlining, generates stack frame objects 
-which does not collide with the original kernel in case of spilling, and as we will demonstrate later, is easier to 
-express register usage requirements once we get past the instruction selection stage.
+tries to lift them into LLVM MIR. Starting from the LLVM IR of the instrumentation code compared to its lifted MIR 
+version has the following benefits:
+1. LLVM IR is in SSA form and will be transformed to an SSA form of MIR in the code generation pipeline. The lifted MIR 
+does no such thing. The SSA form of MIR, combined with the list of live physical registers at each instrumentation point,
+guides the register allocation pass to optimize its register usage and generate spill code when needed. 
+2. LLVM IR can use the function inlining passes, which is not available as a Machine Function Passes in LLVM. 
+This is important for hooks, as they are the inlined version of the device functions generated in the tool writing/
+compilation stage. Inlining also eliminates any unnecessary stack access from the device function early on.
+3. LLVM IR contains the stack frame information of each function, which otherwise gets lost after the assembly 
+is printed and is not trivial to recover by lifting into MIR. LLVM IR makes it easy to create stack objects in the 
+instrumentation logic that avoid collision with the original kernel's stack.
 
-This, however, does not undermine the importance of the tool code object loaded by the HIP/HSA runtime, since the code
-object:
-1. Serves as a convenient means for accessing the LLVM IR of the instrumentation code. 
-2. Makes the HIP runtime initialize the static device variables defined by the tool writer to aggregate instrumentation 
-results.
+Note that although the text section of the tool loaded code object is not used by Luthier, it is still required for 
+its device code to be fully compiled so that the HIP/HSA runtimes is forced to load it and initialize its static device 
+variables for aggregating instrumentation results.
+
+An `InstrumentationTask` passed to Luthier specifies a list of instrumentation points as well as device hooks to 
+be inserted at those points. The `CodeGenerator` will locate the device hooks inside the Module obtained from the 
+tool's loaded code object, and performs a "deep copy" of them into a brand-new LLVM Module, 
+which we call "instrumentation module". The "deep copy" operation first analyzes the IR instructions of all the hooks,
+and finds all Module components used by those instructions. Then any LLVM Functions used by the hooks will be deeply
+copied into the instrumentation module, and any used Global Variable will only be declared as external and not deeply
+copied over. This allows the ROCr runtime to correctly map the instrumented code to tool's static variables. If present,
+any debug and metadata information will also be copied over to the instrumentation module.
+
+For now all hooks in an instrumentation task must come from the same LLVM Module i.e. the same tool loaded code object. 
+This is to ensure no collision of debug metadata from two separate file occurs. 
+This requirement can be revisited in the future if needed.
 
 
 
@@ -79,5 +100,3 @@ written in HIP adhere to a version of the C-calling convention, as explained in
 
 Hence instrumentation functions in HIP should be regarded as
 Insertion of device functions in Luthier
-Before we delve into how Luthier "inserts callbacks" into the application code we first need to define what
-At first glance inserting calls to instrumentation functions might seem; The tool writer expects 
