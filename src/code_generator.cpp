@@ -39,6 +39,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 
 #include "SIInstrInfo.h"
 #include "code_object_manager.hpp"
@@ -78,8 +79,11 @@
 #include "llvm/Target/TargetMachine.h"
 #include <AMDGPU.h>
 #include <SIMachineFunctionInfo.h>
+#include <llvm/Analysis/CGSCCPassManager.h>
+#include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
+#include <llvm/Passes/PassBuilder.h>
 
 #include "AMDGPUGenInstrInfo.inc"
 #include "llvm/BinaryFormat/ELF.h"
@@ -87,7 +91,7 @@
 
 namespace luthier {
 
-template<> CodeGenerator* Singleton<CodeGenerator>::Instance{nullptr};
+template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
 llvm::Error CodeGenerator::compileRelocatableToExecutable(
     const llvm::ArrayRef<uint8_t> &Code, const hsa::ISA &ISA,
@@ -252,6 +256,110 @@ CodeGenerator::insertFunctionCalls(
         luthier::CodeObjectManager::instance().getInstrumentationFunction(
             IFuncShadowHostPtr, *Agent);
     LUTHIER_RETURN_ON_ERROR(IFunctionSymbol.takeError());
+    auto InstrumentationModule =
+        CodeObjectManager::instance()
+            .getModuleContainingInstrumentationFunctions({*IFunctionSymbol});
+    LUTHIER_RETURN_ON_ERROR(InstrumentationModule.takeError());
+
+    // Create the analysis managers.
+    // These must be declared in this order so that they are destroyed in the
+    // correct order due to inter-analysis-manager references.
+    LoopAnalysisManager LAM;
+    FunctionAnalysisManager FAM;
+    CGSCCAnalysisManager CGAM;
+    ModuleAnalysisManager MAM;
+
+    // Create the new pass manager builder.
+    // Take a look at the PassBuilder constructor parameters for more
+    // customization, e.g. specifying a TargetMachine or various debugging
+    // options.
+    llvm::PassBuilder PB;
+
+    // Register all the basic analyses with the managers.
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+    // Create the pass manager.
+    ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
+
+    // Optimize the IR!
+    MPM.run(**InstrumentationModule, MAM);
+
+
+    //    InstrumentationModule->dump();
+    llvm::outs() << "Instrumentation module symbols:\n";
+    //    InstrumentationModule->get()->dump();
+    for (auto &F : **InstrumentationModule) {
+      if (F.getName() == "instrumentation_function") {
+//        F.addFnAttr(llvm::Attribute:);
+        F.removeFnAttr(llvm::Attribute::NoInline);
+        F.addFnAttr(llvm::Attribute::AlwaysInline);
+      }
+//      for (auto &BB : F) {
+//        for (auto &I : BB) {
+//          if (auto *AllocaInst = llvm::dyn_cast<llvm::AllocaInst>(&I)) {
+//            new llvm::AllocaInst(
+//                llvm::PointerType::get(AllocaInst->getAllocatedType(),
+//                                       AMDGPUAS::GLOBAL_ADDRESS),
+//                InstrumentationModule.get().get()->getDataLayout().getAllocaAddrSpace(), AllocaInst->getArraySize(),
+//                AllocaInst->getAlign(), AllocaInst->getName(),
+//                AllocaInst->getIterator());
+//            AllocaInst->eraseFromParent();
+//          }
+//        }
+//      }
+      F.dump();
+    }
+    auto ISA = llvm::cantFail(IFunctionSymbol->getLoadedCodeObject()).getISA();
+    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+    auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
+    LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
+    auto &TM = *TargetInfo->getTargetMachine();
+    llvm::legacy::PassManager PM;
+    TM.setOptLevel(llvm::CodeGenOptLevel::Aggressive);
+
+    auto MMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
+
+    llvm::TargetLibraryInfoImpl TLII(
+        llvm::Triple((*InstrumentationModule)->getTargetTriple()));
+    PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+
+    llvm::TargetPassConfig *TPC = TM.createPassConfig(PM);
+
+    PM.add(TPC);
+    PM.add(MMIWP);
+
+
+    TPC->addISelPasses();
+//    TPC->addCodeGenPrepare();
+    //    TPC->addPrintPass("After ISEL: ");
+    TPC->addMachinePasses();
+    auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
+    PM.add(UsageAnalysis);
+    TPC->setInitialized();
+//    llvm::SmallVector<char> Reloc;
+//    llvm::raw_svector_ostream OutOS(Reloc);
+//
+    //     AsmPrinter is responsible for generating the assembly into AsmBuffer.
+//    if (TM.addAsmPrinter(PM, OutOS, nullptr,
+//                         llvm::CodeGenFileType::AssemblyFile,
+//                         MMIWP->getMMI().getContext()))
+//      llvm::outs() << "Failed to add pass manager\n";
+
+    TPC->setInitialized();
+
+    PM.run(**InstrumentationModule); // Run all the passes
+    InstrumentationModule.get().get()->dump();
+    for (const auto &F : **InstrumentationModule) {
+      const auto MF = MMIWP->getMMI().getMachineFunction(F);
+      if (MF != nullptr)
+        MF->dump();
+    }
+    //    llvm::outs() << Reloc << "\n";
+
     // Lift the instrumentation function's symbol and add it to the compilation
     // module
     auto IFLSI = luthier::CodeLifter::instance().liftSymbolAndAddToModule(

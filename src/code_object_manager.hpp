@@ -4,10 +4,10 @@
 #include <vector>
 
 #include "hsa_agent.hpp"
-#include "singleton.hpp"
 #include "hsa_code_object_reader.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"
+#include "singleton.hpp"
 #include <luthier/types.h>
 
 namespace luthier {
@@ -15,9 +15,8 @@ namespace luthier {
  * \brief A singleton object that keeps track of instrumentation functions and
  * instrumented kernels (per un-instrumented application kernel) in Luthier.
  */
-class CodeObjectManager: public Singleton<CodeObjectManager> {
+class CodeObjectManager : public Singleton<CodeObjectManager> {
 public:
-
   /**
    * Registers the wrapper kernel of the tool's instrumentation functions
    * The arguments are captured by intercepting \p __hipRegisterFunction calls,
@@ -91,9 +90,23 @@ public:
    */
   bool isKernelInstrumented(const hsa::ExecutableSymbol &Kernel) const;
 
-  ~CodeObjectManager();
-private:
+  /**
+   * Returns a new \c llvm::Module containing the LLVM IR of the given
+   * \p Symbols.
+   * \param Symbols A list of instrumentation functions to be copied over
+   * to the returned Module. The symbols don't have to necessarily inside the
+   * same Loaded Code Object; But the Loaded Code Objects should have the same
+   * ISA.
+   * \return a new \c llvm::Module which contains the IR of the given \p
+   * Symbols, or an \c llvm::Error describing the issue encountered
+   */
+  llvm::Expected<std::unique_ptr<llvm::Module>>
+  getModuleContainingInstrumentationFunctions(
+      llvm::ArrayRef<hsa::ExecutableSymbol> Symbols) const;
 
+  ~CodeObjectManager();
+
+private:
   struct ToolFunctionInfo {
     const hsa::ExecutableSymbol InstrumentationFunction;
     const hsa::ExecutableSymbol WrapperKernel;
@@ -121,10 +134,13 @@ private:
                          ToolFunctionInfo>
       ToolFunctions{};
 
-  std::unordered_map<
+  llvm::DenseMap<
       hsa::ExecutableSymbol,
       std::tuple<hsa::ExecutableSymbol, hsa::Executable, hsa::CodeObjectReader>>
       InstrumentedKernels{};
+
+  mutable llvm::DenseMap<hsa::LoadedCodeObject, std::unique_ptr<llvm::Module>>
+      ToolLCOEmbeddedIRModules{};
 };
 }; // namespace luthier
 

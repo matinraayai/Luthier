@@ -1,20 +1,32 @@
+#include <fstream>
+#include <functional>
 #include <hip/hip_runtime_api.h>
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
-#include <luthier/luthier.h>
-
-#include <fstream>
-#include <functional>
 #include <iostream>
+#include <luthier/luthier.h>
 #include <string>
 
 MARK_LUTHIER_DEVICE_MODULE
 
 __managed__ int globalCounter = 20;
 
-LUTHIER_DECLARE_FUNC void instrumentation_function() { globalCounter = 20000; }
+extern "C" __device__ __forceinline__ int funcInternal(int myInt) {
+  globalCounter = 20;
+  return 100 + myInt;
+}
 
-LUTHIER_EXPORT_FUNC(instrumentation_function)
+LUTHIER_DECLARE_FUNC(instrumentation_function(int myInt, int myInt2) {
+  int threadIdx_x;
+  __asm__ __volatile__("v_mov_b32 %0 v0\n" : "=v"(threadIdx_x));
+  globalCounter = 20000 + funcInternal(myInt) + myInt2;
+})
+
+extern "C" __global__ void
+__luthier_wrap__instrumentation_function() {
+  instrumentation_function(5, 3);
+  funcInternal(3);
+}
 
 namespace luthier {
 

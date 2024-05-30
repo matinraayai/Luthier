@@ -1,8 +1,11 @@
 #include "code_object_manager.hpp"
+#include "target_manager.hpp"
 
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 
 #include <vector>
 
@@ -13,10 +16,13 @@
 #include "hsa_intercept.hpp"
 #include "hsa_loaded_code_object.hpp"
 #include "log.hpp"
+#include "cloning.hpp"
 
 namespace luthier {
 
-template<> CodeObjectManager* Singleton<CodeObjectManager>::Instance{nullptr};
+#define DEBUG_TYPE "code-object-manager"
+
+template <> CodeObjectManager *Singleton<CodeObjectManager>::Instance{nullptr};
 
 void CodeObjectManager::registerInstrumentationFunctionWrapper(
     const void *WrapperShadowHostPtr, const char *KernelName) {
@@ -65,8 +71,8 @@ llvm::Error CodeObjectManager::checkIfLuthierToolExecutableAndRegister(
       }
     }
   }
-  LuthierLogDebug("Number of executables captured: {0}\n",
-                  ToolExecutables.size());
+  LLVM_DEBUG(llvm::dbgs() << "Number of executables captured: "
+                          << ToolExecutables.size() << "\n");
   return llvm::Error::success();
 }
 
@@ -150,6 +156,83 @@ CodeObjectManager::~CodeObjectManager() {
 bool CodeObjectManager::isKernelInstrumented(
     const hsa::ExecutableSymbol &Kernel) const {
   return InstrumentedKernels.contains(Kernel);
+}
+llvm::Expected<std::unique_ptr<llvm::Module>>
+CodeObjectManager::getModuleContainingInstrumentationFunctions(
+    const llvm::ArrayRef<hsa::ExecutableSymbol> Symbols) const {
+  // Make sure all LCOs have the same ISA + Keep track of the LCOs
+  llvm::SmallDenseSet<hsa::LoadedCodeObject, 1> LCOs;
+  hsa::ISA ISA{{0}};
+  for (const auto &Symbol : Symbols) {
+    auto LCO = Symbol.getLoadedCodeObject();
+    LUTHIER_RETURN_ON_ERROR(LCO.takeError());
+    auto ISAOfLCO = LCO->getISA();
+    LUTHIER_RETURN_ON_ERROR(ISAOfLCO.takeError());
+    if (ISA.hsaHandle() == 0)
+      ISA = *ISAOfLCO;
+    else
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ISA == *ISAOfLCO));
+    LCOs.insert(*LCO);
+  }
+
+  auto TargetInfo = luthier::TargetManager::instance().getTargetInfo(ISA);
+  LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
+  // Ensure all the LCOs have their Modules already created by the Code Object
+  // Manager
+  for (const auto &LCO : LCOs) {
+    if (!ToolLCOEmbeddedIRModules.contains(LCO)) {
+      auto StorageELF = LCO.getStorageELF();
+      LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
+
+      for (const auto &Section : StorageELF->sections()) {
+        auto SectionName = Section.getName();
+        LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
+        llvm::outs() << "Is section bitcode: " << Section.isBitcode() << "\n";
+        llvm::outs() << "Section name: "  << *SectionName << "\n";
+        if (*SectionName == ".llvmcmd") {
+          llvm::outs() << llvm::cantFail(Section.getContents()) << "\n";
+        }
+        if (*SectionName == ".llvmbc") {
+          auto SectionContents = Section.getContents();
+          LUTHIER_RETURN_ON_ERROR(SectionContents.takeError());
+          auto BCBuffer =
+              llvm::MemoryBuffer::getMemBuffer(*SectionContents, "", false);
+          auto Module =
+              llvm::parseBitcodeFile(*BCBuffer, *TargetInfo->getLLVMContext());
+          LUTHIER_RETURN_ON_ERROR(Module.takeError());
+
+          ToolLCOEmbeddedIRModules.insert({LCO, std::move(*Module)});
+        }
+      }
+      // Ensure that the tool contained LLVM bitcode and it was successfully
+      // extracted
+      LUTHIER_RETURN_ON_ERROR(
+          LUTHIER_ASSERTION(ToolLCOEmbeddedIRModules.contains(LCO)));
+    }
+  }
+
+  // Create a new LLVM Module to hold the requested symbols
+  std::unique_ptr<llvm::Module> ClonedModule =
+      std::make_unique<llvm::Module>("", *TargetInfo->getLLVMContext());
+
+
+  llvm::SmallVector<llvm::Function*> Funcs;
+  for (const auto &Symbol : Symbols) {
+    auto LCO = llvm::cantFail(Symbol.getLoadedCodeObject());
+    const auto &LCOModule = ToolLCOEmbeddedIRModules.at(LCO);
+    ClonedModule->setSourceFileName(LCOModule->getSourceFileName());
+    ClonedModule->setDataLayout(LCOModule->getDataLayout());
+    ClonedModule->setTargetTriple(LCOModule->getTargetTriple());
+    ClonedModule->setModuleInlineAsm(LCOModule->getModuleInlineAsm());
+    ClonedModule->IsNewDbgInfoFormat = LCOModule->IsNewDbgInfoFormat;
+    auto SymbolName = Symbol.getName();
+    LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+    Funcs.push_back(LCOModule->getFunction(*SymbolName));
+    return llvm::CloneModule(*LCOModule);
+  }
+//  cloneFunctionIntoModule(Funcs, *ClonedModule);
+//  return std::move(ClonedModule);
+
 }
 
 } // namespace luthier
