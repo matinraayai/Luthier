@@ -778,46 +778,25 @@ llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
         } else if (ScopeDie.getTag() ==
                    dwarf::DW_TAG_file_type) { // else, if it's a file
           Scope =
-              DIB.createFile(ScopeDie.getShortName(), ScopeDie.getFilename().str());
+              DIB.createFile(ScopeDie.getShortName(), ScopeDie.getDeclFile(llvm::DILineInfoSpecifier::FileLineInfoKind::RelativeFilePath));
         }
       }
     }
   }
+
   if (!Scope) {
     // Fallback to using the CU's file as the scope
     auto CU = die.getDwarfUnit()->getUnitDIE();
     if (auto FileAttr = CU.find(dwarf::DW_AT_name)) {
-      std::string FileName = std::string(CU.getShortName());
+      const char * FileName = CU.getShortName();
       if (!FileName) {
         // return a default DebugLoc
         // Instead, need to throw an Error (can do this by returning an Expected<DebugLoc>)
         return DebugLoc();
       }
-      Scope = DIB.createFile(FileName, CU.getDeclFile().str()); // declFile
+      Scope = DIB.createFile(std::string(FileName), CU.getDeclFile(llvm::DILineInfoSpecifier::FileLineInfoKind::RelativeFilePath)); // declFile, NEED TO get the directory and pass it to createFile
     }
   }
-  // get might not be returning a pointer! We need a pointer to pass into the
-  // DebugLoc constructor
-  // DIB.createBasicType()
-  // return DebugLoc(DILocation::get(line, col, scope));
-  // DIBasicType::get(unsigned Tag, StringRef Name) -> Tag ->
-  // DebugLoc(DILocation::get(line, col, scope));
-
-  // Updates:
-  // disassemble(hsa::ExecutableSymbol Symbol, bool includeDebugInfo) -> creates the DWARFDie, and adds it to the Instr.
-
-
-  // scope is a Metadata* and represents the "scope" of this symbol
-  // a scope is one of: subroutine (function) / lexical scope ({}) / File
-  // Issue: I need the "scope" to create the DebugLoc
-  // - I need the Module in order to get construct a DIBuilder (I got confused and thought we could use the LLVMContext)
-  // - I need the DIBuilder to create the scope and pass it into the DILocation::get()
-  // Solutions:
-  // - the liftAndAddToModule function has access to the Module, use it to get the DIBuilder -> DebugLoc
-  // - create a dummy Metadata* scope object (check: DIBasicType, also having trouble doing that)
-  // - Matin, any ideas on how the scope could be accessed without all this hassle?
-  //    - I feel like scope of a symbol should be easily accessible
-  //    - I checked: Module, MachineModuleInfo, Function, MachineBasicBlock, MachineFunction....
   return llvm::DebugLoc();
 }
 } // namespace luthier
