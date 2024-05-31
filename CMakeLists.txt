@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 
 # Global CXX Setup =====================================================================================================
-project(luthier VERSION 0.0.1 LANGUAGES CXX)
+project(luthier
+        VERSION 0.0.1
+        LANGUAGES CXX
+        DESCRIPTION "Dynamic Binary Instrumentation for AMD GPUs on ROCm"
+)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -24,6 +28,7 @@ add_library(luthier SHARED
         src/hsa_code_object_reader.hpp src/hsa_code_object_reader.cpp src/kernel_descriptor.cpp
         src/hsa.hpp src/hsa.cpp include/luthier/hsa_trace_api.h include/luthier/pass.h
         src/pass.cpp src/hip_platform.hpp src/hsa_platform.hpp src/hsa_platform.cpp src/singleton.hpp
+        src/cloning.hpp src/cloning.cpp
 )
 # ======================================================================================================================
 
@@ -43,6 +48,9 @@ else ()
 endif ()
 
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
+
+option(LUTHIER_BUILD_LATEX_DOCS "Builds Luthier documentation with Doxygen in PDF format with Latex" OFF)
+option(LUTHIER_BUILD_HTML_DOCS "Builds Luthier documentation with Doxygen in HTML format" OFF)
 # ======================================================================================================================
 # Required Flags for the project =======================================================================================
 set_property(GLOBAL PROPERTY POSITION_INDEPENDENT_CODE TRUE)
@@ -57,6 +65,8 @@ find_package(amd_comgr REQUIRED)
 find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/)
 # Some HSA include files won't work unless this is defined
 target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
+
+find_package(rocprofiler-register REQUIRED)
 
 # LLVM AMDGPU Configuration (for tablegen and code generation) =========================================================
 find_package(LLVM REQUIRED CONFIG PATHS ${LUTHIER_LLVM_BIN_DIR} NO_DEFAULT_PATH)
@@ -98,3 +108,13 @@ if (${LUTHIER_BUILD_EXAMPLES})
     endforeach (DIR)
 endif ()
 # ======================================================================================================================
+
+# Documentation Build With Doxygen =====================================================================================
+if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
+    find_package(Doxygen REQUIRED)
+    set(DOXYGEN_GENERATE_HTML ${LUTHIER_BUILD_HTMLS_DOCS})
+    set(DOXYGEN_GENERATE_LATEX ${LUTHIER_BUILD_LATEX_DOCS})
+    doxygen_add_docs(luthier_docs)
+endif ()
+
+
