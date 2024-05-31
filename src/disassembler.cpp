@@ -632,9 +632,9 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
     // use the Module and pass it to getDebugLoc()
-    // In FUTURE: cache the MachineModuleInfo for this LCO if it's not already cached! 
+    // In FUTURE: cache the MachineModuleInfo for this LCO if it's not already cached!
     // const llvm::DebugLoc debugLocation = getDebugLoc(Inst.getDWARFDie(), TargetInfo->getLLVMContext());
-    // ISSUES WITH getDebugLoc 
+    // ISSUES WITH getDebugLoc
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
         isAddressBranchOrBranchTarget(*LCO, Inst.getLoadedDeviceAddress()) &&
