@@ -1,6 +1,6 @@
 #include <fstream>
 #include <functional>
-#include <hip/hip_runtime_api.h>
+#include <hip/hip_runtime.h>
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <iostream>
@@ -9,24 +9,18 @@
 
 MARK_LUTHIER_DEVICE_MODULE
 
-__managed__ int globalCounter = 20;
+__attribute__((managed)) int globalCounter = 20;
 
 extern "C" __device__ __forceinline__ int funcInternal(int myInt) {
   globalCounter = 20;
   return 100 + myInt;
 }
 
-LUTHIER_DECLARE_FUNC(instrumentation_function(int myInt, int myInt2) {
+LUTHIER_HOOK_CREATE(instrumentation_function, (int myInt, int myInt2), {
   int threadIdx_x;
   __asm__ __volatile__("v_mov_b32 %0 v0\n" : "=v"(threadIdx_x));
   globalCounter = 20000 + funcInternal(myInt) + myInt2;
 })
-
-extern "C" __global__ void
-__luthier_wrap__instrumentation_function() {
-  instrumentation_function(5, 3);
-  funcInternal(3);
-}
 
 namespace luthier {
 
@@ -80,7 +74,7 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
             auto &MBB = *MF.begin();
             auto &MI = *MBB.begin();
             IT.insertCallTo(MI,
-                            LUTHIER_GET_EXPORTED_FUNC(instrumentation_function),
+                            LUTHIER_GET_HOOK_HANDLE(instrumentation_function),
                             INSTR_POINT_AFTER);
           }
 

@@ -1,4 +1,4 @@
-# Building Luthier
+# 2. Building Luthier
 Below are the required steps to build Luthier.
 ## Build requirements
 
