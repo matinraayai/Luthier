@@ -34,8 +34,6 @@ void cloneModuleAttributesAndNamedMetaData(const llvm::Module &OldModule,
 /// \n
 /// Besides the Global Values, the named Metadata of the Old Module will also
 /// be copied over to the new Module, with old values pointing to new ones
-/// If \p DeepClonedOldValues is empty, then only the Module's named metadata
-/// will be deeply cloned
 /// \n
 /// If any of values in \p DeepClonedOldValues relate to other global values
 /// in their parent module (e.g. a function that calls another function, an
@@ -47,19 +45,24 @@ void cloneModuleAttributesAndNamedMetaData(const llvm::Module &OldModule,
 /// an external-facing linkage. This includes device functions in HIP.
 /// \n
 /// 2. If the related value is of type \c llvm::GlobalAlias, and its underlying
-/// value is an \c llvm::Function of non-external linkage type.
+/// value is an \c llvm::Function of non-external linkage type or the underlying
+/// value itself is deeply cloned. Otherwise the Global Alias will be replaced
+/// with a Value of its underlying type in the target Module.
 /// \n
-/// 3. If the related value is of type \c llvm::GlobalIFunc, and its resolver
-/// function doesn't have an external-facing linkage. Keep in mind that IFuncs
-/// are not implemented yet in the HSA standard so it is
-/// not likely for this type of Value to be encountered for now.
-/// \param DeepClonedOldValues A list of \c llvm::GlobalValue's to be cloned
+/// 3. If the related value is of type \c llvm::GlobalIFunc, then its resolver
+/// function doesn't have an external-facing linkage or is deeply cloned.
+/// Keep in mind that IFuncs are not implemented yet in the HSA standard so it
+/// is not likely for this type of Value to be encountered for now.
+/// \n
+/// If
+/// \param [in] DeepCloneOldValues A list of \c llvm::GlobalValue's to be cloned
 /// that belong to the same \c llvm::Module
-/// \param NewModule The destination of the cloned Values
-/// \return an \p llvm::Error if the passed values don't have the same parent
+/// \param [in, out] NewModule The destination of the cloned Values
+/// \return an \p llvm::Error if the passed values don't have the same parent, or
+/// if the list is empty.
 /// Module; Otherwise an \p llvm::Error::success()
 llvm::Error cloneGlobalValuesIntoModule(
-    llvm::ArrayRef<llvm::GlobalValue *> DeepClonedOldValues,
+    llvm::ArrayRef<llvm::GlobalValue *> DeepCloneOldValues,
     llvm::Module &NewModule);
 
 } // namespace luthier
