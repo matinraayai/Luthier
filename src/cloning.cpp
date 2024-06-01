@@ -16,7 +16,7 @@ static void copyComdat(llvm::GlobalObject *Dst, const llvm::GlobalObject *Src) {
 
 namespace luthier {
 
-void cloneModuleAttributesAndNamedMetaData(const llvm::Module &OldModule,
+void cloneModuleAttributes(const llvm::Module &OldModule,
                                            llvm::Module &NewModule) {
   NewModule.setModuleIdentifier(OldModule.getModuleIdentifier());
   NewModule.setSourceFileName(OldModule.getSourceFileName());
@@ -143,7 +143,7 @@ llvm::Error cloneGlobalValuesIntoModule(
 
   // Create the declaration of all related variables and create a mapping
   // of them for the cloning functions to work with
-
+  llvm::ValueToValueMapTy VMap;
 
   // Loop over all the visited global variables, making corresponding globals
   // in the new module.  Here we add them to the VMap and to the new Module.

@@ -18,7 +18,7 @@ namespace luthier {
 /// \p OldModule
 /// \param OldModule \c llvm::Module whose attributes is to be cloned
 /// \param NewModule the destination of the cloning operation
-void cloneModuleAttributesAndNamedMetaData(const llvm::Module &OldModule,
+void cloneModuleAttributes(const llvm::Module &OldModule,
                                            llvm::Module &NewModule);
 
 /// Performs a deep copy of the \c llvm::GlobalValue 's contained in
