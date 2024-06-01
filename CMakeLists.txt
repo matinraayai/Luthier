@@ -66,8 +66,6 @@ find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/roc
 # Some HSA include files won't work unless this is defined
 target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
 
-find_package(rocprofiler-register REQUIRED)
-
 # LLVM AMDGPU Configuration (for tablegen and code generation) =========================================================
 find_package(LLVM REQUIRED CONFIG PATHS ${LUTHIER_LLVM_BIN_DIR} NO_DEFAULT_PATH)
 

@@ -103,15 +103,13 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
   if (Phase == API_EVT_PHASE_ENTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
     hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
-        if (auto Err =
-                CodeLifter::instance().invalidateCachedExecutableItems(Exec))
-                {
-          llvm::report_fatal_error("Executable cache invalidation failed");
-        }
-
     if (auto Err =
-                Platform::instance().invalidateExecutableOnExecutableDestroy(
-                    Exec)) {
+            CodeLifter::instance().invalidateCachedExecutableItems(Exec)) {
+      llvm::report_fatal_error("Executable cache invalidation failed");
+    }
+
+    if (auto Err = Platform::instance().invalidateExecutableOnExecutableDestroy(
+            Exec)) {
       llvm::report_fatal_error("Executable cache invalidation failed");
     }
   }
