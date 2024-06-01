@@ -1,22 +1,66 @@
+//===-- cloning.hpp - IR and MIR Cloning Utilities ------------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file contains utility functions used to clone LLVM IR and MIR
+/// Modules and Functions, used frequently by Luthier components involved in the
+/// code generation process.
+//===----------------------------------------------------------------------===//
+
 #ifndef CLONING_HPP
 #define CLONING_HPP
 #include <llvm/IR/Function.h>
 
 namespace luthier {
 
-/**
- * Clones the prototype and the content of the \c llvm::Function
- * \p F into the \p Module, as well as any related Values (e.g.
- * other \c llvm::Function s called, global variables used, etc).
- * \note this function behaves similarly to \c llvm::cloneFunction, in
- * \file <llvm/Transforms/Utils/Cloning.h>; The main difference is that it
- * performs a deep copy of \p F into
- * \param OldFuncs the original \c llvm::Function to be cloned
- * \param NewModule the target Module; Should not be the parent of \p F
- * \return a pointer to the cloned function, residing in \p Module
- */
-llvm::Function *cloneFunctionIntoModule(llvm::ArrayRef<llvm::Function *> OldFuncs,
-                                        llvm::Module &NewModule);
+/// Sets the attributes of the \p NewModule into the values found in
+/// \p OldModule
+/// \param OldModule \c llvm::Module whose attributes is to be cloned
+/// \param NewModule the destination of the cloning operation
+void cloneModuleAttributesAndNamedMetaData(const llvm::Module &OldModule,
+                                           llvm::Module &NewModule);
+
+/// Performs a deep copy of the \c llvm::GlobalValue 's contained in
+/// \p DeepClonedOldValues, and puts them in the \p NewModule
+/// \n
+/// A deep copy clones both the declaration and definition (only if present) of
+/// the old value over to the new module; A shallow copy only clones the
+/// declaration. Both types of copies will create a new value in the
+/// \p NewModule regardless \n
+/// For now, \p DeepClonedOldValues should all have the same parent
+/// \c llvm::Module; This requirement can be changed in the future if a
+/// legitimate use case is found.
+/// \n
+/// Besides the Global Values, the named Metadata of the Old Module will also
+/// be copied over to the new Module, with old values pointing to new ones
+/// If \p DeepClonedOldValues is empty, then only the Module's named metadata
+/// will be deeply cloned
+/// \n
+/// If any of values in \p DeepClonedOldValues relate to other global values
+/// in their parent module (e.g. a function that calls another function, an
+/// alias referring to a variable), unless specified explicitly in
+/// \p DeepClonedOldValues, only their declaration will be cloned. Below are
+/// a few exceptions:
+/// \n
+/// 1. If the related value is of type \c llvm::Function and it doesn't have
+/// an external-facing linkage. This includes device functions in HIP.
+/// \n
+/// 2. If the related value is of type \c llvm::GlobalAlias, and its underlying
+/// value is an \c llvm::Function of non-external linkage type.
+/// \n
+/// 3. If the related value is of type \c llvm::GlobalIFunc, and its resolver
+/// function doesn't have an external-facing linkage. Keep in mind that IFuncs
+/// are not implemented yet in the HSA standard so it is
+/// not likely for this type of Value to be encountered for now.
+/// \param DeepClonedOldValues A list of \c llvm::GlobalValue's to be cloned
+/// that belong to the same \c llvm::Module
+/// \param NewModule The destination of the cloned Values
+/// \return an \p llvm::Error if the passed values don't have the same parent
+/// Module; Otherwise an \p llvm::Error::success()
+llvm::Error cloneGlobalValuesIntoModule(
+    llvm::ArrayRef<llvm::GlobalValue *> DeepClonedOldValues,
+    llvm::Module &NewModule);
 
 } // namespace luthier
 
