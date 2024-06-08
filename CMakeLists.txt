@@ -62,6 +62,8 @@ find_package(hip REQUIRED)
 
 find_package(amd_comgr REQUIRED)
 
+find_package(rocprofiler-sdk REQUIRED)
+
 find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/)
 # Some HSA include files won't work unless this is defined
 target_compile_definitions(luthier PUBLIC AMD_INTERNAL_BUILD)
@@ -95,7 +97,8 @@ target_include_directories(luthier PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(luthier hip::host stdc++fs hsa-runtime64::hsa-runtime64
         LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
         LLVMAMDGPUUtils LLVMAsmPrinter LLVMCodeGen LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA
-        LLVMMCDisassembler LLVMObject LLVMPasses LLVMSupport LLVMTarget LLVMTargetParser)
+        LLVMMCDisassembler LLVMObject LLVMPasses LLVMSupport LLVMTarget LLVMTargetParser
+        rocprofiler-sdk::rocprofiler-sdk)
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================

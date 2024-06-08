@@ -4,6 +4,9 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 
+#include <rocprofiler-sdk/registration.h>
+#include <rocprofiler-sdk/rocprofiler.h>
+
 #include <optional>
 
 #include "code_generator.hpp"
@@ -51,17 +54,16 @@ void *getHipFunctionPtr(llvm::StringRef FuncName) {
 } // namespace hip
 
 __attribute__((constructor)) void init() {
-  LUTHIER_LOG_FUNCTION_CALL_START
-  GSM = new GlobalSingletonManager();
-  auto &HipInterceptor = hip::Interceptor::instance();
+  luthier::GSM = new luthier::GlobalSingletonManager();
+  auto &HipInterceptor = luthier::hip::Interceptor::instance();
   LUTHIER_CHECK_WITH_MSG(HipInterceptor.isEnabled(),
                          "HIP Interceptor failed to initialize");
-  HipInterceptor.setInternalCallback(hip::internalApiCallback);
-  HipInterceptor.enableInternalCallback(hip::HIP_API_ID___hipRegisterFunction);
-  LUTHIER_LOG_FUNCTION_CALL_END
+  HipInterceptor.setInternalCallback(luthier::hip::internalApiCallback);
+  HipInterceptor.enableInternalCallback(
+      luthier::hip::HIP_API_ID___hipRegisterFunction);
 }
 
-__attribute__((destructor)) void finalize() {
+void finalize(void *Data) {
   LUTHIER_LOG_FUNCTION_CALL_START
   delete GSM;
   luthier::hsa::atHsaApiTableUnload();
@@ -190,39 +192,36 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
   return llvm::Error::success();
 }
 
+void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
+                             uint64_t LibVersion, uint64_t LibInstance,
+                             void **Tables, uint64_t NumTables, void *Data) {
+  if (Type == ROCPROFILER_HSA_TABLE) {
+    auto *Table = static_cast<HsaApiTable *>(Tables[0]);
+    luthier::hsa::Interceptor::instance().captureHsaApiTable(Table);
+    luthier::hsa::atHsaApiTableLoad();
+    auto &hsaInterceptor = luthier::hsa::Interceptor::instance();
+    hsaInterceptor.setInternalCallback(luthier::hsa::internalApiCallback);
+    hsaInterceptor.setUserCallback(luthier::hsa::atHsaEvt);
+    hsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze);
+    hsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy);
+    hsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object);
+  }
+}
+
 } // namespace luthier
 
-extern "C" {
+extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *
+rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
+                      uint32_t Priority, rocprofiler_client_id_t *ID) {
+  ID->name = "Luthier";
+  rocprofiler_at_intercept_table_registration(luthier::apiRegistrationCallback,
+                                              ROCPROFILER_HSA_TABLE, nullptr);
 
-// NOLINTBEGIN
-
-__attribute__((
-    visibility("default"))) extern const uint32_t HSA_AMD_TOOL_PRIORITY = 49;
-
-__attribute__((visibility("default"))) bool
-OnLoad(HsaApiTable *table, uint64_t runtime_version, uint64_t failed_tool_count,
-       const char *const *failed_tool_names) {
-  LUTHIER_LOG_FUNCTION_CALL_START
-  [](auto &&...) {}(runtime_version, failed_tool_count, failed_tool_names);
-  bool res = luthier::hsa::Interceptor::instance().captureHsaApiTable(table);
-  luthier::hsa::atHsaApiTableLoad();
-  auto &hsaInterceptor = luthier::hsa::Interceptor::instance();
-  hsaInterceptor.setInternalCallback(luthier::hsa::internalApiCallback);
-  hsaInterceptor.setUserCallback(luthier::hsa::atHsaEvt);
-  hsaInterceptor.enableInternalCallback(
-      luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze);
-  hsaInterceptor.enableInternalCallback(
-      luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy);
-  hsaInterceptor.enableInternalCallback(
-      luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object);
-  return res;
-  LUTHIER_LOG_FUNCTION_CALL_END
+  static auto Cfg = rocprofiler_tool_configure_result_t{
+      sizeof(rocprofiler_tool_configure_result_t), nullptr, &luthier::finalize,
+      nullptr};
+  return &Cfg;
 }
-
-__attribute__((visibility("default"))) void OnUnload() {
-  LUTHIER_LOG_FUNCTION_CALL_START
-
-  LUTHIER_LOG_FUNCTION_CALL_END
-}
-}
-// NOLINTEND
