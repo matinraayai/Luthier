@@ -1,7 +1,6 @@
 #include <luthier/luthier.h>
 
 #include <llvm/ADT/StringRef.h>
-#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 
 
@@ -16,24 +15,10 @@
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
 #include "hsa_platform.hpp"
-#include "log.hpp"
 #include "target_manager.hpp"
 #include <luthier/instr.h>
 
 namespace luthier {
-
-static GlobalSingletonManager *GSM{nullptr};
-
-__attribute__((constructor)) void init() {
-  static std::once_flag Once{};
-  std::call_once(
-      Once, []() { luthier::GSM = new luthier::GlobalSingletonManager(); });
-}
-
-__attribute__((destructor)) void finalize() {
-  static std::once_flag Once{};
-  std::call_once(Once, []() { delete GSM; });
-}
 
 namespace hip {
 

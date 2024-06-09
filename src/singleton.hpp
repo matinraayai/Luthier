@@ -1,20 +1,17 @@
 #ifndef SINGLETON_HPP
 #define SINGLETON_HPP
 #include <llvm/Support/ErrorHandling.h>
-#include <shared_mutex>
 
 namespace luthier {
 
-template <typename T> class Singleton {
+class GlobalSingletonManager;
 
+template <typename T> class Singleton {
 private:
+  friend class GlobalSingletonManager;
   static T *Instance;
 
-public:
-  Singleton(const Singleton &) = delete;
-
-  Singleton &operator=(const Singleton &) = delete;
-
+protected:
   Singleton() {
     if (Instance != nullptr) {
       llvm::report_fatal_error("Called the singleton constructor twice.");
@@ -22,6 +19,11 @@ public:
     Instance = static_cast<T *>(this);
   }
   ~Singleton() { Instance = nullptr; }
+
+public:
+  Singleton(const Singleton &) = delete;
+
+  Singleton &operator=(const Singleton &) = delete;
 
   static inline T &instance() {
     if (Instance == nullptr) {

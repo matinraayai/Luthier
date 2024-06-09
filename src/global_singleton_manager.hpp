@@ -27,6 +27,8 @@ class Platform;
 
 class GlobalSingletonManager : public Singleton<GlobalSingletonManager> {
 private:
+  static GlobalSingletonManager *GSM;
+
   CodeGenerator *CG{nullptr};
 
   CodeObjectManager *COM{nullptr};
@@ -43,16 +45,14 @@ private:
 
   hsa::Platform *HsaPlatform{nullptr};
 
-public:
+private:
+  __attribute__((constructor)) static void init();
+
+  __attribute__((destructor)) static void finalize();
+
   GlobalSingletonManager();
 
   ~GlobalSingletonManager();
-
-  llvm::Error onExecutableFreeze();
-
-  llvm::Error onCodeObjectLoad();
-
-  llvm::Error onExecutableDestroy();
 };
 } // namespace luthier
 

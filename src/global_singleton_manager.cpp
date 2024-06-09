@@ -18,6 +18,8 @@ namespace luthier {
 template <>
 GlobalSingletonManager *Singleton<GlobalSingletonManager>::Instance{nullptr};
 
+GlobalSingletonManager *GlobalSingletonManager::GSM{nullptr};
+
 namespace hip {
 static void internalApiCallback(ApiArgs &Args, ApiReturn *Out,
                                 ApiEvtPhase Phase, int ApiId) {
@@ -134,6 +136,15 @@ GlobalSingletonManager::~GlobalSingletonManager() {
   delete CL;
   delete TM;
   delete HipInterceptor;
+}
+void GlobalSingletonManager::init() {
+  static std::once_flag Once{};
+  std::call_once(Once, []() { GSM = new luthier::GlobalSingletonManager(); });
+}
+
+void GlobalSingletonManager::finalize() {
+  static std::once_flag Once{};
+  std::call_once(Once, []() { delete GSM; });
 }
 
 } // namespace luthier
