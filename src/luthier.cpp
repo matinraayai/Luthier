@@ -7,6 +7,8 @@
 #include <rocprofiler-sdk/registration.h>
 #include <rocprofiler-sdk/rocprofiler.h>
 
+#include <hip/amd_detail/hip_api_trace.hpp>
+
 #include <optional>
 
 #include "code_generator.hpp"
@@ -63,13 +65,16 @@ __attribute__((constructor)) void init() {
       luthier::hip::HIP_API_ID___hipRegisterFunction);
 }
 
-void finalize(void *Data) {
+void rocprofilerFinalize(void *Data) {
   LUTHIER_LOG_FUNCTION_CALL_START
-  delete GSM;
   luthier::hsa::atHsaApiTableUnload();
   luthier::hsa::Interceptor::instance().uninstallApiTables();
-  llvm::llvm_shutdown();
   LUTHIER_LOG_FUNCTION_CALL_END
+}
+
+__attribute__((destructor)) void finalize() {
+  delete GSM;
+  llvm::llvm_shutdown();
 }
 
 namespace hsa {
@@ -221,7 +226,8 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
                                               ROCPROFILER_HSA_TABLE, nullptr);
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
-      sizeof(rocprofiler_tool_configure_result_t), nullptr, &luthier::finalize,
+      sizeof(rocprofiler_tool_configure_result_t), nullptr,
+      &luthier::rocprofilerFinalize,
       nullptr};
   return &Cfg;
 }

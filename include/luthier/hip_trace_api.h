@@ -3,10 +3,6 @@
 #undef USE_PROF_API
 #include <hip/hip_runtime_api.h>
 
-namespace hip {
-struct FatBinaryInfo {};
-} // namespace hip
-
 namespace luthier::hip {
 
 
@@ -28,7 +24,7 @@ typedef union {
     const void *data;
   } __hipRegisterFatBinary;
   struct {
-    ::hip::FatBinaryInfo **modules;
+    void **modules;
     const void *hostFunction;
     char *deviceFunction;
     const char *deviceName;
@@ -48,7 +44,7 @@ typedef union {
     unsigned align;
   } __hipRegisterManagedVar;
   struct {
-    ::hip::FatBinaryInfo **modules;
+    void **modules;
     void *var;
     char *hostVar;
     char *deviceVar;
@@ -56,7 +52,7 @@ typedef union {
     int ext;
   } __hipRegisterSurface;
   struct {
-    ::hip::FatBinaryInfo **modules;
+    void **modules;
     void *var;
     char *hostVar;
     char *deviceVar;
@@ -65,7 +61,7 @@ typedef union {
     int ext;
   } __hipRegisterTexture;
   struct {
-    ::hip::FatBinaryInfo **modules;
+    void **modules;
     void *var;
     char *hostVar;
     char *deviceVar;
@@ -75,12 +71,12 @@ typedef union {
     int global;
   } __hipRegisterVar;
   struct {
-    ::hip::FatBinaryInfo **modules;
+    void **modules;
   } __hipUnregisterFatBinary;
 } ApiArgs;
 
 typedef union {
-  ::hip::FatBinaryInfo **__hipRegisterFatBinary;
+  void **__hipRegisterFatBinary;
 } ApiReturn;
 
 } // namespace luthier::hip

@@ -11,15 +11,8 @@ MARK_LUTHIER_DEVICE_MODULE
 
 __attribute__((managed)) int globalCounter = 20;
 
-extern "C" __device__ __forceinline__ int funcInternal(int myInt) {
-  globalCounter = 20;
-  return 100 + myInt;
-}
-
 LUTHIER_HOOK_CREATE(instrumentation_function, (int myInt, int myInt2), {
-  int threadIdx_x;
-  __asm__ __volatile__("v_mov_b32 %0 v0\n" : "=v"(threadIdx_x));
-  globalCounter = 20000 + funcInternal(myInt) + myInt2;
+  globalCounter = 20000;
 })
 
 namespace luthier {

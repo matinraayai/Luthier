@@ -1,6 +1,7 @@
 #ifndef SINGLETON_HPP
 #define SINGLETON_HPP
 #include <llvm/Support/ErrorHandling.h>
+#include <shared_mutex>
 
 namespace luthier {
 
@@ -29,6 +30,8 @@ public:
     return *Instance;
   }
 };
+
+template <typename T> T *luthier::Singleton<T>::Instance{nullptr};
 
 } // namespace luthier
 

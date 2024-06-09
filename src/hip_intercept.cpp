@@ -32,7 +32,7 @@ Interceptor::Interceptor() : luthier::Singleton<Interceptor>() {
 } // namespace luthier
 
 extern "C" __attribute__((visibility("default"))) void
-__hipRegisterFunction(hip::FatBinaryInfo **Modules, const void *HostFunction,
+__hipRegisterFunction(void **Modules, const void *HostFunction,
                       char *DeviceFunction, const char *DeviceName,
                       unsigned int ThreadLimit, uint3 *Tid, uint3 *Bid,
                       dim3 *BlockDim, dim3 *GridDim, int *WSize) {
@@ -41,7 +41,7 @@ __hipRegisterFunction(hip::FatBinaryInfo **Modules, const void *HostFunction,
   bool IsInternalCallbackEnabled =
       HipInterceptor.isInternalCallbackEnabled(ApiId);
   static auto HipFunc = HipInterceptor.getHipFunction<void (*)(
-      hip::FatBinaryInfo **, const void *, char *, const char *, unsigned int,
+      void **, const void *, char *, const char *, unsigned int,
       uint3 *, uint3 *, dim3 *, dim3 *, int *)>("__hipRegisterFunction");
   if (IsInternalCallbackEnabled) {
     auto &HipInternalCallback = HipInterceptor.getInternalCallback();
