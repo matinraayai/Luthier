@@ -53,6 +53,7 @@ TargetManager::~TargetManager() {
     delete It.second.LLVMContext;
   }
   LLVMTargetInfo.clear();
+  llvm::llvm_shutdown();
   Singleton<TargetManager>::~Singleton();
 }
 
