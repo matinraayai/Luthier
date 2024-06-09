@@ -29,25 +29,6 @@ namespace luthier {
 static GlobalSingletonManager *GSM{nullptr};
 
 namespace hip {
-void internalApiCallback(ApiArgs &Args, ApiReturn *Out, ApiEvtPhase Phase,
-                         int ApiId) {
-  LUTHIER_LOG_FUNCTION_CALL_START
-  if (Phase == API_EVT_PHASE_ENTER) {
-    if (ApiId == hip::HIP_API_ID___hipRegisterFunction) {
-      auto &COM = CodeObjectManager::instance();
-      auto &LastRFuncArgs = Args.__hipRegisterFunction;
-      // If the function doesn't have __luthier_wrap__ in its name then it
-      // belongs to the instrumented application or HIP can manage it on its own
-      // since no device function is present to strip from it
-      if (llvm::StringRef(LastRFuncArgs.deviceFunction)
-              .find(luthier::DeviceFunctionWrap) != llvm::StringRef::npos) {
-        COM.registerInstrumentationFunctionWrapper(
-            LastRFuncArgs.hostFunction, LastRFuncArgs.deviceFunction);
-      }
-    }
-  }
-  LUTHIER_LOG_FUNCTION_CALL_END
-}
 
 void *getHipFunctionPtr(llvm::StringRef FuncName) {
   return hip::Interceptor::instance().getHipFunction(FuncName);
@@ -56,13 +37,11 @@ void *getHipFunctionPtr(llvm::StringRef FuncName) {
 } // namespace hip
 
 __attribute__((constructor)) void init() {
-  luthier::GSM = new luthier::GlobalSingletonManager();
-  auto &HipInterceptor = luthier::hip::Interceptor::instance();
-  LUTHIER_CHECK_WITH_MSG(HipInterceptor.isEnabled(),
-                         "HIP Interceptor failed to initialize");
-  HipInterceptor.setInternalCallback(luthier::hip::internalApiCallback);
-  HipInterceptor.enableInternalCallback(
-      luthier::hip::HIP_API_ID___hipRegisterFunction);
+  static std::once_flag Once{};
+  std::call_once(Once, [](){
+    luthier::GSM = new luthier::GlobalSingletonManager();
+  });
+
 }
 
 void rocprofilerFinalize(void *Data) {
