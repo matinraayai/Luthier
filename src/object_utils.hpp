@@ -482,7 +482,7 @@ parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
 }
 
 llvm::Expected<llvm::DWARFDie> getDWARFDie(llvm::DWARFContext &ctx,
-                                     std::string symbolName);
+                                     llvm::StringRef symbolName);
 
 } // namespace luthier
 

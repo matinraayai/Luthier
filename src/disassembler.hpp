@@ -114,6 +114,10 @@ private:
                      std::unique_ptr<std::vector<hsa::Instr>>>
       MCDisassembledSymbols{};
 
+  // std::unordered_map<LCO ID,
+  //                    std::unique_ptr<llvm::DWARFContext>>>
+  //     MCDisassembledSymbols{};
+
 public:
 // add flag, parseDwarf (false by default)
 // when the Instr is called ->

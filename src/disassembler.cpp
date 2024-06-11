@@ -204,6 +204,7 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool inclu
       if (includeDebugInfo) { // think of better way! I don't want to pass a null die, because it will be "invalid" (DWARFDie has isValid method that I use, and I believe passing null will make it invalid)
         auto elfObjectFile = LCO->getStorageELF();
         // In FUTURE: NEED TO CACHE THE DWARFContext for this LCO (if it's not already cached)
+        // Write a private caching function (gets the cached or new DWARFContext!) (use std::move for the unique pointer)
         std::unique_ptr<llvm::DWARFContext> context = llvm::DWARFContext::create((*elfObjectFile)); // dono if this will work, IntelliSense can't catch it
         auto die = getDWARFDie(*context, (*SymbolName).data());
         LUTHIER_RETURN_ON_ERROR(die.takeError());
@@ -270,6 +271,8 @@ luthier::CodeLifter::initializeLLVMFunctionFromSymbol(
     F = llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage,
                                SymbolName.substr(0, SymbolName.rfind(".kd")),
                                Module);
+    // check if can get data from debug info (for the above args)
+    // abstract
 
     F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
 
