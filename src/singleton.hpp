@@ -33,7 +33,10 @@ public:
   }
 };
 
+#ifdef __clang__
+// template definition of the Instance pointer to suppress clang warnings
 template <typename T> T *luthier::Singleton<T>::Instance{nullptr};
+#endif
 
 } // namespace luthier
 
