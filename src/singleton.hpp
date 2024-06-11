@@ -1,17 +1,26 @@
+//===-- singleton.hpp - Singleton Interface -------------------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file contains the interface inherited by all Singleton objects in
+/// Luthier.
+/// It was inspired by OGRE's Singleton implementation here:
+/// https://github.com/OGRECave/ogre/blob/master/OgreMain/include/OgreSingleton.h
+//===----------------------------------------------------------------------===//
 #ifndef SINGLETON_HPP
 #define SINGLETON_HPP
 #include <llvm/Support/ErrorHandling.h>
 
 namespace luthier {
 
-class GlobalSingletonManager;
-
+///
+/// \tparam T
 template <typename T> class Singleton {
 private:
-  friend class GlobalSingletonManager;
   static T *Instance;
 
-protected:
+public:
   Singleton() {
     if (Instance != nullptr) {
       llvm::report_fatal_error("Called the singleton constructor twice.");
@@ -20,7 +29,6 @@ protected:
   }
   ~Singleton() { Instance = nullptr; }
 
-public:
   Singleton(const Singleton &) = delete;
 
   Singleton &operator=(const Singleton &) = delete;
