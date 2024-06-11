@@ -22,16 +22,23 @@ private:
   static T *Instance;
 
 public:
+  /// Constructor for explicit initialization of the Singleton instance \n
+  /// Instead of hiding initialization away in the \c instance() method,
+  /// this design allows passing additional arguments to the constructor
+  /// of Singleton if required
+  /// The constructor is \b not thread-safe, and is meant to be allocated
+  /// on the heap with the \c new operator for better control over its lifetime
   Singleton() {
-    static std::once_flag OnceFlag;
-    std::call_once(OnceFlag, [&]() { Instance = static_cast<T *>(this); });
+    if (Instance != nullptr) {
+      llvm::report_fatal_error("Called the Singleton constructor twice.");
+    }
+    Instance = static_cast<T *>(this);
   }
 
-  ///
-  ~Singleton() {
-    static std::once_flag OnceFlag;
-    std::call_once(OnceFlag, [&]() { Instance = nullptr; });
-  }
+  /// Destructor for explicit initialization of the Singleton Instance \n
+  /// The destructor is \b not thread-safe, and is meant to be used directly
+  /// with the \p delete operator for better control over its lifetime
+  ~Singleton() { Instance = nullptr; }
 
   /// Disallowed copy construction
   Singleton(const Singleton &) = delete;
@@ -39,16 +46,16 @@ public:
   /// Disallowed assignment operation
   Singleton &operator=(const Singleton &) = delete;
 
+  /// \return a reference to the Singleton instance
   static inline T &instance() {
-    if (Instance == nullptr) {
-      llvm::report_fatal_error("Singleton is not initialized.");
-    }
+    assert(Instance != nullptr && "Singleton is not initialized");
     return *Instance;
   }
 };
 
 #ifdef __clang__
-// template definition of the Instance pointer to suppress clang warnings
+// Template definition of the Instance pointer to suppress clang warnings
+// regarding translation untis
 template <typename T> T *luthier::Singleton<T>::Instance{nullptr};
 #endif
 
