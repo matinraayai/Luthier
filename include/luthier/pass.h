@@ -1,5 +1,7 @@
 #ifndef LUTHIER_PASS_H
 #define LUTHIER_PASS_H
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/Argument.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
@@ -98,6 +100,9 @@ public:
   void insertCallTo(llvm::MachineInstr &MI, const void *DevFunc,
                     InstrPoint IPoint);
 
+  void insertCallTo(llvm::MachineInstr &MI, const void *DevFunc,
+                    InstrPoint IPoint, llvm::ArrayRef<llvm::Argument> IFuncArgs);
+  
   const insert_call_tasks &getInsertCallTasks() const {
     return InsertCallTasks;
   }

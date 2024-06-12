@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "cloning.hpp"
+#include "llvm/Support/raw_ostream.h"
 #include "disassembler.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
@@ -180,7 +181,6 @@ CodeObjectManager::getModuleContainingInstrumentationFunctions(
   if (!ToolLCOEmbeddedIRModules.contains(LCO)) {
     auto StorageELF = LCO.getStorageELF();
     LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
-
     for (const auto &Section : StorageELF->sections()) {
       auto SectionName = Section.getName();
       LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
