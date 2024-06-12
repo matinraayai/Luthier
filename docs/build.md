@@ -57,12 +57,19 @@ Runtime type information (RTTI), which is not enabled by the stock LLVM shipped 
 ```RelWithDebugInfo```.
 
 ## Build Instructions
-1. Clone the AMD staging fork of the llvm-project in a separate directory from Luthier:
+1. Build the compiler plugins project against the ROCm LLVM of the HIPCC clang compiler. It is usually installed under
+   `/opt/rocm/llvm/`:
     ```shell
-    git clone https://github.com/ROCm/llvm-project/ 
+   cd compiler-plugins/ && mkdir build/
+   cmake -DCMAKE_PREFIX_PATH=/opt/rocm/llvm/ -G Ninja .. && cmake --build .
+   ```
+
+2. Clone a version of the llvm-project matching the ROCm's LLVM already installed in a separate directory from Luthier:
+    ```shell
+    git clone --depth 1 https://github.com/ROCm/llvm-project/ -b rocm-x.x.x
     ```
-   As of right now we only support the staging branch. This might change in the future.
-2. Configure the LLVM CMake project:
+
+3. Configure the LLVM CMake project:
     ```shell
     mkdir build/
     cd build
@@ -76,13 +83,13 @@ Runtime type information (RTTI), which is not enabled by the stock LLVM shipped 
     ```shell
     cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLVM_TARGETS_TO_BUILD=AMDGPU -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE
         -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_EXPENSIVE_CHECKS=ON -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_OPTIMIZED_TABLEGEN=ON
-        -DLLVM_ENABLE_TOOLS=OFF -DLLVM_ENABLE_EXAMPLES=OFF ../llvm
+        -DLLVM_ENABLE_TOOLS=OFF -DLLVM_ENABLE_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON ../llvm
     ```
     You can set the `CMAKE_BUILD_TYPE` to be any type you deem necessary (e.g. `Debug` for debugging, `Release` to more 
     performant code).
     You can set the generator to be `Unix Makefiles` if preferred; `Ninja` should be faster.
     The CMake project is configured to only build necessary AMDGPU-specific components of the LLVM project.
-3. Build the project using the following command:
+4. Build the project using the following command:
     ```shell
     cmake --build . --target AMDGPUCommonTableGen InstCombineTableGen LLVMCore LLVMBitReader LLVMSupport \
     LLVMMC LLVMAMDGPUTargetMCA LLVMAMDGPUInfo LLVMAMDGPUCodeGen LLVMAMDGPUDesc LLVMAMDGPUInfo LLVMAMDGPUDisassembler \
@@ -92,11 +99,14 @@ Runtime type information (RTTI), which is not enabled by the stock LLVM shipped 
     ```shell
     cmake --build .
     ```
-4. Change to the Luthier directory and build Luthier, pointing it to the **absolute** build folder of LLVM:
+5. Change to the Luthier directory and build Luthier, pointing it to the **absolute** build folder of LLVM, and the 
+   **absolute** path to Luthier's "Embed Optimized Bitcode" pass:
     ```shell
    mkdir build/
    cd build/
-   cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/rocm/lib/cmake -DLUTHIER_LLVM_BIN_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT}/build/
-   -DLUTHIER_LLVM_SRC_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT} ..
+   cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/rocm/lib/cmake \
+   -DLUTHIER_LLVM_BIN_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT}/build/ \
+   -DLUTHIER_LLVM_SRC_DIR=${ABSOLUTE_PATH_TO_LLVM_PROJECT} \
+   -DLUTHIER_BC_EMBED_PLUGIN_PATH=${ABSOLUTE_PATH_TO_COMPILER_PLUGIN_BUILD}/luthier_embed_optimized_bc_plugin.so ..
    cmake --build .
    ```
