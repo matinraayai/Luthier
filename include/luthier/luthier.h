@@ -5,6 +5,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Support/Error.h>
 
+#include <hip/amd_detail/hip_api_trace.hpp>
 #include <luthier/hip_trace_api.h>
 #include <luthier/hsa_trace_api.h>
 #include <luthier/instr.h>
@@ -51,12 +52,8 @@ void disableAllHsaCallbacks();
 
 namespace hip {
 
-void *getHipFunctionPtr(llvm::StringRef FuncName);
+const HipCompilerDispatchTable &getSavedCompilerTable();
 
-template <typename FunctionPtr>
-FunctionPtr getHipFunctionPtr(llvm::StringRef FuncName) {
-  return reinterpret_cast<FunctionPtr>(getHipFunctionPtr(FuncName));
-}
 } // namespace hip
 
 /**

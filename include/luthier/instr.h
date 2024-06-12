@@ -1,6 +1,7 @@
 #ifndef INSTR_HPP
 #define INSTR_HPP
 #include <llvm/MC/MCInst.h>
+#include <llvm/Support/Error.h>
 
 #include "types.h"
 

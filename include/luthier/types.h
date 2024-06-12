@@ -2,7 +2,6 @@
 #define LUTHIER_TYPES_H
 
 #include <hsa/hsa.h>
-#include <llvm/CodeGen/MachineFunction.h>
 
 namespace luthier {
 
