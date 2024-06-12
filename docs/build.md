@@ -67,12 +67,12 @@ Runtime type information (RTTI), which is not enabled by the stock LLVM shipped 
     mkdir build/
     cd build
     ```
-    Use the following command if building a Release version:
+    Use the following command for building a Release version:
     ```shell
     cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=AMDGPU -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE
         -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_TOOLS=OFF -DLLVM_ENABLE_EXAMPLES=OFF ../llvm
     ```
-    Use the following command if building a development/debug version:
+    Use the following command for building a development/debug version:
     ```shell
     cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLVM_TARGETS_TO_BUILD=AMDGPU -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE
         -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_EXPENSIVE_CHECKS=ON -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_OPTIMIZED_TABLEGEN=ON
