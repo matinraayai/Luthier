@@ -1,6 +1,7 @@
 #ifndef CODE_OBJECT_MANAGER_HPP
 #define CODE_OBJECT_MANAGER_HPP
 #include <llvm/ADT/DenseSet.h>
+#include <llvm/IR/Module.h>
 #include <vector>
 
 #include "hsa_agent.hpp"

@@ -70,7 +70,7 @@ llvm::Error cloneGlobalValuesIntoModule(
       for (const auto &BB : *CurrentDeepCloneFunction) {
         for (const auto &I : BB) {
           llvm::outs() << "Dumping instruction\n";
-          I.dump();
+//          I.dump();
           for (const auto &Op : I.operands()) {
             if (auto *GV = llvm::dyn_cast<llvm::GlobalVariable>(&Op)) {
               VisitedOldGlobalVariables.insert(GV);

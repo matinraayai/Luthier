@@ -4,7 +4,6 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Support/ErrorHandling.h>
-#include <llvm/Support/FormatVariadic.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include <vector>
@@ -18,9 +17,10 @@
 #include "hsa_loaded_code_object.hpp"
 #include "log.hpp"
 
-namespace luthier {
-
+#undef DEBUG_TYPE
 #define DEBUG_TYPE "code-object-manager"
+
+namespace luthier {
 
 template <> CodeObjectManager *Singleton<CodeObjectManager>::Instance{nullptr};
 
@@ -215,9 +215,11 @@ CodeObjectManager::getModuleContainingInstrumentationFunctions(
     auto *Func = LCOModule->getFunction(*SymbolName);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(Func));
     Funcs.push_back(LCOModule->getFunction(*SymbolName));
+    return (llvm::CloneModule(*LCOModule));
   }
   LUTHIER_RETURN_ON_ERROR(
       luthier::cloneGlobalValuesIntoModule(Funcs, *ClonedModule));
+
   return std::move(ClonedModule);
 }
 
