@@ -1,47 +1,34 @@
-#include <fstream>
-#include <functional>
-#include <hip/hip_runtime.h>
 #include <hsa/hsa.h>
-#include <hsa/hsa_ven_amd_loader.h>
-#include <iostream>
 #include <luthier/luthier.h>
-#include <string>
 
 MARK_LUTHIER_DEVICE_MODULE
 
-__attribute__((managed)) int globalCounter = 20;
 
-LUTHIER_HOOK_CREATE(instrumentation_function, (int myInt, int myInt2), {
-  globalCounter = 20000;
-})
+#undef DEBUG_TYPE
+
+#define DEBUG_TYPE "luthier-kernel-instrument-tool"
+
+__attribute__((managed)) int GlobalCounter = 20;
+
+LUTHIER_HOOK_CREATE(instrumentationHook, (), { GlobalCounter = 20000; });
 
 namespace luthier {
 
 void hsa::atHsaApiTableLoad() {
-  std::cout << "Kernel Instrument Tool is launching." << std::endl;
-  hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_create);
-  hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_signal_store_screlease);
-  hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_executable_freeze);
+  llvm::outs() << "Kernel Instrument Tool is launching.\n";
   hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
 }
 
 void luthier::hsa::atHsaApiTableUnload() {
-  std::cout << "Counter Value: " << globalCounter << std::endl;
-  std::cout << "Kernel Launch Intercept Tool is terminating!" << std::endl;
+  llvm::outs() << "Counter Value: " << GlobalCounter << "\n";
+  llvm::outs() << "Kernel Instrument Tool is terminating!\n";
 }
 
 void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                             luthier::ApiEvtPhase Phase,
                             luthier::hsa::ApiEvtID ApiID) {
-  if (Phase == luthier::API_EVT_PHASE_EXIT) {
-    if (ApiID == hsa::HSA_API_EVT_ID_hsa_executable_freeze) {
-      auto executable = CBData->hsa_executable_freeze.executable;
-      fprintf(stdout, "HSA Executable Freeze Callback\n");
-      fprintf(stdout, "Executable handle: %lX\n", executable.handle);
-    }
-  }
   if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
-    std::cout << "In packet submission callback" << std::endl;
+    LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
     auto packets = CBData->hsa_queue_packet_submit.packets;
     for (unsigned int i = 0; i < CBData->hsa_queue_packet_submit.pkt_count;
          i++) {
@@ -59,24 +46,24 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         if (!llvm::cantFail(isKernelInstrumented(*Symbol))) {
           auto LiftedSymbol = luthier::liftSymbol(*Symbol);
           if (auto Err = LiftedSymbol.takeError())
-            exit(-1);
+            llvm::report_fatal_error("Kernel symbol lifting failed.");
+          // insert a hook after the first instruction of each basic block
           auto &[Module, MMIWP, LSI] = *LiftedSymbol;
           InstrumentationTask IT;
           for (auto &F : *Module) {
             auto &MF = *(MMIWP->getMMI().getMachineFunction(F));
             auto &MBB = *MF.begin();
             auto &MI = *MBB.begin();
-            IT.insertCallTo(MI,
-                            LUTHIER_GET_HOOK_HANDLE(instrumentation_function),
+            IT.insertCallTo(MI, LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
                             INSTR_POINT_AFTER);
           }
 
           if (auto Res = luthier::instrument(std::move(Module),
                                              std::move(MMIWP), LSI, IT))
-            exit(-1);
+            llvm::report_fatal_error(std::move(Res), true);
         }
         if (auto Res = luthier::overrideWithInstrumented(DispatchPacket))
-          exit(-1);
+          llvm::report_fatal_error(std::move(Res), true);
       }
     }
   }
