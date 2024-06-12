@@ -5,11 +5,16 @@
 #include "hsa_loaded_code_object.hpp"
 #include "object_utils.hpp"
 
+#undef DEBUG_TYPE
+
+#define DEBUG_TYPE "luthier-hsa-platform"
+
 namespace luthier::hsa {
 
 std::recursive_mutex ExecutableBackedCachable::CacheMutex;
 
-llvm::Error Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) {
+llvm::Error
+Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) {
   // Check if executable is indeed frozen
   auto State = Exec.getState();
   LUTHIER_RETURN_ON_ERROR(State.takeError());
@@ -49,7 +54,8 @@ llvm::Error Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) 
   }
   return llvm::Error::success();
 }
-llvm::Error Platform::invalidateExecutableOnExecutableDestroy(const Executable &Exec) {
+llvm::Error
+Platform::invalidateExecutableOnExecutableDestroy(const Executable &Exec) {
   auto LCOs = Exec.getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
   for (const auto &LCO : *LCOs) {
@@ -91,7 +97,8 @@ Platform::cacheExecutableOnLoadedCodeObjectCreation(const Executable &Exec) {
       LUTHIER_RETURN_ON_ERROR(LCOAsCachableItem->cache());
       llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
       LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
-      llvm::outs() << "Number of Symbols: " << Symbols.size() << "\n";
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Number of Symbols: " << Symbols.size() << "\n");
       for (const auto &Symbol : Symbols) {
         LUTHIER_RETURN_ON_ERROR(
             llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol)->cache());
