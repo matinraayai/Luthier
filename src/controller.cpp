@@ -1,6 +1,6 @@
-#include "global_singleton_manager.hpp"
 #include "code_generator.hpp"
 #include "code_object_manager.hpp"
+#include "controller.hpp"
 #include "disassembler.hpp"
 #include "hip_intercept.hpp"
 #include "log.hpp"
@@ -9,16 +9,20 @@
 
 #include "luthier/luthier.h"
 #include "luthier/types.h"
+#include <llvm/Support/Error.h>
+#include <llvm/Support/PrettyStackTrace.h>
 
 #include <rocprofiler-sdk/registration.h>
 #include <rocprofiler-sdk/rocprofiler.h>
 
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-controller"
+
 namespace luthier {
 
-template <>
-GlobalSingletonManager *Singleton<GlobalSingletonManager>::Instance{nullptr};
+template <> Controller *Singleton<Controller>::Instance{nullptr};
 
-GlobalSingletonManager *GlobalSingletonManager::GSM{nullptr};
+Controller *Controller::C{nullptr};
 
 namespace hip {
 static void internalApiCallback(ApiArgs &Args, ApiReturn *Out,
@@ -94,6 +98,7 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
                                     void **Tables, uint64_t NumTables,
                                     void *Data) {
   if (Type == ROCPROFILER_HSA_TABLE) {
+    LLVM_DEBUG(llvm::dbgs() << "Capturing the HSA API Tables.\n");
     auto *Table = static_cast<HsaApiTable *>(Tables[0]);
     luthier::hsa::Interceptor::instance().captureHsaApiTable(Table);
     luthier::hsa::atHsaApiTableLoad();
@@ -106,6 +111,17 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
         luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy);
     hsaInterceptor.enableInternalCallback(
         luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object);
+    LLVM_DEBUG(llvm::dbgs() << "Captured the HSA API Tables.\n");
+  }
+  if (Type == ROCPROFILER_HIP_COMPILER_TABLE) {
+    LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Compiler API Table.\n");
+    auto &HipInterceptor = hip::Interceptor::instance();
+    auto *Table = static_cast<HipCompilerDispatchTable *>(Tables[0]);
+    HipInterceptor.captureCompilerDispatchTable(Table);
+    HipInterceptor.setInternalCallback(hip::internalApiCallback);
+    HipInterceptor.enableInternalCallback(
+        luthier::hip::HIP_API_ID___hipRegisterFunction);
+    LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Compiler API Table.\n");
   }
 }
 
@@ -116,35 +132,36 @@ void rocprofilerFinalize(void *Data) {
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 
-GlobalSingletonManager::GlobalSingletonManager()
-    : Singleton<GlobalSingletonManager>() {
+Controller::Controller() : Singleton<Controller>() {
   CG = new CodeGenerator();
   COM = new CodeObjectManager();
   CL = new CodeLifter();
   TM = new TargetManager();
   HipInterceptor = new hip::Interceptor();
-  if (!HipInterceptor->isEnabled())
-    llvm::report_fatal_error("HIP Interceptor failed to initialize.");
-  HipInterceptor->setInternalCallback(hip::internalApiCallback);
-  HipInterceptor->enableInternalCallback(
-      luthier::hip::HIP_API_ID___hipRegisterFunction);
 }
 
-GlobalSingletonManager::~GlobalSingletonManager() {
+Controller::~Controller() {
   delete CG;
   delete COM;
   delete CL;
   delete TM;
   delete HipInterceptor;
 }
-void GlobalSingletonManager::init() {
+void Controller::init() {
   static std::once_flag Once{};
-  std::call_once(Once, []() { GSM = new luthier::GlobalSingletonManager(); });
+  std::call_once(Once, []() {
+    C = new luthier::Controller();
+    llvm::EnablePrettyStackTrace();
+    llvm::EnablePrettyStackTraceOnSigInfoForThisThread(true);
+    llvm::setBugReportMsg("PLEASE submit a bug report to "
+                          "https://github.com/matinraayai/Luthier/issues/ and "
+                          "include the crash backtrace.\n");
+  });
 }
 
-void GlobalSingletonManager::finalize() {
+void Controller::finalize() {
   static std::once_flag Once{};
-  std::call_once(Once, []() { delete GSM; });
+  std::call_once(Once, []() { delete C; });
 }
 
 } // namespace luthier
@@ -153,8 +170,9 @@ extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *
 rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
                       uint32_t Priority, rocprofiler_client_id_t *ID) {
   ID->name = "Luthier";
-  rocprofiler_at_intercept_table_registration(luthier::apiRegistrationCallback,
-                                              ROCPROFILER_HSA_TABLE, nullptr);
+  rocprofiler_at_intercept_table_registration(
+      luthier::apiRegistrationCallback,
+      ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE, nullptr);
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
       sizeof(rocprofiler_tool_configure_result_t), nullptr,

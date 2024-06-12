@@ -1,6 +1,5 @@
-#ifndef GLOBAL_MANAGER_HPP
-#define GLOBAL_MANAGER_HPP
-#include <llvm/Support/Error.h>
+#ifndef CONTROLLER_HPP
+#define CONTROLLER_HPP
 
 #include "singleton.hpp"
 
@@ -25,9 +24,10 @@ class Interceptor;
 class Platform;
 } // namespace hsa
 
-class GlobalSingletonManager : public Singleton<GlobalSingletonManager> {
+class Controller : public Singleton<Controller> {
 private:
-  static GlobalSingletonManager *GSM;
+  // Controller manages its own lifetime
+  static Controller *C;
 
   CodeGenerator *CG{nullptr};
 
@@ -50,9 +50,9 @@ private:
 
   __attribute__((destructor)) static void finalize();
 
-  GlobalSingletonManager();
+  Controller();
 
-  ~GlobalSingletonManager();
+  ~Controller();
 };
 } // namespace luthier
 
