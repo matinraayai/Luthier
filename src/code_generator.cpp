@@ -145,7 +145,10 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
   Out.resize(DataOutSize);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_get_data(
       DataOut, &DataOutSize, reinterpret_cast<char *>(Out.data())))));
-
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_data_set(DataSetIn)));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_data_set(DataSetOut)));
   return llvm::Error::success();
 }
 
@@ -194,9 +197,8 @@ llvm::Error CodeGenerator::instrument(
   llvm::raw_svector_ostream OutOS(Reloc);
 
   // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-  if (TM.addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::ObjectFile,
-                       MCContext))
-    llvm::outs() << "Failed to add pass manager\n";
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!TM.addAsmPrinter(
+      PM, OutOS, nullptr, llvm::CodeGenFileType::ObjectFile, MCContext)));
 
   PM.run(*Module); // Run all the passes
 
@@ -204,9 +206,6 @@ llvm::Error CodeGenerator::instrument(
       llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(Reloc.data()),
                               Reloc.size()),
       *Isa, Executable));
-  //  llvm::outs() << "Compiled to executable\n";
-
-  //  llvm::outs() << llvm::toStringRef(Executable) << "\n";
 
   std::vector<hsa::ExecutableSymbol> ExternGVs;
   for (const auto &GV : LSO.getRelatedVariables()) {
@@ -283,36 +282,12 @@ CodeGenerator::insertFunctionCalls(
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
     // Create the pass manager.
-    ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
+    ModulePassManager MPM =
+        PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
 
     // Optimize the IR!
     MPM.run(**InstrumentationModule, MAM);
 
-
-    //    InstrumentationModule->dump();
-    llvm::outs() << "Instrumentation module symbols:\n";
-    //    InstrumentationModule->get()->dump();
-    for (auto &F : **InstrumentationModule) {
-      if (F.getName() == "instrumentation_function") {
-//        F.addFnAttr(llvm::Attribute:);
-        F.removeFnAttr(llvm::Attribute::NoInline);
-        F.addFnAttr(llvm::Attribute::AlwaysInline);
-      }
-//      for (auto &BB : F) {
-//        for (auto &I : BB) {
-//          if (auto *AllocaInst = llvm::dyn_cast<llvm::AllocaInst>(&I)) {
-//            new llvm::AllocaInst(
-//                llvm::PointerType::get(AllocaInst->getAllocatedType(),
-//                                       AMDGPUAS::GLOBAL_ADDRESS),
-//                InstrumentationModule.get().get()->getDataLayout().getAllocaAddrSpace(), AllocaInst->getArraySize(),
-//                AllocaInst->getAlign(), AllocaInst->getName(),
-//                AllocaInst->getIterator());
-//            AllocaInst->eraseFromParent();
-//          }
-//        }
-//      }
-      F.dump();
-    }
     auto ISA = llvm::cantFail(IFunctionSymbol->getLoadedCodeObject()).getISA();
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
     auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
@@ -332,33 +307,17 @@ CodeGenerator::insertFunctionCalls(
     PM.add(TPC);
     PM.add(MMIWP);
 
-
     TPC->addISelPasses();
-//    TPC->addCodeGenPrepare();
+    //    TPC->addCodeGenPrepare();
     //    TPC->addPrintPass("After ISEL: ");
     TPC->addMachinePasses();
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM.add(UsageAnalysis);
     TPC->setInitialized();
-//    llvm::SmallVector<char> Reloc;
-//    llvm::raw_svector_ostream OutOS(Reloc);
-//
-    //     AsmPrinter is responsible for generating the assembly into AsmBuffer.
-//    if (TM.addAsmPrinter(PM, OutOS, nullptr,
-//                         llvm::CodeGenFileType::AssemblyFile,
-//                         MMIWP->getMMI().getContext()))
-//      llvm::outs() << "Failed to add pass manager\n";
 
     TPC->setInitialized();
 
     PM.run(**InstrumentationModule); // Run all the passes
-    InstrumentationModule.get().get()->dump();
-    for (const auto &F : **InstrumentationModule) {
-      const auto MF = MMIWP->getMMI().getMachineFunction(F);
-      if (MF != nullptr)
-        MF->dump();
-    }
-    //    llvm::outs() << Reloc << "\n";
 
     // Lift the instrumentation function's symbol and add it to the compilation
     // module
@@ -388,8 +347,7 @@ CodeGenerator::insertFunctionCalls(
                   .addImm(0);
     auto &CalleeMF = IFLSI->getMFofSymbol();
     auto &CalleeFunction = CalleeMF.getFunction();
-    //    MBB->getParent()->dump();
-    //    llvm::outs() << " ======== \n";
+
     Builder =
         llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::SI_PC_ADD_REL_OFFSET))
@@ -398,8 +356,7 @@ CodeGenerator::insertFunctionCalls(
                               llvm::SIInstrInfo::MO_REL32_LO)
             .addGlobalAddress(&CalleeFunction, 0,
                               llvm::SIInstrInfo::MO_REL32_HI);
-    //    MBB->getParent()->dump();
-    //    llvm::outs() << " ======== \n";
+
     auto SaveReg = MBB->getParent()->getRegInfo().createVirtualRegister(
         &llvm::AMDGPU::SGPR_128RegClass);
     Builder =
@@ -407,15 +364,12 @@ CodeGenerator::insertFunctionCalls(
                       MCInstInfo->get(llvm::AMDGPU::COPY))
             .addDef(SaveReg)
             .addReg(llvm::AMDGPU::PRIVATE_RSRC_REG);
-    //    MBB->getParent()->dump();
-    //    llvm::outs() << " ======== \n";
+
     Builder =
         llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::COPY))
             .addDef(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3)
             .addReg(SaveReg);
-    //    MBB->getParent()->dump();
-    //    llvm::outs() << " ======== \n";
 
     auto RegMask =
         TRI->getCallPreservedMask(CalleeMF, CalleeFunction.getCallingConv());
@@ -430,15 +384,12 @@ CodeGenerator::insertFunctionCalls(
                 llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, false, true))
             .addRegMask(RegMask);
 
-    //    MBB->getParent()->dump();
-    //    llvm::outs() << " ======== \n";
     Builder =
         llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
             .addImm(0)
             .addImm(0);
     //    MBB->getParent()->dump();
-    //    llvm::outs() << " ======== \n";
     //                                    .addDef(llvm::AMDGPU::SGPR4_SGPR5,
     //                                    llvm::RegState::Define);
     //      MIB.addGlobalAddress(InstLLVMFunction, 0,
@@ -457,66 +408,6 @@ CodeGenerator::insertFunctionCalls(
     Out.push_back(*IFLSI);
   }
   return Out;
-}
-llvm::Error CodeGenerator::convertToVirtual(Module &Module,
-                                            MachineModuleInfo &MMI,
-                                            const LiftedSymbolInfo &LSI) {
-  auto &MF = LSI.getMFofSymbol();
-  auto &MFI = *MF.getInfo<llvm::SIMachineFunctionInfo>();
-  llvm::DenseMap<llvm::Register, llvm::Register> PhysToVirtReg;
-  for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
-      MI.print(llvm::outs(), true, false, true, true,
-               MF.getSubtarget().getInstrInfo());
-      llvm::outs() << "\n";
-
-      const llvm::MCInstrDesc &MCID =
-          MF.getTarget().getMCInstrInfo()->get(MI.getOpcode());
-      for (int I = 0; I < MI.getNumOperands(); I++) {
-        auto &Op = MI.getOperand(I);
-        if (Op.isReg() && !Op.isImplicit()) {
-          auto PhysReg = Op.getReg();
-          if (!PhysToVirtReg.contains(PhysReg)) {
-            //            MF.getFrameInfo().CreateFixedObject()
-            auto *TRI = MF.getSubtarget().getRegisterInfo();
-            //            TRI->getSubRegIndex();
-            auto OpRegClassFromMCID = MCID.operands()[I].RegClass;
-            auto RegClass =
-                MF.getSubtarget().getRegisterInfo()->getMinimalPhysRegClass(
-                    PhysReg.asMCReg());
-            llvm::outs()
-                << "Reg class selected for "
-                << printReg(PhysReg, MF.getSubtarget().getRegisterInfo())
-                << "is "
-                << MF.getSubtarget().getRegisterInfo()->getRegClassName(
-                       RegClass)
-                << " \n";
-            llvm::outs() << "What MCInstDesc tells me is: "
-                         << TRI->getRegClassName(
-                                TRI->getRegClass(OpRegClassFromMCID))
-                         << "\n";
-            //          auto RegClass = MF.getRegInfo().getRegClass(PhysReg);
-            PhysToVirtReg.insert(
-                {Op.getReg(), MF.getRegInfo().createVirtualRegister(RegClass)});
-          }
-          //          auto& VirtReg = PhysToVirtReg.at(PhysReg);
-          //          Op.setReg(VirtReg);
-        }
-      }
-      MI.print(llvm::outs(), true, false, true, true,
-               MF.getSubtarget().getInstrInfo());
-      llvm::outs() << "\n";
-    };
-  }
-  //  MF.addLiveIn()
-  for (const auto &[PhysReg, VirtReg] : PhysToVirtReg) {
-    llvm::outs() << "Regs that I found: \n";
-    llvm::outs() << printReg(PhysReg, MF.getSubtarget().getRegisterInfo())
-                 << "\n";
-    llvm::outs() << printReg(VirtReg, MF.getSubtarget().getRegisterInfo())
-                 << "\n";
-  }
-  return llvm::Error::success();
 }
 
 } // namespace luthier

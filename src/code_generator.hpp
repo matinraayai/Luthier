@@ -48,10 +48,6 @@ private:
   insertFunctionCalls(llvm::Module &Module, llvm::MachineModuleInfo &MMI,
                       const LiftedSymbolInfo &TargetLSI,
                       const InstrumentationTask::insert_call_tasks &Tasks);
-
-  static llvm::Error convertToVirtual(llvm::Module &Module,
-                                      llvm::MachineModuleInfo &MMI,
-                                      const LiftedSymbolInfo &LSI);
 };
 } // namespace luthier
 
