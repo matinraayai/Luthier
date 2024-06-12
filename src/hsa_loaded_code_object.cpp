@@ -307,7 +307,7 @@ llvm::Error LoadedCodeObject::cache() const {
     LCOKernelMetaDataMap.insert({KernelMD.Symbol, &KernelMD});
     LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                    "Metadata for kernel symbol {0}:\n", KernelMD.Symbol));
-    LLVM_DEBUG(llvm::dbgs() << "\t" << KernelMD << "\n");
+    LLVM_DEBUG(llvm::dbgs() << KernelMD << "\n");
   }
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
