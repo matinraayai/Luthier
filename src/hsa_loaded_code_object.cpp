@@ -10,6 +10,9 @@
 
 namespace object = llvm::object;
 
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-code-object-manager"
+
 namespace luthier::hsa {
 
 LoadedCodeObject::LoadedCodeObject(hsa_loaded_code_object_t LCO)
@@ -212,6 +215,8 @@ llvm::DenseMap<decltype(hsa_loaded_code_object_t::handle),
 llvm::Error LoadedCodeObject::cache() const {
   std::lock_guard Lock(getCacheMutex());
   // Cache the Storage ELF
+  LLVM_DEBUG(llvm::dbgs() << llvm::formatv("Caching LCO with Handle {0:x}.\n",
+                                           this->hsaHandle()));
   auto StorageMemory = this->getStorageMemory();
   LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
   auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
@@ -224,7 +229,9 @@ llvm::Error LoadedCodeObject::cache() const {
   auto ISA = getELFObjectFileISA(CachedELF);
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
   ISAOfLCOs.insert({this->hsaHandle(), ISA->asHsaType()});
-
+  LLVM_DEBUG(llvm::dbgs() << llvm::formatv("ISA of LCO {0:x}: {1}.\n",
+                                           this->hsaHandle(),
+                                           llvm::cantFail(ISA->getName())));
   // Cache the ELF Symbols
   auto &KernelDescELFSymbolsOfThisLCO =
       KernelDescSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
@@ -235,29 +242,30 @@ llvm::Error LoadedCodeObject::cache() const {
   auto &DeviceFuncELFSymbolsOfThisLCO =
       DeviceFuncSymbolsOfLCOs.insert({hsaHandle(), {}}).first->second;
 
+  LLVM_DEBUG(llvm::dbgs() << llvm::formatv("Caching symbols for LCO {0:x}:\n",
+                                           this->hsaHandle()));
   for (const object::ELFSymbolRef &Symbol : CachedELF.symbols()) {
     auto Type = Symbol.getELFType();
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
     auto Size = Symbol.getSize();
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
-    llvm::outs() << "Symbol Name : " << *SymbolName << "\n";
-    llvm::outs() << "Binding: " << int(Binding) << "\n";
-    llvm::outs() << "Type: " << int(Type) << "\n";
+    LLVM_DEBUG(llvm::dbgs()
+               << llvm::formatv("\tSymbol Name: {0}, Binding: {1}, Type: {2}\n",
+                                *SymbolName, Binding, Type));
     if (Binding == llvm::ELF::STB_GLOBAL) {
       // Kernel Function Symbol
       if (Type == llvm::ELF::STT_FUNC) {
         KernelFuncELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
-        llvm::outs() << "Found kernel function\n";
-        llvm::outs() << "new size: " << KernelFuncELFSymbolsOfThisLCO.size()
-                     << "\n";
+        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                       "\tSymbol {0} is a kernel function.\n", *SymbolName));
       } else if (Type == llvm::ELF::STT_OBJECT) {
         // Kernel Descriptor Symbol
         if (SymbolName->ends_with(".kd") && Size == 64) {
           KernelDescELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
-          llvm::outs() << "found a kernel!\n";
-          llvm::outs() << "new size: " << KernelDescELFSymbolsOfThisLCO.size()
-                       << "\n";
+          LLVM_DEBUG(llvm::dbgs()
+                     << llvm::formatv("\tSymbol {0} is a kernel descriptor.\n",
+                                      *SymbolName));
         }
         // Variable Symbol
         else {
@@ -265,21 +273,26 @@ llvm::Error LoadedCodeObject::cache() const {
         }
       } else if (Type == llvm::ELF::STT_AMDGPU_HSA_KERNEL && Size == 64) {
         KernelDescELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
-        llvm::outs() << "Found a kernel!\n";
-        llvm::outs() << "new size: " << KernelDescELFSymbolsOfThisLCO.size()
-                     << "\n";
+        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                       "\tSymbol {0} is a kernel descriptor.\n", *SymbolName));
       } else if (Type == llvm::ELF::STT_NOTYPE) {
-        llvm::outs() << "Found an external Symbol\n";
+        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                       "\tSymbol {0} is an external symbol.\n", *SymbolName));
         VariableELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
       }
     } else if (Binding == llvm::ELF::STB_LOCAL && Type == llvm::ELF::STT_FUNC) {
       DeviceFuncELFSymbolsOfThisLCO.insert({*SymbolName, Symbol});
-      llvm::outs() << "Found device function\n";
+      LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                     "\tSymbol {0} is a device function.\n", *SymbolName));
     }
   }
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(KernelDescELFSymbolsOfThisLCO.size() ==
                         KernelFuncELFSymbolsOfThisLCO.size()));
+  LLVM_DEBUG(
+      llvm::dbgs()
+      << "Number of kernel function symbols and kernel descriptors match.\n");
+
   // Cache the LCO and Kernel Symbols Metadata
   auto MetaData = parseNoteMetaData(CachedELF);
   LUTHIER_RETURN_ON_ERROR(MetaData.takeError());
@@ -292,22 +305,14 @@ llvm::Error LoadedCodeObject::cache() const {
           .first->getSecond();
   for (auto &KernelMD : LCOCachedMetaData.Kernels) {
     LCOKernelMetaDataMap.insert({KernelMD.Symbol, &KernelMD});
-    llvm::outs() << "Kernel MD symbol: " << KernelMD.Symbol << "\n";
+    LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                   "Metadata for kernel symbol {0}:\n", KernelMD.Symbol));
+    LLVM_DEBUG(llvm::dbgs() << "\t" << KernelMD << "\n");
   }
 
-  for (const auto &KD : KernelDescELFSymbolsOfThisLCO.keys()) {
-    llvm::outs() << "KD: " << KD << "\n";
-  }
-
-  for (const auto &Kernel : KernelFuncELFSymbolsOfThisLCO.keys()) {
-    llvm::outs() << "Kfunc: " << Kernel << "\n";
-  }
-
-  llvm::outs() << "Size of KD symbols: " << KernelDescELFSymbolsOfThisLCO.size()
-               << "\n";
-  llvm::outs() << "Size of MD Symbols: " << LCOKernelMetaDataMap.size() << "\n";
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
       KernelFuncELFSymbolsOfThisLCO.size() == LCOKernelMetaDataMap.size()));
+  LLVM_DEBUG(llvm::dbgs() << "All kernels' Metadata was found\n");
 
   CachedLCOs.insert(hsaHandle());
   return llvm::Error::success();
