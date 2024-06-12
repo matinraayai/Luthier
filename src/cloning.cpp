@@ -29,6 +29,7 @@ void cloneModuleAttributes(const llvm::Module &OldModule,
 llvm::Error cloneGlobalValuesIntoModule(
     llvm::ArrayRef<llvm::GlobalValue *> DeepCloneOldValues,
     llvm::Module &NewModule) {
+  llvm::outs() << "\n=====> Here in cloneGlobalValuesIntoModule\n";
   // The deep clone old Value list shouldn't be empty
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ARGUMENT_ERROR_CHECK(!DeepCloneOldValues.empty()));
@@ -65,11 +66,11 @@ llvm::Error cloneGlobalValuesIntoModule(
       // Walk over the function's instructions, and identify all global objects
       // it uses from the parent module
       // It is a depth-first search
-      llvm::outs() << "Dumping function " << CurrentDeepCloneFunction->getName()
-                   << "\n";
+      // llvm::outs() << "Dumping function " << CurrentDeepCloneFunction->getName()
+      //              << "\n";
       for (const auto &BB : *CurrentDeepCloneFunction) {
         for (const auto &I : BB) {
-          llvm::outs() << "Dumping instruction\n";
+          // llvm::outs() << "Dumping instruction\n";
 //          I.dump();
           for (const auto &Op : I.operands()) {
             if (auto *GV = llvm::dyn_cast<llvm::GlobalVariable>(&Op)) {
@@ -86,9 +87,9 @@ llvm::Error cloneGlobalValuesIntoModule(
                   if (!VisitedDeepCloneOldValues.contains(Func))
                     DeepCloneOldGlobalValuesToBeVisited.insert(Func);
                 }
-                llvm::outs() << "Func name: " << Func->getName()
-                             << " Linkage: " << Linkage
-                             << " Visiblity: " << Visibility << "\n";
+                // llvm::outs() << "Func name: " << Func->getName()
+                //              << " Linkage: " << Linkage
+                //              << " Visiblity: " << Visibility << "\n";
               }
             }
             if (auto *GA = llvm::dyn_cast<llvm::GlobalAlias>(&Op)) {
@@ -309,6 +310,7 @@ llvm::Error cloneGlobalValuesIntoModule(
       NewNMD->addOperand(MapMetadata(NMD.getOperand(i), VMap));
   }
 
+  llvm::outs() << "\n=====> End of cloneGlobalValuesIntoModule\n";
   return llvm::Error::success();
 }
 

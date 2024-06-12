@@ -216,7 +216,7 @@ CodeObjectManager::getModuleContainingInstrumentationFunctions(
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(Func));
     Funcs.push_back(LCOModule->getFunction(*SymbolName));
     LCOModule->print(llvm::outs(), nullptr);
-    return (llvm::CloneModule(*LCOModule));
+    // return (llvm::CloneModule(*LCOModule));
   }
   LUTHIER_RETURN_ON_ERROR(
       luthier::cloneGlobalValuesIntoModule(Funcs, *ClonedModule));

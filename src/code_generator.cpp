@@ -85,7 +85,7 @@
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <optional>
-#include <strstream>
+// #include <strstream>
 
 #include "AMDGPUGenInstrInfo.inc"
 #include "llvm/BinaryFormat/ELF.h"
@@ -203,7 +203,7 @@ llvm::Error CodeGenerator::instrument(
 
   PM.run(*Module); // Run all the passes
 
-  // llvm::outs() << "\n ~ Dump compilation module right before compiling to reloc\n";
+  // llvm::outs() << "\n=====> Dump compilation module right before compiling to reloc\n";
   // Module->dump();
 
   LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
@@ -244,8 +244,15 @@ CodeGenerator::insertFunctionCalls(
     llvm::Module &Module, llvm::MachineModuleInfo &MMI,
     const LiftedSymbolInfo &TargetLSI,
     const InstrumentationTask::insert_call_tasks &Tasks) {
+
+  llvm::outs() << "\n=====> Begin CodeGenerator::insertFunctionCalls\n";
+
   std::vector<LiftedSymbolInfo> Out;
   for (const auto &[IPointMI, IFuncAndIPoint] : Tasks) {
+    llvm::outs() << "\n=====> Inserting call for IPointMI:\n" ;
+    IPointMI->dump();
+    llvm::outs() << "=====\n\n";
+
     auto &[IFuncShadowHostPtr, IPoint] = IFuncAndIPoint;
     // Get the hsa::GpuAgent of the Target Kernel
     auto TargetKernelSymbol =
@@ -255,14 +262,18 @@ CodeGenerator::insertFunctionCalls(
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
     // Figure out the hsa::ExecutableSymbol of the instrumentation function
     // loaded on the target kernel's hsa::GpuAgent
+    llvm::outs() << "=====> Get executable symbol of instrumentation function\n";
     auto IFunctionSymbol =
         luthier::CodeObjectManager::instance().getInstrumentationFunction(
             IFuncShadowHostPtr, *Agent);
     LUTHIER_RETURN_ON_ERROR(IFunctionSymbol.takeError());
+    llvm::outs() << "=====\n\n";
+    llvm::outs() << "=====> run getModuleContainingInstrumentationFunctions\n";
     auto InstrumentationModule =
         CodeObjectManager::instance()
             .getModuleContainingInstrumentationFunctions({*IFunctionSymbol});
     LUTHIER_RETURN_ON_ERROR(InstrumentationModule.takeError());
+    llvm::outs() << "=====\n\n";
 
     // Create the analysis managers.
     // These must be declared in this order so that they are destroyed in the
@@ -290,8 +301,10 @@ CodeGenerator::insertFunctionCalls(
         PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
 
     // Optimize the IR!
+    llvm::outs() << "\n=====> Run IR optimization for InstrumentationModule\n";
     MPM.run(**InstrumentationModule, MAM);
 
+    llvm::outs() << "\n=====> Create Master Kernel\n";
     llvm::Type *const MKRetType = 
         llvm::Type::getVoidTy(InstrumentationModule->get()->getContext());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MKRetType != nullptr));
@@ -301,13 +314,13 @@ CodeGenerator::insertFunctionCalls(
     llvm::FunctionCallee MKFuncCallee = 
         InstrumentationModule->get()
                              ->getOrInsertFunction("MasterKernel", MKFuncType);
-    
+
     auto MK = llvm::dyn_cast<llvm::Function>(MKFuncCallee.getCallee());
     auto &InstrumentationContext = InstrumentationModule.get()->getContext();
     llvm::IRBuilder<> MKBuilder(InstrumentationContext);
     
     for (llvm::Function &F : **InstrumentationModule) {
-      if (F.getName() == "instrumentation_function") {
+      if (F.getName() == "instrumentationHook") {
         F.removeFnAttr(llvm::Attribute::OptimizeNone);
         F.removeFnAttr(llvm::Attribute::NoInline);
         F.addFnAttr(llvm::Attribute::AlwaysInline);
@@ -343,21 +356,19 @@ CodeGenerator::insertFunctionCalls(
     // llvm::BasicBlock *MKBB_END = 
     //   llvm::BasicBlock::Create(InstrumentationContext, "end_reserved", MK);
    
-    // Create basic block for IPointMI
+    llvm::outs() << "=====> Create basic block for IPointMI\n";
     llvm::BasicBlock *MKBB = 
         llvm::BasicBlock::Create(InstrumentationContext, "InstruPoint", MK);
         // llvm::BasicBlock::Create(InstrumentationContext, "InstruPoint", MK, MKBB_END);
     MKBuilder.SetInsertPoint(MKBB);
-    MKBuilder.CreateCall(InstrumentationModule.get()
-                         ->getFunction("instrumentation_function"));
+    auto Hook = InstrumentationModule.get()->getFunction("instrumentationHook");
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
+    MKBuilder.CreateCall(Hook);
     MKBuilder.CreateRetVoid();
-    
+
     // Create reserved beginning Basic Block for master kernel
     // llvm::BasicBlock *MKBB_BEGIN = 
     //   llvm::BasicBlock::Create(InstrumentationContext, "begin_reserved", MK, MKBB);
-
-    // llvm::outs() << " ~ Dump instrumentation module after running IR optimzations\n\n";
-    // InstrumentationModule->get()->dump();
 
     auto ISA = llvm::cantFail(IFunctionSymbol->getLoadedCodeObject()).getISA();
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
@@ -388,28 +399,19 @@ CodeGenerator::insertFunctionCalls(
 
     TPC->setInitialized();
 
-    llvm::outs() << " ~ Run codegen passes with legacy pass manager\n";
     PM.run(**InstrumentationModule); // Run all the passes
 
-    // llvm::outs() << "\n ~ Add app modules to instrumentation module\n";
-    // // llvm::outs() << "=======================================\n";
-    // for (llvm::Function &AppF : Module) {
-    //   // AppF.dump();
-    //   InstrumentationModule->get()->getOrInsertFunction(
-    //       AppF.getName(), AppF.getFunctionType(), AppF.getAttributes());
-    // }
-    // // llvm::outs() << "=======================================\n";
-    llvm::outs() << "\n ~ Dump instrumentation module after running Codegen\n";
+    llvm::outs() << "\n=====> Dump instrumentation module after running Codegen\n";
     InstrumentationModule->get()->dump();
     
-    llvm::outs() << "\n\n ~ Dump instrumentation module's machine functions\n";
-    for (const auto &F : **InstrumentationModule) {
-      const auto MF = MMIWP->getMMI().getMachineFunction(F);
-      if (MF != nullptr) {
-        MF->dump();
-        llvm::outs() << "Num basic blocks: " << MF->size() << "\n";
-      } llvm::outs() << "\n";
-    }   llvm::outs() << "\n";
+    // llvm::outs() << "\n\n=====> Dump instrumentation module's machine functions\n";
+    // for (const auto &F : **InstrumentationModule) {
+    //   const auto MF = MMIWP->getMMI().getMachineFunction(F);
+    //   if (MF != nullptr) {
+    //     MF->dump();
+    //     llvm::outs() << "Num basic blocks: " << MF->size() << "\n";
+    //   } llvm::outs() << "\n";
+    // }   llvm::outs() << "\n";
 
     
     // Lift the instrumentation function's symbol and add it to the compilation
@@ -418,10 +420,10 @@ CodeGenerator::insertFunctionCalls(
         *IFunctionSymbol, Module, MMI);
     LUTHIER_RETURN_ON_ERROR(IFLSI.takeError());
     
-	// auto &CalleeMF = IFLSI->getMFofSymbol();
-    // auto &CalleeFunction = CalleeMF.getFunction();
-    auto CalleeMF = MMIWP->getMMI().getMachineFunction(*MK);
-    auto CalleeFunction = MK;
+    auto &CalleeMF = IFLSI->getMFofSymbol();
+    auto &CalleeFunction = CalleeMF.getFunction();
+    // auto CalleeMF = MMIWP->getMMI().getMachineFunction(*MK);
+    // auto CalleeFunction = MK;
    
     auto MCInstInfo = MMI.getTarget().getMCInstrInfo();
     auto ToBeInstrumentedMF = IPointMI->getParent()->getParent();
@@ -431,6 +433,9 @@ CodeGenerator::insertFunctionCalls(
     // Spill the registers to the stack before calling the instrumentation
     // function
 
+    llvm::outs() << "\n=====> Start of Instrumentation Logic\n"
+                 << "=====> Spill the registers to the stack\n";
+    
     IPointMI->getParent()->getParent()->getProperties().reset(
         llvm::MachineFunctionProperties::Property::NoVRegs);
     llvm::MachineInstrBuilder Builder;
@@ -443,16 +448,14 @@ CodeGenerator::insertFunctionCalls(
                             MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
                   .addImm(0)
                   .addImm(0);
-    auto &CalleeMF = IFLSI->getMFofSymbol();
-    auto &CalleeFunction = CalleeMF.getFunction();
 
     Builder =
         llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::SI_PC_ADD_REL_OFFSET))
             .addDef(PCReg)
-            .addGlobalAddress(CalleeFunction, 0,
+            .addGlobalAddress(&CalleeFunction, 0,
                               llvm::SIInstrInfo::MO_REL32_LO)
-            .addGlobalAddress(CalleeFunction, 0,
+            .addGlobalAddress(&CalleeFunction, 0,
                               llvm::SIInstrInfo::MO_REL32_HI);
 
     auto SaveReg = MBB->getParent()->getRegInfo().createVirtualRegister(
@@ -470,14 +473,15 @@ CodeGenerator::insertFunctionCalls(
             .addReg(SaveReg);
 
     auto RegMask =
-        TRI->getCallPreservedMask(*CalleeMF, CalleeFunction->getCallingConv());
+        TRI->getCallPreservedMask(CalleeMF, CalleeFunction.getCallingConv());
 
+    llvm::outs() << "=====> Insert call to IFunc into compilation module\n";
     Builder =
         llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::SI_CALL))
             .addReg(llvm::AMDGPU::SGPR30_SGPR31, llvm::RegState::Define)
             .addReg(PCReg, llvm::RegState::Kill)
-            .addGlobalAddress(CalleeFunction)
+            .addGlobalAddress(&CalleeFunction)
             .add(llvm::MachineOperand::CreateReg(
                 llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, false, true))
             .addRegMask(RegMask);
@@ -503,7 +507,7 @@ CodeGenerator::insertFunctionCalls(
     //              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
     //          .addImm(0)
     //          .addImm(0);
-    llvm::outs() << "\n ~ End of Instrumentation Logic\n";
+    llvm::outs() << "=====> End of Instrumentation Logic\n";
     Out.push_back(*IFLSI);
   }
   return Out;
