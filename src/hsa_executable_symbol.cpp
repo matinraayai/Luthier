@@ -1,14 +1,15 @@
 #include "hsa_executable_symbol.hpp"
 
 #include <llvm/Object/ELFObjectFile.h>
-#include <llvm/Support/ErrorHandling.h>
 
 #include "error.hpp"
-#include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_loaded_code_object.hpp"
 #include "object_utils.hpp"
+
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-hsa-executable-symbol"
 
 namespace luthier::hsa {
 
@@ -40,13 +41,10 @@ llvm::Expected<ExecutableSymbol> ExecutableSymbol::createDeviceFunctionSymbol(
 llvm::Expected<ExecutableSymbol>
 ExecutableSymbol::fromHandle(hsa_executable_symbol_t Symbol) {
   std::lock_guard Lock(getCacheMutex());
-  llvm::outs() << "Is symbol present? "
-               << SymbolHandleCache.contains(Symbol.handle) << "\n";
-  llvm::outs() << "symbol to look for: " << llvm::format_hex(Symbol.handle, 8)
-               << "\n";
-  for (const auto &[H, I] : SymbolHandleCache) {
-    llvm::outs() << "Symbol in the map: " << llvm::format_hex(H, 8) << "\n";
-  }
+  LLVM_DEBUG(
+      llvm::dbgs() << llvm::formatv(
+          "Looking for symbol {0:x} in the cache. Was symbol found? {1}.\n",
+          Symbol.handle, SymbolHandleCache.contains(Symbol.handle)));
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(SymbolHandleCache.contains(Symbol.handle)));
   const auto &SymbolInfo = SymbolHandleCache.at(Symbol.handle);
@@ -152,8 +150,8 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
 }
 llvm::Error ExecutableSymbol::cache() const {
   std::lock_guard Lock(getCacheMutex());
-  llvm::outs() << "Inserting handle " << llvm::format_hex(hsaHandle(), 8)
-               << "\n";
+  LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                 "Caching symbol with handle: {0:x}.\n", this->hsaHandle()));
   SymbolHandleCache.insert({hsaHandle(), SymbolInfo});
   return llvm::Error::success();
 }
