@@ -14,7 +14,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "global_singleton_manager.hpp"
+#include "singleton.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"

@@ -872,13 +872,6 @@ llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
       BranchAndTargetLocations.erase(LCO);
     // Remove relocation info
     if (Relocations.contains(LCO)) {
-      llvm::outs() << "Number of things in the relocation map: "
-                   << Relocations.size() << "\n";
-      llvm::outs() << "Handles remaining: \n";
-      for (const auto &It : Relocations) {
-        llvm::outs() << It.first.hsaHandle() << "\n";
-      }
-      llvm::outs() << "Handle to be removed: " << LCO.hsaHandle() << "\n";
       Relocations.erase(LCO);
     }
 
