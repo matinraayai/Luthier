@@ -18,7 +18,7 @@
 #include "log.hpp"
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "code-object-manager"
+#define DEBUG_TYPE "luthier-code-object-manager"
 
 namespace luthier {
 
@@ -215,6 +215,7 @@ CodeObjectManager::getModuleContainingInstrumentationFunctions(
     auto *Func = LCOModule->getFunction(*SymbolName);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(Func));
     Funcs.push_back(LCOModule->getFunction(*SymbolName));
+    LCOModule->print(llvm::outs(), nullptr);
     return (llvm::CloneModule(*LCOModule));
   }
   LUTHIER_RETURN_ON_ERROR(

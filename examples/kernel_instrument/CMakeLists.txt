@@ -13,8 +13,11 @@ set_source_files_properties(kernel_instrument.cpp PROPERTIES LANGUAGE HIP)
 
 set_property(TARGET kernel_instrument PROPERTY COMPILE_FLAGS "-fPIC")
 
+
 target_include_directories(kernel_instrument PUBLIC ../../include/)
 
-set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -Xoffload-linker --emit-relocs -Xclang -fembed-bitcode=all")
+set(LUTHIER_BC_EMBED_PLUGIN_PATH "" CACHE STRING "Path to the Luthier compiler plugin for embedding optimized bitcode")
+
+set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -Xoffload-linker --emit-relocs -fpass-plugin=${LUTHIER_BC_EMBED_PLUGIN_PATH}")
 
 target_link_libraries(kernel_instrument PUBLIC luthier hip::host hip::device)

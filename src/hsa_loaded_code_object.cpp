@@ -11,7 +11,7 @@
 namespace object = llvm::object;
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-code-object-manager"
+#define DEBUG_TYPE "luthier-loaded-code-object"
 
 namespace luthier::hsa {
 

@@ -6,6 +6,9 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-embed-optimized-bitcode-pass"
+
 namespace luthier {
 llvm::PreservedAnalyses
 EmbedOptimizedBitcodePass::run(llvm::Module &M,
@@ -18,6 +21,9 @@ EmbedOptimizedBitcodePass::run(llvm::Module &M,
   llvm::Triple T(M.getTargetTriple());
   if (T.getArch() != llvm::Triple::ArchType::amdgcn)
     return llvm::PreservedAnalyses::all();
+
+  LLVM_DEBUG(llvm::dbgs() << "Embedded Module " << M.getName() << " dump: ");
+  LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
 
   std::string Data;
   llvm::raw_string_ostream OS(Data);
