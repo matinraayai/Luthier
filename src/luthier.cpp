@@ -1,29 +1,35 @@
+//===-- luthier.pp - Implementation of the Luthier API --------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file contains the implementation of functions declared over at
+/// luthier.h.
+/// For the controller logic of Luthier, \see luthier::Controller
+//===----------------------------------------------------------------------===//
 #include <luthier/luthier.h>
 
 #include <llvm/ADT/StringRef.h>
-#include <llvm/Support/FormatVariadic.h>
-
 
 #include <optional>
 
 #include "code_generator.hpp"
 #include "code_object_manager.hpp"
+#include "controller.hpp"
 #include "disassembler.hpp"
 #include "error.hpp"
-#include "global_singleton_manager.hpp"
 #include "hip_intercept.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
 #include "hsa_platform.hpp"
-#include "target_manager.hpp"
 #include <luthier/instr.h>
 
 namespace luthier {
 
 namespace hip {
 
-void *getHipFunctionPtr(llvm::StringRef FuncName) {
-  return hip::Interceptor::instance().getHipFunction(FuncName);
+const HipCompilerDispatchTable &getSavedCompilerTable() {
+  return hip::Interceptor::instance().getSavedCompilerTable();
 }
 
 } // namespace hip
