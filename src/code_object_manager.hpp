@@ -12,26 +12,19 @@
 #include <luthier/types.h>
 
 namespace luthier {
-/**
- * \brief A singleton object that keeps track of instrumentation functions and
- * instrumented kernels (per un-instrumented application kernel) in Luthier.
- */
+
+/// \brief A singleton object that keeps track of code objects related to
+/// Luhtier.
 class CodeObjectManager : public Singleton<CodeObjectManager> {
 public:
-  /**
-   * Registers the wrapper kernel of the tool's instrumentation functions
-   * The arguments are captured by intercepting \p __hipRegisterFunction calls,
-   * and checking if \p __luthier_wrap is in the name of the kernel
-   * This function is called once per instrumentation function/kernel
-   * \param WrapperShadowHostPtr shadow host pointer of the instrumentation
-   * function's wrapper kernel
-   * \param KernelName name of the wrapper kernel
-   */
-  void registerInstrumentationFunctionWrapper(const void *WrapperShadowHostPtr,
-                                              const char *KernelName);
 
-  llvm::Error
-  checkIfLuthierToolExecutableAndRegister(const hsa::Executable &Exec);
+  /// Called right after \c hsa_executable_freeze is called on the passed
+  /// \p Exec. Checks if \p Exec is a tool executable, and registers it
+  /// with the \c CodeObjectManager
+  /// \param Exec Freshly-frozen executable
+  /// \return an \c llvm::Error indicating any issues encountered during the
+  /// process
+  llvm::Error registerIfLuthierToolExecutable(const hsa::Executable &Exec);
 
   /**
    * Returns the \p hsa::ExecutableSymbol of the instrumentation function, given
