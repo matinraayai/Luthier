@@ -1,6 +1,8 @@
 #include "instrumentation_module.hpp"
+#include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
+#include <llvm/IR/Constants.h>
 
 namespace luthier {
 
@@ -36,6 +38,33 @@ extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO,
   return std::move(*Module);
 }
 
+static llvm::Error getHooks(const llvm::Module &M,
+                            std::unordered_set<std::string> &Hooks) {
+  const llvm::GlobalVariable *V =
+      M.getGlobalVariable("llvm.global.annotations");
+  const llvm::ConstantArray *CA = cast<llvm::ConstantArray>(V->getOperand(0));
+  for (llvm::Value *Op : CA->operands()) {
+    auto *CS = cast<llvm::ConstantStruct>(Op);
+    // The first field of the struct contains a pointer to
+    // the annotated variable.
+    llvm::Value *AnnotatedVar = CS->getOperand(0)->stripPointerCasts();
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ASSERTION(!isa<llvm::Function>(AnnotatedVar)));
+
+    auto *Func = cast<llvm::Function>(AnnotatedVar);
+    llvm::outs() << "Function annotated: " << Func->getName() << "\n";
+
+    // The second field contains a pointer to a global annotation string.
+    auto *GV =
+        cast<llvm::GlobalVariable>(CS->getOperand(1)->stripPointerCasts());
+    llvm::StringRef Content;
+    llvm::getConstantStringInfo(GV, Content);
+    llvm::outs() << "Annotation: " << Content << "\n";
+    Hooks.insert(std::string(Content));
+  };
+  return llvm::Error::success();
+}
+
 llvm::Expected<InstrumentationModule>
 InstrumentationModule::create(const luthier::hsa::LoadedCodeObject &LCO) {
   InstrumentationModule IM;
@@ -43,6 +72,10 @@ InstrumentationModule::create(const luthier::hsa::LoadedCodeObject &LCO) {
   auto Context = std::make_unique<llvm::LLVMContext>();
   auto Module = extractBitcodeFromLCO(LCO, *Context);
   LUTHIER_RETURN_ON_ERROR(Module.takeError());
+  // Extract all the hook names
+  LUTHIER_RETURN_ON_ERROR(getHooks(**Module, IM.Hooks));
+  (*Module)->getGlobalVariable("llvm.global.annotations")->removeFromParent();
+
   // Convert all global variables to extern, remove any managed variable
   // initializers
   // Remove any special llvm variables like LLVM used
@@ -62,8 +95,8 @@ InstrumentationModule::create(const luthier::hsa::LoadedCodeObject &LCO) {
   }
 
   // Save the modified module as a bitcode
-  // When the CodeGenerator asks for a copy of this Module, it should be copied
-  // over to the target app's LLVMContext
+  // When the CodeGenerator asks for a copy of this Module, it should be
+  // copied over to the target app's LLVMContext
   llvm::raw_svector_ostream OS(IM.BitcodeBuffer);
   llvm::WriteBitcodeToFile(**Module, OS);
 

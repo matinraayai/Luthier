@@ -32,6 +32,10 @@ private:
   llvm::SmallVector<char> BitcodeBuffer{};
   /// Name of the Module
   std::string ModuleName{};
+
+  /// A set of hooks in the Module
+  std::unordered_set<std::string> Hooks{};
+
   /// List of "static" symbols; Static symbols come with Instrumentation Modules
   /// loaded with Loaded Code Objects, which means they are already loaded by the
   /// HSA runtime. This means Instrumentation Module doesn't need to worry about
