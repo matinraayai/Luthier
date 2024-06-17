@@ -19,6 +19,7 @@ EmbedOptimizedBitcodePass::run(llvm::Module &M,
         /*gen_crash_diag=*/false);
 
   llvm::Triple T(M.getTargetTriple());
+  // Only operate on the AMD GCN code objects
   if (T.getArch() != llvm::Triple::ArchType::amdgcn)
     return llvm::PreservedAnalyses::all();
 
@@ -28,7 +29,7 @@ EmbedOptimizedBitcodePass::run(llvm::Module &M,
   std::string Data;
   llvm::raw_string_ostream OS(Data);
   auto PA =
-      llvm::BitcodeWriterPass(OS, /*ShouldPreserveUseListOrder=*/true, true)
+      llvm::BitcodeWriterPass(OS, /*ShouldPreserveUseListOrder=*/false, true)
           .run(M, AM);
 
   llvm::embedBufferInModule(M, llvm::MemoryBufferRef(Data, "ModuleData"),
