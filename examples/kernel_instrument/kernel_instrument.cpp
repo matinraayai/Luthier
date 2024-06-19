@@ -1,16 +1,18 @@
 #include <hsa/hsa.h>
 #include <luthier/luthier.h>
 
-MARK_LUTHIER_DEVICE_MODULE
-
-
 #undef DEBUG_TYPE
-
 #define DEBUG_TYPE "luthier-kernel-instrument-tool"
 
-__attribute__((managed)) int GlobalCounter = 20;
+MARK_LUTHIER_DEVICE_MODULE
 
-LUTHIER_HOOK_CREATE(instrumentationHook, (), { GlobalCounter = 20000; });
+__attribute__((managed)) uint64_t GlobalCounter = 20;
+
+LUTHIER_HOOK_ANNOTATE instrumentationHook() {
+  GlobalCounter = reinterpret_cast<uint64_t>(&GlobalCounter);
+};
+
+LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
 
 namespace luthier {
 
@@ -19,24 +21,31 @@ void hsa::atHsaApiTableLoad() {
   hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
 }
 
-void luthier::hsa::atHsaApiTableUnload() {
-  llvm::outs() << "Counter Value: " << GlobalCounter << "\n";
+void hsa::atHsaApiTableUnload() {
+  llvm::outs() << "Counter Value: "
+               << llvm::to_address(reinterpret_cast<uint64_t *>(GlobalCounter))
+               << "\n";
+  llvm::outs() << "Pointer of counter at host: "
+               << llvm::to_address(&GlobalCounter) << "\n";
+  llvm::outs() << "Reserved variable address: "
+               << llvm::to_address(
+                      reinterpret_cast<uint64_t *>(&__luthier_reserved))
+               << "\n";
   llvm::outs() << "Kernel Instrument Tool is terminating!\n";
 }
 
-void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
-                            luthier::ApiEvtPhase Phase,
-                            luthier::hsa::ApiEvtID ApiID) {
+void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
+                   luthier::hsa::ApiEvtID ApiID) {
   if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
     LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
-    auto packets = CBData->hsa_queue_packet_submit.packets;
-    for (unsigned int i = 0; i < CBData->hsa_queue_packet_submit.pkt_count;
-         i++) {
-      auto &packet = packets[i];
-      hsa_packet_type_t packetType = packet.getPacketType();
+    auto Packets = CBData->hsa_queue_packet_submit.packets;
+    for (unsigned int I = 0; I < CBData->hsa_queue_packet_submit.pkt_count;
+         I++) {
+      auto &Packet = Packets[I];
+      hsa_packet_type_t PacketType = Packet.getPacketType();
 
-      if (packetType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
-        auto &DispatchPacket = packet.asKernelDispatch();
+      if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
+        auto &DispatchPacket = Packet.asKernelDispatch();
         auto KD = luthier::KernelDescriptor::fromKernelObject(
             DispatchPacket.kernel_object);
         auto Symbol = KD->getHsaExecutableSymbol();
@@ -46,7 +55,7 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         if (!llvm::cantFail(isKernelInstrumented(*Symbol))) {
           auto LiftedSymbol = luthier::liftSymbol(*Symbol);
           if (auto Err = LiftedSymbol.takeError())
-            llvm::report_fatal_error("Kernel symbol lifting failed.");
+            llvm::report_fatal_error(std::move(Err), true);
           // insert a hook after the first instruction of each basic block
           auto &[Module, MMIWP, LSI] = *LiftedSymbol;
           InstrumentationTask IT;

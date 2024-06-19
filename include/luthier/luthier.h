@@ -103,54 +103,47 @@ instrument(std::unique_ptr<llvm::Module> Module,
  */
 llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel);
 
-/**
- * \brief If a tool contains an instrumentation hook it \b must
- * use this macro once. Luthier hooks are created via the
- * with the \p LUTHIER_HOOK_CREATE macro.
- *
- * \p MARK_LUTHIER_DEVICE_MODULE macro defines a managed variable of
- * type \p char named \p __luthier_reserved in the tool device code.
- * This managed variable ensures that:
- * 1. The HIP runtime is forced to load the tool code object before the first
- * HIP kernel is launched, without requiring eager binary loading to be enabled.
- *    At the time of writing, the device code of a Luthier tool is compiled
- * into a static HIP FAT binary bundled with the tool's shared object. At
- * runtime, the tool's FAT binary gets registered with the HIP runtime; But
- * by default, the HIP runtime loads FAT binaries in a lazy fashion; Meaning
- * that until a kernel is launched from a FAT binary, it does not get loaded
- * onto the device.
- *    The only way to ensure the tool's FAT binary is loaded in time without
- * interfering much with the loading mechanism of HIP runtime is to include a
- * managed variable in the tool's device code. This way, the HIP runtime
- * has to ensure all static managed variables are initialized before the first
- * HIP kernel is launched, which means the static code object containing the
- * managed variable has to be loaded by that time.
- *
- * 2. Luthier can easily identify a tool's code object by a constant time symbol
- * hash lookup.
- *
- * If the target application is not using the HIP runtime, then no kernel is
- * launched by the HIP runtime, meaning that the tool FAT binary does not get
- * loaded in time. In that scenario, as the HIP runtime is present solely for
- * Luthier's function, the `HIP_ENABLE_DEFERRED_LOADING` environment
- * variable must be set to zero in order for Luthier to function.
-
- * \sa LUTHIER_HOOK_CREATE
- */
+/// \brief If a tool contains an instrumentation hook it \b must
+/// use this macro once. Luthier hooks are annotated via the the
+/// \p LUTHIER_HOOK_CREATE macro. \n
+///
+/// \p MARK_LUTHIER_DEVICE_MODULE macro defines a managed variable of
+/// type \p char named \p __luthier_reserved in the tool device code.
+/// This managed variable ensures that: \n
+/// 1. <b>The HIP runtime is forced to load the tool code object before the
+/// first HIP kernel is launched on the device, without requiring eager binary
+/// loading to be enabled</b>: The Clang compiler embeds the device code of a
+/// Luthier tool and its bitcode into a static HIP FAT binary bundled within the
+/// tool's shared object. During runtime, the tool's FAT binary gets
+/// registered with the HIP runtime; However, by default, the HIP runtime loads
+/// FAT binaries in a lazy fashion, only loading it onto a device if:
+/// a. a kernel is launched from it on the said device, or
+/// b. it contains a managed variable. \n
+/// Including a managed variable is the only way to ensure the tool's FAT binary
+/// is loaded in time without interfering with the loading mechanism of HIP runtime.
+/// \n
+/// 2. <b>Luthier can easily identify a tool's code object by a constant time
+/// symbol hash lookup</b>.
+/// \n
+/// If the target application is not using the HIP runtime, then no kernel is
+/// launched by the HIP runtime, meaning that the tool FAT binary does not ever
+/// get loaded. In that scenario, as the HIP runtime is present solely for
+/// Luthier's function, the `HIP_ENABLE_DEFERRED_LOADING` environment
+/// variable must be set to zero to ensure Luthier tool code objects get loaded
+/// right away on all devices.
+///
+/// * \sa LUTHIER_HOOK_ANNOTATE
 #define MARK_LUTHIER_DEVICE_MODULE                                             \
-  __attribute__((managed)) char __luthier_reserved = 0;
+  __attribute__((managed, used)) char __luthier_reserved = 0;
 
+#define LUTHIER_HOOK_ANNOTATE                                                  \
+  __attribute__((device, used, annotate("luthier_hook"))) extern "C" void
 
+#define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
+  __attribute__((global, used)) extern "C" void __hook_handle_##HookName(){};
 
-#define LUTHIER_HOOK_CREATE(HookName, HookParams, HookBody)                    \
-  __attribute__((device, used)) extern "C" void HookName HookParams HookBody;  \
-  extern "C" __attribute__((global, used)) void __luthier_wrap__##HookName(){};
-
-// Luthier uses the pointer to the dummy global wrapper to each function as its
-// unique identifier
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
-  reinterpret_cast<const void *>(__luthier_wrap__##HookName)
-
+  reinterpret_cast<const void *>(__hook_handle_##HookName)
 } // namespace luthier
 
 ////
