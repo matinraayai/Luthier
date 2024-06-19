@@ -55,12 +55,26 @@ public:
   /// \return a thread-safe Module
   llvm::Expected<llvm::orc::ThreadSafeModule>
   readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx);
+
+  /// Returns a mapping between the global variable name and their location \n
+  /// This is generally used when loading an instrumented executable
+  /// \param Agent The \c hsa::GpuAgent the variables are located on
+  /// \param Out A mapping between the name of the global variable and its address
+  /// on the \p Agent
+  /// \return an \c llvm::Error if an issue was encountered
+  /// \sa luthier::hsa::Executable::defineExternalAgentGlobalVariable
+  virtual llvm::Error
+  getGlobalVariablesOnAgent(hsa::GpuAgent &Agent,
+                            llvm::StringMap<void *> &Out) = 0;
 };
 
 /// There's only a single instance of this
 class StaticInstrumentationModule final : public InstrumentationModule {
 private:
   friend ToolExecutableManager;
+  /// Private default constructor only accessible by \c ToolExecutableManager
+  StaticInstrumentationModule() = default;
+
   /// Each static HIP module gets loaded on each device as a single HSA
   /// executable \n
   /// This is a mapping from agents to said executables that belong to this
@@ -92,21 +106,36 @@ private:
   llvm::Error registerExecutable(const hsa::Executable &Exec);
 
   /// Unregisters the executable from the Module.
-  /// Called when the executable is destroyed by HSA
+  /// Called when the executable is about to be destroyed by HSA
   /// \param Exec handle to the executable about to be destroyed
   /// \return
   llvm::Error UnregisterExecutable(const hsa::Executable &Exec);
 
 public:
-  llvm::Expected<const llvm::StringMap<hsa::ExecutableSymbol> &>
-  getGlobalVariablesOnAgent(hsa::GpuAgent &Agent);
+  llvm::Error
+  getGlobalVariablesOnAgent(hsa::GpuAgent &Agent,
+                            llvm::StringMap<void *> &Out) override;
 
+  /// The same as \c luthier::StaticInstrumentationModule::getGlobalVariablesOnAgent,
+  /// except it returns the ExecutableSymbols of the variables
+  /// \param Agent The \c hsa::GpuAgent where a copy (executable) of this module
+  /// is loaded
+  /// \return a reference to the mapping between variable names and their
+  /// Executable Symbols, or an \c llvm::Error if an issue is encountered
+  llvm::Expected<const llvm::StringMap<hsa::ExecutableSymbol> &>
+  getGlobalHsaVariablesOnAgent(hsa::GpuAgent &Agent);
+
+  /// Converts the shadow host pointer \p Handle to the name of the hook it
+  /// represents
+  /// \param Handle Shadow host pointer of the hook handle
+  /// \return the name of the hook \c llvm::Function, or and \c llvm::Error if
+  /// the \p Handle doesn't exist
   llvm::Expected<llvm::StringRef>
   convertHookHandleToHookName(const void *Handle);
 };
 
-/// \brief A singleton object that keeps track of code objects related to
-/// Luhtier.
+/// \brief A singleton object that keeps track of executables that belong to
+/// Luthier, including instrumented executables and tool instrumentation modules
 class ToolExecutableManager : public Singleton<ToolExecutableManager> {
 public:
   /// Registers the wrapper kernel of an instrumentation hook in a static
@@ -163,14 +192,13 @@ public:
    */
   bool isKernelInstrumented(const hsa::ExecutableSymbol &Kernel) const;
 
-  const StaticInstrumentationModule & getStaticInstrumentationModule() const {
+  const StaticInstrumentationModule &getStaticInstrumentationModule() const {
     return SIM;
   }
 
   ~ToolExecutableManager();
 
 private:
-
   mutable StaticInstrumentationModule SIM{};
 
   llvm::DenseMap<

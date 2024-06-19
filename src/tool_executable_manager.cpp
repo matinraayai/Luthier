@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "cloning.hpp"
-#include "disassembler.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable_symbol.hpp"
@@ -209,7 +208,8 @@ StaticInstrumentationModule::UnregisterExecutable(const hsa::Executable &Exec) {
 }
 
 llvm::Expected<const llvm::StringMap<hsa::ExecutableSymbol> &>
-StaticInstrumentationModule::getGlobalVariablesOnAgent(hsa::GpuAgent &Agent) {
+StaticInstrumentationModule::getGlobalHsaVariablesOnAgent(
+    hsa::GpuAgent &Agent) {
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(PerAgentGlobalVariables.contains(Agent)));
   return PerAgentGlobalVariables.at(Agent);
@@ -219,6 +219,20 @@ llvm::Expected<llvm::StringRef>
 StaticInstrumentationModule::convertHookHandleToHookName(const void *Handle) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookHandleMap.contains(Handle)));
   return HookHandleMap[Handle];
+}
+
+llvm::Error StaticInstrumentationModule::getGlobalVariablesOnAgent(
+    hsa::GpuAgent &Agent, llvm::StringMap<void *> &Out) {
+  auto GlobalHsaVariablesOnAgent = this->getGlobalHsaVariablesOnAgent(Agent);
+  LUTHIER_RETURN_ON_ERROR(GlobalHsaVariablesOnAgent.takeError());
+
+  for (const auto &[Name, ExecVar] : *GlobalHsaVariablesOnAgent) {
+    LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier::address_t, VariableAddress,
+                                     ExecVar.getVariableAddress());
+    Out.insert({Name, reinterpret_cast<void *>(
+                          *reinterpret_cast<uint64_t *>(VariableAddress))});
+  }
+  return llvm::Error::success();
 }
 
 llvm::Expected<llvm::orc::ThreadSafeModule>
@@ -266,15 +280,6 @@ llvm::Error ToolExecutableManager::registerIfLuthierToolExecutable(
                  "instrumentation module.\n",
                  Exec.hsaHandle()));
   return llvm::Error::success();
-}
-
-llvm::Expected<const hsa::ExecutableSymbol &>
-ToolExecutableManager::getInstrumentationFunction(
-    const void *WrapperShadowHostPtr, const hsa::GpuAgent &Agent) const {
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(ToolFunctions.contains({WrapperShadowHostPtr, Agent})));
-  return ToolFunctions.at({WrapperShadowHostPtr, Agent})
-      .InstrumentationFunction;
 }
 
 llvm::Expected<const hsa::ExecutableSymbol &>
@@ -340,72 +345,6 @@ ToolExecutableManager::~ToolExecutableManager() {
 bool ToolExecutableManager::isKernelInstrumented(
     const hsa::ExecutableSymbol &Kernel) const {
   return InstrumentedKernels.contains(Kernel);
-}
-llvm::Expected<std::unique_ptr<llvm::Module>>
-ToolExecutableManager::getModuleContainingInstrumentationFunctions(
-    const llvm::ArrayRef<hsa::ExecutableSymbol> Symbols) const {
-  // Make sure all LCOs have the same LCO
-  hsa::LoadedCodeObject LCO{{0}};
-  for (const auto &Symbol : Symbols) {
-    auto SymbolLCO = Symbol.getLoadedCodeObject();
-    LUTHIER_RETURN_ON_ERROR(SymbolLCO.takeError());
-    if (LCO.hsaHandle() == 0)
-      LCO = *SymbolLCO;
-    else
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(LCO == *SymbolLCO));
-  }
-
-  auto ISA = LCO.getISA();
-  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-
-  auto TargetInfo = luthier::TargetManager::instance().getTargetInfo(*ISA);
-  LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
-
-  if (!ToolLCOEmbeddedIRModules.contains(LCO)) {
-    auto StorageELF = LCO.getStorageELF();
-    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
-
-    for (const auto &Section : StorageELF->sections()) {
-      auto SectionName = Section.getName();
-      LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
-      if (*SectionName == ".llvmbc") {
-        auto SectionContents = Section.getContents();
-        LUTHIER_RETURN_ON_ERROR(SectionContents.takeError());
-        auto BCBuffer =
-            llvm::MemoryBuffer::getMemBuffer(*SectionContents, "", false);
-        auto Module =
-            llvm::parseBitcodeFile(*BCBuffer, *TargetInfo->getLLVMContext());
-        LUTHIER_RETURN_ON_ERROR(Module.takeError());
-
-        ToolLCOEmbeddedIRModules.insert({LCO, std::move(*Module)});
-      }
-    }
-    // Ensure that the tool contained LLVM bitcode and it was successfully
-    // extracted
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(ToolLCOEmbeddedIRModules.contains(LCO)));
-  }
-
-  // Create a new LLVM Module to hold the requested symbols
-  std::unique_ptr<llvm::Module> ClonedModule =
-      std::make_unique<llvm::Module>("", *TargetInfo->getLLVMContext());
-
-  llvm::SmallVector<llvm::GlobalValue *> Funcs;
-  for (const auto &Symbol : Symbols) {
-    const auto &LCOModule = ToolLCOEmbeddedIRModules.at(LCO);
-    luthier::cloneModuleAttributes(*LCOModule, *ClonedModule);
-    auto SymbolName = Symbol.getName();
-    LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
-    auto *Func = LCOModule->getFunction(*SymbolName);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(Func));
-    Funcs.push_back(LCOModule->getFunction(*SymbolName));
-    LCOModule->print(llvm::outs(), nullptr);
-    return (llvm::CloneModule(*LCOModule));
-  }
-  LUTHIER_RETURN_ON_ERROR(
-      luthier::cloneGlobalValuesIntoModule(Funcs, *ClonedModule));
-
-  return std::move(ClonedModule);
 }
 
 } // namespace luthier
