@@ -5,9 +5,23 @@
 
 namespace luthier {
 
-constexpr const char *DeviceFunctionWrap = "__luthier_wrap__";
+#define HOOK_HANDLE_PREFIX __luthier_hook_handle
 
-constexpr const char *ReservedManagedVar = "__luthier_reserved";
+#define RESERVED_MANAGED_VAR __luthier_reserved
+
+#define STRINGIFY(S) #S
+
+/// A macro to delay expansion of \c STRINGIFY
+/// TODO: Is there a better way to include this?
+#define X_STRINGIFY(S) STRINGIFY(S)
+
+constexpr const char *HookHandlePrefix = X_STRINGIFY(HOOK_HANDLE_PREFIX);
+
+constexpr const char *ReservedManagedVar = X_STRINGIFY(RESERVED_MANAGED_VAR);
+
+#undef X_STRINGIFY
+
+#undef STRINGIFY
 
 typedef unsigned long address_t;
 
