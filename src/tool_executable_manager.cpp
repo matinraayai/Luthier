@@ -221,6 +221,22 @@ StaticInstrumentationModule::convertHookHandleToHookName(const void *Handle) {
   return HookHandleMap[Handle];
 }
 
+llvm::Expected<bool>
+StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
+    const hsa::Executable &Exec) {
+  auto LCOs = Exec.getLoadedCodeObjects();
+  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
+  for (const auto &LCO : *LCOs) {
+    auto LuthierReservedSymbol =
+        LCO.getExecutableSymbolByName(luthier::ReservedManagedVar);
+    LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbol.takeError());
+    if (LuthierReservedSymbol->has_value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 llvm::Error StaticInstrumentationModule::getGlobalVariablesOnAgent(
     hsa::GpuAgent &Agent, llvm::StringMap<void *> &Out) {
   auto GlobalHsaVariablesOnAgent = this->getGlobalHsaVariablesOnAgent(Agent);
@@ -263,27 +279,39 @@ void ToolExecutableManager::registerInstrumentationHookWrapper(
 llvm::Error ToolExecutableManager::registerIfLuthierToolExecutable(
     const hsa::Executable &Exec) {
   // Check if this executable is a static instrumentation module
-  auto LCOs = Exec.getLoadedCodeObjects();
-  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
-  for (const auto &LCO : *LCOs) {
-    auto LuthierReservedSymbol =
-        LCO.getExecutableSymbolByName(luthier::ReservedManagedVar);
-    LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbol.takeError());
-    if (LuthierReservedSymbol->has_value()) {
-      LUTHIER_RETURN_ON_ERROR(SIM.registerExecutable(Exec));
-      break;
-    }
+  auto IsSIMExec =
+      StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
+          Exec);
+  LUTHIER_RETURN_ON_ERROR(IsSIMExec.takeError());
+  if (*IsSIMExec) {
+    LUTHIER_RETURN_ON_ERROR(SIM.registerExecutable(Exec));
+    LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                   "Executable with handle {0:x} was registered as a static "
+                   "instrumentation module.\n",
+                   Exec.hsaHandle()));
   }
-  LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
-                 "Executable with handle {0:x} was registered as a static "
-                 "instrumentation module.\n",
-                 Exec.hsaHandle()));
   return llvm::Error::success();
 }
 
 llvm::Error ToolExecutableManager::unregisterIfLuthierToolExecutable(
     const hsa::Executable &Exec) {
-  // Check if this is
+  // Check if this belongs to the static instrumentation module
+  auto IsSIMExec =
+      StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
+          Exec);
+  LUTHIER_RETURN_ON_ERROR(IsSIMExec.takeError());
+  if (*IsSIMExec) {
+    return SIM.UnregisterExecutable(Exec);
+  }
+  // Check if this executable has kernels that were instrumented. If so,
+  // destroy the instrumented versions of this executable, and remove its
+  // entries
+  for (const auto &LCO : llvm::cantFail(Exec.getLoadedCodeObjects())) {
+    llvm::SmallVector<hsa::ExecutableSymbol, 4> Kernels;
+    LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
+    for (const auto &Kernel : Kernels) {
+    }
+  }
   return llvm::Error(llvm::Error());
 }
 
@@ -436,7 +464,8 @@ llvm::Error ToolExecutableManager::loadInstrumentedExecutable(
 
 bool ToolExecutableManager::isKernelInstrumented(
     const hsa::ExecutableSymbol &Kernel, llvm::StringRef Profile) const {
-  return InstrumentedKernels.contains({Kernel, Profile});
+  return InstrumentedKernels.contains(Kernel) &&
+         InstrumentedKernels.at(Kernel).contains(Profile);
 }
 
 ToolExecutableManager::~ToolExecutableManager() {

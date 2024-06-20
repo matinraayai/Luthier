@@ -5,7 +5,8 @@
 /// \file
 /// This file describes Luthier's Tool Executable Manager Singleton, which is
 /// in charge of managing all loaded instrumentation modules, as well as
-/// the lifetime of the instrumented executables.
+/// the lifetime of the instrumented executables. It also describes Luthier's
+/// instrumentation modules which are passed to the \c CodeGenerator.
 //===----------------------------------------------------------------------===//
 #ifndef TOOL_EXECUTABLE_MANAGER_HPP
 #define TOOL_EXECUTABLE_MANAGER_HPP
@@ -27,26 +28,36 @@ namespace luthier {
 
 class ToolExecutableManager;
 
-class StaticInstrumentationModule;
-
-/// \brief Consists of an LLVM bitcode buffer + All static variables it uses on
-/// each GPU device
+/// \brief Similar to HIP Modules in concept; Consists of an LLVM bitcode buffer
+/// + All static variable addresses it uses on each GPU device
+/// \detail Luthier relies on HIP-written code for instrumentation;
 class InstrumentationModule {
 protected:
   /// Only CodeObjectManager is allowed to create Instrumentation
   /// Modules
   friend ToolExecutableManager;
 
-  /// A buffer owned by the InstrumentationModule object to save the
+  /// A buffer owned by the InstrumentationModule object to save a copy of its
   /// processed bitcode \n
-  /// The bitcode is first processed to make all its Global Variables external
-  /// Then it is stored again in the bitcode format here. This is so that the
-  /// bitcode can be copied over to different LLVM Contexts
+  /// Upon creation, The bitcode of the module must be read and processed; This
+  /// involves:
+  /// 1. Removing any kernels that were used to create host pointers to hooks. \n
+  /// 2. Extracting the device functions annotated as hooks and add a hook attribute
+  /// to them. \n
+  /// 3. Extracting the CUID of the module for its unique identification.
+  /// 4. Removing the definition of all global variables.
+  /// 5. Removing any managed global variable initializers i.e. variables suffixed
+  /// with ".managed".
+  /// The processed LLVM Module will then be converted back to a bitcode and
+  /// stored here; This is so that the bitcode can be copied over to different
+  /// LLVM Contexts, to allow independent, parallelization-friendly compilation.
   llvm::SmallVector<char> BitcodeBuffer{};
 
   InstrumentationModule() = default;
 
-  /// Compile Unit ID of the Module
+  /// Compile Unit ID of the Module. This is an identifier generated
+  /// by Clang to create a correspondence between the host and the device code.
+  /// Presence of CUID is a requirement of all Luthier tool code
   uint64_t CUID{0};
 
 public:
@@ -132,6 +143,9 @@ public:
   /// the \p Handle doesn't exist
   llvm::Expected<llvm::StringRef>
   convertHookHandleToHookName(const void *Handle);
+
+  static llvm::Expected<bool>
+  isStaticInstrumentationModuleExecutable(const hsa::Executable &Exec);
 };
 
 /// \brief A singleton object that keeps track of executables that belong to
@@ -203,8 +217,8 @@ public:
       llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::ArrayRef<uint8_t>>>
           InstrumentedElfs,
       llvm::StringRef Profile,
-      llvm::ArrayRef <
-          std::tuple<hsa::GpuAgent, llvm::StringRef, void *>> ExternVariables);
+      llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, void *>>
+          ExternVariables);
 
   /// Returns the instrumented kernel's \c hsa::ExecutableSymbol given its
   /// original un-instrumented version's \c hsa::ExecutableSymbol and the
@@ -237,11 +251,9 @@ private:
   llvm::DenseMap<hsa::LoadedCodeObject, hsa::CodeObjectReader>
       InstrumentedLCOInfo;
 
-  /// \brief a mapping between the pair of
-  /// (the original kernel, instrumentation "profile"), and its instrumented
-  /// version
-  llvm::DenseMap<std::pair<hsa::ExecutableSymbol, llvm::StringRef>,
-                 hsa::ExecutableSymbol>
+  /// \brief a mapping between the pair of an instrumented kernel, given
+  /// its original kernel, and its instrumentation profile
+  llvm::DenseMap<hsa::ExecutableSymbol, llvm::StringMap<hsa::ExecutableSymbol>>
       InstrumentedKernels{};
 };
 }; // namespace luthier
