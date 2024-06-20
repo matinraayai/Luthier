@@ -30,7 +30,6 @@ class ToolExecutableManager;
 
 /// \brief Similar to HIP Modules in concept; Consists of an LLVM bitcode buffer
 /// + All static variable addresses it uses on each GPU device
-/// \detail Luthier relies on HIP-written code for instrumentation;
 class InstrumentationModule {
 protected:
   /// Only CodeObjectManager is allowed to create Instrumentation
@@ -41,16 +40,17 @@ protected:
   /// processed bitcode \n
   /// Upon creation, The bitcode of the module must be read and processed; This
   /// involves:
-  /// 1. Removing any kernels that were used to create host pointers to hooks. \n
-  /// 2. Extracting the device functions annotated as hooks and add a hook attribute
-  /// to them. \n
+  /// 1. Removing any kernels that were used to create host pointers to hooks.
+  /// \n
+  /// 2. Extracting the device functions annotated as hooks and add a hook
+  /// attribute to them. \n
   /// 3. Extracting the CUID of the module for its unique identification.
   /// 4. Removing the definition of all global variables.
-  /// 5. Removing any managed global variable initializers i.e. variables suffixed
-  /// with ".managed".
-  /// The processed LLVM Module will then be converted back to a bitcode and
-  /// stored here; This is so that the bitcode can be copied over to different
-  /// LLVM Contexts, to allow independent, parallelization-friendly compilation.
+  /// 5. Removing any managed global variable initializers i.e. variables
+  /// suffixed with ".managed". The processed LLVM Module will then be converted
+  /// back to a bitcode and stored here; This is so that the bitcode can be
+  /// copied over to different LLVM Contexts, to allow independent,
+  /// parallelization-friendly compilation.
   llvm::SmallVector<char> BitcodeBuffer{};
 
   InstrumentationModule() = default;
@@ -61,25 +61,57 @@ protected:
   uint64_t CUID{0};
 
 public:
-  /// Copies the Module's bitcode into the passed \p Ctx
-  /// \param Ctx a thread-safe context to read the bitcode into
-  /// \return a thread-safe Module
+  /// Reads the bitcode of this InstrumentationModule into a new
+  /// \c llvm::orc::ThreadSafeModule backed by the passed \p Ctx
+  /// \param Ctx a thread-safe context to back the returned Module
+  /// \return a thread-safe Module, or an \c llvm::Error if any problem was
+  /// encountered during the process
   llvm::Expected<llvm::orc::ThreadSafeModule>
   readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx);
 
-  /// Returns a mapping between the global variable name and their location \n
+  /// Returns the loaded address of the global variable on the given \p Agent if
+  /// already loaded, or \c std::nullopt if it is not loaded at the time of
+  /// the query \n
   /// This is generally used when loading an instrumented executable
-  /// \param Agent The \c hsa::GpuAgent the variables are located on
-  /// \param Out A mapping between the name of the global variable and its
-  /// address on the \p Agent
-  /// \return an \c llvm::Error if an issue was encountered
+  /// \param GVName the name of the global variable queried
+  /// \param Agent The \c hsa::GpuAgent to look for the global variable variable
+  /// \return A \c luthier::address_t if the variable was located on the \p Agent,
+  /// an \c std::nullopt if not loaded, or an \c llvm::Error if an issue was
+  /// encountered
   /// \sa luthier::hsa::Executable::defineExternalAgentGlobalVariable
-  virtual llvm::Error
-  getGlobalVariablesOnAgent(hsa::GpuAgent &Agent,
-                            llvm::StringMap<void *> &Out) = 0;
+  virtual llvm::Expected<std::optional<luthier::address_t>>
+  getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
+                                  const hsa::GpuAgent &Agent) = 0;
 };
 
-/// There's only a single instance of this
+/// \brief Keeps track of instrumentation code loaded via a static HIP FAT binary
+/// \details an implementation of \c InstrumentationModule which keeps track of
+/// <b>the</b> static HIP FAT binary embedded in the shared object of a Luthier
+/// tool.\n
+/// For now we anticipate that only a single Luthier tool will be loaded at any
+/// given time; i.e. we don't think there is a case to instrument an already
+/// instrumented GPU device code; Therefore we can assume only a single static
+/// HIP FAT binary will be loaded at any given time. \c ToolExecutableManager
+/// enforces this by keeping a single instance of this variable, as
+/// well as keeping its constructor private to itself. \n
+/// Furthermore, If two or more Luthier tools are loaded then
+/// \c StaticInstrumentationModule will detect this by checking the compile unit
+/// ID of each executable passed to it.\n
+/// For each GPU Agent, the HIP runtime extracts an ISA-compatible
+/// code object from the static FAT binary and loads it into a single executable.
+/// This is done in a lazy fashion if deferred loading is enabled, meaning the
+/// loading only occurs on a device if the app starts using it. \n
+/// \c StaticInstrumentationModule gets notified when a new \c hsa::Executable
+/// of the FAT binary gets loaded onto each device. On the first occurrence,
+/// it will process the bitcode (see \c InstrumentationModule::BitcodeBuffer)
+/// and creates a list of global variables in the module, as well as their associated
+/// \c hsa::ExecutableSymbol on the loaded \c hsa::GpuAgent.
+/// On subsequent executable loads, it only updates the global variable list.
+/// It should be clear by now that \c StaticInstrumentationModule does not do
+/// any GPU memory management and relies solely on HIP.\n
+/// A similar mechanism is in place to detect unloading of the instrumentation
+/// module's executables; As they get destroyed, the affected \c hsa::ExecutableSymbols
+/// get invalidated as well.
 class StaticInstrumentationModule final : public InstrumentationModule {
 private:
   friend ToolExecutableManager;
@@ -123,12 +155,13 @@ private:
   llvm::Error UnregisterExecutable(const hsa::Executable &Exec);
 
 public:
-  llvm::Error getGlobalVariablesOnAgent(hsa::GpuAgent &Agent,
-                                        llvm::StringMap<void *> &Out) override;
+  llvm::Error
+  getGlobalVariablesLoadedOnAgent(hsa::GpuAgent &Agent,
+                                  llvm::StringMap<void *> &Out) override;
 
   /// Same as \c
-  /// luthier::StaticInstrumentationModule::getGlobalVariablesOnAgent, except it
-  /// returns the ExecutableSymbols of the variables
+  /// luthier::StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent,
+  /// except it returns the ExecutableSymbols of the variables
   /// \param Agent The \c hsa::GpuAgent where a copy (executable) of this module
   /// is loaded
   /// \return a reference to the mapping between variable names and their
