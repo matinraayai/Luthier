@@ -72,8 +72,6 @@ struct LivenessCopy : public MachineFunctionPass {
 
   explicit LivenessCopy(const llvm::MachineBasicBlock* IPointBlock) : 
       MachineFunctionPass(ID) {
-    llvm::outs() << "     > Get Liveness for IPoint MBB:\n";
-    IPointBlock->dump();
     llvm::computeLiveIns(LiveRegs, *IPointBlock);
   }
 
@@ -82,6 +80,10 @@ struct LivenessCopy : public MachineFunctionPass {
       llvm::outs() << "No lives to add\n";
     return true;
     }
+
+    /* Frame offsets somewhere around here 
+     * Somwhere we'll need to parse inline Asm and turn it into normal instructions
+     */
 
     for (auto &IPointMBB : MF) {
       // if (IPointMBB.getName() == "InstruPoint") {

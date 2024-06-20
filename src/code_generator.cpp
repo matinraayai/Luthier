@@ -2,6 +2,8 @@
 
 #include <memory>
 
+#include "llvm/ADT/Any.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
@@ -18,7 +20,9 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/PassInstrumentation.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
@@ -96,6 +100,7 @@
 #include "AMDGPUGenInstrInfo.inc"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 
 namespace luthier {
 
@@ -272,39 +277,15 @@ CodeGenerator::insertFunctionCalls(
         luthier::CodeObjectManager::instance().getInstrumentationFunction(
             IFuncShadowHostPtr, *Agent);
     LUTHIER_RETURN_ON_ERROR(IFunctionSymbol.takeError());
-    llvm::outs() << "=====\n\n";
-    llvm::outs() << "=====> run getModuleContainingInstrumentationFunctions\n";
+    llvm::outs() << "=====> Get Intrumentation Module from executable symbol\n";
     auto InstrumentationModule =
         CodeObjectManager::instance()
             .getModuleContainingInstrumentationFunctions({*IFunctionSymbol});
     LUTHIER_RETURN_ON_ERROR(InstrumentationModule.takeError());
 
-    // Create the analysis managers.
-    // These must be declared in this order so that they are destroyed in the
-    // correct order due to inter-analysis-manager references.
-    LoopAnalysisManager LAM;
-    FunctionAnalysisManager FAM;
-    CGSCCAnalysisManager CGAM;
-    ModuleAnalysisManager MAM;
 
-    // Create the new pass manager builder.
-    // Take a look at the PassBuilder constructor parameters for more
-    // customization, e.g. specifying a TargetMachine or various debugging
-    // options.
-    llvm::PassBuilder PB;
-
-    // Register all the basic analyses with the managers.
-    PB.registerModuleAnalyses(MAM);
-    PB.registerCGSCCAnalyses(CGAM);
-    PB.registerFunctionAnalyses(FAM);
-    PB.registerLoopAnalyses(LAM);
-    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
-    // Create the pass manager.
-    ModulePassManager MPM =
-        PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
-
-    llvm::outs() << "\n=====> Create Master Kernel\n";
+    // need to add a weight count to the IPoint's function
+    llvm::outs() << "=====> Create Master Kernel and add to instrumentation module\n";
     llvm::Type *const MKRetType = 
         llvm::Type::getVoidTy(InstrumentationModule->get()->getContext());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MKRetType != nullptr));
@@ -320,74 +301,51 @@ CodeGenerator::insertFunctionCalls(
     auto &InstrumentationContext = InstrumentationModule.get()->getContext();
     llvm::IRBuilder<> MKBuilder(InstrumentationContext);
     
-    llvm::outs() << "     > Set IFuncs to always inline\n";
     for (llvm::Function &F : **InstrumentationModule) {
-      F.removeFnAttr(llvm::Attribute::OptimizeNone);
       if (F.getName() == "instrumentationHook") {
+        llvm::outs() << "=====> Set insturmentation hooks to always inline\n";
+        F.removeFnAttr(llvm::Attribute::OptimizeNone);
         F.removeFnAttr(llvm::Attribute::NoInline);
         F.addFnAttr(llvm::Attribute::AlwaysInline);
-
-//         for (llvm::BasicBlock &BB : F) {
-//           for (llvm::Instruction &I : BB) {
-//             // Edit the add instruction to verify that we're running the 
-//             // optimized function from the instrumentaiton module
-//             // In kernel_instrument.cpp the instrumentationHook should have a
-//             // hard-coded 'GlobalCounter += 10000'
-//             if (I.getOpcode() == 13) {
-//               for (auto &Op : I.operands()) {
-//                 if (auto *IMM = llvm::dyn_cast<llvm::ConstantInt>(&Op)) {
-//                   llvm::Constant *NewRHS = llvm::ConstantInt::get(
-//                     llvm::Type::getInt32Ty(InstrumentationContext), 20000);
-//                   I.setOperand(Op.getOperandNo(), NewRHS);
-//                 }
-//               }
-//             }
-// //          if (auto *AllocaInst = llvm::dyn_cast<llvm::AllocaInst>(&I)) {
-// //            new llvm::AllocaInst(
-// //                llvm::PointerType::get(AllocaInst->getAllocatedType(),
-// //                                       AMDGPUAS::GLOBAL_ADDRESS),
-// //                InstrumentationModule.get().get()->getDataLayout().getAllocaAddrSpace(), AllocaInst->getArraySize(),
-// //                AllocaInst->getAlign(), AllocaInst->getName(),
-// //                AllocaInst->getIterator());
-// //            AllocaInst->eraseFromParent();
-// //          }
-//           }
-//         }
       } 
     }
 
     auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
     LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
-    // auto TargetKernelArgSeg = TargetKernelMD->KernArgSegmentSize;
-    // auto TargetKernelGroupSeg = TargetKernelMD->GroupSegmentFixedSize;
-    auto TargetKernelPrivSegFixedSize = TargetKernelMD
-                                          ->PrivateSegmentFixedSize;
-    llvm::Value *TargetKernelPrivSeg = 
-        llvm::ConstantInt::get(llvm::Type::getInt32Ty(InstrumentationContext), 
-                               TargetKernelPrivSegFixedSize, false);
-    // Builder = llvm::BuildMI(*IPointMBB, InstPoint, llvm::DebugLoc(),
-                            // MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
-    //               .addImm(0)
-    //               .addImm(0);
+    auto TargetPivSegSize = TargetKernelMD->PrivateSegmentFixedSize;
+    llvm::outs() << "=====> Target Kernel Private Seg Size:\t" 
+                 << TargetPivSegSize << "\n";
+    llvm::Value *TargetPrivSeg = llvm::ConstantInt::get(
+        llvm::Type::getInt32Ty(InstrumentationContext), TargetPivSegSize, false);
 
-    // TODO: Need to add blocks to denote the lifetime start/end of stack in
-    //       master kernel
+
+    /* Looks like we have to seperate the insertion points.
+     * 
+     */
+
+
     llvm::outs() << "     > Populate MK w/ basic blocks:\n";
-    llvm::BasicBlock *MKBB_BEGIN = 
-        llvm::BasicBlock::Create(InstrumentationContext, 
-                                 "RESERVED_stack_lifetime_begin", MK); //, MKBB);
-    llvm::BasicBlock *MKBB = 
-        llvm::BasicBlock::Create(InstrumentationContext, 
-                                 "InstruPoint", MK); //, MKBB_END);
-    llvm::BasicBlock *MKBB_END = 
-        llvm::BasicBlock::Create(InstrumentationContext, 
-                                 "RESERVED_stack_lifetime_end", MK);
-    
+    llvm::BasicBlock *MKBB_BEGIN = llvm::BasicBlock::Create(InstrumentationContext, 
+                                                            "stack_lifetime_begin", MK);
+    llvm::BasicBlock *MKBB       = llvm::BasicBlock::Create(InstrumentationContext, 
+                                                            "InstruPoint", MK);
+    llvm::BasicBlock *MKBB_END   = llvm::BasicBlock::Create(InstrumentationContext, 
+                                                            "stack_lifetime_end", MK);
+
     llvm::outs() << "     > \tCreate call save stack lifetime begin in MK\n";
     MKBuilder.SetInsertPoint(MKBB_BEGIN);
-    // auto SaveStackInstr = MKBuilder.CreateStackSave();
-    auto StartStackAlloca = 
-        MKBuilder.CreateAlloca(MKBuilder.getInt32Ty(), 5, TargetKernelPrivSeg);
+    // auto SaveStackInstr = MKBuilder.CreateStackSave("new_stack_save");
+    // AllocaInst *CreateAlloca(Type *Ty, unsigned AddrSpace,
+    //                          Value *ArraySize = nullptr, const Twine &Name = "")
+    // AddrSpace(5) should be the stack 
+    auto StartStackAlloca = MKBuilder.CreateAlloca(MKBuilder.getInt32Ty(), 5, 
+                                                   TargetPrivSeg, "new_stack_save");
+
+    // llvm::Value *DummyVal = llvm::ConstantInt::get(llvm::Type::getInt32Ty(InstrumentationContext), 
+    //                            StartStackAlloca->getOpcode(), false);
+
+    // auto DummyStore = MKBuilder.CreateStore(DummyVal, , true);
+    // auto DummyStore = MKBuilder.CreateStore(StartStackAlloca, "new_stack_save", true);
     MKBuilder.CreateLifetimeStart(StartStackAlloca);
     MKBuilder.CreateBr(MKBB);
 
@@ -401,21 +359,45 @@ CodeGenerator::insertFunctionCalls(
     llvm::outs() << "     > \tCreate call save stack lifetime end in MK\n";
     MKBuilder.SetInsertPoint(MKBB_END);
     MKBuilder.CreateLifetimeEnd(StartStackAlloca); // , llvm::ConstantInt::get(
-    //   MKBuilder.getInt64Ty(), TargetKernelPrivSeg));
+    //   MKBuilder.getInt64Ty(), TargetPrivSeg));
     // auto RestoreStackInstr = MKBuilder.CreateStackRestore(SaveStackInstr);
-    // Creating a void return at the end of the basic block stops LLVM from
-    // complaining. We should experiment with trying to get rid of this.
-    // However, if we cannot, then all we have to do is to exclude the final
-    // instruction of IPoint basic block when patching the compilation module
     MKBuilder.CreateRetVoid();
 
     llvm::outs() << "     > Dump instrumentation module after adding MK\n";
     InstrumentationModule->get()->dump();
 
-    // Optimize the IR!
     llvm::outs() << "\n=====> Run IR optimization for InstrumentationModule\n";
-    MPM.run(**InstrumentationModule, MAM);
+    // Create the analysis managers.
+    // These must be declared in this order so that they are destroyed in the
+    // correct order due to inter-analysis-manager references.
+    LoopAnalysisManager LAM;
+    FunctionAnalysisManager FAM;
+    CGSCCAnalysisManager CGAM;
+    ModuleAnalysisManager MAM;
+
+    // Create the new pass manager builder.
+    // Take a look at the PassBuilder constructor parameters for more
+    // customization, e.g. specifying a TargetMachine or various debugging
+    // options.
+    llvm::PassInstrumentationCallbacks PIC;
+    llvm::PrintIRInstrumentation PII;
+    PII.registerCallbacks(PIC);
     
+    llvm::PassBuilder PB(const_cast<llvm::LLVMTargetMachine *>(&MMI.getTarget()), 
+                         llvm::PipelineTuningOptions(), std::nullopt, &PIC);
+    
+    // Register all the basic analyses with the managers.
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+    // Create the pass manager.
+    ModulePassManager MPM =
+        PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
+    // Optimize the IR!
+    MPM.run(**InstrumentationModule, MAM);
     
     llvm::outs() << "     > Dump instrumentation module after IR optimization\n";
     InstrumentationModule->get()->dump();
@@ -561,6 +543,8 @@ CodeGenerator::insertFunctionCalls(
         ToBeInstrumentedMF->insert(MBBIT, IFuncMBB);
 
         for (auto &MKMI : MKBB) {
+          // create a new MI but copy the operands from the instrumentation module's instructions
+
           // llvm::MachineInstr *NewMI = MKMF->CloneMachineInstr(&MKMI);
           llvm::MachineInstr *NewMI = ToBeInstrumentedMF->CloneMachineInstr(&MKMI);
           NewMI->dump();
