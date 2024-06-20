@@ -202,8 +202,21 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
 }
 
 llvm::Error
-StaticInstrumentationModule::UnregisterExecutable(const hsa::Executable &Exec) {
-
+StaticInstrumentationModule::unregisterExecutable(const hsa::Executable &Exec) {
+  auto LCOs = Exec.getLoadedCodeObjects();
+  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
+  // There's only a single LCO in HIP FAT binaries. Get its agent.
+  auto Agent = (*LCOs)[0].getAgent();
+  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
+  // Remove the agent from the variable list and the executable list
+  PerAgentGlobalVariables.erase(*Agent);
+  PerAgentModuleExecutables.erase(*Agent);
+  // If no copies of this module is present on any of the agents, then
+  // the lifetime of the static module has ended. Perform a cleanup
+  if (PerAgentModuleExecutables.empty()) {
+    HookHandleMap.clear();
+    GlobalVariables.clear();
+  }
   return llvm::Error::success();
 }
 
@@ -236,19 +249,26 @@ StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
   }
   return false;
 }
+llvm::Expected<std::optional<luthier::address_t>>
+StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
+    llvm::StringRef GVName, const hsa::GpuAgent &Agent) {
+  auto VariableSymbolMapIt = PerAgentGlobalVariables.find(Agent);
 
-llvm::Error StaticInstrumentationModule::getGlobalVariablesOnAgent(
-    hsa::GpuAgent &Agent, llvm::StringMap<void *> &Out) {
-  auto GlobalHsaVariablesOnAgent = this->getGlobalHsaVariablesOnAgent(Agent);
-  LUTHIER_RETURN_ON_ERROR(GlobalHsaVariablesOnAgent.takeError());
-
-  for (const auto &[Name, ExecVar] : *GlobalHsaVariablesOnAgent) {
+  if (VariableSymbolMapIt != PerAgentGlobalVariables.end()) {
+    auto VariableSymbolIt = VariableSymbolMapIt->second.find(GVName);
+    // Ensure the variable name is indeed in the map
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ASSERTION(
+        VariableSymbolIt != VariableSymbolMapIt->second.end()));
+    auto VariableSymbol = VariableSymbolIt->second;
     LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier::address_t, VariableAddress,
-                                     ExecVar.getVariableAddress());
-    Out.insert({Name, reinterpret_cast<void *>(
-                          *reinterpret_cast<uint64_t *>(VariableAddress))});
+                                     VariableSymbol.getVariableAddress());
+    return *reinterpret_cast<uint64_t *>(VariableAddress);
+  } else {
+    // If the agent is not in the map, then it probably wasn't loaded on the
+    // device
+    return std::nullopt;
   }
-  return llvm::Error::success();
 }
 
 llvm::Expected<llvm::orc::ThreadSafeModule>

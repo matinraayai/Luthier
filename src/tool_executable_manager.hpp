@@ -167,13 +167,14 @@ private:
   /// As this function gets invoked for each executable on the device
   /// the instrumentation module was loaded on, the internal global variable
   /// list removes the defunct \c hsa::ExecutableSymbols. When the last
-  /// executable of this module gets destroyed, the bitcode is wiped.
+  /// executable of this module gets destroyed, the bitcode is wiped as well
+  /// as any other internal state \n
   /// This function is only called by \c ToolExecutableManager whenever
   /// it confirms an executable that is about to be destroyed is a copy of
   /// a Luthier static FAT binary for instrumentation
   /// \param Exec handle to the module executable about to be destroyed
   /// \return an \c llvm::Error if any issue was encountered during the process
-  llvm::Error UnregisterExecutable(const hsa::Executable &Exec);
+  llvm::Error unregisterExecutable(const hsa::Executable &Exec);
 
 public:
   llvm::Expected<std::optional<luthier::address_t>>
@@ -183,9 +184,11 @@ public:
   /// Same as \c
   /// luthier::StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent,
   /// except it returns the ExecutableSymbols of the variables
+  /// Use this function only if \c getGlobalVariablesLoadedOnAgent does not
+  /// provide sufficient information.
   /// \param Agent The \c hsa::GpuAgent where a copy (executable) of this module
   /// is loaded
-  /// \return a reference to the mapping between variable names and their
+  /// \return a const reference to the mapping between variable names and their
   /// Executable Symbols, or an \c llvm::Error if an issue is encountered
   llvm::Expected<const llvm::StringMap<hsa::ExecutableSymbol> &>
   getGlobalHsaVariablesOnAgent(hsa::GpuAgent &Agent);
@@ -198,6 +201,13 @@ public:
   llvm::Expected<llvm::StringRef>
   convertHookHandleToHookName(const void *Handle);
 
+  /// A helper function which detects if the passed executable is part of the
+  /// static instrumentation module. \n
+  /// Used by \c ToolExecutableManager to detect and register/unregister
+  /// static instrumentation executables
+  /// \param Exec an \c hsa::Executable
+  /// \return \c true if this is a static instrumentation module copy, false if
+  /// not, or an \c llvm::Error if any issues were encountered during the process
   static llvm::Expected<bool>
   isStaticInstrumentationModuleExecutable(const hsa::Executable &Exec);
 };
