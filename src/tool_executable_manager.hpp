@@ -103,7 +103,8 @@ public:
 /// loading only occurs on a device if the app starts using it. \n
 /// \c StaticInstrumentationModule gets notified when a new \c hsa::Executable
 /// of the FAT binary gets loaded onto each device. On the first occurrence,
-/// it will process the bitcode (see \c InstrumentationModule::BitcodeBuffer)
+/// it will process the bitcode embedded inside its code object
+/// (see \c InstrumentationModule::BitcodeBuffer)
 /// and creates a list of global variables in the module, as well as their associated
 /// \c hsa::ExecutableSymbol on the loaded \c hsa::GpuAgent.
 /// On subsequent executable loads, it only updates the global variable list.
@@ -111,7 +112,13 @@ public:
 /// any GPU memory management and relies solely on HIP.\n
 /// A similar mechanism is in place to detect unloading of the instrumentation
 /// module's executables; As they get destroyed, the affected \c hsa::ExecutableSymbols
-/// get invalidated as well.
+/// get invalidated as well. When the last \c hsa::Executable of the module is
+/// destroyed, the bitcode buffer also gets wiped.\n
+/// \c StaticInstrumentationModule also gets notified of the kernel shadow host
+/// pointers of each hook, and converts them to the correct hook name to
+/// be found in the module later on.
+/// \sa InstrumentationModule::BitcodeBuffer, LUTHIER_HOOK_ANNOTATE,
+/// LUTHIER_EXPORT_HOOK_HANDLE
 class StaticInstrumentationModule final : public InstrumentationModule {
 private:
   friend ToolExecutableManager;
@@ -129,35 +136,49 @@ private:
   /// LCOs here
   llvm::DenseMap<hsa::GpuAgent, hsa::Executable> PerAgentModuleExecutables{};
 
-  /// List of "static" symbols; Static symbols come with Instrumentation Modules
-  /// loaded with Loaded Code Objects, which means they are already loaded by
-  /// the HSA runtime. This means Instrumentation Module doesn't need to worry
-  /// about managing them
+  /// Keeps track of the copies of the bitcode's global variables on each device
   llvm::DenseMap<hsa::GpuAgent, llvm::StringMap<hsa::ExecutableSymbol>>
       PerAgentGlobalVariables{};
 
-  /// List of "static" symbols without the agent information
+  /// List of static symbols without the agent information
   llvm::SmallVector<std::string> GlobalVariables{};
 
   /// A mapping between the shadow host pointer of a hook and its name
+  /// Gets updated whenever \c __hipRegisterFunction is called by
+  /// \c ToolExecutableManager
   llvm::DenseMap<const void *, llvm::StringRef> HookHandleMap{};
 
-  /// Registers the Executable as part of the Static Instrumentation Module
-  /// \c hsa::Executable of the instrumentation module that was loaded on a
-  /// device
-  /// \param Exec the static Luthier tool executable
+  /// Registers this executable into the static Instrumentation Module \n
+  /// On first invocation this function extracts the bitcode in the ELF of \p
+  /// Exec 's LCO, and creates a list of global variables, as well as their
+  /// \c hsa::ExecutableSymbol on the device the executable was loaded on \n
+  /// On subsequent calls it only updates the global variable list for the
+  /// new device \n
+  /// This function is only called by \c ToolExecutableManager whenever
+  /// it confirms a newly frozen executable is a copy of a Luthier
+  /// static FAT binary for instrumentation
+  /// \param Exec the static Luthier tool executable that was just frozen by
+  /// the HIP runtime
+  /// \return an \c llvm::Error if any issues were encountered during the
+  /// process
   llvm::Error registerExecutable(const hsa::Executable &Exec);
 
-  /// Unregisters the executable from the Module.
-  /// Called when the executable is about to be destroyed by HSA
-  /// \param Exec handle to the executable about to be destroyed
-  /// \return
+  /// Unregisters the executable from the Module \n
+  /// As this function gets invoked for each executable on the device
+  /// the instrumentation module was loaded on, the internal global variable
+  /// list removes the defunct \c hsa::ExecutableSymbols. When the last
+  /// executable of this module gets destroyed, the bitcode is wiped.
+  /// This function is only called by \c ToolExecutableManager whenever
+  /// it confirms an executable that is about to be destroyed is a copy of
+  /// a Luthier static FAT binary for instrumentation
+  /// \param Exec handle to the module executable about to be destroyed
+  /// \return an \c llvm::Error if any issue was encountered during the process
   llvm::Error UnregisterExecutable(const hsa::Executable &Exec);
 
 public:
-  llvm::Error
-  getGlobalVariablesLoadedOnAgent(hsa::GpuAgent &Agent,
-                                  llvm::StringMap<void *> &Out) override;
+  llvm::Expected<std::optional<luthier::address_t>>
+  getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
+                                  const hsa::GpuAgent &Agent) override;
 
   /// Same as \c
   /// luthier::StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent,
