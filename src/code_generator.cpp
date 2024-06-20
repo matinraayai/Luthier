@@ -15,9 +15,11 @@
 #include "llvm/CodeGen/MachinePassRegistry.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/PassInstrumentation.h"
+#include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
@@ -34,7 +36,7 @@
 #include <llvm/Analysis/TargetTransformInfo.h>
 #include <llvm/Analysis/TypeBasedAliasAnalysis.h>
 #include <llvm/CodeGen/LiveIntervals.h>
-#include <llvm/CodeGen/LivePhysRegs.h>
+// #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/Passes.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/PassRegistry.h>
@@ -255,10 +257,7 @@ CodeGenerator::insertFunctionCalls(
 
   std::vector<LiftedSymbolInfo> Out;
   for (const auto &[IPointMI, IFuncAndIPoint] : Tasks) {
-    llvm::outs() << "\n=====> Inserting call for IPointMI:\n" ;
-    IPointMI->dump();
-    llvm::outs() << "=====\n\n";
-
+    llvm::MachineBasicBlock *IPointMBB = IPointMI->getParent();
     auto &[IFuncShadowHostPtr, IPoint] = IFuncAndIPoint;
     // Get the hsa::GpuAgent of the Target Kernel
     auto TargetKernelSymbol =
@@ -279,7 +278,6 @@ CodeGenerator::insertFunctionCalls(
         CodeObjectManager::instance()
             .getModuleContainingInstrumentationFunctions({*IFunctionSymbol});
     LUTHIER_RETURN_ON_ERROR(InstrumentationModule.takeError());
-    llvm::outs() << "=====\n\n";
 
     // Create the analysis managers.
     // These must be declared in this order so that they are destroyed in the
@@ -306,10 +304,6 @@ CodeGenerator::insertFunctionCalls(
     ModulePassManager MPM =
         PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
 
-    // Optimize the IR!
-    llvm::outs() << "\n=====> Run IR optimization for InstrumentationModule\n";
-    MPM.run(**InstrumentationModule, MAM);
-
     llvm::outs() << "\n=====> Create Master Kernel\n";
     llvm::Type *const MKRetType = 
         llvm::Type::getVoidTy(InstrumentationModule->get()->getContext());
@@ -322,72 +316,110 @@ CodeGenerator::insertFunctionCalls(
                              ->getOrInsertFunction("MasterKernel", MKFuncType);
 
     auto MK = llvm::dyn_cast<llvm::Function>(MKFuncCallee.getCallee());
+
     auto &InstrumentationContext = InstrumentationModule.get()->getContext();
     llvm::IRBuilder<> MKBuilder(InstrumentationContext);
     
-    llvm::outs() << "\n=====> Set IFuncs to always inline\n";
+    llvm::outs() << "     > Set IFuncs to always inline\n";
     for (llvm::Function &F : **InstrumentationModule) {
       F.removeFnAttr(llvm::Attribute::OptimizeNone);
       if (F.getName() == "instrumentationHook") {
         F.removeFnAttr(llvm::Attribute::NoInline);
         F.addFnAttr(llvm::Attribute::AlwaysInline);
 
-        for (llvm::BasicBlock &BB : F) {
-          for (llvm::Instruction &I : BB) {
-            // Edit the add instruction to verify that we're running the 
-            // optimized function from the instrumentaiton module
-            // In kernel_instrument.cpp the instrumentationHook should have a
-            // hard-coded 'GlobalCounter += 10000'
-            if (I.getOpcode() == 13) {
-              for (auto &Op : I.operands()) {
-                if (auto *IMM = llvm::dyn_cast<llvm::ConstantInt>(&Op)) {
-                  llvm::Constant *NewRHS = llvm::ConstantInt::get(
-                    llvm::Type::getInt32Ty(InstrumentationContext), 20000);
-                  I.setOperand(Op.getOperandNo(), NewRHS);
-                }
-              }
-            }
-//          if (auto *AllocaInst = llvm::dyn_cast<llvm::AllocaInst>(&I)) {
-//            new llvm::AllocaInst(
-//                llvm::PointerType::get(AllocaInst->getAllocatedType(),
-//                                       AMDGPUAS::GLOBAL_ADDRESS),
-//                InstrumentationModule.get().get()->getDataLayout().getAllocaAddrSpace(), AllocaInst->getArraySize(),
-//                AllocaInst->getAlign(), AllocaInst->getName(),
-//                AllocaInst->getIterator());
-//            AllocaInst->eraseFromParent();
-//          }
-          }
-        }
+//         for (llvm::BasicBlock &BB : F) {
+//           for (llvm::Instruction &I : BB) {
+//             // Edit the add instruction to verify that we're running the 
+//             // optimized function from the instrumentaiton module
+//             // In kernel_instrument.cpp the instrumentationHook should have a
+//             // hard-coded 'GlobalCounter += 10000'
+//             if (I.getOpcode() == 13) {
+//               for (auto &Op : I.operands()) {
+//                 if (auto *IMM = llvm::dyn_cast<llvm::ConstantInt>(&Op)) {
+//                   llvm::Constant *NewRHS = llvm::ConstantInt::get(
+//                     llvm::Type::getInt32Ty(InstrumentationContext), 20000);
+//                   I.setOperand(Op.getOperandNo(), NewRHS);
+//                 }
+//               }
+//             }
+// //          if (auto *AllocaInst = llvm::dyn_cast<llvm::AllocaInst>(&I)) {
+// //            new llvm::AllocaInst(
+// //                llvm::PointerType::get(AllocaInst->getAllocatedType(),
+// //                                       AMDGPUAS::GLOBAL_ADDRESS),
+// //                InstrumentationModule.get().get()->getDataLayout().getAllocaAddrSpace(), AllocaInst->getArraySize(),
+// //                AllocaInst->getAlign(), AllocaInst->getName(),
+// //                AllocaInst->getIterator());
+// //            AllocaInst->eraseFromParent();
+// //          }
+//           }
+//         }
       } 
     }
 
-    // TODO: Need to add blocks to denot the lifetime start/end of stack in
-    //       master kernel
-    // Create reserved ending Basic Block for master kernel
-    // llvm::BasicBlock *MKBB_END = 
-    //   llvm::BasicBlock::Create(InstrumentationContext, "end_reserved", MK);
-    llvm::outs() << "\n=====> Create basic block for IPointMI in instrumentation module\n";
-    llvm::BasicBlock *MKBB = 
-        llvm::BasicBlock::Create(InstrumentationContext, "InstruPoint", MK);
-    // llvm::BasicBlock::Create(InstrumentationContext, "InstruPoint", MK, MKBB_END);
-    // Create reserved beginning Basic Block for master kernel
-    // llvm::BasicBlock *MKBB_BEGIN = 
-    //   llvm::BasicBlock::Create(InstrumentationContext, "begin_reserved", MK, MKBB);
+    auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
+    LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
+    // auto TargetKernelArgSeg = TargetKernelMD->KernArgSegmentSize;
+    // auto TargetKernelGroupSeg = TargetKernelMD->GroupSegmentFixedSize;
+    auto TargetKernelPrivSegFixedSize = TargetKernelMD
+                                          ->PrivateSegmentFixedSize;
+    llvm::Value *TargetKernelPrivSeg = 
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(InstrumentationContext), 
+                               TargetKernelPrivSegFixedSize, false);
+    // Builder = llvm::BuildMI(*IPointMBB, InstPoint, llvm::DebugLoc(),
+                            // MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
+    //               .addImm(0)
+    //               .addImm(0);
 
-    llvm::outs() << "\n=====> Create call to instrumentation func in MK\n";
+    // TODO: Need to add blocks to denote the lifetime start/end of stack in
+    //       master kernel
+    llvm::outs() << "     > Populate MK w/ basic blocks:\n";
+    llvm::BasicBlock *MKBB_BEGIN = 
+        llvm::BasicBlock::Create(InstrumentationContext, 
+                                 "RESERVED_stack_lifetime_begin", MK); //, MKBB);
+    llvm::BasicBlock *MKBB = 
+        llvm::BasicBlock::Create(InstrumentationContext, 
+                                 "InstruPoint", MK); //, MKBB_END);
+    llvm::BasicBlock *MKBB_END = 
+        llvm::BasicBlock::Create(InstrumentationContext, 
+                                 "RESERVED_stack_lifetime_end", MK);
+    
+    llvm::outs() << "     > \tCreate call save stack lifetime begin in MK\n";
+    MKBuilder.SetInsertPoint(MKBB_BEGIN);
+    // auto SaveStackInstr = MKBuilder.CreateStackSave();
+    auto StartStackAlloca = 
+        MKBuilder.CreateAlloca(MKBuilder.getInt32Ty(), 5, TargetKernelPrivSeg);
+    MKBuilder.CreateLifetimeStart(StartStackAlloca);
+    MKBuilder.CreateBr(MKBB);
+
+    llvm::outs() << "     > \tCreate call to instrumentation func in MK\n";
     MKBuilder.SetInsertPoint(MKBB);
     auto Hook = InstrumentationModule.get()->getFunction("instrumentationHook");
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
     MKBuilder.CreateCall(Hook);
-
+    MKBuilder.CreateBr(MKBB_END);
+    
+    llvm::outs() << "     > \tCreate call save stack lifetime end in MK\n";
+    MKBuilder.SetInsertPoint(MKBB_END);
+    MKBuilder.CreateLifetimeEnd(StartStackAlloca); // , llvm::ConstantInt::get(
+    //   MKBuilder.getInt64Ty(), TargetKernelPrivSeg));
+    // auto RestoreStackInstr = MKBuilder.CreateStackRestore(SaveStackInstr);
     // Creating a void return at the end of the basic block stops LLVM from
     // complaining. We should experiment with trying to get rid of this.
     // However, if we cannot, then all we have to do is to exclude the final
     // instruction of IPoint basic block when patching the compilation module
     MKBuilder.CreateRetVoid();
 
-    llvm::outs() << "\n=====> Dump instrumentation module after adding MK\n";
+    llvm::outs() << "     > Dump instrumentation module after adding MK\n";
     InstrumentationModule->get()->dump();
+
+    // Optimize the IR!
+    llvm::outs() << "\n=====> Run IR optimization for InstrumentationModule\n";
+    MPM.run(**InstrumentationModule, MAM);
+    
+    
+    llvm::outs() << "     > Dump instrumentation module after IR optimization\n";
+    InstrumentationModule->get()->dump();
+
     
     auto ISA = llvm::cantFail(IFunctionSymbol->getLoadedCodeObject()).getISA();
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
@@ -409,49 +441,29 @@ CodeGenerator::insertFunctionCalls(
     PM.add(MMIWP);
 
     TPC->addISelPasses();
-    //    TPC->addCodeGenPrepare();
-    //    TPC->addPrintPass("After ISEL: ");
-    // TPC->addMachinePasses();
+
+    // Get Liveness for IPoint MBB and copy that info into the Instrumentation
+    // Hook's basic block in the Master Kernel
+    PM.add(new llvm::LivenessCopy(IPointMBB));
+
+    TPC->addMachinePasses();
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM.add(UsageAnalysis);
     TPC->setInitialized();
 
-    llvm::outs() << "       Run codegen w/o RA\n";
+    llvm::outs() << "=====> Run codegen \n";
     PM.run(**InstrumentationModule); // Run all the passes
 
-
-    llvm::outs() << "       Get Liveness for IPoint MBB\n";
-    llvm::MachineBasicBlock *IPointMBB = IPointMI->getParent();
-    llvm::LivePhysRegs LiveRegs;
-    llvm::computeLiveIns(LiveRegs, *IPointMBB);
-
-    llvm::outs() << "\n\n=====> Dump instrumentation module's machine functions\n";
+    llvm::outs() << "\n=====> Dump instrumentation module's machine functions\n";
     for (const auto &F : **InstrumentationModule) {
       const auto MF = MMIWP->getMMI().getMachineFunction(F);
       if (MF != nullptr) {
-        for (auto &IPointMBB : *MF) {
-          if (IPointMBB.getName() == "InstruPoint") {
-            llvm::outs() << "      Add LiveIns to InstruPoint Block\n";
-            llvm::addLiveIns(IPointMBB, LiveRegs);
-          }
-        }
         MF->dump();
       } 
     } 
 
-    // llvm::outs() << "      Run add machine passes\n";
-    // TPC->addMachinePasses();
-    // auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
-    // PM.add(UsageAnalysis);
-    // TPC->setInitialized();
-    // 
-    // PM.run(**InstrumentationModule); // Run all the passes
-    // llvm::outs() << "\n=====> Dump instrumentation module after adding LiveIns\n";
-    // InstrumentationModule->get()->dump();
-    
-    
-    // Lift the instrumentation function's symbol and add it to the compilation
-    // module
+    // // Lift the instrumentation function's symbol and add it to the compilation
+    // // module
     auto IFLSI = luthier::CodeLifter::instance().liftSymbolAndAddToModule(
         *IFunctionSymbol, Module, MMI);
     LUTHIER_RETURN_ON_ERROR(IFLSI.takeError());
