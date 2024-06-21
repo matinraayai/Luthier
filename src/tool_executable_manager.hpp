@@ -28,6 +28,10 @@ namespace luthier {
 
 class ToolExecutableManager;
 
+//===----------------------------------------------------------------------===//
+// Instrumentation Module
+//===----------------------------------------------------------------------===//
+
 /// \brief Similar to HIP Modules in concept; Consists of an LLVM bitcode buffer
 /// + All static variable addresses it uses on each GPU device
 class InstrumentationModule {
@@ -83,6 +87,10 @@ public:
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
                                   const hsa::GpuAgent &Agent) = 0;
 };
+
+//===----------------------------------------------------------------------===//
+// Static Instrumentation Module
+//===----------------------------------------------------------------------===//
 
 /// \brief Keeps track of instrumentation code loaded via a static HIP FAT
 /// binary
@@ -215,6 +223,10 @@ public:
   static llvm::Expected<bool>
   isStaticInstrumentationModuleExecutable(const hsa::Executable &Exec);
 };
+
+//===----------------------------------------------------------------------===//
+// Tool Executable Manager
+//===----------------------------------------------------------------------===//
 
 /// \brief A singleton object that keeps track of executables that belong to
 /// Luthier, including instrumented executables and tool instrumentation modules

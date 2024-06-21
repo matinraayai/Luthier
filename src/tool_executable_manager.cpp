@@ -1,3 +1,11 @@
+//===-- tool_executable_manager.cpp - Luthier Tool Executable Manager -----===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements Luthier's Tool Executable Manager Singleton, and
+/// instrumentation modules which are passed to the \c CodeGenerator.
+//===----------------------------------------------------------------------===//
 #include "tool_executable_manager.hpp"
 #include "target_manager.hpp"
 
@@ -23,10 +31,11 @@
 #define DEBUG_TYPE "luthier-code-object-manager"
 
 namespace luthier {
-////////////////////////////////////////////////////////////////////////////////
-/// Instrumentation Module Pre-processing functions (Shared between all
-/// Instrumentation Module sub-classes)
-////////////////////////////////////////////////////////////////////////////////
+
+//===----------------------------------------------------------------------===//
+// Instrumentation Module Pre-processing functions (Shared between all
+// Instrumentation Module sub-classes)
+//===----------------------------------------------------------------------===//
 
 static constexpr const char *HipCUIDPrefix = "__hip_cuid_";
 
@@ -281,9 +290,10 @@ InstrumentationModule::readBitcodeIntoContext(
   return llvm::orc::ThreadSafeModule(std::move(*Module), Ctx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// Tool Executable Manager Implementation
-////////////////////////////////////////////////////////////////////////////////
+//===----------------------------------------------------------------------===//
+// Tool Executable Manager Implementation
+//===----------------------------------------------------------------------===//
+
 
 template <>
 ToolExecutableManager *Singleton<ToolExecutableManager>::Instance{nullptr};
@@ -530,6 +540,11 @@ bool ToolExecutableManager::isKernelInstrumented(
 }
 
 ToolExecutableManager::~ToolExecutableManager() {
+  // By the time the Tool Executable Manager is deleted, all instrumentation
+  // kernels must have been destroyed; If not, print a warning, and clean
+  // up anyway
+
+//  llvm::errs() << "";
   // TODO: Fix the destructor
   //  for (auto &[origSymbol, instInfo] : InstrumentedKernels) {
   //    auto &[s, e, r] = instInfo;
