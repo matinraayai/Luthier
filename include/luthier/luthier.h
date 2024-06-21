@@ -77,31 +77,44 @@ llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
 liftSymbol(hsa_executable_symbol_t Symbol);
 
 /**
- * Overrides the kernel object field of the Packet with its
- * instrumented version, forcing HSA to launch the instrumented version instead.
- * Note that this function should be called every time an instrumented kernel
- * needs to be launched, since the content of the dispatch packet will always be
- * set by the target application to the original, un-instrumented version
- * To launch the original version of the kernel, simply refrain from calling
- * this function
- * \param Packet the HSA dispatch packet intercepted from an HSA queue,
- * containing the kernel launch parameters/configuration
+ *
+ * ,
+ *
+ *
+ *
+ *
+ * \param
  */
-llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet);
+/// Overrides the kernel object field of the Packet with its instrumented
+/// version under the given \p Preset, forcing HSA to launch the instrumented
+/// version instead\n
+/// Modifies the rest of the launch configuration (e.g. private segment size)
+/// if needed\n
+/// Note that this function should be called every time an instrumented kernel
+/// needs to be launched, since the content of the dispatch packet will always
+/// be set by the target application to the original, un-instrumented version\n
+/// To launch the original version of the kernel, simply refrain from calling
+/// this function
+/// \param Packet Packet the HSA dispatch packet intercepted from an HSA queue,
+// containing the kernel launch parameters/configuration
+/// \param Preset the preset the kernel was instrumented under
+/// \return an \c llvm::Error reporting
+llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
+                                     llvm::StringRef Preset);
 
 llvm::Error
 instrument(std::unique_ptr<llvm::Module> Module,
            std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
            const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask);
 
-/**
- * Checks if the \p Kernel is instrumented or not
- * \param [in] Kernel an \c hsa_executable_symbol_t of \c KERNEL type
- * \return on success, returns \c true if the \p Kernel is instrumented, \c
- * false otherwise. Returns an \c llvm::Error if the \p Kernel HSA symbol handle
- * is invalid
- */
-llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel);
+/// Checks if the \p Kernel is instrumented under the given \p Preset or not
+/// \param [in] Kernel an \c hsa_executable_symbol_t of \c KERNEL type
+/// \param [in] Preset the preset name the kernel was instrumented under
+/// \return on success, returns \c true if the \p Kernel is instrumented, \c
+// false otherwise. Returns an \c llvm::Error if the \p Kernel HSA symbol handle
+// is invalid
+llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
+                                          llvm::StringRef Preset);
 
 /// \brief If a tool contains an instrumentation hook it \b must
 /// use this macro once. Luthier hooks are annotated via the the
@@ -120,7 +133,8 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel);
 /// a. a kernel is launched from it on the said device, or
 /// b. it contains a managed variable. \n
 /// Including a managed variable is the only way to ensure the tool's FAT binary
-/// is loaded in time without interfering with the loading mechanism of HIP runtime.
+/// is loaded in time without interfering with the loading mechanism of HIP
+/// runtime.
 /// \n
 /// 2. <b>Luthier can easily identify a tool's code object by a constant time
 /// symbol hash lookup</b>.
@@ -137,7 +151,8 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel);
   __attribute__((managed, used)) char __luthier_reserved = 0;
 
 #define LUTHIER_HOOK_ANNOTATE                                                  \
-  __attribute__((device, used, annotate("luthier_hook"))) extern "C" void
+  __attribute__((device, used,                                                 \
+                 annotate(LUTHIER_HOOK_ATTRIBUTE))) extern "C" void
 
 #define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
   __attribute__((global, used)) extern "C" void __hook_handle_##HookName(){};

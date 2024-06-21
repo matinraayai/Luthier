@@ -14,7 +14,6 @@
 #include <optional>
 
 #include "code_generator.hpp"
-#include "code_object_manager.hpp"
 #include "controller.hpp"
 #include "disassembler.hpp"
 #include "error.hpp"
@@ -22,6 +21,7 @@
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
 #include "hsa_platform.hpp"
+#include "tool_executable_manager.hpp"
 #include <luthier/instr.h>
 
 namespace luthier {
@@ -86,27 +86,36 @@ instrument(std::unique_ptr<llvm::Module> Module,
                                               std::move(MMIWP), LSO, ITask);
 }
 
-llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel) {
+llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
+                                          llvm::StringRef Preset) {
   auto Symbol = hsa::ExecutableSymbol::fromHandle(Kernel);
   LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-  return CodeObjectManager::instance().isKernelInstrumented(*Symbol);
+  return ToolExecutableManager::instance().isKernelInstrumented(*Symbol,
+                                                                Preset);
 }
 
-llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet) {
+llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
+                                     llvm::StringRef Preset) {
   auto Symbol = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
       reinterpret_cast<const luthier::KernelDescriptor *>(
           Packet.kernel_object));
   LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
 
   auto InstrumentedKernel =
-      luthier::CodeObjectManager::instance().getInstrumentedKernel(*Symbol);
+      luthier::ToolExecutableManager::instance().getInstrumentedKernel(*Symbol,
+                                                                       Preset);
   LUTHIER_RETURN_ON_ERROR(InstrumentedKernel.takeError());
-
   auto InstrumentedKD = InstrumentedKernel->getKernelDescriptor();
 
   LUTHIER_RETURN_ON_ERROR(InstrumentedKD.takeError());
 
   Packet.kernel_object = reinterpret_cast<uint64_t>(*InstrumentedKD);
+
+  auto InstrumentedKernelMD = InstrumentedKernel->getKernelMetadata();
+  LUTHIER_RETURN_ON_ERROR(InstrumentedKernelMD.takeError());
+
+  Packet.private_segment_size = InstrumentedKernelMD->PrivateSegmentFixedSize;
+
   return llvm::Error::success();
 }
 
