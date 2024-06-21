@@ -75,16 +75,17 @@ public:
   /// This is generally used when loading an instrumented executable
   /// \param GVName the name of the global variable queried
   /// \param Agent The \c hsa::GpuAgent to look for the global variable variable
-  /// \return A \c luthier::address_t if the variable was located on the \p Agent,
-  /// an \c std::nullopt if not loaded, or an \c llvm::Error if an issue was
-  /// encountered
+  /// \return A \c luthier::address_t if the variable was located on the \p
+  /// Agent, an \c std::nullopt if not loaded, or an \c llvm::Error if an issue
+  /// was encountered
   /// \sa luthier::hsa::Executable::defineExternalAgentGlobalVariable
   virtual llvm::Expected<std::optional<luthier::address_t>>
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
                                   const hsa::GpuAgent &Agent) = 0;
 };
 
-/// \brief Keeps track of instrumentation code loaded via a static HIP FAT binary
+/// \brief Keeps track of instrumentation code loaded via a static HIP FAT
+/// binary
 /// \details an implementation of \c InstrumentationModule which keeps track of
 /// <b>the</b> static HIP FAT binary embedded in the shared object of a Luthier
 /// tool.\n
@@ -98,22 +99,24 @@ public:
 /// \c StaticInstrumentationModule will detect this by checking the compile unit
 /// ID of each executable passed to it.\n
 /// For each GPU Agent, the HIP runtime extracts an ISA-compatible
-/// code object from the static FAT binary and loads it into a single executable.
-/// This is done in a lazy fashion if deferred loading is enabled, meaning the
-/// loading only occurs on a device if the app starts using it. \n
+/// code object from the static FAT binary and loads it into a single
+/// executable. This is done in a lazy fashion if deferred loading is enabled,
+/// meaning the loading only occurs on a device if the app starts using it. \n
 /// \c StaticInstrumentationModule gets notified when a new \c hsa::Executable
 /// of the FAT binary gets loaded onto each device. On the first occurrence,
 /// it will process the bitcode embedded inside its code object
 /// (see \c InstrumentationModule::BitcodeBuffer)
-/// and creates a list of global variables in the module, as well as their associated
+/// and creates a list of global variables in the module, as well as their
+/// associated
 /// \c hsa::ExecutableSymbol on the loaded \c hsa::GpuAgent.
 /// On subsequent executable loads, it only updates the global variable list.
 /// It should be clear by now that \c StaticInstrumentationModule does not do
 /// any GPU memory management and relies solely on HIP.\n
 /// A similar mechanism is in place to detect unloading of the instrumentation
-/// module's executables; As they get destroyed, the affected \c hsa::ExecutableSymbols
-/// get invalidated as well. When the last \c hsa::Executable of the module is
-/// destroyed, the bitcode buffer also gets wiped.\n
+/// module's executables; As they get destroyed, the affected \c
+/// hsa::ExecutableSymbols get invalidated as well. When the last \c
+/// hsa::Executable of the module is destroyed, the bitcode buffer also gets
+/// wiped.\n
 /// \c StaticInstrumentationModule also gets notified of the kernel shadow host
 /// pointers of each hook, and converts them to the correct hook name to
 /// be found in the module later on.
@@ -207,7 +210,8 @@ public:
   /// static instrumentation executables
   /// \param Exec an \c hsa::Executable
   /// \return \c true if this is a static instrumentation module copy, false if
-  /// not, or an \c llvm::Error if any issues were encountered during the process
+  /// not, or an \c llvm::Error if any issues were encountered during the
+  /// process
   static llvm::Expected<bool>
   isStaticInstrumentationModuleExecutable(const hsa::Executable &Exec);
 };
@@ -217,9 +221,9 @@ public:
 class ToolExecutableManager : public Singleton<ToolExecutableManager> {
 public:
   /// Registers the wrapper kernel of an instrumentation hook in a static
-  /// tool code object
-  /// For now, dummy empty kernels are used to give users a handle to hooks
-  /// on the host side (also referred to as the shadow host pointer) \n
+  /// instrumentation module
+  /// For now, dummy empty kernels are used to give tool writers a handle to
+  /// hooks on the host side (also referred to as the shadow host pointer) \n
   /// These handles are captured via the \c __hipRegisterFunction calls in
   /// HIP, and they have the same name as the hook they point to, with
   /// \c HOOK_HANDLE_PREFIX prefixed.
@@ -230,20 +234,19 @@ public:
   void registerInstrumentationHookWrapper(const void *WrapperShadowHostPtr,
                                           const char *HookWrapperName);
 
-  /// Called right after the \p Exec is frozen by the application.
-  /// It mainly checks if \p Exec is a static tool executable, and registers it
-  /// with the \c ToolExecutableManager
+  /// Called right after the \p Exec is frozen by the application
+  /// It mainly registers an \p Exec if it is a static instrumentation module
+  /// executable
   /// \param Exec executable that was just frozen
   /// \return an \c llvm::Error indicating any issues encountered during the
   /// process
   llvm::Error registerIfLuthierToolExecutable(const hsa::Executable &Exec);
 
-  /// Called right before the \p Exec is destroyed by the application.
+  /// Called right before the \p Exec is destroyed by the HSA runtime.
   /// It checks if \p Exec: \n
   /// 1. has been instrumented or not, and removes the instrumented versions
-  /// of the executable.
-  /// 2. belongs to the static instrumentation module and removes it from
-  /// the module.
+  /// of the executable
+  /// 2. belongs to the static instrumentation module and removes it if so
   /// \param Exec the executable about to be destroyed
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
@@ -256,13 +259,13 @@ public:
   /// \param InstrumentedElfs a list of instrumented code objects that isolate
   /// the requirements of \p OriginalKernel in a single executable
   /// \param OriginalKernel the \c hsa::ExecutableSymbol of the original kernel
-  /// \param Profile the profile name of the instrumentation
+  /// \param Preset the preset name of the instrumentation
   /// \param ExternVariables a mapping between the name and the address of
   /// external variables of the instrumented code objects
   /// \return an \p llvm::Error if an issue was encountered in the process
   llvm::Error loadInstrumentedKernel(
       const llvm::ArrayRef<llvm::ArrayRef<uint8_t>> &InstrumentedElfs,
-      const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Profile,
+      const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
       const llvm::ArrayRef<std::pair<llvm::StringRef, void *>>
           &ExternVariables);
 
@@ -280,13 +283,13 @@ public:
   llvm::Error loadInstrumentedExecutable(
       llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::ArrayRef<uint8_t>>>
           InstrumentedElfs,
-      llvm::StringRef Profile,
+      llvm::StringRef Preset,
       llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, void *>>
           ExternVariables);
 
   /// Returns the instrumented kernel's \c hsa::ExecutableSymbol given its
   /// original un-instrumented version's \c hsa::ExecutableSymbol and the
-  /// profile name it was instrumented under \n
+  /// preset name it was instrumented under \n
   /// Used to run the instrumented version of the kernel when requested by the
   /// user
   /// \param OriginalKernel symbol of the un-instrumented original kernel
@@ -294,12 +297,12 @@ public:
   /// \p llvm::Error
   llvm::Expected<const hsa::ExecutableSymbol &>
   getInstrumentedKernel(const hsa::ExecutableSymbol &OriginalKernel,
-                        llvm::StringRef Profile) const;
+                        llvm::StringRef Preset) const;
 
-  /// Checks if the given \p Kernel is instrumented under the given \p Profile
+  /// Checks if the given \p Kernel is instrumented under the given \p Preset
   /// \return \c true if it's instrumented, \c false otherwise
   bool isKernelInstrumented(const hsa::ExecutableSymbol &Kernel,
-                            llvm::StringRef Profile) const;
+                            llvm::StringRef Preset) const;
 
   const StaticInstrumentationModule &getStaticInstrumentationModule() const {
     return SIM;
@@ -308,17 +311,41 @@ public:
   ~ToolExecutableManager();
 
 private:
+  /// A private helper function to insert newly-instrumented versions of
+  /// the \p OriginalKernel under the given \p Preset\n
+  /// <b>Should be called after checking
+  /// \c OriginalToInstrumentedKernelsMap doesn't have this entry already</b>
+  /// \param OriginalKernel original kernel that was just instrumented
+  /// \param Preset the preset name it was instrumented under
+  /// \param InstrumentedKernel instrumented version of the original kernel
+  void insertInstrumentedKernelIntoMap(
+      const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
+      const hsa::ExecutableSymbol &InstrumentedKernel) {
+    // Create an entry for the OriginalKernel if it doesn't already exist in the
+    // map
+    auto &OriginalKernelEntry =
+        !OriginalToInstrumentedKernelsMap.contains(OriginalKernel)
+            ? OriginalToInstrumentedKernelsMap.insert({OriginalKernel, {}})
+                  .first->getSecond()
+            : OriginalToInstrumentedKernelsMap[OriginalKernel];
+    OriginalKernelEntry.insert({Preset, InstrumentedKernel});
+  }
+
   mutable StaticInstrumentationModule SIM{};
 
   /// \brief a mapping between the loaded code objects instrumented and
   /// loaded by Luthier and their code object readers
   llvm::DenseMap<hsa::LoadedCodeObject, hsa::CodeObjectReader>
-      InstrumentedLCOInfo;
+      InstrumentedLCOInfo{};
+
+  /// \brief a set of executables that has at least a single kernel of it
+  /// instrumented
+  llvm::DenseSet<hsa::Executable> OriginalExecutablesWithKernelsInstrumented{};
 
   /// \brief a mapping between the pair of an instrumented kernel, given
-  /// its original kernel, and its instrumentation profile
+  /// its original kernel, and its instrumentation preset
   llvm::DenseMap<hsa::ExecutableSymbol, llvm::StringMap<hsa::ExecutableSymbol>>
-      InstrumentedKernels{};
+      OriginalToInstrumentedKernelsMap{};
 };
 }; // namespace luthier
 

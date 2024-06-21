@@ -257,8 +257,7 @@ StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
   if (VariableSymbolMapIt != PerAgentGlobalVariables.end()) {
     auto VariableSymbolIt = VariableSymbolMapIt->second.find(GVName);
     // Ensure the variable name is indeed in the map
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
         VariableSymbolIt != VariableSymbolMapIt->second.end()));
     auto VariableSymbol = VariableSymbolIt->second;
     LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier::address_t, VariableAddress,
@@ -316,41 +315,79 @@ llvm::Error ToolExecutableManager::registerIfLuthierToolExecutable(
 llvm::Error ToolExecutableManager::unregisterIfLuthierToolExecutable(
     const hsa::Executable &Exec) {
   // Check if this belongs to the static instrumentation module
+  // If so, then unregister it from the static module
   auto IsSIMExec =
       StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
           Exec);
   LUTHIER_RETURN_ON_ERROR(IsSIMExec.takeError());
   if (*IsSIMExec) {
-    return SIM.UnregisterExecutable(Exec);
+    return SIM.unregisterExecutable(Exec);
   }
-  // Check if this executable has kernels that were instrumented. If so,
+  // Check if this executable has been instrumented before. If so,
   // destroy the instrumented versions of this executable, and remove its
-  // entries
-  for (const auto &LCO : llvm::cantFail(Exec.getLoadedCodeObjects())) {
-    llvm::SmallVector<hsa::ExecutableSymbol, 4> Kernels;
-    LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
-    for (const auto &Kernel : Kernels) {
+  // entries from the internal maps
+  if (OriginalExecutablesWithKernelsInstrumented.contains(Exec)) {
+    llvm::SmallDenseSet<hsa::Executable, 1> InstrumentedVersionsOfExecutable;
+    // 1. Find all instrumented versions of each kernel of Exec
+    // 2. For each instrumented kernel, get its executable and insert it in
+    // InstrumentedVersionsOfExecutable to be dealt with later
+    // 3. Remove instrumented entries of the original kernel
+    for (const auto &LCO : llvm::cantFail(Exec.getLoadedCodeObjects())) {
+      llvm::SmallVector<hsa::ExecutableSymbol, 4> Kernels;
+      LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
+      for (const auto &Kernel : Kernels) {
+        if (OriginalToInstrumentedKernelsMap.contains(Kernel)) {
+          auto &InstrumentedKernels = OriginalToInstrumentedKernelsMap[Kernel];
+          for (const auto &[Preset, InstrumentedKernel] : InstrumentedKernels) {
+            InstrumentedVersionsOfExecutable.insert(
+                llvm::cantFail(InstrumentedKernel.getExecutable()));
+          }
+          OriginalToInstrumentedKernelsMap.erase(Kernel);
+        }
+      }
     }
+    // clean up all instrumented versions of Exec
+    for (auto &InstrumentedExec : InstrumentedVersionsOfExecutable) {
+      // For the LCOs of the instrumented executable, delete their Code Object
+      // Readers
+      for (const auto &LCO :
+           llvm::cantFail(InstrumentedExec.getLoadedCodeObjects())) {
+        auto It = InstrumentedLCOInfo.find(LCO);
+        LUTHIER_RETURN_ON_ERROR(
+            LUTHIER_ASSERTION(It != InstrumentedLCOInfo.end()));
+        LUTHIER_RETURN_ON_ERROR(It->getSecond().destroy());
+      }
+      // Finally, delete the executable
+      LUTHIER_RETURN_ON_ERROR(InstrumentedExec.destroy());
+    }
+    return llvm::Error::success();
   }
-  return llvm::Error(llvm::Error());
+  return llvm::Error::success();
 }
 
 llvm::Expected<const hsa::ExecutableSymbol &>
 ToolExecutableManager::getInstrumentedKernel(
-    const hsa::ExecutableSymbol &OriginalKernel,
-    llvm::StringRef Profile) const {
+    const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset) const {
+  // First make sure the OriginalKernel has instrumented entries
+  auto InstrumentedKernelsIt =
+      OriginalToInstrumentedKernelsMap.find(OriginalKernel);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-      InstrumentedKernels.contains({OriginalKernel, Profile})));
-  return InstrumentedKernels.at({OriginalKernel, Profile});
+      InstrumentedKernelsIt != OriginalToInstrumentedKernelsMap.end()));
+  // Then make sure the original kernel was instrumented under the given Preset,
+  // and then return the instrumented version
+  auto InstrumentedKernelIt = InstrumentedKernelsIt->getSecond().find(Preset);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+      InstrumentedKernelIt != InstrumentedKernelsIt->getSecond().end()));
+  return InstrumentedKernelIt->second;
 }
 
 llvm::Error ToolExecutableManager::loadInstrumentedKernel(
     const llvm::ArrayRef<llvm::ArrayRef<uint8_t>> &InstrumentedElfs,
-    const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Profile,
+    const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
     const llvm::ArrayRef<std::pair<llvm::StringRef, void *>> &ExternVariables) {
   // Ensure this kernel was not instrumented under this profile
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-      !InstrumentedKernels.contains({OriginalKernel, Profile})));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(!isKernelInstrumented(OriginalKernel, Preset)));
 
   // Create the executable
   auto Executable = hsa::Executable::create();
@@ -393,7 +430,10 @@ llvm::Error ToolExecutableManager::loadInstrumentedKernel(
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(InstrumentedKernelType == hsa::KERNEL));
 
-  InstrumentedKernels.insert({{OriginalKernel, Profile}, *InstrumentedKernel});
+  insertInstrumentedKernelIntoMap(OriginalKernel, Preset, *InstrumentedKernel);
+
+  OriginalExecutablesWithKernelsInstrumented.insert(
+      llvm::cantFail(OriginalKernel.getExecutable()));
 
   return llvm::Error::success();
 }
@@ -401,7 +441,7 @@ llvm::Error ToolExecutableManager::loadInstrumentedKernel(
 llvm::Error ToolExecutableManager::loadInstrumentedExecutable(
     llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::ArrayRef<uint8_t>>>
         InstrumentedElfs,
-    llvm::StringRef Profile,
+    llvm::StringRef Preset,
     llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, void *>>
         ExternVariables) {
   // Ensure that all LCOs belong to the same executable, and their kernels
@@ -419,7 +459,7 @@ llvm::Error ToolExecutableManager::loadInstrumentedExecutable(
     LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
     for (const auto &Kernel : Kernels) {
       LUTHIER_RETURN_ON_ERROR(
-          LUTHIER_ASSERTION(!InstrumentedKernels.contains({Kernel, Profile})));
+          LUTHIER_ASSERTION(!isKernelInstrumented(Kernel, Preset)));
     }
   }
 
@@ -475,17 +515,18 @@ llvm::Error ToolExecutableManager::loadInstrumentedExecutable(
       LUTHIER_RETURN_ON_ERROR(
           LUTHIER_ASSERTION(InstrumentedKernelType == hsa::KERNEL));
 
-      InstrumentedKernels.insert(
-          {{OriginalKernel, Profile}, *InstrumentedKernel});
+      insertInstrumentedKernelIntoMap(OriginalKernel, Preset,
+                                      *InstrumentedKernel);
     }
   }
+  OriginalExecutablesWithKernelsInstrumented.insert(Exec);
   return llvm::Error::success();
 }
 
 bool ToolExecutableManager::isKernelInstrumented(
-    const hsa::ExecutableSymbol &Kernel, llvm::StringRef Profile) const {
-  return InstrumentedKernels.contains(Kernel) &&
-         InstrumentedKernels.at(Kernel).contains(Profile);
+    const hsa::ExecutableSymbol &Kernel, llvm::StringRef Preset) const {
+  return OriginalToInstrumentedKernelsMap.contains(Kernel) &&
+         OriginalToInstrumentedKernelsMap.at(Kernel).contains(Preset);
 }
 
 ToolExecutableManager::~ToolExecutableManager() {
