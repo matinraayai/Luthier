@@ -59,9 +59,9 @@ namespace luthier {
 /// the inspected items are destroyed by the runtime.
 class CodeLifter : public Singleton<CodeLifter> {
 
-  //===----------------------------------------------------------------------===//
+  //===--------------------------------------------------------------------===//
   // Generic and shared functionality among all components of the CodeLifter
-  //===----------------------------------------------------------------------===//
+  //===--------------------------------------------------------------------===//
 
 private:
   /// Mutex to protect all cached items
@@ -78,9 +78,9 @@ public:
   /// faced an error
   llvm::Error invalidateCachedExecutableItems(hsa::Executable &Exec);
 
-  //===----------------------------------------------------------------------===//
+  //===--------------------------------------------------------------------===//
   // MC-backed Disassembly Functionality
-  //===----------------------------------------------------------------------===//
+  //===--------------------------------------------------------------------===//
 
 private:
   /// \brief Contains the constructs needed by LLVM for performing a disassembly
@@ -120,7 +120,6 @@ private:
       MCDisassembledSymbols{};
 
 public:
-
   /// Disassembles the content of the given \p hsa::ExecutableSymbol and returns
   /// a reference to a \p std::vector<hsa::Instr>\n
   /// Does not perform any symbolization or control flow analysis\n
@@ -135,57 +134,70 @@ public:
   llvm::Expected<const std::vector<hsa::Instr> &>
   disassemble(const hsa::ExecutableSymbol &Symbol);
 
-  /**
-   * Disassembles the machine code encapsulated by \p code for the given \p Isa
-   * \param ISA the \p hsa::Isa for which the code should disassembled for
-   * \param code an \p llvm::ArrayRef pointing to the beginning and end of the
-   * machine code
-   * \return on success, returns a \p std::vector of \p llvm::MCInst and
-   * a \p std::vector containing the start address of each instruction
-   */
+  /// Disassembles the machine code encapsulated by \p code for the given \p ISA
+  /// \param ISA the \p hsa::Isa of the \p Code
+  /// \param Code an \p llvm::ArrayRef pointing to the beginning and end of the
+  ///  machine code
+  /// \return on success, returns a \p std::vector of \p llvm::MCInst and
+  /// a \p std::vector containing the start address of each instruction
   llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
   disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code);
 
-  /*****************************************************************************
-   * \brief Beginning of Code Lifting Functionality
-   ****************************************************************************/
+  //===--------------------------------------------------------------------===//
+  // Beginning of Code Lifting Functionality
+  //===--------------------------------------------------------------------===//
+
 private:
-  // TODO: Invalidate these caches once an Executable is destroyed
+  //===--------------------------------------------------------------------===//
+  // MachineBasicBlock resolving
+  //===--------------------------------------------------------------------===//
 
-  /*****************************************************************************
-   * \brief \p llvm::MachineBasicBlock resolving
-   ****************************************************************************/
-
-  /**
-   * \brief Contains the addresses of the instructions that are either branches
-   * or target of other branch instructions
-   * \details This map is used during lifting of MC instructions to MIR to
-   * indicate start/end of each \p llvm::MachineBasicBlock
-   */
+  /// \brief Contains the addresses of the HSA instructions that are either
+  /// branches or target of other branch instructions, per
+  /// \c hsa::LoadedCodeObject
+  /// \details This map is used during lifting of MC instructions to MIR to
+  /// indicate start/end of each \p llvm::MachineBasicBlock. It gets populated
+  /// by during MC disassembly of functions.
   llvm::DenseMap<hsa::LoadedCodeObject, llvm::DenseSet<address_t>>
       BranchAndTargetLocations{};
 
-  /**
-   * Checks whether the given \p Address is the start of either a branch
-   * instruction or a branch target of another branch instruction
-   * in the given \p LCO
-   * \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
-   * in its loaded region
-   * @param Address a device address in the \p hsa::LoadedCodeObject
-   * @return \p true if the Address
-   */
+  /// Checks whether the given \p Address is the start of either a branch
+  /// instruction or a target of another branch instruction
+  /// \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
+  /// in its loaded region
+  /// \param \c Address a device address in the \p hsa::LoadedCodeObject
+  /// \return true if the Address is the start of a branch instruction, or
+  /// a target of another branch instruction; \c false otherwise
   bool isAddressBranchOrBranchTarget(const hsa::LoadedCodeObject &LCO,
                                      address_t Address);
-  /**
-   * Used by the MC disassembler functionality to notify \p CodeLifter about the
-   * loaded address of an instruction that is either a branch or the target
-   * of another branch instruction
-   * \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
-   * in its loaded region
-   * @param Address a device address in the \p hsa::LoadedCodeObject
-   */
+
+  /// Used by the MC disassembler functionality to notify
+  /// \c BranchAndTargetLocations about the loaded address of an instruction
+  /// that is either a branch or the target of another branch instruction
+  /// \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
+  /// in its loaded region
+  /// \param Address a device address in the \p hsa::LoadedCodeObject
   void addBranchOrBranchTargetAddress(const hsa::LoadedCodeObject &LCO,
                                       address_t Address);
+
+  //===--------------------------------------------------------------------===//
+  // Relocation resolving
+  //===--------------------------------------------------------------------===//
+
+  typedef struct {
+    hsa::ExecutableSymbol Symbol; // < The Symbol referenced by the relocation
+    int64_t Addend;
+    uint64_t Type;
+  } LCORelocationInfo;
+
+  /// Cache of \c LCORelocationInfo information per loaded address in each
+  /// lifted \c hsa::LoadedCodeObject
+  std::unordered_map<hsa::LoadedCodeObject,
+                     std::unordered_map<address_t, LCORelocationInfo>>
+      Relocations{};
+
+  llvm::Expected<std::optional<LCORelocationInfo>>
+  resolveRelocation(const hsa::LoadedCodeObject &LCO, address_t Address);
 
   llvm::Expected<llvm::Function *>
   initializeLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
@@ -194,27 +206,6 @@ private:
   llvm::Expected<llvm::MachineFunction &> createLLVMMachineFunctionFromSymbol(
       const hsa::ExecutableSymbol &Symbol, llvm::MachineModuleInfo &MMI,
       llvm::LLVMTargetMachine &TM, llvm::Function &F);
-
-  struct LCORelocationInfo {
-    hsa::ExecutableSymbol Symbol; // < The Symbol referenced by the relocation
-    int64_t Addend;
-    uint64_t Type;
-    // llvm::object::ELFRelocationRef RelocRef; // < Relocation Info
-  };
-
-  /**
-   * Cache of relocation information, per LoadedCodeObject
-   */
-  std::unordered_map<hsa::LoadedCodeObject,        // < All LCOs lifted so far
-                     std::unordered_map<address_t, // < Address of the
-                                                   // relocation on the device
-                                        LCORelocationInfo // < Relocation info
-                                                          // per device address
-                                        >>
-      Relocations{};
-
-  llvm::Expected<std::optional<LCORelocationInfo>>
-  resolveRelocation(const hsa::LoadedCodeObject &LCO, address_t Address);
 
 public:
   llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
