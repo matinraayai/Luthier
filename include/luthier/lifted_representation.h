@@ -1,0 +1,231 @@
+//===-- lifted_representation.h - Lifted Representation  --------*- C++ -*-===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file describes Luthier's Lifted Representation, which contains the
+/// \c llvm::Module and \c llvm::MachineModuleInfo of a lifted kernel or
+/// executable, as well as a mapping between the HSA primitives and LLVM
+/// IR primitives involved.
+//===----------------------------------------------------------------------===//
+
+#ifndef LUTHIER_LIFTED_REPRESENTATION_H
+#define LUTHIER_LIFTED_REPRESENTATION_H
+#include <hsa/hsa.h>
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/CodeGen/MachineFunctionPass.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <luthier/instr.h>
+
+namespace luthier {
+
+class CodeLifter;
+
+/// \brief contains information regarding a lifted \c hsa_executable_symbol_t
+/// or a lifted \c hsa_executable_t; This includes an instance of a
+/// ThreadSafeModule and the ThreadSafeContext it is on, the
+/// \c llvm::MachineModuleInfoWrapperPass where the MIRs are inserted,
+/// as well as a mapping between HSA primitives and LLVM IR/MIR primitives
+/// involved
+/// \tparam HT either an \c hsa_executable_symbol_t or an \c hsa_executable_t
+template <typename HT, typename = std::enable_if_t<
+                           std::is_same<HT, hsa_executable_symbol_t>::value ||
+                           std::is_same<HT, hsa_executable_t>::value>>
+class LiftedRepresentation {
+  friend luthier::CodeLifter;
+
+private:
+  /// A thread-safe context that owns all the thread-safe modules;
+  /// Each LiftedRepresentation is given its own context to allow for
+  /// independent processing from others\n
+  /// During instrumentation all bitcode is loaded into this Context\n
+  /// This ThreadSafeContext retains the underlying \c llvm::LLVMContext
+  /// unique pointer's ownership
+  llvm::orc::ThreadSafeContext Context;
+
+  /// A list of thread-safe Modules owned by the \c Context as well as its
+  /// associated \c llvm::MachineModuleInfoWrapperPass (MMIWP). The MMIWP
+  /// owns a reference to the Machine Module Info (MMI) of the module.
+  /// Modules only hold global object definition/declarations; MMI
+  /// and its \c llvm::MachineFunction list contains the \c llvm::MachineInstr
+  /// of each function and therefore, do the heavy lifting.\n
+  /// The modules/MMIs have a one-to-one correspondence with a single
+  /// \c hsa_loaded_code_object. This is because an \c hsa_executable_t can
+  /// contain multiple loaded code objects. Each module/MMI will be compiled
+  /// separately from the other and then passed to Luthier to be loaded
+  /// into a single \c hsa_executable_t . In practice, an \c hsa_executable_t
+  /// almost always contains a single \c hsa_loaded_code_object_t .
+  llvm::SmallVector<
+      std::pair<llvm::orc::ThreadSafeModule,
+                std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
+      1>
+      Modules;
+
+  /// The HSA primitive represented by this object. Can be either an
+  /// \c hsa_executable_t or an \c hsa_executable_symbol_t
+  HT LiftedPrimitive;
+
+  /// Mapping between an \c hsa_loaded_code_object_t and the Module and MMI
+  /// representing it in LLVM
+  llvm::DenseMap<
+      decltype(hsa_loaded_code_object_t::handle),
+      std::pair<llvm::orc::ThreadSafeModule *, llvm::MachineModuleInfo *>>
+      RelatedLCOs{};
+
+  /// Mapping between an \c hsa_executable_symbol_t (of type kernel and
+  /// device function) and its \c llvm::MachineFunction
+  llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
+                 llvm::MachineFunction *>
+      RelatedFunctions{};
+
+  /// Mapping between an \c hsa_executable_symbol_t of type variable
+  /// and its \c llvm::GlobalVariable
+  llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
+                 llvm::GlobalVariable *>
+      RelatedGlobalVariables{};
+
+  /// A mapping between an \c llvm::MachineInstr in one of the MMIs and
+  /// its HSA representation, \c hsa::Instr. This is useful to have in case
+  /// the user wants to peak at the original \c llvm::MCInst of the machine
+  /// instruction or any other information about where the instruction is loaded
+  /// during runtime. \n
+  /// This mapping is only valid before any LLVM pass is run over the MMIs;
+  /// After that pointers of each machine instruction gets changed by the
+  /// underlying allocator, and this map becomes invalid
+  llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> MachineInstrToMCMap{};
+
+public:
+  /// \return the lifted HSA primitive
+  HT getLiftedAsHSAPrimitive() const { return LiftedPrimitive; };
+
+  /// \return a reference to the thread-safe \c LLVMContext of this object
+  llvm::orc::ThreadSafeContext &getContext() { return Context; }
+
+  /// \return a const reference to the the thread-safe \c LLVMContext of this
+  /// object
+  [[nodiscard]] const llvm::orc::ThreadSafeContext &getContext() const {
+    return Context;
+  }
+
+  /// Module iterator
+  using module_iterator = decltype(Modules)::iterator;
+  /// Module constant iterator
+  using const_module_iterator = decltype(Modules)::const_iterator;
+  /// Related Loaded Code Object iterator
+  using iterator = decltype(RelatedLCOs)::iterator;
+  /// Related Loaded Code Object constant iterator
+  using const_iterator = decltype(RelatedLCOs)::const_iterator;
+  /// Related function iterator
+  using function_iterator = decltype(RelatedFunctions)::iterator;
+  /// Related function constant iterator
+  using const_function_iterator = decltype(RelatedFunctions)::const_iterator;
+  /// Related Global Variable iterator.
+  using global_iterator = decltype(RelatedGlobalVariables)::iterator;
+  /// The Global Variable constant iterator.
+  using const_global_iterator =
+      decltype(RelatedGlobalVariables)::const_iterator;
+
+  /// Module iteration
+  module_iterator module_begin() { return Modules.begin(); }
+  [[nodiscard]] const_module_iterator module_begin() const {
+    return Modules.begin();
+  }
+
+  module_iterator module_end() { return Modules.end(); }
+  [[nodiscard]] const_module_iterator module_end() const {
+    return Modules.end();
+  }
+
+  [[nodiscard]] size_t module_size() const { return Modules.size(); };
+
+  [[nodiscard]] bool module_empty() const { return Modules.empty(); };
+
+  llvm::iterator_range<module_iterator> modules() {
+    return make_range(module_begin(), module_end());
+  }
+  [[nodiscard]] llvm::iterator_range<const_module_iterator> modules() const {
+    return make_range(module_begin(), module_end());
+  }
+
+  /// LCO iteration
+  iterator begin() { return RelatedLCOs.begin(); }
+  [[nodiscard]] const_iterator begin() const { return RelatedLCOs.begin(); }
+
+  iterator end() { return RelatedLCOs.end(); }
+  [[nodiscard]] const_iterator end() const { return RelatedLCOs.end(); }
+
+  [[nodiscard]] size_t size() const { return RelatedLCOs.size(); }
+
+  [[nodiscard]] bool empty() const { return RelatedLCOs.empty(); }
+
+  llvm::iterator_range<iterator> loaded_code_objects() {
+    return make_range(begin(), end());
+  }
+  [[nodiscard]] llvm::iterator_range<const_iterator>
+  loaded_code_objects() const {
+    return make_range(begin(), end());
+  }
+
+  /// Function iteration
+  function_iterator function_begin() { return RelatedFunctions.begin(); }
+  [[nodiscard]] const_function_iterator function_begin() const {
+    return RelatedFunctions.begin();
+  }
+
+  function_iterator function_end() { return RelatedFunctions.end(); }
+  [[nodiscard]] const_function_iterator function_end() const {
+    return RelatedFunctions.end();
+  }
+
+  [[nodiscard]] size_t function_size() const {
+    return RelatedFunctions.size();
+  };
+
+  [[nodiscard]] bool function_empty() const {
+    return RelatedFunctions.empty();
+  };
+
+  llvm::iterator_range<function_iterator> functions() {
+    return make_range(function_begin(), function_end());
+  }
+  [[nodiscard]] llvm::iterator_range<const_function_iterator>
+  functions() const {
+    return make_range(function_begin(), function_end());
+  }
+
+  /// Global Variable iteration
+  global_iterator global_begin() { return RelatedGlobalVariables.begin(); }
+  [[nodiscard]] const_global_iterator global_begin() const {
+    return RelatedGlobalVariables.begin();
+  }
+
+  global_iterator global_end() { return RelatedGlobalVariables.end(); }
+  [[nodiscard]] const_global_iterator global_end() const {
+    return RelatedGlobalVariables.end();
+  }
+
+  [[nodiscard]] size_t global_size() const {
+    return RelatedGlobalVariables.size();
+  };
+
+  [[nodiscard]] bool global_empty() const {
+    return RelatedGlobalVariables.empty();
+  };
+
+  llvm::iterator_range<global_iterator> globals() {
+    return make_range(global_begin(), global_end());
+  }
+  [[nodiscard]] llvm::iterator_range<const_global_iterator> globals() const {
+    return make_range(global_begin(), global_end());
+  }
+
+  [[nodiscard]] const hsa::Instr &
+  getHSAInstrOfMachineInstr(const llvm::MachineInstr &MI) const {
+    return *MachineInstrToMCMap.at(const_cast<llvm::MachineInstr *>(&MI));
+  }
+};
+
+} // namespace luthier
+
+#endif
