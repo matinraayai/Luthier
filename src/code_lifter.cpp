@@ -1,4 +1,4 @@
-#include "disassembler.hpp"
+#include "code_lifter.hpp"
 
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
@@ -417,92 +417,6 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
   return std::nullopt;
 }
 
-llvm::Expected<llvm::Function *>
-cloneLLVMFunction(const llvm::Function &SourceF, llvm::Module &Module,
-                  llvm::MachineModuleInfo &MMI) {
-  auto DestF =
-      llvm::Function::Create(SourceF.getFunctionType(), SourceF.getLinkage(),
-                             SourceF.getName(), Module);
-  DestF->setCallingConv(SourceF.getCallingConv());
-  DestF->setAttributes(SourceF.getAttributes());
-  // Don't forget to add the dummy IR Inst
-  llvm::BasicBlock *BB =
-      llvm::BasicBlock::Create(Module.getContext(), "", DestF);
-  LUTHIER_CHECK(BB);
-  new llvm::UnreachableInst(Module.getContext(), BB);
-  return DestF;
-}
-
-llvm::Error cloneMachineFunctionContent(
-    const llvm::MachineFunction &SrcMF, llvm::MachineFunction &DestMF,
-    const llvm::DenseMap<llvm::MachineFunction *, llvm::MachineFunction *>
-        &MFMap,
-    const llvm::DenseMap<llvm::GlobalVariable *, llvm::GlobalVariable *> &VMap,
-    llvm::Module &Module, llvm::MachineModuleInfo &MMI,
-    llvm::DenseMap<hsa::Instr *, llvm::MachineInstr *> &MCToMIRMap,
-    llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> &MIRToMCMap) {
-  auto &TM = MMI.getTarget();
-  llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *> MBBMap{
-      SrcMF.getNumBlockIDs()};
-  // Initializing the MBBs first will make it easier to create the branch
-  // instructions
-  for (const auto &SrcMBB : SrcMF) {
-    MBBMap.insert({const_cast<llvm::MachineBasicBlock *>(&SrcMBB),
-                   DestMF.CreateMachineBasicBlock()});
-  }
-  // Add the Live-ins to the MF
-  auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
-      TM.getSubtargetImpl(DestMF.getFunction())->getRegisterInfo());
-  for (auto &LiveIn : SrcMF.getRegInfo().liveins()) {
-    DestMF.addLiveIn(LiveIn.first, TRI->getPhysRegBaseClass(LiveIn.first));
-  }
-
-  for (const auto &[SrcMBB, DestMBB] : MBBMap) {
-    // Insert the successors of the Src MBB into Dest's MBB
-    for (const auto SrcSuccessor : SrcMBB->successors()) {
-      DestMBB->addSuccessor(MBBMap[SrcSuccessor]);
-    }
-    // Insert the instructions
-    for (const auto &SrcMI : *SrcMBB) {
-      llvm::MachineInstrBuilder DestBuilder =
-          llvm::BuildMI(DestMBB, SrcMI.getDebugLoc(), SrcMI.getDesc());
-      for (const auto &SrcOp : SrcMI.operands()) {
-        if (SrcOp.isReg()) {
-          DestBuilder->addOperand(llvm::MachineOperand::CreateReg(
-              SrcOp.getReg(), SrcOp.isDef(), SrcOp.isImplicit(), SrcOp.isKill(),
-              SrcOp.isDead(), SrcOp.isUndef(), SrcOp.isEarlyClobber(), 0,
-              SrcOp.isDebug(), SrcOp.isInternalRead(), SrcOp.isRenamable()));
-        } else if (SrcOp.isMBB()) {
-          DestBuilder.addMBB(MBBMap[SrcOp.getMBB()]);
-        } else if (SrcOp.isGlobal()) {
-          auto GlobalValue = SrcOp.getGlobal();
-          if (llvm::dyn_cast<llvm::Function>(GlobalValue)) {
-            auto SrcOpMF = MMI.getMachineFunction(
-                *llvm::dyn_cast<llvm::Function>(GlobalValue));
-            auto DestOpMF = MFMap.at(SrcOpMF);
-            DestBuilder.addGlobalAddress(&DestOpMF->getFunction(),
-                                         SrcOp.getOffset(),
-                                         SrcOp.getTargetFlags());
-          } else if (llvm::dyn_cast<llvm::GlobalVariable>(GlobalValue)) {
-            auto SrcOpGV = llvm::dyn_cast<llvm::GlobalVariable>(GlobalValue);
-            auto DestOpGV = VMap.at(SrcOpGV);
-            DestBuilder.addGlobalAddress(DestOpGV, SrcOp.getOffset(),
-                                         SrcOp.getTargetFlags());
-          }
-
-        } else if (SrcOp.isImm()) {
-          DestBuilder.addImm(SrcOp.getImm());
-        } else {
-          llvm_unreachable(
-              "The operand's cloning logic hasn't been implemented yet");
-        }
-      }
-    }
-  }
-  // Clone the properties
-  DestMF.getProperties() = SrcMF.getProperties();
-  return llvm::Error::success();
-}
 
 static bool shouldReadExec(const llvm::MachineInstr &MI) {
   if (llvm::SIInstrInfo::isVALU(MI)) {
@@ -537,7 +451,7 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
   return llvm::Error::success();
 }
 
-llvm::Expected<LiftedSymbolInfo>
+llvm::Expected<LiftedRepresentation>
 CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                      llvm::Module &Module,
                                      llvm::MachineModuleInfo &MMI) {
@@ -560,7 +474,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
   auto SymbolName = Symbol.getName();
   LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
 
-  LiftedSymbolInfo Out;
+  LiftedRepresentation Out;
 
   auto F = initializeLLVMFunctionFromSymbol(Symbol, Module);
 
@@ -828,7 +742,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
-                          luthier::LiftedSymbolInfo>>
+                          luthier::LiftedRepresentation>>
 luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
   auto LCO = Symbol.getLoadedCodeObject();
   LUTHIER_RETURN_ON_ERROR(LCO.takeError());
@@ -859,7 +773,7 @@ luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
   auto Out = *LiftedSymbolInfo;
   return std::make_tuple<std::unique_ptr<llvm::Module>,
                          std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
-                         luthier::LiftedSymbolInfo>(
+                         luthier::LiftedRepresentation>(
       std::move(Module), std::move(MMIWP), std::move(Out));
 }
 

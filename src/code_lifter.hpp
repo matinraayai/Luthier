@@ -1,3 +1,12 @@
+//===-- code_lifter.hpp - Luthier's Code Lifter  --------------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file describes Luthier's Code Lifter, a singleton in charge of
+/// disassembling code objects into MC and MIR representations.
+//===----------------------------------------------------------------------===//
+
 #ifndef CODE_LIFTER_HPP
 #define CODE_LIFTER_HPP
 #include <llvm/ADT/DenseMap.h>
@@ -14,58 +23,51 @@
 #include <unordered_set>
 #include <vector>
 
-#include "singleton.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_isa.hpp"
 #include "hsa_loaded_code_object.hpp"
 #include "luthier/instr.h"
-#include "luthier/pass.h"
+#include "luthier/lifted_representation.h"
 #include "luthier/types.h"
 #include "object_utils.hpp"
+#include "singleton.hpp"
 
 namespace luthier {
 
-/**
- * \brief a singleton class in charge of:
- * 1. disassembling the instructions of a \p hsa::ExecutableSymbol of type
- * \p KERNEL and \p DEVICE_FUNCTION) using LLVM MC and returning them
- * as a vector of \p hsa::Instr, all without symbolizing any of the
- * instructions' operands.
- * 2. Converting the disassembled information obtained from LLVM MC plus
- * additional information from the backing \p hsa::LoadedCodeObject to
- * LLVM Machine IR (MIR) and placing them inside a
- * \c llvm::Module and \c llvm::MachineModuleInfo (MMI). This then will be used
- * by the tool and \c luthier::CodeGenerator to compile an instrumented
- * code object.
- * 3. TODO: In the presence of debug information in the disassembled/lifted
- * \p hsa::LoadedCodeObject, both the MC representation and MIR representation
- * will also contain the debug information, if requested by the tool.
- *
- * \details The MIR lifted by the \p CodeLifter can have the following levels
- * of granularity:
- * 1. Kernel-level, in which the Module and MMI only contains enough information
- * to make a single kernel run independently from its parent
- * un-instrumented \c hsa::Executable and \c hsa::LoadedCodeObject
- * 2. LoadedCodeObject-level, in which the Module and MMI contain all the
- * information that could be extracted from a single \p hsa::LoadedCodeObject
- *
- * All operations done by the \p CodeLifter is meant to be cached to the
- * best of ability, and invalidated once the \p hsa::Executable containing all
- * the inspected items are destroyed by the runtime.
- */
+/// \brief a singleton class in charge of: \n
+/// 1. disassembling an \c hsa::ExecutableSymbol of type \c KERNEL or
+/// \c DEVICE_FUNCTION using LLVM MC and returning them as a vector of \c
+/// hsa::Instr, without symbolizing the operands. \n
+/// 2. Converting the disassembled information obtained from LLVM MC plus
+/// additional information obtained from the backing \p hsa::Executable to
+/// LLVM Machine IR (MIR) and exposing them as a \c LiftedRepresentation to the
+/// user. \n
+/// 3. TODO: In the presence of debug information in the disassembled/lifted
+/// \p hsa::LoadedCodeObject, both the MC representation and MIR representation
+/// will also contain the debug information, if requested.
+/// \details The MIR lifted by the \p CodeLifter can have the following levels
+/// of granularity:\n
+/// 1. Kernel-level, in which the Module and MMI only contains enough
+/// information to make a single kernel run independently from its parents, the
+/// un-instrumented \c hsa::Executable and \c hsa::LoadedCodeObject.\n
+/// 2. Executable-level, in which the Module and MMI contain all the information
+/// that could be extracted from a single \p hsa::Executable.\n
+/// All operations done by the \p CodeLifter is meant to be cached to the
+/// best of ability, and invalidated once the \p hsa::Executable containing all
+/// the inspected items are destroyed by the runtime.
 class CodeLifter : public Singleton<CodeLifter> {
-  /*****************************************************************************
-   * \brief Generic and shared functionality among all components of the
-   * \p CodeLifter
-   ****************************************************************************/
+
+//===----------------------------------------------------------------------===//
+// Generic and shared functionality among all components of the CodeLifter
+//===----------------------------------------------------------------------===//
+
 private:
-  //
-  //  std::shared_mutex CacheMutex{}; //< Mutex to protect all cached items
+  /// Mutex to protect all cached items
+  std::shared_mutex CacheMutex{};
 
 public:
-
   /**
    * Must be invoked by the internal HSA callback to notify \p CodeLifter
    * that \p Exec has been destroyed by the HSA runtime, and therefore any
@@ -130,7 +132,6 @@ public:
    */
   llvm::Expected<const std::vector<hsa::Instr> &>
   disassemble(const hsa::ExecutableSymbol &Symbol);
-
 
   /**
    * Disassembles the machine code encapsulated by \p code for the given \p Isa
@@ -223,7 +224,7 @@ private:
 
   llvm::Expected<llvm::Function *>
   initializeLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
-                               llvm::Module &Module);
+                                   llvm::Module &Module);
 
   llvm::Expected<llvm::MachineFunction &> createLLVMMachineFunctionFromSymbol(
       const hsa::ExecutableSymbol &Symbol, llvm::MachineModuleInfo &MMI,
@@ -253,10 +254,10 @@ private:
 public:
   llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                             std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
-                            LiftedSymbolInfo>>
+                            LiftedRepresentation>>
   liftSymbol(const hsa::ExecutableSymbol &Symbol);
 
-  llvm::Expected<LiftedSymbolInfo>
+  llvm::Expected<LiftedRepresentation>
   liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                            llvm::Module &Module, llvm::MachineModuleInfo &MMI);
 };
