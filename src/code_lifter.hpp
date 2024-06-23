@@ -196,8 +196,22 @@ private:
                      std::unordered_map<address_t, LCORelocationInfo>>
       Relocations{};
 
+  /// Returns an \c std::nullopt if the \p address doesn't have any relocation
+  /// information associated with it, or the \c LCORelocationInfo associated
+  /// with it otherwise
+  /// \param LCO The \c hsa::LoadedCodeObject which contains \p Address inside
+  /// its loaded range
+  /// \param Address the loaded address being queried
+  /// \return on success, the the \c LCORelocationInfo associated with
+  /// the given \p Address if the address has a relocation info, or
+  /// an \c std::nullopt otherwise; an \c llvm::Error on failure describing the
+  /// issue encountered
   llvm::Expected<std::optional<LCORelocationInfo>>
   resolveRelocation(const hsa::LoadedCodeObject &LCO, address_t Address);
+
+  //===--------------------------------------------------------------------===//
+  // Function-related code-lifting functionality
+  //===--------------------------------------------------------------------===//
 
   llvm::Expected<llvm::Function *>
   initializeLLVMFunctionFromSymbol(const hsa::ExecutableSymbol &Symbol,
@@ -207,15 +221,39 @@ private:
       const hsa::ExecutableSymbol &Symbol, llvm::MachineModuleInfo &MMI,
       llvm::LLVMTargetMachine &TM, llvm::Function &F);
 
-public:
-  llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
-                            std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
-                            LiftedRepresentation>>
-  liftSymbol(const hsa::ExecutableSymbol &Symbol);
+  //===--------------------------------------------------------------------===//
+  // Cached Lifted Representations
+  //===--------------------------------------------------------------------===//
 
-  llvm::Expected<LiftedRepresentation>
-  liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
-                           llvm::Module &Module, llvm::MachineModuleInfo &MMI);
+  //===--------------------------------------------------------------------===//
+  // Public-facing code-lifting functionality
+  //===--------------------------------------------------------------------===//
+public:
+  /// Returns the \c LiftedRepresentation<hsa_executable_symbol_t> associated
+  /// with the given \p Symbol\n
+  /// The representation isolates the requirements of a single kernel can run
+  /// interdependently from its parent \c hsa::LoadedCodeObject or \c
+  /// hsa::Executable\n
+  /// The representation gets cached on the first invocation
+  /// \param Symbol an \c hsa::ExecutableSymbol of type \c KERNEL
+  /// \return on success, the lifted representation of the kernel symbol; an
+  /// \c llvm::Error on failure, describing the issue encountered during the
+  /// process
+  /// \sa LiftedRepresentation
+  llvm::Expected<LiftedRepresentation<hsa_executable_symbol_t> &>
+  liftKernelSymbol(const hsa::ExecutableSymbol &Symbol);
+
+  /// Returns the \c LiftedRepresentation<hsa_executable_t> associated
+  /// with the given \p Exec\n
+  /// The representation gets cached on the first invocation
+  /// \param Exec an \c hsa::Executable
+  /// \return on success, the lifted representation of the executable; an
+  /// \c llvm::Error on failure, describing the issue encountered during the
+  /// process
+  /// \sa LiftedRepresentation
+  llvm::Expected<LiftedRepresentation<hsa_executable_t> &>
+  liftExecutable(const hsa::Executable &Exec);
+
 };
 
 } // namespace luthier
