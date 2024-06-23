@@ -185,15 +185,18 @@ private:
   //===--------------------------------------------------------------------===//
 
   typedef struct {
-    hsa::ExecutableSymbol Symbol; // < The Symbol referenced by the relocation
-    int64_t Addend;
-    uint64_t Type;
+    hsa::ExecutableSymbol Symbol; // The HSA Executable Symbol referenced by
+                                  // the relocation
+    llvm::object::ELFRelocationRef Relocation; // The ELF relocation information
+                                               // Safe to store directly since
+                                               // LCO caches the ELF
   } LCORelocationInfo;
 
   /// Cache of \c LCORelocationInfo information per loaded address in each
-  /// lifted \c hsa::LoadedCodeObject
-  std::unordered_map<hsa::LoadedCodeObject,
-                     std::unordered_map<address_t, LCORelocationInfo>>
+  /// lifted \c hsa::LoadedCodeObject\n
+  /// Combines relocation information from all sections into this map
+  llvm::DenseMap<hsa::LoadedCodeObject,
+                 llvm::DenseMap<address_t, LCORelocationInfo>>
       Relocations{};
 
   /// Returns an \c std::nullopt if the \p address doesn't have any relocation
@@ -225,6 +228,13 @@ private:
   // Cached Lifted Representations
   //===--------------------------------------------------------------------===//
 
+  llvm::DenseMap<hsa::Executable, LiftedRepresentation<hsa_executable_t>>
+      LiftedExecutables{};
+
+  llvm::DenseMap<hsa::ExecutableSymbol,
+                 LiftedRepresentation<hsa_executable_symbol_t>>
+      LiftedKernelSymbols{};
+
   //===--------------------------------------------------------------------===//
   // Public-facing code-lifting functionality
   //===--------------------------------------------------------------------===//
@@ -253,7 +263,6 @@ public:
   /// \sa LiftedRepresentation
   llvm::Expected<LiftedRepresentation<hsa_executable_t> &>
   liftExecutable(const hsa::Executable &Exec);
-
 };
 
 } // namespace luthier

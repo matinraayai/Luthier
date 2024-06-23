@@ -40,6 +40,9 @@
 #include "object_utils.hpp"
 #include "target_manager.hpp"
 
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-code-lifter"
+
 namespace luthier {
 
 template <> CodeLifter *Singleton<CodeLifter>::Instance{nullptr};
@@ -374,49 +377,53 @@ llvm::Expected<std::optional<CodeLifter::LCORelocationInfo>>
 CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
                               luthier::address_t Address) {
   if (!Relocations.contains(LCO)) {
-
+    // If the LCO doesn't have its relocation info cached, cache it
     auto LoadedMemory = LCO.getLoadedMemory();
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
     auto StorageELF = LCO.getStorageELF();
     LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
-    auto Sections = StorageELF->sections();
+    // Create an entry for the LCO in the relocations map
+    auto LCORelocationsMap =
+        Relocations
+            .insert({LCO, llvm::DenseMap<address_t, LCORelocationInfo>{}})
+            .first->getSecond();
 
-    auto [LCORelocationsMapIt, MapInsertionStatus] =
-        Relocations.insert({LCO, {}});
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MapInsertionStatus));
-
-    for (const auto &Section : Sections) {
-      for (const auto &Reloc : Section.relocations()) {
-        auto SymbolName = Reloc.getSymbol()->getName();
-        LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
-        auto Symbol = LCO.getExecutableSymbolByName(*SymbolName);
-        LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-
-        if (Symbol->has_value()) {
-          auto ELFReloc = llvm::object::ELFRelocationRef(Reloc);
-          auto Addend = ELFReloc.getAddend();
-          LUTHIER_RETURN_ON_ERROR(Addend.takeError());
-          auto Type = ELFReloc.getType();
-          LCORelocationsMapIt->second.insert(
-              {reinterpret_cast<luthier::address_t>(LoadedMemory->data()) +
-                   Reloc.getOffset(),
-               {**Symbol, *Addend, Type}});
-        }
+    for (const auto &Section : StorageELF->sections()) {
+      for (const llvm::object::ELFRelocationRef Reloc : Section.relocations()) {
+        // Only rely on the loaded address of the symbol instead of its name
+        // The name will be stripped from the relocation section
+        // if the symbol has a private linkage
+        auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
+        LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
+        // Check with the hsa::Platform which HSA executable Symbol this address
+        // is associated with
+        auto RelocSymbol = hsa::Platform::instance().getSymbolFromLoadedAddress(
+            *RelocSymbolLoadedAddress);
+        LUTHIER_RETURN_ON_ERROR(RelocSymbol.takeError());
+        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(RelocSymbol->has_value()));
+        luthier::address_t TargetAddress =
+            reinterpret_cast<luthier::address_t>(LoadedMemory->data()) +
+            Reloc.getOffset();
+        LCORelocationsMap.insert({TargetAddress, {**RelocSymbol, Reloc}});
       }
     }
   }
   const auto &LCORelocationsMap = Relocations.at(LCO);
-  //  llvm::outs() << "Looking for relocation at address " << Address << "\n";
+
   if (LCORelocationsMap.contains(Address)) {
-    //    llvm::outs() << "Relocation was found for address " << Address <<
-    //    "\n";
-    return LCORelocationsMap.at(Address);
+    auto &Out = LCORelocationsMap.at(Address);
+    LLVM_DEBUG(
+        llvm::dbgs() << llvm::formatv(
+            "Relocation information found for loaded address: {0:x}, with data "
+            "ref: {1}.\n",
+            Address, Out.Relocation.getRawDataRefImpl()));
+
+    return Out;
   }
   return std::nullopt;
 }
-
 
 static bool shouldReadExec(const llvm::MachineInstr &MI) {
   if (llvm::SIInstrInfo::isVALU(MI)) {
@@ -743,7 +750,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                           luthier::LiftedRepresentation>>
-luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
+luthier::CodeLifter::liftKernelSymbol(const hsa::ExecutableSymbol &Symbol) {
   auto LCO = Symbol.getLoadedCodeObject();
   LUTHIER_RETURN_ON_ERROR(LCO.takeError());
 
@@ -798,6 +805,11 @@ llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
     }
   }
   return llvm::Error::success();
+}
+llvm::Expected<LiftedRepresentation<hsa_executable_t> &>
+CodeLifter::liftExecutable(const hsa::Executable &Exec) {
+  return llvm::Expected<LiftedRepresentation<hsa_executable_t> &>(
+      llvm::Error());
 }
 
 } // namespace luthier
