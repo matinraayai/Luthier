@@ -116,8 +116,12 @@ llvm::Expected<Executable> ExecutableSymbol::getExecutable() const {
   return LoadedCodeObject(SymbolInfo.LCO).getExecutable();
 }
 
-llvm::Expected<LoadedCodeObject> ExecutableSymbol::getLoadedCodeObject() const {
-  return LoadedCodeObject(SymbolInfo.LCO);
+std::optional<LoadedCodeObject>
+ExecutableSymbol::getDefiningLoadedCodeObject() const {
+  if (SymbolInfo.LCO.handle == 0)
+    return std::nullopt;
+  else
+    return LoadedCodeObject(SymbolInfo.LCO);
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
@@ -126,14 +130,13 @@ luthier::hsa::ExecutableSymbol::getMachineCode() const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(SymbolType != VARIABLE));
   auto CodeSymbol = SymbolType == KERNEL ? SymbolInfo.KernelFunctionSymbol
                                          : SymbolInfo.Symbol;
-  auto LCO = getLoadedCodeObject();
-  LUTHIER_RETURN_ON_ERROR(LCO.takeError());
+  auto LCO = *getDefiningLoadedCodeObject();
 
-  auto StorageELF = LCO->getStorageELF();
+  auto StorageELF = LCO.getStorageELF();
 
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
-  auto LoadedMemory = LCO->getLoadedMemory();
+  auto LoadedMemory = LCO.getLoadedMemory();
   LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
   auto CodeAddress = CodeSymbol->getAddress();

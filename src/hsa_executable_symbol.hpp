@@ -100,7 +100,8 @@ public:
 
   [[nodiscard]] llvm::Expected<hsa::Executable> getExecutable() const;
 
-  [[nodiscard]] llvm::Expected<LoadedCodeObject> getLoadedCodeObject() const;
+  [[nodiscard]] std::optional<LoadedCodeObject>
+  getDefiningLoadedCodeObject() const;
 
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getMachineCode() const;
 };
