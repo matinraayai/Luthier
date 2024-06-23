@@ -59,36 +59,33 @@ namespace luthier {
 /// the inspected items are destroyed by the runtime.
 class CodeLifter : public Singleton<CodeLifter> {
 
-//===----------------------------------------------------------------------===//
-// Generic and shared functionality among all components of the CodeLifter
-//===----------------------------------------------------------------------===//
+  //===----------------------------------------------------------------------===//
+  // Generic and shared functionality among all components of the CodeLifter
+  //===----------------------------------------------------------------------===//
 
 private:
   /// Mutex to protect all cached items
   std::shared_mutex CacheMutex{};
 
 public:
-  /**
-   * Must be invoked by the internal HSA callback to notify \p CodeLifter
-   * that \p Exec has been destroyed by the HSA runtime, and therefore any
-   * cached information related to \p Exec must be removed since it is no
-   * longer valid
-   * \param Exec the \p hsa::Executable that is about to be destroyed by the
-   * HSA runtime
-   * \return \p llvm::Error describing whether the operation succeeded or
-   * faced an error
-   */
+  /// Invoked by the \c Controller in the internal HSA callback to notify
+  /// the \c CodeLifter that \p Exec has been destroyed by the HSA runtime;
+  /// Therefore any cached information related to \p Exec must be removed since
+  /// it is no longer valid
+  /// \param Exec the \p hsa::Executable that is about to be destroyed by the
+  /// HSA runtime
+  /// \return \p llvm::Error describing whether the operation succeeded or
+  /// faced an error
   llvm::Error invalidateCachedExecutableItems(hsa::Executable &Exec);
 
-  /*****************************************************************************
-   * \brief MC-backed Disassembly Functionality
-   ****************************************************************************/
+  //===----------------------------------------------------------------------===//
+  // MC-backed Disassembly Functionality
+  //===----------------------------------------------------------------------===//
+
 private:
-  /**
-   * \brief Contains the constructs needed by LLVM for performing a disassembly
-   * operation for each \p hsa::Isa.
-   * Does not contain the constructs already created by \p TargetManager
-   */
+  /// \brief Contains the constructs needed by LLVM for performing a disassembly
+  /// operation for each \c hsa::Isa. Does not contain the constructs already
+  /// created by the \c TargetManager
   struct DisassemblyInfo {
     std::unique_ptr<llvm::MCContext> Context;
     std::unique_ptr<llvm::MCDisassembler> DisAsm;
@@ -100,36 +97,41 @@ private:
         : Context(std::move(Context)), DisAsm(std::move(DisAsm)){};
   };
 
-  llvm::DenseMap<hsa::ISA, DisassemblyInfo>
-      DisassemblyInfoMap{}; // < Contains the cached DisassemblyInfo for each
-                            // ISA
+  /// Contains the cached \c DisassemblyInfo for each \c hsa::ISA
+  llvm::DenseMap<hsa::ISA, DisassemblyInfo> DisassemblyInfoMap{};
 
+  /// On success, returns a reference to the \c DisassemblyInfo associated with
+  /// the given \p ISA. Creates the info if not already present in the \c
+  /// DisassemblyInfoMap
+  /// \param ISA the \c hsa::ISA of the \c DisassemblyInfo
+  /// \return on success, a reference to the \c DisassemblyInfo associated with
+  /// the given \p ISA, on failure, an \c llvm::Error describing the issue
+  /// encountered during the process
   llvm::Expected<DisassemblyInfo &> getDisassemblyInfo(const hsa::ISA &ISA);
 
-  /**
-   * Cache of \c hsa::ExecutableSymbol 's already disassembled by \c
-   * CodeLifter The vectors have to be allocated as a smart pointer to stop
-   * it from calling its destructor prematurely The disassembler is in
-   * charge of clearing the map
-   */
-  std::unordered_map<hsa::ExecutableSymbol,
-                     std::unique_ptr<std::vector<hsa::Instr>>>
+  /// Cache of kernel/device function symbols already disassembled by the
+  /// \c CodeLifter.\n
+  /// The vector handles themselves are allocated as a unique pointer to
+  /// stop the map from calling its destructor prematurely.\n
+  /// Entries get invalidated once the executable associated with the symbols
+  /// get destroyed.
+  llvm::DenseMap<hsa::ExecutableSymbol,
+                 std::unique_ptr<std::vector<hsa::Instr>>>
       MCDisassembledSymbols{};
 
 public:
-  /**
-   * Disassembles the content of the given \p hsa::ExecutableSymbol
-   * and returns a reference to a \p std::vector<hsa::Instr>
-   * Does not perform any control flow analysis
-   * The \p hsa::ISA used for disassembly will of the \p Symbol 's
-   * \p hsa::LoadedCodeObject
-   * Further invocations will return a cached result
-   * \param Symbol the \p hsa::ExecutableSymbol to be disassembled. Must be of
-   * type \p KERNEL or \p DEVICE_FUNCTION
-   * \return on success, a const reference to the cached
-   * \p std::vector<hsa::Instr>. on failure, an \p llvm::Error.
-   * \see hsa::Instr
-   */
+
+  /// Disassembles the content of the given \p hsa::ExecutableSymbol and returns
+  /// a reference to a \p std::vector<hsa::Instr>\n
+  /// Does not perform any symbolization or control flow analysis\n
+  /// The \c hsa::ISA of the backing \c hsa::LoadedCodeObject will be used to
+  /// disassemble the \p Symbol\n
+  /// The results of this operation gets cached on the first invocation
+  /// \param Symbol the \p hsa::ExecutableSymbol to be disassembled. Must be of
+  /// type \p KERNEL or \p DEVICE_FUNCTION
+  /// \return on success, a const reference to the cached
+  /// \c std::vector<hsa::Instr>. On failure, an \p llvm::Error
+  /// \sa hsa::Instr
   llvm::Expected<const std::vector<hsa::Instr> &>
   disassemble(const hsa::ExecutableSymbol &Symbol);
 
@@ -148,43 +150,6 @@ public:
    * \brief Beginning of Code Lifting Functionality
    ****************************************************************************/
 private:
-  /**
-   * \brief contains the \ref llvm::Module and \ref llvm::MachineModuleInfo
-   * that stores the \ref LiftedFunctionInfo of every \ref hsa::ExecutableSymbol
-   * in \ref hsa::Executable that has been lifted so far.
-   * They will not be exposed to the \ref luthier::CodeGenerator, and only
-   * serve as a cache.
-   * When asked for a \ref hsa::ExecutableSymbol to be lifted, this entry
-   * will have to be created first. The content of this Module will be cloned
-   * into the passed Module and MachineModuleInfo
-   * LLVM-based constructs associated with a kernel
-   * The \p Module and \p MMIWP can be used to construct a standalone
-   * executable, that when run instead of the original kernel, will produce
-   * identical results
-   */
-  //  struct LiftedExecutableInfo {
-  //    std::unique_ptr<llvm::Module> Module;
-  //    std::unique_ptr<llvm::MachineModuleInfo> MMI;
-  //    llvm::DenseMap<hsa::ExecutableSymbol, llvm::MachineFunction *>
-  //    Functions{}; llvm::DenseMap<hsa::ExecutableSymbol, llvm::GlobalVariable
-  //    *>
-  //        GlobalVariables{};
-  //    llvm::Symbol>>
-  //        RelatedVariables{};DenseMap<hsa::ExecutableSymbol,
-  //  //    llvm::DenseSet<hsa::ExecutableSymbol>>
-  //  //        RelatedFunctions{};
-  //  //    llvm::DenseMap<hsa::ExecutableSymbol,
-  //  //    llvm::DenseSet<hsa::Executable
-  //    llvm::DenseMap<Instr *, llvm::MachineInstr *> MCToMachineInstrMap{};
-  //    llvm::DenseMap<llvm::MachineInstr *, Instr *> MachineToMCInstrMap{};
-  //  };
-
-  //  /**
-  //   * Cache of \p KernelModuleInfo for each kernel function lifted by the
-  //   * \p CodeLifter
-  //   */
-  //  llvm::DenseMap<hsa::Executable, LiftedExecutableInfo> LiftedExecutables{};
-
   // TODO: Invalidate these caches once an Executable is destroyed
 
   /*****************************************************************************
