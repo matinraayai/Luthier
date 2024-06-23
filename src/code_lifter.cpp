@@ -47,6 +47,36 @@ namespace luthier {
 
 template <> CodeLifter *Singleton<CodeLifter>::Instance{nullptr};
 
+llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
+  // Remove its lifted representation
+  LiftedExecutables.erase(Exec);
+
+  auto LCOs = Exec.getLoadedCodeObjects();
+  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
+
+  for (const auto &LCO : *LCOs) {
+    // Remove the branch and branch target locations
+    if (BranchAndTargetLocations.contains(LCO))
+      BranchAndTargetLocations.erase(LCO);
+    // Remove relocation info
+    if (Relocations.contains(LCO)) {
+      Relocations.erase(LCO);
+    }
+
+    llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
+    LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
+    for (const auto &Symbol : Symbols) {
+      // Remove the disassembled hsa::Instr of each hsa::ExecutableSymbol
+      if (MCDisassembledSymbols.contains(Symbol))
+        MCDisassembledSymbols.erase(Symbol);
+      // Remove its lifted representation if this is a kernel
+      if (LiftedKernelSymbols.contains(Symbol))
+        LiftedKernelSymbols.erase(Symbol);
+    }
+  }
+  return llvm::Error::success();
+}
+
 llvm::Expected<CodeLifter::DisassemblyInfo &>
 luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &ISA) {
   if (!DisassemblyInfoMap.contains(ISA)) {
@@ -784,28 +814,6 @@ luthier::CodeLifter::liftKernelSymbol(const hsa::ExecutableSymbol &Symbol) {
       std::move(Module), std::move(MMIWP), std::move(Out));
 }
 
-llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
-  auto LCOs = Exec.getLoadedCodeObjects();
-  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
-  for (const auto &LCO : *LCOs) {
-    // Remove the branch and branch target locations
-    if (BranchAndTargetLocations.contains(LCO))
-      BranchAndTargetLocations.erase(LCO);
-    // Remove relocation info
-    if (Relocations.contains(LCO)) {
-      Relocations.erase(LCO);
-    }
-
-    llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
-    LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
-    for (const auto &Symbol : Symbols) {
-      // Remove the disassembled hsa::Instr of each hsa::ExecutableSymbol
-      if (MCDisassembledSymbols.contains(Symbol))
-        MCDisassembledSymbols.erase(Symbol);
-    }
-  }
-  return llvm::Error::success();
-}
 llvm::Expected<LiftedRepresentation<hsa_executable_t> &>
 CodeLifter::liftExecutable(const hsa::Executable &Exec) {
   return llvm::Expected<LiftedRepresentation<hsa_executable_t> &>(
