@@ -56,7 +56,8 @@ private:
   /// separately from the other and then passed to Luthier to be loaded
   /// into a single \c hsa_executable_t . In practice, an \c hsa_executable_t
   /// almost always contains a single \c hsa_loaded_code_object_t .
-  llvm::SmallVector<
+  llvm::SmallDenseMap<
+      decltype(hsa_loaded_code_object_t::handle),
       std::pair<llvm::orc::ThreadSafeModule,
                 std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
       1>
@@ -94,6 +95,8 @@ private:
   /// After that pointers of each machine instruction gets changed by the
   /// underlying allocator, and this map becomes invalid
   llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> MachineInstrToMCMap{};
+
+  LiftedRepresentation() = default;
 
 public:
   /// \return the lifted HSA primitive
