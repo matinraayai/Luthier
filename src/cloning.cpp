@@ -1,314 +1,372 @@
 #include "cloning.hpp"
 #include "error.hpp"
-
-#include <llvm/Analysis/CallGraph.h>
-#include <llvm/Transforms/Utils/Cloning.h>
-
-// Copied over from LLVM's Module cloning
-static void copyComdat(llvm::GlobalObject *Dst, const llvm::GlobalObject *Src) {
-  const llvm::Comdat *SC = Src->getComdat();
-  if (!SC)
-    return;
-  llvm::Comdat *DC = Dst->getParent()->getOrInsertComdat(SC->getName());
-  DC->setSelectionKind(SC->getSelectionKind());
-  Dst->setComdat(DC);
-}
+#include <llvm/CodeGen/MachineBasicBlock.h>
+#include <llvm/CodeGen/MachineFrameInfo.h>
+#include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineInstr.h>
+#include <llvm/CodeGen/MachineRegisterInfo.h>
+#include <llvm/CodeGen/PseudoSourceValueManager.h>
+#include <llvm/CodeGen/TargetInstrInfo.h>
 
 namespace luthier {
 
-void cloneModuleAttributes(const llvm::Module &OldModule,
-                                           llvm::Module &NewModule) {
-  NewModule.setModuleIdentifier(OldModule.getModuleIdentifier());
-  NewModule.setSourceFileName(OldModule.getSourceFileName());
-  NewModule.setDataLayout(OldModule.getDataLayout());
-  NewModule.setTargetTriple(OldModule.getTargetTriple());
-  NewModule.setModuleInlineAsm(OldModule.getModuleInlineAsm());
-  NewModule.IsNewDbgInfoFormat = OldModule.IsNewDbgInfoFormat;
+static void cloneFrameInfo(
+    llvm::MachineFrameInfo &DstMFI, const llvm::MachineFrameInfo &SrcMFI,
+    const llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
+        &Src2DstMBB) {
+  DstMFI.setFrameAddressIsTaken(SrcMFI.isFrameAddressTaken());
+  DstMFI.setReturnAddressIsTaken(SrcMFI.isReturnAddressTaken());
+  DstMFI.setHasStackMap(SrcMFI.hasStackMap());
+  DstMFI.setHasPatchPoint(SrcMFI.hasPatchPoint());
+  DstMFI.setUseLocalStackAllocationBlock(
+      SrcMFI.getUseLocalStackAllocationBlock());
+  DstMFI.setOffsetAdjustment(SrcMFI.getOffsetAdjustment());
+
+  DstMFI.ensureMaxAlignment(SrcMFI.getMaxAlign());
+  assert(DstMFI.getMaxAlign() == SrcMFI.getMaxAlign() &&
+         "we need to set exact alignment");
+
+  DstMFI.setAdjustsStack(SrcMFI.adjustsStack());
+  DstMFI.setHasCalls(SrcMFI.hasCalls());
+  DstMFI.setHasOpaqueSPAdjustment(SrcMFI.hasOpaqueSPAdjustment());
+  DstMFI.setHasCopyImplyingStackAdjustment(
+      SrcMFI.hasCopyImplyingStackAdjustment());
+  DstMFI.setHasVAStart(SrcMFI.hasVAStart());
+  DstMFI.setHasMustTailInVarArgFunc(SrcMFI.hasMustTailInVarArgFunc());
+  DstMFI.setHasTailCall(SrcMFI.hasTailCall());
+
+  if (SrcMFI.isMaxCallFrameSizeComputed())
+    DstMFI.setMaxCallFrameSize(SrcMFI.getMaxCallFrameSize());
+
+  DstMFI.setCVBytesOfCalleeSavedRegisters(
+      SrcMFI.getCVBytesOfCalleeSavedRegisters());
+
+  if (llvm::MachineBasicBlock *SavePt = SrcMFI.getSavePoint())
+    DstMFI.setSavePoint(Src2DstMBB.find(SavePt)->second);
+  if (llvm::MachineBasicBlock *RestorePt = SrcMFI.getRestorePoint())
+    DstMFI.setRestorePoint(Src2DstMBB.find(RestorePt)->second);
+
+  auto CopyObjectProperties = [](llvm::MachineFrameInfo &DstMFI,
+                                 const llvm::MachineFrameInfo &SrcMFI, int FI) {
+    if (SrcMFI.isStatepointSpillSlotObjectIndex(FI))
+      DstMFI.markAsStatepointSpillSlotObjectIndex(FI);
+    DstMFI.setObjectSSPLayout(FI, SrcMFI.getObjectSSPLayout(FI));
+    DstMFI.setObjectZExt(FI, SrcMFI.isObjectZExt(FI));
+    DstMFI.setObjectSExt(FI, SrcMFI.isObjectSExt(FI));
+  };
+
+  for (int i = 0, e = SrcMFI.getNumObjects() - SrcMFI.getNumFixedObjects();
+       i != e; ++i) {
+    int NewFI;
+
+    assert(!SrcMFI.isFixedObjectIndex(i));
+    if (SrcMFI.isVariableSizedObjectIndex(i)) {
+      NewFI = DstMFI.CreateVariableSizedObject(SrcMFI.getObjectAlign(i),
+                                               SrcMFI.getObjectAllocation(i));
+    } else {
+      NewFI = DstMFI.CreateStackObject(
+          SrcMFI.getObjectSize(i), SrcMFI.getObjectAlign(i),
+          SrcMFI.isSpillSlotObjectIndex(i), SrcMFI.getObjectAllocation(i),
+          SrcMFI.getStackID(i));
+      DstMFI.setObjectOffset(NewFI, SrcMFI.getObjectOffset(i));
+    }
+
+    CopyObjectProperties(DstMFI, SrcMFI, i);
+
+    (void)NewFI;
+    assert(i == NewFI && "expected to keep stable frame index numbering");
+  }
+
+  // Copy the fixed frame objects backwards to preserve frame index numbers,
+  // since CreateFixedObject uses front insertion.
+  for (int i = -1; i >= (int)-SrcMFI.getNumFixedObjects(); --i) {
+    assert(SrcMFI.isFixedObjectIndex(i));
+    int NewFI = DstMFI.CreateFixedObject(
+        SrcMFI.getObjectSize(i), SrcMFI.getObjectOffset(i),
+        SrcMFI.isImmutableObjectIndex(i), SrcMFI.isAliasedObjectIndex(i));
+    CopyObjectProperties(DstMFI, SrcMFI, i);
+
+    (void)NewFI;
+    assert(i == NewFI && "expected to keep stable frame index numbering");
+  }
+
+  for (unsigned I = 0, E = SrcMFI.getLocalFrameObjectCount(); I < E; ++I) {
+    auto LocalObject = SrcMFI.getLocalFrameObjectMap(I);
+    DstMFI.mapLocalFrameObject(LocalObject.first, LocalObject.second);
+  }
+
+  DstMFI.setCalleeSavedInfo(SrcMFI.getCalleeSavedInfo());
+
+  if (SrcMFI.hasStackProtectorIndex()) {
+    DstMFI.setStackProtectorIndex(SrcMFI.getStackProtectorIndex());
+  }
+
+  // FIXME: Needs test, missing MIR serialization.
+  if (SrcMFI.hasFunctionContextIndex()) {
+    DstMFI.setFunctionContextIndex(SrcMFI.getFunctionContextIndex());
+  }
 }
 
-llvm::Error cloneGlobalValuesIntoModule(
-    llvm::ArrayRef<llvm::GlobalValue *> DeepCloneOldValues,
-    llvm::Module &NewModule) {
-  // The deep clone old Value list shouldn't be empty
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ARGUMENT_ERROR_CHECK(!DeepCloneOldValues.empty()));
-  // All deep clone old Values need to have the same parent Module
-  llvm::Module &OldModule = *DeepCloneOldValues[0]->getParent();
+static void cloneMemOperands(llvm::MachineInstr &DstMI,
+                             llvm::MachineInstr &SrcMI,
+                             llvm::MachineFunction &SrcMF,
+                             llvm::MachineFunction &DstMF) {
+  // The new MachineMemOperands should be owned by the new function's
+  // Allocator.
+  llvm::PseudoSourceValueManager &PSVMgr = DstMF.getPSVManager();
 
-  for (const auto *DeepCloneOldValue : DeepCloneOldValues) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(
-        DeepCloneOldValue->getParent() == &OldModule));
+  // We also need to remap the PseudoSourceValues from the new function's
+  // PseudoSourceValueManager.
+  llvm::SmallVector<llvm::MachineMemOperand *, 2> NewMMOs;
+  for (llvm::MachineMemOperand *OldMMO : SrcMI.memoperands()) {
+    llvm::MachinePointerInfo NewPtrInfo(OldMMO->getPointerInfo());
+    if (const llvm::PseudoSourceValue *PSV =
+            dyn_cast_if_present<const llvm::PseudoSourceValue *>(
+                NewPtrInfo.V)) {
+      switch (PSV->kind()) {
+      case llvm::PseudoSourceValue::Stack:
+        NewPtrInfo.V = PSVMgr.getStack();
+        break;
+      case llvm::PseudoSourceValue::GOT:
+        NewPtrInfo.V = PSVMgr.getGOT();
+        break;
+      case llvm::PseudoSourceValue::JumpTable:
+        NewPtrInfo.V = PSVMgr.getJumpTable();
+        break;
+      case llvm::PseudoSourceValue::ConstantPool:
+        NewPtrInfo.V = PSVMgr.getConstantPool();
+        break;
+      case llvm::PseudoSourceValue::FixedStack:
+        NewPtrInfo.V = PSVMgr.getFixedStack(
+            cast<llvm::FixedStackPseudoSourceValue>(PSV)->getFrameIndex());
+        break;
+      case llvm::PseudoSourceValue::GlobalValueCallEntry:
+        NewPtrInfo.V = PSVMgr.getGlobalValueCallEntry(
+            cast<llvm::GlobalValuePseudoSourceValue>(PSV)->getValue());
+        break;
+      case llvm::PseudoSourceValue::ExternalSymbolCallEntry:
+        NewPtrInfo.V = PSVMgr.getExternalSymbolCallEntry(
+            cast<llvm::ExternalSymbolPseudoSourceValue>(PSV)->getSymbol());
+        break;
+      case llvm::PseudoSourceValue::TargetCustom:
+      default:
+        // FIXME: We have no generic interface for allocating custom PSVs.
+        llvm::report_fatal_error("Cloning TargetCustom PSV not handled");
+      }
+    }
+
+    llvm::MachineMemOperand *NewMMO = DstMF.getMachineMemOperand(
+        NewPtrInfo, OldMMO->getFlags(), OldMMO->getMemoryType(),
+        OldMMO->getBaseAlign(), OldMMO->getAAInfo(), OldMMO->getRanges(),
+        OldMMO->getSyncScopeID(), OldMMO->getSuccessOrdering(),
+        OldMMO->getFailureOrdering());
+    NewMMOs.push_back(NewMMO);
   }
-  // A set of visited values that need to be deep cloned
-  llvm::DenseSet<llvm::GlobalValue *> VisitedDeepCloneOldValues{};
 
-  // Iterate over all the deep clone values, and find all related values
-  // Visited Global Values means they are related to the deep clone content,
-  // but not necessarily will be deep cloned
-  llvm::DenseSet<llvm::Function *> VisitedOldFunctions;
-  llvm::DenseSet<llvm::GlobalVariable *> VisitedOldGlobalVariables;
-  llvm::DenseSet<llvm::GlobalAlias *> VisitedOldGlobalAliases;
-  llvm::DenseSet<llvm::GlobalIFunc *> VisitedOldGlobalIFunc;
-  llvm::DenseSet<llvm::GlobalValue *> DeepCloneOldGlobalValuesToBeVisited{
-      DeepCloneOldValues.begin(), DeepCloneOldValues.end()};
-  llvm::GlobalValue *CurrentOldDeepCloneValue{nullptr};
-  while (!DeepCloneOldGlobalValuesToBeVisited.empty()) {
-    // Pop the Current deep clone value
-    CurrentOldDeepCloneValue = *DeepCloneOldGlobalValuesToBeVisited.begin();
-    // A sanity check for the algorithm; Make sure we don't revisit the same
-    // deep clone old value
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        !VisitedDeepCloneOldValues.contains(CurrentOldDeepCloneValue)));
-    // Function-specific logic
-    if (auto *CurrentDeepCloneFunction =
-            llvm::dyn_cast<llvm::Function>(CurrentOldDeepCloneValue)) {
-      // Walk over the function's instructions, and identify all global objects
-      // it uses from the parent module
-      // It is a depth-first search
-      llvm::outs() << "Dumping function " << CurrentDeepCloneFunction->getName()
-                   << "\n";
-      for (const auto &BB : *CurrentDeepCloneFunction) {
-        for (const auto &I : BB) {
-          llvm::outs() << "Dumping instruction\n";
-//          I.dump();
-          for (const auto &Op : I.operands()) {
-            if (auto *GV = llvm::dyn_cast<llvm::GlobalVariable>(&Op)) {
-              VisitedOldGlobalVariables.insert(GV);
-            }
-            if (auto *Func = llvm::dyn_cast<llvm::Function>(&Op)) {
-              VisitedOldFunctions.insert(Func);
-              // The if statement is there to avoid recursion
-              if (Func != CurrentOldDeepCloneValue) {
-                auto Linkage = Func->getLinkage();
-                auto Visibility = Func->getVisibility();
-                if (Linkage == llvm::GlobalValue::PrivateLinkage ||
-                    Linkage == llvm::GlobalValue::InternalLinkage) {
-                  if (!VisitedDeepCloneOldValues.contains(Func))
-                    DeepCloneOldGlobalValuesToBeVisited.insert(Func);
-                }
-                llvm::outs() << "Func name: " << Func->getName()
-                             << " Linkage: " << Linkage
-                             << " Visiblity: " << Visibility << "\n";
-              }
-            }
-            if (auto *GA = llvm::dyn_cast<llvm::GlobalAlias>(&Op)) {
-              VisitedOldGlobalAliases.insert(GA);
-              if (auto *FuncAliasee =
-                      llvm::dyn_cast<llvm::Function>(GA->getAliasee())) {
-                auto Linkage = FuncAliasee->getLinkage();
-                if (Linkage == llvm::GlobalValue::PrivateLinkage ||
-                    Linkage == llvm::GlobalValue::InternalLinkage) {
-                  if (!VisitedDeepCloneOldValues.contains(FuncAliasee))
-                    DeepCloneOldGlobalValuesToBeVisited.insert(FuncAliasee);
-                }
-              }
-            }
-            if (auto *IFunc = llvm::dyn_cast<llvm::GlobalIFunc>(&Op)) {
-              VisitedOldGlobalIFunc.insert(IFunc);
-              if (auto ResolverFunc = IFunc->getResolverFunction()) {
-                auto ResolverLinkage = ResolverFunc->getLinkage();
-                if (ResolverLinkage == llvm::GlobalValue::PrivateLinkage ||
-                    ResolverLinkage == llvm::GlobalValue::InternalLinkage) {
-                  if (!VisitedDeepCloneOldValues.contains(ResolverFunc))
-                    DeepCloneOldGlobalValuesToBeVisited.insert(ResolverFunc);
-                }
-              }
-            }
+  DstMI.setMemRefs(DstMF, NewMMOs);
+}
+
+static std::unique_ptr<llvm::MachineFunction>
+cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
+  auto DstMF = std::make_unique<llvm::MachineFunction>(
+      SrcMF->getFunction(), SrcMF->getTarget(), SrcMF->getSubtarget(),
+      SrcMF->getFunctionNumber(), DestMMI);
+  llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
+      Src2DstMBB;
+
+  auto *SrcMRI = &SrcMF->getRegInfo();
+  auto *DstMRI = &DstMF->getRegInfo();
+
+  // Clone blocks.
+  for (llvm::MachineBasicBlock &SrcMBB : *SrcMF) {
+    llvm::MachineBasicBlock *DstMBB =
+        DstMF->CreateMachineBasicBlock(SrcMBB.getBasicBlock());
+    Src2DstMBB[&SrcMBB] = DstMBB;
+
+    DstMBB->setCallFrameSize(SrcMBB.getCallFrameSize());
+
+    if (SrcMBB.isIRBlockAddressTaken())
+      DstMBB->setAddressTakenIRBlock(SrcMBB.getAddressTakenIRBlock());
+    if (SrcMBB.isMachineBlockAddressTaken())
+      DstMBB->setMachineBlockAddressTaken();
+
+    // FIXME: This is not serialized
+    if (SrcMBB.hasLabelMustBeEmitted())
+      DstMBB->setLabelMustBeEmitted();
+
+    DstMBB->setAlignment(SrcMBB.getAlignment());
+
+    // FIXME: This is not serialized
+    DstMBB->setMaxBytesForAlignment(SrcMBB.getMaxBytesForAlignment());
+
+    DstMBB->setIsEHPad(SrcMBB.isEHPad());
+    DstMBB->setIsEHScopeEntry(SrcMBB.isEHScopeEntry());
+    DstMBB->setIsEHCatchretTarget(SrcMBB.isEHCatchretTarget());
+    DstMBB->setIsEHFuncletEntry(SrcMBB.isEHFuncletEntry());
+
+    // FIXME: These are not serialized
+    DstMBB->setIsCleanupFuncletEntry(SrcMBB.isCleanupFuncletEntry());
+    DstMBB->setIsBeginSection(SrcMBB.isBeginSection());
+    DstMBB->setIsEndSection(SrcMBB.isEndSection());
+
+    DstMBB->setSectionID(SrcMBB.getSectionID());
+    DstMBB->setIsInlineAsmBrIndirectTarget(
+        SrcMBB.isInlineAsmBrIndirectTarget());
+
+    // FIXME: This is not serialized
+    if (std::optional<uint64_t> Weight = SrcMBB.getIrrLoopHeaderWeight())
+      DstMBB->setIrrLoopHeaderWeight(*Weight);
+  }
+
+  const llvm::MachineFrameInfo &SrcMFI = SrcMF->getFrameInfo();
+  llvm::MachineFrameInfo &DstMFI = DstMF->getFrameInfo();
+
+  // Copy stack objects and other info
+  cloneFrameInfo(DstMFI, SrcMFI, Src2DstMBB);
+
+  // Remap the debug info frame index references.
+  DstMF->VariableDbgInfos = SrcMF->VariableDbgInfos;
+
+  // Clone virtual registers
+  for (unsigned I = 0, E = SrcMRI->getNumVirtRegs(); I != E; ++I) {
+    llvm::Register Reg = llvm::Register::index2VirtReg(I);
+    llvm::Register NewReg =
+        DstMRI->createIncompleteVirtualRegister(SrcMRI->getVRegName(Reg));
+    assert(NewReg == Reg && "expected to preserve virtreg number");
+
+    DstMRI->setRegClassOrRegBank(NewReg, SrcMRI->getRegClassOrRegBank(Reg));
+
+    llvm::LLT RegTy = SrcMRI->getType(Reg);
+    if (RegTy.isValid())
+      DstMRI->setType(NewReg, RegTy);
+
+    // Copy register allocation hints.
+    const auto &Hints = SrcMRI->getRegAllocationHints(Reg);
+    for (llvm::Register PrefReg : Hints.second)
+      DstMRI->addRegAllocationHint(NewReg, PrefReg);
+  }
+
+  const llvm::TargetSubtargetInfo &STI = DstMF->getSubtarget();
+  const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
+  const llvm::TargetRegisterInfo *TRI = STI.getRegisterInfo();
+
+  // Link blocks.
+  for (auto &SrcMBB : *SrcMF) {
+    auto *DstMBB = Src2DstMBB[&SrcMBB];
+    DstMF->push_back(DstMBB);
+
+    for (auto It = SrcMBB.succ_begin(), IterEnd = SrcMBB.succ_end();
+         It != IterEnd; ++It) {
+      auto *SrcSuccMBB = *It;
+      auto *DstSuccMBB = Src2DstMBB[SrcSuccMBB];
+      DstMBB->addSuccessor(DstSuccMBB, SrcMBB.getSuccProbability(It));
+    }
+
+    for (auto &LI : SrcMBB.liveins_dbg())
+      DstMBB->addLiveIn(LI);
+
+    // Make sure MRI knows about registers clobbered by unwinder.
+    if (DstMBB->isEHPad()) {
+      if (auto *RegMask = TRI->getCustomEHPadPreservedMask(*DstMF))
+        DstMRI->addPhysRegsUsedFromRegMask(RegMask);
+    }
+  }
+
+  llvm::DenseSet<const uint32_t *> ConstRegisterMasks;
+
+  // Track predefined/named regmasks which we ignore.
+  for (const uint32_t *Mask : TRI->getRegMasks())
+    ConstRegisterMasks.insert(Mask);
+
+  // Clone instructions.
+  for (auto &SrcMBB : *SrcMF) {
+    auto *DstMBB = Src2DstMBB[&SrcMBB];
+    for (auto &SrcMI : SrcMBB) {
+      const auto &MCID = TII->get(SrcMI.getOpcode());
+      auto *DstMI = DstMF->CreateMachineInstr(MCID, SrcMI.getDebugLoc(),
+                                              /*NoImplicit=*/true);
+      DstMI->setFlags(SrcMI.getFlags());
+      DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
+
+      DstMBB->push_back(DstMI);
+      for (auto &SrcMO : SrcMI.operands()) {
+        llvm::MachineOperand DstMO(SrcMO);
+        DstMO.clearParent();
+
+        // Update MBB.
+        if (DstMO.isMBB())
+          DstMO.setMBB(Src2DstMBB[DstMO.getMBB()]);
+        else if (DstMO.isRegMask()) {
+          DstMRI->addPhysRegsUsedFromRegMask(DstMO.getRegMask());
+
+          if (!ConstRegisterMasks.count(DstMO.getRegMask())) {
+            uint32_t *DstMask = DstMF->allocateRegMask();
+            std::memcpy(DstMask, SrcMO.getRegMask(),
+                        sizeof(*DstMask) * llvm::MachineOperand::getRegMaskSize(
+                                               TRI->getNumRegs()));
+            DstMO.setRegMask(DstMask);
           }
         }
+
+        DstMI->addOperand(DstMO);
       }
-      VisitedOldFunctions.insert(CurrentDeepCloneFunction);
-    } else if (auto *CurrentDeepCloneOldVariable =
-                   llvm::dyn_cast<llvm::GlobalVariable>(
-                       CurrentOldDeepCloneValue)) {
-      VisitedOldGlobalVariables.insert(CurrentDeepCloneOldVariable);
-    } else if (auto *CurrentDeepCloneOldGlobalAlias =
-                   llvm::dyn_cast<llvm::GlobalAlias>(
-                       CurrentOldDeepCloneValue)) {
-      VisitedOldGlobalAliases.insert(CurrentDeepCloneOldGlobalAlias);
-      auto *Aliasee = llvm::dyn_cast<llvm::GlobalValue>(
-          CurrentDeepCloneOldGlobalAlias->getAliasee());
-      if (Aliasee && !VisitedDeepCloneOldValues.contains(Aliasee))
-        DeepCloneOldGlobalValuesToBeVisited.insert(Aliasee);
-    } else if (auto *CurrentDeepCloneGlobalIFunc =
-                   llvm::dyn_cast<llvm::GlobalIFunc>(
-                       CurrentOldDeepCloneValue)) {
-      auto ResolverFunc = CurrentDeepCloneGlobalIFunc->getResolverFunction();
-      if (ResolverFunc && !VisitedDeepCloneOldValues.contains(ResolverFunc))
-        DeepCloneOldGlobalValuesToBeVisited.insert(ResolverFunc);
+
+      cloneMemOperands(*DstMI, SrcMI, *SrcMF, *DstMF);
     }
-    DeepCloneOldGlobalValuesToBeVisited.erase(CurrentOldDeepCloneValue);
-    VisitedDeepCloneOldValues.insert(CurrentOldDeepCloneValue);
   }
 
-  // Create the declaration of all related variables and create a mapping
-  // of them for the cloning functions to work with
-  llvm::ValueToValueMapTy VMap;
+  DstMF->setAlignment(SrcMF->getAlignment());
+  DstMF->setExposesReturnsTwice(SrcMF->exposesReturnsTwice());
+  DstMF->setHasInlineAsm(SrcMF->hasInlineAsm());
+  DstMF->setHasWinCFI(SrcMF->hasWinCFI());
 
-  // Loop over all the visited global variables, making corresponding globals
-  // in the new module.  Here we add them to the VMap and to the new Module.
-  // Attributes and initializers will be added later.
-  for (const llvm::GlobalVariable *OldGV : VisitedOldGlobalVariables) {
-    auto *NewGV = new llvm::GlobalVariable(
-        NewModule, OldGV->getValueType(), OldGV->isConstant(),
-        OldGV->getLinkage(), (llvm::Constant *)nullptr, OldGV->getName(),
-        (llvm::GlobalVariable *)nullptr, OldGV->getThreadLocalMode(),
-        OldGV->getType()->getAddressSpace());
-    NewGV->copyAttributesFrom(OldGV);
-    VMap[OldGV] = NewGV;
+  DstMF->getProperties().reset().set(SrcMF->getProperties());
+
+  if (!SrcMF->getFrameInstructions().empty() ||
+      !SrcMF->getLongjmpTargets().empty() ||
+      !SrcMF->getCatchretTargets().empty())
+    llvm::report_fatal_error(
+        "cloning not implemented for machine function property");
+
+  DstMF->setCallsEHReturn(SrcMF->callsEHReturn());
+  DstMF->setCallsUnwindInit(SrcMF->callsUnwindInit());
+  DstMF->setHasEHCatchret(SrcMF->hasEHCatchret());
+  DstMF->setHasEHScopes(SrcMF->hasEHScopes());
+  DstMF->setHasEHFunclets(SrcMF->hasEHFunclets());
+  DstMF->setIsOutlined(SrcMF->isOutlined());
+
+  if (!SrcMF->getLandingPads().empty() ||
+      !SrcMF->getCodeViewAnnotations().empty() ||
+      !SrcMF->getTypeInfos().empty() || !SrcMF->getFilterIds().empty() ||
+      SrcMF->hasAnyWasmLandingPadIndex() || SrcMF->hasAnyCallSiteLandingPad() ||
+      SrcMF->hasAnyCallSiteLabel() || !SrcMF->getCallSitesInfo().empty())
+    llvm::report_fatal_error(
+        "cloning not implemented for machine function property");
+
+  DstMF->setDebugInstrNumberingCount(SrcMF->DebugInstrNumberingCount);
+
+  if (!DstMF->cloneInfoFrom(*SrcMF, Src2DstMBB))
+    llvm::report_fatal_error(
+        "target does not implement MachineFunctionInfo cloning");
+
+  DstMRI->freezeReservedRegs();
+
+  DstMF->verify(nullptr, "", /*AbortOnError=*/true);
+  return DstMF;
+}
+
+llvm::Error cloneModuleAndMMI(const llvm::MachineModuleInfo &SrcMMI,
+                              const llvm::ValueToValueMapTy &VMap,
+                              llvm::MachineModuleInfo &DestMMI) {
+  for (const llvm::Function &SrcF : *SrcMMI.getModule()) {
+    llvm::MachineFunction *SrcMF = SrcMMI.getMachineFunction(SrcF);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(SrcMF != nullptr));
+    auto DestFMapEntry = VMap.find(&SrcF);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(DestFMapEntry != VMap.end()));
+    llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
+    auto DestMF = cloneMF(SrcMF, DestMMI);
+    DestMMI.insertFunction(DestF, std::move(DestMF));
   }
-
-  // Loop over the visited functions and create their declarations
-  for (const llvm::Function *OldFunc : VisitedOldFunctions) {
-    auto *NewFunc = llvm::Function::Create(
-        llvm::cast<llvm::FunctionType>(OldFunc->getValueType()),
-        OldFunc->getLinkage(), OldFunc->getAddressSpace(), OldFunc->getName(),
-        &NewModule);
-    NewFunc->copyAttributesFrom(OldFunc);
-    VMap[OldFunc] = NewFunc;
-  }
-
-  // Loop over the visited aliases
-  for (const llvm::GlobalAlias *OldGA : VisitedOldGlobalAliases) {
-    auto *Aliasee = llvm::dyn_cast<llvm::GlobalValue>(OldGA->getAliasee());
-    if (!VisitedDeepCloneOldValues.contains(OldGA) &&
-        !VisitedDeepCloneOldValues.contains(Aliasee)) {
-      // An alias cannot act as an external reference, so we need to create
-      // either a function or a global variable depending on the value type.
-      llvm::GlobalValue *GV;
-      if (OldGA->getValueType()->isFunctionTy())
-        GV = llvm::Function::Create(
-            cast<llvm::FunctionType>(OldGA->getValueType()),
-            llvm::GlobalValue::ExternalLinkage, OldGA->getAddressSpace(),
-            OldGA->getName(), &NewModule);
-      else
-        GV = new llvm::GlobalVariable(NewModule, OldGA->getValueType(), false,
-                                      llvm::GlobalValue::ExternalLinkage,
-                                      nullptr, OldGA->getName(), nullptr,
-                                      OldGA->getThreadLocalMode(),
-                                      OldGA->getType()->getAddressSpace());
-      VMap[OldGA] = GV;
-      // Don't copy over the attributes
-      continue;
-    }
-    auto *NewGA = llvm::GlobalAlias::create(
-        OldGA->getValueType(), OldGA->getType()->getPointerAddressSpace(),
-        OldGA->getLinkage(), OldGA->getName(), &NewModule);
-    NewGA->copyAttributesFrom(OldGA);
-    VMap[OldGA] = NewGA;
-  }
-
-  for (const llvm::GlobalIFunc *OldIFunc : VisitedOldGlobalIFunc) {
-    // Defer setting the resolver function until after functions are cloned.
-    auto *NewIFunc = llvm::GlobalIFunc::create(
-        OldIFunc->getValueType(), OldIFunc->getAddressSpace(),
-        OldIFunc->getLinkage(), OldIFunc->getName(), nullptr, &NewModule);
-    NewIFunc->copyAttributesFrom(OldIFunc);
-    VMap[OldIFunc] = NewIFunc;
-  }
-
-  // Now that all the things that global variable initializer can refer to
-  // have been created, loop through and copy the global variable referrers
-  // over...  We also set the attributes on the global now.
-  for (const llvm::GlobalVariable *OldGV : VisitedOldGlobalVariables) {
-    auto *NewGV = llvm::cast<llvm::GlobalVariable>(VMap[OldGV]);
-
-    llvm::SmallVector<std::pair<unsigned, llvm::MDNode *>, 1> MDs;
-    OldGV->getAllMetadata(MDs);
-    for (auto MD : MDs)
-      NewGV->addMetadata(MD.first, *MapMetadata(MD.second, VMap));
-
-    if (OldGV->isDeclaration())
-      continue;
-    if (!VisitedDeepCloneOldValues.contains(OldGV)) {
-      NewGV->setLinkage(llvm::GlobalValue::ExternalLinkage);
-    }
-    if (OldGV->hasInitializer())
-      NewGV->setInitializer(MapValue(OldGV->getInitializer(), VMap));
-
-    copyComdat(NewGV, OldGV);
-  }
-
-  for (const llvm::Function *OldFunc : VisitedOldFunctions) {
-    auto *NewFunc = llvm::cast<llvm::Function>(VMap[OldFunc]);
-
-    if (OldFunc->isDeclaration()) {
-      // Copy over metadata for declarations since we're not doing it below in
-      // CloneFunctionInto().
-      llvm::SmallVector<std::pair<unsigned, llvm::MDNode *>, 1> MDs;
-      OldFunc->getAllMetadata(MDs);
-      for (auto MD : MDs)
-        NewFunc->addMetadata(MD.first, *MapMetadata(MD.second, VMap));
-      continue;
-    }
-
-    if (!VisitedDeepCloneOldValues.contains(OldFunc)) {
-      // Skip after setting the correct linkage for an external reference.
-      NewFunc->setLinkage(llvm::GlobalValue::ExternalLinkage);
-      // Personality function is not valid on a declaration.
-      NewFunc->setPersonalityFn(nullptr);
-      continue;
-    }
-
-    llvm::Function::arg_iterator DestI = NewFunc->arg_begin();
-    for (const llvm::Argument &J : OldFunc->args()) {
-      DestI->setName(J.getName());
-      VMap[&J] = &*DestI++;
-    }
-
-    llvm::SmallVector<llvm::ReturnInst *, 8> Returns; // Ignore returns cloned.
-
-    CloneFunctionInto(NewFunc, OldFunc, VMap,
-                      llvm::CloneFunctionChangeType::DifferentModule, Returns);
-
-    if (OldFunc->hasPersonalityFn())
-      NewFunc->setPersonalityFn(MapValue(OldFunc->getPersonalityFn(), VMap));
-
-    copyComdat(NewFunc, OldFunc);
-  }
-
-  for (const auto GV : VisitedOldGlobalVariables) {
-    auto *NewGV = new llvm::GlobalVariable(
-        NewModule, GV->getValueType(), GV->isConstant(),
-        llvm::GlobalValue::ExternalLinkage, (llvm::Constant *)nullptr,
-        GV->getName(), (llvm::GlobalVariable *)nullptr,
-        GV->getThreadLocalMode(), GV->getType()->getAddressSpace());
-    NewGV->copyAttributesFrom(GV);
-
-    llvm::SmallVector<std::pair<unsigned, llvm::MDNode *>, 1> MDs;
-    GV->getAllMetadata(MDs);
-    for (auto MD : MDs)
-      GV->addMetadata(MD.first, *MapMetadata(MD.second, VMap));
-
-    VMap[GV] = NewGV;
-  }
-
-  // And aliases
-  for (const llvm::GlobalAlias *OldGA : VisitedOldGlobalAliases) {
-    // We already dealt with undefined aliases above.
-    auto *Aliasee = llvm::dyn_cast<llvm::GlobalValue>(OldGA->getAliasee());
-    if (!VisitedDeepCloneOldValues.contains(OldGA) &&
-        !VisitedDeepCloneOldValues.contains(Aliasee))
-      continue;
-    auto *NewGA = llvm::cast<llvm::GlobalAlias>(VMap[OldGA]);
-    if (const llvm::Constant *C = OldGA->getAliasee())
-      NewGA->setAliasee(MapValue(C, VMap));
-  }
-
-  for (const llvm::GlobalIFunc *OldIFunc : VisitedOldGlobalIFunc) {
-    auto *NewIFunc = llvm::cast<llvm::GlobalIFunc>(VMap[OldIFunc]);
-    if (const llvm::Constant *Resolver = OldIFunc->getResolver())
-      NewIFunc->setResolver(MapValue(Resolver, VMap));
-  }
-
-  // And named metadata....
-  for (const llvm::NamedMDNode &NMD : OldModule.named_metadata()) {
-    llvm::NamedMDNode *NewNMD = NewModule.getOrInsertNamedMetadata(NMD.getName());
-    NewNMD->clearOperands();
-    for (unsigned i = 0, e = NMD.getNumOperands(); i != e; ++i)
-      NewNMD->addOperand(MapMetadata(NMD.getOperand(i), VMap));
-  }
-
   return llvm::Error::success();
 }
 
