@@ -108,8 +108,8 @@ static void cloneFrameInfo(
 }
 
 static void cloneMemOperands(llvm::MachineInstr &DstMI,
-                             llvm::MachineInstr &SrcMI,
-                             llvm::MachineFunction &SrcMF,
+                             const llvm::MachineInstr &SrcMI,
+                             const llvm::MachineFunction &SrcMF,
                              llvm::MachineFunction &DstMF) {
   // The new MachineMemOperands should be owned by the new function's
   // Allocator.
@@ -166,10 +166,18 @@ static void cloneMemOperands(llvm::MachineInstr &DstMI,
   DstMI.setMemRefs(DstMF, NewMMOs);
 }
 
-static std::unique_ptr<llvm::MachineFunction>
-cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
+llvm::Expected<std::unique_ptr<llvm::MachineFunction>>
+cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
+        llvm::MachineModuleInfo &DestMMI) {
+  // Find the destination function entry in the value map
+  auto &SrcF = SrcMF->getFunction();
+  auto DestFMapEntry = VMap.find(&SrcF);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(DestFMapEntry != VMap.end()));
+  llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
+
+  // Construct the destination machine function
   auto DstMF = std::make_unique<llvm::MachineFunction>(
-      SrcMF->getFunction(), SrcMF->getTarget(), SrcMF->getSubtarget(),
+      DestF, SrcMF->getTarget(), SrcMF->getSubtarget(),
       SrcMF->getFunctionNumber(), DestMMI);
   llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
       Src2DstMBB;
@@ -178,10 +186,10 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
   auto *DstMRI = &DstMF->getRegInfo();
 
   // Clone blocks.
-  for (llvm::MachineBasicBlock &SrcMBB : *SrcMF) {
+  for (const llvm::MachineBasicBlock &SrcMBB : *SrcMF) {
     llvm::MachineBasicBlock *DstMBB =
         DstMF->CreateMachineBasicBlock(SrcMBB.getBasicBlock());
-    Src2DstMBB[&SrcMBB] = DstMBB;
+    Src2DstMBB[const_cast<llvm::MachineBasicBlock *>(&SrcMBB)] = DstMBB;
 
     DstMBB->setCallFrameSize(SrcMBB.getCallFrameSize());
 
@@ -190,13 +198,11 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
     if (SrcMBB.isMachineBlockAddressTaken())
       DstMBB->setMachineBlockAddressTaken();
 
-    // FIXME: This is not serialized
     if (SrcMBB.hasLabelMustBeEmitted())
       DstMBB->setLabelMustBeEmitted();
 
     DstMBB->setAlignment(SrcMBB.getAlignment());
 
-    // FIXME: This is not serialized
     DstMBB->setMaxBytesForAlignment(SrcMBB.getMaxBytesForAlignment());
 
     DstMBB->setIsEHPad(SrcMBB.isEHPad());
@@ -204,7 +210,6 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
     DstMBB->setIsEHCatchretTarget(SrcMBB.isEHCatchretTarget());
     DstMBB->setIsEHFuncletEntry(SrcMBB.isEHFuncletEntry());
 
-    // FIXME: These are not serialized
     DstMBB->setIsCleanupFuncletEntry(SrcMBB.isCleanupFuncletEntry());
     DstMBB->setIsBeginSection(SrcMBB.isBeginSection());
     DstMBB->setIsEndSection(SrcMBB.isEndSection());
@@ -213,7 +218,6 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
     DstMBB->setIsInlineAsmBrIndirectTarget(
         SrcMBB.isInlineAsmBrIndirectTarget());
 
-    // FIXME: This is not serialized
     if (std::optional<uint64_t> Weight = SrcMBB.getIrrLoopHeaderWeight())
       DstMBB->setIrrLoopHeaderWeight(*Weight);
   }
@@ -252,7 +256,7 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
 
   // Link blocks.
   for (auto &SrcMBB : *SrcMF) {
-    auto *DstMBB = Src2DstMBB[&SrcMBB];
+    auto *DstMBB = Src2DstMBB[const_cast<llvm::MachineBasicBlock *>(&SrcMBB)];
     DstMF->push_back(DstMBB);
 
     for (auto It = SrcMBB.succ_begin(), IterEnd = SrcMBB.succ_end();
@@ -280,7 +284,7 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
 
   // Clone instructions.
   for (auto &SrcMBB : *SrcMF) {
-    auto *DstMBB = Src2DstMBB[&SrcMBB];
+    auto *DstMBB = Src2DstMBB[const_cast<llvm::MachineBasicBlock *>(&SrcMBB)];
     for (auto &SrcMI : SrcMBB) {
       const auto &MCID = TII->get(SrcMI.getOpcode());
       auto *DstMI = DstMF->CreateMachineInstr(MCID, SrcMI.getDebugLoc(),
@@ -306,6 +310,11 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
                                                TRI->getNumRegs()));
             DstMO.setRegMask(DstMask);
           }
+        } else if (DstMO.isGlobal()) {
+          auto GVEntry = VMap.find(DstMO.getGlobal());
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(GVEntry != VMap.end()));
+          auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
+          DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
         }
 
         DstMI->addOperand(DstMO);
@@ -355,17 +364,18 @@ cloneMF(llvm::MachineFunction *SrcMF, llvm::MachineModuleInfo &DestMMI) {
   return DstMF;
 }
 
-llvm::Error cloneModuleAndMMI(const llvm::MachineModuleInfo &SrcMMI,
-                              const llvm::ValueToValueMapTy &VMap,
-                              llvm::MachineModuleInfo &DestMMI) {
+llvm::Error cloneMMI(const llvm::MachineModuleInfo &SrcMMI,
+                     const llvm::ValueToValueMapTy &VMap,
+                     llvm::MachineModuleInfo &DestMMI) {
   for (const llvm::Function &SrcF : *SrcMMI.getModule()) {
     llvm::MachineFunction *SrcMF = SrcMMI.getMachineFunction(SrcF);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(SrcMF != nullptr));
     auto DestFMapEntry = VMap.find(&SrcF);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(DestFMapEntry != VMap.end()));
     llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
-    auto DestMF = cloneMF(SrcMF, DestMMI);
-    DestMMI.insertFunction(DestF, std::move(DestMF));
+    auto DestMF = cloneMF(SrcMF, VMap, DestMMI);
+    LUTHIER_RETURN_ON_ERROR(DestMF.takeError());
+    DestMMI.insertFunction(DestF, std::move(*DestMF));
   }
   return llvm::Error::success();
 }

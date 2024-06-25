@@ -16,6 +16,10 @@
 #include <llvm/Transforms/Utils/ValueMapper.h>
 namespace luthier {
 
+llvm::Expected<std::unique_ptr<llvm::MachineFunction>>
+cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
+        llvm::MachineModuleInfo &DestMMI);
+
 /// Clones the content of the source Machine Module Info \p SrcMMI into
 /// the \p DestMMI. Uses the \p VMap to map the global objects in the source
 /// module into the destination, already cloned module\n
@@ -25,9 +29,9 @@ namespace luthier {
 /// its copy in the destination module
 /// \param [out] DestMMI the destination \c llvm::MachineModuleInfo
 /// \return an \c llvm::Error if an issue was encountered during the process
-llvm::Error cloneModuleAndMMI(const llvm::MachineModuleInfo &SrcMMI,
-                              const llvm::ValueToValueMapTy &VMap,
-                              llvm::MachineModuleInfo &DestMMI);
+llvm::Error cloneMMI(const llvm::MachineModuleInfo &SrcMMI,
+                     const llvm::ValueToValueMapTy &VMap,
+                     llvm::MachineModuleInfo &DestMMI);
 
 } // namespace luthier
 
