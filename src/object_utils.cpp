@@ -523,6 +523,23 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
       KernelMetaNode, luthier::hsa::md::Kernel::Key::KernelKind,
       KernelKindEnumMap, Out.KernelKind));
 
+  std::optional<unsigned> UsesDynamicStack{0};
+
+  LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
+      KernelMetaNode, luthier::hsa::md::Kernel::Key::UsesDynamicStack,
+      UsesDynamicStack));
+
+  Out.UsesDynamicStack = *UsesDynamicStack == 1;
+
+  std::optional<unsigned> WorkgroupProcessorMode{0};
+
+  LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
+      KernelMetaNode, luthier::hsa::md::Kernel::Key::WorkgroupProcessorMode,
+      WorkgroupProcessorMode));
+
+  Out.WorkgroupProcessorMode = *WorkgroupProcessorMode == 1;
+
+
   std::optional<unsigned> UniformWorkgroupSize{0};
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(

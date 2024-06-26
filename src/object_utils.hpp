@@ -254,9 +254,9 @@ struct Metadata final {
   /// True if 'restrict' qualifier is specified. Optional.
   bool IsRestrict{false};
   /// True if 'volatile' qualifier is specified. Optional.
-  bool IsVolatile = false;
+  bool IsVolatile{false};
   /// True if 'pipe' qualifier is specified. Optional.
-  bool IsPipe = false;
+  bool IsPipe{false};
 
   /// Default constructor.
   Metadata() = default;
@@ -307,6 +307,10 @@ constexpr char SGPRSpillCount[] = ".sgpr_spill_count";
 constexpr char VGPRSpillCount[] = ".vgpr_spill_count";
 
 constexpr char KernelKind[] = ".kind";
+
+constexpr char UsesDynamicStack[] = ".uses_dynamic_stack";
+
+constexpr char WorkgroupProcessorMode[] = ".workgroup_processor_mode";
 
 constexpr char UniformWorkgroupSize[] = ".uniform_work_group_size";
 
@@ -362,6 +366,12 @@ struct Metadata final {
   std::optional<uint32_t> VGPRSpillCount{0};
   /// The kind of the kernel
   std::optional<hsa::md::KernelKind> KernelKind{KernelKind::Normal};
+  /// Indicates if the generated kernel machine code is using a
+  /// dynamically sized stack.
+  bool UsesDynamicStack{false};
+  /// (GFX10+) Controls ENABLE_WGP_MODE in Code Object V3 Kernel Descriptor.
+  /// Defaults to true if cumode is disabled
+  bool WorkgroupProcessorMode{true};
   /// Indicates if the kernel requires that each dimension of global size
   /// is a multiple of corresponding dimension of work-group size.
   /// Only emitted when value is 1.
