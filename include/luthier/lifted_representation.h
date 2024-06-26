@@ -241,6 +241,14 @@ public:
     return make_range(global_begin(), global_end());
   }
 
+  const llvm::MachineFunction& getMF(hsa_executable_symbol_t Func) {
+    return *RelatedFunctions.at(Func.handle);
+  }
+
+  const llvm::GlobalVariable& getGV(hsa_executable_symbol_t GV) {
+    return *RelatedGlobalVariables.at(GV.handle);
+  }
+
   [[nodiscard]] const hsa::Instr &
   getHSAInstrOfMachineInstr(const llvm::MachineInstr &MI) const {
     return *MachineInstrToMCMap.at(const_cast<llvm::MachineInstr *>(&MI));
