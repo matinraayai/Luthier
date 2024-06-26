@@ -42,7 +42,7 @@
 
 namespace luthier {
 
-/// \brief a singleton class in charge of: \n
+/// \brief A singleton class in charge of: \n
 /// 1. disassembling an \c hsa::ExecutableSymbol of type \c KERNEL or
 /// \c DEVICE_FUNCTION using LLVM MC and returning them as a vector of \c
 /// hsa::Instr, without symbolizing the operands. \n
@@ -225,231 +225,35 @@ private:
   /// Initializes an entry associated with the \p LCO inside the \p LR
   /// Creates an \c llvm::Module and \c llvm::MachineModuleInfo for the
   /// \p LCO
-  /// \tparam HT underlying type of the lifted primitive
   /// \param [in] LCO the \c hsa::LoadedCodeObject to be lifted
   /// \param [in, out] LR the lifted representation to be updated
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
-  template <typename HT>
   llvm::Error initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
-                                 LiftedRepresentation<HT> &LR) {
-    auto ISA = LCO.getISA();
-    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-
-    auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
-    LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
-
-    llvm::GCNTargetMachine *TM = TargetInfo->getTargetMachine();
-
-    // TODO: If debug information is available, the module's name must be
-    // set to its source file
-    llvm::orc::ThreadSafeModule TSModule{
-        std::make_unique<llvm::Module>(llvm::to_string(LCO.hsaHandle()),
-                                       *LR.Context.getContext()),
-        LR.Context};
-
-    auto Module = TSModule.getModuleUnlocked();
-    // Set the data layout (very important)
-    Module->setDataLayout(TM->createDataLayout());
-
-    auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
-    auto &MMI = MMIWP->getMMI();
-
-    auto &ModuleEntry =
-        LR.Modules
-            .insert(
-                {LCO.hsaHandle(), std::move(std::make_pair(std::move(TSModule),
-                                                           std::move(MMIWP)))})
-            .first->getSecond();
-    LR.RelatedLCOs.insert({LCO.hsaHandle(), {&ModuleEntry.first, &MMI}});
-    return llvm::Error::success();
-  }
+                                 LiftedRepresentation &LR);
 
   /// Initializes a module entry associated with the \p GV inside the \p LR
   /// Does not check if the passed \p GV is indeed is of type variable
-  /// \tparam HT underlying type of the lifted primitive
   /// \param [in] LCO the \c hsa::LoadedCodeObject \p GV belongs to
   /// \param [in] GV the \c hsa::ExecutableSymbol of type variable to be lifted
   /// \param [in, out] LR the lifted representation to be updated
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
-  template <typename HT>
   llvm::Error initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
                                             const hsa::ExecutableSymbol &GV,
-                                            LiftedRepresentation<HT> &LR) {
-    auto &LLVMContext = *LR.getContext().getContext();
-    auto &Module =
-        *LR.RelatedLCOs.at(LCO.hsaHandle()).first->getModuleUnlocked();
-    auto GVName = GV.getName();
-    LUTHIER_RETURN_ON_ERROR(GVName.takeError());
-    size_t GVSize = GV.getSize();
-    // Lift each variable as an array of bytes, with a length of GVSize
-    // We remove any initializers present in the LCO
-    new llvm::GlobalVariable(
-        Module,
-        llvm::ArrayType::get(llvm::Type::getInt8Ty(LLVMContext), GVSize), false,
-        llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr, *GVName);
-    return llvm::Error::success();
-  }
+                                            LiftedRepresentation &LR);
 
   /// Initializes a module entry associated with the \p Kernel inside the \p LR
   /// \p Func must be of type KERNEL
   /// Does not check if the passed symbol is indeed a kernel
-  /// \tparam HT underlying type of the lifted primitive
   /// \param [in] LCO the \c hsa::LoadedCodeObject \p Kernel belongs to
   /// \param [in] Kernel the \c hsa::ExecutableSymbol to be initialized
   /// \param [in, out] LR the lifted representation to be updated
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
-  template <typename HT>
   llvm::Error initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
                                     const hsa::ExecutableSymbol &Kernel,
-                                    LiftedRepresentation<HT> &LR) {
-    auto &LLVMContext = *LR.Context.getContext();
-    auto &Module =
-        *LR.RelatedLCOs.at(LCO.hsaHandle()).first->getModuleUnlocked();
-    // Populate the Arguments ==================================================
-    auto SymbolName = Kernel.getName();
-    LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
-    auto KernelMD = Kernel.getKernelMetadata();
-    LUTHIER_RETURN_ON_ERROR(KernelMD.takeError());
-
-    // Kernel's return type is always void
-    llvm::Type *const ReturnType = llvm::Type::getVoidTy(LLVMContext);
-
-    // Create the Kernel's FunctionType with appropriate kernel Arguments
-    // (if any)
-    llvm::SmallVector<llvm::Type *> Params;
-    if (KernelMD->Args.has_value()) {
-      // Reserve the number of arguments in the Params vector
-      Params.reserve(KernelMD->Args->size());
-      // For now, we only rely on required argument metadata
-      // This should be updated as new cases are encountered
-      for (const auto &ArgMD : *KernelMD->Args) {
-        llvm::Type *ParamType =
-            llvm::Type::getIntNTy(Module.getContext(), ArgMD.Size);
-        // if argument is not passed by value, then it's probably a pointer
-        if (ArgMD.ValueKind != hsa::md::ValueKind::ByValue) {
-          // AddressSpace is most likely global, but we check it anyway if
-          // it's given
-          unsigned int AddressSpace = ArgMD.AddressSpace.has_value()
-                                          ? *ArgMD.AddressSpace
-                                          : llvm::AMDGPUAS::GLOBAL_ADDRESS;
-          // Convert the argument to a pointer
-          ParamType =
-              llvm::PointerType::get(ParamType, llvm::AMDGPUAS::GLOBAL_ADDRESS);
-        }
-        Params.push_back(ParamType);
-      }
-    }
-
-    llvm::FunctionType *FunctionType =
-        llvm::FunctionType::get(ReturnType, Params, false);
-
-    auto *F = llvm::Function::Create(
-        FunctionType, llvm::GlobalValue::ExternalLinkage,
-        SymbolName->substr(0, SymbolName->rfind(".kd")), Module);
-
-    // Populate the Attributes =================================================
-
-    F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-
-    F->addFnAttr("uniform-work-group-size",
-                 KernelMD->UniformWorkgroupSize ? "true" : "false");
-
-    // Construct the attributes of the Function, which will result in the MF
-    // attributes getting populated
-    auto KD = Kernel.getKernelDescriptor();
-    LUTHIER_RETURN_ON_ERROR(KD.takeError());
-
-    auto KDOnHost = hsa::queryHostAddress(*KD);
-    LUTHIER_RETURN_ON_ERROR(KDOnHost.takeError());
-
-    F->addFnAttr(
-        "amdgpu-lds-size",
-        llvm::formatv("0, {0}", (*KDOnHost)->GroupSegmentFixedSize).str());
-    // Private (scratch) segment size is determined by Analysis Usage pass
-    // Kern Arg is determined via analysis usage + args set earlier
-    if ((*KDOnHost)->getKernelCodePropertiesEnableSgprDispatchId() == 0) {
-      F->addFnAttr("amdgpu-no-dispatch-id");
-    }
-    if ((*KDOnHost)->getKernelCodePropertiesEnableSgprDispatchPtr() == 0) {
-      F->addFnAttr("amdgpu-no-dispatch-ptr");
-    }
-    if ((*KDOnHost)->getKernelCodePropertiesEnableSgprQueuePtr() == 0) {
-      F->addFnAttr("amdgpu-no-queue-ptr");
-    }
-    F->addFnAttr("amdgpu-ieee",
-                 (*KDOnHost)->getRsrc1EnableIeeeMode() ? "true" : "false");
-    F->addFnAttr("amdgpu-dx10-clamp",
-                 (*KDOnHost)->getRsrc1EnableDx10Clamp() ? "true" : "false");
-    if ((*KDOnHost)->getRsrc2EnableSgprWorkgroupIdX() == 0) {
-      F->addFnAttr("amdgpu-no-workgroup-id-x");
-    }
-    if ((*KDOnHost)->getRsrc2EnableSgprWorkgroupIdY() == 0) {
-      F->addFnAttr("amdgpu-no-workgroup-id-y");
-    }
-    if ((*KDOnHost)->getRsrc2EnableSgprWorkgroupIdZ() == 0) {
-      F->addFnAttr("amdgpu-no-workgroup-id-z");
-    }
-    switch ((*KDOnHost)->getRsrc2EnableVgprWorkitemId()) {
-    case 0:
-      F->addFnAttr("amdgpu-no-workitem-id-y");
-    case 1:
-      F->addFnAttr("amdgpu-no-workitem-id-z");
-      break;
-    default:
-      llvm_unreachable("KD's VGPR workitem ID is not valid");
-    }
-
-    // TODO: Check the args metadata to set this correctly
-    F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
-
-    // TODO: Set the rest of the attributes
-    //    llvm::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload <<
-    //    "\n";
-    F->addFnAttr("amdgpu-calls");
-    // Add dummy IR instructions ===============================================
-    // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
-    // won't run
-    llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module.getContext(), "", F);
-    LUTHIER_CHECK(BB);
-    new llvm::UnreachableInst(Module.getContext(), BB);
-
-    // Populate the MFI ========================================================
-
-    llvm::MachineModuleInfo &MMI = *LR.RelatedLCOs[LCO.hsaHandle()].second;
-
-    auto &MF = MMI.getOrCreateMachineFunction(*F);
-
-    // TODO: Fix alignment value depending on the function type
-    MF.setAlignment(llvm::Align(4096));
-    auto &TM = MMI.getTarget();
-
-    auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
-        TM.getSubtargetImpl(*F)->getRegisterInfo());
-    auto MFI = MF.template getInfo<llvm::SIMachineFunctionInfo>();
-
-    if ((*KDOnHost)->getKernelCodePropertiesEnableSgprPrivateSegmentBuffer() ==
-        1) {
-      MFI->addPrivateSegmentBuffer(*TRI);
-    }
-    if ((*KDOnHost)->getKernelCodePropertiesEnableSgprKernArgSegmentPtr() ==
-        1) {
-      MFI->addKernargSegmentPtr(*TRI);
-    }
-    if ((*KDOnHost)->getKernelCodePropertiesEnableSgprFlatScratchInit() == 1) {
-      MFI->addFlatScratchInit(*TRI);
-    }
-    if ((*KDOnHost)->getRsrc2EnableSgprPrivateSegmentWaveByteOffset() == 1) {
-      //    llvm::outs() << "Private segment Wave offset\n";
-      MFI->addPrivateSegmentWaveByteOffset();
-    }
-
-    LR.RelatedFunctions.insert({Kernel.hsaHandle(), &MF});
-
-    return llvm::Error::success();
-  }
+                                    LiftedRepresentation &LR);
 
   /// Initializes a module entry associated with the \p Func inside the \p LR
   /// \p Func must be of type DEVICE_FUNC
@@ -460,262 +264,28 @@ private:
   /// \param [in, out] LR the lifted representation to be updated
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
-  template <typename HT>
   llvm::Error initLiftedDeviceFunctionEntry(const hsa::LoadedCodeObject &LCO,
                                             const hsa::ExecutableSymbol &Func,
-                                            LiftedRepresentation<HT> &LR) {
-    auto &LLVMContext = *LR.Context.getContext();
-    auto &Module =
-        *LR.RelatedLCOs.at(LCO.hsaHandle()).first->getModuleUnlocked();
-    llvm::MachineModuleInfo &MMI = *LR.RelatedLCOs.at(LCO.hsaHandle()).second;
-
-    auto FuncName = Func.getName();
-    llvm::Type *const ReturnType = llvm::Type::getVoidTy(Module.getContext());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ReturnType != nullptr));
-    llvm::FunctionType *FunctionType =
-        llvm::FunctionType::get(ReturnType, {}, false);
-
-    auto *F = llvm::Function::Create(
-        FunctionType, llvm::GlobalValue::PrivateLinkage, *FuncName, Module);
-    F->setCallingConv(llvm::CallingConv::C);
-
-    // Add dummy IR instructions ===============================================
-    // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
-    // won't run
-    llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module.getContext(), "", F);
-    LUTHIER_CHECK(BB);
-    new llvm::UnreachableInst(Module.getContext(), BB);
-    auto &MF = MMI.getOrCreateMachineFunction(*F);
-
-    // TODO: Fix alignment value depending on the function type
-    MF.setAlignment(llvm::Align(4096));
-    LR.RelatedFunctions.insert({Func.hsaHandle(), &MF});
-    return llvm::Error::success();
-  }
+                                            LiftedRepresentation &LR);
 
   static llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder);
 
   ///
-  /// \tparam HT
   /// \param Symbol
   /// \param LR
   /// \return
-  template <typename HT>
   llvm::Error
-  liftFunction(const hsa::ExecutableSymbol &Symbol,
-               LiftedRepresentation<HT> &LR,
-               llvm::DenseMap<hsa::ExecutableSymbol, bool> &SymbolUsageMap) {
-    auto LCO = Symbol.getDefiningLoadedCodeObject();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCO.has_value()));
-
-    llvm::Module &Module =
-        *LR.RelatedLCOs.at(LCO->hsaHandle()).first->getModuleUnlocked();
-    llvm::MachineModuleInfo &MMI = *LR.RelatedLCOs.at(LCO->hsaHandle()).second;
-    llvm::MachineFunction &MF = *LR.RelatedFunctions.at(Symbol.hsaHandle());
-    auto &F = MF.getFunction();
-    auto &TM = MMI.getTarget();
-
-    auto ISA = LCO->getISA();
-    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-
-    auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
-    LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
-
-    llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
-    MF.push_back(MBB);
-    auto MBBEntry = MBB;
-
-    llvm::MCContext &MCContext = MMI.getContext();
-
-    auto MCInstInfo = TargetInfo->getMCInstrInfo();
-
-    llvm::DenseMap<luthier::address_t,
-                   llvm::SmallVector<llvm::MachineInstr *>>
-        UnresolvedBranchMIs; // < Set of branch instructions located at a
-                             // luthier_address_t waiting for their
-                             // target to be resolved after MBBs and MIs
-                             // are created
-    llvm::DenseMap<luthier::address_t, llvm::MachineBasicBlock *>
-        BranchTargetMBBs; // < Set of MBBs that will be the target of the
-                          // UnresolvedBranchMIs
-    auto MIA = TargetInfo->getMCInstrAnalysis();
-
-    auto TargetFunction = CodeLifter::instance().disassemble(Symbol);
-    LUTHIER_RETURN_ON_ERROR(TargetFunction.takeError());
-
-    llvm::SmallDenseSet<unsigned>
-        LiveIns; // < Set of registers that are not explicitly defined by
-                 // instructions (AKA instruction output operand), and
-                 // have their value populated by the Driver using the
-                 // Kernel Descriptor
-    llvm::SmallDenseSet<unsigned> Defines; // < Set of registers defined by
-                                           // instructions (output operands)
-
-    for (const auto &Inst : *TargetFunction) {
-      auto MCInst = Inst.getMCInst();
-      const unsigned Opcode = MCInst.getOpcode();
-      const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
-      bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
-      bool IsDirectBranchTarget =
-          isAddressBranchOrBranchTarget(*LCO, Inst.getLoadedDeviceAddress()) &&
-          !IsDirectBranch;
-
-      if (IsDirectBranchTarget) {
-        // Branch targets mark the beginning of an MBB
-        auto OldMBB = MBB;
-        MBB = MF.CreateMachineBasicBlock();
-        MF.push_back(MBB);
-        OldMBB->addSuccessor(MBB);
-        BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
-      }
-      llvm::MachineInstrBuilder Builder =
-          llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
-      LR.MachineInstrToMCMap.insert(
-          {Builder.getInstr(), const_cast<hsa::Instr *>(&Inst)});
-
-      for (unsigned OpIndex = 0, E = MCInst.getNumOperands(); OpIndex < E;
-           ++OpIndex) {
-        //      llvm::outs() << "Number of operands in MCID: " <<
-        //      MCID.operands().size()
-        //                   << "\n";
-        const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
-        if (Op.isReg()) {
-          //        llvm::outs() << "Reg Op detected \n";
-          unsigned RegNum = Op.getReg();
-          const bool IsDef = OpIndex < MCID.getNumDefs();
-          unsigned Flags = 0;
-          const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
-          if (IsDef && !OpInfo.isOptionalDef()) {
-            Flags |= llvm::RegState::Define;
-            Defines.insert(RegNum);
-          } else if (!Defines.contains(RegNum)) {
-            LiveIns.insert(RegNum);
-            //          llvm::outs() << "Live in detected: \n";
-            //          llvm::outs() << "Register: ";
-            //          Op.print(llvm::outs(), TargetInfo->getMCRegisterInfo());
-            //          llvm::outs() << "\n";
-            //          llvm::outs() << "Flags: " << Flags << "\n";
-          }
-          Builder.addReg(Op.getReg(), Flags);
-        } else if (Op.isImm()) {
-          // TODO: Resolve immediate load/store operands if they don't have
-          // relocations associated with them (e.g. when they happen in the
-          // text section)
-          luthier::address_t InstAddr = Inst.getLoadedDeviceAddress();
-          size_t InstSize = Inst.getSize();
-          // Check if at any point in the instruction we need to apply
-          // relocations
-          bool RelocationApplied{false};
-          for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
-            auto RelocationInfo = resolveRelocation(*LCO, I);
-            LUTHIER_RETURN_ON_ERROR(RelocationInfo.takeError());
-            if (RelocationInfo->has_value()) {
-              hsa::ExecutableSymbol TargetSymbol = RelocationInfo.get()->Symbol;
-
-              auto TargetSymbolType = TargetSymbol.getType();
-
-              auto Addend = RelocationInfo.get()->Relocation.getAddend();
-              LUTHIER_RETURN_ON_ERROR(Addend.takeError());
-
-              uint64_t Type = RelocationInfo.get()->Relocation.getType();
-
-              SymbolUsageMap[TargetSymbol] = true;
-              if (TargetSymbolType == hsa::VARIABLE) {
-                auto *GV =
-                    LR.RelatedGlobalVariables.at(TargetSymbol.hsaHandle());
-                if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
-                  Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
-                else if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
-                  Type = llvm::SIInstrInfo::MO_GOTPCREL32_HI;
-                Builder.addGlobalAddress(GV, *Addend, Type);
-              } else if (TargetSymbolType == hsa::DEVICE_FUNCTION) {
-                auto *UsedMF = LR.RelatedFunctions.at(TargetSymbol.hsaHandle());
-                // Add the function as the operand
-                if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
-                  Type = llvm::SIInstrInfo::MO_REL32_LO;
-                if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
-                  Type = llvm::SIInstrInfo::MO_REL32_HI;
-                Builder.addGlobalAddress(&UsedMF->getFunction(), *Addend, Type);
-              } else {
-                // For now, we don't handle calling kernels from kernels
-                llvm_unreachable("not implemented");
-              }
-              RelocationApplied = true;
-              break;
-            }
-          }
-          if (!RelocationApplied) {
-            Builder.addImm(Op.getImm());
-          }
-
-        } else if (!Op.isValid()) {
-          llvm_unreachable("Operand is not set");
-        } else {
-          llvm_unreachable("Not yet implemented");
-        }
-      }
-      LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
-      // Basic Block resolving
-
-      if (IsDirectBranch) {
-        luthier::address_t BranchTarget;
-        if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
-                                Inst.getSize(), BranchTarget)) {
-          if (!UnresolvedBranchMIs.contains(BranchTarget)) {
-            UnresolvedBranchMIs.insert({BranchTarget, {Builder.getInstr()}});
-          } else {
-            UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
-          }
-        }
-        //      MCInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(),
-        //      "
-        //      ",
-        //                         TargetInfo->getMCRegisterInfo());
-        auto OldMBB = MBB;
-        MBB = MF.CreateMachineBasicBlock();
-        MF.push_back(MBB);
-        OldMBB->addSuccessor(MBB);
-      }
-    }
-
-    // Resolve the branch and target MIs/MBBs
-    for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
-      MBB = BranchTargetMBBs[TargetAddress];
-      for (auto &MI : BranchMIs) {
-        MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
-        MI->getParent()->addSuccessor(MBB);
-        //      MI->print(llvm::outs());
-        //      llvm::outs() << "\n";
-      }
-    }
-
-    // Add the Live-ins to the first MBB
-    auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
-        TM.getSubtargetImpl(F)->getRegisterInfo());
-    for (auto &LiveIn : LiveIns) {
-      MF.getRegInfo().addLiveIn(LiveIn);
-      MBBEntry->addLiveIn(LiveIn);
-    }
-
-    // Populate the properties of MF
-    llvm::MachineFunctionProperties &Properties = MF.getProperties();
-    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
-    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
-    Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
-    Properties.set(llvm::MachineFunctionProperties::Property::TracksLiveness);
-    Properties.set(llvm::MachineFunctionProperties::Property::Selected);
-    return llvm::Error::success();
-  }
+  liftFunction(const hsa::ExecutableSymbol &Symbol, LiftedRepresentation &LR,
+               llvm::DenseMap<hsa::ExecutableSymbol, bool> &SymbolUsageMap);
 
   //===--------------------------------------------------------------------===//
   // Cached Lifted Representations
   //===--------------------------------------------------------------------===//
 
-  llvm::DenseMap<hsa::Executable, LiftedRepresentation<hsa_executable_t>>
+  llvm::DenseMap<hsa::Executable, std::unique_ptr<LiftedRepresentation>>
       LiftedExecutables{};
 
-  llvm::DenseMap<hsa::ExecutableSymbol,
-                 LiftedRepresentation<hsa_executable_symbol_t>>
+  llvm::DenseMap<hsa::ExecutableSymbol, std::unique_ptr<LiftedRepresentation>>
       LiftedKernelSymbols{};
 
   //===--------------------------------------------------------------------===//
@@ -733,8 +303,8 @@ public:
   /// \c llvm::Error on failure, describing the issue encountered during the
   /// process
   /// \sa LiftedRepresentation
-  llvm::Expected<const LiftedRepresentation<hsa_executable_symbol_t> &>
-  liftKernelSymbol(const hsa::ExecutableSymbol &Symbol);
+  llvm::Expected<const LiftedRepresentation &>
+  lift(const hsa::ExecutableSymbol &Symbol);
 
   /// Returns the \c LiftedRepresentation<hsa_executable_t> associated
   /// with the given \p Exec\n
@@ -744,94 +314,11 @@ public:
   /// \c llvm::Error on failure, describing the issue encountered during the
   /// process
   /// \sa LiftedRepresentation
-  llvm::Expected<const LiftedRepresentation<hsa_executable_t> &>
-  liftExecutable(const hsa::Executable &Exec);
+  llvm::Expected<const LiftedRepresentation &>
+  lift(const hsa::Executable &Exec);
 
-  template <typename HT>
-  llvm::Expected<std::unique_ptr<LiftedRepresentation<HT>>>
-  cloneRepresentation(const LiftedRepresentation<HT> &LR) {
-    // Construct the output
-    std::unique_ptr<LiftedRepresentation<HT>> Out;
-    Out.reset(new LiftedRepresentation<HT>());
-    // The cloned LiftedRepresentation will share the context and the
-    // lifted primitive
-    Out->Context = LR.Context;
-    Out->LiftedPrimitive = LR.LiftedPrimitive;
-    // This VMap will be populated by a mapping between the original global
-    // objects and their cloned version. This will be useful when populating
-    // the related functions and related global variable maps of the cloned
-    // LiftedRepresentation
-    llvm::ValueToValueMapTy VMap;
-    // This map helps us populate the MachineInstr to hsa::Instr map
-    llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> SrcToDstInstrMap;
-    for (const auto &[LCOHandle, ModuleAndMMIWP] : LR.Modules) {
-      const llvm::orc::ThreadSafeModule &TSModule = ModuleAndMMIWP.first;
-      const std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP =
-          ModuleAndMMIWP.second;
-
-      auto ClonedModuleAndMMIWP = TSModule.withModuleDo(
-          [&](const llvm::Module &M)
-              -> llvm::Expected<std::tuple<
-                  std::unique_ptr<llvm::Module>,
-                  std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>> {
-            auto ClonedModule = llvm::CloneModule(M, VMap);
-            auto ClonedMMIWP =
-                std::make_unique<llvm::MachineModuleInfoWrapperPass>(
-                    &MMIWP->getMMI().getTarget());
-            LUTHIER_RETURN_ON_ERROR(luthier::cloneMMI(MMIWP->getMMI(), VMap,
-                                                      ClonedMMIWP->getMMI(),
-                                                      &SrcToDstInstrMap));
-            return std::make_tuple(std::move(ClonedModule),
-                                   std::move(ClonedMMIWP));
-          });
-      LUTHIER_RETURN_ON_ERROR(ClonedModuleAndMMIWP.takeError());
-
-      auto &[ClonedModule, ClonedMMIWP] = *ClonedModuleAndMMIWP;
-      // Now that the module and the MMI are cloned, create a thread-safe module
-      // and put it in the Output's Module list
-      llvm::orc::ThreadSafeModule ClonedTSModule{std::move(ClonedModule),
-                                                 Out->Context};
-
-      auto &ClonedModuleEntry =
-          Out->Modules
-              .insert({LCOHandle,
-                       std::move(std::make_pair(std::move(ClonedTSModule),
-                                                std::move(ClonedMMIWP)))})
-              .first->getSecond();
-      Out->RelatedLCOs.insert(
-          {LCOHandle,
-           {&ClonedModuleEntry.first, &ClonedModuleEntry.second->getMMI()}});
-    }
-    // With all Modules and MMIs cloned, we need to populate the related
-    // functions and related global variables. We use the VMap to do this
-    for (const auto &[GVHandle, GV] : LR.RelatedGlobalVariables) {
-      auto GVDestEntry = VMap.find(GV);
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(GVDestEntry != VMap.end()));
-      auto *DestGV = cast<llvm::GlobalVariable>(GVDestEntry->second);
-      Out->RelatedGlobalVariables.insert({GVHandle, DestGV});
-    }
-
-    for (const auto &[FuncHandle, SrcMF] : LR.RelatedFunctions) {
-      auto FDestEntry = VMap.find(&SrcMF->getFunction());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(FDestEntry != VMap.end()));
-      auto *DestF = cast<llvm::Function>(FDestEntry->second);
-      // Get the MMI of the dest function
-      auto FuncSymbol = hsa::ExecutableSymbol::fromHandle({FuncHandle});
-      LUTHIER_RETURN_ON_ERROR(FuncSymbol.takeError());
-      auto FuncLCO = FuncSymbol->getDefiningLoadedCodeObject()->hsaHandle();
-      auto &MMI = *Out->RelatedLCOs.at(FuncLCO).second;
-
-      auto DestMF = MMI.getMachineFunction(*DestF);
-
-      Out->RelatedFunctions.insert({FuncHandle, DestMF});
-    }
-    // Finally, populate the instruction map
-    for (const auto &[SrcMI, HSAInst] : LR.MachineInstrToMCMap) {
-      Out->MachineInstrToMCMap.insert({SrcToDstInstrMap[SrcMI], HSAInst});
-    }
-
-    return Out;
-  }
+  llvm::Expected<std::unique_ptr<LiftedRepresentation>>
+  cloneRepresentation(const LiftedRepresentation &LR);
 };
 
 } // namespace luthier
