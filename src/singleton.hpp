@@ -49,7 +49,8 @@ public:
 
   /// \return a reference to the Singleton instance
   static inline T &instance() {
-    assert(Instance != nullptr && "Singleton is not initialized");
+    if (Instance == nullptr)
+      llvm::report_fatal_error("Singleton is not initialized");
     return *Instance;
   }
 };
