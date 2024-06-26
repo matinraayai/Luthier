@@ -4,9 +4,9 @@
 ///
 /// \file
 /// This file describes Luthier's Lifted Representation, which contains the
-/// \c llvm::Module and \c llvm::MachineModuleInfo of a lifted kernel or
-/// executable, as well as a mapping between the HSA primitives and LLVM
-/// IR primitives involved.
+/// \c llvm::Module and \c llvm::MachineModuleInfo of a lifted HSA primitive (a
+/// kernel or an executable), as well as a mapping between the HSA primitives
+/// and LLVM IR primitives involved.
 //===----------------------------------------------------------------------===//
 
 #ifndef LUTHIER_LIFTED_REPRESENTATION_H
@@ -22,17 +22,36 @@ namespace luthier {
 
 class CodeLifter;
 
-/// \brief contains information regarding a lifted \c hsa_executable_symbol_t
-/// or a lifted \c hsa_executable_t; This includes an instance of a
-/// ThreadSafeModule and the ThreadSafeContext it is on, the
-/// \c llvm::MachineModuleInfoWrapperPass where the MIRs are inserted,
-/// as well as a mapping between HSA primitives and LLVM IR/MIR primitives
-/// involved
-/// \tparam HT either an \c hsa_executable_symbol_t or an \c hsa_executable_t
-template <typename HT, typename = std::enable_if_t<
-                           std::is_same<HT, hsa_executable_symbol_t>::value ||
-                           std::is_same<HT, hsa_executable_t>::value>>
+/// \brief contains HSA and LLVM information regarding a lifted AMD HSA
+/// primitive.
+/// \details The primitive can be either an \c hsa_executable_t or a
+/// \c hsa_executable_symbol_t of type kernel. Luthier's \c CodeLifter is
+/// the only entity allowed to construct or clone a <tt>LiftedRepresentation</tt>.
+/// This allows internal caching and thread-safe access to them by other components.
+/// It also allows invalidation of the representations when the executable backing
+/// the lifted primitive gets destroyed. \n
+/// Each lifted primitive has an independent \c llvm::orc::ThreadSafeContext
+/// created for it internally by Luthier's <tt>CodeLifter</tt> to let
+/// independent processing of different primitives by multiple threads, and
+/// proper synchronization when multiple threads need to instrument the same
+/// primitive. Subsequent clones of the lifted representation use the same
+/// thread-safe context. The following mappings are also retained internally
+/// in the representation:
+/// - For each \c hsa_loaded_code_object_t involved,
+/// an \c llvm::orc::ThreadSafeModule and a \c llvm::MachineModuleInfo is
+/// created and stored.
+/// - For each \c hsa_executable_symbol_t of type \c KERNEL or \c DEVICE_FUNCTION
+/// involved, a mapping to the \c llvm::MachineFunction it was lifted to is
+/// retained. The machine function is owned by one of the machine module info
+/// created for its defining <tt>hsa_loaded_code_object_t</tt>.
+/// - For each \c hsa_executable_symbol_t of type <tt>VARIABLE</tt>, a mapping
+/// to the \c llvm::GlobalVariable it was lifted to is retained.
+/// - For each \c llvm::MachineInstr in the lifted functions, a mapping to
+/// the disassembled \c hsa::Instr is retained. This is so that the tool writer
+/// can track the original MC representation of the instruction as well as
+/// its runtime load attributes (i.e. the address it was loaded, its size, etc).
 class LiftedRepresentation {
+  /// Only Luthier's CodeLifter is able to create <tt>LiftedRepresentation</tt>s
   friend luthier::CodeLifter;
 
 private:
@@ -62,10 +81,6 @@ private:
                 std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
       1>
       Modules;
-
-  /// The HSA primitive represented by this object. Can be either an
-  /// \c hsa_executable_t or an \c hsa_executable_symbol_t
-  HT LiftedPrimitive;
 
   /// Mapping between an \c hsa_loaded_code_object_t and the Module and MMI
   /// representing it in LLVM
@@ -99,8 +114,11 @@ private:
   LiftedRepresentation() = default;
 
 public:
-  /// \return the lifted HSA primitive
-  HT getLiftedAsHSAPrimitive() const { return LiftedPrimitive; };
+  /// Disallowed copy construction
+  LiftedRepresentation(const LiftedRepresentation &) = delete;
+
+  /// Disallowed assignment operation
+  LiftedRepresentation &operator=(const LiftedRepresentation &) = delete;
 
   /// \return a reference to the thread-safe \c LLVMContext of this object
   llvm::orc::ThreadSafeContext &getContext() { return Context; }
