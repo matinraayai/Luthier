@@ -168,7 +168,9 @@ static void cloneMemOperands(llvm::MachineInstr &DstMI,
 
 llvm::Expected<std::unique_ptr<llvm::MachineFunction>>
 cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
-        llvm::MachineModuleInfo &DestMMI) {
+        llvm::MachineModuleInfo &DestMMI,
+        llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *>
+            *SrcToDstMIMap) {
   // Find the destination function entry in the value map
   auto &SrcF = SrcMF->getFunction();
   auto DestFMapEntry = VMap.find(&SrcF);
@@ -318,6 +320,9 @@ cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
         }
 
         DstMI->addOperand(DstMO);
+        if (SrcToDstMIMap != nullptr)
+          SrcToDstMIMap->insert(
+              {const_cast<llvm::MachineInstr *>(&SrcMI), DstMI});
       }
 
       cloneMemOperands(*DstMI, SrcMI, *SrcMF, *DstMF);
@@ -366,14 +371,16 @@ cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
 
 llvm::Error cloneMMI(const llvm::MachineModuleInfo &SrcMMI,
                      const llvm::ValueToValueMapTy &VMap,
-                     llvm::MachineModuleInfo &DestMMI) {
+                     llvm::MachineModuleInfo &DestMMI,
+                     llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *>
+                         *SrcToDstMIMap) {
   for (const llvm::Function &SrcF : *SrcMMI.getModule()) {
     llvm::MachineFunction *SrcMF = SrcMMI.getMachineFunction(SrcF);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(SrcMF != nullptr));
     auto DestFMapEntry = VMap.find(&SrcF);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(DestFMapEntry != VMap.end()));
     llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
-    auto DestMF = cloneMF(SrcMF, VMap, DestMMI);
+    auto DestMF = cloneMF(SrcMF, VMap, DestMMI, SrcToDstMIMap);
     LUTHIER_RETURN_ON_ERROR(DestMF.takeError());
     DestMMI.insertFunction(DestF, std::move(*DestMF));
   }
