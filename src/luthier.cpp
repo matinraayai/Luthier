@@ -14,13 +14,14 @@
 #include <optional>
 
 #include "code_generator.hpp"
+#include "code_lifter.hpp"
 #include "controller.hpp"
-#include "disassembler.hpp"
 #include "error.hpp"
 #include "hip_intercept.hpp"
 #include "hsa_executable_symbol.hpp"
 #include "hsa_intercept.hpp"
 #include "hsa_platform.hpp"
+#include "luthier/instrumentation_task.h"
 #include "tool_executable_manager.hpp"
 #include <luthier/instr.h>
 
@@ -63,27 +64,34 @@ void disableAllHsaCallbacks() {
 } // namespace hsa
 
 llvm::Expected<const std::vector<hsa::Instr> &>
-disassembleSymbol(hsa_executable_symbol_t Symbol) {
-  auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
+disassemble(hsa_executable_symbol_t Func) {
+  auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Func);
   LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
   return luthier::CodeLifter::instance().disassemble(*SymbolWrapper);
 }
 
-llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
-                          std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
-                          luthier::LiftedSymbolInfo>>
-liftSymbol(hsa_executable_symbol_t Symbol) {
-  auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
-  LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
-  return luthier::CodeLifter::instance().liftSymbol(*SymbolWrapper);
+llvm::Expected<const luthier::LiftedRepresentation &>
+lift(hsa_executable_symbol_t Kernel) {
+  auto KernelWrapper = hsa::ExecutableSymbol::fromHandle(Kernel);
+  LUTHIER_RETURN_ON_ERROR(KernelWrapper.takeError());
+  return CodeLifter::instance().lift(*KernelWrapper);
 }
 
-llvm::Error
-instrument(std::unique_ptr<llvm::Module> Module,
-           std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-           const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask) {
-  return CodeGenerator::instance().instrument(std::move(Module),
-                                              std::move(MMIWP), LSO, ITask);
+llvm::Expected<const luthier::LiftedRepresentation &>
+lift(hsa_executable_t Executable) {
+  return CodeLifter::instance().lift(hsa::Executable{Executable});
+}
+
+llvm::Error instrument(hsa_executable_symbol_t Kernel,
+                       const LiftedRepresentation &LR,
+                       luthier::InstrumentationTask &ITask) {
+  return CodeGenerator::instance().instrument(LR, ITask);
+}
+
+llvm::Error instrument(hsa_executable_t Exec,
+                       const LiftedRepresentation &LR,
+                       luthier::InstrumentationTask &ITask) {
+  return CodeGenerator::instance().instrument(LR, ITask);
 }
 
 llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
@@ -117,6 +125,15 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
   Packet.private_segment_size = InstrumentedKernelMD->PrivateSegmentFixedSize;
 
   return llvm::Error::success();
+}
+llvm::Expected<std::unique_ptr<LiftedRepresentation<hsa_executable_symbol_t>>>
+cloneRepresentation(const LiftedRepresentation<hsa_executable_symbol_t> &LR) {
+  return CodeLifter::instance().cloneRepresentation<hsa_executable_symbol_t>(
+      LR);
+}
+llvm::Expected<std::unique_ptr<LiftedRepresentation<hsa_executable_t>>>
+luthier::cloneRepresentation(const LiftedRepresentation<hsa_executable_t> &LR) {
+  return CodeLifter::instance().cloneRepresentation<hsa_executable_t>(LR);
 }
 
 } // namespace luthier
