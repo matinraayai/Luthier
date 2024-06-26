@@ -18,6 +18,7 @@
 #include <llvm/MC/MCInst.h>
 #include <llvm/MC/MCInstrAnalysis.h>
 #include <llvm/Object/ELFObjectFile.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 
 #include <functional>
 #include <unordered_map>
@@ -25,6 +26,7 @@
 #include <vector>
 
 #include "AMDGPUTargetMachine.h"
+#include "cloning.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable.hpp"
@@ -744,6 +746,92 @@ public:
   /// \sa LiftedRepresentation
   llvm::Expected<const LiftedRepresentation<hsa_executable_t> &>
   liftExecutable(const hsa::Executable &Exec);
+
+  template <typename HT>
+  llvm::Expected<std::unique_ptr<LiftedRepresentation<HT>>>
+  cloneRepresentation(const LiftedRepresentation<HT> &LR) {
+    // Construct the output
+    std::unique_ptr<LiftedRepresentation<HT>> Out;
+    Out.reset(new LiftedRepresentation<HT>());
+    // The cloned LiftedRepresentation will share the context and the
+    // lifted primitive
+    Out->Context = LR.Context;
+    Out->LiftedPrimitive = LR.LiftedPrimitive;
+    // This VMap will be populated by a mapping between the original global
+    // objects and their cloned version. This will be useful when populating
+    // the related functions and related global variable maps of the cloned
+    // LiftedRepresentation
+    llvm::ValueToValueMapTy VMap;
+    // This map helps us populate the MachineInstr to hsa::Instr map
+    llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> SrcToDstInstrMap;
+    for (const auto &[LCOHandle, ModuleAndMMIWP] : LR.Modules) {
+      const llvm::orc::ThreadSafeModule &TSModule = ModuleAndMMIWP.first;
+      const std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP =
+          ModuleAndMMIWP.second;
+
+      auto ClonedModuleAndMMIWP = TSModule.withModuleDo(
+          [&](const llvm::Module &M)
+              -> llvm::Expected<std::tuple<
+                  std::unique_ptr<llvm::Module>,
+                  std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>> {
+            auto ClonedModule = llvm::CloneModule(M, VMap);
+            auto ClonedMMIWP =
+                std::make_unique<llvm::MachineModuleInfoWrapperPass>(
+                    &MMIWP->getMMI().getTarget());
+            LUTHIER_RETURN_ON_ERROR(luthier::cloneMMI(MMIWP->getMMI(), VMap,
+                                                      ClonedMMIWP->getMMI(),
+                                                      &SrcToDstInstrMap));
+            return std::make_tuple(std::move(ClonedModule),
+                                   std::move(ClonedMMIWP));
+          });
+      LUTHIER_RETURN_ON_ERROR(ClonedModuleAndMMIWP.takeError());
+
+      auto &[ClonedModule, ClonedMMIWP] = *ClonedModuleAndMMIWP;
+      // Now that the module and the MMI are cloned, create a thread-safe module
+      // and put it in the Output's Module list
+      llvm::orc::ThreadSafeModule ClonedTSModule{std::move(ClonedModule),
+                                                 Out->Context};
+
+      auto &ClonedModuleEntry =
+          Out->Modules
+              .insert({LCOHandle,
+                       std::move(std::make_pair(std::move(ClonedTSModule),
+                                                std::move(ClonedMMIWP)))})
+              .first->getSecond();
+      Out->RelatedLCOs.insert(
+          {LCOHandle,
+           {&ClonedModuleEntry.first, &ClonedModuleEntry.second->getMMI()}});
+    }
+    // With all Modules and MMIs cloned, we need to populate the related
+    // functions and related global variables. We use the VMap to do this
+    for (const auto &[GVHandle, GV] : LR.RelatedGlobalVariables) {
+      auto GVDestEntry = VMap.find(GV);
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(GVDestEntry != VMap.end()));
+      auto *DestGV = cast<llvm::GlobalVariable>(GVDestEntry->second);
+      Out->RelatedGlobalVariables.insert({GVHandle, DestGV});
+    }
+
+    for (const auto &[FuncHandle, SrcMF] : LR.RelatedFunctions) {
+      auto FDestEntry = VMap.find(&SrcMF->getFunction());
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(FDestEntry != VMap.end()));
+      auto *DestF = cast<llvm::Function>(FDestEntry->second);
+      // Get the MMI of the dest function
+      auto FuncSymbol = hsa::ExecutableSymbol::fromHandle({FuncHandle});
+      LUTHIER_RETURN_ON_ERROR(FuncSymbol.takeError());
+      auto FuncLCO = FuncSymbol->getDefiningLoadedCodeObject()->hsaHandle();
+      auto &MMI = *Out->RelatedLCOs.at(FuncLCO).second;
+
+      auto DestMF = MMI.getMachineFunction(*DestF);
+
+      Out->RelatedFunctions.insert({FuncHandle, DestMF});
+    }
+    // Finally, populate the instruction map
+    for (const auto &[SrcMI, HSAInst] : LR.MachineInstrToMCMap) {
+      Out->MachineInstrToMCMap.insert({SrcToDstInstrMap[SrcMI], HSAInst});
+    }
+
+    return Out;
+  }
 };
 
 } // namespace luthier
