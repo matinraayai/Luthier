@@ -257,9 +257,7 @@ CodeGenerator::insertFunctionCalls(
     llvm::Module &Module, llvm::MachineModuleInfo &MMI,
     const LiftedSymbolInfo &TargetLSI,
     const InstrumentationTask::insert_call_tasks &Tasks) {
-
   llvm::outs() << "\n=====> Begin CodeGenerator::insertFunctionCalls\n";
-
   std::vector<LiftedSymbolInfo> Out;
   for (const auto &[IPointMI, IFuncAndIPoint] : Tasks) {
     llvm::MachineBasicBlock *IPointMBB = IPointMI->getParent();
@@ -285,88 +283,54 @@ CodeGenerator::insertFunctionCalls(
 
 
     // need to add a weight count to the IPoint's function
-    llvm::outs() << "=====> Create Master Kernel and add to instrumentation module\n";
-    llvm::Type *const MKRetType = 
+    llvm::outs() << "=====> Create Kernel for IPoint Hook and add to instrumentation module\n";
+    llvm::Type *const InstruKernelRetTy = 
         llvm::Type::getVoidTy(InstrumentationModule->get()->getContext());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MKRetType != nullptr));
-    llvm::FunctionType *MKFuncType =
-        llvm::FunctionType::get(MKRetType, {}, false);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(InstruKernelRetTy != nullptr));
+    llvm::FunctionType *InstruKernelTy =
+        llvm::FunctionType::get(InstruKernelRetTy, {}, false);
     // TODO: Try adding AttributeList when calling getOrInsertFunction
-    llvm::FunctionCallee MKFuncCallee = 
+    llvm::FunctionCallee InstruKernelCallee = 
         InstrumentationModule->get()
-                             ->getOrInsertFunction("MasterKernel", MKFuncType);
-
-    auto MK = llvm::dyn_cast<llvm::Function>(MKFuncCallee.getCallee());
-
+                             ->getOrInsertFunction("Instrumentation_Kernel", InstruKernelTy);
+    auto IK = llvm::dyn_cast<llvm::Function>(InstruKernelCallee.getCallee());
+    IK->setCallingConv(IPointMI->getParent()
+                       ->getParent()->getFunction().getCallingConv());
+    
     auto &InstrumentationContext = InstrumentationModule.get()->getContext();
-    llvm::IRBuilder<> MKBuilder(InstrumentationContext);
+    llvm::IRBuilder<> IKBuilder(InstrumentationContext);
     
     for (llvm::Function &F : **InstrumentationModule) {
       if (F.getName() == "instrumentationHook") {
-        llvm::outs() << "=====> Set insturmentation hooks to always inline\n";
+        llvm::outs() << "=====> Set instrumentation hook to always inline\n";
         F.removeFnAttr(llvm::Attribute::OptimizeNone);
         F.removeFnAttr(llvm::Attribute::NoInline);
         F.addFnAttr(llvm::Attribute::AlwaysInline);
       } 
     }
 
-    auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
-    LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
-    auto TargetPivSegSize = TargetKernelMD->PrivateSegmentFixedSize;
-    llvm::outs() << "=====> Target Kernel Private Seg Size:\t" 
-                 << TargetPivSegSize << "\n";
-    llvm::Value *TargetPrivSeg = llvm::ConstantInt::get(
-        llvm::Type::getInt32Ty(InstrumentationContext), TargetPivSegSize, false);
+    // auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
+    // LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
+    // auto TargetPivSegSize = TargetKernelMD->PrivateSegmentFixedSize;
+    // llvm::outs() << "=====> Target Kernel Private Seg Size:\t" 
+    //              << TargetPivSegSize << "\n";
+    // llvm::Value *TargetPrivSeg = llvm::ConstantInt::get(
+    //     llvm::Type::getInt32Ty(InstrumentationContext), TargetPivSegSize, false);
 
+    llvm::BasicBlock *IKBB = llvm::BasicBlock::Create(InstrumentationContext, 
+                                                      "call_to_hook", IK);
 
-    /* Looks like we have to seperate the insertion points.
-     * 
-     */
-
-
-    llvm::outs() << "     > Populate MK w/ basic blocks:\n";
-    llvm::BasicBlock *MKBB_BEGIN = llvm::BasicBlock::Create(InstrumentationContext, 
-                                                            "stack_lifetime_begin", MK);
-    llvm::BasicBlock *MKBB       = llvm::BasicBlock::Create(InstrumentationContext, 
-                                                            "InstruPoint", MK);
-    llvm::BasicBlock *MKBB_END   = llvm::BasicBlock::Create(InstrumentationContext, 
-                                                            "stack_lifetime_end", MK);
-
-    llvm::outs() << "     > \tCreate call save stack lifetime begin in MK\n";
-    MKBuilder.SetInsertPoint(MKBB_BEGIN);
-    // auto SaveStackInstr = MKBuilder.CreateStackSave("new_stack_save");
-    // AllocaInst *CreateAlloca(Type *Ty, unsigned AddrSpace,
-    //                          Value *ArraySize = nullptr, const Twine &Name = "")
-    // AddrSpace(5) should be the stack 
-    auto StartStackAlloca = MKBuilder.CreateAlloca(MKBuilder.getInt32Ty(), 5, 
-                                                   TargetPrivSeg, "new_stack_save");
-
-    // llvm::Value *DummyVal = llvm::ConstantInt::get(llvm::Type::getInt32Ty(InstrumentationContext), 
-    //                            StartStackAlloca->getOpcode(), false);
-
-    // auto DummyStore = MKBuilder.CreateStore(DummyVal, , true);
-    // auto DummyStore = MKBuilder.CreateStore(StartStackAlloca, "new_stack_save", true);
-    MKBuilder.CreateLifetimeStart(StartStackAlloca);
-    MKBuilder.CreateBr(MKBB);
-
-    llvm::outs() << "     > \tCreate call to instrumentation func in MK\n";
-    MKBuilder.SetInsertPoint(MKBB);
+    llvm::outs() << "     > \tCreate call to instrumentation func in IK\n";
+    IKBuilder.SetInsertPoint(IKBB);
     auto Hook = InstrumentationModule.get()->getFunction("instrumentationHook");
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
-    MKBuilder.CreateCall(Hook);
-    MKBuilder.CreateBr(MKBB_END);
-    
-    llvm::outs() << "     > \tCreate call save stack lifetime end in MK\n";
-    MKBuilder.SetInsertPoint(MKBB_END);
-    MKBuilder.CreateLifetimeEnd(StartStackAlloca); // , llvm::ConstantInt::get(
-    //   MKBuilder.getInt64Ty(), TargetPrivSeg));
-    // auto RestoreStackInstr = MKBuilder.CreateStackRestore(SaveStackInstr);
-    MKBuilder.CreateRetVoid();
+    auto CalltoHook = IKBuilder.CreateCall(Hook);
+    IKBuilder.AddMetadataToInst(CalltoHook);
+    IKBuilder.CreateRetVoid();
 
-    llvm::outs() << "     > Dump instrumentation module after adding MK\n";
+    llvm::outs() << "     > Dump instrumentation module after adding Instrumentation Kernel\n";
     InstrumentationModule->get()->dump();
 
-    llvm::outs() << "\n=====> Run IR optimization for InstrumentationModule\n";
     // Create the analysis managers.
     // These must be declared in this order so that they are destroyed in the
     // correct order due to inter-analysis-manager references.
@@ -399,9 +363,9 @@ CodeGenerator::insertFunctionCalls(
     // Optimize the IR!
     MPM.run(**InstrumentationModule, MAM);
     
-    llvm::outs() << "     > Dump instrumentation module after IR optimization\n";
+    llvm::outs() << "\n=====> Run IR optimization for InstrumentationModule\n"
+                 << "     > Dump instrumentation module after IR optimization\n";
     InstrumentationModule->get()->dump();
-
     
     auto ISA = llvm::cantFail(IFunctionSymbol->getLoadedCodeObject()).getISA();
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
@@ -422,81 +386,119 @@ CodeGenerator::insertFunctionCalls(
     PM.add(TPC);
     PM.add(MMIWP);
 
+    
     TPC->addISelPasses();
 
-    // Get Liveness for IPoint MBB and copy that info into the Instrumentation
-    // Hook's basic block in the Master Kernel
     PM.add(new llvm::LivenessCopy(IPointMBB));
+    // PM.add(new llvm::StackFrameOffset());
 
     TPC->addMachinePasses();
+    
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM.add(UsageAnalysis);
     TPC->setInitialized();
 
     llvm::outs() << "=====> Run codegen \n";
     PM.run(**InstrumentationModule); // Run all the passes
+    
+    llvm::outs() << "     > Insert wait counts at beginning and end of Instrumentation func \n";
+    llvm::MachineInstrBuilder MIRBuilder;
+    const auto IKMF = MMIWP->getMMI().getMachineFunction(*IK);
+    auto IKInstInfo = MMIWP->getMMI().getTarget().getMCInstrInfo(); // "Instrumentation Kernel Instr Info"...
 
-    llvm::outs() << "\n=====> Dump instrumentation module's machine functions\n";
-    for (const auto &F : **InstrumentationModule) {
-      const auto MF = MMIWP->getMMI().getMachineFunction(F);
-      if (MF != nullptr) {
-        MF->dump();
-      } 
-    } 
+    for (auto &IKBB : *IKMF) {
+      if (IKBB.getName() != "call_to_hook")
+        continue;
+      
+      MIRBuilder = llvm::BuildMI(IKBB, IKBB.begin(), llvm::DebugLoc(),
+                                 IKInstInfo->get(llvm::AMDGPU::S_WAITCNT))
+                                .addImm(0);
+      MIRBuilder = llvm::BuildMI(IKBB, IKBB.end(), llvm::DebugLoc(),
+                                 IKInstInfo->get(llvm::AMDGPU::S_WAITCNT))
+                                .addImm(0); // for some reason this second waitcnt got placed AFTER the IK's endpgm
+      // I'm pretty sure this should actually be non-pseudo ver. in the enum
+      // IKInstInfo->get(llvm::AMDGPU::S_WAITCNT_vi)
+      // Also need to use a different value for this immediate
+    }
+    
+    llvm::outs() << "     > Dump instrumentation function's MIR representation\n";
+    IKMF->dump();
 
-    // // Lift the instrumentation function's symbol and add it to the compilation
-    // // module
+    // Lift the instrumentation function's symbol and add it to the compilation
+    // module
     auto IFLSI = luthier::CodeLifter::instance().liftSymbolAndAddToModule(
         *IFunctionSymbol, Module, MMI);
     LUTHIER_RETURN_ON_ERROR(IFLSI.takeError());
-    
-    auto &CalleeMF = IFLSI->getMFofSymbol();
-    auto &CalleeFunction = CalleeMF.getFunction();
-    // auto CalleeMF = MMIWP->getMMI().getMachineFunction(*MK);
-    // auto CalleeFunction = MK;
    
     auto MCInstInfo = MMI.getTarget().getMCInstrInfo();
     auto ToBeInstrumentedMF = IPointMI->getParent()->getParent();
-    auto TRI = ToBeInstrumentedMF->getSubtarget<llvm::GCNSubtarget>()
-                   .getRegisterInfo();
+    // auto TRI = ToBeInstrumentedMF->getSubtarget<llvm::GCNSubtarget>()
+    //                .getRegisterInfo();
+    
     // Start of instrumentation logic
     // Spill the registers to the stack before calling the instrumentation
     // function
     llvm::outs() << "\n=====> Start of Instrumentation Logic:\n"
-                 << "       Split machine basic block of IPointMI \n";
+                 <<   "     > Split machine basic block of IPointMI \n";
 
-    llvm::MachineBasicBlock *NewMBB = 
-        ToBeInstrumentedMF->CreateMachineBasicBlock(IPointMBB->getBasicBlock());
-    // llvm::MachineFunction::iterator MBBIT(IPointMBB);
-    // ToBeInstrumentedMF->insert(MBBIT, NewMBB);
-    ToBeInstrumentedMF->push_back(NewMBB);
     
-    IPointMI->getParent()->getParent()->getProperties().reset(
-        llvm::MachineFunctionProperties::Property::NoVRegs);
-    llvm::MachineInstrBuilder Builder;
-    // auto IPointMBB = IPointMI->getParent();
+    // IPointMI->getParent()->getParent()->getProperties().reset(
+    //     llvm::MachineFunctionProperties::Property::NoVRegs);
+    // llvm::MachineInstrBuilder MIRBuilder;
     
-    auto PCReg = IPointMBB->getParent()->getRegInfo().createVirtualRegister(
-        &llvm::AMDGPU::SReg_64RegClass);
+    // auto PCReg = IPointMBB->getParent()->getRegInfo().createVirtualRegister(
+    //     &llvm::AMDGPU::SReg_64RegClass);
    
     auto InstPoint =
         IPoint == INSTR_POINT_BEFORE ? IPointMI : IPointMI->getNextNode();
+  
+    // TODO: Call this function instead of manually splitting
+    // NOTE: Need to freeze reserved regs to use this
+    // IPointMBB->splitAt(*InstPoint);
 
-    NewMBB->splice(NewMBB->end(), IPointMBB, 
+    llvm::MachineBasicBlock *IPointBlockSplit = 
+        ToBeInstrumentedMF->CreateMachineBasicBlock(IPointMBB->getBasicBlock());
+    ToBeInstrumentedMF->push_back(IPointBlockSplit);
+    IPointBlockSplit->splice(IPointBlockSplit->end(), IPointMBB, 
                    llvm::MachineBasicBlock::iterator(InstPoint), IPointMBB->end());
-    // NewMBB->transferSuccessors(IPointMBB);
-    // IPointMBB->addSuccessor(NewMBB);
-
+    
     ToBeInstrumentedMF->dump();
 
+    llvm::outs() << "     > Insert call to instrumentation function into compilation module\n";
+    for (auto &IKBB : *IKMF) {
+      if (IKBB.getName() != "call_to_hook")
+        continue;
+    
+      llvm::MachineBasicBlock *IFuncMBB = 
+          ToBeInstrumentedMF->CreateMachineBasicBlock(IKBB.getBasicBlock());
+      ToBeInstrumentedMF->insert(llvm::MachineFunction::iterator(IPointBlockSplit), IFuncMBB);
+      IPointMBB->addSuccessor(IFuncMBB);
+      IFuncMBB->addSuccessor(IPointBlockSplit);
+      
+      // for (auto &IKMI : IKBB) {
+      //   if (IKMI.getOpcode() == llvm::AMDGPU::S_SETPC_B64_return)
+      //     continue;
+      //   
+      //   // create a new MI by copying the operands from the instrumentation 
+      //   // module's instructions
+      //   // This is the wrong overload for instructions that need a destination reg
+      //   MIRBuilder = llvm::BuildMI(*IFuncMBB, IFuncMBB->end(), llvm::DebugLoc(),
+      //                           MCInstInfo->get(IKMI.getOpcode()));
+      //   MIRBuilder->dump();
+      //   for (auto &Op : MIRBuilder->operands()) {
+      //     Op.dump();
+      //   }
+      // }
+    }
+    ToBeInstrumentedMF->dump();
 
-    // Builder = llvm::BuildMI(*IPointMBB, InstPoint, llvm::DebugLoc(),
-    //                         MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
-    //               .addImm(0)
-    //               .addImm(0);
 /*
-    Builder =
-        llvm::BuildMI(*IPointMBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+    MIRBuilder = llvm::BuildMI(*IPointMBB, InstPoint, llvm::DebugLoc(),
+                            MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
+                  .addImm(0)
+                  .addImm(0);
+    MIRBuilder =
+        llvm::BuildMI(*IPointMBB, MIRBuilder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::SI_PC_ADD_REL_OFFSET))
             .addDef(PCReg)
             .addGlobalAddress(&CalleeFunction, 0,
@@ -506,14 +508,14 @@ CodeGenerator::insertFunctionCalls(
 
     auto SaveReg = IPointMBB->getParent()->getRegInfo().createVirtualRegister(
         &llvm::AMDGPU::SGPR_128RegClass);
-    Builder =
-        llvm::BuildMI(*IPointMBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+    MIRBuilder =
+        llvm::BuildMI(*IPointMBB, MIRBuilder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::COPY))
             .addDef(SaveReg)
             .addReg(llvm::AMDGPU::PRIVATE_RSRC_REG);
 
-    Builder =
-        llvm::BuildMI(*IPointMBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+    MIRBuilder =
+        llvm::BuildMI(*IPointMBB, MIRBuilder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::COPY))
             .addDef(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3)
             .addReg(SaveReg);
@@ -521,8 +523,8 @@ CodeGenerator::insertFunctionCalls(
     auto RegMask =
         TRI->getCallPreservedMask(CalleeMF, CalleeFunction.getCallingConv());
 
-    Builder =
-        llvm::BuildMI(*IPointMBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
+    MIRBuilder =
+        llvm::BuildMI(*IPointMBB, MIRBuilder.getInstr()->getNextNode(), llvm::DebugLoc(),
                       MCInstInfo->get(llvm::AMDGPU::SI_CALL))
             .addReg(llvm::AMDGPU::SGPR30_SGPR31, llvm::RegState::Define)
             .addReg(PCReg, llvm::RegState::Kill)
@@ -530,43 +532,16 @@ CodeGenerator::insertFunctionCalls(
             .add(llvm::MachineOperand::CreateReg(
                 llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, false, true))
             .addRegMask(RegMask);
+
+
+    llvm::outs() << "\n       Insert Adjust callstack up \n"; 
+    MIRBuilder =
+        llvm::BuildMI(*IPointMBB, MIRBuilder.getInstr()->getNextNode(), llvm::DebugLoc(),
+                      MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
+            .addImm(0)
+            .addImm(0);
+
 */
-
-    
-    llvm::outs() << "       Insert call to IFunc into compilation module\n";
-    const auto MKMF = MMIWP->getMMI().getMachineFunction(*MK);
-    for (auto &MKBB : *MKMF) {
-      if (MKBB.getName() == "InstruPoint") {
-        llvm::MachineBasicBlock *IFuncMBB = 
-            ToBeInstrumentedMF->CreateMachineBasicBlock(MKBB.getBasicBlock());
-        llvm::MachineFunction::iterator MBBIT(NewMBB);
-        ToBeInstrumentedMF->insert(MBBIT, IFuncMBB);
-
-        for (auto &MKMI : MKBB) {
-          // create a new MI but copy the operands from the instrumentation module's instructions
-
-          // llvm::MachineInstr *NewMI = MKMF->CloneMachineInstr(&MKMI);
-          llvm::MachineInstr *NewMI = ToBeInstrumentedMF->CloneMachineInstr(&MKMI);
-          NewMI->dump();
-          // IFuncMBB->insert(IFuncMBB->end(), NewMI);
-        }
-        IPointMBB->addSuccessor(IFuncMBB);
-        IFuncMBB->addSuccessor(NewMBB);
-        
-        // IFuncMBB->splice(llvm::MachineBasicBlock::iterator(InstPoint), &MKBB,
-        //             MKBB.begin(), MKBB.end());
-        // IFuncMBB->splice(IFuncMBB->begin(), &MKBB, MKBB.begin(), MKBB.end());
-      }
-    }
-
-
-    // llvm::outs() << "\n       Insert Adjust callstack up \n"; 
-    // Builder =
-    //     llvm::BuildMI(*IPointMBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
-    //                   MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
-    //         .addImm(0)
-    //         .addImm(0);
-
     //    IPointMBB->getParent()->dump();
     //                                    .addDef(llvm::AMDGPU::SGPR4_SGPR5,
     //                                    llvm::RegState::Define);
@@ -574,19 +549,18 @@ CodeGenerator::insertFunctionCalls(
     //      llvm::SIInstrInfo::MO_REL32); MIB.addGlobalAddress(InstLLVMFunction,
     //      0, llvm::SIInstrInfo::MO_REL32 + 1);
     //
-    //      Builder = BuildMI(IPointMBB, I, llvm::DebugLoc(),
+    //      MIRBuilder = BuildMI(IPointMBB, I, llvm::DebugLoc(),
     //                        MCInstInfo->get(llvm::AMDGPU::SI_CALL_ISEL))
     //                    .addReg(llvm::AMDGPU::SGPR4_SGPR5,
     //                            llvm::RegState::Kill).addGlobalAddress(InstLLVMFunction);
-    ////      Builder; // =
+    ////      MIRBuilder; // =
     //      BuildMI(IPointMBB, I, llvm::DebugLoc(),
     //              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
     //          .addImm(0)
     //          .addImm(0);
+
     llvm::outs() << "=====> End of Instrumentation Logic\n"
-                 << "       Dump new App Machine Function\n";
-                 // << "       Dump new IPoint Basic Block\n";
-    // IPointMBB->dump();
+                 << "     > Dump new App Machine Function\n";
     ToBeInstrumentedMF->dump();
 
     Out.push_back(*IFLSI);
