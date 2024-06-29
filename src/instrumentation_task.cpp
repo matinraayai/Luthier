@@ -13,11 +13,13 @@ llvm::Error luthier::InstrumentationTask::insertHookAt(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(SIM != nullptr));
   auto HookName = SIM->convertHookHandleToHookName(Hook);
   LUTHIER_RETURN_ON_ERROR(HookName.takeError());
-  HookInsertionTasks.insert(
-      {&MI, hook_insertion_task_descriptor{
-                *HookName, &MI, IPoint,
-                llvm::SmallVector<std::pair<ArgType, uint64_t>>(Args),
-                RemoveInstr}});
+  if (!HookInsertionTasks.contains(&MI)) {
+    HookInsertionTasks.insert(
+        {&MI, llvm::SmallVector<hook_insertion_task_descriptor, 1>()});
+  }
+  HookInsertionTasks[&MI].emplace_back(
+      *HookName, &MI, IPoint,
+      llvm::SmallVector<std::pair<ArgType, uint64_t>>(Args), RemoveInstr);
   return llvm::Error::success();
 }
 

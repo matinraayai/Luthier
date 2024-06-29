@@ -57,7 +57,8 @@ public:
     bool RemoveInstruction;
   } hook_insertion_task_descriptor;
 
-  typedef llvm::DenseMap<llvm::MachineInstr *, hook_insertion_task_descriptor>
+  typedef llvm::DenseMap<llvm::MachineInstr *,
+                         llvm::SmallVector<hook_insertion_task_descriptor, 1>>
       hook_insertion_tasks;
 
   typedef std::function<llvm::Error(InstrumentationTask &,
