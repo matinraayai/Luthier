@@ -46,32 +46,39 @@ void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
 
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         auto &DispatchPacket = Packet.asKernelDispatch();
-        auto KD = luthier::KernelDescriptor::fromKernelObject(
-            DispatchPacket.kernel_object);
-        auto Symbol = KD->getHsaExecutableSymbol();
-        if (auto Err = Symbol.takeError())
-          llvm::report_fatal_error(
-              "Failed to get the Symbol associated with the kernel descriptor");
-        if (!llvm::cantFail(isKernelInstrumented(*Symbol))) {
-          auto LiftedSymbol = luthier::liftSymbol(*Symbol);
-          if (auto Err = LiftedSymbol.takeError())
-            llvm::report_fatal_error(std::move(Err), true);
-          // insert a hook after the first instruction of each basic block
-          auto &[Module, MMIWP, LSI] = *LiftedSymbol;
-          InstrumentationTask IT;
-          for (auto &F : *Module) {
-            auto &MF = *(MMIWP->getMMI().getMachineFunction(F));
-            auto &MBB = *MF.begin();
-            auto &MI = *MBB.begin();
-            IT.insertCallTo(MI, LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
-                            INSTR_POINT_AFTER);
-          }
+        auto KernelSymbol = luthier::KernelDescriptor::fromKernelObject(
+                                DispatchPacket.kernel_object)
+                                ->getHsaExecutableSymbol();
 
-          if (auto Res = luthier::instrument(std::move(Module),
-                                             std::move(MMIWP), LSI, IT))
+        if (auto Err = KernelSymbol.takeError())
+          llvm::report_fatal_error(std::move(Err), true);
+        if (!llvm::cantFail(isKernelInstrumented(*KernelSymbol,
+                                                 "kernel instrumentAndLoad"))) {
+          auto LiftedKernel = luthier::lift(*KernelSymbol);
+          if (auto Err = LiftedKernel.takeError())
+            llvm::report_fatal_error(std::move(Err), true);
+
+          // insert a hook after the first instruction of each basic block
+          InstrumentationTask IT(
+              "kernel instrument",
+              [](InstrumentationTask &IT,
+                 LiftedRepresentation &LR) -> llvm::Error {
+                for (auto &[FuncHSAHandle, MF] : LR.functions()) {
+                  auto &MBB = *MF->begin();
+                  auto &MI = *MBB.begin();
+                  IT.insertHookAt(MI,
+                                  LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
+                                  INSTR_POINT_AFTER);
+                }
+                return llvm::Error::success();
+              });
+
+          if (auto Res =
+                  luthier::instrumentAndLoad(*KernelSymbol, *LiftedKernel, IT))
             llvm::report_fatal_error(std::move(Res), true);
         }
-        if (auto Res = luthier::overrideWithInstrumented(DispatchPacket))
+        if (auto Res = luthier::overrideWithInstrumented(
+                DispatchPacket, "kernel instrumentAndLoad"))
           llvm::report_fatal_error(std::move(Res), true);
       }
     }
