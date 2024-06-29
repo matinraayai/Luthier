@@ -35,10 +35,10 @@ typedef unsigned long address_t;
 
 /// Phase of the API/Event callback
 enum ApiEvtPhase : unsigned short {
-  /// On entry to API/Event
-  API_EVT_PHASE_ENTER = 0,
-  /// On exit to API/Event
-  API_EVT_PHASE_EXIT = 1
+  /// Before API/Event occurs
+  API_EVT_PHASE_BEFORE = 0,
+  /// After API/Event has occurred
+  API_EVT_PHASE_AFTER = 1
 };
 
 /// Points to before/after an \c llvm::MachineInstr

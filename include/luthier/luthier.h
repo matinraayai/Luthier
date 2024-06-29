@@ -21,6 +21,28 @@
 
 namespace luthier {
 
+/// A function that will be called before and after Luthier's sub-systems are
+/// initialized, with timing indicated by \p Phase\n
+/// Use this function to print a banner for the tool, parse arguments,
+/// or (only after init) setup different types of Luthier callbacks\n
+/// No HSA or HIP function should be used inside this function, as at this
+/// point non of them would likely to be initialized\n
+/// This function is required to be implemented by tools
+/// \param Phase \c API_EVT_PHASE_BEFORE when called before tool initialization
+/// or \c API_EVT_PHASE_AFTER when called after tool initialization
+void atToolInit(ApiEvtPhase Phase);
+
+/// A function that will be called before and after Luthier's sub-systems are
+/// destroyed and finalized\n
+/// Use this function to print out/process results that are already on the host,
+/// and clean up after the tool\n
+/// No HSA or HIP function should be used inside this function, as at this
+/// point non of them are likely to be initialized\n
+/// This function is required to be implemented by tools
+/// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
+///// or \c API_EVT_PHASE_AFTER when called after tool finalization
+void beforeFinalization(ApiEvtPhase Phase);
+
 namespace hsa {
 
 //===----------------------------------------------------------------------===//
@@ -31,7 +53,7 @@ namespace hsa {
  * A callback made by Luthier during its initialization, after the HSA API
  * tables are loaded and captured.
  */
-/// A
+///
 void atHsaApiTableLoad();
 
 /**
@@ -51,7 +73,7 @@ void enableAllHsaCallbacks();
 void disableAllHsaCallbacks();
 
 //===----------------------------------------------------------------------===//
-//  Using HSA functionality on the tool side
+//  HSA functionality on the tool side
 //===----------------------------------------------------------------------===//
 
 /// Use this function to call HSA functions without it being intercepted.
@@ -59,10 +81,14 @@ void disableAllHsaCallbacks();
 /// the original, un-intercepted version of the HSA API functions
 const HsaApiTable &getHsaApiTable();
 
-///
-/// \return
+/// Use the AMD vendor loader API only to query segment descriptors
+/// \return a reference to the original AMD
 const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
 
+/// Returns the executable this \p Symbol belongs to
+/// Use this instead of the Loader API
+/// \param Symbol
+/// \return
 llvm::Expected<hsa_executable_t>
 getExecutableOfSymbol(hsa_executable_symbol_t Symbol);
 
@@ -107,19 +133,6 @@ lift(hsa_executable_symbol_t Kernel);
 llvm::Expected<const luthier::LiftedRepresentation &>
 lift(hsa_executable_t Executable);
 
-/// Clones the passed <tt>LR</tt> and returns a unique pointer to the cloned
-/// representation.\n
-/// The cloned representation will share the same thread-safe context as \p
-/// LR.\n This function is primarily called if the tool writer wants to edit the
-/// lifted representation directly using the MachineInstrBuilder API in LLVM.\n
-/// It is not recommended to retain this pointer in between callbacks, as the
-/// lifted primitive's backing executable get destroyed.
-/// \param [in] LR the \c LiftedRepresentation
-/// \return a unique pointer to the cloned \c LiftedRepresentation, or an
-/// \c llvm::Error describing the issue encountered
-llvm::Expected<std::unique_ptr<LiftedRepresentation>>
-cloneRepresentation(const LiftedRepresentation &LR);
-
 /// Overrides the kernel object field of the Packet with its instrumented
 /// version under the given \p Preset, forcing HSA to launch the
 /// instrumented version instead\n Modifies the rest of the launch
@@ -137,12 +150,30 @@ cloneRepresentation(const LiftedRepresentation &LR);
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                                      llvm::StringRef Preset);
 
-llvm::Error instrument(hsa_executable_symbol_t Kernel,
-                       const LiftedRepresentation &LR,
-                       luthier::InstrumentationTask &ITask);
+/// Instruments the <tt>Kernel</tt>'s lifted representation \p LR by applying
+/// the instrumentation task <tt>ITask</tt> to it.\n
+/// After instrumentation, loads the instrumented code onto the same
+/// device as the \p Kernel
+/// \param Kernel the kernel that's about to be instrumented
+/// \param LR the lifted representation of the \p Kernel
+/// \param ITask the instrumentation task, describing the instrumentation to
+/// be performed on the <tt>kernel</tt>'s <tt>LR</t>
+/// \return an \c llvm::Error describing if the operation succeeded or failed
+llvm::Error instrumentAndLoad(hsa_executable_symbol_t Kernel,
+                              const LiftedRepresentation &LR,
+                              InstrumentationTask &ITask);
 
-llvm::Error instrument(hsa_executable_t Exec, const LiftedRepresentation &LR,
-                       luthier::InstrumentationTask &ITask);
+/// Instruments the <tt>Exec</tt>'s lifted representation \p LR by applying
+/// the instrumentation task <tt>ITask</tt> to it.\n
+/// After instrumentation, loads the instrumented code onto the same device
+/// as the \p Exec
+/// \param Exec
+/// \param LR
+/// \param ITask
+/// \return
+llvm::Error instrumentAndLoad(hsa_executable_t Exec,
+                              const LiftedRepresentation &LR,
+                              InstrumentationTask &ITask);
 
 /// Checks if the \p Kernel is instrumented under the given \p Preset or not
 /// \param [in] Kernel an \c hsa_executable_symbol_t of \c KERNEL type

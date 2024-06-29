@@ -16,6 +16,20 @@ LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
 
 namespace luthier {
 
+void atToolInit(ApiEvtPhase Phase) {
+  if (Phase == API_EVT_PHASE_BEFORE) {
+    llvm::outs() << "Kernel instrument tool is launching.\n";
+  } else {
+    hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
+  }
+
+}
+
+void beforeFinalization(ApiEvtPhase Phase) {
+  if (Phase == API_EVT_PHASE_AFTER)
+    llvm::outs() << "Kernel Instrument Tool is terminating!\n";
+}
+
 void hsa::atHsaApiTableLoad() {
   llvm::outs() << "Kernel Instrument Tool is launching.\n";
   hsa::enableHsaOpCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
@@ -31,7 +45,7 @@ void hsa::atHsaApiTableUnload() {
                << llvm::to_address(
                       reinterpret_cast<uint64_t *>(&__luthier_reserved))
                << "\n";
-  llvm::outs() << "Kernel Instrument Tool is terminating!\n";
+
 }
 
 void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
@@ -52,8 +66,8 @@ void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
 
         if (auto Err = KernelSymbol.takeError())
           llvm::report_fatal_error(std::move(Err), true);
-        if (!llvm::cantFail(isKernelInstrumented(*KernelSymbol,
-                                                 "kernel instrumentAndLoad"))) {
+        if (!llvm::cantFail(
+                isKernelInstrumented(*KernelSymbol, "kernel instrument"))) {
           auto LiftedKernel = luthier::lift(*KernelSymbol);
           if (auto Err = LiftedKernel.takeError())
             llvm::report_fatal_error(std::move(Err), true);
@@ -66,9 +80,10 @@ void hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData, luthier::ApiEvtPhase Phase,
                 for (auto &[FuncHSAHandle, MF] : LR.functions()) {
                   auto &MBB = *MF->begin();
                   auto &MI = *MBB.begin();
-                  IT.insertHookAt(MI,
-                                  LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
-                                  INSTR_POINT_AFTER);
+                  if (auto Error = IT.insertHookAt(
+                          MI, LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
+                          INSTR_POINT_AFTER))
+                    return Error;
                 }
                 return llvm::Error::success();
               });
