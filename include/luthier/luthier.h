@@ -41,42 +41,69 @@ void atToolInit(ApiEvtPhase Phase);
 /// This function is required to be implemented by tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
 ///// or \c API_EVT_PHASE_AFTER when called after tool finalization
-void beforeFinalization(ApiEvtPhase Phase);
+void atFinalization(ApiEvtPhase Phase);
 
 namespace hsa {
 
 //===----------------------------------------------------------------------===//
-// HSA callback functions
+// HSA/HIP callback functions
 //===----------------------------------------------------------------------===//
 
-/**
- * A callback made by Luthier during its initialization, after the HSA API
- * tables are loaded and captured.
- */
-///
-void atHsaApiTableLoad();
+/// If called, performs the \p Callback before and after the HSA API table has
+/// been captured by Luthier\n
+/// If the \p Callback is called during <tt>API_EVT_PHASE_AFTER</tt>, it
+/// is allowed to use HSA functions via <tt>luthier::hsa::getHsaApiTable</tt>
+/// \param Callback the function to be called before/after the HSA API tables
+/// has been captured by Luthier
+void setAtApiTableCaptureEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback);
 
-/**
- * A callback made by Luthier during its finalization, before the HSA API tables
- * are unloaded and released.
- */
-void atHsaApiTableUnload();
+/// If called, performs the \p Callback before and after each HSA API or event
+/// being actively captured by Luthier\n
+/// \param Callback the function to be called before/after each HSA API or event
+/// being actively captured by Luthier
+/// \sa hsa_trace_api.h, enableHsaApiEvtIDCallback, disableHsaApiEvtIDCallback,
+/// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
+void setAtHsaApiEvtCallback(
+    const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback);
 
-void atHsaEvt(ApiEvtArgs *CBData, ApiEvtPhase Phase, ApiEvtID ApiID);
+/// Enables capturing of the given \p Op and performs a HSA API/EVT
+/// callback everytime it is reached in the application
+/// \param ApiID the API/EVT ID to be captured
+/// \sa setAtHsaApiEvtCallback, disableHsaApiEvtIDCallback,
+/// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
+void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 
-void enableHsaOpCallback(hsa::ApiEvtID Op);
+/// Disables capturing of the given HSA \p Op and its callback
+/// \param ApiID the API/EVT to stop capturing
+/// \sa setAtHsaApiEvtCallback, enableHsaApiEvtIDCallback,
+/// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
+void disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 
-void disableHsaOpCallback(hsa::ApiEvtID Op);
+/// Convenience method for enabling all HSA API/EVT IDs capture and callbacks
+void enableAllHsaApiEvtCallbacks();
 
-void enableAllHsaCallbacks();
-
+/// Convenience method for disabling all HSA API/EVT
 void disableAllHsaCallbacks();
 
+} // namespace hsa
+
+/// If called, calls the \p Callback function before/after Luthier finalizes
+/// and releases the captured HIP/HSA API tables\n
+/// During \c API_EVT_PHASE_BEFORE of the \p Callback is the tool's last chance
+/// to perform calls to HIP/HSA functions
+/// \param Callback the function to be called before/after the HSA/HIP API tables
+/// are being released by Luthier
+void setAtApiTableUnloadEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback);
+
+namespace hsa {
+
 //===----------------------------------------------------------------------===//
-//  HSA functionality on the tool side
+//  HSA/HIP functionality on the tool side
 //===----------------------------------------------------------------------===//
 
-/// Use this function to call HSA functions without it being intercepted.
+/// Use this function to call HSA functions without it being intercepted
 /// \return a reference to the original HSA API table i.e. the table containing
 /// the original, un-intercepted version of the HSA API functions
 const HsaApiTable &getHsaApiTable();
@@ -86,7 +113,8 @@ const HsaApiTable &getHsaApiTable();
 const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
 
 /// Returns the executable this \p Symbol belongs to
-/// Use this instead of the Loader API
+/// Use this instead of the Loader API since Luthier internally caches the
+/// mapping between a symbol and its executable
 /// \param Symbol
 /// \return
 llvm::Expected<hsa_executable_t>
@@ -99,6 +127,10 @@ namespace hip {
 const HipCompilerDispatchTable &getSavedCompilerTable();
 
 } // namespace hip
+
+//===----------------------------------------------------------------------===//
+//  Inspection API
+//===----------------------------------------------------------------------===//
 
 /// Disassembles the Func into a list of <tt>hsa::Instr</tt>.\n
 /// Disassembly only occurs when this function is called on the function for the
@@ -291,16 +323,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 //// * they have been inserted. */
 ////
 
-///**
-// *
-// * \param instr
-// * \param dev_func
-// * \param point
-// */
-// luthier_status_t luthier_insert_call(luthier_instruction_t instr,
-//                                     const void *dev_func,
-//                                     luthier_ipoint_t point);
-
 /////* Add int32_t argument to last injected call, value of the predicate for
 /// this / * instruction */ /
 /// void nvbit_add_call_arg_pred_val(const Instr*
@@ -349,8 +371,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 ////void nvbit_add_call_arg_mref_addr64(const Instr* instr, int id = 0,
 ////                                    bool is_variadic_arg = false);
 ////
-/* Remove the original instruction */
-// void luthier_remove_orig(luthier_instruction_t instr);
 
 ////
 /////*********************************************************************

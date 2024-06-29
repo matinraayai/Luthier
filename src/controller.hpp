@@ -1,12 +1,15 @@
 #ifndef CONTROLLER_HPP
 #define CONTROLLER_HPP
 
+#include "luthier/types.h"
 #include "singleton.hpp"
+
+#include <functional>
 
 namespace luthier {
 class CodeGenerator;
 
-class CodeObjectManager;
+class ToolExecutableManager;
 
 class CodeLifter;
 
@@ -26,12 +29,14 @@ class Platform;
 
 class Controller : public Singleton<Controller> {
 private:
-  // Controller manages its own lifetime
+  /// Controller manages its own lifetime
   static Controller *C;
+
+  // All other singletons
 
   CodeGenerator *CG{nullptr};
 
-  CodeObjectManager *COM{nullptr};
+  ToolExecutableManager *COM{nullptr};
 
   CodeLifter *CL{nullptr};
 
@@ -45,14 +50,39 @@ private:
 
   hsa::Platform *HsaPlatform{nullptr};
 
-private:
-  __attribute__((constructor)) static void init();
+  // Stored callbacks
+  std::function<void(ApiEvtPhase)> AtHSAApiTableCaptureEvtCallback{
+      [](ApiEvtPhase) {}};
 
-  __attribute__((destructor)) static void finalize();
+  std::function<void(ApiEvtPhase)> AtApiTableReleaseEvtCallback{
+      [](ApiEvtPhase) {}};
+
+  __attribute__((constructor, used)) static void init();
+
+  __attribute__((destructor, used)) static void finalize();
 
   Controller();
 
   ~Controller();
+
+public:
+  void setAtHSAApiTableCaptureEvtCallback(
+      const std::function<void(ApiEvtPhase)> &CB) {
+    AtHSAApiTableCaptureEvtCallback = CB;
+  }
+
+  const std::function<void(ApiEvtPhase)> &getAtHSAApiTableCaptureEvtCallback() {
+    return AtHSAApiTableCaptureEvtCallback;
+  }
+
+  void
+  setAtApiTableReleaseEvtCallback(const std::function<void(ApiEvtPhase)> &CB) {
+    AtApiTableReleaseEvtCallback = CB;
+  }
+
+  const std::function<void(ApiEvtPhase)> &getAtApiTableReleaseEvtCallback() {
+    return AtApiTableReleaseEvtCallback;
+  }
 };
 } // namespace luthier
 

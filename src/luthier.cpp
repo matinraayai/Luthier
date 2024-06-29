@@ -5,7 +5,7 @@
 /// \file
 /// This file contains the implementation of functions declared over at
 /// luthier.h.
-/// For the controller logic of Luthier, \see luthier::Controller
+/// For the controller logic of Luthier, see <tt>luthier::Controller</tt>.
 //===----------------------------------------------------------------------===//
 #include <luthier/luthier.h>
 
@@ -37,6 +37,21 @@ const HipCompilerDispatchTable &getSavedCompilerTable() {
 
 namespace hsa {
 
+void setAtApiTableCaptureEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback) {
+  Controller::instance().setAtHSAApiTableCaptureEvtCallback(Callback);
+}
+
+void setAtHsaApiEvtCallback(
+    const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback) {
+  hsa::Interceptor::instance().setUserCallback(Callback);
+}
+
+void setAtApiTableReleaseEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback) {
+  Controller::instance().setAtApiTableReleaseEvtCallback(Callback);
+}
+
 const HsaApiTable &getHsaApiTable() {
   return hsa::Interceptor::instance().getSavedHsaTables().root;
 }
@@ -45,15 +60,15 @@ const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable() {
   return hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
 }
 
-void enableHsaOpCallback(hsa::ApiEvtID Op) {
-  hsa::Interceptor::instance().enableUserCallback(Op);
+void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
+  hsa::Interceptor::instance().enableUserCallback(ApiID);
 }
 
-void disableHsaOpCallback(hsa::ApiEvtID Op) {
-  hsa::Interceptor::instance().disableUserCallback(Op);
+void disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
+  hsa::Interceptor::instance().disableUserCallback(ApiID);
 }
 
-void enableAllHsaCallbacks() {
+void enableAllHsaApiEvtCallbacks() {
   hsa::Interceptor::instance().enableAllUserCallbacks();
 }
 
@@ -82,15 +97,17 @@ lift(hsa_executable_t Executable) {
   return CodeLifter::instance().lift(hsa::Executable{Executable});
 }
 
-llvm::Error instrument(hsa_executable_symbol_t Kernel,
-                       const LiftedRepresentation &LR,
-                       luthier::InstrumentationTask &ITask) {
+llvm::Error instrumentAndLoad(hsa_executable_symbol_t Kernel,
+                              const LiftedRepresentation &LR,
+                              luthier::InstrumentationTask &ITask) {
+  auto KernelWrapper = hsa::ExecutableSymbol::fromHandle(Kernel);
+  LUTHIER_RETURN_ON_ERROR(KernelWrapper.takeError());
   return CodeGenerator::instance().instrument(LR, ITask);
 }
 
-llvm::Error instrument(hsa_executable_t Exec,
-                       const LiftedRepresentation &LR,
-                       luthier::InstrumentationTask &ITask) {
+llvm::Error instrumentAndLoad(hsa_executable_t Exec,
+                              const LiftedRepresentation &LR,
+                              luthier::InstrumentationTask &ITask) {
   return CodeGenerator::instance().instrument(LR, ITask);
 }
 
@@ -125,15 +142,6 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
   Packet.private_segment_size = InstrumentedKernelMD->PrivateSegmentFixedSize;
 
   return llvm::Error::success();
-}
-llvm::Expected<std::unique_ptr<LiftedRepresentation<hsa_executable_symbol_t>>>
-cloneRepresentation(const LiftedRepresentation<hsa_executable_symbol_t> &LR) {
-  return CodeLifter::instance().cloneRepresentation<hsa_executable_symbol_t>(
-      LR);
-}
-llvm::Expected<std::unique_ptr<LiftedRepresentation<hsa_executable_t>>>
-luthier::cloneRepresentation(const LiftedRepresentation<hsa_executable_t> &LR) {
-  return CodeLifter::instance().cloneRepresentation<hsa_executable_t>(LR);
 }
 
 } // namespace luthier
