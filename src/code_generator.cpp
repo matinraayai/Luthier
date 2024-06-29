@@ -376,6 +376,16 @@ CodeGenerator::insertFunctionCalls(
     TM.setOptLevel(llvm::CodeGenOptLevel::Aggressive);
 
     auto MMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
+    // for (auto &F : **InstrumentationModule) {
+    //   auto MF = MMIWP->getMMI().getMachineFunction(F);
+    //   auto &MRI = MF->getRegInfo();
+    //   auto *TRI = MF->getSubtarget().getRegisterInfo();
+
+    //   // LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3);
+    //   // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
+    //   MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
+    //   MRI.freezeReservedRegs(*MF);
+    // }
 
     llvm::TargetLibraryInfoImpl TLII(
         llvm::Triple((*InstrumentationModule)->getTargetTriple()));
@@ -397,6 +407,7 @@ CodeGenerator::insertFunctionCalls(
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM.add(UsageAnalysis);
     TPC->setInitialized();
+
 
     llvm::outs() << "=====> Run codegen \n";
     PM.run(**InstrumentationModule); // Run all the passes
