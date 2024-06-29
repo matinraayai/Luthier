@@ -69,6 +69,15 @@ llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol) {
   return SymbolWrapper->getType();
 }
 
+llvm::Expected<hsa_executable_t>
+getExecutableOfSymbol(hsa_executable_symbol_t Symbol) {
+  auto SymbolWrapper = ExecutableSymbol::fromHandle(Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+  auto Exec = SymbolWrapper->getExecutable();
+  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
+  return Exec->asHsaType();
+}
+
 void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
   hsa::Interceptor::instance().enableUserCallback(ApiID);
 }

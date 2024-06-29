@@ -118,14 +118,16 @@ const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
 /// is safe to use with the HSA API; For symbols of type \c DEVICE_FUNCTION
 /// strictly use Luthier APIs
 /// \param Symbol the \c hsa_executable_symbol_t to be queried
-/// \return Type of symbol
+/// \return Type of symbol on success, an \c llvm::Error in case the \c Symbol
+/// is invalid
 llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol);
 
-/// Returns the executable this \p Symbol belongs to
+/// Returns the executable this \p Symbol belongs to\n
 /// Use this instead of the Loader API since Luthier internally caches the
 /// mapping between a symbol and its executable
-/// \param Symbol
-/// \return
+/// \param Symbol the \c hsa_executable_symbol_t being queried
+/// \return on success, returns the \c hsa_executable_t of <tt>Symbol</tt>; an
+/// \c llvm::Error if any issue is encountered during the process
 llvm::Expected<hsa_executable_t>
 getExecutableOfSymbol(hsa_executable_symbol_t Symbol);
 
