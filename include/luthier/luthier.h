@@ -122,6 +122,16 @@ const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
 /// is invalid
 llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol);
 
+/// Returns the name of the \p Symbol\n
+/// Use this instead of querying the \c HSA_EXECUTABLE_SYMBOL_INFO_NAME info
+/// using HSA; If the \p Symbol is of type \c KERNEL or \c VARIABLE, then it
+/// is safe to use with the HSA API; For symbols of type \c DEVICE_FUNCTION
+/// strictly use Luthier APIs
+/// \param Symbol the \c hsa_executable_symbol_t to be queried
+/// \return Name of the symbol on success, or an \c llvm::Error in case the
+/// \c Symbol is invalid
+llvm::Expected<llvm::StringRef> getSymbolName(hsa_executable_symbol_t Symbol);
+
 /// Returns the executable this \p Symbol belongs to\n
 /// Use this instead of the Loader API since Luthier internally caches the
 /// mapping between a symbol and its executable
@@ -140,6 +150,7 @@ getExecutableOfSymbol(hsa_executable_symbol_t Symbol);
 /// an \c llvm::Error
 llvm::Expected<std::optional<hsa_loaded_code_object_t>>
 getDefiningLoadedCodeObject(hsa_executable_symbol_t Symbol);
+
 
 } // namespace hsa
 
@@ -291,10 +302,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 //// *
 //// **********************************************************************/
 
-////
-/////* Allows to get a function name from its CUfunction */
-////const char* nvbit_get_func_name(CUcontext ctx, CUfunction f,
-////                                bool mangled = false);
 ////
 /////* Get line information for a particular instruction offset if available,
 //// * binary must be compiled with --generate-line-info   (-lineinfo) */

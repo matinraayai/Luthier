@@ -69,6 +69,12 @@ llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol) {
   return SymbolWrapper->getType();
 }
 
+llvm::Expected<llvm::StringRef> getSymbolName(hsa_executable_symbol_t Symbol) {
+  auto SymbolWrapper = ExecutableSymbol::fromHandle(Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+  return SymbolWrapper->getName();
+}
+
 llvm::Expected<hsa_executable_t>
 getExecutableOfSymbol(hsa_executable_symbol_t Symbol) {
   auto SymbolWrapper = ExecutableSymbol::fromHandle(Symbol);
