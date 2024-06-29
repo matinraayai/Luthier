@@ -90,7 +90,7 @@ void atToolInit(ApiEvtPhase Phase) {
   } else {
     hsa::enableHsaApiEvtIDCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
     hsa::setAtHsaApiEvtCallback(atHsaEvt);
-    setAtApiTableUnloadEvtCallback(atHsaApiTableUnload);
+    setAtApiTableReleaseEvtCallback(atHsaApiTableUnload);
   }
 }
 

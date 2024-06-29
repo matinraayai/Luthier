@@ -40,7 +40,7 @@ void atToolInit(ApiEvtPhase Phase);
 /// point non of them are likely to be initialized\n
 /// This function is required to be implemented by tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
-///// or \c API_EVT_PHASE_AFTER when called after tool finalization
+/// or \c API_EVT_PHASE_AFTER when called after tool finalization
 void atFinalization(ApiEvtPhase Phase);
 
 namespace hsa {
@@ -94,7 +94,7 @@ void disableAllHsaCallbacks();
 /// to perform calls to HIP/HSA functions
 /// \param Callback the function to be called before/after the HSA/HIP API tables
 /// are being released by Luthier
-void setAtApiTableUnloadEvtCallback(
+void setAtApiTableReleaseEvtCallback(
     const std::function<void(ApiEvtPhase)> &Callback);
 
 namespace hsa {
@@ -111,6 +111,15 @@ const HsaApiTable &getHsaApiTable();
 /// Use the AMD vendor loader API only to query segment descriptors
 /// \return a reference to the original AMD
 const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
+
+/// Returns the \c SymbolKind of the given \p Symbol\n
+/// Use this instead of querying the \c HSA_EXECUTABLE_SYMBOL_INFO_TYPE info
+/// using HSA; If the \p Symbol is of type \c KERNEL or \c VARIABLE, then it
+/// is safe to use with the HSA API; For symbols of type \c DEVICE_FUNCTION
+/// strictly use Luthier APIs
+/// \param Symbol the \c hsa_executable_symbol_t to be queried
+/// \return Type of symbol
+llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol);
 
 /// Returns the executable this \p Symbol belongs to
 /// Use this instead of the Loader API since Luthier internally caches the

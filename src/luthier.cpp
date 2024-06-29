@@ -46,11 +46,14 @@ void setAtHsaApiEvtCallback(
     const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback) {
   hsa::Interceptor::instance().setUserCallback(Callback);
 }
+} // namespace hsa
 
 void setAtApiTableReleaseEvtCallback(
     const std::function<void(ApiEvtPhase)> &Callback) {
   Controller::instance().setAtApiTableReleaseEvtCallback(Callback);
 }
+
+namespace hsa {
 
 const HsaApiTable &getHsaApiTable() {
   return hsa::Interceptor::instance().getSavedHsaTables().root;
@@ -58,6 +61,12 @@ const HsaApiTable &getHsaApiTable() {
 
 const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable() {
   return hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
+}
+
+llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol) {
+  auto SymbolWrapper = ExecutableSymbol::fromHandle(Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+  return SymbolWrapper->getType();
 }
 
 void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
