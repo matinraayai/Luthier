@@ -11,6 +11,7 @@
 #include <functional>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineInstr.h>
+#include <utility>
 
 namespace luthier {
 
@@ -39,7 +40,8 @@ public:
                          std::tuple<const void *, InstrPoint>>
       hook_insertion_tasks;
 
-  typedef std::function<llvm::Error(luthier::InstrumentationTask &)>
+  typedef std::function<llvm::Error(InstrumentationTask &,
+                                    LiftedRepresentation &)>
       mutator_func_t;
 
 private:
