@@ -131,10 +131,22 @@ llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol);
 llvm::Expected<hsa_executable_t>
 getExecutableOfSymbol(hsa_executable_symbol_t Symbol);
 
+/// Returns the loaded code object which defines the <tt>Symbol</tt>. If the
+/// \p Symbol is external (not defined by any l
+/// \param Symbol
+/// \return the \c hsa_loaded_code_object_t that defines <tt>Symbol</tt> if
+/// \p Symbol is not external; If the \p Symbol is external, returns
+/// <tt>std::nullopt</tt>; If an error is encountered during the process, returns
+/// an \c llvm::Error
+llvm::Expected<std::optional<hsa_loaded_code_object_t>>
+getDefiningLoadedCodeObject(hsa_executable_symbol_t Symbol);
+
 } // namespace hsa
 
 namespace hip {
 
+/// \return a const reference to the original HIP Compiler API table
+/// TODO: introduce thread-local temp callback disabling
 const HipCompilerDispatchTable &getSavedCompilerTable();
 
 } // namespace hip
@@ -279,8 +291,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 //// *
 //// **********************************************************************/
 
-/////* Get control flow graph (CFG) */
-////const CFG_t& nvbit_get_CFG(CUcontext ctx, CUfunction func);
 ////
 /////* Allows to get a function name from its CUfunction */
 ////const char* nvbit_get_func_name(CUcontext ctx, CUfunction f,
@@ -298,8 +308,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 /////* Allows to get PC address of the function */
 ////uint64_t nvbit_get_func_addr(CUfunction func);
 ////
-/////* Returns true if function is a kernel (i.e. __global__ ) */
-////bool nvbit_is_func_kernel(CUcontext ctx, CUfunction func);
 ////
 /////* Allows to get shmem base address from CUcontext
 //// * shmem range is [shmem_base_addr, shmem_base_addr+16MB) and

@@ -78,6 +78,17 @@ getExecutableOfSymbol(hsa_executable_symbol_t Symbol) {
   return Exec->asHsaType();
 }
 
+llvm::Expected<std::optional<hsa_loaded_code_object_t>>
+getDefiningLoadedCodeObject(hsa_executable_symbol_t Symbol) {
+  auto SymbolWrapper = ExecutableSymbol::fromHandle(Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+  auto DefiningLCO = SymbolWrapper->getDefiningLoadedCodeObject();
+  if (DefiningLCO.has_value())
+    return DefiningLCO->asHsaType();
+  else
+    return std::nullopt;
+}
+
 void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
   hsa::Interceptor::instance().enableUserCallback(ApiID);
 }
