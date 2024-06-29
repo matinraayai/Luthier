@@ -1,9 +1,5 @@
 #include "object_utils.hpp"
-
-#include "llvm/IR/DIBuilder.h"
 #include <llvm/ADT/StringExtras.h>
-#include <llvm/DebugInfo/DWARF/DWARFContext.h>
-#include <llvm/DebugInfo/DWARF/DWARFDie.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/AMDGPUMetadata.h>
 #include <llvm/Support/Error.h>
@@ -710,119 +706,6 @@ static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
   }
 
   return true;
-}
-
-// write a hello program, and compile with -g (for dwarf debug info) (hipcc)
-// run executable with
-// check llvm/tools/dwarfdump/*
-// Decision: parse once at beginning (DFS for all symbols) vs one by one!
-// helper method (need to test this, small chance it might loop forever)
-DWARFDie findSymbolDie(const llvm::DWARFDie die, llvm::StringRef &symbolName) {
-  auto tag = die.getTag();
-  // Check current DIE for symbol name
-  if (tag == dwarf::DW_TAG_subprogram ||
-      tag == dwarf::DW_TAG_variable &&
-          (*die.find(dwarf::DW_AT_name)->getAsCString() == symbolName)) {
-    return die;
-  } // try matching by line, and col number
-  // check children of the current DIE
-  for (const auto &child : die.children()) {
-    DWARFDie result = findSymbolDie(child, symbolName);
-    if (result.isValid()) {
-      return result;
-    }
-  }
-  // default die with invalid state
-  return DWARFDie();
-}
-
-// should I be returning an llvm::Expected<std::optional<llvm::DWARFDie>>
-llvm::Expected<llvm::DWARFDie> getDWARFDie(llvm::DWARFContext &ctx,
-                                           llvm::StringRef symbolName) {
-  for (const auto &compileUnit : ctx.compile_units()) {
-    if (llvm::DWARFDie unitDie = compileUnit->getUnitDIE(false)) {
-      auto dieCorrespondingToSymbol = findSymbolDie(unitDie, symbolName);
-      if (dieCorrespondingToSymbol.isValid()) {
-        return dieCorrespondingToSymbol;
-      }
-    }
-  }
-  // Return an invalid DWARFDie if not found
-  // For error throwing:
-  // LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-  //       DisAsm->getInstruction(Inst, InstSize, ReadBytes, CurrentAddress,
-  //                              llvm::nulls()) ==
-  //       llvm::MCDisassembler::Success));
-  return DWARFDie();
-}
-
-// Updates:
-// trouble adding the subroutine to the module
-// pass the module by reference
-llvm::Expected<DebugLoc> getDebugLoc(const llvm::DWARFDie &die,
-                                     llvm::Module module) {
-  auto line = die.find(dwarf::DW_AT_decl_line)->getAsUnsignedConstant().value();
-  auto col =
-      die.find(dwarf::DW_AT_decl_column)->getAsUnsignedConstant().value();
-  // llvm::DWARFCompileUnit * compileUnit = (llvm::DWARFCompileUnit
-  // *)die.getDwarfUnit(); // cast the I need to pass in a DICompileUnit (how do
-  // I get that?) -> needs to be resolved for more accurate debug info
-  llvm::DIBuilder dIBuilder(
-      module, true,
-      nullptr); // allowUnresolved = true (i don't really know what that means)
-  llvm::Metadata *mdScope = nullptr;
-  // // Determine the scope
-  if (auto dwarfScopeAttr = die.find(dwarf::DW_AT_start_scope)) {
-    const uint64_t mdScopeOffset = dwarfScopeAttr->getAsReference().value();
-    if (auto mdScopeDie = die.getDwarfUnit()->getDIEForOffset(mdScopeOffset)) {
-      if (mdScopeDie.isValid()) {
-        // if its a subprogram (func) or lexical block /scope ({})
-        // need to handle case where: ScopeDie.getTag() ==
-        // dwarf::DW_TAG_lexical_block
-        if (mdScopeDie.getTag() == dwarf::DW_TAG_subprogram) {
-          mdScope = dIBuilder.createFunction(
-              nullptr, mdScopeDie.getShortName(), StringRef(), nullptr,
-              mdScopeDie.getDeclLine(), nullptr, 0, DINode::FlagZero,
-              llvm::DISubprogram::SPFlagZero);
-          //
-          // module.getOrInsertFunction();
-          // need to add it to the module, but having trouble: signature
-          // mismatch (FunctionType vs DISubprogram*) -> FunctionCallee
-          // getOrInsertFunction (StringRef Name, FunctionType *T, AttributeList
-          // AttributeList)
-        } else if (mdScopeDie.getTag() ==
-                   dwarf::DW_TAG_file_type) { // else, if it's a file
-          mdScope = dIBuilder.createFile(
-              mdScopeDie.getShortName(),
-              mdScopeDie.getDeclFile(llvm::DILineInfoSpecifier::
-                                         FileLineInfoKind::RelativeFilePath));
-        }
-      }
-    }
-    // die -> component hsaExec
-    // map (hsaexec -> dwarfdie)
-  }
-
-  if (!mdScope) {
-    // Fallback to using the CU's file as the scope
-    auto compileUnit = die.getDwarfUnit()->getUnitDIE();
-    if (auto dwarfFileAttr = compileUnit.find(dwarf::DW_AT_name)) {
-      const char *fileShortName = compileUnit.getShortName();
-      if (!fileShortName) {
-        // return a default DebugLoc
-        // Instead, need to throw an Error (can do this by returning an
-        // Expected<DebugLoc>)
-        return DebugLoc();
-      }
-      mdScope = dIBuilder.createFile(
-          std::string(fileShortName),
-          compileUnit.getDeclFile(
-              llvm::DILineInfoSpecifier::FileLineInfoKind::
-                  RelativeFilePath)); // declFile, NEED TO get the directory and
-                                      // pass it to createFile
-    }
-  }
-  return llvm::DebugLoc(llvm::DILocation::get(line, col, mdScope)));
 }
 } // namespace luthier
 

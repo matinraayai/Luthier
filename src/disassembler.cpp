@@ -202,16 +202,16 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool inclu
       }
       PrevInstAddress = Address;
       if (includeDebugInfo) { // think of better way! I don't want to pass a null die, because it will be "invalid" (DWARFDie has isValid method that I use, and I believe passing null will make it invalid)
-        auto elfObjectFile = LCO->getStorageELF();
-        // In FUTURE: NEED TO CACHE THE DWARFContext for this LCO (if it's not already cached)
-        // Write a private caching function (gets the cached or new DWARFContext!) (use std::move for the unique pointer)
-        std::unique_ptr<llvm::DWARFContext> context = llvm::DWARFContext::create((*elfObjectFile)); // dono if this will work, IntelliSense can't catch it
-        auto die = getDWARFDie(*context, (*SymbolName).data());
-        LUTHIER_RETURN_ON_ERROR(die.takeError());
-        Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
-                                Address + reinterpret_cast<luthier::address_t>(
-                                              MachineCodeOnDevice->data()),
-                                Size, (*die))); // code duplication for now, will fix later.
+        // auto elfObjectFile = LCO->getStorageELF();
+        // // In FUTURE: NEED TO CACHE THE DWARFContext for this LCO (if it's not already cached)
+        // // Write a private caching function (gets the cached or new DWARFContext!) (use std::move for the unique pointer)
+        // std::unique_ptr<llvm::DWARFContext> context = llvm::DWARFContext::create((*elfObjectFile)); // dono if this will work, IntelliSense can't catch it
+        // auto die = getDWARFDie(*context, (*SymbolName).data());
+        // LUTHIER_RETURN_ON_ERROR(die.takeError());
+        // Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
+        //                         Address + reinterpret_cast<luthier::address_t>(
+        //                                       MachineCodeOnDevice->data()),
+        //                         Size, (*die))); // code duplication for now, will fix later.
       }
       Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
                                 Address + reinterpret_cast<luthier::address_t>(

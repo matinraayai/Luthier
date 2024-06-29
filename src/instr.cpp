@@ -38,7 +38,7 @@ llvm::Expected<hsa_agent_t> Instr::getAgent() const {
   return Agent->asHsaType();
 }
 
-hsa_executable_symbol_t Instr::etExecutableSymbol() const { return Symbol; }
+hsa_executable_symbol_t Instr::getExecutableSymbol() const { return Symbol; }
 
 llvm::MCInst Instr::getMCInst() const { return Inst; }
 
