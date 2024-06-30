@@ -46,32 +46,22 @@ static constexpr const char *HipCUIDPrefix = "__hip_cuid_";
 /// \c llvm::Error if the bitcode was not found, or any other error that was
 /// encountered during the extraction process
 static llvm::Expected<std::unique_ptr<llvm::Module>>
-extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO) {
+extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO,
+                      llvm::LLVMContext &Context) {
   auto StorageELF = LCO.getStorageELF();
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
   // Find the ".llvmbc" section of the ELF
   bool FoundBitcodeSection{false};
-  for (const llvm::object::ELFSectionRef &Section : StorageELF->sections()) {
+  for (const llvm::object::SectionRef &Section : StorageELF->sections()) {
     auto SectionName = Section.getName();
     LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
     if (*SectionName == ".llvmbc") {
       auto SectionContents = Section.getContents();
       LUTHIER_RETURN_ON_ERROR(SectionContents.takeError());
-//      auto BCBuffer =
-//          llvm::MemoryBuffer::getMemBuffer(*SectionContents, "");
-//      llvm::outs() << BCBuffer->getBufferSize() << "\n";
-      std::error_code EC;
-      llvm::raw_fd_stream MyOut("llvm.bc", EC);
-      MyOut << *SectionContents;
-      MyOut.flush();
-      auto NewContext = llvm::cantFail(TargetManager::instance().getTargetInfo(
-          llvm::cantFail(LCO.getISA()))).getLLVMContext();
-      auto Module = llvm::parseBitcodeFile(llvm::MemoryBufferRef(*SectionContents, ""), *NewContext);
-      if (auto Err = Module.takeError()) {
-        llvm::report_fatal_error(std::move(Err), true);
-      }
-      //      LUTHIER_RETURN_ON_ERROR(Module.takeError());
+      auto Module = llvm::parseBitcodeFile(
+          llvm::MemoryBufferRef(*SectionContents, ""), Context);
+      LUTHIER_RETURN_ON_ERROR(Module.takeError());
       return std::move(*Module);
     }
   }
@@ -192,8 +182,8 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   if (PerAgentModuleExecutables.empty()) {
     // Initialize the bitcode if this is the first executable to be registered
     // Make a new context for modifying the bitcode before saving it to memory
-//    auto Context = std::make_unique<llvm::LLVMContext>();
-    auto Module = extractBitcodeFromLCO(LCOs[0]);
+    auto Context = std::make_unique<llvm::LLVMContext>();
+    auto Module = extractBitcodeFromLCO(LCOs[0], *Context);
     LUTHIER_RETURN_ON_ERROR(Module.takeError());
     // Preprocess the Module, extract all its static variable names, and its
     // CUID
