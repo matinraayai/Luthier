@@ -1,6 +1,7 @@
 #include "embed_optimized_bitcode_pass.hpp"
 
 #include "llvm/Passes/PassPlugin.h"
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/Bitcode/BitcodeWriterPass.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/raw_ostream.h>
@@ -26,14 +27,13 @@ EmbedOptimizedBitcodePass::run(llvm::Module &M,
   LLVM_DEBUG(llvm::dbgs() << "Embedded Module " << M.getName() << " dump: ");
   LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
 
-  std::string Data;
-  llvm::raw_string_ostream OS(Data);
-  auto PA =
-      llvm::BitcodeWriterPass(OS, /*ShouldPreserveUseListOrder=*/false, true)
-          .run(M, AM);
+  llvm::SmallVector<char> Data;
+  llvm::raw_svector_ostream OS(Data);
+  auto PA = llvm::BitcodeWriterPass(OS).run(M, AM);
 
-  llvm::embedBufferInModule(M, llvm::MemoryBufferRef(Data, "ModuleData"),
-                            ".llvmbc");
+  llvm::embedBufferInModule(
+      M, llvm::MemoryBufferRef(llvm::toStringRef(Data), "ModuleData"),
+      ".llvmbc");
 
   return llvm::PreservedAnalyses::all();
 }
