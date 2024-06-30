@@ -92,8 +92,8 @@ void disableAllHsaCallbacks();
 /// and releases the captured HIP/HSA API tables\n
 /// During \c API_EVT_PHASE_BEFORE of the \p Callback is the tool's last chance
 /// to perform calls to HIP/HSA functions
-/// \param Callback the function to be called before/after the HSA/HIP API tables
-/// are being released by Luthier
+/// \param Callback the function to be called before/after the HSA/HIP API
+/// tables are being released by Luthier
 void setAtApiTableReleaseEvtCallback(
     const std::function<void(ApiEvtPhase)> &Callback);
 
@@ -146,11 +146,10 @@ getExecutableOfSymbol(hsa_executable_symbol_t Symbol);
 /// \param Symbol
 /// \return the \c hsa_loaded_code_object_t that defines <tt>Symbol</tt> if
 /// \p Symbol is not external; If the \p Symbol is external, returns
-/// <tt>std::nullopt</tt>; If an error is encountered during the process, returns
-/// an \c llvm::Error
+/// <tt>std::nullopt</tt>; If an error is encountered during the process,
+/// returns an \c llvm::Error
 llvm::Expected<std::optional<hsa_loaded_code_object_t>>
 getDefiningLoadedCodeObject(hsa_executable_symbol_t Symbol);
-
 
 } // namespace hsa
 
