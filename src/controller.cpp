@@ -132,11 +132,11 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
 
 void rocprofilerFinalize(void *Data) {
   LUTHIER_LOG_FUNCTION_CALL_START
-  luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
-      API_EVT_PHASE_BEFORE);
-  luthier::hsa::Interceptor::instance().uninstallApiTables();
-  luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
-      API_EVT_PHASE_AFTER);
+//  luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
+//      API_EVT_PHASE_BEFORE);
+//  luthier::hsa::Interceptor::instance().uninstallApiTables();
+//  luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
+//      API_EVT_PHASE_AFTER);
   LUTHIER_LOG_FUNCTION_CALL_END
 }
 

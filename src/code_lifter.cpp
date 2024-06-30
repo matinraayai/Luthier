@@ -242,6 +242,8 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
     auto LoadedMemory = LCO.getLoadedMemory();
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
+    auto LoadedMemoryBegin = reinterpret_cast<address_t>(LoadedMemory->data());
+
     auto StorageELF = LCO.getStorageELF();
     LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
@@ -257,11 +259,12 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
         // The name will be stripped from the relocation section
         // if the symbol has a private linkage
         auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
+        llvm::outs() << llvm::cantFail(Reloc.getSymbol()->getName()) << "\n";
         LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
         // Check with the hsa::Platform which HSA executable Symbol this address
         // is associated with
         auto RelocSymbol = hsa::Platform::instance().getSymbolFromLoadedAddress(
-            *RelocSymbolLoadedAddress);
+            LoadedMemoryBegin + *RelocSymbolLoadedAddress);
         LUTHIER_RETURN_ON_ERROR(RelocSymbol.takeError());
         LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(RelocSymbol->has_value()));
         luthier::address_t TargetAddress =
@@ -308,6 +311,7 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
   Module->setDataLayout(TM->createDataLayout());
 
   auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
+  MMIWP->doInitialization(*Module);
   auto &MMI = MMIWP->getMMI();
 
   auto &ModuleEntry = LR.Modules
@@ -494,6 +498,7 @@ CodeLifter::initLiftedDeviceFunctionEntry(const hsa::LoadedCodeObject &LCO,
   llvm::MachineModuleInfo &MMI = *LR.RelatedLCOs.at(LCO.hsaHandle()).second;
 
   auto FuncName = Func.getName();
+  LUTHIER_RETURN_ON_ERROR(FuncName.takeError());
   llvm::Type *const ReturnType = llvm::Type::getVoidTy(Module.getContext());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ReturnType != nullptr));
   llvm::FunctionType *FunctionType =
@@ -538,7 +543,7 @@ static bool shouldReadExec(const llvm::MachineInstr &MI) {
   return true;
 }
 
-llvm::Error CodeLifter::verifyInstruction(llvm::MachineInstrBuilder &Builder) {
+llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
   auto &MI = *Builder.getInstr();
   if (shouldReadExec(MI) &&
       !MI.hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
@@ -939,6 +944,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &LR) {
           auto ClonedMMIWP =
               std::make_unique<llvm::MachineModuleInfoWrapperPass>(
                   &MMIWP->getMMI().getTarget());
+          ClonedMMIWP->doInitialization(*ClonedModule);
           LUTHIER_RETURN_ON_ERROR(luthier::cloneMMI(
               MMIWP->getMMI(), VMap, ClonedMMIWP->getMMI(), &SrcToDstInstrMap));
           return std::make_tuple(std::move(ClonedModule),

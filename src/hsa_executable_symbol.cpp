@@ -65,6 +65,10 @@ llvm::Expected<llvm::StringRef> ExecutableSymbol::getName() const {
   return SymbolInfo.Symbol->getName();
 }
 
+size_t ExecutableSymbol::getSize() const {
+  return getType() == KERNEL ? SymbolInfo.KernelFunctionSymbol->getSize() : SymbolInfo.Symbol->getSize();
+}
+
 llvm::Expected<hsa_symbol_linkage_t> ExecutableSymbol::getLinkage() const {
   return SymbolInfo.Symbol->getBinding() == llvm::ELF::STB_GLOBAL
              ? HSA_SYMBOL_LINKAGE_PROGRAM

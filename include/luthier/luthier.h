@@ -285,7 +285,7 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 
 #define LUTHIER_HOOK_ANNOTATE                                                  \
   __attribute__((device, used,                                                 \
-                 annotate(LUTHIER_HOOK_ATTRIBUTE))) extern "C" void
+                 annotate("luthier_hook"))) extern "C" void
 
 #define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
   __attribute__((global, used)) extern "C" void __hook_handle_##HookName(){};

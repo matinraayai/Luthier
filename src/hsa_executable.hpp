@@ -11,7 +11,7 @@
 
 namespace luthier {
 
-class CodeObjectManager;
+class ToolExecutableManager;
 
 namespace hsa {
 
@@ -28,7 +28,7 @@ class Executable final : public HandleType<hsa_executable_t> {
    * Creation and destruction of Executables is only allowed through
    * \b CodeObjectManager
    ****************************************************************************/
-  friend class luthier::CodeObjectManager;
+  friend class luthier::ToolExecutableManager;
 
 private:
   static llvm::Expected<Executable>
@@ -41,7 +41,9 @@ private:
   loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
                       const hsa::GpuAgent &Agent, llvm::StringRef Options = "");
 
-  llvm::Error defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol);
+  llvm::Error defineExternalAgentGlobalVariable(const hsa::GpuAgent &Agent,
+                                                llvm::StringRef SymbolName,
+                                                void *Address);
 
   llvm::Error defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol);
 

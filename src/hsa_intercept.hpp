@@ -59,7 +59,8 @@ private:
   llvm::DenseSet<ApiEvtID> EnabledUserOps{};
   llvm::DenseSet<ApiEvtID> EnabledInternalOps{};
 
-  user_callback_t UserCallback{};
+  user_callback_t UserCallback{
+      [](ApiEvtArgs *, const luthier::ApiEvtPhase, const ApiEvtID) {}};
   internal_callback_t InternalCallback{};
 
   void installCoreApiTableWrappers(CoreApiTable *Table);

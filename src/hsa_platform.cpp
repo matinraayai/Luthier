@@ -26,13 +26,13 @@ Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) {
   // Create an LLVM ELF Object for each Loaded Code Object's storage memory
   // and cache it for later use
   for (const auto &LCO : *LCOs) {
-    auto LCOAsCachable = llvm::dyn_cast<const ExecutableBackedCachable>(&LCO);
+    auto *LCOAsCachable = llvm::dyn_cast<const ExecutableBackedCachable>(&LCO);
     if (!LCOAsCachable->isCached())
       LUTHIER_RETURN_ON_ERROR(LCOAsCachable->cache());
     llvm::SmallVector<ExecutableSymbol> Symbols;
     LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
     for (const auto &Symbol : Symbols) {
-      auto SymbolAsCachable =
+      auto *SymbolAsCachable =
           llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol);
       if (!SymbolAsCachable->isCached())
         LUTHIER_RETURN_ON_ERROR(SymbolAsCachable->cache());
@@ -40,16 +40,20 @@ Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) {
       if (Symbol.getType() == VARIABLE) {
         LUTHIER_RETURN_ON_ERROR(
             Symbol.getVariableAddress().moveInto(LoadedAddress));
-      } else if (Symbol.getType() == KERNEL) {
-        auto KD = Symbol.getKernelDescriptor();
-        LUTHIER_RETURN_ON_ERROR(KD.takeError());
-        LoadedAddress = reinterpret_cast<address_t>(*KD);
-      } else {
+        AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
+      }
+      if (Symbol.getType() == KERNEL || Symbol.getType() == DEVICE_FUNCTION){
         auto MachineCode = Symbol.getMachineCode();
         LUTHIER_RETURN_ON_ERROR(MachineCode.takeError());
         LoadedAddress = reinterpret_cast<address_t>(MachineCode->data());
+        AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
       }
-      AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
+      if (Symbol.getType() == KERNEL) {
+        auto KD = Symbol.getKernelDescriptor();
+        LUTHIER_RETURN_ON_ERROR(KD.takeError());
+        LoadedAddress = reinterpret_cast<address_t>(*KD);
+        AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
+      }
     }
   }
   return llvm::Error::success();
@@ -66,16 +70,19 @@ Platform::invalidateExecutableOnExecutableDestroy(const Executable &Exec) {
       if (Symbol.getType() == VARIABLE) {
         LUTHIER_RETURN_ON_ERROR(
             Symbol.getVariableAddress().moveInto(LoadedAddress));
-      } else if (Symbol.getType() == KERNEL) {
+        AddressToSymbolMap.erase(LoadedAddress);
+      }
+      if (Symbol.getType() == KERNEL) {
         auto KD = Symbol.getKernelDescriptor();
         LUTHIER_RETURN_ON_ERROR(KD.takeError());
         LoadedAddress = reinterpret_cast<address_t>(*KD);
-      } else {
+        AddressToSymbolMap.erase(LoadedAddress);
+      } if (Symbol.getType() == KERNEL || Symbol.getType() == DEVICE_FUNCTION) {
         auto MachineCode = Symbol.getMachineCode();
         LUTHIER_RETURN_ON_ERROR(MachineCode.takeError());
         LoadedAddress = reinterpret_cast<address_t>(MachineCode->data());
+        AddressToSymbolMap.erase(LoadedAddress);
       }
-      AddressToSymbolMap.erase(LoadedAddress);
       LUTHIER_RETURN_ON_ERROR(
           llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol)
               ->invalidate());

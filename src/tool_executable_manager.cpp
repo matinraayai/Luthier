@@ -46,29 +46,36 @@ static constexpr const char *HipCUIDPrefix = "__hip_cuid_";
 /// \c llvm::Error if the bitcode was not found, or any other error that was
 /// encountered during the extraction process
 static llvm::Expected<std::unique_ptr<llvm::Module>>
-extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO,
-                      llvm::LLVMContext &Context) {
+extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO) {
   auto StorageELF = LCO.getStorageELF();
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
   // Find the ".llvmbc" section of the ELF
-  const llvm::object::SectionRef *BitcodeSection{nullptr};
-  for (const llvm::object::SectionRef &Section : StorageELF->sections()) {
+  bool FoundBitcodeSection{false};
+  for (const llvm::object::ELFSectionRef &Section : StorageELF->sections()) {
     auto SectionName = Section.getName();
     LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
     if (*SectionName == ".llvmbc") {
-      BitcodeSection = &Section;
-      break;
+      auto SectionContents = Section.getContents();
+      LUTHIER_RETURN_ON_ERROR(SectionContents.takeError());
+//      auto BCBuffer =
+//          llvm::MemoryBuffer::getMemBuffer(*SectionContents, "");
+//      llvm::outs() << BCBuffer->getBufferSize() << "\n";
+      std::error_code EC;
+      llvm::raw_fd_stream MyOut("llvm.bc", EC);
+      MyOut << *SectionContents;
+      MyOut.flush();
+      auto NewContext = llvm::cantFail(TargetManager::instance().getTargetInfo(
+          llvm::cantFail(LCO.getISA()))).getLLVMContext();
+      auto Module = llvm::parseBitcodeFile(llvm::MemoryBufferRef(*SectionContents, ""), *NewContext);
+      if (auto Err = Module.takeError()) {
+        llvm::report_fatal_error(std::move(Err), true);
+      }
+      //      LUTHIER_RETURN_ON_ERROR(Module.takeError());
+      return std::move(*Module);
     }
   }
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(BitcodeSection != nullptr));
-
-  auto SectionContents = BitcodeSection->getContents();
-  LUTHIER_RETURN_ON_ERROR(SectionContents.takeError());
-  auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(*SectionContents, "", false);
-  auto Module = llvm::parseBitcodeFile(*BCBuffer, Context);
-  LUTHIER_RETURN_ON_ERROR(Module.takeError());
-  return std::move(*Module);
+  return LUTHIER_ASSERTION(FoundBitcodeSection);
 }
 
 /// Returns a list of instrumentation hooks found in the Module \p M.
@@ -102,13 +109,21 @@ static llvm::Error getHooks(const llvm::Module &M,
 
 llvm::Error preprocessAndSaveModuleToStream(
     llvm::Module &Module, llvm::SmallVector<std::string> StaticVariables,
-    uint64_t &CUID, llvm::SmallVector<char> &BitcodeOut) {
+    std::string &CUID, llvm::SmallVector<char> &BitcodeOut) {
   // Extract all the hooks
   llvm::SmallVector<llvm::Function *> Hooks;
   LUTHIER_RETURN_ON_ERROR(getHooks(Module, Hooks));
 
   // Remove the annotations variable from the Module
-  Module.getGlobalVariable("llvm.global.annotations")->removeFromParent();
+  auto AnnotationGV = Module.getGlobalVariable("llvm.global.annotations");
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(AnnotationGV != nullptr));
+  AnnotationGV->dropAllReferences();
+  AnnotationGV->eraseFromParent();
+  // Remove the llvm.used variable list
+  auto LLVMUsed = Module.getGlobalVariable("llvm.compiler.used");
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LLVMUsed != nullptr));
+  LLVMUsed->dropAllReferences();
+  LLVMUsed->eraseFromParent();
 
   // Give each Hook function a "hook" attribute
   for (auto &Hook : Hooks) {
@@ -118,7 +133,8 @@ llvm::Error preprocessAndSaveModuleToStream(
   // Remove all kernels that are meant to serve as a host handle
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
     if (F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
-      F.removeFromParent();
+      F.dropAllReferences();
+      F.eraseFromParent();
     }
   }
 
@@ -129,10 +145,10 @@ llvm::Error preprocessAndSaveModuleToStream(
   for (auto &GV : llvm::make_early_inc_range(Module.globals())) {
     auto GVName = GV.getName();
     if (GVName.ends_with(".managed") || GVName == luthier::ReservedManagedVar) {
-      GV.removeFromParent();
+      GV.dropAllReferences();
+      GV.eraseFromParent();
     } else if (GVName.starts_with(HipCUIDPrefix)) {
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-          llvm::to_integer(GVName.substr(strlen(HipCUIDPrefix)), CUID)));
+      CUID = GVName.substr(strlen(HipCUIDPrefix));
     } else {
       GV.setInitializer(nullptr);
       GV.setLinkage(llvm::GlobalValue::ExternalLinkage);
@@ -148,17 +164,14 @@ llvm::Error preprocessAndSaveModuleToStream(
   return llvm::Error::success();
 }
 
-llvm::Expected<uint64_t> getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
+llvm::Expected<llvm::StringRef> getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
   llvm::SmallVector<hsa::ExecutableSymbol> Variables;
   LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(Variables));
   for (const auto &Var : Variables) {
     auto VarName = Var.getName();
     LUTHIER_RETURN_ON_ERROR(VarName.takeError());
     if (VarName->starts_with(luthier::HipCUIDPrefix)) {
-      uint64_t CUID;
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-          llvm::to_integer(VarName->substr(strlen(HipCUIDPrefix)), CUID)));
-      return CUID;
+      return VarName->substr(strlen(HipCUIDPrefix));
     }
   }
   llvm_unreachable("Could not find a CUID for the LCO");
@@ -179,8 +192,8 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   if (PerAgentModuleExecutables.empty()) {
     // Initialize the bitcode if this is the first executable to be registered
     // Make a new context for modifying the bitcode before saving it to memory
-    auto Context = std::make_unique<llvm::LLVMContext>();
-    auto Module = extractBitcodeFromLCO(LCOs[0], *Context);
+//    auto Context = std::make_unique<llvm::LLVMContext>();
+    auto Module = extractBitcodeFromLCO(LCOs[0]);
     LUTHIER_RETURN_ON_ERROR(Module.takeError());
     // Preprocess the Module, extract all its static variable names, and its
     // CUID
@@ -238,9 +251,10 @@ StaticInstrumentationModule::getGlobalHsaVariablesOnAgent(
 }
 
 llvm::Expected<llvm::StringRef>
-StaticInstrumentationModule::convertHookHandleToHookName(const void *Handle) const {
+StaticInstrumentationModule::convertHookHandleToHookName(
+    const void *Handle) const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookHandleMap.contains(Handle)));
-  return HookHandleMap[Handle];
+  return HookHandleMap.at(Handle);
 }
 
 llvm::Expected<bool>

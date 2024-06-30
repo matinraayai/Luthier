@@ -363,7 +363,7 @@ cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
     llvm::report_fatal_error(
         "target does not implement MachineFunctionInfo cloning");
 
-  DstMRI->freezeReservedRegs();
+  DstMRI->freezeReservedRegs(*DstMF);
 
   DstMF->verify(nullptr, "", /*AbortOnError=*/true);
   return DstMF;

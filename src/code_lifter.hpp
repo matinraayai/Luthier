@@ -268,8 +268,6 @@ private:
                                             const hsa::ExecutableSymbol &Func,
                                             LiftedRepresentation &LR);
 
-  static llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder);
-
   ///
   /// \param Symbol
   /// \param LR

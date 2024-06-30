@@ -66,7 +66,7 @@ protected:
   /// Compile Unit ID of the Module. This is an identifier generated
   /// by Clang to create a correspondence between the host and the device code.
   /// Presence of CUID is a requirement of all Luthier tool code
-  uint64_t CUID{0};
+  std::string CUID{};
 
 private:
   const ModuleKind Kind;

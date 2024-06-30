@@ -42,8 +42,7 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include "SIInstrInfo.h"
-#include "code_object_manager.hpp"
-#include "disassembler.hpp"
+#include "code_lifter.hpp"
 #include "error.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
@@ -54,6 +53,7 @@
 #include "hsa_loaded_code_object.hpp"
 #include "log.hpp"
 #include "target_manager.hpp"
+#include "tool_executable_manager.hpp"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
@@ -152,262 +152,24 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
   return llvm::Error::success();
 }
 
-llvm::Error CodeGenerator::instrument(
-    std::unique_ptr<llvm::Module> Module,
-    std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP,
-    const LiftedSymbolInfo &LSO, luthier::InstrumentationTask &ITask) {
-  LUTHIER_LOG_FUNCTION_CALL_START
-  auto Symbol = hsa::ExecutableSymbol::fromHandle(LSO.getSymbol());
-  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-  auto LCO = Symbol->getLoadedCodeObject();
-  LUTHIER_RETURN_ON_ERROR(LCO.takeError());
-  auto Isa = LCO->getISA();
-  LUTHIER_RETURN_ON_ERROR(Isa.takeError());
-  auto &CodeObjectManager = CodeObjectManager::instance();
-  auto &ContextManager = TargetManager::instance();
-  auto TargetInfo = ContextManager.getTargetInfo(*Isa);
-  LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
-
-  auto &TM = *TargetInfo->getTargetMachine();
-
-  llvm::SmallVector<char> Reloc;
-  llvm::SmallVector<uint8_t> Executable;
-
-  llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
-
-  auto AddedLSIs = applyInstrumentation(*Module, MMIWP->getMMI(), LSO, ITask);
-  LUTHIER_RETURN_ON_ERROR(AddedLSIs.takeError());
-  //  auto TM = targetInfo->getTargetMachine();
-
-  llvm::legacy::PassManager PM;
-  TM.setOptLevel(llvm::CodeGenOptLevel::None);
-
-  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(Module->getTargetTriple()));
-  PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-
-  llvm::TargetPassConfig *TPC = TM.createPassConfig(PM);
-
-  PM.add(TPC);
-  PM.add(MMIWP.release());
-  TPC->addISelPasses();
-  TPC->addMachinePasses();
-  auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
-  PM.add(UsageAnalysis);
-  TPC->setInitialized();
-  llvm::raw_svector_ostream OutOS(Reloc);
-
-  // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!TM.addAsmPrinter(
-      PM, OutOS, nullptr, llvm::CodeGenFileType::ObjectFile, MCContext)));
-
-  PM.run(*Module); // Run all the passes
-
-  LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
-      llvm::ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(Reloc.data()),
-                              Reloc.size()),
-      *Isa, Executable));
-
-  std::vector<hsa::ExecutableSymbol> ExternGVs;
-  for (const auto &GV : LSO.getRelatedVariables()) {
-    auto GVWrapper = hsa::ExecutableSymbol::fromHandle(GV);
-    LUTHIER_RETURN_ON_ERROR(GVWrapper.takeError());
-    ExternGVs.push_back(*GVWrapper);
-  }
-
-  for (const auto &L : *AddedLSIs)
-    for (const auto &GV : L.getRelatedVariables()) {
-      auto GVWrapper = hsa::ExecutableSymbol::fromHandle(GV);
-      LUTHIER_RETURN_ON_ERROR(GVWrapper.takeError());
-      ExternGVs.push_back(*GVWrapper);
-    }
-
-  LUTHIER_RETURN_ON_ERROR(
-      CodeObjectManager.loadInstrumentedKernel(Executable, *Symbol, ExternGVs));
-
+llvm::Error CodeGenerator::insertHooks(
+    LiftedRepresentation &LR,
+    const InstrumentationTask::hook_insertion_tasks &Tasks) {
   return llvm::Error::success();
 }
 
-llvm::Expected<std::vector<LiftedSymbolInfo>>
-CodeGenerator::applyInstrumentation(llvm::Module &Module,
-                                    llvm::MachineModuleInfo &MMI,
-                                    const LiftedSymbolInfo &LSO,
-                                    const InstrumentationTask &ITask) {
-  return insertFunctionCalls(Module, MMI, LSO, ITask.getInsertCallTasks());
-}
-
-llvm::Expected<std::vector<LiftedSymbolInfo>>
-CodeGenerator::insertFunctionCalls(
-    llvm::Module &Module, llvm::MachineModuleInfo &MMI,
-    const LiftedSymbolInfo &TargetLSI,
-    const InstrumentationTask::insert_call_tasks &Tasks) {
-  std::vector<LiftedSymbolInfo> Out;
-  for (const auto &[IPointMI, IFuncAndIPoint] : Tasks) {
-    auto &[IFuncShadowHostPtr, IPoint] = IFuncAndIPoint;
-    // Get the hsa::GpuAgent of the Target Kernel
-    auto TargetKernelSymbol =
-        hsa::ExecutableSymbol::fromHandle(TargetLSI.getSymbol());
-    LUTHIER_RETURN_ON_ERROR(TargetKernelSymbol.takeError());
-    auto Agent = TargetKernelSymbol->getAgent();
-    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-    // Figure out the hsa::ExecutableSymbol of the instrumentation function
-    // loaded on the target kernel's hsa::GpuAgent
-    auto IFunctionSymbol =
-        luthier::CodeObjectManager::instance().getInstrumentationFunction(
-            IFuncShadowHostPtr, *Agent);
-    LUTHIER_RETURN_ON_ERROR(IFunctionSymbol.takeError());
-    auto InstrumentationModule =
-        CodeObjectManager::instance()
-            .getModuleContainingInstrumentationFunctions({*IFunctionSymbol});
-    LUTHIER_RETURN_ON_ERROR(InstrumentationModule.takeError());
-
-    // Create the analysis managers.
-    // These must be declared in this order so that they are destroyed in the
-    // correct order due to inter-analysis-manager references.
-    LoopAnalysisManager LAM;
-    FunctionAnalysisManager FAM;
-    CGSCCAnalysisManager CGAM;
-    ModuleAnalysisManager MAM;
-
-    // Create the new pass manager builder.
-    // Take a look at the PassBuilder constructor parameters for more
-    // customization, e.g. specifying a TargetMachine or various debugging
-    // options.
-    llvm::PassBuilder PB;
-
-    // Register all the basic analyses with the managers.
-    PB.registerModuleAnalyses(MAM);
-    PB.registerCGSCCAnalyses(CGAM);
-    PB.registerFunctionAnalyses(FAM);
-    PB.registerLoopAnalyses(LAM);
-    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
-    // Create the pass manager.
-    ModulePassManager MPM =
-        PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
-
-    // Optimize the IR!
-    MPM.run(**InstrumentationModule, MAM);
-
-    auto ISA = llvm::cantFail(IFunctionSymbol->getLoadedCodeObject()).getISA();
-    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-    auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
-    LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
-    auto &TM = *TargetInfo->getTargetMachine();
-    llvm::legacy::PassManager PM;
-    TM.setOptLevel(llvm::CodeGenOptLevel::Aggressive);
-
-    auto MMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
-
-    llvm::TargetLibraryInfoImpl TLII(
-        llvm::Triple((*InstrumentationModule)->getTargetTriple()));
-    PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-
-    llvm::TargetPassConfig *TPC = TM.createPassConfig(PM);
-
-    PM.add(TPC);
-    PM.add(MMIWP);
-
-    TPC->addISelPasses();
-    //    TPC->addCodeGenPrepare();
-    //    TPC->addPrintPass("After ISEL: ");
-    TPC->addMachinePasses();
-    auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
-    PM.add(UsageAnalysis);
-    TPC->setInitialized();
-
-    TPC->setInitialized();
-
-    PM.run(**InstrumentationModule); // Run all the passes
-
-    // Lift the instrumentation function's symbol and add it to the compilation
-    // module
-    auto IFLSI = luthier::CodeLifter::instance().liftSymbolAndAddToModule(
-        *IFunctionSymbol, Module, MMI);
-    LUTHIER_RETURN_ON_ERROR(IFLSI.takeError());
-
-    auto MCInstInfo = MMI.getTarget().getMCInstrInfo();
-    auto ToBeInstrumentedMF = IPointMI->getParent()->getParent();
-    auto TRI = ToBeInstrumentedMF->getSubtarget<llvm::GCNSubtarget>()
-                   .getRegisterInfo();
-    // Start of instrumentation logic
-    // Spill the registers to the stack before calling the instrumentation
-    // function
-
-    IPointMI->getParent()->getParent()->getProperties().reset(
-        llvm::MachineFunctionProperties::Property::NoVRegs);
-    llvm::MachineInstrBuilder Builder;
-    auto MBB = IPointMI->getParent();
-    auto PCReg = MBB->getParent()->getRegInfo().createVirtualRegister(
-        &llvm::AMDGPU::SReg_64RegClass);
-    auto InstPoint =
-        IPoint == INSTR_POINT_BEFORE ? IPointMI : IPointMI->getNextNode();
-    Builder = llvm::BuildMI(*MBB, InstPoint, llvm::DebugLoc(),
-                            MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
-                  .addImm(0)
-                  .addImm(0);
-    auto &CalleeMF = IFLSI->getMFofSymbol();
-    auto &CalleeFunction = CalleeMF.getFunction();
-
-    Builder =
-        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
-                      MCInstInfo->get(llvm::AMDGPU::SI_PC_ADD_REL_OFFSET))
-            .addDef(PCReg)
-            .addGlobalAddress(&CalleeFunction, 0,
-                              llvm::SIInstrInfo::MO_REL32_LO)
-            .addGlobalAddress(&CalleeFunction, 0,
-                              llvm::SIInstrInfo::MO_REL32_HI);
-
-    auto SaveReg = MBB->getParent()->getRegInfo().createVirtualRegister(
-        &llvm::AMDGPU::SGPR_128RegClass);
-    Builder =
-        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
-                      MCInstInfo->get(llvm::AMDGPU::COPY))
-            .addDef(SaveReg)
-            .addReg(llvm::AMDGPU::PRIVATE_RSRC_REG);
-
-    Builder =
-        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
-                      MCInstInfo->get(llvm::AMDGPU::COPY))
-            .addDef(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3)
-            .addReg(SaveReg);
-
-    auto RegMask =
-        TRI->getCallPreservedMask(CalleeMF, CalleeFunction.getCallingConv());
-
-    Builder =
-        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
-                      MCInstInfo->get(llvm::AMDGPU::SI_CALL))
-            .addReg(llvm::AMDGPU::SGPR30_SGPR31, llvm::RegState::Define)
-            .addReg(PCReg, llvm::RegState::Kill)
-            .addGlobalAddress(&CalleeFunction)
-            .add(llvm::MachineOperand::CreateReg(
-                llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, false, true))
-            .addRegMask(RegMask);
-
-    Builder =
-        llvm::BuildMI(*MBB, Builder.getInstr()->getNextNode(), llvm::DebugLoc(),
-                      MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
-            .addImm(0)
-            .addImm(0);
-    //    MBB->getParent()->dump();
-    //                                    .addDef(llvm::AMDGPU::SGPR4_SGPR5,
-    //                                    llvm::RegState::Define);
-    //      MIB.addGlobalAddress(InstLLVMFunction, 0,
-    //      llvm::SIInstrInfo::MO_REL32); MIB.addGlobalAddress(InstLLVMFunction,
-    //      0, llvm::SIInstrInfo::MO_REL32 + 1);
-    //
-    //      Builder = BuildMI(MBB, I, llvm::DebugLoc(),
-    //                        MCInstInfo->get(llvm::AMDGPU::SI_CALL_ISEL))
-    //                    .addReg(llvm::AMDGPU::SGPR4_SGPR5,
-    //                            llvm::RegState::Kill).addGlobalAddress(InstLLVMFunction);
-    ////      Builder; // =
-    //      BuildMI(MBB, I, llvm::DebugLoc(),
-    //              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
-    //          .addImm(0)
-    //          .addImm(0);
-    Out.push_back(*IFLSI);
-  }
-  return Out;
+llvm::Error CodeGenerator::instrument(const LiftedRepresentation &LR,
+                                      InstrumentationTask &ITask) {
+  // Clone the Lifted Representation
+  auto ClonedLR = CodeLifter::instance().cloneRepresentation(LR);
+  LUTHIER_RETURN_ON_ERROR(ClonedLR.takeError());
+  // Run the mutator function on the Lifted Representation
+  LUTHIER_RETURN_ON_ERROR(ITask.getMutator()(ITask, **ClonedLR));
+  // Insert the hooks inside the Lifted Representation
+  LUTHIER_RETURN_ON_ERROR(
+      insertHooks(**ClonedLR, ITask.getHookInsertionTasks()));
+  // Generate the shared objects and return it
+  return llvm::Error::success();
 }
 
 } // namespace luthier

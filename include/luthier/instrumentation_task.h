@@ -46,13 +46,13 @@ public:
 
   typedef struct {
     /// Name of the hook to be inserted
-    const llvm::StringRef HookName;
+    llvm::StringRef HookName;
     /// The instrumented \c llvm::MachineInstr
-    const llvm::MachineInstr *MI;
+    llvm::MachineInstr *MI;
     /// Whether to insert the hook before or after the instruction
-    const InstrPoint IPoint;
+    InstrPoint IPoint;
     /// List of arguments passed to the hook
-    const llvm::SmallVector<std::pair<ArgType, uint64_t>, 1> Args;
+    llvm::SmallVector<std::pair<ArgType, uint64_t>, 1> Args;
     /// Whether to remove the MI
     bool RemoveInstruction;
   } hook_insertion_task_descriptor;

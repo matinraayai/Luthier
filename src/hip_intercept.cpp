@@ -20,7 +20,7 @@ __hipRegisterFunction(void **Modules, const void *HostFunction,
     Args.__hipRegisterFunction = {
         Modules, HostFunction, DeviceFunction, DeviceName, ThreadLimit,
         Tid,     Bid,          BlockDim,       GridDim,    WSize};
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_ENTER, ApiId);
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_BEFORE, ApiId);
     HipFunc(
         Args.__hipRegisterFunction.modules,
         Args.__hipRegisterFunction.hostFunction,
@@ -30,7 +30,7 @@ __hipRegisterFunction(void **Modules, const void *HostFunction,
         Args.__hipRegisterFunction.bid, Args.__hipRegisterFunction.blockDim,
         Args.__hipRegisterFunction.gridDim, Args.__hipRegisterFunction.wSize);
     // Exit Callback
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_EXIT, ApiId);
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_AFTER, ApiId);
     // Copy the modified arguments back to the original arguments (if non-const)
     Modules = Args.__hipRegisterFunction.modules;
     DeviceFunction = Args.__hipRegisterFunction.deviceFunction;
@@ -59,7 +59,7 @@ __hipRegisterManagedVar(void *hipModule, void **pointer, void *init_value,
     luthier::hip::ApiArgs Args;
     Args.__hipRegisterManagedVar = {hipModule, pointer, init_value,
                                     name,      size,    align};
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_ENTER, ApiId);
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_BEFORE, ApiId);
     const auto &HipFunc =
         HipInterceptor.getSavedCompilerTable().__hipRegisterManagedVar_fn;
     HipFunc(Args.__hipRegisterManagedVar.hipModule,
@@ -69,7 +69,7 @@ __hipRegisterManagedVar(void *hipModule, void **pointer, void *init_value,
             Args.__hipRegisterManagedVar.size,
             Args.__hipRegisterManagedVar.align);
     // Exit Callback
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_EXIT, ApiId);
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_AFTER, ApiId);
     // Copy the modified arguments back to the original arguments (if non-const)
     hipModule = Args.__hipRegisterManagedVar.hipModule;
     pointer = Args.__hipRegisterManagedVar.pointer;

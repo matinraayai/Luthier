@@ -83,6 +83,8 @@ public:
 
   [[nodiscard]] llvm::Expected<llvm::StringRef> getName() const;
 
+  [[nodiscard]] size_t getSize() const;
+
   [[nodiscard]] llvm::Expected<hsa_symbol_linkage_t> getLinkage() const;
 
   [[nodiscard]] llvm::Expected<hsa_variable_allocation_t>

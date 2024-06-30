@@ -60,9 +60,9 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                   luthier::instrumentAndLoad(*KernelSymbol, *LiftedKernel, IT))
             llvm::report_fatal_error(std::move(Res), true);
         }
-        if (auto Res = luthier::overrideWithInstrumented(
-                DispatchPacket, "kernel instrumentAndLoad"))
-          llvm::report_fatal_error(std::move(Res), true);
+//        if (auto Res = luthier::overrideWithInstrumented(
+//                DispatchPacket, "kernel instrumentAndLoad"))
+//          llvm::report_fatal_error(std::move(Res), true);
       }
     }
   }
