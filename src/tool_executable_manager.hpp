@@ -35,6 +35,10 @@ class ToolExecutableManager;
 /// \brief Similar to HIP Modules in concept; Consists of an LLVM bitcode buffer
 /// + All static variable addresses it uses on each GPU device
 class InstrumentationModule {
+public:
+  /// Discriminator for LLVM-style RTTI (dyn_cast<> et al.)
+  enum ModuleKind { MK_Static, MK_Dynamic };
+
 protected:
   /// Only CodeObjectManager is allowed to create Instrumentation
   /// Modules
@@ -57,14 +61,19 @@ protected:
   /// parallelization-friendly compilation.
   llvm::SmallVector<char> BitcodeBuffer{};
 
-  InstrumentationModule() = default;
+  explicit InstrumentationModule(ModuleKind Kind) : Kind(Kind){};
 
   /// Compile Unit ID of the Module. This is an identifier generated
   /// by Clang to create a correspondence between the host and the device code.
   /// Presence of CUID is a requirement of all Luthier tool code
   uint64_t CUID{0};
 
+private:
+  const ModuleKind Kind;
+
 public:
+  ModuleKind getKind() const { return Kind; }
+
   /// Reads the bitcode of this InstrumentationModule into a new
   /// \c llvm::orc::ThreadSafeModule backed by the passed \p Ctx
   /// \param Ctx a thread-safe context to back the returned Module
@@ -134,7 +143,7 @@ class StaticInstrumentationModule final : public InstrumentationModule {
 private:
   friend ToolExecutableManager;
   /// Private default constructor only accessible by \c ToolExecutableManager
-  StaticInstrumentationModule() = default;
+  StaticInstrumentationModule() : InstrumentationModule(MK_Static){};
 
   /// Each static HIP module gets loaded on each device as a single HSA
   /// executable \n
@@ -210,7 +219,7 @@ public:
   /// \return the name of the hook \c llvm::Function, or and \c llvm::Error if
   /// the \p Handle doesn't exist
   llvm::Expected<llvm::StringRef>
-  convertHookHandleToHookName(const void *Handle);
+  convertHookHandleToHookName(const void *Handle) const;
 
   /// A helper function which detects if the passed executable is part of the
   /// static instrumentation module. \n
@@ -222,6 +231,10 @@ public:
   /// process
   static llvm::Expected<bool>
   isStaticInstrumentationModuleExecutable(const hsa::Executable &Exec);
+
+  static bool classof(const InstrumentationModule * IM) {
+    return IM->getKind() == MK_Static;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -267,7 +280,8 @@ public:
   /// Loads a list of instrumented code objects into a new executable and
   /// freezes it, allowing the instrumented version of the \p OriginalKernel
   /// to run on its own
-  /// This is useful for when the user wants to instrument a single kernel
+  /// This is useful for when the user wants to instrumentAndLoad a single
+  /// kernel
   /// \param InstrumentedElfs a list of instrumented code objects that isolate
   /// the requirements of \p OriginalKernel in a single executable
   /// \param OriginalKernel the \c hsa::ExecutableSymbol of the original kernel

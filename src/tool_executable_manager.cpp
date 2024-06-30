@@ -238,7 +238,7 @@ StaticInstrumentationModule::getGlobalHsaVariablesOnAgent(
 }
 
 llvm::Expected<llvm::StringRef>
-StaticInstrumentationModule::convertHookHandleToHookName(const void *Handle) {
+StaticInstrumentationModule::convertHookHandleToHookName(const void *Handle) const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookHandleMap.contains(Handle)));
   return HookHandleMap[Handle];
 }
@@ -293,7 +293,6 @@ InstrumentationModule::readBitcodeIntoContext(
 //===----------------------------------------------------------------------===//
 // Tool Executable Manager Implementation
 //===----------------------------------------------------------------------===//
-
 
 template <>
 ToolExecutableManager *Singleton<ToolExecutableManager>::Instance{nullptr};
@@ -543,17 +542,29 @@ ToolExecutableManager::~ToolExecutableManager() {
   // By the time the Tool Executable Manager is deleted, all instrumentation
   // kernels must have been destroyed; If not, print a warning, and clean
   // up anyway
-
-//  llvm::errs() << "";
-  // TODO: Fix the destructor
-  //  for (auto &[origSymbol, instInfo] : InstrumentedKernels) {
-  //    auto &[s, e, r] = instInfo;
-  //    //        r.destroy();
-  //    //        e.destroy();
-  //  }
-  //    instrumentedKernels_.clear();
-  //    toolExecutables_.clear();
-  //    functions_.clear();
+  if (!InstrumentedLCOInfo.empty()) {
+    llvm::errs()
+        << "Tool executable manager is being destroyed while the original "
+           "executables of its instrumented kernels are still frozen\n";
+    llvm::DenseSet<hsa::Executable> InstrumentedExecs;
+    for (auto &[LCO, COR] : InstrumentedLCOInfo) {
+      auto Exec = llvm::cantFail(LCO.getExecutable());
+      InstrumentedExecs.insert(Exec);
+      if (COR.destroy()) {
+        llvm::errs() << llvm::formatv(
+            "Code object reader {0:x} of Loaded Code Object {1:x}, Executable "
+            "{2:x} got destroyed with errors.\n",
+            COR.hsaHandle(), LCO.hsaHandle(), Exec.hsaHandle());
+      }
+    }
+    for (auto &Exec : InstrumentedExecs) {
+      if (Exec.destroy()) {
+        llvm::errs() << llvm::formatv(
+            "Executable {0:x} got destroyed with errors.\n", Exec.hsaHandle());
+      }
+    }
+  }
+  OriginalToInstrumentedKernelsMap.clear();
 }
 
 } // namespace luthier
