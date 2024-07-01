@@ -128,21 +128,21 @@ KernelDescriptor::getKernelCodeProperties() const {
       this->KernelCodeProperties,
       AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER);
 
-  Out.EnableSgprDispatchPtr = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_PTR);
+  Out.EnableSgprDispatchPtr =
+      AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                       AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_PTR);
 
-  Out.EnableSgprQueuePtr = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_QUEUE_PTR);
+  Out.EnableSgprQueuePtr =
+      AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                       AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_QUEUE_PTR);
 
   Out.EnableSgprKernArgSegmentPtr = AMD_HSA_BITS_GET(
       this->KernelCodeProperties,
       AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR);
 
-  Out.EnableSgprDispatchId = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_ID);
+  Out.EnableSgprDispatchId =
+      AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                       AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_ID);
 
   Out.EnableSgprFlatScratchInit = AMD_HSA_BITS_GET(
       this->KernelCodeProperties,
@@ -164,37 +164,32 @@ KernelDescriptor::getKernelCodeProperties() const {
       this->KernelCodeProperties,
       AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z);
 
-  Out.Reserved1 = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_RESERVED1);
+  Out.Reserved1 = AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                                   AMD_KERNEL_CODE_PROPERTIES_RESERVED1);
 
-  Out.EnableOrderedAppendGds = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_ENABLE_ORDERED_APPEND_GDS);
+  Out.EnableOrderedAppendGds =
+      AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                       AMD_KERNEL_CODE_PROPERTIES_ENABLE_ORDERED_APPEND_GDS);
 
-  Out.PrivateElementSize = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_PRIVATE_ELEMENT_SIZE);
+  Out.PrivateElementSize =
+      AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                       AMD_KERNEL_CODE_PROPERTIES_PRIVATE_ELEMENT_SIZE);
 
-  Out.IsPtr64 = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_IS_PTR64);
+  Out.IsPtr64 = AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                                 AMD_KERNEL_CODE_PROPERTIES_IS_PTR64);
 
-  Out.IsDynamicCallStack = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_IS_DYNAMIC_CALLSTACK);
+  Out.IsDynamicCallStack =
+      AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                       AMD_KERNEL_CODE_PROPERTIES_IS_DYNAMIC_CALLSTACK);
 
   Out.IsDebugEnabled = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_IS_DEBUG_ENABLED);
+      this->KernelCodeProperties, AMD_KERNEL_CODE_PROPERTIES_IS_DEBUG_ENABLED);
 
   Out.IsXnackEnabled = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_IS_XNACK_ENABLED);
+      this->KernelCodeProperties, AMD_KERNEL_CODE_PROPERTIES_IS_XNACK_ENABLED);
 
-  Out.Reserved2 = AMD_HSA_BITS_GET(
-      this->KernelCodeProperties,
-      AMD_KERNEL_CODE_PROPERTIES_RESERVED2);
+  Out.Reserved2 = AMD_HSA_BITS_GET(this->KernelCodeProperties,
+                                   AMD_KERNEL_CODE_PROPERTIES_RESERVED2);
 
   return Out;
 }
