@@ -11,55 +11,6 @@
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
 
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprPrivateSegmentBuffer,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprDispatchPtr,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_PTR)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, EnableSgprQueuePtr,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_QUEUE_PTR)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprKernArgSegmentPtr,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_KERNARG_SEGMENT_PTR)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, EnableSgprDispatchId,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_DISPATCH_ID)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprFlatScratchInit,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_FLAT_SCRATCH_INIT)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprPrivateSegmentSize,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_PRIVATE_SEGMENT_SIZE)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprGridWorkgroupCountX,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_GRID_WORKGROUP_COUNT_X)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprGridWorkgroupCountY,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Y)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableSgprGridWorkgroupCountZ,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, Reserved1,
-               AMD_KERNEL_CODE_PROPERTIES_RESERVED1)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties,
-               EnableOrderedAppendGds,
-               AMD_KERNEL_CODE_PROPERTIES_ENABLE_ORDERED_APPEND_GDS)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, PrivateElementSize,
-               AMD_KERNEL_CODE_PROPERTIES_PRIVATE_ELEMENT_SIZE)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, IsPtr64,
-               AMD_KERNEL_CODE_PROPERTIES_IS_PTR64)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, IsDynamicCallStack,
-               AMD_KERNEL_CODE_PROPERTIES_IS_DYNAMIC_CALLSTACK)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, IsDebugEnabled,
-               AMD_KERNEL_CODE_PROPERTIES_IS_DEBUG_ENABLED)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, IsXnackEnabled,
-               AMD_KERNEL_CODE_PROPERTIES_IS_XNACK_ENABLED)
-REG_BIT_SETTER(KernelCodeProperties, KernelCodeProperties, Reserved2,
-               AMD_KERNEL_CODE_PROPERTIES_RESERVED2)
-
-#undef REG_BIT_SETTER
-#undef REG_BIT_GETTER
-
 namespace luthier::hsa {
 
 KernelDescriptor::Rsrc1Info KernelDescriptor::getRsrc1() const {
