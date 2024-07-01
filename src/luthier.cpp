@@ -157,7 +157,7 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                                      llvm::StringRef Preset) {
   auto Symbol = luthier::hsa::ExecutableSymbol::fromKernelDescriptor(
-      reinterpret_cast<const luthier::KernelDescriptor *>(
+      reinterpret_cast<const luthier::hsa::KernelDescriptor *>(
           Packet.kernel_object));
   LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
 

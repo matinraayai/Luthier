@@ -1,11 +1,31 @@
+//===-- kernel_descriptor.h - HSA Kernel Descriptor -------------*- C++ -*-===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file describes the HSA kernel descriptor, a POD struct in addition to
+/// some convenience methods.
+//===----------------------------------------------------------------------===//
 #ifndef KERNEL_DESCRIPTOR_HPP
 #define KERNEL_DESCRIPTOR_HPP
 #include "luthier/types.h"
 #include <cstdint>
 #include <llvm/Support/Error.h>
 
-namespace luthier {
+namespace luthier::hsa {
 
+/// \brief POD (plain-old-data) struct to provide an abstraction over the kernel
+/// descriptor, plus some convenience methods
+/// \details This should not be constructed directly. It should only be obtained
+/// by using <tt>reinterpret_cast</tt> over the address of a kernel descriptor:
+/// \code
+/// auto* KD = reinterpret_cast<KernelDescriptor*>(KDAddress);
+/// \endcode
+/// Furthermore, kernel descriptors should not be modified directly.
+/// Modification of kernel descriptor entries should be done via modifying
+/// the attributes of kernel functions or fields of the
+/// \c llvm::SIMachineFunctionInfo in the lifted representation.
+/// See the LLVM AMDGPU backend docs for more details about individual fields
 struct KernelDescriptor {
   uint32_t GroupSegmentFixedSize;
   uint32_t PrivateSegmentFixedSize;
@@ -20,126 +40,99 @@ struct KernelDescriptor {
   uint16_t KernArgPreload;
   uint8_t Reserved2[4];
 
-#define REG_BIT_GETTER(registerName, propName)                                 \
-  uint32_t get##registerName##propName() const;
+  /// a struct for easier access to the RSRC1 register without using individual
+  /// bit-wise operations
+  typedef struct {
+    uint32_t GranulatedWorkItemVGPRCount;
+    uint32_t GranulatedWaveFrontSGPRCount;
+    uint32_t Priority;
+    uint32_t FloatRoundMode32;
+    uint32_t FloatRoundMode16_64;
+    uint32_t FloatDenormMode32;
+    uint32_t FloatDenormMode16_64;
+    uint32_t Priv;
+    uint32_t EnableDx10Clamp;
+    uint32_t DebugMode;
+    uint32_t EnableIeeeMode;
+    uint32_t EnableBulky;
+    uint32_t CdbgUser;
+    uint32_t Reserved1;
+  } Rsrc1Info;
 
-#define REG_BIT_SETTER(registerName, propFuncName)                             \
-  void set##registerName##propFuncName(uint32_t value);
+  /// a struct for easier access to the RSRC2 register without using individual
+  /// bit-wise operations
+  typedef struct {
+    uint32_t UserSgprCount;
+    uint32_t EnableTrapHandler;
+    uint32_t EnableSgprWorkgroupIdX;
+    uint32_t EnableSgprWorkgroupIdY;
+    uint32_t EnableSgprWorkgroupIdZ;
+    uint32_t EnableSgprInfo;
+    uint32_t EnableVgprWorkitemId;
+    uint32_t ExceptionAddressWatch;
+    uint32_t EnableExceptionMemoryViolation;
+    uint32_t GranulatedLdsSize;
+    uint32_t EnableExceptionIEEE754FPInvalidOperation;
+    uint32_t EnableExceptionFPDenormalSource;
+    uint32_t EnableExceptionIEEE754FPDivisionByZero;
+    uint32_t EnableExceptionIEEE754FPOverflow;
+    uint32_t EnableExceptionIEEE754FPUnderflow;
+    uint32_t EnableExceptionIEEE754FPInexact;
+    uint32_t EnableExceptionIntDivisionByZero;
+    uint32_t Reserved1;
+    uint32_t EnableSgprPrivateSegmentWaveByteOffset;
+  } Rsrc2Info;
 
-  REG_BIT_GETTER(Rsrc1, GranulatedWorkItemVGPRCount)
-  REG_BIT_GETTER(Rsrc1, GranulatedWaveFrontSGPRCount)
-  REG_BIT_GETTER(Rsrc1, Priority)
-  REG_BIT_GETTER(Rsrc1, FloatRoundMode32)
-  REG_BIT_GETTER(Rsrc1, FloatRoundMode16_64)
-  REG_BIT_GETTER(Rsrc1, FloatDenormMode32)
-  REG_BIT_GETTER(Rsrc1, FloatDenormMode16_64)
-  REG_BIT_GETTER(Rsrc1, Priv)
-  REG_BIT_GETTER(Rsrc1, EnableDx10Clamp)
-  REG_BIT_GETTER(Rsrc1, DebugMode)
-  REG_BIT_GETTER(Rsrc1, EnableIeeeMode)
-  REG_BIT_GETTER(Rsrc1, EnableBulky)
-  REG_BIT_GETTER(Rsrc1, CdbgUser)
-  REG_BIT_GETTER(Rsrc1, Reserved1)
-  REG_BIT_SETTER(Rsrc1, GranulatedWorkItemVGPRCount)
-  REG_BIT_SETTER(Rsrc1, GranulatedWaveFrontSGPRCount)
-  REG_BIT_SETTER(Rsrc1, Priority)
-  REG_BIT_SETTER(Rsrc1, FloatRoundMode32)
-  REG_BIT_SETTER(Rsrc1, FloatRoundMode16_64)
-  REG_BIT_SETTER(Rsrc1, FloatDenormMode32)
-  REG_BIT_SETTER(Rsrc1, FloatDenormMode16_64)
-  REG_BIT_SETTER(Rsrc1, Priv)
-  REG_BIT_SETTER(Rsrc1, EnableDx10Clamp)
-  REG_BIT_SETTER(Rsrc1, DebugMode)
-  REG_BIT_SETTER(Rsrc1, EnableIEEEMode)
-  REG_BIT_SETTER(Rsrc1, EnableBulky)
-  REG_BIT_SETTER(Rsrc1, CdbgUser)
-  REG_BIT_SETTER(Rsrc1, Reserved1)
-  REG_BIT_SETTER(Rsrc2, EnableSgprPrivateSegmentWaveByteOffset)
-  REG_BIT_GETTER(Rsrc2, UserSgprCount)
-  REG_BIT_GETTER(Rsrc2, EnableTrapHandler)
-  REG_BIT_GETTER(Rsrc2, EnableSgprWorkgroupIdX)
-  REG_BIT_GETTER(Rsrc2, EnableSgprWorkgroupIdY)
-  REG_BIT_GETTER(Rsrc2, EnableSgprWorkgroupIdZ)
-  REG_BIT_GETTER(Rsrc2, EnableSgprInfo)
-  REG_BIT_GETTER(Rsrc2, EnableVgprWorkitemId)
-  REG_BIT_GETTER(Rsrc2, ExceptionAddressWatch)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionMemoryViolation)
-  REG_BIT_GETTER(Rsrc2, GranulatedLdsSize)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionIEEE754FPInvalidOperation)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionFPDenormalSource)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionIEEE754FPDivisionByZero)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionIEEE754FPOverflow)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionIEEE754FPUnderflow)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionIEEE754FPInexact)
-  REG_BIT_GETTER(Rsrc2, EnableExceptionIntDivisionByZero)
-  REG_BIT_GETTER(Rsrc2, Reserved1)
-  REG_BIT_GETTER(Rsrc2, EnableSgprPrivateSegmentWaveByteOffset)
-  REG_BIT_SETTER(Rsrc2, UserSgprCount)
-  REG_BIT_SETTER(Rsrc2, EnableTrapHandler)
-  REG_BIT_SETTER(Rsrc2, EnableSgprWorkgroupIdX)
-  REG_BIT_SETTER(Rsrc2, EnableSgprWorkgroupIdY)
-  REG_BIT_SETTER(Rsrc2, EnableSgprWorkgroupIdZ)
-  REG_BIT_SETTER(Rsrc2, EnableSgprInfo)
-  REG_BIT_SETTER(Rsrc2, EnableVgprWorkitemId)
-  REG_BIT_SETTER(Rsrc2, ExceptionAddressWatch)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionMemoryViolation)
-  REG_BIT_SETTER(Rsrc2, GranulatedLdsSize)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionIEEE754FPInvalidOperation)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionFPDenormalSource)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionIEEE754FPDivisionByZero)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionIEEE754FPOverflow)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionIEEE754FPUnderflow)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionIEEE754FPInexact)
-  REG_BIT_SETTER(Rsrc2, EnableExceptionIntDivisionByZero)
-  REG_BIT_SETTER(Rsrc2, Reserved1)
+  /// a struct for easier access to the kernel code properties register without
+  /// using individual bit-wise operations
+  typedef struct {
+    uint32_t EnableSgprPrivateSegmentBuffer;
+    uint32_t EnableSgprDispatchPtr;
+    uint32_t EnableSgprQueuePtr;
+    uint32_t EnableSgprKernArgSegmentPtr;
+    uint32_t EnableSgprDispatchId;
+    uint32_t EnableSgprFlatScratchInit;
+    uint32_t EnableSgprPrivateSegmentSize;
+    uint32_t EnableSgprGridWorkgroupCountX;
+    uint32_t EnableSgprGridWorkgroupCountY;
+    uint32_t EnableSgprGridWorkgroupCountZ;
+    uint32_t Reserved1;
+    uint32_t EnableOrderedAppendGds;
+    uint32_t PrivateElementSize;
+    uint32_t IsPtr64;
+    uint32_t IsDynamicCallStack;
+    uint32_t IsDebugEnabled;
+    uint32_t IsXnackEnabled;
+    uint32_t Reserved2;
+  } KernelCodePropertiesInfo;
 
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprPrivateSegmentBuffer)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprDispatchPtr)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprQueuePtr)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprKernArgSegmentPtr)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprDispatchId)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprFlatScratchInit)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprPrivateSegmentSize)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprGridWorkgroupCountX)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprGridWorkgroupCountY)
-  REG_BIT_GETTER(KernelCodeProperties, EnableSgprGridWorkgroupCountZ)
-  REG_BIT_GETTER(KernelCodeProperties, Reserved1)
-  REG_BIT_GETTER(KernelCodeProperties, EnableOrderedAppendGds)
-  REG_BIT_GETTER(KernelCodeProperties, PrivateElementSize)
-  REG_BIT_GETTER(KernelCodeProperties, IsPtr64)
-  REG_BIT_GETTER(KernelCodeProperties, IsDynamicCallStack)
-  REG_BIT_GETTER(KernelCodeProperties, IsDebugEnabled)
-  REG_BIT_GETTER(KernelCodeProperties, IsXnackEnabled)
-  REG_BIT_GETTER(KernelCodeProperties, Reserved2)
+  /// \return parsed Rsrc1 register into the more accessible \c Rsrc1Info format
+  [[nodiscard]] Rsrc1Info getRsrc1() const;
 
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprPrivateSegmentBuffer)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprDispatchPtr)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprQueuePtr)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprKernArgSegmentPtr)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprDispatchId)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprFlatScratchInit)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprPrivateSegmentSize)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprGridWorkgroupCountX)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprGridWorkgroupCountY)
-  REG_BIT_SETTER(KernelCodeProperties, EnableSgprGridWorkgroupCountZ)
-  REG_BIT_SETTER(KernelCodeProperties, Reserved1)
-  REG_BIT_SETTER(KernelCodeProperties, EnableOrderedAppendGds)
-  REG_BIT_SETTER(KernelCodeProperties, PrivateElementSize)
-  REG_BIT_SETTER(KernelCodeProperties, IsPtr64)
-  REG_BIT_SETTER(KernelCodeProperties, IsDynamicCallStack)
-  REG_BIT_SETTER(KernelCodeProperties, IsDebugEnabled)
-  REG_BIT_SETTER(KernelCodeProperties, IsXnackEnabled)
-  REG_BIT_SETTER(KernelCodeProperties, Reserved2)
+  /// \return parsed Rsrc2 register into the more accessible \c Rsrc2Info format
+  [[nodiscard]] Rsrc2Info getRsrc2() const;
 
-#undef REG_BIT_SETTER
-#undef REG_BIT_GETTER
+  /// \return parsed kernel code properties register into the more accessible
+  /// \c KernelCodePropertiesInfo format
+  [[nodiscard]] KernelCodePropertiesInfo getKernelCodeProperties() const;
 
+  /// \return the entrypoint of the kernel machine code i.e. the address of the
+  /// first instruction of the kernel
   [[nodiscard]] luthier::address_t getEntryPoint() const;
 
-  static KernelDescriptor *fromKernelObject(uint64_t KernelObject);
+  /// Returns a pointer to the kernel descriptor, given the kernel object
+  /// field of the kernel dispatch packet
+  /// \param KernelObject obtained from the \c kernel_object field in the
+  /// \c hsa_kernel_dispatch_packet_t
+  /// \return the kernel descriptor of the <tt>KernelObject</tt>
+  static const KernelDescriptor *fromKernelObject(uint64_t KernelObject);
 
-  llvm::Expected<hsa_executable_symbol_t> getHsaExecutableSymbol();
+  /// Use this instead of the HSA Loader API to get the symbol of the KD
+  /// \return the kernel's \c hsa_executable_symbol_t on success, or an
+  /// \c llvm::Error if the KD is invalid
+  [[nodiscard]] llvm::Expected<hsa_executable_symbol_t>
+  getHsaExecutableSymbol() const;
 };
-} // namespace luthier
+} // namespace luthier::hsa
 
 #endif
