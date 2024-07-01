@@ -7,6 +7,8 @@
 #include "tooling_common/code_lifter.hpp"
 #include "tooling_common/target_manager.hpp"
 #include "tooling_common/tool_executable_manager.hpp"
+#include "hip_compiler_intercept.hpp"
+#include "hip_runtime_intercept.hpp"
 
 #include "luthier/luthier.h"
 #include "luthier/types.h"
@@ -126,13 +128,23 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
   }
   if (Type == ROCPROFILER_HIP_COMPILER_TABLE) {
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Compiler API Table.\n");
-    auto &HipInterceptor = hip::Interceptor::instance();
+    auto &HipCompilerInterceptor = hip::CompilerInterceptor::instance();
     auto *Table = static_cast<HipCompilerDispatchTable *>(Tables[0]);
-    HipInterceptor.captureCompilerDispatchTable(Table);
-    HipInterceptor.setInternalCallback(hip::internalApiCallback);
-    HipInterceptor.enableInternalCallback(
+    HipCompilerInterceptor.captureCompilerDispatchTable(Table);
+    HipCompilerInterceptor.setInternalCallback(hip::internalApiCallback);
+    HipCompilerInterceptor.enableInternalCallback(
         luthier::hip::HIP_API_ID___hipRegisterFunction);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Compiler API Table.\n");
+  }
+  if (Type == ROCPROFILER_HIP_RUNTIME_TABLE) {
+    LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Runtime API Table.\n");
+    auto &HipRuntimeInterceptor = hip::RuntimeInterceptor::instance();
+    auto *Table = static_cast<HipDispatchTable *>(Tables[0]);
+    HipRuntimeInterceptor.captureRuntimeTable(Table);
+    HipRuntimeInterceptor.setInternalCallback(hip::internalApiCallback);
+    HipRuntimeInterceptor.enableInternalCallback(
+        luthier::hip::HIP_API_ID___hipRegisterFunction);
+    LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Runtime API Table.\n");
   }
 }
 
@@ -154,7 +166,9 @@ Controller::Controller()
   COM = new ToolExecutableManager();
   CL = new CodeLifter();
   TM = new TargetManager();
-  HipInterceptor = new hip::Interceptor();
+  HsaInterceptor = new hsa::Interceptor();
+  HipCompilerInterceptor = new hip::CompilerInterceptor();
+  HipRuntimeInterceptor = new hip::RuntimeInterceptor();
 }
 
 Controller::~Controller() {
@@ -164,6 +178,9 @@ Controller::~Controller() {
   delete HipInterceptor;
   delete COM;
   delete HsaPlatform;
+  delete HsaInterceptor;
+  delete HipCompilerInterceptor;
+  delete HipRuntimeInterceptor;
 }
 void Controller::init() {
   static std::once_flag Once{};

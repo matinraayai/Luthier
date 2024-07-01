@@ -1,401 +1,225 @@
-# Copyright (c) 2019 - 2021 Advanced Micro Devices, Inc. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-
+# !/usr/bin/env python3
 import os
+import io
 import re
-import warnings
 
-import CppHeaderParser
-from typing import *
 import argparse
+
+from cxxheaderparser.simple import parse_string, ClassScope, ParsedData, Function
+import cxxheaderparser.types as cxx_types
+from header_preprocessor import ROCmPreprocessor
+from typing import *
 
 
 def parse_and_validate_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("HIP API interception generation script for Luthier; Originally used by AMD in "
-                                     "HIP and roctracer projects.")
-    parser.add_argument("--hipamd-src-dir", type=str,
-                        help='where hipamd src directory is located')
-    parser.add_argument("--hip-include-dir", type=str, default='/opt/rocm/include/hip/',
-                        help="path to the include directory of hip installation")
-    parser.add_argument("--hip-prof-str", type=str,
-                        help='path to hip_prof_str.h')
-    parser.add_argument("--output", type=str, default="./hip_intercept.cpp",
-                        help="where to save the generated interception function for Luthier")
+                                     "the Roctracer project")
+    parser.add_argument("--hip-include-dir", type=str,
+                        default="/opt/rocm/include/hip/amd_detail/",
+                        help="location of the HIP include directory")
+    parser.add_argument("--cpp-callback-save-path", type=str,
+                        default="../src/hip_intercept.cpp",
+                        help="location of where the generated C++ callback file will be saved")
+    parser.add_argument("--hpp-structs-save-path", type=str,
+                        default="../include/luthier/hip_trace_api.h",
+                        help="location of where the generated C++ header file containing the callback args struct "
+                             "and callback enumerators will be saved")
     args = parser.parse_args()
-
-    assert os.path.isdir(args.hipamd_src_dir), f"input file {args.hipamd_src_dir} not found"
-    assert os.path.isdir(args.hip_include_dir), f"input file {args.hip_include_dir} not found"
-    assert os.path.isfile(args.hip_prof_str), f"src dir {args.hip_prof_str} not found"
-
     return args
 
 
-# Checking for pointer non-void arg type
-def pointer_ck(arg_type):
-    ptr_type = ''
-    m = re.match(r'(.*)\*$', arg_type)
-    if m:
-        ptr_type = m.group(1)
-        n = re.match(r'(.*)\*\*$', arg_type)
-        if not n:
-            ptr_type = re.sub(r'const ', '', ptr_type)
-        if ptr_type == 'void':
-            ptr_type = ''
-    return ptr_type
+def parse_header_file(header_file: str) -> ParsedData:
+    preprocessor = ROCmPreprocessor()
+    preprocessor.line_directive = None
+    preprocessor.passthru_unfound_includes = True
+    preprocessor.passthru_includes = re.compile(r".*")
+    preprocessor.define("__GNUC__")
+    preprocessor.define("LITTLEENDIAN_CPU")
+    preprocessor.define("_M_X64")
+    with open(header_file, 'r') as hf:
+        preprocessor.parse(hf)
+        str_io = io.StringIO()
+        preprocessor.write(str_io)
+    preprocessed_header = str_io.getvalue()
+    parsed = parse_string(preprocessed_header)
+    str_io.close()
+    return parsed
 
 
-def convert_function_list_to_dict(func_list: List[CppHeaderParser.CppMethod]) -> Dict[str, CppHeaderParser.CppMethod]:
-    out = {}
-    for f in func_list:
-        if f['name'] not in out:
-            out[f['name']] = [f]
-        else:
-            out[f['name']].append(f)
-    out_copy = out.copy()
-    for f_name, f_list in out_copy.items():
-        # if len(f_list) > 1:
-        candidates = set(i for i in range(len(f_list)))
-        for i, f in enumerate(f_list):
-            # Check for templated functions
-            if not f['template'] is False:
-                candidates.remove(i)
-                continue
-            # Check for functions with default arguments
-            for p in f['parameters']:
-                if 'default' in p:
-                    candidates.remove(i)
-                    continue
-
-        if len(candidates) == 0:
-            warnings.warn(f"No candidates for {f_name} are eligible for interception.")
-            del out[f_name]
-        elif len(candidates) > 1:
-            warnings.warn(f"two or more candidates are found for {f_name}.")
-            out[f_name] = f_list[list(candidates)[0]]
-        else:
-            out[f_name] = f_list[0]
-    return out
+def parse_hip_typedefs(header_files: Iterable[str]) -> dict[str, Function]:
+    functions = {}
+    for header in header_files:
+        phf = parse_header_file(header)
+        for f in phf.namespace.typedefs:
+            functions[f.name] = f
+    return functions
 
 
-def parse_hipamd_src_functions(src_dir: str, hip_prof_api_enums: Dict[str, int]):
-    function_list = []
-    for root, dirs, files in os.walk(src_dir):
-        for file_name in files:
-            if ".cpp" not in file_name:
-                continue
-            extern_c_range = []
-            with open(os.path.join(root, file_name), 'r') as f:
-                file_content = f.readlines()
-            # If there is a block of code annotated with "extern C", detect its start/end line number
-            in_extern_c = False
-            extern_c_start = 0
-            bracket_level = 0
-            for i, line in enumerate(file_content):
-                if 'extern "C" {' in line:
-                    in_extern_c = True
-                    extern_c_start = i
-                    bracket_level = 1
-                elif '{' in line:
-                    bracket_level += 1
-                elif '}' in line:
-                    bracket_level -= 1
-                if bracket_level == 0 and in_extern_c is True:
-                    extern_c_range.append((extern_c_start, i))
-                    extern_c_start = 0
-                    in_extern_c = False
-            try:
-                parsed_file = CppHeaderParser.CppHeader("".join(file_content), argType="string")
-            except CppHeaderParser.CppHeaderParser.CppParseError:
-                warnings.warn(f"Could not parse {os.path.join(root, file_name)}.")
-                continue
-            file_functions = parsed_file.functions
-            for func in file_functions:
-                # Ignore Windows Dll start function
-                if "DllMain" in func['name']:
-                    continue
-                # Ensure capturing any function already in HIP profiling API
-                # These usually have the HIP_API_INIT macro at their start
-                if "HIP_API_ID_" + func['name'] in hip_prof_api_enums:
-                    function_list.append(func)
-                else:
-                    is_in_extern_c_range = False
-                    for r in extern_c_range:
-                        if r[0] <= func['line_number'] <= r[1]:
-                            is_in_extern_c_range = True
-                    function_line = file_content[func['line_number'] - 1]
-                    if is_in_extern_c_range or ('extern "C"' in function_line and func['name'] in function_line):
-                        function_list.append(func)
-    return function_list
-
-
-def combine_private_and_public_api_functions(public_api: Dict[str, CppHeaderParser.CppMethod],
-                                             private_api: Dict[str, CppHeaderParser.CppMethod]) -> \
-        Dict[str, CppHeaderParser.CppMethod]:
-    out = public_api.copy()
-    for name, f in private_api.items():
-        if name not in public_api:
-            out[name] = f
-
-    return out
-
-
-def parse_hip_prof_str_enum_map(hip_prof_str_path: str) -> Dict[str, int]:
-    hip_prof_header = CppHeaderParser.CppHeader(hip_prof_str_path)
-    hip_prof_enums = hip_prof_header.enums[0]
-    out = {}
-    for e in hip_prof_enums['values']:
-        if e['name'] not in out:
-            out[e['name']] = e['value']
-        else:
-            raise RuntimeError("Found duplicate names in hip_prof_str.h.")
-    return out
-
-
-def generate_hip_private_api_enums(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod],
-                                   hip_api_id_enums: Dict[str, int]):
-    f.write('#ifndef HIP_PRIVATE_API\n#define HIP_PRIVATE_API\n\n')
-    f.write('enum hip_private_api_id_t {\n')
-    f.write('\tHIP_PRIVATE_API_ID_NONE = 0,\n')
-    api_id = 1000
-    f.write(f'\tHIP_PRIVATE_API_ID_FIRST = {api_id},\n')
-    for api_name in sorted(hip_runtime_api_map):
-        if f'HIP_API_ID_{api_name}' not in hip_api_id_enums:
-            f.write(f'\tHIP_PRIVATE_API_ID_{api_name} = {api_id},\n')
-            api_id += 1
-    f.write(f'\tHIP_PRIVATE_API_ID_LAST = {api_id - 1}\n')
-    f.write("};\n\n")
-    f.write('#endif')
-
-
-def generate_hip_intercept_args(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod]):
-    f.write('#ifndef HIP_ARGS\n#define HIP_ARGS\n\n')
-    f.write("#include <hip/hip_runtime_api.h>\n")
-    f.write("namespace hip {\n")
-    f.write("\tstruct FatBinaryInfo{};\n")
-    f.write("}\n\n")
-
-    for name in sorted(hip_runtime_api_map.keys()):
-        f.write(f'typedef struct hip_{name}_api_args_s {{\n')
-
-        output_type = hip_runtime_api_map[name]['rtnType']
-        args = hip_runtime_api_map[name]['parameters']
-        are_args_non_empty = len(args) != 0 and not (len(args) == 1 and args[0]['type'] == 'void')
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                ptr_type = pointer_ck(arg_type)
-                arg_name = arg['name']
-                # Checking for enum type
-                if arg_type == "hipLimit_t":
-                    arg_type = 'enum ' + arg_type
-                # Function arguments
-                f.write(f"\t{arg_type} {arg_name};\n")
-                # if i != len(args) - 1:
-                #     f.write(';\n')
-        f.write(f'}} hip_{name}_api_args_t;\n\n')
-        f.write(f'typedef {output_type} {name}_return_t;\n\n\n')
-    f.write("#endif")
-
-
-def generate_hip_intercept_dlsym_functions(f: IO[Any], hip_runtime_api_map: Dict[str, CppHeaderParser.CppMethod],
-                                           hip_api_id_enums: Dict[str, int]) -> None:
-    for name in hip_api_id_enums:
-        actual_name = name[11:]
-        if actual_name not in hip_runtime_api_map and actual_name != "NONE" and actual_name != "FIRST" and \
-                actual_name != "LAST" and "RESERVED" not in actual_name and \
-                hip_api_id_enums[name] != "HIP_API_ID_NONE":
-            continue
-            # raise RuntimeError(f"{actual_name} is in hip_prof_str.h but not in the captured function APIs.\n")
-    # Create the constructor definition of HipInterceptor here to avoid clashing between link.h and ELFIO definitions
-    f.write('#include <link.h>\n#include "hip_intercept.hpp"\n\n\n')
-    f.write("""luthier::HipInterceptor::HipInterceptor() {
-    // Iterate through the process' loaded shared objects and try to dlopen the first entry with a
-    // file name starting with the given 'pattern'. This allows the loader to acquire a handle
-    // to the target library iff it is already loaded. The handle is used to query symbols
-    // exported by that library.
-    auto callback = [this](dl_phdr_info *info) {
-    if (handle_ == nullptr && fs::path(info->dlpi_name).filename().string().rfind("libamdhip64.so", 0) == 0)
-        handle_ = ::dlopen(info->dlpi_name, RTLD_LAZY);
-    };
-    dl_iterate_phdr(
-        [](dl_phdr_info *info, size_t size, void *data) {
-            (*reinterpret_cast<decltype(callback) *>(data))(info);
-            return 0;
-        }, &callback);
-};\n\n""")
-
-    for name in sorted(hip_runtime_api_map.keys()):
-        if name != "hipCreateSurfaceObject" and name != "hipDestroySurfaceObject":
-            f.write('extern "C" ')
-        f.write('__attribute__((visibility("default")))\n')
-        output_type = hip_runtime_api_map[name]['rtnType']
-        f.write(f'{output_type} {name}(')
-        args = hip_runtime_api_map[name]['parameters']
-        are_args_non_empty = len(args) != 0 and not (len(args) == 1 and args[0]['type'] == 'void')
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                ptr_type = pointer_ck(arg_type)
-                arg_name = arg['name']
-                # Checking for enum type
-                if arg_type == "hipLimit_t":
-                    arg_type = 'enum ' + arg_type
-                # Function arguments
-                f.write(f"{arg_type} {arg_name}")
-                if i != len(args) - 1:
-                    f.write(', ')
-        f.write(') {\n')
-        f.write('\tauto& hipInterceptor = luthier::HipInterceptor::instance();\n')
-        if f"HIP_API_ID_{name}" not in hip_api_id_enums:
-            f.write(f'\tauto apiId = HIP_PRIVATE_API_ID_{name};\n')
-        else:
-            f.write(f'\tauto apiId = HIP_API_ID_{name};\n')
-        f.write('\tbool isUserCallbackEnabled = hipInterceptor.isUserCallbackEnabled(apiId);\n')
-        f.write('\tbool isInternalCallbackEnabled = hipInterceptor.isInternalCallbackEnabled(apiId);\n')
-        f.write('\tif (isUserCallbackEnabled || isInternalCallbackEnabled) {')
-        f.write('\t\tauto& hipUserCallback = hipInterceptor.getUserCallback();\n')
-        f.write('\t\tauto& hipInternalCallback = hipInterceptor.getInternalCallback();\n')
-
-        f.write('\t\t// Copy Arguments for PHASE_ENTER\n')
-        f.write("\t\t// Flag to skip calling the original function\n")
-        f.write("\t\tbool skipFunction{false};\n")
-        f.write("\t\tstd::optional<std::any> out{std::nullopt};\n")
-        if are_args_non_empty:
-            f.write(f'\t\thip_{name}_api_args_t hipFuncArgs{{')
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(f"{arg_name}")
-                if i != len(args) - 1:
-                    f.write(', ')
-            f.write("};\n")
-        callback_args = "static_cast<void*>(&hipFuncArgs)" if are_args_non_empty else "nullptr"
-        f.write(
-            f"\t\tif (isUserCallbackEnabled) hipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, apiId);\n")
-        f.write(
-            f"\t\tif (isInternalCallbackEnabled) hipInternalCallback({callback_args}, LUTHIER_API_EVT_PHASE_ENTER, apiId, &skipFunction, &out);\n")
-        f.write("\t\tif (!skipFunction) {\n")
-        f.write(f"\t\t\tstatic auto hipFunc = hipInterceptor.getHipFunction<{output_type}(*)(")
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(arg_type)
-                if i != len(args) - 1:
-                    f.write(',')
-        f.write(f')>("{name}");\n')
-        f.write("\t\t\t")
-        if output_type != "void":
-            f.write(f"out = ")
-        f.write('hipFunc(')
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(f"hipFuncArgs.{arg_name}")
-                if i != len(args) - 1:
-                    f.write(', ')
-        f.write(");\n\t\t};\n")
-        f.write("\t\t// Exit Callback\n")
-        f.write(
-            f"\t\tif (isUserCallbackEnabled) hipUserCallback({callback_args}, LUTHIER_API_EVT_PHASE_EXIT, apiId);\n")
-        f.write(
-            f"\t\tif (isInternalCallbackEnabled) hipInternalCallback({callback_args}, LUTHIER_API_EVT_PHASE_EXIT, "
-            "apiId, &skipFunction, &out);\n")
-        if are_args_non_empty:
-            f.write("\t\t// Copy the modified arguments back to the original arguments (if non-const)\n")
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                if "const" not in arg_type:
-                    f.write(f"\t\t{arg_name} = hipFuncArgs.{arg_name};\n")
-        if output_type != "void":
-            f.write(f"\n\t\treturn std::any_cast<{output_type}>(*out);\n")
-        f.write("\t} else {\n")
-        f.write(f"\t\tstatic auto hipFunc = hipInterceptor.getHipFunction<{output_type}(*)(")
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(arg_type)
-                if i != len(args) - 1:
-                    f.write(',')
-        f.write(f')>("{name}");\n')
-        f.write("\t\t")
-        if output_type != "void":
-            f.write("return ")
-        f.write('hipFunc(')
-        if are_args_non_empty:
-            for i, arg in enumerate(args):
-                arg_type = arg['type']
-                arg_name = arg['name']
-                f.write(f"{arg_name}")
-                if i != len(args) - 1:
-                    f.write(', ')
-        f.write(");\n\t};\n")
-        f.write("}\n\n")
-
-
-########################################################################################################################
+def get_api_tables(parsed_hip_api_trace_header: ParsedData, api_table_names: List[str]) -> Dict[str, ClassScope]:
+    api_tables = {}
+    for cls in parsed_hip_api_trace_header.namespace.classes:
+        typename = cls.class_decl.typename
+        if typename.classkey == "struct" and len(typename.segments) == 1 \
+                and typename.segments[0].name in api_table_names:
+            api_tables[typename.segments[0].name] = cls
+    return api_tables
 
 
 def main():
+    # Name of the API tables to capture in HIP
+    api_table_names = ["HipCompilerDispatchTable", "HipDispatchTable"]
+
     args = parse_and_validate_args()
+    # All possible HIP API functions are located in these headers
+    hip_include_files = tuple(os.path.join(args.hip_include_dir, header_file) for header_file in
+                              ["hip_api_trace.hpp"])
 
-    assert os.path.isdir(args.hipamd_src_dir), f"input file {args.hipamd_src_dir} not found"
-    assert os.path.isfile(args.hip_prof_str), f"src dir {args.hip_prof_str} not found"
-    assert os.path.isdir(args.hip_include_dir), f"input file {args.hip_include_dir} not found"
+    parsed_api_enum = parse_header_file("/opt/rocm/include/rocprofiler-sdk/hip/runtime_api_id.h")
+    parsed_api_enum = [ting.name for ting in parsed_api_enum.namespace.enums[0].values]
 
-    # Parse API header
-    with open(os.path.join(args.hip_include_dir, "hip_runtime_api.h"), 'r') as f:
-        hip_runtime_api_content = f.readlines()
+    # parsed_args = parse_header_file("/opt/rocm/include/rocprofiler-sdk/hip/api_args.h")
+    # print(parsed_args)
 
-    # Remove the "DEPRECATED" macro from the header content to ensure correct parsing
-    hip_runtime_api_content = [line for line in hip_runtime_api_content if "DEPRECATED" not in line]
+    # This returns a Dict that contains all HIP API functions and other functions not of interest to us.
+    # It maps the name of the function (e.g. hip_init) to its cxxheaderparser Function type
+    hip_functions = parse_hip_typedefs(hip_include_files)
 
-    hip_runtime_api_content = [re.sub(r"\s__dparm\([^)]*\)", r'', line) for line in hip_runtime_api_content]
+    parsed_api_trace_header = parse_header_file(os.path.join(args.hip_include_dir, "hip_api_trace.hpp"))
 
-    # Convert the content to a single string for CppHeader to parse
-    hip_runtime_api_content = "".join(hip_runtime_api_content)
+    # Parse the API tables in hip_api_trace.h
+    api_tables = get_api_tables(parsed_api_trace_header, api_table_names)
 
-    hip_api_runtime_header = CppHeaderParser.CppHeader(hip_runtime_api_content, argType="string")
-    hip_api_runtime_functions = convert_function_list_to_dict(hip_api_runtime_header.functions)
+    table_gets = { "HipCompilerDispatchTable" : 'getSavedCompilerTable()', "HipDispatchTable" : "getSavedRuntimeTable()" }
 
-    hip_api_enums = parse_hip_prof_str_enum_map(args.hip_prof_str)
+    api_id_types  = { "HipCompilerDispatchTable" : "ROCPROFILER_HIP_COMPILER_API_ID_",
+                     "HipDispatchTable" : "ROCPROFILER_HIP_RUNTIME_API_ID_" }
 
-    hip_private_api_functions = parse_hipamd_src_functions(args.hipamd_src_dir, hip_api_enums)
+    # Generate the callback functions that will replace the original HIP functions
+    callback_defs = []
+    compiler_defs = [f"""/* Generated by {os.path.basename(__file__)}. DO NOT EDIT! */
+#include "hip_compiler_intercept.hpp"
+#include "luthier/types.h"
+#include <rocprofiler-sdk/hip/api_args.h>
+#include <rocprofiler-sdk/hip/api_id.h>
 
-    hip_private_api_functions = convert_function_list_to_dict(hip_private_api_functions)
+"""]
 
-    all_api_functions = combine_private_and_public_api_functions(hip_api_runtime_functions,
-                                                                 hip_private_api_functions)
-    # Generating output header file
+    runtime_defs = [f"""/* Generated by {os.path.basename(__file__)}. DO NOT EDIT! */
+#include "hip_runtime_intercept.hpp"
+#include "luthier/types.h"
+#include <rocprofiler-sdk/hip/api_args.h>
+#include <rocprofiler-sdk/hip/api_id.h>
 
-    with open("hip_private_api.h", 'w') as f:
-        generate_hip_private_api_enums(f, all_api_functions, hip_api_enums)
+"""]
 
-    with open("hip_arg_types.h", 'w') as f:
-        generate_hip_intercept_args(f, all_api_functions)
 
-    with open(args.output, 'w') as f:
-        generate_hip_intercept_dlsym_functions(f, all_api_functions, hip_api_enums)
+
+    for api_name in api_table_names:
+        api_table = api_tables[api_name]
+        get_func = table_gets[api_name]
+        api_id_type = api_id_types[api_name]
+        for f in api_table.fields:
+            # look for functions in the API Tables, not fields
+            # function fields in the API table are defined as pointers to the decltype of their target HIP function
+            if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
+                # Name of the hip function (e.g.) hip_init
+                hip_function_name = f.type.typename.segments[0].name
+                # The field of the API Table this function corresponds to (e.g.) hip_init_fn
+                api_table_function_name = f.name
+                # The hip function representation parsed by cxxheaderparser
+                hip_function_cxx = hip_functions[hip_function_name]
+
+                # Format the args for later
+                formatted_params = [p.format() for p in hip_function_cxx.type.ptr_to.parameters]
+                # Generate the callback
+                return_type = hip_function_cxx.type.ptr_to.return_type.format()
+                actual_fun_name = api_table_function_name[:-3]
+
+                if (api_name == "HipDispatchTable" and ("ROCPROFILER_HIP_RUNTIME_API_ID_" + actual_fun_name) not in parsed_api_enum): continue
+
+                callback_defs.append(
+                    f"""static {return_type} {actual_fun_name}_callback({", ".join(formatted_params)}) {{
+  auto& HipInterceptor = luthier::hip::{"Compiler" if (api_name == "HipCompilerDispatchTable") else "Runtime"}Interceptor::instance();
+  auto ApiId = {api_id_type}{actual_fun_name};
+  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
+  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
+  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  if (ShouldCallback) {{
+""")
+                if return_type != "void":
+                    callback_defs.append(f"""    {return_type} Out{{}};
+""")
+                callback_defs.append("""    auto& HipUserCallback = HipInterceptor.getUserCallback();
+    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
+    rocprofiler_hip_api_args_t Args;
+    bool SkipFunction{false};
+""")
+                for p in hip_function_cxx.type.ptr_to.parameters:
+                    # temp_name = p.name
+                    # if (temp_name == "device"): temp_name = "deviceId"
+                    # elif (temp_name == "hStream"): temp_name = "stream"
+                    # elif (temp_name == "properties"): temp_name = "prop"
+                    # elif (temp_name == "f"): temp_name = "func"
+                    callback_defs.append(f"""    Args.{actual_fun_name}.{p.name} = {p.name};
+""")
+                callback_defs.append(
+                    """    if (IsUserCallbackEnabled)
+      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
+    if (IsInternalCallbackEnabled)
+      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
+    if (!SkipFunction)
+""")
+                callback_defs.append(
+                    f"""      {"Out =" if return_type != "void" else ""} HipInterceptor.{get_func}.{api_table_function_name}(""")
+                for i, p in enumerate(hip_function_cxx.type.ptr_to.parameters):
+                    # temp_name = p.name
+                    # if (temp_name == "device"): temp_name = "deviceId"
+                    # elif (temp_name == "hStream"): temp_name = "stream"
+                    # elif (temp_name == "properties"): temp_name = "prop"
+                    # elif (temp_name == "f"): temp_name = "func"
+                    callback_defs.append(f'Args.{actual_fun_name}.{p.name}')
+                    if i != len(hip_function_cxx.type.ptr_to.parameters) - 1:
+                        callback_defs.append(", ")
+                callback_defs.append(");\n")
+                callback_defs.append(
+                    f"""    if (IsUserCallbackEnabled)
+      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
+    if (IsInternalCallbackEnabled)
+      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
+    {"return Out;" if return_type != "void" else ""}
+  }}
+  else {{
+""")
+                callback_defs.append(f"""    return HipInterceptor.{get_func}.{api_table_function_name}(""")
+                for i, p in enumerate(hip_function_cxx.type.ptr_to.parameters):
+                    callback_defs.append(f'{p.name}')
+                    if i != len(hip_function_cxx.type.ptr_to.parameters) - 1:
+                        callback_defs.append(", ")
+                callback_defs.append(""");
+  }
+""")
+                callback_defs.append("""}
+
+""")
+
+                if (api_name == "HipCompilerDispatchTable"):
+                    compiler_defs += callback_defs
+                else:
+                    runtime_defs += callback_defs
+
+                callback_defs.clear()
+
+    with open("/root/Luthier/src/hip_compiler_intercept.cpp", "w") as f:
+        f.writelines("// NOLINTBEGIN\n")
+        f.writelines(compiler_defs)
+        f.write("\n")
+        f.writelines("// NOLINTEND\n")
+
+    with open("/root/Luthier/src/hip_runtime_intercept.cpp", "w") as f:
+        f.writelines("// NOLINTBEGIN\n")
+        f.writelines(runtime_defs)
+        f.write("\n")
+        f.writelines("// NOLINTEND\n")
 
 
 if __name__ == "__main__":
