@@ -1,31 +1,18 @@
+//===-- instr.cpp - HSA Instruction  --------------------------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements the HSA instruction.
+//===----------------------------------------------------------------------===//
 #include <luthier/instr.h>
-
-#include <utility>
-
-#include "hsa_agent.hpp"
-#include "hsa_executable.hpp"
-#include "hsa_executable_symbol.hpp"
 
 namespace luthier::hsa {
 
-Instr::Instr(llvm::MCInst Inst, hsa_loaded_code_object_t LCO,
-             hsa_executable_symbol_t Symbol, luthier::address_t Address,
-             size_t Size)
-    : Inst(std::move(Inst)), LCO(LCO), Symbol(Symbol),
-      LoadedDeviceAddress(Address), Size(Size) {}
-
-// hsa_executable_t Instr::getExecutable() const {
-//   return
-//   hsa::ExecutableSymbol::fromHandle(Symbol).getExecutable()->asHsaType();
-// }
-
-hsa_loaded_code_object_t Instr::getLoadedCodeObject() const { return LCO; }
-
-llvm::Expected<hsa_agent_t> Instr::getAgent() const {
-  auto Agent = hsa::LoadedCodeObject(LCO).getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-  return Agent->asHsaType();
-}
+Instr::Instr(llvm::MCInst Inst, hsa_executable_symbol_t Symbol,
+             luthier::address_t Address, size_t Size)
+    : Inst(std::move(Inst)), Symbol(Symbol), LoadedDeviceAddress(Address),
+      Size(Size) {}
 
 hsa_executable_symbol_t Instr::getExecutableSymbol() const { return Symbol; }
 

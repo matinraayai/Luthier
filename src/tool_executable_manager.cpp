@@ -167,9 +167,9 @@ llvm::Expected<llvm::StringRef> getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
   llvm_unreachable("Could not find a CUID for the LCO");
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// Instrumentation Module Implementation
-////////////////////////////////////////////////////////////////////////////////
+//===----------------------------------------------------------------------===//
+// Instrumentation Module Implementation
+//===----------------------------------------------------------------------===//
 
 llvm::Error
 StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {

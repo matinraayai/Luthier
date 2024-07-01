@@ -225,7 +225,7 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
         }
       }
       PrevInstAddress = Address;
-      Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
+      Out->push_back(hsa::Instr(Inst, Symbol.asHsaType(),
                                 Address + reinterpret_cast<luthier::address_t>(
                                               MachineCodeOnDevice->data()),
                                 Size));
