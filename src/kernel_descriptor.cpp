@@ -76,6 +76,10 @@ KernelDescriptor::Rsrc2Info KernelDescriptor::getRsrc2() const {
       AMD_HSA_BITS_GET(this->ComputePgmRsrc2,
                        AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_SGPR_WORKGROUP_INFO);
 
+  Out.EnableVgprWorkitemId =
+      AMD_HSA_BITS_GET(this->ComputePgmRsrc2,
+                       AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_VGPR_WORKITEM_ID);
+
   Out.ExceptionAddressWatch =
       AMD_HSA_BITS_GET(this->ComputePgmRsrc2,
                        AMD_COMPUTE_PGM_RSRC_TWO_ENABLE_EXCEPTION_ADDRESS_WATCH);
