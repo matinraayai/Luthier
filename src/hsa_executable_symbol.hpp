@@ -83,6 +83,8 @@ public:
 
   [[nodiscard]] llvm::Expected<llvm::StringRef> getName() const;
 
+  [[nodiscard]] size_t getSize() const;
+
   [[nodiscard]] llvm::Expected<hsa_symbol_linkage_t> getLinkage() const;
 
   [[nodiscard]] llvm::Expected<hsa_variable_allocation_t>
@@ -100,7 +102,8 @@ public:
 
   [[nodiscard]] llvm::Expected<hsa::Executable> getExecutable() const;
 
-  [[nodiscard]] llvm::Expected<LoadedCodeObject> getLoadedCodeObject() const;
+  [[nodiscard]] std::optional<LoadedCodeObject>
+  getDefiningLoadedCodeObject() const;
 
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getMachineCode() const;
 };

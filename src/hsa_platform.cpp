@@ -5,11 +5,16 @@
 #include "hsa_loaded_code_object.hpp"
 #include "object_utils.hpp"
 
+#undef DEBUG_TYPE
+
+#define DEBUG_TYPE "luthier-hsa-platform"
+
 namespace luthier::hsa {
 
 std::recursive_mutex ExecutableBackedCachable::CacheMutex;
 
-llvm::Error Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) {
+llvm::Error
+Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) {
   // Check if executable is indeed frozen
   auto State = Exec.getState();
   LUTHIER_RETURN_ON_ERROR(State.takeError());
@@ -21,13 +26,13 @@ llvm::Error Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) 
   // Create an LLVM ELF Object for each Loaded Code Object's storage memory
   // and cache it for later use
   for (const auto &LCO : *LCOs) {
-    auto LCOAsCachable = llvm::dyn_cast<const ExecutableBackedCachable>(&LCO);
+    auto *LCOAsCachable = llvm::dyn_cast<const ExecutableBackedCachable>(&LCO);
     if (!LCOAsCachable->isCached())
       LUTHIER_RETURN_ON_ERROR(LCOAsCachable->cache());
     llvm::SmallVector<ExecutableSymbol> Symbols;
     LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
     for (const auto &Symbol : Symbols) {
-      auto SymbolAsCachable =
+      auto *SymbolAsCachable =
           llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol);
       if (!SymbolAsCachable->isCached())
         LUTHIER_RETURN_ON_ERROR(SymbolAsCachable->cache());
@@ -35,21 +40,26 @@ llvm::Error Platform::cacheExecutableOnExecutableFreeze(const Executable &Exec) 
       if (Symbol.getType() == VARIABLE) {
         LUTHIER_RETURN_ON_ERROR(
             Symbol.getVariableAddress().moveInto(LoadedAddress));
-      } else if (Symbol.getType() == KERNEL) {
-        auto KD = Symbol.getKernelDescriptor();
-        LUTHIER_RETURN_ON_ERROR(KD.takeError());
-        LoadedAddress = reinterpret_cast<address_t>(*KD);
-      } else {
+        AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
+      }
+      if (Symbol.getType() == KERNEL || Symbol.getType() == DEVICE_FUNCTION){
         auto MachineCode = Symbol.getMachineCode();
         LUTHIER_RETURN_ON_ERROR(MachineCode.takeError());
         LoadedAddress = reinterpret_cast<address_t>(MachineCode->data());
+        AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
       }
-      AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
+      if (Symbol.getType() == KERNEL) {
+        auto KD = Symbol.getKernelDescriptor();
+        LUTHIER_RETURN_ON_ERROR(KD.takeError());
+        LoadedAddress = reinterpret_cast<address_t>(*KD);
+        AddressToSymbolMap.insert({LoadedAddress, Symbol.asHsaType()});
+      }
     }
   }
   return llvm::Error::success();
 }
-llvm::Error Platform::invalidateExecutableOnExecutableDestroy(const Executable &Exec) {
+llvm::Error
+Platform::invalidateExecutableOnExecutableDestroy(const Executable &Exec) {
   auto LCOs = Exec.getLoadedCodeObjects();
   LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
   for (const auto &LCO : *LCOs) {
@@ -60,16 +70,19 @@ llvm::Error Platform::invalidateExecutableOnExecutableDestroy(const Executable &
       if (Symbol.getType() == VARIABLE) {
         LUTHIER_RETURN_ON_ERROR(
             Symbol.getVariableAddress().moveInto(LoadedAddress));
-      } else if (Symbol.getType() == KERNEL) {
+        AddressToSymbolMap.erase(LoadedAddress);
+      }
+      if (Symbol.getType() == KERNEL) {
         auto KD = Symbol.getKernelDescriptor();
         LUTHIER_RETURN_ON_ERROR(KD.takeError());
         LoadedAddress = reinterpret_cast<address_t>(*KD);
-      } else {
+        AddressToSymbolMap.erase(LoadedAddress);
+      } if (Symbol.getType() == KERNEL || Symbol.getType() == DEVICE_FUNCTION) {
         auto MachineCode = Symbol.getMachineCode();
         LUTHIER_RETURN_ON_ERROR(MachineCode.takeError());
         LoadedAddress = reinterpret_cast<address_t>(MachineCode->data());
+        AddressToSymbolMap.erase(LoadedAddress);
       }
-      AddressToSymbolMap.erase(LoadedAddress);
       LUTHIER_RETURN_ON_ERROR(
           llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol)
               ->invalidate());
@@ -91,7 +104,8 @@ Platform::cacheExecutableOnLoadedCodeObjectCreation(const Executable &Exec) {
       LUTHIER_RETURN_ON_ERROR(LCOAsCachableItem->cache());
       llvm::SmallVector<hsa::ExecutableSymbol> Symbols;
       LUTHIER_RETURN_ON_ERROR(LCO.getExecutableSymbols(Symbols));
-      llvm::outs() << "Number of Symbols: " << Symbols.size() << "\n";
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Number of Symbols: " << Symbols.size() << "\n");
       for (const auto &Symbol : Symbols) {
         LUTHIER_RETURN_ON_ERROR(
             llvm::dyn_cast<const ExecutableBackedCachable>(&Symbol)->cache());

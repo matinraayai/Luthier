@@ -26,8 +26,6 @@ namespace luthier {
 template<> TargetManager* Singleton<TargetManager>::Instance{nullptr};
 
 TargetManager::TargetManager() : Singleton<TargetManager>() {
-  // TODO: When the target application is multi-threaded, this might need to be
-  // in a scoped lock
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
@@ -53,6 +51,7 @@ TargetManager::~TargetManager() {
     delete It.second.LLVMContext;
   }
   LLVMTargetInfo.clear();
+  llvm::llvm_shutdown();
   Singleton<TargetManager>::~Singleton();
 }
 

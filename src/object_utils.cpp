@@ -203,7 +203,6 @@ llvm::Error parseUIntMDOptional(MapDocNode &Map, llvm::StringRef Key,
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
     Out = static_cast<T>(NodeMD->second.getUInt());
-    //    llvm::outs() << Out << "\n";
   }
   return llvm::Error::success();
 }
@@ -521,6 +520,20 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
       KernelMetaNode, luthier::hsa::md::Kernel::Key::KernelKind,
       KernelKindEnumMap, Out.KernelKind));
 
+
+  LUTHIER_RETURN_ON_ERROR(parseBoolMDOptional(
+      KernelMetaNode, luthier::hsa::md::Kernel::Key::UsesDynamicStack,
+      Out.UsesDynamicStack));
+
+  std::optional<unsigned> WorkgroupProcessorMode{0};
+
+  LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
+      KernelMetaNode, luthier::hsa::md::Kernel::Key::WorkgroupProcessorMode,
+      WorkgroupProcessorMode));
+
+  Out.WorkgroupProcessorMode = *WorkgroupProcessorMode == 1;
+
+
   std::optional<unsigned> UniformWorkgroupSize{0};
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
@@ -543,7 +556,7 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
       parseVersionMDRequired(RootMap, hsa::md::Key::Version, Out.Version));
 
   bool IsV2 = Out.Version.Minor == 0;
-  // TODO: Write a V2 Parser if needed
+  // We don't support Code Object V2
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!IsV2));
 
   auto PrintfMD = RootMap.find(hsa::md::Key::Printf);

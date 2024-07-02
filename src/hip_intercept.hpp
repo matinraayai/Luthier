@@ -1,10 +1,18 @@
+//===-- hip_intercept.hpp - Luthier's HIP API Interceptor -----------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file contains Luthier's HIP API Interceptor Singleton, implemented
+/// using the rocprofiler-sdk API for capturing HIP compiler and runtime API
+/// tables.
+//===----------------------------------------------------------------------===//
+
 #ifndef HIP_INTERCEPT_HPP
 #define HIP_INTERCEPT_HPP
 
-#include <dlfcn.h>
-
-#include <experimental/filesystem>
 #include <functional>
+#include <hip/amd_detail/hip_api_trace.hpp>
 #include <llvm/ADT/DenseSet.h>
 
 #include "error.hpp"
@@ -12,7 +20,15 @@
 #include <luthier/hip_trace_api.h>
 #include <luthier/types.h>
 
-namespace fs = std::experimental::filesystem;
+// TODO: 1. Overhaul Python generation script to use the new profiler API
+//  enums + Generate Wrappers at CMake time by running the intercept generation
+//  Python script + Enable HIP API runtime callbacks again
+//  2. Move setting the callbacks to constructor arguments
+//  3. Make a table of (APIID -> (Orig Func, Wrapper Func) in the auto generated
+//  Python file to allow for complete uninstallation of wrapper functions when
+//  No callback is requested from both the user and the tool
+//  4. Update the Header of hip_intercept.cpp once the Python script is
+//  overhauled
 
 // Helper to store ApiID in llvm::DenseSets
 namespace llvm {
@@ -44,7 +60,6 @@ template <> struct DenseMapInfo<luthier::hip::ApiID> {
 
 } // namespace llvm
 
-// Borrowed from RocTracer's BaseLoader
 namespace luthier::hip {
 
 typedef std::function<void(ApiArgs &, ApiReturn *, const ApiEvtPhase,
@@ -53,7 +68,17 @@ typedef std::function<void(ApiArgs &, ApiReturn *, const ApiEvtPhase,
 
 class Interceptor : public Singleton<Interceptor> {
 private:
-  void *Handle{nullptr};
+  // Memory location of the Compiler Dispatch Table in use by the HIP runtime
+  HipCompilerDispatchTable *LoadedCompilerDispatchTable{};
+  // Memory location of the Runtime Dispatch Table in use by the HIP runtime
+  HipDispatchTable *LoadedRuntimeDispatchTable{};
+
+  // A saved copy of the original Compiler functions in HIP
+  // (e.g. __hipRegisterFatBinary)
+  HipCompilerDispatchTable SavedCompilerDispatchTable{};
+  // A saved copy of the original runtime functions in HIP
+  HipDispatchTable SavedDispatchTable{};
+
   //  std::function<void(void *, const ApiEvtPhase, const int)> UserCallback{};
   //  llvm::DenseSet<unsigned int> EnabledUserCallbacks{};
 
@@ -61,18 +86,22 @@ private:
   llvm::DenseSet<ApiID> EnabledInternalCallbacks{};
 
 public:
-  Interceptor();
-
-  ~Interceptor() {
-    if (Handle != nullptr)
-      ::dlclose(Handle);
-    Singleton<Interceptor>::~Singleton();
-  }
+  Interceptor() = default;
 
   Interceptor(const Interceptor &) = delete;
   Interceptor &operator=(const Interceptor &) = delete;
 
-  [[nodiscard]] bool isEnabled() const { return Handle != nullptr; }
+  [[nodiscard]] const HipCompilerDispatchTable &getSavedCompilerTable() const {
+    return SavedCompilerDispatchTable;
+  }
+
+  [[nodiscard]] const HipDispatchTable &getSavedRuntimeTable() const {
+    return SavedDispatchTable;
+  }
+
+  void captureCompilerDispatchTable(HipCompilerDispatchTable *CompilerTable);
+
+  void captureRuntimeTable(HipDispatchTable *RuntimeTable);
 
   //  [[nodiscard]] const std::function<void(void *, const ApiEvtPhase, const
   //  int)>
@@ -146,23 +175,6 @@ public:
   }
 
   void disableAllInternalCallbacks() { EnabledInternalCallbacks.clear(); }
-
-  void *getHipFunction(llvm::StringRef Symbol) const {
-    LUTHIER_CHECK(isEnabled());
-
-    void *functionPtr = ::dlsym(Handle, Symbol.data());
-    if (functionPtr == nullptr)
-      llvm::report_fatal_error(
-          llvm::formatv("symbol lookup '{0:s}' failed: {1:s}",
-                        std::string(Symbol), std::string(::dlerror())));
-    return functionPtr;
-  }
-
-  template <typename FunctionPtr>
-  FunctionPtr getHipFunction(const char *Symbol) const {
-    LUTHIER_CHECK(isEnabled());
-    return reinterpret_cast<FunctionPtr>(getHipFunction(Symbol));
-  }
 };
 
 } // namespace luthier::hip

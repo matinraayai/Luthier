@@ -84,22 +84,11 @@ Executable::loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
   return LoadedCodeObject{LCO};
 }
 
-llvm::Error
-Executable::defineExternalAgentGlobalVariable(const ExecutableSymbol &Symbol) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Symbol.getType() == VARIABLE));
-
-  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier::address_t, VariableAddress,
-                                   Symbol.getVariableAddress());
-  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, VariableName, Symbol.getName());
-
-  auto Agent = Symbol.getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-
+llvm::Error Executable::defineExternalAgentGlobalVariable(
+    const hsa::GpuAgent &Agent, llvm::StringRef SymbolName, void *Address) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_agent_global_variable_define_fn(
-          asHsaType(), Agent->asHsaType(), VariableName.c_str(),
-          reinterpret_cast<void *>(
-              *reinterpret_cast<uint64_t *>(VariableAddress)))));
+          asHsaType(), Agent.asHsaType(), SymbolName.data(), Address)));
   return llvm::Error::success();
 }
 

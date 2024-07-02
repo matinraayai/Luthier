@@ -5,7 +5,6 @@
 #include <hsa/hsa.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormatVariadic.h>
-#include <llvm/Support/FormatVariadicDetails.h>
 
 #include <luthier/types.h>
 
@@ -17,15 +16,6 @@
 #define __FILE_NAME__                                                          \
   (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #endif
-
-#define LUTHIER_CHECK_WITH_MSG(pred, msg)                                      \
-  if (!pred) {                                                                 \
-    llvm::report_fatal_error(                                                  \
-        llvm::formatv("Luthier check on file {0}, line {1} failed: {2}.",      \
-                      __FILE_NAME__, __LINE__, msg)                            \
-            .str()                                                             \
-            .c_str());                                                         \
-  }
 
 #define LUTHIER_CHECK(pred)                                                    \
   if (!(pred)) {                                                               \

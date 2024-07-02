@@ -1,38 +1,9 @@
 #include "hip_intercept.hpp"
-#include <link.h>
 
 namespace luthier {
 
-template <>
-hip::Interceptor *luthier::Singleton<hip::Interceptor>::Instance{nullptr};
-
-namespace hip {
-
-Interceptor::Interceptor() : luthier::Singleton<Interceptor>() {
-  // Iterate through the process' loaded shared objects and try to dlopen the
-  // first entry with a file name starting with the given 'pattern'. This allows
-  // the loader to acquire a handle to the target library iff it is already
-  // loaded. The handle is used to query symbols exported by that library.
-  auto Callback = [this](dl_phdr_info *Info) {
-    if (Handle == nullptr && fs::path(Info->dlpi_name)
-                                     .filename()
-                                     .string()
-                                     .rfind("libamdhip64.so", 0) == 0)
-      Handle = ::dlopen(Info->dlpi_name, RTLD_LAZY);
-  };
-  dl_iterate_phdr(
-      [](dl_phdr_info *Info, size_t Size, void *Data) {
-        (*reinterpret_cast<decltype(Callback) *>(Data))(Info);
-        return 0;
-      },
-      &Callback);
-};
-} // namespace hip
-
-} // namespace luthier
-
 extern "C" __attribute__((visibility("default"))) void
-__hipRegisterFunction(hip::FatBinaryInfo **Modules, const void *HostFunction,
+__hipRegisterFunction(void **Modules, const void *HostFunction,
                       char *DeviceFunction, const char *DeviceName,
                       unsigned int ThreadLimit, uint3 *Tid, uint3 *Bid,
                       dim3 *BlockDim, dim3 *GridDim, int *WSize) {
@@ -40,9 +11,8 @@ __hipRegisterFunction(hip::FatBinaryInfo **Modules, const void *HostFunction,
   auto ApiId = luthier::hip::HIP_API_ID___hipRegisterFunction;
   bool IsInternalCallbackEnabled =
       HipInterceptor.isInternalCallbackEnabled(ApiId);
-  static auto HipFunc = HipInterceptor.getHipFunction<void (*)(
-      hip::FatBinaryInfo **, const void *, char *, const char *, unsigned int,
-      uint3 *, uint3 *, dim3 *, dim3 *, int *)>("__hipRegisterFunction");
+  const auto& HipFunc =
+      HipInterceptor.getSavedCompilerTable().__hipRegisterFunction_fn;
   if (IsInternalCallbackEnabled) {
     auto &HipInternalCallback = HipInterceptor.getInternalCallback();
     // Copy Arguments for PHASE_ENTER
@@ -50,7 +20,7 @@ __hipRegisterFunction(hip::FatBinaryInfo **Modules, const void *HostFunction,
     Args.__hipRegisterFunction = {
         Modules, HostFunction, DeviceFunction, DeviceName, ThreadLimit,
         Tid,     Bid,          BlockDim,       GridDim,    WSize};
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_ENTER, ApiId);
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_BEFORE, ApiId);
     HipFunc(
         Args.__hipRegisterFunction.modules,
         Args.__hipRegisterFunction.hostFunction,
@@ -60,7 +30,7 @@ __hipRegisterFunction(hip::FatBinaryInfo **Modules, const void *HostFunction,
         Args.__hipRegisterFunction.bid, Args.__hipRegisterFunction.blockDim,
         Args.__hipRegisterFunction.gridDim, Args.__hipRegisterFunction.wSize);
     // Exit Callback
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_EXIT, ApiId);
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_AFTER, ApiId);
     // Copy the modified arguments back to the original arguments (if non-const)
     Modules = Args.__hipRegisterFunction.modules;
     DeviceFunction = Args.__hipRegisterFunction.deviceFunction;
@@ -89,10 +59,9 @@ __hipRegisterManagedVar(void *hipModule, void **pointer, void *init_value,
     luthier::hip::ApiArgs Args;
     Args.__hipRegisterManagedVar = {hipModule, pointer, init_value,
                                     name,      size,    align};
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_ENTER, ApiId);
-    static auto HipFunc = HipInterceptor.getHipFunction<void (*)(
-        void *, void **, void *, const char *, size_t, unsigned)>(
-        "__hipRegisterManagedVar");
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_BEFORE, ApiId);
+    const auto &HipFunc =
+        HipInterceptor.getSavedCompilerTable().__hipRegisterManagedVar_fn;
     HipFunc(Args.__hipRegisterManagedVar.hipModule,
             Args.__hipRegisterManagedVar.pointer,
             Args.__hipRegisterManagedVar.init_value,
@@ -100,7 +69,7 @@ __hipRegisterManagedVar(void *hipModule, void **pointer, void *init_value,
             Args.__hipRegisterManagedVar.size,
             Args.__hipRegisterManagedVar.align);
     // Exit Callback
-    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_EXIT, ApiId);
+    HipInternalCallback(Args, nullptr, luthier::API_EVT_PHASE_AFTER, ApiId);
     // Copy the modified arguments back to the original arguments (if non-const)
     hipModule = Args.__hipRegisterManagedVar.hipModule;
     pointer = Args.__hipRegisterManagedVar.pointer;
@@ -109,12 +78,30 @@ __hipRegisterManagedVar(void *hipModule, void **pointer, void *init_value,
     size = Args.__hipRegisterManagedVar.size;
     align = Args.__hipRegisterManagedVar.align;
   } else {
-    static auto HipFunc = HipInterceptor.getHipFunction<void (*)(
-        void *, void **, void *, const char *, size_t, unsigned)>(
-        "__hipRegisterManagedVar");
+    const auto &HipFunc =
+        HipInterceptor.getSavedCompilerTable().__hipRegisterManagedVar_fn;
     HipFunc(hipModule, pointer, init_value, name, size, align);
   };
 }
+
+template <>
+hip::Interceptor *luthier::Singleton<hip::Interceptor>::Instance{nullptr};
+
+namespace hip {
+
+void Interceptor::captureCompilerDispatchTable(
+    HipCompilerDispatchTable *CompilerTable) {
+  LoadedCompilerDispatchTable = CompilerTable;
+  SavedCompilerDispatchTable = *CompilerTable;
+  LoadedCompilerDispatchTable->__hipRegisterFunction_fn = __hipRegisterFunction;
+}
+void Interceptor::captureRuntimeTable(HipDispatchTable *RuntimeTable) {
+  LoadedRuntimeDispatchTable = RuntimeTable;
+  SavedDispatchTable = *RuntimeTable;
+}
+} // namespace hip
+
+} // namespace luthier
 
 // extern "C" __attribute__((visibility("default"))) void
 //__hipRegisterSurface(hip::FatBinaryInfo **modules, void *var, char *hostVar,

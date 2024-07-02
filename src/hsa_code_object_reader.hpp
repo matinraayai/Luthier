@@ -7,12 +7,12 @@
 
 namespace luthier {
 
-class CodeObjectManager;
+class ToolExecutableManager;
 
 namespace hsa {
 
 class CodeObjectReader : public HandleType<hsa_code_object_reader_t> {
-  friend class luthier::CodeObjectManager;
+  friend class luthier::ToolExecutableManager;
 
 private:
   static llvm::Expected<CodeObjectReader> createFromMemory(llvm::StringRef elf);
