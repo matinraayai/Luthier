@@ -178,6 +178,11 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool inclu
     auto Executable = Symbol.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
+    if (includeDebugInfo) {
+      auto dwarfDebugInfo = std::make_unique<DWARFDebugInfo>(*LCO); // do I just pass the LCO, or do I dereference it to get the data from the Expected?
+      this->debugInfoLCOMap.insert({*LCO, std::move(dwarfDebugInfo)});
+    }
+
     for (unsigned int I = 0; I < Instructions.size(); ++I) {
       auto &Inst = Instructions[I];
       auto &Address = Addresses[I];

@@ -24,6 +24,7 @@
 #include "luthier/pass.h"
 #include "luthier/types.h"
 #include "object_utils.hpp"
+#include "dwarf_debug.hpp"
 
 namespace luthier {
 
@@ -114,13 +115,16 @@ private:
                      std::unique_ptr<std::vector<hsa::Instr>>>
       MCDisassembledSymbols{};
 
-  // std::unordered_map<LCO ID,
-  //                    std::unique_ptr<llvm::DWARFContext>>>
-  //     MCDisassembledSymbols{};
+  /**
+   * // USE A denseMap instead! (look into it)
+   * Cache of DWARFDebugInfo. The DWARFDebugInfos have to be allocated as a
+   * smart pointer to stop it from calling its destructor prematurely.
+   * The disassembler is in charge of clearing the map
+  */
+  llvm::DenseMap<hsa::LoadedCodeObject, std::unique_ptr<DWARFDebugInfo>>
+    debugInfoLCOMap{}; // Contains the cached DWARFDebugInfo for each LCO
 
 public:
-// add flag, parseDwarf (false by default)
-// when the Instr is called ->
   /**
    * Disassembles the content of the given \p hsa::ExecutableSymbol
    * and returns a reference to a \p std::vector<hsa::Instr>
