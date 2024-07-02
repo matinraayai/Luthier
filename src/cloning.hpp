@@ -11,6 +11,7 @@
 #ifndef CLONING_HPP
 #define CLONING_HPP
 #include <llvm/IR/Function.h>
+#include <llvm/IR/Module.h>
 
 namespace luthier {
 

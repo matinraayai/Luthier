@@ -83,25 +83,34 @@ struct LivenessCopy : public MachineFunctionPass {
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    llvm::outs() << "=====> Run LivenessCopy\n";
-
+    llvm::outs() << "=====> Run LivenessCopy on function: " << MF.getName() << "\n";
+    
     auto &MRI = MF.getRegInfo();
     auto *TRI = MF.getSubtarget().getRegisterInfo();
     
-    MRI.freezeReservedRegs(MF);
+    // llvm::outs() << "     > Print initial bitvector:\n";
+    // auto RegBitVec = MRI.getReservedRegs();
+    // llvm::outs() << RegBitVec << "\n";
+
+    // MRI.freezeReservedRegs(MF);
     
     // TRI->getRegClass(llvm::AMDGPU::SReg_64RegClass);
     // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
     MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
-    llvm::outs() << "     > Check whether SGPR0,1 are frozen after calling reserveReg()\n";
-    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES is frozen\n" : llvm::outs() << "\n NO is not frozen\n";
+    llvm::outs() << "     > Are SGPR0,1 reserved after calling reserveReg()?\t";
+    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? 
+        llvm::outs() << "YES is reserved\n" : 
+        llvm::outs() << "NO is not reserved\n";
    
     // MRI.reservedRegsFrozen() ? llvm::outs() << "\n Reserved REGs already frozen\n" : llvm::outs() << "\n Reserved regs not frozxen yet\n";
     // MRI.canReserveReg(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES can reserve\n" : llvm::outs() << "\n NO cannot reserve\n";
     // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
-    MRI.freezeReservedRegs(MF);
-    llvm::outs() << "     > Check whether SGPR0,1 are still frozen after calling freezeReservedRegs()\n";
-    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES is frozen\n" : llvm::outs() << "\n NO is not frozen\n";
+    // MRI.freezeReservedRegs(MF);
+    MRI.freezeReservedRegs();
+    llvm::outs() << "     > Are SGPR0,1 STILL reserved after freezeReservedRegs()?\t";
+    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? 
+        llvm::outs() << "YES is reserved\n" : 
+        llvm::outs() << "NO is not reserved\n";
 
     MF.addLiveIn(llvm::AMDGPU::SGPR0_SGPR1, &llvm::AMDGPU::SReg_64RegClass);
     
@@ -113,7 +122,6 @@ struct LivenessCopy : public MachineFunctionPass {
     for (auto &MBB : MF) {
       llvm::outs() << "     > Add LiveIns to Block: " << MBB.getName() << "\n";
       llvm::addLiveIns(MBB, LiveRegs);
-      // MBB.sortUniqueLiveIns();
     }
     llvm::outs() << "     > End of LivenessCopy\n";
     return true;
