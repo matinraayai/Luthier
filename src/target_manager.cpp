@@ -16,6 +16,7 @@
 #include <llvm/MC/MCSubtargetInfo.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/ManagedStatic.h>
 #include <llvm/Target/TargetMachine.h>
 
 #include "error.hpp"
