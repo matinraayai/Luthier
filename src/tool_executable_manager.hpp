@@ -80,7 +80,7 @@ public:
   /// \return a thread-safe Module, or an \c llvm::Error if any problem was
   /// encountered during the process
   llvm::Expected<llvm::orc::ThreadSafeModule>
-  readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx);
+  readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx) const;
 
   /// Returns the loaded address of the global variable on the given \p Agent if
   /// already loaded, or \c std::nullopt if it is not loaded at the time of

@@ -285,7 +285,7 @@ StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
 
 llvm::Expected<llvm::orc::ThreadSafeModule>
 InstrumentationModule::readBitcodeIntoContext(
-    llvm::orc::ThreadSafeContext &Ctx) {
+    llvm::orc::ThreadSafeContext &Ctx) const {
   auto Lock = Ctx.getLock();
   auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(
       llvm::toStringRef(BitcodeBuffer), "", false);
