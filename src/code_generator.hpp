@@ -24,9 +24,6 @@
 
 #include "llvm/IR/LegacyPassManager.h"
 // #include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include <llvm/CodeGen/LivePhysRegs.h>
-#include <llvm/CodeGen/TargetSubtargetInfo.h>
-#include <llvm/CodeGen/MachineRegisterInfo.h>
 #include "MCTargetDesc/AMDGPUMCTargetDesc.h"
 
 namespace luthier {
@@ -67,109 +64,116 @@ private:
 
 } // namespace luthier
 
-namespace llvm {
+// namespace llvm {
 
-namespace {
+// namespace {
 
-struct LivenessCopy : public MachineFunctionPass {
-  static char ID;
-  llvm::LivePhysRegs LiveRegs;
+// struct LivenessCopy : public MachineFunctionPass {
+//   static char ID;
+//   llvm::LivePhysRegs LiveRegs;
 
-  LivenessCopy() : MachineFunctionPass(ID) {}
+//   LivenessCopy() : MachineFunctionPass(ID) {}
 
-  explicit LivenessCopy(const llvm::MachineBasicBlock* IPointBlock) : 
-      MachineFunctionPass(ID) {
-    llvm::computeLiveIns(LiveRegs, *IPointBlock);
-  }
+//   explicit LivenessCopy(const llvm::MachineBasicBlock* IPointBlock) : 
+//       MachineFunctionPass(ID) {
+//     llvm::computeLiveIns(LiveRegs, *IPointBlock);
+//   }
 
-  bool runOnMachineFunction(MachineFunction &MF) override {
-    llvm::outs() << "=====> Run LivenessCopy on function: " << MF.getName() << "\n";
-    
-    auto &MRI = MF.getRegInfo();
-    auto *TRI = MF.getSubtarget().getRegisterInfo();
-    
-    // llvm::outs() << "     > Print initial bitvector:\n";
-    // auto RegBitVec = MRI.getReservedRegs();
-    // llvm::outs() << RegBitVec << "\n";
+//   bool runOnMachineFunction(MachineFunction &MF) override {
+//     llvm::outs() << "=====> Run LivenessCopy on function: " << MF.getName() << "\n";
+//     
+//     auto &MRI = MF.getRegInfo();
+//     auto *TRI = MF.getSubtarget().getRegisterInfo();
+//     
+//     // MRI.freezeReservedRegs(MF);
+//     
+//     // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
+//     MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
+//     llvm::outs() << "     > Are SGPR0-3 reserved after calling reserveReg()?\t";
+//     // MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? 
+//     MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
+//         llvm::outs() << "YES is reserved\n" : 
+//         llvm::outs() << "NO is not reserved\n";
+//    
 
-    // MRI.freezeReservedRegs(MF);
-    
-    // TRI->getRegClass(llvm::AMDGPU::SReg_64RegClass);
-    // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
-    MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
-    llvm::outs() << "     > Are SGPR0,1 reserved after calling reserveReg()?\t";
-    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? 
-        llvm::outs() << "YES is reserved\n" : 
-        llvm::outs() << "NO is not reserved\n";
-   
-    // MRI.reservedRegsFrozen() ? llvm::outs() << "\n Reserved REGs already frozen\n" : llvm::outs() << "\n Reserved regs not frozxen yet\n";
-    // MRI.canReserveReg(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES can reserve\n" : llvm::outs() << "\n NO cannot reserve\n";
-    // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
-    // MRI.freezeReservedRegs(MF);
-    MRI.freezeReservedRegs();
-    llvm::outs() << "     > Are SGPR0,1 STILL reserved after freezeReservedRegs()?\t";
-    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? 
-        llvm::outs() << "YES is reserved\n" : 
-        llvm::outs() << "NO is not reserved\n";
 
-    MF.addLiveIn(llvm::AMDGPU::SGPR0_SGPR1, &llvm::AMDGPU::SReg_64RegClass);
-    
-    LiveRegs.addReg(llvm::AMDGPU::SGPR0);
-    LiveRegs.addReg(llvm::AMDGPU::SGPR1);
-    LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1);
-    // LiveRegs.addReg(llvm::AMDGPU::SGPR2);
-    // LiveRegs.addReg(llvm::AMDGPU::SGPR3);
-    for (auto &MBB : MF) {
-      llvm::outs() << "     > Add LiveIns to Block: " << MBB.getName() << "\n";
-      llvm::addLiveIns(MBB, LiveRegs);
-    }
-    llvm::outs() << "     > End of LivenessCopy\n";
-    return true;
-  }
-};
+//     llvm::outs() << "     > Set the liveins of the original App func as reserved regs\n";
+//     for (auto &Reg : LiveRegs)
+//       MRI.reserveReg(Reg, TRI);
 
-struct StackFrameOffset : public MachineFunctionPass {
-  static char ID;
-  // const MachineFunction *RefMF;
+//     // MRI.reservedRegsFrozen() ? llvm::outs() << "\n Reserved REGs already frozen\n" : llvm::outs() << "\n Reserved regs not frozxen yet\n";
+//     // MRI.canReserveReg(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES can reserve\n" : llvm::outs() << "\n NO cannot reserve\n";
+//     // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
+//     // MRI.freezeReservedRegs(MF);
+//     MRI.freezeReservedRegs();
+//     llvm::outs() << "     > Are SGPR0-3 STILL reserved after freezeReservedRegs()?\t";
+//     // MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1) ? 
+//     MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
+//         llvm::outs() << "YES is reserved\n" : 
+//         llvm::outs() << "NO is not reserved\n";
 
-  StackFrameOffset() : MachineFunctionPass(ID) {}
-  // explicit StackFrameOffset(const MachineFunction* RMF) : 
-  //     MachineFunctionPass(ID) {
-  //   RefMF = RMF;
-  // }
+//     // MF.addLiveIn(llvm::AMDGPU::SGPR0_SGPR1, &llvm::AMDGPU::SReg_64RegClass);
+//     // LiveRegs.addReg(llvm::AMDGPU::SGPR0);
+//     // LiveRegs.addReg(llvm::AMDGPU::SGPR1);
+//     // LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1);
+//     // LiveRegs.addReg(llvm::AMDGPU::SGPR2);
+//     // LiveRegs.addReg(llvm::AMDGPU::SGPR3);
+//     
+//     // MF.addLiveIn( llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, 
+//     //              &llvm::AMDGPU::SReg_64RegClass);
+//     // LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3);
+//     // for (auto &MBB : MF) {
+//     //   llvm::outs() << "     > Add LiveIns to Block: " << MBB.getName() << "\n";
+//     //   llvm::addLiveIns(MBB, LiveRegs);
+//     // }
+//     
+//     llvm::outs() << "     > End of LivenessCopy\n";
+//     return true;
+//   }
+// };
 
-  bool runOnMachineFunction(MachineFunction &MF) override {
-    for (auto &MBB : MF) {
-      // llvm::SIFrameLowering::emitPrologue(MF, MBB);
-      // llvm::SIFrameLowering::emitEpilogue(MF, MBB);
-      // if (!RefMF) RefMF = &MF;
-      auto &MFI = MF.getFrameInfo();
-      // auto &MFI = RefMF->getFrameInfo();
-      
-      llvm::outs() << "machine function " << MF.getName() << "\n"
-                   << "\tStack Size of: " << MFI.getStackSize() << "\n"
-                   << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
-      
-      for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
-        llvm::outs() << " - Stack Object Num "      << SOIdx << "\n"
-                     << "   Stack ID:             " << MFI.getStackID(SOIdx)      << "\n"
-                     << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)   << "\n";
-        // Add to Stack Frame object offset
-        auto NewOffset = MFI.getObjectOffset(SOIdx) +100;// value to add: amount of stack the original app is using
-        MFI.setObjectOffset(SOIdx, NewOffset);
-        llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
-      }
-    }
-    return false;
-  }
-};
-} // namespace anonymous 
+// struct StackFrameOffset : public MachineFunctionPass {
+//   static char ID;
+//   // const MachineFunction *RefMF;
 
-char LivenessCopy::ID = 0;
-char StackFrameOffset::ID = 0;
-// static llvm::RegisterPass<LivenessCopy> X("getlivenss", "Liveness Copy Pass",
-//                                           false, false);
+//   StackFrameOffset() : MachineFunctionPass(ID) {}
+//   // explicit StackFrameOffset(const MachineFunction* RMF) : 
+//   //     MachineFunctionPass(ID) {
+//   //   RefMF = RMF;
+//   // }
 
-} // namespace llvm
+//   bool runOnMachineFunction(MachineFunction &MF) override {
+//     for (auto &MBB : MF) {
+//       // llvm::SIFrameLowering::emitPrologue(MF, MBB);
+//       // llvm::SIFrameLowering::emitEpilogue(MF, MBB);
+//       // if (!RefMF) RefMF = &MF;
+//       auto &MFI = MF.getFrameInfo();
+//       // auto &MFI = RefMF->getFrameInfo();
+//       
+//       llvm::outs() << "machine function " << MF.getName() << "\n"
+//                    << "\tStack Size of: " << MFI.getStackSize() << "\n"
+//                    << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
+//       
+//       for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
+//         llvm::outs() << " - Stack Object Num "      << SOIdx << "\n"
+//                      << "   Stack ID:             " << MFI.getStackID(SOIdx)      << "\n"
+//                      << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)   << "\n";
+//         // Add to Stack Frame object offset
+//         auto NewOffset = MFI.getObjectOffset(SOIdx) +100;// value to add: amount of stack the original app is using
+//         MFI.setObjectOffset(SOIdx, NewOffset);
+//         llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
+//       }
+//     }
+//     return false;
+//   }
+// };
+// } // namespace anonymous 
+
+// char LivenessCopy::ID = 0;
+// char StackFrameOffset::ID = 0;
+// // static llvm::RegisterPass<LivenessCopy> X("getlivenss", "Liveness Copy Pass",
+// //                                           false, false);
+
+// } // namespace llvm
 
 #endif

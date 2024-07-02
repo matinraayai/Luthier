@@ -40,7 +40,7 @@
 #include <llvm/Analysis/TargetTransformInfo.h>
 #include <llvm/Analysis/TypeBasedAliasAnalysis.h>
 #include <llvm/CodeGen/LiveIntervals.h>
-// #include <llvm/CodeGen/LivePhysRegs.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/Passes.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/PassRegistry.h>
@@ -65,7 +65,9 @@
 #include "target_manager.hpp"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
+#include <llvm/CodeGen/MachineRegisterInfo.h>
 #include "llvm/CodeGen/TargetInstrInfo.h"
+#include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -101,6 +103,127 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Passes/StandardInstrumentations.h"
+
+namespace llvm {
+namespace {
+
+// This pass is defined by Luthier. Its job is to iterate over the LiveIns
+// of the IPointMI's parent Machine Basic Block and set them as reserved
+// so that the register allocator does not overwrite them in the generated
+// instrumentation kernel
+struct LuthierReserveLiveRegs : public MachineFunctionPass {
+  static char ID;
+  llvm::LivePhysRegs LiveRegs;
+  llvm::StringRef InstruFuncName;
+
+  LuthierReserveLiveRegs() : MachineFunctionPass(ID) {}
+
+  explicit LuthierReserveLiveRegs(const llvm::MachineBasicBlock* IPointBlock) :
+                           // const llvm::StringRef FunctionName) : 
+      MachineFunctionPass(ID) {
+    llvm::computeLiveIns(LiveRegs, *IPointBlock);
+    // InstruFuncName = FunctionName;
+  }
+
+  bool runOnMachineFunction(MachineFunction &MF) override {
+    // My idea here was to also have it so that this pass will only run on the 
+    // instrumentation kernel by saving the name of the target MF.
+    // Currently, this function will run on all Machine Functions in the
+    // instrumentation module, which is not a big deal at the moment.
+    // if (InstruFuncName.empty() || InstruFuncName != MF.getName())
+    //   return true;
+
+    llvm::outs() << "=====> Run LuthierReserveLiveRegs on function: " << MF.getName() << "\n";
+    
+    auto &MRI = MF.getRegInfo();
+    auto *TRI = MF.getSubtarget().getRegisterInfo();
+    
+    // MRI.freezeReservedRegs(MF);
+    
+    MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
+    llvm::outs() << "     > Are SGPR0-3 reserved after calling reserveReg()?\t";
+    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
+        llvm::outs() << "YES is reserved\n" : 
+        llvm::outs() << "NO is not reserved\n";
+
+    llvm::outs() << "     > Set the liveins of the original App func as reserved regs\n";
+    for (auto &Reg : LiveRegs)
+      MRI.reserveReg(Reg, TRI);
+
+    // MRI.reservedRegsFrozen() ? llvm::outs() << "\n Reserved REGs already frozen\n" : llvm::outs() << "\n Reserved regs not frozxen yet\n";
+    // MRI.canReserveReg(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES can reserve\n" : llvm::outs() << "\n NO cannot reserve\n";
+    // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
+    // MRI.freezeReservedRegs(MF);
+    MRI.freezeReservedRegs();
+    llvm::outs() << "     > Are SGPR0-3 STILL reserved after freezeReservedRegs()?\t";
+    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
+        llvm::outs() << "YES is reserved\n" : 
+        llvm::outs() << "NO is not reserved\n";
+
+    // MF.addLiveIn(llvm::AMDGPU::SGPR0_SGPR1, &llvm::AMDGPU::SReg_64RegClass);
+    // LiveRegs.addReg(llvm::AMDGPU::SGPR0);
+    // LiveRegs.addReg(llvm::AMDGPU::SGPR1);
+    // LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1);
+    // LiveRegs.addReg(llvm::AMDGPU::SGPR2);
+    // LiveRegs.addReg(llvm::AMDGPU::SGPR3);
+    
+    // MF.addLiveIn( llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, 
+    //              &llvm::AMDGPU::SReg_64RegClass);
+    // LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3);
+    // for (auto &MBB : MF) {
+    //   llvm::outs() << "     > Add LiveIns to Block: " << MBB.getName() << "\n";
+    //   llvm::addLiveIns(MBB, LiveRegs);
+    // }
+    
+    llvm::outs() << "\n=====> End of LuthierReserveLiveRegs\n\n";
+    return true;
+  }
+};
+
+// This custom pass iterates through the Instrumentation Modules frame objects
+// and adds the amount of stack allocated by the IPointMI's parent Machine 
+// Function to the frame object offset
+struct LuthierStackFrameOffset : public MachineFunctionPass {
+  static char ID;
+  // const MachineFunction *RefMF;
+
+  LuthierStackFrameOffset() : MachineFunctionPass(ID) {}
+  // explicit LuthierStackFrameOffset(const MachineFunction* RMF) : 
+  //     MachineFunctionPass(ID) {
+  //   RefMF = RMF;
+  // }
+
+  bool runOnMachineFunction(MachineFunction &MF) override {
+    for (auto &MBB : MF) {
+      // llvm::SIFrameLowering::emitPrologue(MF, MBB);
+      // llvm::SIFrameLowering::emitEpilogue(MF, MBB);
+      // if (!RefMF) RefMF = &MF;
+      auto &MFI = MF.getFrameInfo();
+      // auto &MFI = RefMF->getFrameInfo();
+      
+      llvm::outs() << "machine function " << MF.getName() << "\n"
+                   << "\tStack Size of: " << MFI.getStackSize() << "\n"
+                   << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
+      
+      for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
+        llvm::outs() << " - Stack Object Num "      << SOIdx << "\n"
+                     << "   Stack ID:             " << MFI.getStackID(SOIdx)      << "\n"
+                     << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)   << "\n";
+        // Add to Stack Frame object offset
+        auto NewOffset = MFI.getObjectOffset(SOIdx) +100;// value to add: amount of stack the original app is using
+        MFI.setObjectOffset(SOIdx, NewOffset);
+        llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
+      }
+    }
+    return false;
+  }
+};
+} // namespace anonymous 
+
+char LuthierReserveLiveRegs::ID = 0;
+char LuthierStackFrameOffset::ID = 0;
+
+} // namespace llvm
 
 namespace luthier {
 
@@ -309,11 +432,11 @@ CodeGenerator::insertFunctionCalls(
       } 
     }
 
-    // auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
-    // LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
-    // auto TargetPivSegSize = TargetKernelMD->PrivateSegmentFixedSize;
-    // llvm::outs() << "=====> Target Kernel Private Seg Size:\t" 
-    //              << TargetPivSegSize << "\n";
+    auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
+    LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
+    auto TargetPivSegSize = TargetKernelMD->PrivateSegmentFixedSize;
+    llvm::outs() << "=====> Target Kernel Private Seg Size:\t" 
+                 << TargetPivSegSize << "\n";
     // llvm::Value *TargetPrivSeg = llvm::ConstantInt::get(
     //     llvm::Type::getInt32Ty(InstrumentationContext), TargetPivSegSize, false);
 
@@ -376,16 +499,6 @@ CodeGenerator::insertFunctionCalls(
     TM.setOptLevel(llvm::CodeGenOptLevel::Aggressive);
 
     auto MMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
-    // for (auto &F : **InstrumentationModule) {
-    //   auto MF = MMIWP->getMMI().getMachineFunction(F);
-    //   auto &MRI = MF->getRegInfo();
-    //   auto *TRI = MF->getSubtarget().getRegisterInfo();
-
-    //   // LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3);
-    //   // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
-    //   MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
-    //   MRI.freezeReservedRegs(*MF);
-    // }
 
     llvm::TargetLibraryInfoImpl TLII(
         llvm::Triple((*InstrumentationModule)->getTargetTriple()));
@@ -396,11 +509,11 @@ CodeGenerator::insertFunctionCalls(
     PM.add(TPC);
     PM.add(MMIWP);
 
-    
     TPC->addISelPasses();
 
-    PM.add(new llvm::LivenessCopy(IPointMBB));
-    // PM.add(new llvm::StackFrameOffset());
+    // PM.add(new llvm::LuthierReserveLiveRegs(IPointMBB, IKMF->getName()));
+    PM.add(new llvm::LuthierReserveLiveRegs(IPointMBB));
+    // PM.add(new llvm::LuthierStackFrameOffset());
 
     TPC->addMachinePasses();
     
@@ -452,7 +565,6 @@ CodeGenerator::insertFunctionCalls(
     llvm::outs() << "\n=====> Start of Instrumentation Logic:\n"
                  <<   "     > Split machine basic block of IPointMI \n";
 
-    
     // IPointMI->getParent()->getParent()->getProperties().reset(
     //     llvm::MachineFunctionProperties::Property::NoVRegs);
     // llvm::MachineInstrBuilder MIRBuilder;
@@ -464,7 +576,6 @@ CodeGenerator::insertFunctionCalls(
         IPoint == INSTR_POINT_BEFORE ? IPointMI : IPointMI->getNextNode();
   
     // TODO: Call this function instead of manually splitting
-    // NOTE: Need to freeze reserved regs to use this
     // IPointMBB->splitAt(*InstPoint);
 
     llvm::MachineBasicBlock *IPointBlockSplit = 
@@ -475,7 +586,7 @@ CodeGenerator::insertFunctionCalls(
     
     ToBeInstrumentedMF->dump();
 
-    llvm::outs() << "     > Insert call to instrumentation function into compilation module\n";
+    llvm::outs() << "     > Patch call to instrumentation function into compilation module\n";
     for (auto &IKBB : *IKMF) {
       if (IKBB.getName() != "call_to_hook")
         continue;
@@ -503,6 +614,7 @@ CodeGenerator::insertFunctionCalls(
     }
     ToBeInstrumentedMF->dump();
 
+// Old code for patching in call to Instru Func into App module
 /*
     MIRBuilder = llvm::BuildMI(*IPointMBB, InstPoint, llvm::DebugLoc(),
                             MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKUP))
@@ -580,3 +692,4 @@ CodeGenerator::insertFunctionCalls(
 }
 
 } // namespace luthier
+
