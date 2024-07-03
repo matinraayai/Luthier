@@ -34,20 +34,7 @@ add_library(luthier SHARED
 # ======================================================================================================================
 
 # User Options =========================================================================================================
-set(LUTHIER_LOG_LEVEL "ERROR" CACHE STRING "Sets the LUTHIER log level; Options: ERROR, INFO, DEBUG")
-if (${LUTHIER_LOG_LEVEL} STREQUAL "ERROR")
-    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
-elseif (${LUTHIER_LOG_LEVEL} STREQUAL "INFO")
-    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
-    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_INFO")
-elseif (${LUTHIER_LOG_LEVEL} STREQUAL "DEBUG")
-    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_ERROR")
-    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_INFO")
-    target_compile_definitions(luthier PUBLIC "LUTHIER_LOG_ENABLE_DEBUG")
-else ()
-    message(FATAL_ERROR "Invalid LUTHIER_LOG_LEVEL passed: ${LUTHIER_LOG_LEVEL}")
-endif ()
-
+option(LUTHIER_BUILD_TESTS "Builds the tests" OFF)
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
 
 option(LUTHIER_BUILD_LATEX_DOCS "Builds Luthier documentation with Doxygen in PDF format with Latex" OFF)
@@ -89,6 +76,7 @@ target_compile_definitions(luthier PUBLIC LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFOR
 target_compile_options(luthier PUBLIC "-fPIC")
 
 # TODO: Add option to build with sanitizers
+#target_compile_options(luthier PUBLIC "-fsanitize=address")
 
 # For LD_PRELOAD-ing the hip intercept functions
 target_compile_definitions(luthier PUBLIC "-D_GLIBCXX_DEBUG")
@@ -103,13 +91,18 @@ target_link_libraries(luthier hip::host stdc++fs hsa-runtime64::hsa-runtime64
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================
-#if (${LUTHIER_BUILD_EXAMPLES})
-#    set(SUB_DIRS examples/kernel_instrument)
-#    foreach (DIR ${SUB_DIRS})
-#        add_subdirectory(${DIR})
-#    endforeach (DIR)
-#endif ()
+if (${LUTHIER_BUILD_EXAMPLES})
+    set(SUB_DIRS examples/kernel_instrument)
+    foreach (DIR ${SUB_DIRS})
+        add_subdirectory(${DIR})
+    endforeach (DIR)
+endif ()
 # ======================================================================================================================
+
+# Tests (if enabled) ===================================================================================================
+if (${LUTHIER_BUILD_TESTS})
+    add_subdirectory(tests)
+endif ()
 
 # Documentation Build With Doxygen =====================================================================================
 if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
