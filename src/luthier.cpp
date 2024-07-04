@@ -132,18 +132,26 @@ lift(hsa_executable_t Executable) {
   return CodeLifter::instance().lift(hsa::Executable{Executable});
 }
 
-llvm::Error instrumentAndLoad(hsa_executable_symbol_t Kernel,
-                              const LiftedRepresentation &LR,
-                              luthier::InstrumentationTask &ITask) {
+llvm::Error
+instrumentAndLoad(hsa_executable_symbol_t Kernel,
+                  const LiftedRepresentation &LR,
+                  llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                                 LiftedRepresentation &)>
+                      Mutator,
+                  llvm::StringRef Preset) {
   auto KernelWrapper = hsa::ExecutableSymbol::fromHandle(Kernel);
   LUTHIER_RETURN_ON_ERROR(KernelWrapper.takeError());
-  return CodeGenerator::instance().instrument(LR, ITask);
+  return CodeGenerator::instance().instrument(LR, Mutator);
 }
 
-llvm::Error instrumentAndLoad(hsa_executable_t Exec,
-                              const LiftedRepresentation &LR,
-                              luthier::InstrumentationTask &ITask) {
-  return CodeGenerator::instance().instrument(LR, ITask);
+llvm::Error
+instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
+                  llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                                 LiftedRepresentation &)>
+                      Mutator,
+                  llvm::StringRef Preset) {
+  return CodeGenerator::instance().instrument(
+      LR, Mutator);
 }
 
 llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,

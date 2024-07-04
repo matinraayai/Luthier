@@ -11,6 +11,8 @@ MARK_LUTHIER_DEVICE_MODULE
 __attribute__((managed)) uint64_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
+  int threadIdx_x;
+  __asm__ __volatile__("v_mov_b32 %0 v0\n" : "=v"(threadIdx_x)); //v0 holds threadIdx.x
   GlobalCounter = reinterpret_cast<uint64_t>(&GlobalCounter);
 };
 
@@ -28,7 +30,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
 
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         auto &DispatchPacket = Packet.asKernelDispatch();
-        auto KernelSymbol = luthier::KernelDescriptor::fromKernelObject(
+        auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                 DispatchPacket.kernel_object)
                                 ->getHsaExecutableSymbol();
 
@@ -36,28 +38,34 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           llvm::report_fatal_error(std::move(Err), true);
         if (!llvm::cantFail(
                 isKernelInstrumented(*KernelSymbol, "kernel instrument"))) {
-          auto LiftedKernel = luthier::lift(*KernelSymbol);
+          auto Exec = llvm::cantFail(hsa::getExecutableOfSymbol(*KernelSymbol));
+
+          auto LiftedKernel = luthier::lift(Exec);
           if (auto Err = LiftedKernel.takeError())
             llvm::report_fatal_error(std::move(Err), true);
 
           // insert a hook after the first instruction of each basic block
-          InstrumentationTask IT(
-              "kernel instrument",
-              [](InstrumentationTask &IT,
-                 LiftedRepresentation &LR) -> llvm::Error {
-                for (auto &[FuncHSAHandle, MF] : LR.functions()) {
-                  auto &MBB = *MF->begin();
-                  auto &MI = *MBB.begin();
-                  if (auto Error = IT.insertHookAt(
-                          MI, LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
-                          INSTR_POINT_AFTER))
-                    return Error;
-                }
-                return llvm::Error::success();
-              });
 
           if (auto Res =
-                  luthier::instrumentAndLoad(*KernelSymbol, *LiftedKernel, IT))
+                  luthier::instrumentAndLoad(*KernelSymbol, *LiftedKernel, [&](InstrumentationTask &IT,
+                                                                               LiftedRepresentation &LR) -> llvm::Error {
+                    llvm::outs() << "Mutator called!\n";
+                    for (auto &[FuncHSAHandle, MF] : LR.functions()) {
+                      llvm::outs() << MF << "\n";
+                      MF->print(llvm::outs());
+                      llvm::outs() << "Num basic blocks: " << MF->size() << "\n";
+                      llvm::outs() << MF->begin().getNodePtr() << "\n";
+                      MF->begin()->print(llvm::outs());
+                      auto &MBB = *MF->begin();
+                      auto &MI = *MBB.begin();
+
+                      if (auto Error = IT.insertHookAt(
+                              MI, LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
+                              INSTR_POINT_AFTER))
+                        return Error;
+                    }
+                    return llvm::Error::success();
+                  }, ""))
             llvm::report_fatal_error(std::move(Res), true);
         }
 //        if (auto Res = luthier::overrideWithInstrumented(

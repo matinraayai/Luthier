@@ -103,7 +103,6 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
     auto &HsaInterceptor = luthier::hsa::Interceptor::instance();
     auto &HsaApiTableCaptureCallback =
         Controller::instance().getAtHSAApiTableCaptureEvtCallback();
-
     HsaApiTableCaptureCallback(API_EVT_PHASE_BEFORE);
     auto *Table = static_cast<HsaApiTable *>(Tables[0]);
     HsaInterceptor.captureHsaApiTable(Table);

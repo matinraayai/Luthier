@@ -152,22 +152,141 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
   return llvm::Error::success();
 }
 
-llvm::Error CodeGenerator::insertHooks(
-    LiftedRepresentation &LR,
-    const InstrumentationTask::hook_insertion_tasks &Tasks) {
+llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
+                                       const InstrumentationTask &Task) {
+  // Since (at least in theory) each LCO can have its own ISA, we need to
+  // create a module/MMI per LCO to generate instrumentation code for easier
+  // separation
+  for (const auto &[LCOHandle, LCOModule] : LR.modules()) {
+    // Load the bitcode of the instrumentation module into the LR's context
+    auto IModule = Task.getModule().readBitcodeIntoContext(LR.getContext());
+    LUTHIER_RETURN_ON_ERROR(IModule.takeError());
+    LUTHIER_RETURN_ON_ERROR(
+        IModule->withModuleDo([&](llvm::Module &M) -> llvm::Error {
+          //          M.dump();
+          // Get the target machine of the LCO's ISA
+          auto ISA = hsa::LoadedCodeObject({LCOHandle}).getISA();
+          LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+          auto TargetInfo =
+              llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
+          auto TM = TargetInfo.getTargetMachine();
+          // Create the MMIWP for instrumentation module
+          auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
+          // Now that everything has been created we can start inserting hooks
+          llvm::outs() << "number of tasks: "
+                       << Task.getHookInsertionTasks().size() << "\n";
+//          for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
+            // 1. Create an empty, no-arg kernel per insertion point in the
+            // LCOModule
+            llvm::Type *const ReturnType =
+                llvm::Type::getVoidTy(M.getContext());
+            llvm::FunctionType *FunctionType =
+                llvm::FunctionType::get(ReturnType, {}, false);
+            auto *F = llvm::Function::Create(
+                FunctionType, llvm::GlobalValue::ExternalLinkage, "myFunc", M);
+            F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+            // Prevent emission of the prologue/epilogue code
+            F->addFnAttr(llvm::Attribute::Naked);
+//            F->removeFnAttr(llvm::Attribute::OptimizeNone);
+//            F->removeFnAttr(llvm::Attribute::NoInline);
+//            F->addFnAttr(llvm::Attribute::AlwaysInline);
+            // Create an empty basic block
+            llvm::BasicBlock *BB =
+                llvm::BasicBlock::Create(M.getContext(), "", F);
+            llvm::IRBuilder<> Builder(BB);
+//            llvm::outs() << "Number of afters: "
+//                         << HookSpecs.AfterIPointTasks.size() << "\n";
+//            for (const auto &HookSpec : HookSpecs.AfterIPointTasks) {
+              llvm::outs() << "Inserting hooks!\n";
+              auto Hook = M.getFunction("instrumentationHook");
+              LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
+              Hook->addFnAttr(llvm::Attribute::AlwaysInline);
+              Builder.CreateCall(Hook);
+//            }
+            // Put a ret void
+            Builder.CreateRetVoid();
+//          };
+          M.print(llvm::outs(), nullptr);
+          // Create the analysis managers.
+          // These must be declared in this order so that they are destroyed in
+          // the correct order due to inter-analysis-manager references.
+          LoopAnalysisManager LAM;
+          FunctionAnalysisManager FAM;
+          CGSCCAnalysisManager CGAM;
+          ModuleAnalysisManager MAM;
+
+          // Create the new pass manager builder.
+          // Take a look at the PassBuilder constructor parameters for more
+          // customization, e.g. specifying a TargetMachine or various debugging
+          // options.
+          llvm::PassBuilder PB;
+
+          // Register all the basic analyses with the managers.
+          PB.registerModuleAnalyses(MAM);
+          PB.registerCGSCCAnalyses(CGAM);
+          PB.registerFunctionAnalyses(FAM);
+          PB.registerLoopAnalyses(LAM);
+          PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+          // Create the pass manager.
+          ModulePassManager MPM =
+              PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
+
+          // Optimize the IR!
+          MPM.run(M, MAM);
+          M.print(llvm::outs(), nullptr);
+
+          llvm::outs() << "Here!!\n";
+          llvm::outs() << "Number of modules in there: " << LR.module_size()
+                       << "\n";
+
+//          TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
+
+          llvm::legacy::PassManager PM;
+
+          llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
+          PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+
+          llvm::TargetPassConfig *TPC = TM->createPassConfig(PM);
+
+          PM.add(TPC);
+          PM.add(IMMIWP);
+
+          TPC->addISelPasses();
+//              TPC->addCodeGenPrepare();
+          //    TPC->addPrintPass("After ISEL: ");
+//          TPC->addMachinePasses();
+          //      TPC->addPrintPass("After machine passes");
+//          auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
+//          PM.add(UsageAnalysis);
+          TPC->setInitialized();
+
+          PM.run(M); // Run all the passes
+//          M.print(llvm::outs(), nullptr);
+          for (const auto &F : M) {
+            IMMIWP->getMMI().getMachineFunction(F)->dump();
+          }
+
+          return llvm::Error::success();
+        }));
+  }
   return llvm::Error::success();
 }
 
-llvm::Error CodeGenerator::instrument(const LiftedRepresentation &LR,
-                                      InstrumentationTask &ITask) {
+llvm::Error CodeGenerator::instrument(
+    const LiftedRepresentation &LR,
+    llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                   LiftedRepresentation &)>
+        Mutator) {
   // Clone the Lifted Representation
-  auto ClonedLR = CodeLifter::instance().cloneRepresentation(LR);
-  LUTHIER_RETURN_ON_ERROR(ClonedLR.takeError());
-  // Run the mutator function on the Lifted Representation
-  LUTHIER_RETURN_ON_ERROR(ITask.getMutator()(ITask, **ClonedLR));
+//  auto ClonedLR = CodeLifter::instance().cloneRepresentation(LR);
+//  LUTHIER_RETURN_ON_ERROR(ClonedLR.takeError());
+  // Run the mutator function on the Lifted Representation and populate the
+  // instrumentation task
+  InstrumentationTask IT("");
+  LUTHIER_RETURN_ON_ERROR(Mutator(IT, *const_cast<LiftedRepresentation*>(&LR)));
   // Insert the hooks inside the Lifted Representation
-  LUTHIER_RETURN_ON_ERROR(
-      insertHooks(**ClonedLR, ITask.getHookInsertionTasks()));
+  LUTHIER_RETURN_ON_ERROR(insertHooks(*const_cast<LiftedRepresentation*>(&LR), IT));
   // Generate the shared objects and return it
   return llvm::Error::success();
 }

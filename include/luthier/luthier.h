@@ -224,9 +224,13 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
 /// \param ITask the instrumentation task, describing the instrumentation to
 /// be performed on the <tt>kernel</tt>'s <tt>LR</t>
 /// \return an \c llvm::Error describing if the operation succeeded or failed
-llvm::Error instrumentAndLoad(hsa_executable_symbol_t Kernel,
-                              const LiftedRepresentation &LR,
-                              InstrumentationTask &ITask);
+llvm::Error
+instrumentAndLoad(hsa_executable_symbol_t Kernel,
+                  const LiftedRepresentation &LR,
+                  llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                                 LiftedRepresentation &)>
+                      Mutator,
+                  llvm::StringRef Preset);
 
 /// Instruments the <tt>Exec</tt>'s lifted representation \p LR by applying
 /// the instrumentation task <tt>ITask</tt> to it.\n
@@ -236,9 +240,12 @@ llvm::Error instrumentAndLoad(hsa_executable_symbol_t Kernel,
 /// \param LR
 /// \param ITask
 /// \return
-llvm::Error instrumentAndLoad(hsa_executable_t Exec,
-                              const LiftedRepresentation &LR,
-                              InstrumentationTask &ITask);
+llvm::Error
+instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
+                  llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                                 LiftedRepresentation &)>
+                      Mutator,
+                  llvm::StringRef Preset);
 
 /// Checks if the \p Kernel is instrumented under the given \p Preset or not
 /// \param [in] Kernel an \c hsa_executable_symbol_t of \c KERNEL type
@@ -284,14 +291,14 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
   __attribute__((managed, used)) char __luthier_reserved = 0;
 
 #define LUTHIER_HOOK_ANNOTATE                                                  \
-  __attribute__((device, used,                                                 \
-                 annotate("luthier_hook"))) extern "C" void
+  __attribute__((device, used, annotate("luthier_hook"))) extern "C" void
 
 #define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
-  __attribute__((global, used)) extern "C" void __hook_handle_##HookName(){};
+  __attribute__((global,                                                       \
+                 used)) extern "C" void __luthier_hook_handle_##HookName(){};
 
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
-  reinterpret_cast<const void *>(__hook_handle_##HookName)
+  reinterpret_cast<const void *>(__luthier_hook_handle_##HookName)
 } // namespace luthier
 
 ////

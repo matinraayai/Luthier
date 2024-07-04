@@ -28,13 +28,15 @@ class ISA;
 class CodeGenerator : public Singleton<CodeGenerator> {
 public:
   llvm::Error instrument(const LiftedRepresentation &LR,
-                         InstrumentationTask &ITask);
+                         llvm::function_ref <
+                             llvm::Error(InstrumentationTask &,
+                                         LiftedRepresentation &)> Mutator);
 
 private:
 
   static llvm::Error
   insertHooks(LiftedRepresentation &LR,
-              const InstrumentationTask::hook_insertion_tasks &Tasks);
+                                 const InstrumentationTask &Tasks);
 
   /// Compiles the relocatable object file in \p Code
   /// \param Code

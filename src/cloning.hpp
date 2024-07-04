@@ -47,11 +47,10 @@ cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
 /// mapping between the machine instructions of the \p SrcMMI to the machine
 /// instructions of the \c DestMMI
 /// \return an \c llvm::Error if an issue was encountered during the process
-llvm::Error cloneMMI(const llvm::MachineModuleInfo &SrcMMI,
-                     const llvm::ValueToValueMapTy &VMap,
-                     llvm::MachineModuleInfo &DestMMI,
-                     llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *>
-                         *SrcToDstMIMap = nullptr);
+llvm::Error cloneMMI(
+    const llvm::MachineModuleInfo &SrcMMI, const llvm::Module &SrcModule,
+    const llvm::ValueToValueMapTy &VMap, llvm::MachineModuleInfo &DestMMI,
+    llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> *SrcToDstMIMap);
 
 } // namespace luthier
 

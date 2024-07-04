@@ -19,7 +19,6 @@
 #include <llvm/IR/Constants.h>
 #include <vector>
 
-#include "cloning.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
 #include "hsa_executable_symbol.hpp"

@@ -189,8 +189,10 @@ cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
 
   // Clone blocks.
   for (const llvm::MachineBasicBlock &SrcMBB : *SrcMF) {
+    // We don't assign a BB to the MBB because it is likely to be just
+    // a placeholder with an unreachable instruction
     llvm::MachineBasicBlock *DstMBB =
-        DstMF->CreateMachineBasicBlock(SrcMBB.getBasicBlock());
+        DstMF->CreateMachineBasicBlock();
     Src2DstMBB[const_cast<llvm::MachineBasicBlock *>(&SrcMBB)] = DstMBB;
 
     DstMBB->setCallFrameSize(SrcMBB.getCallFrameSize());
@@ -363,18 +365,18 @@ cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
     llvm::report_fatal_error(
         "target does not implement MachineFunctionInfo cloning");
 
-  DstMRI->freezeReservedRegs(*DstMF);
+  DstMRI->freezeReservedRegs();
 
-  DstMF->verify(nullptr, "", /*AbortOnError=*/true);
+  bool Verified = DstMF->verify(nullptr, "", /*AbortOnError=*/true);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Verified));
   return DstMF;
 }
 
-llvm::Error cloneMMI(const llvm::MachineModuleInfo &SrcMMI,
-                     const llvm::ValueToValueMapTy &VMap,
-                     llvm::MachineModuleInfo &DestMMI,
-                     llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *>
-                         *SrcToDstMIMap) {
-  for (const llvm::Function &SrcF : *SrcMMI.getModule()) {
+llvm::Error cloneMMI(
+    const llvm::MachineModuleInfo &SrcMMI, const llvm::Module &SrcModule,
+    const llvm::ValueToValueMapTy &VMap, llvm::MachineModuleInfo &DestMMI,
+    llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> *SrcToDstMIMap) {
+  for (const llvm::Function &SrcF : SrcModule) {
     llvm::MachineFunction *SrcMF = SrcMMI.getMachineFunction(SrcF);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(SrcMF != nullptr));
     auto DestFMapEntry = VMap.find(&SrcF);

@@ -3,7 +3,7 @@
 namespace luthier {
 
 extern "C" __attribute__((visibility("default"))) void
-__hipRegisterFunction(void **Modules, const void *HostFunction,
+__hipRegisterFunction_callback(void **Modules, const void *HostFunction,
                       char *DeviceFunction, const char *DeviceName,
                       unsigned int ThreadLimit, uint3 *Tid, uint3 *Bid,
                       dim3 *BlockDim, dim3 *GridDim, int *WSize) {
@@ -93,7 +93,7 @@ void Interceptor::captureCompilerDispatchTable(
     HipCompilerDispatchTable *CompilerTable) {
   LoadedCompilerDispatchTable = CompilerTable;
   SavedCompilerDispatchTable = *CompilerTable;
-  LoadedCompilerDispatchTable->__hipRegisterFunction_fn = __hipRegisterFunction;
+  LoadedCompilerDispatchTable->__hipRegisterFunction_fn = __hipRegisterFunction_callback;
 }
 void Interceptor::captureRuntimeTable(HipDispatchTable *RuntimeTable) {
   LoadedRuntimeDispatchTable = RuntimeTable;

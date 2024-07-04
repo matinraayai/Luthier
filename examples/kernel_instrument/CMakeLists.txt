@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.21)
 project(kernel_instrument LANGUAGES HIP CXX)
 
 set(CMAKE_HIP_STANDARD 20)

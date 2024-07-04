@@ -311,7 +311,6 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
   Module->setDataLayout(TM->createDataLayout());
 
   auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(TM);
-  MMIWP->doInitialization(*Module);
   auto &MMI = MMIWP->getMMI();
 
   auto &ModuleEntry = LR.Modules
@@ -375,8 +374,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
                                         ? *ArgMD.AddressSpace
                                         : llvm::AMDGPUAS::GLOBAL_ADDRESS;
         // Convert the argument to a pointer
-        ParamType =
-            llvm::PointerType::get(ParamType, AddressSpace);
+        ParamType = llvm::PointerType::get(ParamType, AddressSpace);
       }
       Params.push_back(ParamType);
     }
@@ -398,10 +396,10 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
 
   // Construct the attributes of the Function, which will result in the MF
   // attributes getting populated
-  auto KD = Kernel.getKernelDescriptor();
-  LUTHIER_RETURN_ON_ERROR(KD.takeError());
+  auto KDOnDevice = Kernel.getKernelDescriptor();
+  LUTHIER_RETURN_ON_ERROR(KDOnDevice.takeError());
 
-  auto KDOnHost = hsa::queryHostAddress(*KD);
+  auto KDOnHost = hsa::queryHostAddress(*KDOnDevice);
   LUTHIER_RETURN_ON_ERROR(KDOnHost.takeError());
 
   F->addFnAttr(
@@ -409,29 +407,31 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
       llvm::formatv("0, {0}", (*KDOnHost)->GroupSegmentFixedSize).str());
   // Private (scratch) segment size is determined by Analysis Usage pass
   // Kern Arg is determined via analysis usage + args set earlier
-  if ((*KDOnHost)->getKernelCodePropertiesEnableSgprDispatchId() == 0) {
+  auto Rsrc1 = (*KDOnHost)->getRsrc1();
+  auto Rsrc2 = (*KDOnHost)->getRsrc2();
+  auto KCP = (*KDOnHost)->getKernelCodeProperties();
+  if (KCP.EnableSgprDispatchId == 0) {
     F->addFnAttr("amdgpu-no-dispatch-id");
   }
-  if ((*KDOnHost)->getKernelCodePropertiesEnableSgprDispatchPtr() == 0) {
+  if (KCP.EnableSgprDispatchPtr == 0) {
     F->addFnAttr("amdgpu-no-dispatch-ptr");
   }
-  if ((*KDOnHost)->getKernelCodePropertiesEnableSgprQueuePtr() == 0) {
+  if (KCP.EnableSgprQueuePtr == 0) {
     F->addFnAttr("amdgpu-no-queue-ptr");
   }
-  F->addFnAttr("amdgpu-ieee",
-               (*KDOnHost)->getRsrc1EnableIeeeMode() ? "true" : "false");
-  F->addFnAttr("amdgpu-dx10-clamp",
-               (*KDOnHost)->getRsrc1EnableDx10Clamp() ? "true" : "false");
-  if ((*KDOnHost)->getRsrc2EnableSgprWorkgroupIdX() == 0) {
+
+  F->addFnAttr("amdgpu-ieee", Rsrc1.EnableIeeeMode ? "true" : "false");
+  F->addFnAttr("amdgpu-dx10-clamp", Rsrc1.EnableDx10Clamp ? "true" : "false");
+  if (Rsrc2.EnableSgprWorkgroupIdX == 0) {
     F->addFnAttr("amdgpu-no-workgroup-id-x");
   }
-  if ((*KDOnHost)->getRsrc2EnableSgprWorkgroupIdY() == 0) {
+  if (Rsrc2.EnableSgprWorkgroupIdY == 0) {
     F->addFnAttr("amdgpu-no-workgroup-id-y");
   }
-  if ((*KDOnHost)->getRsrc2EnableSgprWorkgroupIdZ() == 0) {
+  if (Rsrc2.EnableSgprWorkgroupIdZ == 0) {
     F->addFnAttr("amdgpu-no-workgroup-id-z");
   }
-  switch ((*KDOnHost)->getRsrc2EnableVgprWorkitemId()) {
+  switch (Rsrc2.EnableVgprWorkitemId) {
   case 0:
     F->addFnAttr("amdgpu-no-workitem-id-y");
   case 1:
@@ -452,7 +452,6 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
   // won't run
   llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module.getContext(), "", F);
-  LUTHIER_CHECK(BB);
   new llvm::UnreachableInst(Module.getContext(), BB);
 
   // Populate the MFI ========================================================
@@ -469,17 +468,16 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
       TM.getSubtargetImpl(*F)->getRegisterInfo());
   auto MFI = MF.template getInfo<llvm::SIMachineFunctionInfo>();
 
-  if ((*KDOnHost)->getKernelCodePropertiesEnableSgprPrivateSegmentBuffer() ==
-      1) {
+  if (KCP.EnableSgprPrivateSegmentBuffer == 1) {
     MFI->addPrivateSegmentBuffer(*TRI);
   }
-  if ((*KDOnHost)->getKernelCodePropertiesEnableSgprKernArgSegmentPtr() == 1) {
+  if (KCP.EnableSgprKernArgSegmentPtr == 1) {
     MFI->addKernargSegmentPtr(*TRI);
   }
-  if ((*KDOnHost)->getKernelCodePropertiesEnableSgprFlatScratchInit() == 1) {
+  if (KCP.EnableSgprFlatScratchInit == 1) {
     MFI->addFlatScratchInit(*TRI);
   }
-  if ((*KDOnHost)->getRsrc2EnableSgprPrivateSegmentWaveByteOffset() == 1) {
+  if (Rsrc2.EnableSgprPrivateSegmentWaveByteOffset == 1) {
     //    llvm::outs() << "Private segment Wave offset\n";
     MFI->addPrivateSegmentWaveByteOffset();
   }
@@ -573,6 +571,7 @@ llvm::Error CodeLifter::liftFunction(
   LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
   llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
+
   MF.push_back(MBB);
   auto MBBEntry = MBB;
 
@@ -798,7 +797,7 @@ luthier::CodeLifter::lift(const hsa::ExecutableSymbol &Symbol) {
       }
       // Create device function entries for this LCO
       llvm::SmallVector<hsa::ExecutableSymbol, 4> DeviceFuncs;
-      LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(DeviceFuncs));
+      LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(DeviceFuncs));
       for (const auto &Func : DeviceFuncs) {
         LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(LCO, Func, LR));
         UsageMap.insert({Func, false});
@@ -813,6 +812,7 @@ luthier::CodeLifter::lift(const hsa::ExecutableSymbol &Symbol) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelLCO.has_value()));
 
     LUTHIER_RETURN_ON_ERROR(liftFunction(Symbol, LR, UsageMap));
+    LR.RelatedFunctions[Symbol.hsaHandle()]->dump();
     Populated.insert(Symbol);
     bool WereAnySymbolsPopulatedDuringLoop{true};
     while (WereAnySymbolsPopulatedDuringLoop) {
@@ -897,7 +897,7 @@ CodeLifter::lift(const hsa::Executable &Exec) {
       }
       // Create device function entries for this LCO
       llvm::SmallVector<hsa::ExecutableSymbol, 4> DeviceFuncs;
-      LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(DeviceFuncs));
+      LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(DeviceFuncs));
       for (const auto &Func : DeviceFuncs) {
         LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(LCO, Func, LR));
         UsageMap.insert({Func, false});
@@ -916,13 +916,14 @@ CodeLifter::lift(const hsa::Executable &Exec) {
 }
 
 llvm::Expected<std::unique_ptr<LiftedRepresentation>>
-CodeLifter::cloneRepresentation(const LiftedRepresentation &LR) {
+CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
+  llvm::outs() << "Cloning!\n";
   // Construct the output
-  std::unique_ptr<LiftedRepresentation> Out;
-  Out.reset(new LiftedRepresentation());
+  std::unique_ptr<LiftedRepresentation> DestLR;
+  DestLR.reset(new LiftedRepresentation());
   // The cloned LiftedRepresentation will share the context and the
   // lifted primitive
-  Out->Context = LR.Context;
+  DestLR->Context = SrcLR.Context;
   // This VMap will be populated by a mapping between the original global
   // objects and their cloned version. This will be useful when populating
   // the related functions and related global variable maps of the cloned
@@ -930,12 +931,12 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &LR) {
   llvm::ValueToValueMapTy VMap;
   // This map helps us populate the MachineInstr to hsa::Instr map
   llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> SrcToDstInstrMap;
-  for (const auto &[LCOHandle, ModuleAndMMIWP] : LR.Modules) {
-    const llvm::orc::ThreadSafeModule &TSModule = ModuleAndMMIWP.first;
-    const std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP =
-        ModuleAndMMIWP.second;
+  for (const auto &[LCOHandle, SrcModuleAndMMIWP] : SrcLR.Modules) {
+    const llvm::orc::ThreadSafeModule &SrcModule = SrcModuleAndMMIWP.first;
+    const std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &SrcMMIWP =
+        SrcModuleAndMMIWP.second;
 
-    auto ClonedModuleAndMMIWP = TSModule.withModuleDo(
+    auto ClonedModuleAndMMIWP = SrcModule.withModuleDo(
         [&](const llvm::Module &M)
             -> llvm::Expected<std::tuple<
                 std::unique_ptr<llvm::Module>,
@@ -943,41 +944,44 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &LR) {
           auto ClonedModule = llvm::CloneModule(M, VMap);
           auto ClonedMMIWP =
               std::make_unique<llvm::MachineModuleInfoWrapperPass>(
-                  &MMIWP->getMMI().getTarget());
-          ClonedMMIWP->doInitialization(*ClonedModule);
-          LUTHIER_RETURN_ON_ERROR(luthier::cloneMMI(
-              MMIWP->getMMI(), VMap, ClonedMMIWP->getMMI(), &SrcToDstInstrMap));
+                  &SrcMMIWP->getMMI().getTarget());
+          LUTHIER_RETURN_ON_ERROR(cloneMMI(SrcMMIWP->getMMI(), M, VMap,
+                                           ClonedMMIWP->getMMI(),
+                                           &SrcToDstInstrMap));
           return std::make_tuple(std::move(ClonedModule),
                                  std::move(ClonedMMIWP));
         });
     LUTHIER_RETURN_ON_ERROR(ClonedModuleAndMMIWP.takeError());
 
-    auto &[ClonedModule, ClonedMMIWP] = *ClonedModuleAndMMIWP;
+    auto &[DestModule, DestMMIWP] = *ClonedModuleAndMMIWP;
     // Now that the module and the MMI are cloned, create a thread-safe module
     // and put it in the Output's Module list
-    llvm::orc::ThreadSafeModule ClonedTSModule{std::move(ClonedModule),
-                                               Out->Context};
+    llvm::orc::ThreadSafeModule DestTSModule{std::move(DestModule),
+                                             DestLR->Context};
 
-    auto &ClonedModuleEntry =
-        Out->Modules
+    auto &DestModuleEntry =
+        DestLR->Modules
             .insert(
-                {LCOHandle, std::move(std::make_pair(std::move(ClonedTSModule),
-                                                     std::move(ClonedMMIWP)))})
+                {LCOHandle, std::move(std::make_pair(std::move(DestTSModule),
+                                                     std::move(DestMMIWP)))})
             .first->getSecond();
-    Out->RelatedLCOs.insert(
+    DestLR->RelatedLCOs.insert(
         {LCOHandle,
-         {&ClonedModuleEntry.first, &ClonedModuleEntry.second->getMMI()}});
+         {&DestModuleEntry.first, &DestModuleEntry.second->getMMI()}});
   }
   // With all Modules and MMIs cloned, we need to populate the related
   // functions and related global variables. We use the VMap to do this
-  for (const auto &[GVHandle, GV] : LR.RelatedGlobalVariables) {
+  for (const auto &[GVHandle, GV] : SrcLR.RelatedGlobalVariables) {
     auto GVDestEntry = VMap.find(GV);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(GVDestEntry != VMap.end()));
     auto *DestGV = cast<llvm::GlobalVariable>(GVDestEntry->second);
-    Out->RelatedGlobalVariables.insert({GVHandle, DestGV});
+    DestLR->RelatedGlobalVariables.insert({GVHandle, DestGV});
   }
 
-  for (const auto &[FuncHandle, SrcMF] : LR.RelatedFunctions) {
+  llvm::outs() << "dump the cloned functions" << SrcLR.RelatedFunctions.size()
+               << "\n";
+  for (const auto &[FuncHandle, SrcMF] : SrcLR.RelatedFunctions) {
+    SrcMF->print(llvm::outs());
     auto FDestEntry = VMap.find(&SrcMF->getFunction());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(FDestEntry != VMap.end()));
     auto *DestF = cast<llvm::Function>(FDestEntry->second);
@@ -985,18 +989,19 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &LR) {
     auto FuncSymbol = hsa::ExecutableSymbol::fromHandle({FuncHandle});
     LUTHIER_RETURN_ON_ERROR(FuncSymbol.takeError());
     auto FuncLCO = FuncSymbol->getDefiningLoadedCodeObject()->hsaHandle();
-    auto &MMI = *Out->RelatedLCOs.at(FuncLCO).second;
+    auto &MMI = *DestLR->RelatedLCOs.at(FuncLCO).second;
 
     auto DestMF = MMI.getMachineFunction(*DestF);
-
-    Out->RelatedFunctions.insert({FuncHandle, DestMF});
+    llvm::outs() << "Cloned???\n";
+    DestMF->print(llvm::outs());
+    DestLR->RelatedFunctions.insert({FuncHandle, DestMF});
   }
   // Finally, populate the instruction map
-  for (const auto &[SrcMI, HSAInst] : LR.MachineInstrToMCMap) {
-    Out->MachineInstrToMCMap.insert({SrcToDstInstrMap[SrcMI], HSAInst});
+  for (const auto &[SrcMI, HSAInst] : SrcLR.MachineInstrToMCMap) {
+    DestLR->MachineInstrToMCMap.insert({SrcToDstInstrMap[SrcMI], HSAInst});
   }
 
-  return Out;
+  return DestLR;
 }
 
 } // namespace luthier

@@ -290,7 +290,7 @@ private:
   // Public-facing code-lifting functionality
   //===--------------------------------------------------------------------===//
 public:
-  /// Returns the \c LiftedRepresentation<hsa_executable_symbol_t> associated
+  /// Returns the \c LiftedRepresentation associated
   /// with the given \p Symbol\n
   /// The representation isolates the requirements of a single kernel can run
   /// interdependently from its parent \c hsa::LoadedCodeObject or \c
@@ -316,7 +316,7 @@ public:
   lift(const hsa::Executable &Exec);
 
   llvm::Expected<std::unique_ptr<LiftedRepresentation>>
-  cloneRepresentation(const LiftedRepresentation &LR);
+  cloneRepresentation(const LiftedRepresentation &SrcLR);
 };
 
 } // namespace luthier
