@@ -18,10 +18,10 @@ the tool device code and embedd it in all the HSA code objects in the tool's FAT
 
 During execution, the HIP runtime parses the HIP FAT binary of the tool and loads the necessary tool code object(s) via
 ROCr as usual. Luthier can then easily access the embedded LLVM bitcode of the tool code object by inspecting its
-storage ELF without requiring a dedicated loader. The `CodeObjectManager` in Luthier is tasked with loading the bitcode
+storage ELF without requiring a dedicated loader. The `ToolExecutableManager` in Luthier is tasked with loading the bitcode
 into an `llvm::Module`. As the embedded bitcode is un-optimized, it needs to first go through IR-level optimizations 
 . The optimized IR will be the starting point for generating instrumented code. The LLVM Module is cached by
-the `CodeObjectManager` for future usage and is destroyed once the tool loaded code object's HSA executable is
+the `ToolExecutableManager` for future usage and is destroyed once the tool loaded code object's HSA executable is
 destroyed.
 
 It's important to emphasize that Luthier **does not** use the instrumentation functions already compiled by HIP, nor
@@ -93,10 +93,10 @@ written in HIP adhere to a version of the C-calling convention, as explained in
        emitted into plain assembly, it becomes more tedious for usage "as is" for instrumentation:
         1. As from the HIP compiler's point of view, if the instrumentation function itself doesn't call other
            functions,
-           then it doesn't require a frame setup. This makes it harder to instrument device functions in that **DO**
+           then it doesn't require a frame setup. This makes it harder to instrumentAndLoad device functions in that **DO**
            have
            a frame.
-        2. If the HIP compiler is forced to emit a frame, then it becomes more tedious to instrument code that doesn't
+        2. If the HIP compiler is forced to emit a frame, then it becomes more tedious to instrumentAndLoad code that doesn't
            have a frame already setup as we have to do it ourselves, not to mention clobbering of the extra registers.
     4. Enabling the flat scratch, private segment buffer, and the private
        segment offset registers potentially changes the kernel's initial execution state, requiring extra diligence

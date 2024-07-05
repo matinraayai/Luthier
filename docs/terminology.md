@@ -1,8 +1,7 @@
 # Terminology
 This chapter aggregates frequently used terms in Luthier for easy reference.
 
-## Target Application
-The AMDGPU application being instrumented during runtime.
+
 
 ## ROCT
 The ROCm Thunk Interface is the user-level used to interface with the AMDGPU driver. 
@@ -41,4 +40,13 @@ environment variable to zero.
 ## HSA (Heterogeneous Systems Architecture)
 
 ## Tool Code Object
+
+
+## Instrumented 
+
+## Instrumentation
+
+## Original (Target)
+
+
 The 
