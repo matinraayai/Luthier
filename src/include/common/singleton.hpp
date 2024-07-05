@@ -12,7 +12,6 @@
 #define SINGLETON_HPP
 #include <llvm/Support/ErrorHandling.h>
 #include <mutex>
-#include <cassert>
 
 namespace luthier {
 

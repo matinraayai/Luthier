@@ -1,17 +1,6 @@
-#include "error.hpp"
+#include <common/error.hpp>
 
 char luthier::InvalidArgument::ID = 0;
-
-#ifdef LUTHIER_LOG_ENABLE_ERROR
-
-#define LUTHIER_CONSUME_LLVM_ERRORS(Error)                                     \
-  llvm::logAllUnhandledErrors(std::move(Error), llvm::errs())
-
-#else
-
-#define LUTHIER_CONSUME_LLVM_ERRORS(Error) llvm::consumeError(std::move(Error))
-
-#endif
 
 llvm::Error luthier::InvalidArgument::invalidArgumentCheck(
     llvm::StringRef FileName, int LineNumber, llvm::StringRef FunctionName,

@@ -1,4 +1,4 @@
-#include "object_utils.hpp"
+#include "common/object_utils.hpp"
 
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/AMDGPUMetadata.h>
@@ -9,7 +9,7 @@
 
 #include <string>
 
-#include "error.hpp"
+#include "common/error.hpp"
 
 using namespace llvm;
 

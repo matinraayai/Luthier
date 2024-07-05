@@ -1,5 +1,5 @@
-#include "cloning.hpp"
-#include "error.hpp"
+#include "common/cloning.hpp"
+#include "common/error.hpp"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>

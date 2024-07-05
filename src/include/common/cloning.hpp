@@ -17,24 +17,25 @@
 #include <llvm/Transforms/Utils/ValueMapper.h>
 namespace luthier {
 
-/// Clones the content of the source machine function \p SrcMF into the \p DestMMI,
-/// and returns a unique pointer to the cloned Machine Function
-/// The module of \p DestMMI should be a cloned version of \p SrcMF 's module,
-/// and the value map of the cloning operation must be passed in \p VMap
+/// Clones the content of the source machine function \p SrcMF into the \p
+/// DestMMI, and returns a unique pointer to the cloned Machine Function The
+/// module of \p DestMMI should be a cloned version of \p SrcMF 's module, and
+/// the value map of the cloning operation must be passed in \p VMap
 /// \param [in] SrcMF the \c llvm::MachineFunction to be cloned
 /// \param [in] VMap A Value map, mapping the global objects in the module of
 /// \p SrcMF into global objects of the module of \p DestMMI
 /// \param [in] DestMMI the Machine Module Info \p SrcMF will be cloned into
 /// \param [out] SrcToDstMIMap (optional) if not nullptr, returns a mapping
 /// between the instructions in the \p SrcMF and the cloned Machine Function
-/// \return on success, a unique pointer to the cloned Machine Function; On failure,
-/// an \c llvm::Error describing the issue encountered during the process
+/// \return on success, a unique pointer to the cloned Machine Function; On
+/// failure, an \c llvm::Error describing the issue encountered during the
+/// process
 /// \sa llvm::CloneModule
-llvm::Expected<std::unique_ptr<llvm::MachineFunction>>
-cloneMF(const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
-        llvm::MachineModuleInfo &DestMMI,
-        llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *>
-            *SrcToDstMIMap = nullptr);
+llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
+    const llvm::MachineFunction *SrcMF, const llvm::ValueToValueMapTy &VMap,
+    llvm::MachineModuleInfo &DestMMI,
+    llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> *SrcToDstMIMap =
+        nullptr);
 
 /// Clones the content of the source Machine Module Info \p SrcMMI into
 /// the \p DestMMI. Uses the \p VMap to map the global objects in the source
