@@ -137,8 +137,7 @@ llvm::Error parseEnumMDOptional(MapDocNode &Map, llvm::StringRef Key,
 
 template <typename ET>
 llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
-                                const llvm::StringMap<ET> &EnumMap,
-                                ET &Out) {
+                                const llvm::StringMap<ET> &EnumMap, ET &Out) {
   std::string EnumString;
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(EnumString)));
@@ -369,15 +368,15 @@ hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
 namespace luthier {
 
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-lookupSymbolByName(const luthier::AMDGCNObjectFile &Elf,
-                llvm::StringRef SymbolName) {
-  for (auto Section = llvm::object::elf_section_iterator(Elf.section_begin());
-       Section != llvm::object::elf_section_iterator(Elf.section_end());
+lookupSymbolByName(const luthier::AMDGCNObjectFile &ELF,
+                   llvm::StringRef SymbolName) {
+  for (auto Section = llvm::object::elf_section_iterator(ELF.section_begin());
+       Section != llvm::object::elf_section_iterator(ELF.section_end());
        ++Section) {
-    auto SectionAsSHdr = Elf.getSection(Section->getRawDataRefImpl());
+    auto SectionAsSHdr = ELF.getSection(Section->getRawDataRefImpl());
     if ((SectionAsSHdr->sh_type == llvm::ELF::SHT_HASH) ||
         (SectionAsSHdr->sh_type == llvm::ELF::SHT_GNU_HASH)) {
-      return hashLookup(Elf, SectionAsSHdr, SymbolName);
+      return hashLookup(ELF, SectionAsSHdr, SymbolName);
     }
   }
   llvm_unreachable("Symbol hash table was not found");
@@ -522,7 +521,6 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
       KernelMetaNode, luthier::hsa::md::Kernel::Key::KernelKind,
       KernelKindEnumMap, Out.KernelKind));
 
-
   LUTHIER_RETURN_ON_ERROR(parseBoolMDOptional(
       KernelMetaNode, luthier::hsa::md::Kernel::Key::UsesDynamicStack,
       Out.UsesDynamicStack));
@@ -534,7 +532,6 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
       WorkgroupProcessorMode));
 
   Out.WorkgroupProcessorMode = *WorkgroupProcessorMode == 1;
-
 
   std::optional<unsigned> UniformWorkgroupSize{0};
 
@@ -598,9 +595,9 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
 }
 
 Expected<std::unique_ptr<ELF64LEObjectFile>>
-getAMDGCNObjectFile(StringRef Elf) {
+parseAMDGCNObjectFile(llvm::StringRef ELF) {
   std::unique_ptr<MemoryBuffer> Buffer =
-      MemoryBuffer::getMemBuffer(Elf, "", false);
+      MemoryBuffer::getMemBuffer(ELF, "", false);
   Expected<std::unique_ptr<ObjectFile>> ObjectFile =
       ObjectFile::createELFObjectFile(*Buffer);
   LUTHIER_RETURN_ON_ERROR(ObjectFile.takeError());
@@ -608,8 +605,8 @@ getAMDGCNObjectFile(StringRef Elf) {
 }
 
 Expected<std::unique_ptr<ELF64LEObjectFile>>
-getAMDGCNObjectFile(ArrayRef<uint8_t> Elf) {
-  return getAMDGCNObjectFile(toStringRef(Elf));
+getAMDGCNObjectFile(ArrayRef<uint8_t> ELF) {
+  return parseAMDGCNObjectFile(toStringRef(ELF));
 }
 
 template <class ELFT>
@@ -644,83 +641,6 @@ getNotesFromSectionHeader(const ELFObjectFile<ELFT> *Obj) {
   }
 
   return std::nullopt;
-}
-
-// Try to merge "amdhsa.kernels" from DocNode @p From to @p To.
-// The merge is allowed only if
-// 1. "amdhsa.printf" record is not existing in either of the nodes.
-// 2. "amdhsa.version" exists and is same.
-// 3. "amdhsa.kernels" exists in both nodes.
-//
-// If merge is possible the function merges Kernel records
-// to @p To and returns @c true.
-static bool mergeNoteRecords(llvm::msgpack::DocNode &From,
-                             llvm::msgpack::DocNode &To,
-                             const StringRef VersionStrKey,
-                             const StringRef PrintfStrKey,
-                             const StringRef KernelStrKey) {
-  if (!From.isMap()) {
-    return false;
-  }
-
-  if (To.isEmpty()) {
-    To = From;
-    return true;
-  }
-
-  assert(To.isMap());
-
-  if (From.getMap().find(PrintfStrKey) != From.getMap().end()) {
-    /* Check if both have Printf records */
-    if (To.getMap().find(PrintfStrKey) != To.getMap().end()) {
-      return false;
-    }
-
-    /* Add Printf record for 'To' */
-    To.getMap()[PrintfStrKey] = From.getMap()[PrintfStrKey];
-  }
-
-  auto &FromMapNode = From.getMap();
-  auto &ToMapNode = To.getMap();
-
-  auto FromVersionArrayNode = FromMapNode.find(VersionStrKey);
-  auto ToVersionArrayNode = ToMapNode.find(VersionStrKey);
-
-  if ((FromVersionArrayNode == FromMapNode.end() ||
-       !FromVersionArrayNode->second.isArray()) ||
-      (ToVersionArrayNode == ToMapNode.end() ||
-       !ToVersionArrayNode->second.isArray())) {
-    return false;
-  }
-
-  auto FromVersionArray = FromMapNode[VersionStrKey].getArray();
-  auto ToVersionArray = ToMapNode[VersionStrKey].getArray();
-
-  if (FromVersionArray.size() != ToVersionArray.size()) {
-    return false;
-  }
-
-  for (size_t I = 0, E = FromVersionArray.size(); I != E; ++I) {
-    if (FromVersionArray[I] != ToVersionArray[I]) {
-      return false;
-    }
-  }
-
-  auto FromKernelArray = FromMapNode.find(KernelStrKey);
-  auto ToKernelArray = ToMapNode.find(KernelStrKey);
-
-  if ((FromKernelArray == FromMapNode.end() ||
-       !FromKernelArray->second.isArray()) ||
-      (ToKernelArray == ToMapNode.end() || !ToKernelArray->second.isArray())) {
-    return false;
-  }
-
-  auto &ToKernelRecords = ToKernelArray->second.getArray();
-  for (auto Kernel : FromKernelArray->second.getArray()) {
-    ToKernelRecords.push_back(Kernel);
-  }
-
-  return true;
 }
 
 } // namespace luthier

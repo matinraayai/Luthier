@@ -1,30 +1,29 @@
-/**
- * \file object_utils.hpp
- * \brief contains all operations related to dealing with parsing and processing
- * AMDGPU code objects using LLVM object file and DWARF utilities
- *
- * Luthier uses LLVM's object library (under llvm/Object folder in LLVM)
- * to parse and inspect AMDGPU code objects, and if present, uses LLVM's
- * DebugInfo library (under llvm/DebugInfo) to parse and process DWARF
- * information from them.
- *
- * object_utils.hpp is meant to \b only include functionality that:
- * - concerns ELF object files and ELF file section parsing and processing,
- *   including DWARF debug information.
- * - is specific to AMDGPU GCN code objects. Some examples include
- *   parsing an AMDGCN object file and converting them to
- *   \p llvm::object::ELF64LEObjectFile, or parsing the note section
- *   of an AMDGPU code object into a \c luthier::hsa::md::Metadata.
- * - does not exist in LLVM's object library, and/or is implemented in other
- *   LLVM-based tools or project. Some examples include retrieving symbols by
- *   name, or getting the loaded address of a symbol.
- *
- * Although not strictly restricted for this specific purpose, object_utils.hpp
- * is only used to supplement ROCr functionality, by parsing the Storage
- * memory ELF of an \c luthier::hsa::LoadedCodeObject, which is exposed in
- * hsa wrapper primitives in the \c luthier::hsa namespace.
- *
- */
+//===-- object_utils.hpp - Luthier's Object File Utility  -----------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file contains all operations related to dealing with parsing and
+/// processing AMDGPU code objects using LLVM object file and DWARF utilities.\n
+/// Luthier uses LLVM's object library (under llvm/Object folder in LLVM)
+/// to parse and inspect AMDGPU code objects, and if present, uses LLVM's
+/// DebugInfo library (under llvm/DebugInfo) to parse and process DWARF
+/// information from them.\n
+/// object_utils.hpp is meant to \b only include functionality that:\n
+/// - concerns ELF object files and ELF file section parsing and processing,
+/// including DWARF debug information.\n
+/// - is specific to AMDGPU GCN code objects. Some examples include parsing
+/// an AMDGCN object file and converting them to
+/// \c llvm::object::ELF64LEObjectFile, or parsing the note section of an
+/// AMDGPU code object into a \c luthier::hsa::md::Metadata.\n
+/// - does not readily exist in LLVM's object library, and/or is implemented
+/// in other LLVM-based tools or project. Some examples include retrieving
+/// symbols by name, or getting the loaded address of a symbol.\n
+/// Although not strictly restricted for this specific purpose,
+/// <tt>object_utils.hpp</tt> is only used to supplement ROCr functionality,
+/// by parsing the Storage memory ELF of an \c luthier::hsa::LoadedCodeObject,
+/// which is exposed in hsa wrapper primitives in the \c luthier::hsa namespace.
+//===----------------------------------------------------------------------===//
 #ifndef OBJECT_UTILS_HPP
 #define OBJECT_UTILS_HPP
 #include <hip/hip_runtime_api.h>
@@ -36,11 +35,11 @@
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
 
+#include <common/error.hpp>
+#include <luthier/types.h>
 #include <map>
 #include <optional>
 #include <utility>
-#include <common/error.hpp>
-#include <luthier/types.h>
 
 namespace llvm::AMDGPU::HSAMD {
 
@@ -49,46 +48,48 @@ enum class AccessQualifier : uint8_t;
 
 namespace luthier {
 
-/**
- * As per <a href="https://llvm.org/docs/AMDGPUUsage.html#elf-code-object">
- * AMDGPU backend documentation</a>, AMDGCN object files are 64-bit LSB.
- * Luthier does not support the R600 target, hence it is safe to assume for now
- * all ELF object files encountered by Luthier are of this type.
- */
+/// As per <a href="https://llvm.org/docs/AMDGPUUsage.html#elf-code-object">
+/// AMDGPU backend documentation</a>, AMDGCN object files are 64-bit LSB.
+/// Luthier does not support the R600 target, hence it is safe to assume for now
+/// all ELF object files encountered by Luthier are of this type.
 typedef llvm::object::ELF64LEObjectFile AMDGCNObjectFile;
 
-/**
- * Parses the ELF file pointed to by \p Elf into a \c AMDGCNObjectFile.
- * \param Elf \c llvm::StringRef encompassing the ELF file in memory
- * \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
- * parsing, an \c llvm::Error on failure
- */
+/// Parses the ELF file pointed to by \p Elf into a \c AMDGCNObjectFile.
+/// \param ELF \c llvm::StringRef encompassing the ELF file in memory
+/// \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
+/// parsing, an \c llvm::Error on failure
 llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
-getAMDGCNObjectFile(llvm::StringRef Elf);
+parseAMDGCNObjectFile(llvm::StringRef ELF);
 
-/**
- * Parses the ELF file pointed to by \b Elf into a \b AMDGCNObjectFile.
- * \param Elf \p llvm::ArrayRef<uint8_t> encompassing the ELF file in memory
- * \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
- * parsing, an \c llvm::Error on failure
- */
+/// Parses the ELF file pointed to by \b Elf into a \b AMDGCNObjectFile.
+/// \param ELF \p llvm::ArrayRef<uint8_t> encompassing the ELF file in memory
+/// \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
+/// parsing, an \c llvm::Error on failure
 llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
-getAMDGCNObjectFile(llvm::ArrayRef<uint8_t> Elf);
+getAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF);
 
-/**
- * Looks up a symbol by its name in the given ELF from its symbol hash table.
- * \param Elf
- * \param SymbolName
- * \return
- */
+/// Looks up a symbol by its name in the given \p Elf from its symbol hash
+/// table
+/// \param ELF the ELF object being queried
+/// \param SymbolName Name of the symbol being looked up
+/// \return an \c llvm::object::ELFSymbolRef if the Symbol was found,
+/// an \c std::nullopt if the symbol was not found, and \c llvm::Error if
+/// any issue was encountered during the process
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-lookupSymbolByName(const luthier::AMDGCNObjectFile &Elf,
+lookupSymbolByName(const luthier::AMDGCNObjectFile &ELF,
                    llvm::StringRef SymbolName);
 
+/// Returns the <tt>Sec</tt>'s loaded memory offset from the <tt>ELF</tt>'s
+/// loaded base
+/// \tparam ELFT type of ELF used
+/// \param ELF the Object file being queried
+/// \param Sec the ELF's section
+/// \return on success, the loaded offset of the section with respect to the
+/// ELF's load base; an \c llvm::Error on failure
 template <class ELFT>
-llvm::Expected<uint64_t> getSectionLMA(const llvm::object::ELFFile<ELFT> &Obj,
+llvm::Expected<uint64_t> getSectionLMA(const llvm::object::ELFFile<ELFT> &ELF,
                                        const llvm::object::ELFSectionRef &Sec) {
-  auto PhdrRange = Obj.program_headers();
+  auto PhdrRange = ELF.program_headers();
   LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
 
   // Search for a PT_LOAD segment containing the requested section. Use this
@@ -132,7 +133,8 @@ llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
 }
 
 template <typename ELFT>
-llvm::Expected<std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
+llvm::Expected<
+    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
 getELFObjectFileISA(const llvm::object::ELFObjectFile<ELFT> &Obj) {
   llvm::Triple TT = Obj.makeTriple();
   std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
