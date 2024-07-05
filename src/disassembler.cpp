@@ -1,5 +1,4 @@
 #include "disassembler.hpp"
-
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
@@ -28,7 +27,6 @@
 #include <llvm/TargetParser/Triple.h>
 #include <llvm/DebugInfo/DWARF/DWARFContext.h>
 #include <memory>
-
 #include "error.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
@@ -143,10 +141,10 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool inclu
     auto SymbolName = Symbol.getName();
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
 
-    // The ISA associated with the Symbol is
-    auto LCO = Symbol.getLoadedCodeObject();
-    LUTHIER_RETURN_ON_ERROR(LCO.takeError());
-
+    auto LCO = Symbol.getDefiningLoadedCodeObject();
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ASSERTION(LCO != std::nullopt));
+    // LUTHIER_RETURN_ON_ERROR(LCO.takeError());
     auto Agent = Symbol.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
@@ -179,8 +177,14 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool inclu
     LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
     if (includeDebugInfo) {
-      auto dwarfDebugInfo = std::make_unique<DWARFDebugInfo>(*LCO); // do I just pass the LCO, or do I dereference it to get the data from the Expected?
-      this->debugInfoLCOMap.insert({*LCO, std::move(dwarfDebugInfo)});
+      auto elfFile = LCO->getStorageELF();
+      LUTHIER_RETURN_ON_ERROR(elfFile.takeError());
+      auto fileName = elfFile->getFileName();
+      // assume the file name is not null (cant be null if !elfFile.takeError())
+      if (!this->debugInfoELFMap.contains(fileName)) {
+        auto dwarfDebugInfo = std::make_unique<DWARFDebugInfo>(*elfFile);
+        this->debugInfoLCOMap.insert({*LCO, std::move(dwarfDebugInfo)});
+      }
     }
 
     for (unsigned int I = 0; I < Instructions.size(); ++I) {
@@ -636,6 +640,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                          // instructions (output operands)
 
   for (const auto &Inst : *TargetFunction) {
+    Inst.getLoadedDeviceAddress
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
@@ -655,6 +660,8 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       OldMBB->addSuccessor(MBB);
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
     }
+    Inst.getLoadedDeviceAddress();
+    // create the DILocation (pass the line, and column, and scope = MF->getFunction().getSubprogram()
     llvm::MachineInstrBuilder Builder =
         llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
     Out.MCToMachineInstrMap.insert(

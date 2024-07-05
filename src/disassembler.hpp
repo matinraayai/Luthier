@@ -116,13 +116,12 @@ private:
       MCDisassembledSymbols{};
 
   /**
-   * // USE A denseMap instead! (look into it)
-   * Cache of DWARFDebugInfo. The DWARFDebugInfos have to be allocated as a
+   * Cache of DWARFDebugInfo. Maps file name of the ELF to the corresponding
+   * DWARF debug information. The DWARFDebugInfos have to be allocated as a
    * smart pointer to stop it from calling its destructor prematurely.
    * The disassembler is in charge of clearing the map
   */
-  llvm::DenseMap<hsa::LoadedCodeObject, std::unique_ptr<DWARFDebugInfo>>
-    debugInfoLCOMap{}; // Contains the cached DWARFDebugInfo for each LCO
+  llvm::StringMap<std::unique_ptr<DWARFDebugInfo>> debugInfoELFMap{};
 
 public:
   /**
