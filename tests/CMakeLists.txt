@@ -1,16 +1,15 @@
 include(FetchContent)
 FetchContent_Declare(
-        googletest
-        URL https://github.com/google/googletest/archive/refs/heads/main.zip
+        doctest
+        URL https://github.com/doctest/doctest/archive/refs/heads/master.zip
 )
 
-FetchContent_MakeAvailable(googletest)
-
-
+FetchContent_MakeAvailable(doctest)
 enable_testing()
+include(CTest)
 
-add_executable(
-        code_lifter_test
+add_library(
+        code_lifter_test SHARED
         code_lifter_test.cpp
 )
 
@@ -33,8 +32,5 @@ target_compile_definitions(code_lifter_test PUBLIC AMD_INTERNAL_BUILD)
 target_link_libraries(
         code_lifter_test
         luthier
-        GTest::gtest_main
+        doctest::doctest
 )
-
-include(GoogleTest)
-gtest_discover_tests(code_lifter_test)
