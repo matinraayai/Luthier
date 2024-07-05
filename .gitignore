@@ -35,3 +35,7 @@
 build*
 *.s
 *.swp
+
+# IDE Configuration Folders
+.vscode
+.idea
