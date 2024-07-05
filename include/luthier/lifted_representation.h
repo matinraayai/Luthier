@@ -11,6 +11,7 @@
 
 #ifndef LUTHIER_LIFTED_REPRESENTATION_H
 #define LUTHIER_LIFTED_REPRESENTATION_H
+#include "llvm_dense_map_info.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
@@ -26,24 +27,24 @@ class CodeLifter;
 /// primitive.
 /// \details The primitive can be either an \c hsa_executable_t or a
 /// \c hsa_executable_symbol_t of type kernel. Luthier's \c CodeLifter is
-/// the only entity allowed to construct or clone a <tt>LiftedRepresentation</tt>.
-/// This allows internal caching and thread-safe access to them by other components.
-/// It also allows invalidation of the representations when the executable backing
-/// the lifted primitive gets destroyed. \n
-/// Each lifted primitive has an independent \c llvm::orc::ThreadSafeContext
-/// created for it internally by Luthier's <tt>CodeLifter</tt> to let
-/// independent processing of different primitives by multiple threads, and
-/// proper synchronization when multiple threads need to instrument the same
-/// primitive. Subsequent clones of the lifted representation use the same
-/// thread-safe context. The following mappings are also retained internally
-/// in the representation:
+/// the only entity allowed to construct or clone a
+/// <tt>LiftedRepresentation</tt>. This allows internal caching and thread-safe
+/// access to them by other components. It also allows invalidation of the
+/// representations when the executable backing the lifted primitive gets
+/// destroyed. \n Each lifted primitive has an independent \c
+/// llvm::orc::ThreadSafeContext created for it internally by Luthier's
+/// <tt>CodeLifter</tt> to let independent processing of different primitives by
+/// multiple threads, and proper synchronization when multiple threads need to
+/// instrument the same primitive. Subsequent clones of the lifted
+/// representation use the same thread-safe context. The following mappings are
+/// also retained internally in the representation:
 /// - For each \c hsa_loaded_code_object_t involved,
 /// an \c llvm::orc::ThreadSafeModule and a \c llvm::MachineModuleInfo is
 /// created and stored.
-/// - For each \c hsa_executable_symbol_t of type \c KERNEL or \c DEVICE_FUNCTION
-/// involved, a mapping to the \c llvm::MachineFunction it was lifted to is
-/// retained. The machine function is owned by one of the machine module info
-/// created for its defining <tt>hsa_loaded_code_object_t</tt>.
+/// - For each \c hsa_executable_symbol_t of type \c KERNEL or \c
+/// DEVICE_FUNCTION involved, a mapping to the \c llvm::MachineFunction it was
+/// lifted to is retained. The machine function is owned by one of the machine
+/// module info created for its defining <tt>hsa_loaded_code_object_t</tt>.
 /// - For each \c hsa_executable_symbol_t of type <tt>VARIABLE</tt>, a mapping
 /// to the \c llvm::GlobalVariable it was lifted to is retained.
 /// - For each \c llvm::MachineInstr in the lifted functions, a mapping to
@@ -76,7 +77,7 @@ private:
   /// into a single \c hsa_executable_t . In practice, an \c hsa_executable_t
   /// almost always contains a single \c hsa_loaded_code_object_t .
   llvm::SmallDenseMap<
-      decltype(hsa_loaded_code_object_t::handle),
+      hsa_loaded_code_object_t,
       std::pair<llvm::orc::ThreadSafeModule,
                 std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
       1>
@@ -85,20 +86,18 @@ private:
   /// Mapping between an \c hsa_loaded_code_object_t and the Module and MMI
   /// representing it in LLVM
   llvm::DenseMap<
-      decltype(hsa_loaded_code_object_t::handle),
+      hsa_loaded_code_object_t,
       std::pair<llvm::orc::ThreadSafeModule *, llvm::MachineModuleInfo *>>
       RelatedLCOs{};
 
   /// Mapping between an \c hsa_executable_symbol_t (of type kernel and
   /// device function) and its \c llvm::MachineFunction
-  llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
-                 llvm::MachineFunction *>
+  llvm::DenseMap<hsa_executable_symbol_t, llvm::MachineFunction *>
       RelatedFunctions{};
 
   /// Mapping between an \c hsa_executable_symbol_t of type variable
   /// and its \c llvm::GlobalVariable
-  llvm::DenseMap<decltype(hsa_executable_symbol_t::handle),
-                 llvm::GlobalVariable *>
+  llvm::DenseMap<hsa_executable_symbol_t, llvm::GlobalVariable *>
       RelatedGlobalVariables{};
 
   /// A mapping between an \c llvm::MachineInstr in one of the MMIs and
@@ -241,12 +240,12 @@ public:
     return make_range(global_begin(), global_end());
   }
 
-  const llvm::MachineFunction& getMF(hsa_executable_symbol_t Func) {
-    return *RelatedFunctions.at(Func.handle);
+  const llvm::MachineFunction &getMF(hsa_executable_symbol_t Func) {
+    return *RelatedFunctions.at(Func);
   }
 
-  const llvm::GlobalVariable& getGV(hsa_executable_symbol_t GV) {
-    return *RelatedGlobalVariables.at(GV.handle);
+  const llvm::GlobalVariable &getGV(hsa_executable_symbol_t GV) {
+    return *RelatedGlobalVariables.at(GV);
   }
 
   [[nodiscard]] const hsa::Instr &

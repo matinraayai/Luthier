@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # Global CXX Setup =====================================================================================================
 project(luthier
-        VERSION 0.0.1
+        VERSION 0.0.5
         LANGUAGES CXX
         DESCRIPTION "Dynamic Binary Instrumentation for AMD GPUs on ROCm"
 )
@@ -100,7 +100,7 @@ if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
     find_package(Doxygen REQUIRED)
     set(DOXYGEN_GENERATE_HTML ${LUTHIER_BUILD_HTMLS_DOCS})
     set(DOXYGEN_GENERATE_LATEX ${LUTHIER_BUILD_LATEX_DOCS})
-    doxygen_add_docs(luthier_docs)
+    doxygen_add_docs(luthier_docs docs src compiler-plugins)
 endif ()
 
 

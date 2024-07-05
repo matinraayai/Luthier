@@ -50,7 +50,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                   luthier::instrumentAndLoad(*KernelSymbol, *LiftedKernel, [&](InstrumentationTask &IT,
                                                                                LiftedRepresentation &LR) -> llvm::Error {
                     llvm::outs() << "Mutator called!\n";
-                    for (auto &[FuncHSAHandle, MF] : LR.functions()) {
+                    for (auto &[Func, MF] : LR.functions()) {
                       llvm::outs() << MF << "\n";
                       MF->print(llvm::outs());
                       llvm::outs() << "Num basic blocks: " << MF->size() << "\n";
