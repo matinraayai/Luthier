@@ -19,12 +19,12 @@
 #include <llvm/IR/Constants.h>
 #include <vector>
 
+#include "common/log.hpp"
 #include "hsa/hsa.hpp"
 #include "hsa/hsa_agent.hpp"
 #include "hsa/hsa_executable_symbol.hpp"
 #include "hsa/hsa_intercept.hpp"
 #include "hsa/hsa_loaded_code_object.hpp"
-#include "common/log.hpp"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-object-manager"
@@ -99,6 +99,7 @@ static llvm::Error getHooks(const llvm::Module &M,
 llvm::Error preprocessAndSaveModuleToStream(
     llvm::Module &Module, llvm::SmallVector<std::string> StaticVariables,
     std::string &CUID, llvm::SmallVector<char> &BitcodeOut) {
+  Module.dump();
   // Extract all the hooks
   llvm::SmallVector<llvm::Function *> Hooks;
   LUTHIER_RETURN_ON_ERROR(getHooks(Module, Hooks));
@@ -124,6 +125,13 @@ llvm::Error preprocessAndSaveModuleToStream(
     if (F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
       F.dropAllReferences();
       F.eraseFromParent();
+    } else {
+      auto FName = F.getName();
+      if (FName == "read16BitReg" || FName == "read32BitReg" ||
+          FName == "read64BitReg" || FName == "write16BitReg" ||
+          FName == "write32BitReg" || FName == "write64BitReg") {
+        F.deleteBody();
+      }
     }
   }
 

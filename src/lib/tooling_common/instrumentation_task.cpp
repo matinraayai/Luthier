@@ -16,7 +16,6 @@ llvm::Error luthier::InstrumentationTask::insertHookAt(
   if (!HookInsertionTasks.contains(&MI)) {
     HookInsertionTasks.insert({&MI, mi_hook_insertion_tasks{}});
   }
-  llvm::outs() << "hook is being inserted\n";
   auto &MIHookTasks = HookInsertionTasks[&MI];
   auto &HookTaskListToQueue = IPoint == INSTR_POINT_BEFORE
                                   ? MIHookTasks.BeforeIPointTasks

@@ -77,8 +77,6 @@ add_subdirectory(src)
 # TODO: Add option to build with sanitizers
 #target_compile_options(luthier PUBLIC "-fsanitize=address")
 
-#
-
 # ======================================================================================================================
 
 # Example Tools Configuration (if enabled) =============================================================================

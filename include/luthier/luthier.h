@@ -299,6 +299,48 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
   reinterpret_cast<const void *>(__luthier_hook_handle_##HookName)
+
+/// Macro to define register reader functions \n
+/// Ideally these should use the llvm.read_register intrinsics, but they are
+/// not implemented in the AMDGPU backend \n
+/// The body is only populated so that the compiler does not inline these
+/// functions
+#define LUTHIER_ENABLE_REG_READER_FUNCTIONS                                    \
+  __attribute__((device, noinline)) extern "C" uint16_t read16BitReg(          \
+      llvm::MCRegister Reg) {                                                  \
+    uint16_t Val = Reg + static_cast<uint16_t>(__luthier_reserved);            \
+    return Val;                                                                \
+  }                                                                            \
+  __attribute__((device, noinline)) extern "C" uint32_t read32BitReg(          \
+      llvm::MCRegister Reg) {                                                  \
+    uint32_t Val = Reg + static_cast<uint32_t>(__luthier_reserved);            \
+    return Val;                                                                \
+  }                                                                            \
+  __attribute__((device, noinline)) extern "C" uint64_t read64BitReg(          \
+      llvm::MCRegister Reg) {                                                  \
+    uint64_t Val = Reg + static_cast<uint64_t>(__luthier_reserved);            \
+    return Val;                                                                \
+  }
+
+/// Macro to define reg writer functions \n
+/// Ideally these should use the llvm.write_register intrinsics, but they are
+/// not implemented in the AMDGPU backend \n
+/// The body is only populated so that the compiler does not inline these
+/// functions
+#define LUTHIER_ENABLE_REG_WRITER_FUNCTIONS                                    \
+  __attribute__((device, noinline)) extern "C" void write16BitReg(             \
+      llvm::MCRegister Reg, uint16_t Val) {                                    \
+    __luthier_reserved = static_cast<char>(static_cast<uint32_t>(Val) + Reg);  \
+  }                                                                            \
+  __attribute__((device, noinline)) extern "C" void write32BitReg(             \
+      llvm::MCRegister Reg, uint32_t Val) {                                    \
+    __luthier_reserved = static_cast<char>(static_cast<uint32_t>(Val) + Reg);  \
+  }                                                                            \
+  __attribute__((device, noinline)) extern "C" void write64BitReg(             \
+      llvm::MCRegister Reg, uint64_t Val) {                                    \
+    __luthier_reserved = static_cast<char>(static_cast<uint32_t>(Val) + Reg);  \
+  }
+
 } // namespace luthier
 
 ////
@@ -421,7 +463,7 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 // return SGPR[30:31]
 // SGPR3 (where it actually is in the app) -> SGRP[30:31]
 //
-//
+
 // __device__ __noinline__ int32_t nvbit_read_reg(uint64_t reg_num);
 ////__device__ __noinline__ void nvbit_write_reg(uint64_t reg_num, int32_t
 /// reg_val);
