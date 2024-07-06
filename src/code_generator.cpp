@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRPrintingPasses.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassInstrumentation.h"
@@ -97,6 +98,7 @@
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <optional>
+#include <vector>
 // #include <strstream>
 
 #include "AMDGPUGenInstrInfo.inc"
@@ -133,20 +135,22 @@ struct LuthierReserveLiveRegs : public MachineFunctionPass {
     // if (InstruFuncName.empty() || InstruFuncName != MF.getName())
     //   return true;
 
-    llvm::outs() << "=====> Run LuthierReserveLiveRegs on function: " << MF.getName() << "\n";
+    llvm::outs() << "=====> Run LuthierReserveLiveRegs on function: " 
+                 << MF.getName() << "\n";
     
     auto &MRI = MF.getRegInfo();
     auto *TRI = MF.getSubtarget().getRegisterInfo();
     
     // MRI.freezeReservedRegs(MF);
     
+    // SGPR0-3 are ALWAYS reserved
     MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
-    llvm::outs() << "     > Are SGPR0-3 reserved after calling reserveReg()?\t";
-    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
-        llvm::outs() << "YES is reserved\n" : 
-        llvm::outs() << "NO is not reserved\n";
+    // llvm::outs() << "     > Are SGPR0-3 reserved after calling reserveReg()?\t";
+    // MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
+    //     llvm::outs() << "YES is reserved\n" : 
+    //     llvm::outs() << "NO is not reserved\n";
 
-    llvm::outs() << "     > Set the liveins of the original App func as reserved regs\n";
+    // llvm::outs() << "     > Set the liveins of the original App func as reserved regs\n";
     for (auto &Reg : LiveRegs)
       MRI.reserveReg(Reg, TRI);
 
@@ -154,11 +158,13 @@ struct LuthierReserveLiveRegs : public MachineFunctionPass {
     // MRI.canReserveReg(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES can reserve\n" : llvm::outs() << "\n NO cannot reserve\n";
     // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
     // MRI.freezeReservedRegs(MF);
+    
+    // Need to freeze regs after reserving them
     MRI.freezeReservedRegs();
-    llvm::outs() << "     > Are SGPR0-3 STILL reserved after freezeReservedRegs()?\t";
-    MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
-        llvm::outs() << "YES is reserved\n" : 
-        llvm::outs() << "NO is not reserved\n";
+    // llvm::outs() << "     > Are SGPR0-3 STILL reserved after freezeReservedRegs()?\t";
+    // MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
+    //     llvm::outs() << "YES is reserved\n" : 
+    //     llvm::outs() << "NO is not reserved\n";
 
     // MF.addLiveIn(llvm::AMDGPU::SGPR0_SGPR1, &llvm::AMDGPU::SReg_64RegClass);
     // LiveRegs.addReg(llvm::AMDGPU::SGPR0);
@@ -175,7 +181,8 @@ struct LuthierReserveLiveRegs : public MachineFunctionPass {
     //   llvm::addLiveIns(MBB, LiveRegs);
     // }
     
-    llvm::outs() << "\n=====> End of LuthierReserveLiveRegs\n\n";
+    llvm::outs() << "     > End of LuthierReserveLiveRegs for " 
+                 << MF.getName() << "\n\n";
     return true;
   }
 };
@@ -384,7 +391,7 @@ CodeGenerator::insertFunctionCalls(
   std::vector<LiftedSymbolInfo> Out;
   for (const auto &[IPointMI, IFuncAndIPoint] : Tasks) {
     llvm::MachineBasicBlock *IPointMBB = IPointMI->getParent();
-    auto &[IFuncShadowHostPtr, IPoint] = IFuncAndIPoint;
+    auto &[IFuncShadowHostPtr, IArgs, IPoint] = IFuncAndIPoint;
     // Get the hsa::GpuAgent of the Target Kernel
     auto TargetKernelSymbol =
         hsa::ExecutableSymbol::fromHandle(TargetLSI.getSymbol());
@@ -403,23 +410,25 @@ CodeGenerator::insertFunctionCalls(
         CodeObjectManager::instance()
             .getModuleContainingInstrumentationFunctions({*IFunctionSymbol});
     LUTHIER_RETURN_ON_ERROR(InstrumentationModule.takeError());
-
+    InstrumentationModule.get()->dump();
 
     // need to add a weight count to the IPoint's function
     llvm::outs() << "=====> Create Kernel for IPoint Hook and add to instrumentation module\n";
     llvm::Type *const InstruKernelRetTy = 
-        llvm::Type::getVoidTy(InstrumentationModule->get()->getContext());
+        llvm::Type::getVoidTy(InstrumentationModule.get()->getContext());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(InstruKernelRetTy != nullptr));
     llvm::FunctionType *InstruKernelTy =
         llvm::FunctionType::get(InstruKernelRetTy, {}, false);
     // TODO: Try adding AttributeList when calling getOrInsertFunction
     llvm::FunctionCallee InstruKernelCallee = 
-        InstrumentationModule->get()
-                             ->getOrInsertFunction("Instrumentation_Kernel", InstruKernelTy);
+        InstrumentationModule.get()
+                             ->getOrInsertFunction("Instrumentation_Kernel", 
+                                                   InstruKernelTy);
+    
     auto IK = llvm::dyn_cast<llvm::Function>(InstruKernelCallee.getCallee());
     IK->setCallingConv(IPointMI->getParent()
                        ->getParent()->getFunction().getCallingConv());
-    
+
     auto &InstrumentationContext = InstrumentationModule.get()->getContext();
     llvm::IRBuilder<> IKBuilder(InstrumentationContext);
     
@@ -442,13 +451,71 @@ CodeGenerator::insertFunctionCalls(
 
     llvm::BasicBlock *IKBB = llvm::BasicBlock::Create(InstrumentationContext, 
                                                       "call_to_hook", IK);
-
-    llvm::outs() << "     > \tCreate call to instrumentation func in IK\n";
     IKBuilder.SetInsertPoint(IKBB);
     auto Hook = InstrumentationModule.get()->getFunction("instrumentationHook");
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
-    auto CalltoHook = IKBuilder.CreateCall(Hook);
+    
+    llvm::outs() << "     > Instrumentation Hook's arguments versus received arguments from Luthier call\n"
+                 << "     >>> Hook expects " << Hook->arg_size() << " Function args\n"
+                 << "     >>> Luthier received " << IArgs.size() << " args for Hook Call\n";
+    // auto ArgErr = LUTHIER_ASSERTION(Hook->arg_size() == IArgs.size());
+    // LUTHIER_ASSERTION(Hook->arg_size() == IArgs.size()).success()
+
+    // Hook->getArg(unsigned int i)
+    // for (auto &HookArg : Hook->args()) {
+    // std::vector<llvm::Value*> CallInstArgs;
+    // std::vector<llvm::Value*> LoadInsts;
+    llvm::SmallVector<llvm::Value*> LoadInsts;
+    for (unsigned int ArgNo = 0; ArgNo < Hook->arg_size(); ArgNo++) {
+      auto HookArg = Hook->getArg(ArgNo);
+      auto IArg = IArgs[ArgNo];
+      llvm::outs() << "     >>> Hook Arg No " << ArgNo << ": ";
+      HookArg->dump();
+
+      llvm::outs() << "     >>> IArg No " << ArgNo << ": ";
+      IArg->dump();
+
+      // LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookArg->getType() == IArg->getType()));
+      
+      // auto ConVal = IArg->getInitializer();
+
+      // llvm::outs() << "\n     >>> Copy IArg to Instrumentation Module as a global var\n";
+      // auto *NewGV = new llvm::GlobalVariable(
+      //     **InstrumentationModule, IArg->getType(), true,
+      //     llvm::GlobalValue::ExternalLinkage, (llvm::Constant *)nullptr,
+      //     IArg->getName(), (llvm::GlobalVariable *)nullptr);
+          // IArg->getThreadLocalMode(), IArg->getType()->getAddressSpace());
+      // IKBuilder.CreateLoad(NewGV->getType(), NewGV);
+      // LoadInsts.push_back(IKBuilder.CreateLoad(NewGV->getType(), NewGV));
+      LoadInsts.push_back(IKBuilder.CreateLoad(HookArg->getType(), IArg));
+      // auto LoadArg = IKBuilder.CreateLoad(IArg->getType(), IArg);
+      // IKBuilder.CreateIntCast(Value *V, Type *DestTy, bool isSigned)
+      // IKBuilder.CreateIntCast(LoadArgVal, HookArg->getType(), true);
+      // llvm::outs() << "\n     >>> Load Inst info\n"
+      //              << "Num operands: " << LoadArg->getNumOperands() << "\n";
+      // for (auto &OP : LoadArg->operands())
+      //   OP->dump();
+      // LoadArg->dump();
+    }
+    // llvm::outs() << "     > Dump load inst operands\n";
+    // for (auto &LI : LoadInsts)
+    //   LI->getType();
+      // for (auto &LOP : LI->operands())
+      //      LOP->dump();
+
+    llvm::outs() << "     > Dump instrumentation module after adding arg loads\n";
+    InstrumentationModule->get()->dump();
+
+    llvm::outs() << "     > Create call to instrumentation func in IK\n";
+    // auto CalltoHook = IKBuilder.CreateCall(Hook, IArgs);
+
+    auto CalltoHook = IKBuilder.CreateCall(Hook, LoadInsts);
+    
+    llvm::outs() << "     >>> Dump call before AddMetaData\n";
+    CalltoHook->dump();
+    llvm::outs() << "     >>> Dump call after AddMetaData\n";
     IKBuilder.AddMetadataToInst(CalltoHook);
+    CalltoHook->dump();
     IKBuilder.CreateRetVoid();
 
     llvm::outs() << "     > Dump instrumentation module after adding Instrumentation Kernel\n";
@@ -486,7 +553,7 @@ CodeGenerator::insertFunctionCalls(
     // Optimize the IR!
     MPM.run(**InstrumentationModule, MAM);
     
-    llvm::outs() << "\n=====> Run IR optimization for InstrumentationModule\n"
+    llvm::outs() << "=====> Run IR optimization for InstrumentationModule\n"
                  << "     > Dump instrumentation module after IR optimization\n";
     InstrumentationModule->get()->dump();
     

@@ -209,6 +209,8 @@ CodeObjectManager::getModuleContainingInstrumentationFunctions(
   llvm::SmallVector<llvm::GlobalValue *> Funcs;
   for (const auto &Symbol : Symbols) {
     const auto &LCOModule = ToolLCOEmbeddedIRModules.at(LCO);
+    LCOModule->dump();
+
     luthier::cloneModuleAttributes(*LCOModule, *ClonedModule);
     auto SymbolName = Symbol.getName();
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());

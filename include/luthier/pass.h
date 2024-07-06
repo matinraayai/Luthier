@@ -2,6 +2,8 @@
 #define LUTHIER_PASS_H
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/Argument.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Value.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
@@ -88,7 +90,9 @@ public:
 class InstrumentationTask {
 public:
   typedef llvm::DenseMap<llvm::MachineInstr *,
-                         std::tuple<const void *, InstrPoint>>
+                         std::tuple<const void *, 
+                                    llvm::ArrayRef<llvm::GlobalVariable*>, 
+                                    InstrPoint>>
       insert_call_tasks;
 
 private:
@@ -101,7 +105,8 @@ public:
                     InstrPoint IPoint);
 
   void insertCallTo(llvm::MachineInstr &MI, const void *DevFunc,
-                    InstrPoint IPoint, llvm::ArrayRef<llvm::Argument> IFuncArgs);
+                    llvm::ArrayRef<llvm::GlobalVariable*> IFuncArgs,
+                    InstrPoint IPoint);
   
   const insert_call_tasks &getInsertCallTasks() const {
     return InsertCallTasks;

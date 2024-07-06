@@ -151,6 +151,8 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel);
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
   reinterpret_cast<const void *>(__luthier_wrap__##HookName)
 
+// #define LUTHIER_GET_HOOK_ARGS(HookName)                                        \
+
 } // namespace luthier
 
 ////
