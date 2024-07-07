@@ -236,6 +236,36 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
   return *HookIRKernel;
 }
 
+static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine* TM) {
+  // Create the analysis managers.
+  // These must be declared in this order so that they are destroyed in
+  // the correct order due to inter-analysis-manager references.
+  LoopAnalysisManager LAM;
+  FunctionAnalysisManager FAM;
+  CGSCCAnalysisManager CGAM;
+  ModuleAnalysisManager MAM;
+
+  // Create the new pass manager builder.
+  // Take a look at the PassBuilder constructor parameters for more
+  // customization, e.g. specifying a TargetMachine or various debugging
+  // options.
+  llvm::PassBuilder PB(TM);
+
+  // Register all the basic analyses with the managers.
+  PB.registerModuleAnalyses(MAM);
+  PB.registerCGSCCAnalyses(CGAM);
+  PB.registerFunctionAnalyses(FAM);
+  PB.registerLoopAnalyses(LAM);
+  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+  // Create the pass manager.
+  ModulePassManager MPM =
+      PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
+
+  // Optimize the IR!
+  MPM.run(M, MAM);
+}
+
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                                        const InstrumentationTask &Task) {
   // Since (at least in theory) each LCO can have its own ISA, we need to
@@ -284,35 +314,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
           LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
           // With the Hook IR generated, we put it through the normal IR
           // pipeline
-
-          //          M.print(llvm::outs(), nullptr);
-          // Create the analysis managers.
-          // These must be declared in this order so that they are destroyed in
-          // the correct order due to inter-analysis-manager references.
-          LoopAnalysisManager LAM;
-          FunctionAnalysisManager FAM;
-          CGSCCAnalysisManager CGAM;
-          ModuleAnalysisManager MAM;
-
-          // Create the new pass manager builder.
-          // Take a look at the PassBuilder constructor parameters for more
-          // customization, e.g. specifying a TargetMachine or various debugging
-          // options.
-          llvm::PassBuilder PB;
-
-          // Register all the basic analyses with the managers.
-          PB.registerModuleAnalyses(MAM);
-          PB.registerCGSCCAnalyses(CGAM);
-          PB.registerFunctionAnalyses(FAM);
-          PB.registerLoopAnalyses(LAM);
-          PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
-          // Create the pass manager.
-          ModulePassManager MPM =
-              PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
-
-          // Optimize the IR!
-          MPM.run(M, MAM);
+          optimizeModule(M, TM);
           M.dump();
           //        //          M.print(llvm::outs(), nullptr);
           //
