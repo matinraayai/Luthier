@@ -42,6 +42,7 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include "SIInstrInfo.h"
+#include "SIRegisterInfo.h"
 #include "common/error.hpp"
 #include "common/log.hpp"
 #include "hsa/hsa.hpp"
@@ -156,15 +157,38 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 }
 
 llvm::Expected<llvm::InlineAsm *>
-createInlineAsmMCRegLoad(llvm::MCRegister Reg) {
-
-
+createInlineAsmMCRegLoad(llvm::MCRegister Reg, const hsa::ISA &ISA,
+                         const llvm::Function &Kernel) {
+  // First detect what kind of Physical register we're dealing with
+  auto TargetInfo = TargetManager::instance().getTargetInfo(ISA);
+  LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
+  auto *TM = TargetInfo->getTargetMachine();
+  auto *TRI = TM->getSubtargetImpl(Kernel)->getRegisterInfo();
+  auto *PhysRegClass = TRI->getPhysRegBaseClass(Reg);
+  auto RegName = TRI->getRegAsmName(Reg);
+  llvm::outs() << "Reg name" << RegName << "\n";
+  auto PhysRegWidth = llvm::AMDGPU::getRegBitWidth(*PhysRegClass);
+  if (PhysRegWidth != 32)
+    llvm_unreachable("Non-32 bit register arguments are not yet supported");
+  if (llvm::SIRegisterInfo::isVGPRClass(PhysRegClass)) {
+    return llvm::InlineAsm::get(
+        llvm::FunctionType::get(llvm::Type::getInt32Ty(Kernel.getContext()),
+                                {}),
+        llvm::formatv("v_mov_b32 $0 {0}", RegName).str(), "=v", true);
+  } else if (llvm::SIRegisterInfo::isSGPRClass(PhysRegClass)) {
+    return llvm::InlineAsm::get(
+        llvm::FunctionType::get(llvm::Type::getInt32Ty(Kernel.getContext()),
+                                {}),
+        llvm::formatv("s_mov_b32 $0 {0}", RegName).str(), "=s", true);
+  } else
+    llvm_unreachable(
+        "Adding arguments to the specified register is not implemented yet");
 }
 
 llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
     const llvm::MachineInstr &MI,
     const llvm::ArrayRef<InstrumentationTask::mi_hook_insertion_task> HookSpecs,
-    InstrPoint IPoint, llvm::Module &IModule) {
+    InstrPoint IPoint, const hsa::ISA &ISA, llvm::Module &IModule) {
   // 1. Create an empty kernel per MI insertion point in the LCO Module with
   // no input arguments
   llvm::Type *const ReturnType = llvm::Type::getVoidTy(IModule.getContext());
@@ -194,8 +218,8 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
     for (const auto &Op : HookSpec.Args) {
       if (holds_alternative<llvm::MCRegister>(Op)) {
         // Create an inline assembly to load the MC register into the value
-        auto RegLoadInlineAsm =
-            createInlineAsmMCRegLoad(std::get<llvm::MCRegister>(Op));
+        auto RegLoadInlineAsm = createInlineAsmMCRegLoad(
+            std::get<llvm::MCRegister>(Op), ISA, *HookIRKernel);
         LUTHIER_RETURN_ON_ERROR(RegLoadInlineAsm.takeError());
         // Put a call to the inline assembly
         auto *InlineAsmCall = Builder.CreateCall(*RegLoadInlineAsm);
@@ -246,12 +270,12 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
           for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
             // Generate the Hooks
             auto BeforeMIFunc = generateHookIR(*MI, HookSpecs.BeforeIPointTasks,
-                                               INSTR_POINT_BEFORE, M);
+                                               INSTR_POINT_BEFORE, *ISA, M);
             LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
             BeforeHooksMap.insert({MI, &(*BeforeMIFunc)});
             // Generate the After MI Hooks
             auto AfterMIFunc = generateHookIR(*MI, HookSpecs.AfterIPointTasks,
-                                              INSTR_POINT_AFTER, M);
+                                              INSTR_POINT_AFTER, *ISA, M);
             LUTHIER_RETURN_ON_ERROR(AfterMIFunc.takeError());
             AfterHooksMap.insert({MI, &(*AfterMIFunc)});
           }
@@ -289,6 +313,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
 
           // Optimize the IR!
           MPM.run(M, MAM);
+          M.dump();
           //        //          M.print(llvm::outs(), nullptr);
           //
           //        // TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
