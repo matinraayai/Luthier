@@ -89,6 +89,9 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Instructions.h"
 
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-code-generator"
+
 namespace luthier {
 
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
@@ -152,60 +155,112 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
   return llvm::Error::success();
 }
 
+llvm::Expected<llvm::InlineAsm *>
+createInlineAsmMCRegLoad(llvm::MCRegister Reg) {
+
+
+}
+
+llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
+    const llvm::MachineInstr &MI,
+    const llvm::ArrayRef<InstrumentationTask::mi_hook_insertion_task> HookSpecs,
+    InstrPoint IPoint, llvm::Module &IModule) {
+  // 1. Create an empty kernel per MI insertion point in the LCO Module with
+  // no input arguments
+  llvm::Type *const ReturnType = llvm::Type::getVoidTy(IModule.getContext());
+  llvm::FunctionType *FunctionType =
+      llvm::FunctionType::get(ReturnType, {}, false);
+  auto *HookIRKernel = llvm::Function::Create(
+      FunctionType, llvm::GlobalValue::ExternalLinkage,
+      llvm::formatv("Hooks{0}MIAt{1}",
+                    IPoint == INSTR_POINT_BEFORE ? "Before" : "After", &MI),
+      IModule);
+  HookIRKernel->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+  // Prevent emission of the prologue/epilogue code, but still lower the stack
+  // operands
+  HookIRKernel->addFnAttr(llvm::Attribute::Naked);
+  // Create an empty basic block to fill in with calls to hooks
+  llvm::BasicBlock *BB =
+      llvm::BasicBlock::Create(IModule.getContext(), "", HookIRKernel);
+  llvm::IRBuilder<> Builder(BB);
+  LLVM_DEBUG(llvm::dbgs() << "Number of hooks inserted "
+                          << (IPoint == INSTR_POINT_BEFORE ? "before" : "after")
+                          << " MI: " << HookSpecs.size() << "\n");
+  for (const auto &HookSpec : HookSpecs) {
+    auto Hook = IModule.getFunction(HookSpec.HookName);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
+    // Get the arguments of the hook
+    llvm::SmallVector<llvm::Value *, 4> Operands;
+    for (const auto &Op : HookSpec.Args) {
+      if (holds_alternative<llvm::MCRegister>(Op)) {
+        // Create an inline assembly to load the MC register into the value
+        auto RegLoadInlineAsm =
+            createInlineAsmMCRegLoad(std::get<llvm::MCRegister>(Op));
+        LUTHIER_RETURN_ON_ERROR(RegLoadInlineAsm.takeError());
+        // Put a call to the inline assembly
+        auto *InlineAsmCall = Builder.CreateCall(*RegLoadInlineAsm);
+        Operands.push_back(InlineAsmCall);
+      } else {
+        // Otherwise it's a constant, we can just push it back as an argument
+        Operands.push_back(std::get<llvm::Constant *>(Op));
+      }
+    }
+    (void)Builder.CreateCall(Hook, Operands);
+  }
+  // Put a ret void to end the kernel
+  (void)Builder.CreateRetVoid();
+  return *HookIRKernel;
+}
+
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                                        const InstrumentationTask &Task) {
   // Since (at least in theory) each LCO can have its own ISA, we need to
   // create a module/MMI per LCO to generate instrumentation code for easier
   // separation
-  for (const auto &[LCOHandle, LCOModule] : LR.modules()) {
+  for (const auto &[LCO, LCOModule] : LR.modules()) {
     // Load the bitcode of the instrumentation module into the LR's context
     auto IModule = Task.getModule().readBitcodeIntoContext(LR.getContext());
     LUTHIER_RETURN_ON_ERROR(IModule.takeError());
     LUTHIER_RETURN_ON_ERROR(
         IModule->withModuleDo([&](llvm::Module &M) -> llvm::Error {
-          //          M.dump();
+          LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n");
+          LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
           // Get the target machine of the LCO's ISA
-          auto ISA = hsa::LoadedCodeObject({LCOHandle}).getISA();
+          auto ISA = hsa::LoadedCodeObject(LCO).getISA();
           LUTHIER_RETURN_ON_ERROR(ISA.takeError());
           auto TargetInfo =
               llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
           auto TM = TargetInfo.getTargetMachine();
-          // Now that everything has been created we can start inserting hooks
-          llvm::outs() << "number of tasks: "
-                       << Task.getHookInsertionTasks().size() << "\n";
-          for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
-            // 1. Create an empty, no-arg kernel per insertion point in the
-            // LCOModule
-            llvm::Type *const ReturnType =
-                llvm::Type::getVoidTy(M.getContext());
-            llvm::FunctionType *FunctionType =
-                llvm::FunctionType::get(ReturnType, {}, false);
-            auto *F = llvm::Function::Create(
-                FunctionType, llvm::GlobalValue::ExternalLinkage, "myFunc", M);
-            F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-            // Prevent emission of the prologue/epilogue code
-            F->addFnAttr(llvm::Attribute::Naked);
-            //            F->removeFnAttr(llvm::Attribute::OptimizeNone);
-            //            F->removeFnAttr(llvm::Attribute::NoInline);
-            //            F->addFnAttr(llvm::Attribute::AlwaysInline);
-            // Create an empty basic block
-            llvm::BasicBlock *BB =
-                llvm::BasicBlock::Create(M.getContext(), "", F);
-            llvm::IRBuilder<> Builder(BB);
-            //            llvm::outs() << "Number of afters: "
-            //                         << HookSpecs.AfterIPointTasks.size() <<
-            //                         "\n";
-            for (const auto &HookSpec : HookSpecs.AfterIPointTasks) {
-              llvm::outs() << "Inserting hooks!\n";
+          LLVM_DEBUG(llvm::dbgs() << "ISA of the LCO: "
+                                  << llvm::cantFail(ISA->getName()) << "\n");
+          // TODO: Process the read/write register functions here
 
-              auto Hook = M.getFunction(HookSpec.HookName);
-              LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
-              Hook->addFnAttr(llvm::Attribute::AlwaysInline);
-              Builder.CreateCall(Hook);
-            }
-            // Put a ret void
-            Builder.CreateRetVoid();
-          };
+          // Now that everything has been created we can start inserting hooks
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Number of MIs to get hooks: "
+                     << Task.getHookInsertionTasks().size() << "\n");
+          // A map to keep track of Hooks per MI
+          llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> BeforeHooksMap;
+          llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> AfterHooksMap;
+
+          for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
+            // Generate the Hooks
+            auto BeforeMIFunc = generateHookIR(*MI, HookSpecs.BeforeIPointTasks,
+                                               INSTR_POINT_BEFORE, M);
+            LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
+            BeforeHooksMap.insert({MI, &(*BeforeMIFunc)});
+            // Generate the After MI Hooks
+            auto AfterMIFunc = generateHookIR(*MI, HookSpecs.AfterIPointTasks,
+                                              INSTR_POINT_AFTER, M);
+            LUTHIER_RETURN_ON_ERROR(AfterMIFunc.takeError());
+            AfterHooksMap.insert({MI, &(*AfterMIFunc)});
+          }
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Instrumentation Module After Hooks Inserted:\n");
+          LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
+          // With the Hook IR generated, we put it through the normal IR
+          // pipeline
+
           //          M.print(llvm::outs(), nullptr);
           // Create the analysis managers.
           // These must be declared in this order so that they are destroyed in
@@ -234,42 +289,43 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
 
           // Optimize the IR!
           MPM.run(M, MAM);
-          //          M.print(llvm::outs(), nullptr);
-
-          //          TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
-
-          auto PM = new llvm::legacy::PassManager();
-
-          llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
-          PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-
-          llvm::TargetPassConfig *TPC = TM->createPassConfig(*PM);
-
-          PM->add(TPC);
-          // Create the MMIWP for instrumentation module
-          auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
-          PM->add(IMMIWP);
-
-          TPC->addISelPasses();
-          //              TPC->addCodeGenPrepare();
-          //    TPC->addPrintPass("After ISEL: ");
-          TPC->addMachinePasses();
-          //      TPC->addPrintPass("After machine passes");
-          //          auto UsageAnalysis = new
-          //          llvm::AMDGPUResourceUsageAnalysis();
-          //          PM.add(UsageAnalysis);
-          TPC->setInitialized();
-
-          PM->run(M); // Run all the passes
-                     //          M.print(llvm::outs(), nullptr);
-          for (const auto &F : M) {
-            llvm::outs() << "Function name: " << F.getName() << "\n";
-            llvm::outs() << IMMIWP->getMMI().getModule() << "\n";
-            if (auto MF = IMMIWP->getMMI().getMachineFunction(F)) {
-              MF->print(llvm::outs());
-            }
-          }
-
+          //        //          M.print(llvm::outs(), nullptr);
+          //
+          //        // TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
+          //
+          //        auto PM = new llvm::legacy::PassManager();
+          //
+          //        llvm::TargetLibraryInfoImpl
+          //        TLII(llvm::Triple(M.getTargetTriple())); PM->add(new
+          //        llvm::TargetLibraryInfoWrapperPass(TLII));
+          //
+          //        llvm::TargetPassConfig *TPC = TM->createPassConfig(*PM);
+          //
+          //        PM->add(TPC);
+          //        // Create the MMIWP for instrumentation module
+          //        auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
+          //        PM->add(IMMIWP);
+          //
+          //        TPC->addISelPasses();
+          //        //              TPC->addCodeGenPrepare();
+          //        //    TPC->addPrintPass("After ISEL: ");
+          //        TPC->addMachinePasses();
+          //        //      TPC->addPrintPass("After machine passes");
+          //        //          auto UsageAnalysis = new
+          //        //          llvm::AMDGPUResourceUsageAnalysis();
+          //        //          PM.add(UsageAnalysis);
+          //        TPC->setInitialized();
+          //
+          //        PM->run(M); // Run all the passes
+          //                    //          M.print(llvm::outs(), nullptr);
+          //        for (const auto &F : M) {
+          //          llvm::outs() << "Function name: " << F.getName() << "\n";
+          //          llvm::outs() << IMMIWP->getMMI().getModule() << "\n";
+          //          if (auto MF = IMMIWP->getMMI().getMachineFunction(F)) {
+          //            MF->print(llvm::outs());
+          //          }
+          //        }
+          //
           return llvm::Error::success();
         }));
   }

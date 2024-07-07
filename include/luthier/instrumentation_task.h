@@ -12,6 +12,7 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <utility>
+#include <variant>
 
 namespace luthier {
 
@@ -38,17 +39,11 @@ class InstrumentationModule;
 /// HSA primitive are passed to the \c luthier::instrumentAndLoad function.
 class InstrumentationTask {
 public:
-  /// Type of arguments that can be passed to a hook
-  enum class ArgType : uint8_t {
-    REGISTER,
-    INT64,
-  };
-
   typedef struct {
     /// Name of the hook to be inserted
     llvm::StringRef HookName;
     /// List of arguments passed to the hook
-    llvm::SmallVector<std::pair<ArgType, uint64_t>, 1> Args;
+    llvm::SmallVector<std::variant<llvm::Constant *, llvm::MCRegister>, 1> Args;
   } mi_hook_insertion_task;
 
   typedef struct {
@@ -96,7 +91,8 @@ public:
   /// its failure
   llvm::Error
   insertHookAt(llvm::MachineInstr &MI, const void *Hook, InstrPoint IPoint,
-               llvm::ArrayRef<std::pair<ArgType, uint64_t>> Args = {});
+               llvm::ArrayRef<std::variant<llvm::Constant *, llvm::MCRegister>>
+                   Args = {});
 
   /// \return a const reference to the hook insertion tasks
   [[nodiscard]] const hook_insertion_tasks &getHookInsertionTasks() const {

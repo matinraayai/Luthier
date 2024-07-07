@@ -22,7 +22,7 @@ LUTHIER_ENABLE_REG_WRITER_FUNCTIONS
 __attribute__((managed)) uint32_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
-  write32BitReg(llvm::AMDGPU::VGPR0, read32BitReg(llvm::AMDGPU::VGPR1));
+  GlobalCounter = 4000;
 };
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);

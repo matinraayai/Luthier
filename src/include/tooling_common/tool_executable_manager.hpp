@@ -75,7 +75,8 @@ public:
   ModuleKind getKind() const { return Kind; }
 
   /// Reads the bitcode of this InstrumentationModule into a new
-  /// \c llvm::orc::ThreadSafeModule backed by the passed \p Ctx
+  /// \c llvm::orc::ThreadSafeModule backed by the passed \p Ctx \n
+  /// The Context is locked during the process
   /// \param Ctx a thread-safe context to back the returned Module
   /// \return a thread-safe Module, or an \c llvm::Error if any problem was
   /// encountered during the process

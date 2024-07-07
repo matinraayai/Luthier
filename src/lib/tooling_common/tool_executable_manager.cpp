@@ -118,6 +118,7 @@ llvm::Error preprocessAndSaveModuleToStream(
   // Give each Hook function a "hook" attribute
   for (auto &Hook : Hooks) {
     Hook->addFnAttr(LUTHIER_HOOK_ATTRIBUTE);
+    Hook->addFnAttr(llvm::Attribute::AlwaysInline);
   }
 
   // Remove all kernels that are meant to serve as a host handle
