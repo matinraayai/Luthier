@@ -151,7 +151,15 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel);
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
   reinterpret_cast<const void *>(__luthier_wrap__##HookName)
 
-// #define LUTHIER_GET_HOOK_ARGS(HookName)                                        \
+
+// #define LUTHIER_ARG_CREATE(ArgName, ArgType, ArgValue, Module) \
+
+#define LUTHIER_CREATE_INT32(ArgName, ArgValue, IsSigned, Module)              \
+  new llvm::GlobalVariable(                                                    \
+    *(Module),llvm::Type::getInt32Ty((Module)->getContext()),                  \
+    true, llvm::GlobalValue::ExternalLinkage,                                  \
+    llvm::ConstantInt::get(                                                    \
+      (Module)->getContext(), llvm::APInt(32, ArgValue, IsSigned)), #ArgName)
 
 } // namespace luthier
 

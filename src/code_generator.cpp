@@ -319,7 +319,10 @@ llvm::Error CodeGenerator::instrument(
   llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
 
   auto AddedLSIs = applyInstrumentation(*Module, MMIWP->getMMI(), LSO, ITask);
-  llvm:outs() << "\napplyInstrumentation DONE!\n";
+  
+  llvm:outs() << "\napplyInstrumentation DONE!\n"
+              << "Dump Compilation module:\n";
+  Module->dump();
 
   LUTHIER_RETURN_ON_ERROR(AddedLSIs.takeError());
 
@@ -458,66 +461,38 @@ CodeGenerator::insertFunctionCalls(
     llvm::outs() << "     > Instrumentation Hook's arguments versus received arguments from Luthier call\n"
                  << "     >>> Hook expects " << Hook->arg_size() << " Function args\n"
                  << "     >>> Luthier received " << IArgs.size() << " args for Hook Call\n";
-    // auto ArgErr = LUTHIER_ASSERTION(Hook->arg_size() == IArgs.size());
-    // LUTHIER_ASSERTION(Hook->arg_size() == IArgs.size()).success()
+    LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(Hook->arg_size() == IArgs.size()));
 
-    // Hook->getArg(unsigned int i)
-    // for (auto &HookArg : Hook->args()) {
-    // std::vector<llvm::Value*> CallInstArgs;
-    // std::vector<llvm::Value*> LoadInsts;
     llvm::SmallVector<llvm::Value*> LoadInsts;
     for (unsigned int ArgNo = 0; ArgNo < Hook->arg_size(); ArgNo++) {
       auto HookArg = Hook->getArg(ArgNo);
       auto IArg = IArgs[ArgNo];
       llvm::outs() << "     >>> Hook Arg No " << ArgNo << ": ";
       HookArg->dump();
+      llvm::outs() << "\n     >>> Type: ";
+      HookArg->getType()->dump();
 
       llvm::outs() << "     >>> IArg No " << ArgNo << ": ";
       IArg->dump();
+      llvm::outs() << "\n     >>> Type: ";
+      IArg->getType()->dump();
 
+      // TODO: Put a check to make sure that the received argument is
+      //       the correct type before moving on.
+      //       IArg will ALWAYS be const. I tried making it non-const and 
+      //       everything broke
       // LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookArg->getType() == IArg->getType()));
-      
-      // auto ConVal = IArg->getInitializer();
 
-      // llvm::outs() << "\n     >>> Copy IArg to Instrumentation Module as a global var\n";
-      // auto *NewGV = new llvm::GlobalVariable(
-      //     **InstrumentationModule, IArg->getType(), true,
-      //     llvm::GlobalValue::ExternalLinkage, (llvm::Constant *)nullptr,
-      //     IArg->getName(), (llvm::GlobalVariable *)nullptr);
-          // IArg->getThreadLocalMode(), IArg->getType()->getAddressSpace());
-      // IKBuilder.CreateLoad(NewGV->getType(), NewGV);
-      // LoadInsts.push_back(IKBuilder.CreateLoad(NewGV->getType(), NewGV));
       LoadInsts.push_back(IKBuilder.CreateLoad(HookArg->getType(), IArg));
-      // auto LoadArg = IKBuilder.CreateLoad(IArg->getType(), IArg);
-      // IKBuilder.CreateIntCast(Value *V, Type *DestTy, bool isSigned)
-      // IKBuilder.CreateIntCast(LoadArgVal, HookArg->getType(), true);
-      // llvm::outs() << "\n     >>> Load Inst info\n"
-      //              << "Num operands: " << LoadArg->getNumOperands() << "\n";
-      // for (auto &OP : LoadArg->operands())
-      //   OP->dump();
-      // LoadArg->dump();
     }
-    // llvm::outs() << "     > Dump load inst operands\n";
-    // for (auto &LI : LoadInsts)
-    //   LI->getType();
-      // for (auto &LOP : LI->operands())
-      //      LOP->dump();
 
     llvm::outs() << "     > Dump instrumentation module after adding arg loads\n";
     InstrumentationModule->get()->dump();
-
     llvm::outs() << "     > Create call to instrumentation func in IK\n";
-    // auto CalltoHook = IKBuilder.CreateCall(Hook, IArgs);
-
     auto CalltoHook = IKBuilder.CreateCall(Hook, LoadInsts);
-    
-    llvm::outs() << "     >>> Dump call before AddMetaData\n";
-    CalltoHook->dump();
-    llvm::outs() << "     >>> Dump call after AddMetaData\n";
-    IKBuilder.AddMetadataToInst(CalltoHook);
-    CalltoHook->dump();
+    // IKBuilder.AddMetadataToInst(CalltoHook);
     IKBuilder.CreateRetVoid();
-
     llvm::outs() << "     > Dump instrumentation module after adding Instrumentation Kernel\n";
     InstrumentationModule->get()->dump();
 
@@ -578,7 +553,6 @@ CodeGenerator::insertFunctionCalls(
 
     TPC->addISelPasses();
 
-    // PM.add(new llvm::LuthierReserveLiveRegs(IPointMBB, IKMF->getName()));
     PM.add(new llvm::LuthierReserveLiveRegs(IPointMBB));
     // PM.add(new llvm::LuthierStackFrameOffset());
 
@@ -587,7 +561,6 @@ CodeGenerator::insertFunctionCalls(
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM.add(UsageAnalysis);
     TPC->setInitialized();
-
 
     llvm::outs() << "=====> Run codegen \n";
     PM.run(**InstrumentationModule); // Run all the passes
@@ -629,8 +602,6 @@ CodeGenerator::insertFunctionCalls(
     // Start of instrumentation logic
     // Spill the registers to the stack before calling the instrumentation
     // function
-    llvm::outs() << "\n=====> Start of Instrumentation Logic:\n"
-                 <<   "     > Split machine basic block of IPointMI \n";
 
     // IPointMI->getParent()->getParent()->getProperties().reset(
     //     llvm::MachineFunctionProperties::Property::NoVRegs);
@@ -642,6 +613,9 @@ CodeGenerator::insertFunctionCalls(
     auto InstPoint =
         IPoint == INSTR_POINT_BEFORE ? IPointMI : IPointMI->getNextNode();
   
+    llvm::outs() << "\n=====> Start of Instrumentation Logic:\n"
+                 <<   "     > Split machine basic block of IPointMI \n";
+    
     // TODO: Call this function instead of manually splitting
     // IPointMBB->splitAt(*InstPoint);
 
@@ -652,7 +626,6 @@ CodeGenerator::insertFunctionCalls(
                    llvm::MachineBasicBlock::iterator(InstPoint), IPointMBB->end());
     
     ToBeInstrumentedMF->dump();
-
     llvm::outs() << "     > Patch call to instrumentation function into compilation module\n";
     for (auto &IKBB : *IKMF) {
       if (IKBB.getName() != "call_to_hook")
@@ -679,6 +652,8 @@ CodeGenerator::insertFunctionCalls(
       //   }
       // }
     }
+    llvm::outs() << "=====> End of Instrumentation Logic\n"
+                 << "     > Dump new App Machine Function\n";
     ToBeInstrumentedMF->dump();
 
 // Old code for patching in call to Instru Func into App module
@@ -748,10 +723,6 @@ CodeGenerator::insertFunctionCalls(
     //              MCInstInfo->get(llvm::AMDGPU::ADJCALLSTACKDOWN))
     //          .addImm(0)
     //          .addImm(0);
-
-    llvm::outs() << "=====> End of Instrumentation Logic\n"
-                 << "     > Dump new App Machine Function\n";
-    ToBeInstrumentedMF->dump();
 
     Out.push_back(*IFLSI);
   }

@@ -24,13 +24,13 @@ __attribute__((managed)) int GlobalCounter = 20;
 //   return 100 + myInt;
 // }
 
-LUTHIER_HOOK_CREATE(instrumentationHook, (int myInt), 
+LUTHIER_HOOK_CREATE(instrumentationHook, (int myInt1, int myInt2), 
 {
   // int threadIdx_x;
   // __asm__ __volatile__("v_mov_b32 %0 v0\n" : "=v"(threadIdx_x));
   // globalCounter = 20000 + funcInternal(myInt) + myInt2;
   // GlobalCounter  += 10000;
-  GlobalCounter  += myInt;
+  GlobalCounter  += myInt1 + myInt2;
 })
 
 namespace luthier {
@@ -76,14 +76,10 @@ void luthier::hsa::atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
             auto &MBB = *MF.begin();
             auto &MI = *MBB.begin();
 
-            // For testing, hard code an argument value for hook:
-            auto NewArg = new llvm::GlobalVariable(*Module, 
-                                llvm::Type::getInt32Ty(Module->getContext()), 
-                                true, llvm::GlobalValue::ExternalLinkage,
-                                llvm::ConstantInt::get(Module->getContext(),
-                                                       llvm::APInt(32, 1000)), 
-                                "HookArg1");
-            llvm::ArrayRef<llvm::GlobalVariable*> HookArgs(NewArg);
+            llvm::ArrayRef<llvm::GlobalVariable*> HookArgs({
+                LUTHIER_CREATE_INT32("HookArg1", 1000, false, Module),
+                LUTHIER_CREATE_INT32("HookArg2", 2000, false, Module)
+            });
 
             IT.insertCallTo(MI, LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
                             HookArgs, INSTR_POINT_AFTER);
