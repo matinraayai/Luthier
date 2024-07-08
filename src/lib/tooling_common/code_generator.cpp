@@ -82,6 +82,8 @@
 #include <SIMachineFunctionInfo.h>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
+#include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -236,7 +238,7 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
   return *HookIRKernel;
 }
 
-static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine* TM) {
+static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine *TM) {
   // Create the analysis managers.
   // These must be declared in this order so that they are destroyed in
   // the correct order due to inter-analysis-manager references.
@@ -264,6 +266,41 @@ static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine* TM) {
 
   // Optimize the IR!
   MPM.run(M, MAM);
+}
+
+std::pair<std::unique_ptr<llvm::legacy::PassManager>,
+          llvm::MachineModuleInfoWrapperPass *>
+runCodeGenPipeline(
+    llvm::Module &M, llvm::GCNTargetMachine *TM, const LiftedRepresentation &LR,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeHooks,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterHooks) {
+  // TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
+  auto PM = std::make_unique<llvm::legacy::PassManager>();
+
+  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
+  PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+
+  llvm::TargetPassConfig *TPC = TM->createPassConfig(*PM);
+
+  PM->add(TPC);
+  // Create the MMIWP for instrumentation module
+  auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
+  PM->add(IMMIWP);
+
+  TPC->addISelPasses();
+  PM->add(new luthier::ReserveLiveRegs(BeforeHooks, AfterHooks));
+  //  PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
+  //                                        <#initializer #>))
+  TPC->addMachinePasses();
+  //      TPC->addPrintPass("After machine passes");
+  //          auto UsageAnalysis = new
+  //          llvm::AMDGPUResourceUsageAnalysis();
+  //          PM.add(UsageAnalysis);
+  TPC->setInitialized();
+
+  PM->run(M); // Run all the passes
+              //          M.print(llvm::outs(), nullptr);
+  return {std::move(PM), IMMIWP};
 }
 
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
@@ -316,42 +353,20 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
           // pipeline
           optimizeModule(M, TM);
           M.dump();
+          // Run the code gen pipeline, while enforcing the stack and register
+          // constraints
+          auto [PM, MMIWP] =
+              runCodeGenPipeline(M, TM, LR, BeforeHooksMap, AfterHooksMap);
+          for (const auto &F : M) {
+            llvm::outs() << MMIWP->getMMI().getModule() << "\n";
+            if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
+              MF->print(llvm::outs());
+            }
+          }
+          //
           //        //          M.print(llvm::outs(), nullptr);
           //
-          //        // TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
-          //
-          //        auto PM = new llvm::legacy::PassManager();
-          //
-          //        llvm::TargetLibraryInfoImpl
-          //        TLII(llvm::Triple(M.getTargetTriple())); PM->add(new
-          //        llvm::TargetLibraryInfoWrapperPass(TLII));
-          //
-          //        llvm::TargetPassConfig *TPC = TM->createPassConfig(*PM);
-          //
-          //        PM->add(TPC);
-          //        // Create the MMIWP for instrumentation module
-          //        auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
-          //        PM->add(IMMIWP);
-          //
-          //        TPC->addISelPasses();
-          //        //              TPC->addCodeGenPrepare();
-          //        //    TPC->addPrintPass("After ISEL: ");
-          //        TPC->addMachinePasses();
-          //        //      TPC->addPrintPass("After machine passes");
-          //        //          auto UsageAnalysis = new
-          //        //          llvm::AMDGPUResourceUsageAnalysis();
-          //        //          PM.add(UsageAnalysis);
-          //        TPC->setInitialized();
-          //
-          //        PM->run(M); // Run all the passes
-          //                    //          M.print(llvm::outs(), nullptr);
-          //        for (const auto &F : M) {
-          //          llvm::outs() << "Function name: " << F.getName() << "\n";
-          //          llvm::outs() << IMMIWP->getMMI().getModule() << "\n";
-          //          if (auto MF = IMMIWP->getMMI().getMachineFunction(F)) {
-          //            MF->print(llvm::outs());
-          //          }
-          //        }
+
           //
           return llvm::Error::success();
         }));
@@ -375,6 +390,107 @@ llvm::Error CodeGenerator::instrument(
   LUTHIER_RETURN_ON_ERROR(insertHooks(**ClonedLR, IT));
   // Generate the shared objects and return it
   return llvm::Error::success();
+}
+
+char ReserveLiveRegs::ID = 0;
+
+ReserveLiveRegs::ReserveLiveRegs(
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeMIHooks,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterMIHooks)
+    : llvm::MachineFunctionPass(ID) {
+  // Calculate the Live-ins at each instruction for before MI hooks
+  for (const auto &[MI, HookKernel] : BeforeMIHooks) {
+    auto *MBB = MI->getParent();
+    auto *MF = MBB->getParent();
+    (void)HookLiveRegs.insert(
+        {HookKernel, std::make_unique<llvm::LivePhysRegs>(
+                         *MF->getSubtarget().getRegisterInfo())});
+    auto &LiveRegs = *HookLiveRegs[HookKernel];
+    LiveRegs.addLiveOuts(*MBB);
+    for (auto I = MBB->rbegin(); I != MI->getReverseIterator(); I++) {
+      LiveRegs.stepBackward(*I);
+    }
+    // Before MI hooks need to remove the defs of the MI
+    LiveRegs.stepBackward(*MI);
+    LLVM_DEBUG(
+        llvm::dbgs() << "Live regs at instruction " << MI << ": \n";
+        auto *TRI = MF->getSubtarget().getRegisterInfo();
+        for (const auto &Reg
+             : LiveRegs) { llvm::dbgs() << TRI->getRegAsmName(Reg) << "\n"; });
+  }
+  // Calculate the Live-ins at each instruction after MI hooks
+  for (const auto &[MI, HookKernel] : AfterMIHooks) {
+    auto *MBB = MI->getParent();
+    auto *MF = MBB->getParent();
+    (void)HookLiveRegs.insert(
+        {HookKernel, std::make_unique<llvm::LivePhysRegs>(
+                         *MF->getSubtarget().getRegisterInfo())});
+    auto &LiveRegs = *HookLiveRegs[HookKernel];
+    LiveRegs.addLiveOuts(*MBB);
+    for (auto I = MBB->rbegin(); I != MI->getReverseIterator(); I++) {
+      LiveRegs.stepBackward(*I);
+    }
+    LLVM_DEBUG(
+        llvm::dbgs() << "Live regs at instruction " << MI << ": \n";
+        auto *TRI = MF->getSubtarget().getRegisterInfo();
+        for (const auto &Reg
+             : LiveRegs) { llvm::dbgs() << TRI->getRegAsmName(Reg) << "\n"; });
+  }
+}
+bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
+  auto *F = &MF.getFunction();
+
+  auto &MRI = MF.getRegInfo();
+  auto *TRI = MF.getSubtarget().getRegisterInfo();
+
+  for (auto &MBB : MF) {
+    addLiveIns(MBB, *HookLiveRegs.at(F));
+  }
+  MRI.freezeReservedRegs();
+  for (const auto &Reg : *HookLiveRegs.at(F)) {
+    MRI.reserveReg(Reg, TRI);
+    MRI.freezeReservedRegs();
+    LLVM_DEBUG(llvm::dbgs() << "Is Reg " << TRI->getRegAsmName(Reg)
+                            << " reserved? " << MRI.isReserved(Reg) << "\n");
+  }
+  if (MF.getFrameInfo().getStackSize() != 0)
+    MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
+
+  return false;
+};
+
+char StackFrameOffset::ID = 0;
+
+StackFrameOffset::StackFrameOffset(
+    const LiftedRepresentation &LR,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeMIHooks,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterMIHooks)
+    : MachineFunctionPass(ID) {
+  for (const auto &[Func, LLVMFunc] : LR.functions()) {
+  }
+}
+
+bool StackFrameOffset::runOnMachineFunction(MachineFunction &MF) {
+  auto &MFI = MF.getFrameInfo();
+
+  llvm::outs() << "machine function " << MF.getName() << "\n"
+               << "\tStack Size of: " << MFI.getStackSize() << "\n"
+               << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
+
+  for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
+    llvm::outs() << " - Stack Object Num " << SOIdx << "\n"
+                 << "   Stack ID:             " << MFI.getStackID(SOIdx) << "\n"
+                 << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)
+                 << "\n";
+    // Add to Stack Frame object offset
+    auto NewOffset =
+        MFI.getObjectOffset(SOIdx) +
+        FrameOffset.at(&MF.getFunction()); // value to add: amount of stack the
+                                           // original app is using
+    MFI.setObjectOffset(SOIdx, NewOffset);
+    llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
+  }
+  return false;
 }
 
 } // namespace luthier

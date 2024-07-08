@@ -17,6 +17,10 @@
 #include <luthier/lifted_representation.h>
 #include <luthier/types.h>
 
+namespace llvm {
+class LivePhysRegs;
+}
+
 namespace luthier {
 
 namespace hsa {
@@ -51,6 +55,47 @@ private:
   compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &Code,
                                  const hsa::ISA &ISA,
                                  llvm::SmallVectorImpl<uint8_t> &Out);
+};
+
+/// \brief Iterate over the LiveIns of the MI and set them as reserved
+/// so that the register allocator does not overwrite them in the generated
+/// instrumentation kernel
+class ReserveLiveRegs : public llvm::MachineFunctionPass {
+public:
+  static char ID;
+  typedef llvm::DenseMap<llvm::Function *, std::unique_ptr<llvm::LivePhysRegs>>
+      hook_live_regs_map_t;
+
+private:
+  hook_live_regs_map_t HookLiveRegs;
+public:
+  ReserveLiveRegs(
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &BeforeMIHooks,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &AfterMIHooks);
+
+  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
+};
+
+// This custom pass iterates through the Instrumentation Modules frame objects
+// and adds the amount of stack allocated by the IPointMI's parent Machine
+// Function to the frame object offset
+class StackFrameOffset : public llvm::MachineFunctionPass {
+public:
+  static char ID;
+
+private:
+  llvm::DenseMap<llvm::Function*, unsigned int> FrameOffset;
+public:
+  explicit StackFrameOffset(
+      const LiftedRepresentation &LR,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &BeforeMIHooks,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &AfterMIHooks);
+
+  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
 };
 } // namespace luthier
 
