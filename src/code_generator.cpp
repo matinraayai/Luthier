@@ -17,6 +17,7 @@
 #include "llvm/CodeGen/MachinePassRegistry.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
+#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Instruction.h"
@@ -24,6 +25,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassInstrumentation.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
@@ -107,6 +109,7 @@
 #include "llvm/Passes/StandardInstrumentations.h"
 
 namespace llvm {
+
 namespace {
 
 // This pass is defined by Luthier. Its job is to iterate over the LiveIns
@@ -116,7 +119,7 @@ namespace {
 struct LuthierReserveLiveRegs : public MachineFunctionPass {
   static char ID;
   llvm::LivePhysRegs LiveRegs;
-  llvm::StringRef InstruFuncName;
+  // llvm::StringRef InstruFuncName;
 
   LuthierReserveLiveRegs() : MachineFunctionPass(ID) {}
 
@@ -150,21 +153,26 @@ struct LuthierReserveLiveRegs : public MachineFunctionPass {
     //     llvm::outs() << "YES is reserved\n" : 
     //     llvm::outs() << "NO is not reserved\n";
 
-    // llvm::outs() << "     > Set the liveins of the original App func as reserved regs\n";
+    llvm::outs() << "     > Set the liveins of the original App func as reserved regs\n";
     for (auto &Reg : LiveRegs)
       MRI.reserveReg(Reg, TRI);
 
-    // MRI.reservedRegsFrozen() ? llvm::outs() << "\n Reserved REGs already frozen\n" : llvm::outs() << "\n Reserved regs not frozxen yet\n";
-    // MRI.canReserveReg(llvm::AMDGPU::SGPR0_SGPR1) ? llvm::outs() << "\n YES can reserve\n" : llvm::outs() << "\n NO cannot reserve\n";
+    // MRI.reservedRegsFrozen() ? 
+    //     llvm::outs() << "\n Reserved REGs already frozen\n" : 
+    //     llvm::outs() << "\n Reserved regs not frozxen yet\n";
+    // MRI.canReserveReg(llvm::AMDGPU::SGPR0_SGPR1) ? 
+    //     llvm::outs() << "\n YES can reserve\n" : 
+    //     llvm::outs() << "\n NO cannot reserve\n";
     // MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1, TRI);
-    // MRI.freezeReservedRegs(MF);
+    // MRI.freezeReservedRegs();
     
     // Need to freeze regs after reserving them
     MRI.freezeReservedRegs();
+    
     // llvm::outs() << "     > Are SGPR0-3 STILL reserved after freezeReservedRegs()?\t";
     // MRI.isReserved(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3) ? 
-    //     llvm::outs() << "YES is reserved\n" : 
-    //     llvm::outs() << "NO is not reserved\n";
+    //     llvm::outs() << "YES is still reserved\n" : 
+    //     llvm::outs() << "NO longer reserved\n";
 
     // MF.addLiveIn(llvm::AMDGPU::SGPR0_SGPR1, &llvm::AMDGPU::SReg_64RegClass);
     // LiveRegs.addReg(llvm::AMDGPU::SGPR0);
@@ -173,16 +181,15 @@ struct LuthierReserveLiveRegs : public MachineFunctionPass {
     // LiveRegs.addReg(llvm::AMDGPU::SGPR2);
     // LiveRegs.addReg(llvm::AMDGPU::SGPR3);
     
-    // MF.addLiveIn( llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, 
-    //              &llvm::AMDGPU::SReg_64RegClass);
+    // MF.addLiveIn(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, 
+    //             &llvm::AMDGPU::SReg_64RegClass);
     // LiveRegs.addReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3);
     // for (auto &MBB : MF) {
     //   llvm::outs() << "     > Add LiveIns to Block: " << MBB.getName() << "\n";
     //   llvm::addLiveIns(MBB, LiveRegs);
     // }
     
-    llvm::outs() << "     > End of LuthierReserveLiveRegs for " 
-                 << MF.getName() << "\n\n";
+    llvm::outs() << "     > End of LuthierReserveLiveRegs for " << MF.getName() << "\n\n";
     return true;
   }
 };
@@ -192,45 +199,43 @@ struct LuthierReserveLiveRegs : public MachineFunctionPass {
 // Function to the frame object offset
 struct LuthierStackFrameOffset : public MachineFunctionPass {
   static char ID;
-  // const MachineFunction *RefMF;
+  unsigned int StackSize = 0; 
 
   LuthierStackFrameOffset() : MachineFunctionPass(ID) {}
-  // explicit LuthierStackFrameOffset(const MachineFunction* RMF) : 
-  //     MachineFunctionPass(ID) {
-  //   RefMF = RMF;
-  // }
+  
+  explicit LuthierStackFrameOffset(unsigned int PrivSegSize) : 
+      MachineFunctionPass(ID) {
+    StackSize = PrivSegSize;
+  }
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    for (auto &MBB : MF) {
-      // llvm::SIFrameLowering::emitPrologue(MF, MBB);
-      // llvm::SIFrameLowering::emitEpilogue(MF, MBB);
-      // if (!RefMF) RefMF = &MF;
-      auto &MFI = MF.getFrameInfo();
-      // auto &MFI = RefMF->getFrameInfo();
-      
-      llvm::outs() << "machine function " << MF.getName() << "\n"
-                   << "\tStack Size of: " << MFI.getStackSize() << "\n"
-                   << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
-      
-      for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
-        llvm::outs() << " - Stack Object Num "      << SOIdx << "\n"
-                     << "   Stack ID:             " << MFI.getStackID(SOIdx)      << "\n"
-                     << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)   << "\n";
-        // Add to Stack Frame object offset
-        auto NewOffset = MFI.getObjectOffset(SOIdx) +100;// value to add: amount of stack the original app is using
-        MFI.setObjectOffset(SOIdx, NewOffset);
-        llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
-      }
+    auto &MFI = MF.getFrameInfo();
+    
+    llvm::outs() << "Running LuthierStackFrameOffset for machine function " 
+                 << MF.getName() << "\n"
+                 << "\t - Stack Size: " << MFI.getStackSize() << "\n"
+                 << "\t - Contains " << MFI.getNumObjects() << " Stack Objects\n";
+    
+    for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
+      llvm::outs() << "\t\t - Stack Object Num "      << SOIdx << "\n"
+                   << "\t\t   Stack ID:             " << MFI.getStackID(SOIdx)    << "\n"
+                   << "\t\t   Stack object Size:    " << MFI.getObjectSize(SOIdx) << "\n";
+      // Add to Stack Frame object offset
+      auto NewOffset = MFI.getObjectOffset(SOIdx) + StackSize;
+      llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
+      MFI.setObjectOffset(SOIdx, NewOffset);
     }
     return false;
   }
 };
+
 } // namespace anonymous 
 
 char LuthierReserveLiveRegs::ID = 0;
 char LuthierStackFrameOffset::ID = 0;
 
 } // namespace llvm
+
 
 namespace luthier {
 
@@ -393,7 +398,6 @@ CodeGenerator::insertFunctionCalls(
   llvm::outs() << "\n=====> Begin CodeGenerator::insertFunctionCalls\n";
   std::vector<LiftedSymbolInfo> Out;
   for (const auto &[IPointMI, IFuncAndIPoint] : Tasks) {
-    llvm::MachineBasicBlock *IPointMBB = IPointMI->getParent();
     auto &[IFuncShadowHostPtr, IArgs, IPoint] = IFuncAndIPoint;
     // Get the hsa::GpuAgent of the Target Kernel
     auto TargetKernelSymbol =
@@ -415,23 +419,18 @@ CodeGenerator::insertFunctionCalls(
     LUTHIER_RETURN_ON_ERROR(InstrumentationModule.takeError());
     InstrumentationModule.get()->dump();
 
-    // need to add a weight count to the IPoint's function
     llvm::outs() << "=====> Create Kernel for IPoint Hook and add to instrumentation module\n";
-    llvm::Type *const InstruKernelRetTy = 
+    llvm::Type *const IKRetTy = 
         llvm::Type::getVoidTy(InstrumentationModule.get()->getContext());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(InstruKernelRetTy != nullptr));
-    llvm::FunctionType *InstruKernelTy =
-        llvm::FunctionType::get(InstruKernelRetTy, {}, false);
-    // TODO: Try adding AttributeList when calling getOrInsertFunction
-    llvm::FunctionCallee InstruKernelCallee = 
-        InstrumentationModule.get()
-                             ->getOrInsertFunction("Instrumentation_Kernel", 
-                                                   InstruKernelTy);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(IKRetTy != nullptr));
     
-    auto IK = llvm::dyn_cast<llvm::Function>(InstruKernelCallee.getCallee());
-    IK->setCallingConv(IPointMI->getParent()
-                       ->getParent()->getFunction().getCallingConv());
-
+    // TODO: Try adding an AttributeList when calling getOrInsertFunction i.e. Optlevel
+    auto IKTy = llvm::FunctionType::get(IKRetTy, {}, false);
+    auto IKCallee = InstrumentationModule.get()
+                      ->getOrInsertFunction("Instrumentation_Kernel", IKTy);
+    auto IK = llvm::dyn_cast<llvm::Function>(IKCallee.getCallee());
+    IK->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+    
     auto &InstrumentationContext = InstrumentationModule.get()->getContext();
     llvm::IRBuilder<> IKBuilder(InstrumentationContext);
     
@@ -444,56 +443,41 @@ CodeGenerator::insertFunctionCalls(
       } 
     }
 
-    auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
-    LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
-    auto TargetPivSegSize = TargetKernelMD->PrivateSegmentFixedSize;
-    llvm::outs() << "=====> Target Kernel Private Seg Size:\t" 
-                 << TargetPivSegSize << "\n";
-    // llvm::Value *TargetPrivSeg = llvm::ConstantInt::get(
-    //     llvm::Type::getInt32Ty(InstrumentationContext), TargetPivSegSize, false);
-
     llvm::BasicBlock *IKBB = llvm::BasicBlock::Create(InstrumentationContext, 
                                                       "call_to_hook", IK);
     IKBuilder.SetInsertPoint(IKBB);
     auto Hook = InstrumentationModule.get()->getFunction("instrumentationHook");
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
     
-    llvm::outs() << "     > Instrumentation Hook's arguments versus received arguments from Luthier call\n"
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook->arg_size() == IArgs.size()));
+    // TODO: Only print this message when we have an error:
+    llvm::outs() << "     > Check number of Instrumentation Hook arguments versus number of received arguments from Luthier call\n"
                  << "     >>> Hook expects " << Hook->arg_size() << " Function args\n"
                  << "     >>> Luthier received " << IArgs.size() << " args for Hook Call\n";
-    LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(Hook->arg_size() == IArgs.size()));
 
     llvm::SmallVector<llvm::Value*> LoadInsts;
     for (unsigned int ArgNo = 0; ArgNo < Hook->arg_size(); ArgNo++) {
       auto HookArg = Hook->getArg(ArgNo);
       auto IArg = IArgs[ArgNo];
-      llvm::outs() << "     >>> Hook Arg No " << ArgNo << ": ";
-      HookArg->dump();
-      llvm::outs() << "\n     >>> Type: ";
-      HookArg->getType()->dump();
+      
+      llvm::Type *IArgTy = IArg->getInitializer()->getType();
 
-      llvm::outs() << "     >>> IArg No " << ArgNo << ": ";
-      IArg->dump();
-      llvm::outs() << "\n     >>> Type: ";
-      IArg->getType()->dump();
-
-      // TODO: Put a check to make sure that the received argument is
-      //       the correct type before moving on.
-      //       IArg will ALWAYS be const. I tried making it non-const and 
-      //       everything broke
-      // LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookArg->getType() == IArg->getType()));
-
-      LoadInsts.push_back(IKBuilder.CreateLoad(HookArg->getType(), IArg));
+      // I don't know if this is the correct way to use our Assertion
+      auto Err = LUTHIER_ASSERTION(HookArg->getType() == IArgTy);
+      if (Err) {
+        llvm::outs() << "     >>> Hook Arg Type for Arg No " << ArgNo << ": ";
+        HookArg->getType()->dump();
+        llvm::outs() << "     >>> Type for received Arg No " << ArgNo << ": ";
+        IArg->getInitializer()->getType()->dump();
+        LUTHIER_RETURN_ON_ERROR(Err);
+      }
+      LoadInsts.push_back(IKBuilder.CreateLoad(IArgTy, IArg));
     }
-
-    llvm::outs() << "     > Dump instrumentation module after adding arg loads\n";
-    InstrumentationModule->get()->dump();
     llvm::outs() << "     > Create call to instrumentation func in IK\n";
     auto CalltoHook = IKBuilder.CreateCall(Hook, LoadInsts);
-    // IKBuilder.AddMetadataToInst(CalltoHook);
     IKBuilder.CreateRetVoid();
-    llvm::outs() << "     > Dump instrumentation module after adding Instrumentation Kernel\n";
+    llvm::outs() << "     > Finised creating the Instrumentation Kernel\n";
+    llvm::outs() << "     > Dump instrumentation module\n";
     InstrumentationModule->get()->dump();
 
     // Create the analysis managers.
@@ -553,8 +537,15 @@ CodeGenerator::insertFunctionCalls(
 
     TPC->addISelPasses();
 
+    llvm::MachineBasicBlock *IPointMBB = IPointMI->getParent();
     PM.add(new llvm::LuthierReserveLiveRegs(IPointMBB));
-    // PM.add(new llvm::LuthierStackFrameOffset());
+    
+    auto TargetKernelMD = TargetKernelSymbol->getKernelMetadata();
+    LUTHIER_RETURN_ON_ERROR(TargetKernelMD.takeError());
+    auto TargetPivSegSize = TargetKernelMD->PrivateSegmentFixedSize;
+    llvm::outs() << "=====> Target Kernel Private Seg Size:\t" 
+                 << TargetPivSegSize << "\n";
+    PM.add(new llvm::LuthierStackFrameOffset(TargetPivSegSize));
 
     TPC->addMachinePasses();
     
