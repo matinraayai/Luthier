@@ -11,7 +11,7 @@
 
 namespace luthier {
 
-#define HOOK_HANDLE_PREFIX __luthier_hook_handle
+#define HOOK_HANDLE_PREFIX __luthier_hook_handle_
 
 #define RESERVED_MANAGED_VAR __luthier_reserved
 

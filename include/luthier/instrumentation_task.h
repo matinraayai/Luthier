@@ -47,23 +47,24 @@ public:
   typedef struct {
     /// Name of the hook to be inserted
     llvm::StringRef HookName;
-    /// The instrumented \c llvm::MachineInstr
-    llvm::MachineInstr *MI;
-    /// Whether to insert the hook before or after the instruction
-    InstrPoint IPoint;
     /// List of arguments passed to the hook
     llvm::SmallVector<std::pair<ArgType, uint64_t>, 1> Args;
-    /// Whether to remove the MI
-    bool RemoveInstruction;
-  } hook_insertion_task_descriptor;
+  } mi_hook_insertion_task;
 
-  typedef llvm::DenseMap<llvm::MachineInstr *,
-                         llvm::SmallVector<hook_insertion_task_descriptor, 1>>
+  typedef struct {
+    /// The instrumented \c llvm::MachineInstr
+    llvm::MachineInstr *MI;
+
+    /// List of hooks inserted before the \c MI
+    llvm::SmallVector<mi_hook_insertion_task, 1> BeforeIPointTasks;
+
+    /// List of hooks inserted after the \c MI
+    llvm::SmallVector<mi_hook_insertion_task, 1> AfterIPointTasks;
+
+  } mi_hook_insertion_tasks;
+
+  typedef llvm::DenseMap<llvm::MachineInstr *, mi_hook_insertion_tasks>
       hook_insertion_tasks;
-
-  typedef std::function<llvm::Error(InstrumentationTask &,
-                                    LiftedRepresentation &)>
-      mutator_func_t;
 
 private:
   /// The preset to instrument <tt>LiftedRepresentation</tt>s under
@@ -74,20 +75,14 @@ private:
   /// A list of hooks to be inserted at each \c llvm::MachineInstr of the
   /// <tt>LiftedRepresentation</tt>
   hook_insertion_tasks HookInsertionTasks{};
-  /// the mutator function, which allows changing the
-  /// <tt>LiftedRepresentation</tt> via the Machine Instruction Builder API in
-  /// LLVM
-  const mutator_func_t MutatorFunction;
 
 public:
   /// InstrumentationTask constructor
   /// \param Preset a name which a primitive will be instrumented
   /// under. The same HSA primitive cannot be instrumented under the same
   /// preset name. To have multiple instrumented versions of the same primitive,
-  /// one can use different preset name to identify and keep track of them.
-  /// \param Mutator a function which allows iteration and mutation of the
-  /// <tt>LiftedRepresentation</tt>
-  InstrumentationTask(llvm::StringRef Preset, mutator_func_t Mutator);
+  /// one can use different preset name to identify and keep track of them
+  explicit InstrumentationTask(llvm::StringRef Preset);
 
   /// Queues a hook insertion task, which will insert a hook over the
   /// <tt>MI</tt>
@@ -97,25 +92,19 @@ public:
   /// the <tt>MI</tt>
   /// \param Args A list of arguments to be passed to the hook; An empty list
   /// by default
-  /// \param RemoveInstr indicates whether the instrumented instruction should
-  /// be removed or not; \c false by default
   /// \returns an \c llvm::Error indicating the success of the operation or
   /// its failure
   llvm::Error
   insertHookAt(llvm::MachineInstr &MI, const void *Hook, InstrPoint IPoint,
-               llvm::ArrayRef<std::pair<ArgType, uint64_t>> Args = {},
-               bool RemoveInstr = false);
+               llvm::ArrayRef<std::pair<ArgType, uint64_t>> Args = {});
 
   /// \return a const reference to the hook insertion tasks
   [[nodiscard]] const hook_insertion_tasks &getHookInsertionTasks() const {
     return HookInsertionTasks;
   }
 
-  /// \return a const reference to the mutator function
-  [[nodiscard]] const mutator_func_t &getMutator() { return MutatorFunction; }
-
   /// \return a const reference to the instrumentation module of this task
-  [[nodiscard]] const InstrumentationModule &getModule() { return IM; }
+  [[nodiscard]] const InstrumentationModule &getModule() const { return IM; }
 };
 
 } // namespace luthier

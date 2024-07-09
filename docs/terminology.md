@@ -1,8 +1,18 @@
 # Terminology
 This chapter aggregates frequently used terms in Luthier for easy reference.
 
-## Target Application
-The AMDGPU application being instrumented during runtime.
+- __AMD GPU Code Object__: An ELF shared object file that can be loaded and run on AMD GPUs. Its specifications are
+  described in depth by the [LLVM AMDGPU Backend Documentation](https://llvm.org/docs/AMDGPUUsage.html). Each AMD GPU
+  code object roughly has a one-to-one relationship with a HIP Module (`hipModule_t`).
+- __HIP FAT Binary__: A collection of AMD GPU code objects targeting multiple GPU architectures.
+  When compiling HIP code, `hipcc` can be instructed to compile the same code for multiple GPU architectures so that
+  it can run on different GPUs. A HIP FAT binary is bundled with the host executable and gets recognized by the
+  HIP runtime during startup through the HIP runtime compiler API. The HIP runtime parses the FAT binary into
+  individual AMD GPU code objects and loads them onto the appropriate GPU device.
+- __HIP Runtime Compiler API__: A set of C library startup functions prefixed with `__hipRegister` in charge of
+  loading HIP FAT binaries as well as registering the
+- __Dynamic/Static HIP Module__: If a HIP module was extracted from a HIP FAT binary using the HIP compiler API, it is
+  a static module; If the HIP Module was loaded using the `hipModuleLoad` functions, it is a dynamic module.
 
 ## ROCT
 The ROCm Thunk Interface is the user-level used to interface with the AMDGPU driver. 
@@ -41,4 +51,13 @@ environment variable to zero.
 ## HSA (Heterogeneous Systems Architecture)
 
 ## Tool Code Object
+
+
+## Instrumented 
+
+## Instrumentation
+
+## Original (Target)
+
+
 The 
