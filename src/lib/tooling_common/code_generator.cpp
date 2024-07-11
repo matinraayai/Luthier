@@ -33,6 +33,7 @@
 #include <llvm/Analysis/TypeBasedAliasAnalysis.h>
 #include <llvm/CodeGen/LiveIntervals.h>
 #include <llvm/CodeGen/Passes.h>
+#include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/PassRegistry.h>
 #include <llvm/Support/FileSystem.h>
@@ -89,13 +90,14 @@
 #include <llvm/Passes/PassBuilder.h>
 
 #include "AMDGPUGenInstrInfo.inc"
-#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Instructions.h"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-generator"
 
 namespace luthier {
+
+llvm::BitVector MyMask;
 
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
@@ -280,8 +282,8 @@ runCodeGenPipeline(
   llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
   PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
 
-  llvm::TargetPassConfig *TPC = TM->createPassConfig(*PM);
-
+  auto *TPC = TM->createPassConfig(*PM);
+  TPC->setDisableVerify(true);
   PM->add(TPC);
   // Create the MMIWP for instrumentation module
   auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
@@ -292,6 +294,9 @@ runCodeGenPipeline(
   //  PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
   //                                        <#initializer #>))
   TPC->addMachinePasses();
+
+  //  TPC->disablePass(&LiveIntervalsID);
+
   //      TPC->addPrintPass("After machine passes");
   //          auto UsageAnalysis = new
   //          llvm::AMDGPUResourceUsageAnalysis();
@@ -305,6 +310,8 @@ runCodeGenPipeline(
 
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                                        const InstrumentationTask &Task) {
+  if (Task.getHookInsertionTasks().empty())
+    return llvm::Error::success();
   // Since (at least in theory) each LCO can have its own ISA, we need to
   // create a module/MMI per LCO to generate instrumentation code for easier
   // separation
@@ -336,15 +343,20 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
 
           for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
             // Generate the Hooks
-            auto BeforeMIFunc = generateHookIR(*MI, HookSpecs.BeforeIPointTasks,
-                                               INSTR_POINT_BEFORE, *ISA, M);
-            LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
-            BeforeHooksMap.insert({MI, &(*BeforeMIFunc)});
-            // Generate the After MI Hooks
-            auto AfterMIFunc = generateHookIR(*MI, HookSpecs.AfterIPointTasks,
-                                              INSTR_POINT_AFTER, *ISA, M);
-            LUTHIER_RETURN_ON_ERROR(AfterMIFunc.takeError());
-            AfterHooksMap.insert({MI, &(*AfterMIFunc)});
+            if (!HookSpecs.BeforeIPointTasks.empty()) {
+              auto BeforeMIFunc =
+                  generateHookIR(*MI, HookSpecs.BeforeIPointTasks,
+                                 INSTR_POINT_BEFORE, *ISA, M);
+              LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
+              BeforeHooksMap.insert({MI, &(*BeforeMIFunc)});
+            }
+            if (!HookSpecs.AfterIPointTasks.empty()) {
+              // Generate the After MI Hooks
+              auto AfterMIFunc = generateHookIR(*MI, HookSpecs.AfterIPointTasks,
+                                                INSTR_POINT_AFTER, *ISA, M);
+              LUTHIER_RETURN_ON_ERROR(AfterMIFunc.takeError());
+              AfterHooksMap.insert({MI, &(*AfterMIFunc)});
+            }
           }
           LLVM_DEBUG(llvm::dbgs()
                      << "Instrumentation Module After Hooks Inserted:\n");
@@ -398,8 +410,10 @@ ReserveLiveRegs::ReserveLiveRegs(
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeMIHooks,
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterMIHooks)
     : llvm::MachineFunctionPass(ID) {
+
   // Calculate the Live-ins at each instruction for before MI hooks
   for (const auto &[MI, HookKernel] : BeforeMIHooks) {
+    (void)HookToInsertionPointMap.insert({HookKernel, MI});
     auto *MBB = MI->getParent();
     auto *MF = MBB->getParent();
     (void)HookLiveRegs.insert(
@@ -420,6 +434,7 @@ ReserveLiveRegs::ReserveLiveRegs(
   }
   // Calculate the Live-ins at each instruction after MI hooks
   for (const auto &[MI, HookKernel] : AfterMIHooks) {
+    (void)HookToInsertionPointMap.insert({HookKernel, MI});
     auto *MBB = MI->getParent();
     auto *MF = MBB->getParent();
     (void)HookLiveRegs.insert(
@@ -439,58 +454,162 @@ ReserveLiveRegs::ReserveLiveRegs(
 }
 bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
   auto *F = &MF.getFunction();
-
   auto &MRI = MF.getRegInfo();
   auto *TRI = MF.getSubtarget().getRegisterInfo();
-
+  // Find the entry block of the function, and mark the live-ins
+  const auto &LivePhysRegs = *HookLiveRegs.at(F);
+  llvm::addLiveIns(MF.front(), LivePhysRegs);
+  // Create an Exception Handling Pad block that defines uses of live regs
+  auto *EHPadMBB = MF.CreateMachineBasicBlock();
+  MF.push_back(EHPadMBB);
+  EHPadMBB->setIsEHPad(true);
+  // Find the return blocks and create dummy uses
+  // Mark the dummy uses with MC symbols to keep track of them
   for (auto &MBB : MF) {
-    addLiveIns(MBB, *HookLiveRegs.at(F));
+    if (&MBB != EHPadMBB && MBB.isReturnBlock()) {
+      // Remove the return inst
+      MBB.back().eraseFromParent();
+      MF.getSubtarget().getInstrInfo()->insertUnconditionalBranch(
+          MBB, EHPadMBB, llvm::DebugLoc());
+      MBB.addSuccessor(EHPadMBB);
+    }
   }
-  MRI.freezeReservedRegs();
-  for (const auto &Reg : *HookLiveRegs.at(F)) {
-    MRI.reserveReg(Reg, TRI);
-    MRI.freezeReservedRegs();
-    LLVM_DEBUG(llvm::dbgs() << "Is Reg " << TRI->getRegAsmName(Reg)
-                            << " reserved? " << MRI.isReserved(Reg) << "\n");
+  // Finally, populate the EHPad MBB with dummy uses of the live registers
+  auto MCII = MF.getTarget().getMCInstrInfo();
+  // Define s[0:1] and v0 as live-ins
+//  EHPadMBB->addLiveIn(llvm::AMDGPU::SGPR0_SGPR1);
+//  EHPadMBB->addLiveIn(llvm::AMDGPU::VGPR0);
+//  llvm::BuildMI(EHPadMBB, llvm::DebugLoc(), MCII->get(AMDGPU::S_MOV_B32)).addDef(llvm::AMDGPU::SGPR0)
+//      .addImm(0).getInstr()
+//      ->setPreInstrSymbol(MF, MF.getContext().getOrCreateSymbol("end-of-hook"));
+//  llvm::BuildMI(EHPadMBB, llvm::DebugLoc(), MCII->get(AMDGPU::S_MOV_B32)).addDef(llvm::AMDGPU::SGPR1)
+//      .addImm(0);
+  llvm::BuildMI(EHPadMBB, llvm::DebugLoc(), MCII->get(AMDGPU::V_MOV_B32_e32))
+      .addDef(llvm::AMDGPU::VGPR0)
+      .addImm(0);
+
+  for (const auto &[PhysLiveInReg, LaneMask] : MF.front().liveins()) {
+    EHPadMBB->addLiveIn(PhysLiveInReg);
+    auto PhysRegClass = TRI->getPhysRegBaseClass(PhysLiveInReg);
+    auto BitWidth = llvm::AMDGPU::getRegBitWidth(*PhysRegClass);
+    if (SIRegisterInfo::isSGPRClass(PhysRegClass)) {
+      if (BitWidth == 32) {
+        // s0 = S_ADD_U32 s0, $LiveIn
+        // S_STORE_DWORDX2_IMM s[0:1], s[0:1], 0, 0
+        llvm::BuildMI(EHPadMBB, llvm::DebugLoc(), MCII->get(AMDGPU::S_ADD_U32))
+            .addReg(llvm::AMDGPU::SGPR0)
+            .addReg(llvm::AMDGPU::SGPR0)
+            .addReg(PhysLiveInReg);
+        llvm::BuildMI(EHPadMBB, llvm::DebugLoc(),
+                      MCII->get(AMDGPU::S_STORE_DWORDX2_IMM))
+            .addReg(llvm::AMDGPU::SGPR0_SGPR1)
+            .addReg(llvm::AMDGPU::SGPR0_SGPR1)
+            .addImm(0)
+            .addImm(0);
+      } else if (BitWidth == 64) {
+        // S_STORE_DWORDX2_IMM s[0:1] $LiveIn, 0, 0
+        llvm::BuildMI(EHPadMBB, llvm::DebugLoc(),
+                      MCII->get(AMDGPU::S_STORE_DWORDX2_IMM))
+            .addReg(llvm::AMDGPU::SGPR0_SGPR1)
+            .addReg(PhysLiveInReg)
+            .addImm(0)
+            .addImm(0);
+      } else
+        llvm_unreachable("not implemented");
+    }
   }
-  if (MF.getFrameInfo().getStackSize() != 0)
-    MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
+//  EHPadMBB->begin()->setPreInstrSymbol(MF, MF.getContext().getOrCreateSymbol("end-of-hook"));
 
-  return false;
-};
+//    const llvm::MCInstrDesc &LoadDWordDesc =
+//        MF.getTarget().getMCInstrInfo()->get(llvm::AMDGPU::S_LOAD_DWORDX2_IMM);
+//    const llvm::MCInstrDesc &StoreDWordDesc =
+//        MF.getTarget().getMCInstrInfo()->get(
+//            llvm::AMDGPU::GLOBAL_STORE_DWORD_SADDR_vi);
+//    for (auto &MBB : MF) {
+//      MBB.addLiveIn(AMDGPU::SGPR0_SGPR1);
+//      MBB.addLiveIn(AMDGPU::VGPR0_VGPR1);
+//      // $sgpr0_sgpr1 = S_LOAD_DWORDX2_IMM_vi $sgpr4_sgpr5, 0, 0
+//      //    llvm::BuildMI(MBB, MBB.begin(), llvm::DebugLoc(), LoadDWordDesc,
+//      //                  AMDGPU::SGPR0_SGPR1)
+//      //        .addReg(AMDGPU::SGPR4_SGPR5, RegState::Kill)
+//      //        .addImm(0)
+//      //        .addImm(0);
+//      // GLOBAL_STORE_DWORD_SADDR_vi $vgpr0, $vgpr1, $sgpr0_sgpr1, 0, 0,
+//      // implicit $exec
+//      llvm::BuildMI(MBB, MBB.getFirstTerminator(), llvm::DebugLoc(),
+//                    StoreDWordDesc)
+//          .addReg(AMDGPU::VGPR0)
+//          .addReg(AMDGPU::VGPR1)
+//          .addReg(AMDGPU::SGPR0_SGPR1)
+//          .addImm(0)
+//          .addImm(0);
+//      //    addLiveIns(MBB, *HookLiveRegs.at(F));
+//    }
+    //  MRI.freezeReservedRegs();
+    //  for (const auto &Reg : *HookLiveRegs.at(F)) {
+    //    MRI.reserveReg(Reg, TRI);
+    //    MRI.freezeReservedRegs();
+    //    LLVM_DEBUG(llvm::dbgs() << "Is Reg " << TRI->getRegAsmName(Reg)
+    //                            << " reserved? " << MRI.isReserved(Reg) <<
+    //                            "\n");
+    //  }
+    //  if (MF.getFrameInfo().getStackSize() != 0)
+    //    MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
 
-char StackFrameOffset::ID = 0;
-
-StackFrameOffset::StackFrameOffset(
-    const LiftedRepresentation &LR,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeMIHooks,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterMIHooks)
-    : MachineFunctionPass(ID) {
-  for (const auto &[Func, LLVMFunc] : LR.functions()) {
+    return true;
   }
-}
+  void ReserveLiveRegs::getAnalysisUsage(AnalysisUsage & AU) const {
+    AU.setPreservesCFG();
+    AU.addPreservedID(llvm::MachineLoopInfoID);
+    AU.addPreserved<llvm::SlotIndexes>();
+    AU.addRequiredTransitive<llvm::SlotIndexes>();
+    MachineFunctionPass::getAnalysisUsage(AU);
+  };
 
-bool StackFrameOffset::runOnMachineFunction(MachineFunction &MF) {
-  auto &MFI = MF.getFrameInfo();
+  char StackFrameOffset::ID = 0;
 
-  llvm::outs() << "machine function " << MF.getName() << "\n"
-               << "\tStack Size of: " << MFI.getStackSize() << "\n"
-               << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
-
-  for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
-    llvm::outs() << " - Stack Object Num " << SOIdx << "\n"
-                 << "   Stack ID:             " << MFI.getStackID(SOIdx) << "\n"
-                 << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)
-                 << "\n";
-    // Add to Stack Frame object offset
-    auto NewOffset =
-        MFI.getObjectOffset(SOIdx) +
-        FrameOffset.at(&MF.getFunction()); // value to add: amount of stack the
-                                           // original app is using
-    MFI.setObjectOffset(SOIdx, NewOffset);
-    llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
+  StackFrameOffset::StackFrameOffset(
+      const LiftedRepresentation &LR,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &BeforeMIHooks,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &AfterMIHooks)
+      : MachineFunctionPass(ID) {
+    for (const auto &[Func, LLVMFunc] : LR.functions()) {
+    }
   }
-  return false;
-}
+
+  bool StackFrameOffset::runOnMachineFunction(MachineFunction & MF) {
+    auto &MFI = MF.getFrameInfo();
+
+    llvm::outs() << "machine function " << MF.getName() << "\n"
+                 << "\tStack Size of: " << MFI.getStackSize() << "\n"
+                 << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
+
+    for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
+      llvm::outs() << " - Stack Object Num " << SOIdx << "\n"
+                   << "   Stack ID:             " << MFI.getStackID(SOIdx)
+                   << "\n"
+                   << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)
+                   << "\n";
+      // Add to Stack Frame object offset
+      auto NewOffset =
+          MFI.getObjectOffset(SOIdx) +
+          FrameOffset.at(&MF.getFunction()); // value to add: amount of stack
+                                             // the original app is using
+      MFI.setObjectOffset(SOIdx, NewOffset);
+      llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
+    }
+    return false;
+  }
+
+  char InstBundler::ID = 0;
+  bool InstBundler::runOnMachineFunction(MachineFunction & MF) {
+    for (auto &MBB : MF) {
+      auto Bundler = llvm::MIBundleBuilder(MBB, MBB.begin(), MBB.end());
+      llvm::finalizeBundle(MBB, Bundler.begin());
+    }
+    return false;
+  }
 
 } // namespace luthier
