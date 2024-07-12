@@ -81,7 +81,7 @@ private:
       std::pair<llvm::orc::ThreadSafeModule,
                 std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
       1>
-      Modules;
+      Modules{};
 
   /// Mapping between an \c hsa_loaded_code_object_t and the Module and MMI
   /// representing it in LLVM

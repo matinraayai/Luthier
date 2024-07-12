@@ -42,6 +42,7 @@
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 
+#include "AMDGPUGenInstrInfo.inc"
 #include "SIInstrInfo.h"
 #include "SIRegisterInfo.h"
 #include "common/error.hpp"
@@ -59,6 +60,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -87,17 +89,13 @@
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
+#include <llvm/ExecutionEngine/Orc/IndirectionUtils.h>
 #include <llvm/Passes/PassBuilder.h>
-
-#include "AMDGPUGenInstrInfo.inc"
-#include "llvm/IR/Instructions.h"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-generator"
 
 namespace luthier {
-
-llvm::BitVector MyMask;
 
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
@@ -303,9 +301,153 @@ runCodeGenPipeline(
   //          PM.add(UsageAnalysis);
   TPC->setInitialized();
 
-  PM->run(M); // Run all the passes
-              //          M.print(llvm::outs(), nullptr);
+  PM->run(M);
   return {std::move(PM), IMMIWP};
+}
+
+llvm::Error patchLiftedRepresentation(
+    const llvm::Module &IModule, const llvm::MachineModuleInfo &IMMI,
+    llvm::Module &LRModule, llvm::MachineModuleInfo &LRMMI,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeHooks,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterHooks) {
+  llvm::ValueToValueMapTy VMap;
+  llvm::DenseMap<const llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
+      MBBMap;
+  llvm::DenseSet<const llvm::MachineBasicBlock *> ReturnBlocks;
+  // Clone the Global variables
+  for (const auto &GV : IModule.globals()) {
+    GlobalVariable *NewGV = new GlobalVariable(
+        LRModule, GV.getValueType(), GV.isConstant(),
+        GV.getLinkage(), nullptr, GV.getName(), nullptr,
+        GV.getThreadLocalMode(), GV.getType()->getAddressSpace());
+    NewGV->copyAttributesFrom(&GV);
+    VMap[&GV] = NewGV;
+  }
+  // Clone the MBBs
+  for (const auto &[MI, HookF] : AfterHooks) {
+    const auto &HookMF = *IMMI.getMachineFunction(*HookF);
+    auto &TargetMBB = *MI->getParent();
+    auto &TargetMF = *TargetMBB.getParent();
+
+    for (const auto &MBB : HookMF) {
+      if (MBB.isEntryBlock()) {
+        MBBMap.insert({&MBB, &TargetMF.front()});
+
+      }
+      // This else/if statement will count an MBB that is both entry/return as
+      // an entry block only. This will cause ReturnBlocks to have zero blocks
+      else if (MBB.isReturnBlock()) {
+        ReturnBlocks.insert(&MBB);
+      } else {
+        auto *NewTargetMBB = TargetMF.CreateMachineBasicBlock();
+        TargetMF.push_back(NewTargetMBB);
+        MBBMap.insert({&MBB, NewTargetMBB});
+      }
+    }
+
+    // Special logic for handling return blocks of hooks and creating the
+    // term block
+    llvm::MachineBasicBlock *TermBlock;
+    // If there's at least a return block, then splice the MBB right after the
+    // MI
+    if (!ReturnBlocks.empty()) {
+      TermBlock = TargetMBB.splitAt(*MI);
+      // if there's only one return block, then the return block will be mapped
+      // to the term block
+      if (ReturnBlocks.size() == 1) {
+        MBBMap.insert({*ReturnBlocks.begin(), TermBlock});
+        // if there are more than one return blocks, then we need to create
+        // blocks for each of them
+      } else if (ReturnBlocks.size() > 1) {
+        for (const auto *ReturnBlock : ReturnBlocks) {
+          auto *TargetReturnBlock = TargetMF.CreateMachineBasicBlock();
+          TargetMF.push_back(TargetReturnBlock);
+          MBBMap.insert({ReturnBlock, TargetReturnBlock});
+        }
+      };
+    }
+    // Link blocks
+    for (auto &MBB : HookMF) {
+      auto *DstMBB = MBBMap[&MBB];
+      for (auto It = MBB.succ_begin(), IterEnd = MBB.succ_end(); It != IterEnd;
+           ++It) {
+        auto *SrcSuccMBB = *It;
+        auto *DstSuccMBB = MBBMap[SrcSuccMBB];
+        DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
+      }
+    }
+    if (TermBlock != nullptr && TermBlock->pred_empty()) {
+      for (const auto *ReturnBlock : ReturnBlocks) {
+        auto *TargetReturnBlock = MBBMap[ReturnBlock];
+        TargetReturnBlock->addSuccessor(TermBlock, BranchProbability::getOne());
+      }
+    }
+    // Finally, clone the instructions into the new MBBs
+    const llvm::TargetSubtargetInfo &STI = TargetMF.getSubtarget();
+    const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
+    const llvm::TargetRegisterInfo *TRI = STI.getRegisterInfo();
+    auto &TargetMFMRI = TargetMF.getRegInfo();
+
+    llvm::DenseSet<const uint32_t *> ConstRegisterMasks;
+
+    // Track predefined/named regmasks which we ignore.
+    for (const uint32_t *Mask : TRI->getRegMasks())
+      ConstRegisterMasks.insert(Mask);
+    for (const auto &MBB: HookMF) {
+
+      auto *DstMBB = MBBMap[&MBB];
+      llvm::MachineBasicBlock::iterator InsertionPoint;
+      if (ReturnBlocks.contains(&MBB)) {
+        InsertionPoint = DstMBB->begin();
+      } else if (MBB.isEntryBlock() && HookMF.size() == 1) {
+        InsertionPoint = MI->getIterator()->getNextNode();
+      } else
+        InsertionPoint = DstMBB->end();
+      for (auto &SrcMI : MBB.instrs()) {
+        auto * PreInstrSymbol = SrcMI.getPreInstrSymbol();
+        if (PreInstrSymbol != nullptr && PreInstrSymbol->getName() == "use-instr") {
+          break;
+        }
+        if (SrcMI.isBundle())
+          continue;
+        const auto &MCID = TII->get(SrcMI.getOpcode());
+        auto *DstMI = TargetMF.CreateMachineInstr(MCID, SrcMI.getDebugLoc(),
+                                                /*NoImplicit=*/true);
+        DstMI->setFlags(SrcMI.getFlags());
+        DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
+
+        DstMBB->insert(InsertionPoint, DstMI);
+        for (auto &SrcMO : SrcMI.operands()) {
+          llvm::MachineOperand DstMO(SrcMO);
+          DstMO.clearParent();
+
+          // Update MBB.
+          if (DstMO.isMBB())
+            DstMO.setMBB(MBBMap[DstMO.getMBB()]);
+          else if (DstMO.isRegMask()) {
+            TargetMFMRI.addPhysRegsUsedFromRegMask(DstMO.getRegMask());
+
+            if (!ConstRegisterMasks.count(DstMO.getRegMask())) {
+              uint32_t *DstMask = TargetMF.allocateRegMask();
+              std::memcpy(
+                  DstMask, SrcMO.getRegMask(),
+                  sizeof(*DstMask) *
+                      llvm::MachineOperand::getRegMaskSize(TRI->getNumRegs()));
+              DstMO.setRegMask(DstMask);
+            }
+          } else if (DstMO.isGlobal()) {
+            auto GVEntry = VMap.find(DstMO.getGlobal());
+            LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(GVEntry != VMap.end()));
+            auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
+            DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
+          }
+
+          DstMI->addOperand(DstMO);
+        }
+      }
+    }
+  }
+  return llvm::Error::success();
 }
 
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
@@ -315,15 +457,16 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     return llvm::Error::success();
   // Since (at least in theory) each LCO can have its own ISA, we need to
   // create a module/MMI per LCO to generate instrumentation code for easier
-  // separation
-  for (const auto &[LCO, LCOModule] : LR.modules()) {
+  // separation between different LCOs' Machine code
+  for (auto &[LCO, LCOModule] : LR.modules()) {
+
     // Load the bitcode of the instrumentation module into the LR's context
     auto IModule = Task.getModule().readBitcodeIntoContext(LR.getContext());
     LUTHIER_RETURN_ON_ERROR(IModule.takeError());
     LUTHIER_RETURN_ON_ERROR(
         IModule->withModuleDo([&](llvm::Module &M) -> llvm::Error {
-          LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n");
-          LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
+          LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
+                     M.print(llvm::dbgs(), nullptr););
           // Get the target machine of the LCO's ISA
           auto ISA = hsa::LoadedCodeObject(LCO).getISA();
           LUTHIER_RETURN_ON_ERROR(ISA.takeError());
@@ -370,17 +513,18 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
           // constraints
           auto [PM, MMIWP] =
               runCodeGenPipeline(M, TM, LR, BeforeHooksMap, AfterHooksMap);
-          for (const auto &F : M) {
-            llvm::outs() << MMIWP->getMMI().getModule() << "\n";
-            if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
+
+          // Finally, patch in the generated machine code into the lifted
+          // representation
+          LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
+              M, MMIWP->getMMI(), *LCOModule.first.getModuleUnlocked(),
+              LCOModule.second->getMMI(), BeforeHooksMap, AfterHooksMap));
+          for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+            llvm::outs() << LCOModule.second->getMMI().getModule() << "\n";
+            if (auto MF = LCOModule.second->getMMI().getMachineFunction(F)) {
               MF->print(llvm::outs());
             }
           }
-          //
-          //        //          M.print(llvm::outs(), nullptr);
-          //
-
-          //
           return llvm::Error::success();
         }));
   }
@@ -535,62 +679,6 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
       }
     }
   }
-  // Finally, populate the EHPad MBB with dummy uses of the live registers
-
-  // Define s[0:1] and v0 as live-ins
-  //  EHPadMBB->addLiveIn(llvm::AMDGPU::SGPR0_SGPR1);
-  //  EHPadMBB->addLiveIn(llvm::AMDGPU::VGPR0);
-  //  llvm::BuildMI(EHPadMBB, llvm::DebugLoc(),
-  //  MCII->get(AMDGPU::S_MOV_B32)).addDef(llvm::AMDGPU::SGPR0)
-  //      .addImm(0).getInstr()
-  //      ->setPreInstrSymbol(MF,
-  //      MF.getContext().getOrCreateSymbol("end-of-hook"));
-  //  llvm::BuildMI(EHPadMBB, llvm::DebugLoc(),
-  //  MCII->get(AMDGPU::S_MOV_B32)).addDef(llvm::AMDGPU::SGPR1)
-  //      .addImm(0);
-  //  llvm::BuildMI(EHPadMBB, llvm::DebugLoc(),
-  //  MCII->get(AMDGPU::V_MOV_B32_e32))
-  //      .addDef(llvm::AMDGPU::VGPR0)
-  //      .addImm(0);
-
-  //  EHPadMBB->begin()->setPreInstrSymbol(MF,
-  //  MF.getContext().getOrCreateSymbol("end-of-hook"));
-
-  //    const llvm::MCInstrDesc &LoadDWordDesc =
-  //        MF.getTarget().getMCInstrInfo()->get(llvm::AMDGPU::S_LOAD_DWORDX2_IMM);
-  //    const llvm::MCInstrDesc &StoreDWordDesc =
-  //        MF.getTarget().getMCInstrInfo()->get(
-  //            llvm::AMDGPU::GLOBAL_STORE_DWORD_SADDR_vi);
-  //    for (auto &MBB : MF) {
-  //      MBB.addLiveIn(AMDGPU::SGPR0_SGPR1);
-  //      MBB.addLiveIn(AMDGPU::VGPR0_VGPR1);
-  //      // $sgpr0_sgpr1 = S_LOAD_DWORDX2_IMM_vi $sgpr4_sgpr5, 0, 0
-  //      //    llvm::BuildMI(MBB, MBB.begin(), llvm::DebugLoc(), LoadDWordDesc,
-  //      //                  AMDGPU::SGPR0_SGPR1)
-  //      //        .addReg(AMDGPU::SGPR4_SGPR5, RegState::Kill)
-  //      //        .addImm(0)
-  //      //        .addImm(0);
-  //      // GLOBAL_STORE_DWORD_SADDR_vi $vgpr0, $vgpr1, $sgpr0_sgpr1, 0, 0,
-  //      // implicit $exec
-  //      llvm::BuildMI(MBB, MBB.getFirstTerminator(), llvm::DebugLoc(),
-  //                    StoreDWordDesc)
-  //          .addReg(AMDGPU::VGPR0)
-  //          .addReg(AMDGPU::VGPR1)
-  //          .addReg(AMDGPU::SGPR0_SGPR1)
-  //          .addImm(0)
-  //          .addImm(0);
-  //      //    addLiveIns(MBB, *HookLiveRegs.at(F));
-  //    }
-  //  MRI.freezeReservedRegs();
-  //  for (const auto &Reg : *HookLiveRegs.at(F)) {
-  //    MRI.reserveReg(Reg, TRI);
-  //    MRI.freezeReservedRegs();
-  //    LLVM_DEBUG(llvm::dbgs() << "Is Reg " << TRI->getRegAsmName(Reg)
-  //                            << " reserved? " << MRI.isReserved(Reg) <<
-  //                            "\n");
-  //  }
-  //  if (MF.getFrameInfo().getStackSize() != 0)
-  //    MRI.reserveReg(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3, TRI);
 
   return true;
 }
