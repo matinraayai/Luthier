@@ -5,6 +5,7 @@
 #include <llvm/Bitcode/BitcodeWriterPass.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 
 #undef DEBUG_TYPE
