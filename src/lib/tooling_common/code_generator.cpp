@@ -317,9 +317,9 @@ llvm::Error patchLiftedRepresentation(
   // Clone the Global variables
   for (const auto &GV : IModule.globals()) {
     GlobalVariable *NewGV = new GlobalVariable(
-        LRModule, GV.getValueType(), GV.isConstant(),
-        GV.getLinkage(), nullptr, GV.getName(), nullptr,
-        GV.getThreadLocalMode(), GV.getType()->getAddressSpace());
+        LRModule, GV.getValueType(), GV.isConstant(), GV.getLinkage(), nullptr,
+        GV.getName(), nullptr, GV.getThreadLocalMode(),
+        GV.getType()->getAddressSpace());
     NewGV->copyAttributesFrom(&GV);
     VMap[&GV] = NewGV;
   }
@@ -393,7 +393,7 @@ llvm::Error patchLiftedRepresentation(
     // Track predefined/named regmasks which we ignore.
     for (const uint32_t *Mask : TRI->getRegMasks())
       ConstRegisterMasks.insert(Mask);
-    for (const auto &MBB: HookMF) {
+    for (const auto &MBB : HookMF) {
 
       auto *DstMBB = MBBMap[&MBB];
       llvm::MachineBasicBlock::iterator InsertionPoint;
@@ -404,15 +404,18 @@ llvm::Error patchLiftedRepresentation(
       } else
         InsertionPoint = DstMBB->end();
       for (auto &SrcMI : MBB.instrs()) {
-        auto * PreInstrSymbol = SrcMI.getPreInstrSymbol();
-        if (PreInstrSymbol != nullptr && PreInstrSymbol->getName() == "use-instr") {
+        auto *PreInstrSymbol = SrcMI.getPreInstrSymbol();
+        if (PreInstrSymbol != nullptr &&
+            PreInstrSymbol->getName() == "use-instr") {
           break;
         }
+        // Don't clone the bundle headers
         if (SrcMI.isBundle())
           continue;
         const auto &MCID = TII->get(SrcMI.getOpcode());
-        auto *DstMI = TargetMF.CreateMachineInstr(MCID, SrcMI.getDebugLoc(),
-                                                /*NoImplicit=*/true);
+        // TODO: Properly import the debug location
+        auto *DstMI = TargetMF.CreateMachineInstr(MCID, llvm::DebugLoc(),
+                                                  /*NoImplicit=*/true);
         DstMI->setFlags(SrcMI.getFlags());
         DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
 
@@ -447,6 +450,34 @@ llvm::Error patchLiftedRepresentation(
       }
     }
   }
+  return llvm::Error::success();
+}
+
+llvm::Error
+printAssembly(llvm::Module &M,
+              std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
+              llvm::GCNTargetMachine &TM, llvm::SmallVector<char> &Reloc) {
+  llvm::legacy::PassManager PM;
+  TM.setOptLevel(llvm::CodeGenOptLevel::None);
+  llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
+
+  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
+  PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+  auto *TPC = TM.createPassConfig(PM);
+  TPC->setDisableVerify(true);
+  TPC->setInitialized();
+  PM.add(TPC);
+  PM.add(MMIWP.release());
+  auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
+  PM.add(UsageAnalysis);
+  llvm::raw_svector_ostream OutOS(Reloc);
+
+  // AsmPrinter is responsible for generating the assembly into AsmBuffer.
+  if (TM.addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::AssemblyFile,
+                       MCContext))
+    llvm::outs() << "Failed to add pass manager\n";
+
+  PM.run(M); // Run all the passes
   return llvm::Error::success();
 }
 
@@ -513,7 +544,12 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
           // constraints
           auto [PM, MMIWP] =
               runCodeGenPipeline(M, TM, LR, BeforeHooksMap, AfterHooksMap);
-
+          for (const auto &F : M) {
+            llvm::outs() << MMIWP->getMMI().getModule() << "\n";
+            if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
+              MF->print(llvm::outs());
+            }
+          }
           // Finally, patch in the generated machine code into the lifted
           // representation
           LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
@@ -525,6 +561,12 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
               MF->print(llvm::outs());
             }
           }
+          // Print the Assembly
+          llvm::SmallVector<char> Reloc;
+          LUTHIER_RETURN_ON_ERROR(
+              printAssembly(*LCOModule.first.getModuleUnlocked(),
+                            LCOModule.second, *TM, Reloc));
+          llvm::outs() << Reloc << "\n";
           return llvm::Error::success();
         }));
   }
