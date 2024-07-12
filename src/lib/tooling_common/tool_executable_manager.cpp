@@ -150,6 +150,8 @@ llvm::Error preprocessAndSaveModuleToStream(
     } else {
       GV.setInitializer(nullptr);
       GV.setLinkage(llvm::GlobalValue::ExternalLinkage);
+      GV.setVisibility(llvm::GlobalValue::DefaultVisibility);
+      GV.setDSOLocal(false);
       StaticVariables.push_back(std::string(GVName));
     }
   }
