@@ -379,23 +379,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 //// *          NVBit injection APIs  (provided by NVBit)
 //// *
 //// **********************************************************************/
-////
-////
-/////* This function inserts a device function call named "dev_func_name",
-//// * before or after Instr (ipoint_t { IPOINT_BEFORE, IPOINT_AFTER}).
-//// * It is important to remember that calls to device functions are
-//// * identified by name (as opposed to function pointers) and that
-//// * we declare the function as:
-//// *
-//// *        extern "C" __device__ __noinline__
-//// *
-//// * to prevent the compiler from optimizing out this device function
-//// * during compilation.
-//// *
-//// * Multiple device functions can be inserted before or after and the
-//// * order in which they get executed is defined by the order in which
-//// * they have been inserted. */
-////
 
 /////* Add int32_t argument to last injected call, value of the predicate for
 /// this / * instruction */ /
@@ -491,12 +474,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 //// * the instrumentation function */
 ////void nvbit_set_at_launch(CUcontext ctx, CUfunction func, void* buf,
 ////                         uint32_t nbytes);
-////
-/////* Notify nvbit of a pthread used by the tool, this pthread will not
-//// * trigger any call backs even if executing CUDA events of kernel launches.
-//// * Multiple pthreads can be registered one after the other. */
-////void nvbit_set_tool_pthread(pthread_t tool_pthread);
-////void nvbit_unset_tool_pthread(pthread_t tool_pthread);
 ////
 // NOLINTEND
 

@@ -1,4 +1,4 @@
-//===-- luthier.pp - Implementation of the Luthier API --------------------===//
+//===-- luthier.cpp - Implementation of the Luthier API -------------------===//
 //
 //===----------------------------------------------------------------------===//
 ///

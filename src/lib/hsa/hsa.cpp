@@ -1,7 +1,20 @@
+//===-- hsa.cpp - Top Level HSA API Wrapper -------------------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file contains the implementation of HSA API wrappers concerned with
+/// the global status of the HSA runtime (e.g. agents attached to the device).
+//===----------------------------------------------------------------------===//
 #include "hsa/hsa.hpp"
 #include <llvm/ADT/StringExtras.h>
 
 namespace luthier::hsa {
+
+llvm::Error init() {
+  const auto &CoreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
+  return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_init_fn());
+}
 
 llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
   const auto &CoreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
@@ -51,5 +64,8 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code) {
   LUTHIER_RETURN_ON_ERROR(Out.takeError());
   return llvm::toStringRef(*Out);
 }
-
+llvm::Error shutdown() {
+  const auto &CoreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
+  return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_shut_down_fn());
+}
 } // namespace luthier::hsa
