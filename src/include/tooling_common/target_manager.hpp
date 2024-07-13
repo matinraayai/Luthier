@@ -40,7 +40,6 @@ struct TargetInfo {
 
 private:
   const llvm::Target *Target{nullptr};
-  llvm::LLVMContext *LLVMContext{nullptr};
   llvm::GCNTargetMachine *TargetMachine{nullptr};
   const llvm::MCRegisterInfo *MRI{nullptr};
   const llvm::MCAsmInfo *MAI{nullptr};
@@ -52,10 +51,6 @@ private:
 
 public:
   [[nodiscard]] const llvm::Target *getTarget() const { return Target; }
-
-  [[nodiscard]] llvm::LLVMContext *getLLVMContext() const {
-    return LLVMContext;
-  }
 
   [[nodiscard]] llvm::GCNTargetMachine *getTargetMachine() const {
     return TargetMachine;

@@ -49,7 +49,6 @@ TargetManager::~TargetManager() {
     delete It.second.IP;
     delete It.second.TargetOptions;
     delete It.second.TargetMachine;
-    delete It.second.LLVMContext;
   }
   LLVMTargetInfo.clear();
   llvm::llvm_shutdown();
@@ -120,7 +119,6 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
     Info->second.IP = IP;
     Info->second.TargetOptions = TargetOptions;
     Info->second.TargetMachine = TM;
-    Info->second.LLVMContext = LLVMContext;
   }
   return LLVMTargetInfo[Isa];
 }
