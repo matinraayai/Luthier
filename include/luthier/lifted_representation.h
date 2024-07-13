@@ -64,30 +64,21 @@ private:
   /// unique pointer's ownership
   llvm::orc::ThreadSafeContext Context;
 
-  /// A list of thread-safe Modules owned by the \c Context as well as its
-  /// associated \c llvm::MachineModuleInfoWrapperPass (MMIWP). The MMIWP
-  /// owns a reference to the Machine Module Info (MMI) of the module.
-  /// Modules only hold global object definition/declarations; MMI
+  /// \brief Mapping between an \c hsa_loaded_code_object_t and the
+  /// thread-safe Module and MMI representing it in LLVM
+  /// \details Modules only hold global object definition/declarations; MMI
   /// and its \c llvm::MachineFunction list contains the \c llvm::MachineInstr
-  /// of each function and therefore, do the heavy lifting.\n
+  /// of each function and therefore, do the heavy lifting for Luthier.\n
   /// The modules/MMIs have a one-to-one correspondence with a single
   /// \c hsa_loaded_code_object. This is because an \c hsa_executable_t can
   /// contain multiple loaded code objects. Each module/MMI will be compiled
   /// separately from the other and then passed to Luthier to be loaded
-  /// into a single \c hsa_executable_t . In practice, an \c hsa_executable_t
-  /// almost always contains a single \c hsa_loaded_code_object_t .
-  llvm::SmallDenseMap<
-      hsa_loaded_code_object_t,
-      std::pair<llvm::orc::ThreadSafeModule,
-                std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
-      1>
-      Modules{};
-
-  /// Mapping between an \c hsa_loaded_code_object_t and the Module and MMI
-  /// representing it in LLVM
-  llvm::DenseMap<
-      hsa_loaded_code_object_t,
-      std::pair<llvm::orc::ThreadSafeModule *, llvm::MachineModuleInfo *>>
+  /// into a single <tt>hsa_executable_t</tt>. In practice, an \c hsa_executable_t
+  /// almost always contains a single <tt>hsa_loaded_code_object_t</tt>
+  llvm::SmallDenseMap<hsa_loaded_code_object_t,
+                      std::pair<llvm::orc::ThreadSafeModule,
+                                std::unique_ptr<llvm::MachineModuleInfo>>,
+                      1>
       RelatedLCOs{};
 
   /// Mapping between an \c hsa_executable_symbol_t (of type kernel and
@@ -128,10 +119,6 @@ public:
     return Context;
   }
 
-  /// Module iterator
-  using module_iterator = decltype(Modules)::iterator;
-  /// Module constant iterator
-  using const_module_iterator = decltype(Modules)::const_iterator;
   /// Related Loaded Code Object iterator
   using iterator = decltype(RelatedLCOs)::iterator;
   /// Related Loaded Code Object constant iterator
@@ -145,28 +132,6 @@ public:
   /// The Global Variable constant iterator.
   using const_global_iterator =
       decltype(RelatedGlobalVariables)::const_iterator;
-
-  /// Module iteration
-  module_iterator module_begin() { return Modules.begin(); }
-  [[nodiscard]] const_module_iterator module_begin() const {
-    return Modules.begin();
-  }
-
-  module_iterator module_end() { return Modules.end(); }
-  [[nodiscard]] const_module_iterator module_end() const {
-    return Modules.end();
-  }
-
-  [[nodiscard]] size_t module_size() const { return Modules.size(); };
-
-  [[nodiscard]] bool module_empty() const { return Modules.empty(); };
-
-  llvm::iterator_range<module_iterator> modules() {
-    return make_range(module_begin(), module_end());
-  }
-  [[nodiscard]] llvm::iterator_range<const_module_iterator> modules() const {
-    return make_range(module_begin(), module_end());
-  }
 
   /// LCO iteration
   iterator begin() { return RelatedLCOs.begin(); }

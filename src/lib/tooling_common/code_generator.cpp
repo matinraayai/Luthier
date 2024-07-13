@@ -422,7 +422,8 @@ llvm::Error patchLiftedRepresentation(
       } else
         InsertionPoint = DstMBB->end();
       if (MBB.isEntryBlock()) {
-        auto *DstMI = TargetMF.CreateMachineInstr(TII->get(AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+        auto *DstMI = TargetMF.CreateMachineInstr(TII->get(AMDGPU::S_WAITCNT),
+                                                  llvm::DebugLoc(),
                                                   /*NoImplicit=*/true);
         DstMBB->insert(InsertionPoint, DstMI);
         DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
@@ -472,8 +473,10 @@ llvm::Error patchLiftedRepresentation(
           DstMI->addOperand(DstMO);
         }
       }
-      if (ReturnBlocks.contains(&MBB) || (MBB.isEntryBlock() && HookMF.size() == 1)) {
-        auto *DstMI = TargetMF.CreateMachineInstr(TII->get(AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+      if (ReturnBlocks.contains(&MBB) ||
+          (MBB.isEntryBlock() && HookMF.size() == 1)) {
+        auto *DstMI = TargetMF.CreateMachineInstr(TII->get(AMDGPU::S_WAITCNT),
+                                                  llvm::DebugLoc(),
                                                   /*NoImplicit=*/true);
         DstMBB->insert(InsertionPoint, DstMI);
         DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
@@ -490,17 +493,17 @@ printAssembly(LiftedRepresentation &LR,
               llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
                   *AssemblyFiles = nullptr) {
   auto Lock = LR.getContext().getLock();
-  for (auto &[LCO, LCOModule] : LR.modules()) {
+  for (auto &[LCO, LCOModule] : LR) {
     for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
       llvm::outs() << F.getName() << "\n";
-      if (auto MF = LCOModule.second->getMMI().getMachineFunction(F)) {
+      if (auto MF = LCOModule.second->getMachineFunction(F)) {
         MF->print(llvm::outs());
       }
     }
-    auto &[TSModule, MMIWP] = LCOModule;
+    auto &[TSModule, MMI] = LCOModule;
     auto &M = *TSModule.getModuleUnlocked();
     llvm::legacy::PassManager PM;
-    llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
+    llvm::MCContext &MCContext = MMI->getContext();
     // Get the target machine of the LCO's ISA
     hsa::LoadedCodeObject LCOWrapper(LCO);
     auto ISA = LCOWrapper.getISA();
@@ -514,7 +517,8 @@ printAssembly(LiftedRepresentation &LR,
     TPC->setDisableVerify(true);
     TPC->setInitialized();
     PM.add(TPC);
-    PM.add(MMIWP.release());
+    auto * MMIWP = new llvm::MachineModuleInfoWrapperPass(std::move(*MMI));
+    PM.add(MMIWP);
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM.add(UsageAnalysis);
     if (!CompiledRelocatables.contains(LCOWrapper)) {
@@ -539,6 +543,15 @@ printAssembly(LiftedRepresentation &LR,
     }
     llvm::outs() << "Running the printer pass manager\n";
     PM.run(M); // Run all the passes
+    MMI =
+        std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
+    llvm::outs() << "AFTER MOVE: \n";
+    for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+      llvm::outs() << F.getName() << "\n";
+      if (auto MF = MMI->getMachineFunction(F)) {
+        MF->print(llvm::outs());
+      }
+    }
     return llvm::Error::success();
   }
   return llvm::Error::success();
@@ -552,7 +565,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
   // Since (at least in theory) each LCO can have its own ISA, we need to
   // create a module/MMI per LCO to generate instrumentation code for easier
   // separation between different LCOs' Machine code
-  for (auto &[LCO, LCOModule] : LR.modules()) {
+  for (auto &[LCO, LCOModule] : LR) {
 
     // Load the bitcode of the instrumentation module into the LR's context
     auto IModule = Task.getModule().readBitcodeIntoContext(LR.getContext());
@@ -605,11 +618,11 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
       // representation
       LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
           M, MMIWP->getMMI(), *LCOModule.first.getModuleUnlocked(),
-          LCOModule.second->getMMI(), MIToHookFuncMap));
+          *LCOModule.second, MIToHookFuncMap));
       for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
         llvm::outs() << "Function name inside: " << F.getName() << "\n";
-        llvm::outs() << LCOModule.second->getMMI().getModule() << "\n";
-        if (auto MF = LCOModule.second->getMMI().getMachineFunction(F)) {
+        llvm::outs() << LCOModule.second->getModule() << "\n";
+        if (auto MF = LCOModule.second->getMachineFunction(F)) {
           MF->print(llvm::outs());
         }
       }
@@ -735,13 +748,14 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
           if (BitWidth == 32) {
             // s0 = S_ADD_U32 s0, $LiveIn
             // S_STORE_DWORDX2_IMM s[0:1], s[0:1], 0, 0
-//            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-//                          MCII->get(AMDGPU::S_ADD_U32))
-//                .addReg(llvm::AMDGPU::SGPR0)
-//                .addReg(llvm::AMDGPU::SGPR0)
-//                .addReg(PhysLiveInReg)
-//                ->setPreInstrSymbol(
-//                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
+            //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+            //                          MCII->get(AMDGPU::S_ADD_U32))
+            //                .addReg(llvm::AMDGPU::SGPR0)
+            //                .addReg(llvm::AMDGPU::SGPR0)
+            //                .addReg(PhysLiveInReg)
+            //                ->setPreInstrSymbol(
+            //                    MF,
+            //                    MF.getContext().getOrCreateSymbol("use-instr"));
             llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
                           MCII->get(AMDGPU::S_STORE_DWORD_IMM))
                 .addReg(PhysLiveInReg)
@@ -772,7 +786,7 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
 void ReserveLiveRegs::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesCFG();
   AU.addPreservedID(llvm::MachineLoopInfoID);
-  AU.addPreserved<llvm::SlotIndexes>();
+  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
   MachineFunctionPass::getAnalysisUsage(AU);
 };
 
