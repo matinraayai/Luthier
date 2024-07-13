@@ -3,6 +3,7 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/Object/ELFObjectFile.h>
 #include <luthier/kernel_descriptor.h>
+#include "common/singleton.hpp"
 
 #include <mutex>
 
@@ -62,16 +63,9 @@ protected:
  * The HSA API internal callback is used to inform this class about changes in
  * the application state
  */
-class Platform {
+class Platform: public Singleton<Platform> {
 
 public:
-  Platform(const Platform &) = delete;
-  Platform &operator=(const Platform &) = delete;
-
-  static inline Platform &instance() {
-    static Platform Instance;
-    return Instance;
-  }
 
   /**
    * An HSA event handler that records (caches) all
@@ -87,10 +81,6 @@ public:
 
   llvm::Expected<std::optional<hsa::ExecutableSymbol>>
   getSymbolFromLoadedAddress(luthier::address_t Address);
-
-private:
-  Platform() = default;
-  ~Platform() = default;
 
   llvm::DenseMap<luthier::address_t, hsa_executable_symbol_t>
       AddressToSymbolMap{};

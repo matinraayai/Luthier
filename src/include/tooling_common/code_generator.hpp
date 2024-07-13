@@ -31,10 +31,15 @@ class ISA;
 
 class CodeGenerator : public Singleton<CodeGenerator> {
 public:
-  llvm::Error instrument(const LiftedRepresentation &LR,
-                         llvm::function_ref<llvm::Error(InstrumentationTask &,
-                                                        LiftedRepresentation &)>
-                             Mutator);
+  llvm::Error
+  instrument(const LiftedRepresentation &LR,
+             llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                            LiftedRepresentation &)>
+                 Mutator,
+             llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
+                 &CompiledCodeObjects,
+             llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
+                 *AssemblyFiles = nullptr);
 
 private:
   static llvm::Expected<llvm::Function &> generateHookIR(

@@ -13,14 +13,14 @@
 
 #include <optional>
 
-#include "tooling_common/code_generator.hpp"
-#include "tooling_common/code_lifter.hpp"
 #include "common/error.hpp"
 #include "hip/hip_intercept.hpp"
 #include "hsa/hsa_executable_symbol.hpp"
 #include "hsa/hsa_intercept.hpp"
 #include "hsa/hsa_platform.hpp"
 #include "luthier/instrumentation_task.h"
+#include "tooling_common/code_generator.hpp"
+#include "tooling_common/code_lifter.hpp"
 #include "tooling_common/tool_executable_manager.hpp"
 #include <luthier/instr.h>
 
@@ -35,8 +35,6 @@ const HipCompilerDispatchTable &getSavedCompilerTable() {
 } // namespace hip
 
 namespace hsa {
-
-
 
 void setAtHsaApiEvtCallback(
     const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback) {
@@ -132,7 +130,34 @@ instrumentAndLoad(hsa_executable_symbol_t Kernel,
                   llvm::StringRef Preset) {
   auto KernelWrapper = hsa::ExecutableSymbol::fromHandle(Kernel);
   LUTHIER_RETURN_ON_ERROR(KernelWrapper.takeError());
-  return CodeGenerator::instance().instrument(LR, Mutator);
+  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
+      CompiledCodeObjects;
+  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>> AssemblyFiles;
+  // Instrument the Lifted Representation
+  LUTHIER_RETURN_ON_ERROR(CodeGenerator::instance().instrument(
+      LR, Mutator, CompiledCodeObjects, nullptr));
+  // Create a set of extern variables used in the instrumented code
+  llvm::StringMap<void *> ExternVariables;
+  // set of static variables used in the original kernel itself
+  for (const auto &[Symbol, GV] : LR.globals()) {
+    auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
+    LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+    ExternVariables.insert({llvm::cantFail(SymbolWrapper->getName()),
+                            reinterpret_cast<void *>(llvm::cantFail(
+                                SymbolWrapper->getVariableAddress()))});
+  }
+  auto &TEM = ToolExecutableManager::instance();
+  const auto &SIM = TEM.getStaticInstrumentationModule();
+  auto Agent = llvm::cantFail(KernelWrapper->getAgent());
+  // Set of static variables used in the instrumentation module
+  for (const auto &GVName : SIM.getGlobalVariableNames()) {
+    auto VarAddress = SIM.getGlobalVariablesLoadedOnAgent(GVName, Agent);
+    LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
+    ExternVariables.insert(
+        {GVName, reinterpret_cast<void *>(**VarAddress)});
+  }
+  return TEM.loadInstrumentedKernel(CompiledCodeObjects, *KernelWrapper, Preset,
+                                    ExternVariables);
 }
 
 llvm::Error
@@ -141,8 +166,13 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
                                                  LiftedRepresentation &)>
                       Mutator,
                   llvm::StringRef Preset) {
-  return CodeGenerator::instance().instrument(
-      LR, Mutator);
+  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
+      CompiledCodeObjects;
+  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>> AssemblyFiles;
+  LUTHIER_RETURN_ON_ERROR(CodeGenerator::instance().instrument(
+      LR, Mutator, CompiledCodeObjects, nullptr));
+
+  return llvm::Error::success();
 }
 
 llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,

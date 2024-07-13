@@ -86,6 +86,12 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
       llvm::report_fatal_error("Executable cache invalidation failed");
     }
 
+    if (auto Err =
+            ToolExecutableManager::instance().unregisterIfLuthierToolExecutable(
+                Exec)) {
+      llvm::report_fatal_error("Unregistering tool executable failed");
+    }
+
     if (auto Err = Platform::instance().invalidateExecutableOnExecutableDestroy(
             Exec)) {
       llvm::report_fatal_error("Executable cache invalidation failed");
@@ -132,16 +138,18 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
 
 void rocprofilerFinalize(void *Data){
     LUTHIER_LOG_FUNCTION_CALL_START
-        //  luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
-        //      API_EVT_PHASE_BEFORE);
-        //  luthier::hsa::Interceptor::instance().uninstallApiTables();
-        //  luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
-        //      API_EVT_PHASE_AFTER);
+        // TODO: place this somewhere else
+        //   luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
+        //       API_EVT_PHASE_BEFORE);
+        //   luthier::hsa::Interceptor::instance().uninstallApiTables();
+        //   luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
+        //       API_EVT_PHASE_AFTER);
         LUTHIER_LOG_FUNCTION_CALL_END}
 
 Controller::Controller()
     : Singleton<Controller>() {
   // Initialize all the singletons
+  HsaPlatform = new hsa::Platform();
   CG = new CodeGenerator();
   COM = new ToolExecutableManager();
   CL = new CodeLifter();
@@ -151,10 +159,11 @@ Controller::Controller()
 
 Controller::~Controller() {
   delete CG;
-  delete COM;
   delete CL;
   delete TM;
   delete HipInterceptor;
+  delete COM;
+  delete HsaPlatform;
 }
 void Controller::init() {
   static std::once_flag Once{};

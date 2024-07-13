@@ -1,13 +1,18 @@
 #include "hsa/hsa_platform.hpp"
+#include "common/object_utils.hpp"
+#include "common/singleton.hpp"
 #include "hsa/hsa.hpp"
 #include "hsa/hsa_executable.hpp"
 #include "hsa/hsa_executable_symbol.hpp"
 #include "hsa/hsa_loaded_code_object.hpp"
-#include "common/object_utils.hpp"
 
 #undef DEBUG_TYPE
 
 #define DEBUG_TYPE "luthier-hsa-platform"
+
+namespace luthier {
+template <> hsa::Platform *Singleton<hsa::Platform>::Instance{nullptr};
+}
 
 namespace luthier::hsa {
 

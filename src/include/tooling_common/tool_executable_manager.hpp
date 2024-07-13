@@ -71,6 +71,10 @@ protected:
 private:
   const ModuleKind Kind;
 
+protected:
+  /// List of static symbols without the agent information
+  llvm::SmallVector<std::string> GlobalVariables{};
+
 public:
   ModuleKind getKind() const { return Kind; }
 
@@ -82,6 +86,10 @@ public:
   /// encountered during the process
   llvm::Expected<llvm::orc::ThreadSafeModule>
   readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx) const;
+
+  const llvm::SmallVector<std::string> & getGlobalVariableNames() const {
+    return GlobalVariables;
+  }
 
   /// Returns the loaded address of the global variable on the given \p Agent if
   /// already loaded, or \c std::nullopt if it is not loaded at the time of
@@ -95,7 +103,7 @@ public:
   /// \sa luthier::hsa::Executable::defineExternalAgentGlobalVariable
   virtual llvm::Expected<std::optional<luthier::address_t>>
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
-                                  const hsa::GpuAgent &Agent) = 0;
+                                  const hsa::GpuAgent &Agent) const = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -161,9 +169,6 @@ private:
   llvm::DenseMap<hsa::GpuAgent, llvm::StringMap<hsa::ExecutableSymbol>>
       PerAgentGlobalVariables{};
 
-  /// List of static symbols without the agent information
-  llvm::SmallVector<std::string> GlobalVariables{};
-
   /// A mapping between the shadow host pointer of a hook and its name
   /// Gets updated whenever \c __hipRegisterFunction is called by
   /// \c ToolExecutableManager
@@ -200,7 +205,7 @@ private:
 public:
   llvm::Expected<std::optional<luthier::address_t>>
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
-                                  const hsa::GpuAgent &Agent) override;
+                                  const hsa::GpuAgent &Agent) const override;
 
   /// Same as \c
   /// luthier::StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent,
@@ -291,10 +296,10 @@ public:
   /// external variables of the instrumented code objects
   /// \return an \p llvm::Error if an issue was encountered in the process
   llvm::Error loadInstrumentedKernel(
-      const llvm::ArrayRef<llvm::ArrayRef<uint8_t>> &InstrumentedElfs,
+      const llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
+          &InstrumentedElfs,
       const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
-      const llvm::ArrayRef<std::pair<llvm::StringRef, void *>>
-          &ExternVariables);
+      const llvm::StringMap<void *> &ExternVariables);
 
   /// Loads a list of instrumented versions of the loaded code objects found in
   /// \p OriginalExecutable into a new executable and freezes it \n

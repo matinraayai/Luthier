@@ -21,7 +21,10 @@ LUTHIER_ENABLE_REG_WRITER_FUNCTIONS
 
 __attribute__((managed)) uint32_t GlobalCounter = 20;
 
-LUTHIER_HOOK_ANNOTATE instrumentationHook() { GlobalCounter = 200; };
+LUTHIER_HOOK_ANNOTATE instrumentationHook() {
+//  __asm__ __volatile__("s_mov_b32 s2 300");
+  GlobalCounter = 3000;
+};
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
 
@@ -60,22 +63,34 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                     llvm::outs() << "Mutator called!\n";
                     for (auto &[Func, MF] : LR.functions()) {
                       MF->dump();
-                      auto &MBB = *MF->begin();
-                      auto &MI = *MBB.begin();
-
-                      if (auto Error = IT.insertHookBefore(
-                              *MI.getNextNode(),
-                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
-                        return Error;
+                      for (auto &MBB: *MF) {
+                        for (auto &MI : MBB) {
+                          if (MI.getOpcode() == llvm::AMDGPU::S_ADD_I32_vi) {
+                            MI.getOperand(2).setImm(200);
+                            if (auto Error = IT.insertHookBefore(
+                                    *MI.getNextNode(),
+                                    LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
+                              return Error;
+                          }
+                        }
+                      }
+//                      auto &MBB = *MF->begin();
+//                      auto &MI = *MBB.begin();
+//                      if (auto Error = IT.insertHookBefore(
+//                              MI,
+//                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
+//                        return Error;
                     }
                     return llvm::Error::success();
                   },
                   ""))
             llvm::report_fatal_error(std::move(Res), true);
         }
-        //        if (auto Res = luthier::overrideWithInstrumented(
-        //                DispatchPacket, "kernel instrumentAndLoad"))
-        //          llvm::report_fatal_error(std::move(Res), true);
+        llvm::outs() << "Pointer of counter at host: "
+                     << llvm::to_address(&GlobalCounter) << "\n";
+                if (auto Res = luthier::overrideWithInstrumented(
+                        DispatchPacket, ""))
+                  llvm::report_fatal_error(std::move(Res), true);
       }
     }
   }
@@ -83,16 +98,6 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
 
 static void atHsaApiTableUnload(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
-    llvm::outs() << "Counter Value: "
-                 << llvm::to_address(
-                        reinterpret_cast<uint64_t *>(GlobalCounter))
-                 << "\n";
-    llvm::outs() << "Pointer of counter at host: "
-                 << llvm::to_address(&GlobalCounter) << "\n";
-    llvm::outs() << "Reserved variable address: "
-                 << llvm::to_address(
-                        reinterpret_cast<uint64_t *>(&__luthier_reserved))
-                 << "\n";
   }
 }
 
@@ -109,8 +114,16 @@ void atToolInit(ApiEvtPhase Phase) {
 }
 
 void atFinalization(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER)
+  if (Phase == API_EVT_PHASE_AFTER) {
+    llvm::outs() << "Counter Value: " << GlobalCounter << "\n";
+    llvm::outs() << "Pointer of counter at host: "
+                 << llvm::to_address(&GlobalCounter) << "\n";
+    llvm::outs() << "Reserved variable address: "
+                 << llvm::to_address(
+                        reinterpret_cast<uint64_t *>(&__luthier_reserved))
+                 << "\n";
     llvm::outs() << "Kernel Instrument Tool is terminating!\n";
+  }
 }
 
 } // namespace luthier

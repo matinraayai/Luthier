@@ -97,7 +97,7 @@ static llvm::Error getHooks(const llvm::Module &M,
 }
 
 llvm::Error preprocessAndSaveModuleToStream(
-    llvm::Module &Module, llvm::SmallVector<std::string> StaticVariables,
+    llvm::Module &Module, llvm::SmallVector<std::string> &StaticVariables,
     std::string &CUID, llvm::SmallVector<char> &BitcodeOut) {
   Module.dump();
   // Extract all the hooks
@@ -142,7 +142,8 @@ llvm::Error preprocessAndSaveModuleToStream(
   // Extract the CUID for identification
   for (auto &GV : llvm::make_early_inc_range(Module.globals())) {
     auto GVName = GV.getName();
-    if (GVName.ends_with(".managed") || GVName == luthier::ReservedManagedVar) {
+    if (GVName.ends_with(".managed") || GVName == luthier::ReservedManagedVar ||
+        GV.getSection() == "llvm.metadata") {
       GV.dropAllReferences();
       GV.eraseFromParent();
     } else if (GVName.starts_with(HipCUIDPrefix)) {
@@ -274,7 +275,7 @@ StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
 }
 llvm::Expected<std::optional<luthier::address_t>>
 StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
-    llvm::StringRef GVName, const hsa::GpuAgent &Agent) {
+    llvm::StringRef GVName, const hsa::GpuAgent &Agent) const {
   auto VariableSymbolMapIt = PerAgentGlobalVariables.find(Agent);
 
   if (VariableSymbolMapIt != PerAgentGlobalVariables.end()) {
@@ -285,7 +286,7 @@ StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
     auto VariableSymbol = VariableSymbolIt->second;
     LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier::address_t, VariableAddress,
                                      VariableSymbol.getVariableAddress());
-    return *reinterpret_cast<uint64_t *>(VariableAddress);
+    return VariableAddress;
   } else {
     // If the agent is not in the map, then it probably wasn't loaded on the
     // device
@@ -405,9 +406,10 @@ ToolExecutableManager::getInstrumentedKernel(
 }
 
 llvm::Error ToolExecutableManager::loadInstrumentedKernel(
-    const llvm::ArrayRef<llvm::ArrayRef<uint8_t>> &InstrumentedElfs,
+    const llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
+        &InstrumentedElfs,
     const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
-    const llvm::ArrayRef<std::pair<llvm::StringRef, void *>> &ExternVariables) {
+    const llvm::StringMap<void *> &ExternVariables) {
   // Ensure this kernel was not instrumented under this profile
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(!isKernelInstrumented(OriginalKernel, Preset)));
@@ -426,7 +428,7 @@ llvm::Error ToolExecutableManager::loadInstrumentedKernel(
   }
 
   // Load the code objects into the executable
-  for (const auto &InstrumentedElf : InstrumentedElfs) {
+  for (const auto &[TargetLCO, InstrumentedElf] : InstrumentedElfs) {
     auto Reader = hsa::CodeObjectReader::createFromMemory(InstrumentedElf);
     LUTHIER_RETURN_ON_ERROR(Reader.takeError());
     auto LCO = Executable->loadAgentCodeObject(*Reader, *Agent);
@@ -556,28 +558,29 @@ ToolExecutableManager::~ToolExecutableManager() {
   // By the time the Tool Executable Manager is deleted, all instrumentation
   // kernels must have been destroyed; If not, print a warning, and clean
   // up anyway
-  if (!InstrumentedLCOInfo.empty()) {
-    llvm::errs()
-        << "Tool executable manager is being destroyed while the original "
-           "executables of its instrumented kernels are still frozen\n";
-    llvm::DenseSet<hsa::Executable> InstrumentedExecs;
-    for (auto &[LCO, COR] : InstrumentedLCOInfo) {
-      auto Exec = llvm::cantFail(LCO.getExecutable());
-      InstrumentedExecs.insert(Exec);
-      if (COR.destroy()) {
-        llvm::errs() << llvm::formatv(
-            "Code object reader {0:x} of Loaded Code Object {1:x}, Executable "
-            "{2:x} got destroyed with errors.\n",
-            COR.hsaHandle(), LCO.hsaHandle(), Exec.hsaHandle());
-      }
-    }
-    for (auto &Exec : InstrumentedExecs) {
-      if (Exec.destroy()) {
-        llvm::errs() << llvm::formatv(
-            "Executable {0:x} got destroyed with errors.\n", Exec.hsaHandle());
-      }
-    }
-  }
+  // TODO: Fix this, again
+//  if (!InstrumentedLCOInfo.empty()) {
+//    llvm::outs()
+//        << "Tool executable manager is being destroyed while the original "
+//           "executables of its instrumented kernels are still frozen\n";
+//    llvm::DenseSet<hsa::Executable> InstrumentedExecs;
+//    for (auto &[LCO, COR] : InstrumentedLCOInfo) {
+//      auto Exec = llvm::cantFail(LCO.getExecutable());
+//      InstrumentedExecs.insert(Exec);
+//      if (COR.destroy()) {
+//        llvm::outs() << llvm::formatv(
+//            "Code object reader {0:x} of Loaded Code Object {1:x}, Executable "
+//            "{2:x} got destroyed with errors.\n",
+//            COR.hsaHandle(), LCO.hsaHandle(), Exec.hsaHandle());
+//      }
+//    }
+//    for (auto &Exec : InstrumentedExecs) {
+//      if (Exec.destroy()) {
+//        llvm::outs() << llvm::formatv(
+//            "Executable {0:x} got destroyed with errors.\n", Exec.hsaHandle());
+//      }
+//    }
+//  }
   OriginalToInstrumentedKernelsMap.clear();
 }
 

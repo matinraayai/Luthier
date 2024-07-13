@@ -305,7 +305,8 @@ runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
 llvm::Error patchLiftedRepresentation(
     const llvm::Module &IModule, const llvm::MachineModuleInfo &IMMI,
     llvm::Module &LRModule, llvm::MachineModuleInfo &LRMMI,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookFuncMap) {
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+        &MIToHookFuncMap) {
   llvm::ValueToValueMapTy VMap;
   llvm::DenseMap<const llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
       MBBMap;
@@ -343,12 +344,11 @@ llvm::Error patchLiftedRepresentation(
     if (MI->getIterator() == TargetMBB.begin()) {
       if (ReturnBlocks.empty()) {
         MBBMap.insert({&HookMF.front(), &TargetMBB});
-      }
-      else {
-        auto* NewEntryBlock = TargetMF.CreateMachineBasicBlock();
+      } else {
+        auto *NewEntryBlock = TargetMF.CreateMachineBasicBlock();
         TargetMF.insert(TargetMBB.getIterator(), NewEntryBlock);
-        for (auto It = TargetMBB.pred_begin(), IterEnd = TargetMBB.pred_end(); It != IterEnd;
-             ++It) {
+        for (auto It = TargetMBB.pred_begin(), IterEnd = TargetMBB.pred_end();
+             It != IterEnd; ++It) {
           auto PredMBB = *It;
           PredMBB->removeSuccessor(&TargetMBB);
           PredMBB->addSuccessor(NewEntryBlock);
@@ -362,7 +362,8 @@ llvm::Error patchLiftedRepresentation(
     llvm::MachineBasicBlock *TermBlock{nullptr};
     // If there's at least a return block, then splice the MBB right before the
     // MI
-    // If MI is the first instruction in the block, then the TargetMBB will become the return block's dest
+    // If MI is the first instruction in the block, then the TargetMBB will
+    // become the return block's dest
     if (!ReturnBlocks.empty()) {
       if (MI->getIterator() != TargetMBB.begin())
         TermBlock = TargetMBB.splitAt(*MI->getPrevNode());
@@ -390,7 +391,7 @@ llvm::Error patchLiftedRepresentation(
         auto *SrcSuccMBB = *It;
         auto *DstSuccMBB = MBBMap[SrcSuccMBB];
         if (DstMBB->succ_empty())
-            DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
+          DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
       }
     }
     if (TermBlock != nullptr && TermBlock->pred_empty()) {
@@ -420,6 +421,12 @@ llvm::Error patchLiftedRepresentation(
         InsertionPoint = MI->getIterator();
       } else
         InsertionPoint = DstMBB->end();
+      if (MBB.isEntryBlock()) {
+        auto *DstMI = TargetMF.CreateMachineInstr(TII->get(AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+                                                  /*NoImplicit=*/true);
+        DstMBB->insert(InsertionPoint, DstMI);
+        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
+      }
       for (auto &SrcMI : MBB.instrs()) {
         auto *PreInstrSymbol = SrcMI.getPreInstrSymbol();
         if (PreInstrSymbol != nullptr &&
@@ -465,38 +472,77 @@ llvm::Error patchLiftedRepresentation(
           DstMI->addOperand(DstMO);
         }
       }
+      if (ReturnBlocks.contains(&MBB) || (MBB.isEntryBlock() && HookMF.size() == 1)) {
+        auto *DstMI = TargetMF.CreateMachineInstr(TII->get(AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+                                                  /*NoImplicit=*/true);
+        DstMBB->insert(InsertionPoint, DstMI);
+        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
+      }
     }
   }
   return llvm::Error::success();
 }
 
 llvm::Error
-printAssembly(llvm::Module &M,
-              std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
-              llvm::GCNTargetMachine &TM, llvm::SmallVector<char> &Reloc) {
-  llvm::legacy::PassManager PM;
-  TM.setOptLevel(llvm::CodeGenOptLevel::None);
-  llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
+printAssembly(LiftedRepresentation &LR,
+              llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
+                  &CompiledRelocatables,
+              llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
+                  *AssemblyFiles = nullptr) {
+  auto Lock = LR.getContext().getLock();
+  for (auto &[LCO, LCOModule] : LR.modules()) {
+    for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+      llvm::outs() << F.getName() << "\n";
+      if (auto MF = LCOModule.second->getMMI().getMachineFunction(F)) {
+        MF->print(llvm::outs());
+      }
+    }
+    auto &[TSModule, MMIWP] = LCOModule;
+    auto &M = *TSModule.getModuleUnlocked();
+    llvm::legacy::PassManager PM;
+    llvm::MCContext &MCContext = MMIWP->getMMI().getContext();
+    // Get the target machine of the LCO's ISA
+    hsa::LoadedCodeObject LCOWrapper(LCO);
+    auto ISA = LCOWrapper.getISA();
+    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+    auto TargetInfo =
+        llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
+    auto TM = TargetInfo.getTargetMachine();
+    llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
+    PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+    auto *TPC = TM->createPassConfig(PM);
+    TPC->setDisableVerify(true);
+    TPC->setInitialized();
+    PM.add(TPC);
+    PM.add(MMIWP.release());
+    auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
+    PM.add(UsageAnalysis);
+    if (!CompiledRelocatables.contains(LCOWrapper)) {
+      CompiledRelocatables.insert({LCOWrapper, {}});
+    }
+    llvm::raw_svector_ostream ObjectFileOS(CompiledRelocatables[LCOWrapper]);
 
-  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
-  PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-  auto *TPC = TM.createPassConfig(PM);
-  TPC->setDisableVerify(true);
-  TPC->setInitialized();
-  PM.add(TPC);
-  PM.add(MMIWP.release());
-  auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
-  PM.add(UsageAnalysis);
-  llvm::raw_svector_ostream OutOS(Reloc);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+        !TM->addAsmPrinter(PM, ObjectFileOS, nullptr,
+                           llvm::CodeGenFileType::ObjectFile, MCContext)));
 
-  // AsmPrinter is responsible for generating the assembly into AsmBuffer.
-  if (TM.addAsmPrinter(PM, OutOS, nullptr, llvm::CodeGenFileType::AssemblyFile,
-                       MCContext))
-    llvm::outs() << "Failed to add pass manager\n";
-
-  PM.run(M); // Run all the passes
+    std::unique_ptr<llvm::raw_svector_ostream> AssemblyFileOS;
+    if (AssemblyFiles != nullptr) {
+      if (!AssemblyFiles->contains(LCOWrapper)) {
+        AssemblyFiles->insert({LCOWrapper, {}});
+      }
+      AssemblyFileOS = std::make_unique<llvm::raw_svector_ostream>(
+          (*AssemblyFiles)[LCOWrapper]);
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+          !TM->addAsmPrinter(PM, *AssemblyFileOS, nullptr,
+                             llvm::CodeGenFileType::ObjectFile, MCContext)));
+    }
+    llvm::outs() << "Running the printer pass manager\n";
+    PM.run(M); // Run all the passes
+    return llvm::Error::success();
+  }
   return llvm::Error::success();
-}
+} // namespace luthier
 
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                                        const InstrumentationTask &Task) {
@@ -533,8 +579,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
 
       for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
         // Generate the Hooks for each MI
-        auto BeforeMIFunc =
-            generateHookIR(*MI, HookSpecs, *ISA, M);
+        auto BeforeMIFunc = generateHookIR(*MI, HookSpecs, *ISA, M);
         LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
         MIToHookFuncMap.insert({MI, &(*BeforeMIFunc)});
       }
@@ -562,16 +607,12 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
           M, MMIWP->getMMI(), *LCOModule.first.getModuleUnlocked(),
           LCOModule.second->getMMI(), MIToHookFuncMap));
       for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+        llvm::outs() << "Function name inside: " << F.getName() << "\n";
         llvm::outs() << LCOModule.second->getMMI().getModule() << "\n";
         if (auto MF = LCOModule.second->getMMI().getMachineFunction(F)) {
           MF->print(llvm::outs());
         }
       }
-      // Print the Assembly
-      llvm::SmallVector<char> Reloc;
-      LUTHIER_RETURN_ON_ERROR(printAssembly(
-          *LCOModule.first.getModuleUnlocked(), LCOModule.second, *TM, Reloc));
-      llvm::outs() << Reloc << "\n";
       return llvm::Error::success();
     }));
   }
@@ -582,17 +623,35 @@ llvm::Error CodeGenerator::instrument(
     const LiftedRepresentation &LR,
     llvm::function_ref<llvm::Error(InstrumentationTask &,
                                    LiftedRepresentation &)>
-        Mutator) {
+        Mutator,
+    llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
+        &CompiledCodeObjects,
+    llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
+        *AssemblyFiles) {
   // Clone the Lifted Representation
-  auto ClonedLR = CodeLifter::instance().cloneRepresentation(LR);
-  LUTHIER_RETURN_ON_ERROR(ClonedLR.takeError());
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
+      std::unique_ptr<LiftedRepresentation>, ClonedLR,
+      CodeLifter::instance().cloneRepresentation(LR));
   // Run the mutator function on the Lifted Representation and populate the
   // instrumentation task
   InstrumentationTask IT("");
-  LUTHIER_RETURN_ON_ERROR(Mutator(IT, **ClonedLR));
+  LUTHIER_RETURN_ON_ERROR(Mutator(IT, *ClonedLR));
   // Insert the hooks inside the Lifted Representation
-  LUTHIER_RETURN_ON_ERROR(insertHooks(**ClonedLR, IT));
-  // Generate the shared objects and return it
+  LUTHIER_RETURN_ON_ERROR(insertHooks(*ClonedLR, IT));
+  // Generate the relocatable objects
+  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
+      CompiledRelocatables;
+  LUTHIER_RETURN_ON_ERROR(
+      printAssembly(*ClonedLR, CompiledRelocatables, AssemblyFiles));
+  // Link the executables
+  for (const auto &[LCO, Reloc] : CompiledRelocatables) {
+    if (!CompiledCodeObjects.contains(LCO))
+      CompiledCodeObjects.insert({LCO, {}});
+    LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
+        llvm::ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(Reloc.data()),
+                                Reloc.size()),
+        llvm::cantFail(LCO.getISA()), CompiledCodeObjects[LCO]));
+  }
   return llvm::Error::success();
 }
 
@@ -676,16 +735,16 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
           if (BitWidth == 32) {
             // s0 = S_ADD_U32 s0, $LiveIn
             // S_STORE_DWORDX2_IMM s[0:1], s[0:1], 0, 0
+//            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+//                          MCII->get(AMDGPU::S_ADD_U32))
+//                .addReg(llvm::AMDGPU::SGPR0)
+//                .addReg(llvm::AMDGPU::SGPR0)
+//                .addReg(PhysLiveInReg)
+//                ->setPreInstrSymbol(
+//                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
             llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-                          MCII->get(AMDGPU::S_ADD_U32))
-                .addReg(llvm::AMDGPU::SGPR0)
-                .addReg(llvm::AMDGPU::SGPR0)
+                          MCII->get(AMDGPU::S_STORE_DWORD_IMM))
                 .addReg(PhysLiveInReg)
-                ->setPreInstrSymbol(
-                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
-            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-                          MCII->get(AMDGPU::S_STORE_DWORDX2_IMM))
-                .addReg(llvm::AMDGPU::SGPR0_SGPR1)
                 .addReg(llvm::AMDGPU::SGPR0_SGPR1)
                 .addImm(0)
                 .addImm(0)
