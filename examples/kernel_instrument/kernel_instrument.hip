@@ -21,9 +21,7 @@ LUTHIER_ENABLE_REG_WRITER_FUNCTIONS
 
 __attribute__((managed)) uint32_t GlobalCounter = 20;
 
-LUTHIER_HOOK_ANNOTATE instrumentationHook(uint32_t SGPR0) {
-  GlobalCounter = SGPR0;
-};
+LUTHIER_HOOK_ANNOTATE instrumentationHook() { GlobalCounter = 200; };
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
 
@@ -61,12 +59,13 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                       LiftedRepresentation &LR) -> llvm::Error {
                     llvm::outs() << "Mutator called!\n";
                     for (auto &[Func, MF] : LR.functions()) {
+                      MF->dump();
                       auto &MBB = *MF->begin();
                       auto &MI = *MBB.begin();
 
-                      if (auto Error = IT.insertHookAt(
-                              MI, LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
-                              INSTR_POINT_AFTER, {llvm::AMDGPU::SGPR0}))
+                      if (auto Error = IT.insertHookBefore(
+                              *MI.getNextNode(),
+                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
                         return Error;
                     }
                     return llvm::Error::success();

@@ -189,18 +189,17 @@ createInlineAsmMCRegLoad(llvm::MCRegister Reg, const hsa::ISA &ISA,
 
 llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
     const llvm::MachineInstr &MI,
-    const llvm::ArrayRef<InstrumentationTask::mi_hook_insertion_task> HookSpecs,
-    InstrPoint IPoint, const hsa::ISA &ISA, llvm::Module &IModule) {
+    const llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor>
+        HookSpecs,
+    const hsa::ISA &ISA, llvm::Module &IModule) {
   // 1. Create an empty kernel per MI insertion point in the LCO Module with
   // no input arguments
   llvm::Type *const ReturnType = llvm::Type::getVoidTy(IModule.getContext());
   llvm::FunctionType *FunctionType =
       llvm::FunctionType::get(ReturnType, {}, false);
-  auto *HookIRKernel = llvm::Function::Create(
-      FunctionType, llvm::GlobalValue::ExternalLinkage,
-      llvm::formatv("Hooks{0}MIAt{1}",
-                    IPoint == INSTR_POINT_BEFORE ? "Before" : "After", &MI),
-      IModule);
+  auto *HookIRKernel =
+      llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage,
+                             llvm::formatv("HookAt{1}", &MI), IModule);
   HookIRKernel->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
   // Prevent emission of the prologue/epilogue code, but still lower the stack
   // operands
@@ -209,9 +208,8 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
   llvm::BasicBlock *BB =
       llvm::BasicBlock::Create(IModule.getContext(), "", HookIRKernel);
   llvm::IRBuilder<> Builder(BB);
-  LLVM_DEBUG(llvm::dbgs() << "Number of hooks inserted "
-                          << (IPoint == INSTR_POINT_BEFORE ? "before" : "after")
-                          << " MI: " << HookSpecs.size() << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Number of hooks to be inserted for MI: "
+                          << HookSpecs.size() << "\n");
   for (const auto &HookSpec : HookSpecs) {
     auto Hook = IModule.getFunction(HookSpec.HookName);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
@@ -270,10 +268,9 @@ static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine *TM) {
 
 std::pair<std::unique_ptr<llvm::legacy::PassManager>,
           llvm::MachineModuleInfoWrapperPass *>
-runCodeGenPipeline(
-    llvm::Module &M, llvm::GCNTargetMachine *TM, const LiftedRepresentation &LR,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeHooks,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterHooks) {
+runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
+                   const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+                       &MIToHookFuncMap) {
   // TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
   auto PM = std::make_unique<llvm::legacy::PassManager>();
 
@@ -288,7 +285,7 @@ runCodeGenPipeline(
   PM->add(IMMIWP);
 
   TPC->addISelPasses();
-  PM->add(new luthier::ReserveLiveRegs(BeforeHooks, AfterHooks));
+  PM->add(new luthier::ReserveLiveRegs(MIToHookFuncMap));
   //  PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
   //                                        <#initializer #>))
   TPC->addMachinePasses();
@@ -308,15 +305,14 @@ runCodeGenPipeline(
 llvm::Error patchLiftedRepresentation(
     const llvm::Module &IModule, const llvm::MachineModuleInfo &IMMI,
     llvm::Module &LRModule, llvm::MachineModuleInfo &LRMMI,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeHooks,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterHooks) {
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookFuncMap) {
   llvm::ValueToValueMapTy VMap;
   llvm::DenseMap<const llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
       MBBMap;
   llvm::DenseSet<const llvm::MachineBasicBlock *> ReturnBlocks;
   // Clone the Global variables
   for (const auto &GV : IModule.globals()) {
-    GlobalVariable *NewGV = new GlobalVariable(
+    auto *NewGV = new GlobalVariable(
         LRModule, GV.getValueType(), GV.isConstant(), GV.getLinkage(), nullptr,
         GV.getName(), nullptr, GV.getThreadLocalMode(),
         GV.getType()->getAddressSpace());
@@ -324,15 +320,15 @@ llvm::Error patchLiftedRepresentation(
     VMap[&GV] = NewGV;
   }
   // Clone the MBBs
-  for (const auto &[MI, HookF] : AfterHooks) {
+  for (const auto &[MI, HookF] : MIToHookFuncMap) {
     const auto &HookMF = *IMMI.getMachineFunction(*HookF);
     auto &TargetMBB = *MI->getParent();
     auto &TargetMF = *TargetMBB.getParent();
 
     for (const auto &MBB : HookMF) {
       if (MBB.isEntryBlock()) {
-        MBBMap.insert({&MBB, &TargetMF.front()});
-
+        if (MI->getIterator() != TargetMBB.begin())
+          MBBMap.insert({&MBB, &TargetMBB});
       }
       // This else/if statement will count an MBB that is both entry/return as
       // an entry block only. This will cause ReturnBlocks to have zero blocks
@@ -344,14 +340,34 @@ llvm::Error patchLiftedRepresentation(
         MBBMap.insert({&MBB, NewTargetMBB});
       }
     }
+    if (MI->getIterator() == TargetMBB.begin()) {
+      if (ReturnBlocks.empty()) {
+        MBBMap.insert({&HookMF.front(), &TargetMBB});
+      }
+      else {
+        auto* NewEntryBlock = TargetMF.CreateMachineBasicBlock();
+        TargetMF.insert(TargetMBB.getIterator(), NewEntryBlock);
+        for (auto It = TargetMBB.pred_begin(), IterEnd = TargetMBB.pred_end(); It != IterEnd;
+             ++It) {
+          auto PredMBB = *It;
+          PredMBB->removeSuccessor(&TargetMBB);
+          PredMBB->addSuccessor(NewEntryBlock);
+        }
+        MBBMap.insert({&HookMF.front(), NewEntryBlock});
+      }
+    }
 
     // Special logic for handling return blocks of hooks and creating the
     // term block
-    llvm::MachineBasicBlock *TermBlock;
-    // If there's at least a return block, then splice the MBB right after the
+    llvm::MachineBasicBlock *TermBlock{nullptr};
+    // If there's at least a return block, then splice the MBB right before the
     // MI
+    // If MI is the first instruction in the block, then the TargetMBB will become the return block's dest
     if (!ReturnBlocks.empty()) {
-      TermBlock = TargetMBB.splitAt(*MI);
+      if (MI->getIterator() != TargetMBB.begin())
+        TermBlock = TargetMBB.splitAt(*MI->getPrevNode());
+      else
+        TermBlock = &TargetMBB;
       // if there's only one return block, then the return block will be mapped
       // to the term block
       if (ReturnBlocks.size() == 1) {
@@ -373,7 +389,8 @@ llvm::Error patchLiftedRepresentation(
            ++It) {
         auto *SrcSuccMBB = *It;
         auto *DstSuccMBB = MBBMap[SrcSuccMBB];
-        DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
+        if (DstMBB->succ_empty())
+            DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
       }
     }
     if (TermBlock != nullptr && TermBlock->pred_empty()) {
@@ -400,7 +417,7 @@ llvm::Error patchLiftedRepresentation(
       if (ReturnBlocks.contains(&MBB)) {
         InsertionPoint = DstMBB->begin();
       } else if (MBB.isEntryBlock() && HookMF.size() == 1) {
-        InsertionPoint = MI->getIterator()->getNextNode();
+        InsertionPoint = MI->getIterator();
       } else
         InsertionPoint = DstMBB->end();
       for (auto &SrcMI : MBB.instrs()) {
@@ -494,81 +511,69 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     // Load the bitcode of the instrumentation module into the LR's context
     auto IModule = Task.getModule().readBitcodeIntoContext(LR.getContext());
     LUTHIER_RETURN_ON_ERROR(IModule.takeError());
-    LUTHIER_RETURN_ON_ERROR(
-        IModule->withModuleDo([&](llvm::Module &M) -> llvm::Error {
-          LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
-                     M.print(llvm::dbgs(), nullptr););
-          // Get the target machine of the LCO's ISA
-          auto ISA = hsa::LoadedCodeObject(LCO).getISA();
-          LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-          auto TargetInfo =
-              llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
-          auto TM = TargetInfo.getTargetMachine();
-          LLVM_DEBUG(llvm::dbgs() << "ISA of the LCO: "
-                                  << llvm::cantFail(ISA->getName()) << "\n");
-          // TODO: Process the read/write register functions here
+    LUTHIER_RETURN_ON_ERROR(IModule->withModuleDo([&](llvm::Module &M)
+                                                      -> llvm::Error {
+      LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
+                 M.print(llvm::dbgs(), nullptr););
+      // Get the target machine of the LCO's ISA
+      auto ISA = hsa::LoadedCodeObject(LCO).getISA();
+      LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+      auto TargetInfo =
+          llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
+      auto TM = TargetInfo.getTargetMachine();
+      LLVM_DEBUG(llvm::dbgs() << "ISA of the LCO: "
+                              << llvm::cantFail(ISA->getName()) << "\n");
+      // TODO: Process the read/write register functions here
 
-          // Now that everything has been created we can start inserting hooks
-          LLVM_DEBUG(llvm::dbgs()
-                     << "Number of MIs to get hooks: "
-                     << Task.getHookInsertionTasks().size() << "\n");
-          // A map to keep track of Hooks per MI
-          llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> BeforeHooksMap;
-          llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> AfterHooksMap;
+      // Now that everything has been created we can start inserting hooks
+      LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
+                              << Task.getHookInsertionTasks().size() << "\n");
+      // A map to keep track of Hooks per MI
+      llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> MIToHookFuncMap;
 
-          for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
-            // Generate the Hooks
-            if (!HookSpecs.BeforeIPointTasks.empty()) {
-              auto BeforeMIFunc =
-                  generateHookIR(*MI, HookSpecs.BeforeIPointTasks,
-                                 INSTR_POINT_BEFORE, *ISA, M);
-              LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
-              BeforeHooksMap.insert({MI, &(*BeforeMIFunc)});
-            }
-            if (!HookSpecs.AfterIPointTasks.empty()) {
-              // Generate the After MI Hooks
-              auto AfterMIFunc = generateHookIR(*MI, HookSpecs.AfterIPointTasks,
-                                                INSTR_POINT_AFTER, *ISA, M);
-              LUTHIER_RETURN_ON_ERROR(AfterMIFunc.takeError());
-              AfterHooksMap.insert({MI, &(*AfterMIFunc)});
-            }
-          }
-          LLVM_DEBUG(llvm::dbgs()
-                     << "Instrumentation Module After Hooks Inserted:\n");
-          LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
-          // With the Hook IR generated, we put it through the normal IR
-          // pipeline
-          optimizeModule(M, TM);
-          M.dump();
-          // Run the code gen pipeline, while enforcing the stack and register
-          // constraints
-          auto [PM, MMIWP] =
-              runCodeGenPipeline(M, TM, LR, BeforeHooksMap, AfterHooksMap);
-          for (const auto &F : M) {
-            llvm::outs() << MMIWP->getMMI().getModule() << "\n";
-            if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
-              MF->print(llvm::outs());
-            }
-          }
-          // Finally, patch in the generated machine code into the lifted
-          // representation
-          LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
-              M, MMIWP->getMMI(), *LCOModule.first.getModuleUnlocked(),
-              LCOModule.second->getMMI(), BeforeHooksMap, AfterHooksMap));
-          for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
-            llvm::outs() << LCOModule.second->getMMI().getModule() << "\n";
-            if (auto MF = LCOModule.second->getMMI().getMachineFunction(F)) {
-              MF->print(llvm::outs());
-            }
-          }
-          // Print the Assembly
-          llvm::SmallVector<char> Reloc;
-          LUTHIER_RETURN_ON_ERROR(
-              printAssembly(*LCOModule.first.getModuleUnlocked(),
-                            LCOModule.second, *TM, Reloc));
-          llvm::outs() << Reloc << "\n";
-          return llvm::Error::success();
-        }));
+      for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
+        // Generate the Hooks for each MI
+        auto BeforeMIFunc =
+            generateHookIR(*MI, HookSpecs, *ISA, M);
+        LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
+        MIToHookFuncMap.insert({MI, &(*BeforeMIFunc)});
+      }
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Instrumentation Module After Hooks Inserted:\n");
+      LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
+      // With the Hook IR generated, we put it through the normal IR
+      // pipeline
+      optimizeModule(M, TM);
+      LLVM_DEBUG(llvm::dbgs()
+                     << "Instrumentation Module after IR optimization:\n";
+                 M.print(llvm::dbgs(), nullptr));
+      // Run the code gen pipeline, while enforcing the stack and register
+      // constraints
+      auto [PM, MMIWP] = runCodeGenPipeline(M, TM, MIToHookFuncMap);
+      for (const auto &F : M) {
+        llvm::outs() << MMIWP->getMMI().getModule() << "\n";
+        if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
+          MF->print(llvm::outs());
+        }
+      }
+      // Finally, patch in the generated machine code into the lifted
+      // representation
+      LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
+          M, MMIWP->getMMI(), *LCOModule.first.getModuleUnlocked(),
+          LCOModule.second->getMMI(), MIToHookFuncMap));
+      for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+        llvm::outs() << LCOModule.second->getMMI().getModule() << "\n";
+        if (auto MF = LCOModule.second->getMMI().getMachineFunction(F)) {
+          MF->print(llvm::outs());
+        }
+      }
+      // Print the Assembly
+      llvm::SmallVector<char> Reloc;
+      LUTHIER_RETURN_ON_ERROR(printAssembly(
+          *LCOModule.first.getModuleUnlocked(), LCOModule.second, *TM, Reloc));
+      llvm::outs() << Reloc << "\n";
+      return llvm::Error::success();
+    }));
   }
   return llvm::Error::success();
 }
@@ -594,12 +599,12 @@ llvm::Error CodeGenerator::instrument(
 char ReserveLiveRegs::ID = 0;
 
 ReserveLiveRegs::ReserveLiveRegs(
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeMIHooks,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterMIHooks)
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+        &MIToHookFuncMap)
     : llvm::MachineFunctionPass(ID) {
 
   // Calculate the Live-ins at each instruction for before MI hooks
-  for (const auto &[MI, HookKernel] : BeforeMIHooks) {
+  for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
     (void)HookToInsertionPointMap.insert({HookKernel, MI});
     auto *MBB = MI->getParent();
     auto *MF = MBB->getParent();
@@ -611,27 +616,8 @@ ReserveLiveRegs::ReserveLiveRegs(
     for (auto I = MBB->rbegin(); I != MI->getReverseIterator(); I++) {
       LiveRegs.stepBackward(*I);
     }
-    // Before MI hooks need to remove the defs of the MI
+    // Before MI hooks need to remove the defs of the MI itself
     LiveRegs.stepBackward(*MI);
-    LLVM_DEBUG(
-        llvm::dbgs() << "Live regs at instruction " << MI << ": \n";
-        auto *TRI = MF->getSubtarget().getRegisterInfo();
-        for (const auto &Reg
-             : LiveRegs) { llvm::dbgs() << TRI->getRegAsmName(Reg) << "\n"; });
-  }
-  // Calculate the Live-ins at each instruction after MI hooks
-  for (const auto &[MI, HookKernel] : AfterMIHooks) {
-    (void)HookToInsertionPointMap.insert({HookKernel, MI});
-    auto *MBB = MI->getParent();
-    auto *MF = MBB->getParent();
-    (void)HookLiveRegs.insert(
-        {HookKernel, std::make_unique<llvm::LivePhysRegs>(
-                         *MF->getSubtarget().getRegisterInfo())});
-    auto &LiveRegs = *HookLiveRegs[HookKernel];
-    LiveRegs.addLiveOuts(*MBB);
-    for (auto I = MBB->rbegin(); I != MI->getReverseIterator(); I++) {
-      LiveRegs.stepBackward(*I);
-    }
     LLVM_DEBUG(
         llvm::dbgs() << "Live regs at instruction " << MI << ": \n";
         auto *TRI = MF->getSubtarget().getRegisterInfo();

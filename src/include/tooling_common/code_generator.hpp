@@ -4,7 +4,7 @@
 ///
 /// \file
 /// This file describes Luthier's code generator, which instruments lifted
-/// representation given an instrumentation task.
+/// representations given an instrumentation task.
 //===----------------------------------------------------------------------===//
 #ifndef CODE_GENERATOR_HPP
 #define CODE_GENERATOR_HPP
@@ -39,9 +39,8 @@ public:
 private:
   static llvm::Expected<llvm::Function &> generateHookIR(
       const llvm::MachineInstr &MI,
-      const llvm::ArrayRef<InstrumentationTask::mi_hook_insertion_task>
-          HookSpecs,
-      InstrPoint IPoint, const hsa::ISA &ISA, llvm::Module &IModule);
+      llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor> HookSpecs,
+      const hsa::ISA &ISA, llvm::Module &IModule);
 
   static llvm::Error insertHooks(LiftedRepresentation &LR,
                                  const InstrumentationTask &Tasks);
@@ -68,14 +67,18 @@ public:
 
 private:
   hook_live_regs_map_t HookLiveRegs;
+  llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
+      HookToInsertionPointMap;
+
 public:
-  ReserveLiveRegs(
-      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-          &BeforeMIHooks,
-      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-          &AfterMIHooks);
+  llvm::StringRef getPassName() const override { return "Reserve Live Regs"; }
+
+  ReserveLiveRegs(const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+                      &MIToHookFuncMap);
 
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
+
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 };
 
 // This custom pass iterates through the Instrumentation Modules frame objects
@@ -86,7 +89,8 @@ public:
   static char ID;
 
 private:
-  llvm::DenseMap<llvm::Function*, unsigned int> FrameOffset;
+  llvm::DenseMap<llvm::Function *, unsigned int> FrameOffset;
+
 public:
   explicit StackFrameOffset(
       const LiftedRepresentation &LR,
@@ -97,6 +101,21 @@ public:
 
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
 };
+
+class InstBundler : public llvm::MachineFunctionPass {
+public:
+  static char ID;
+
+public:
+  InstBundler() : llvm::MachineFunctionPass(ID){};
+
+  llvm::StringRef getPassName() const override {
+    return "luthier-inst-bundler";
+  }
+
+  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
+};
+
 } // namespace luthier
 
 #endif
