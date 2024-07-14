@@ -16,8 +16,9 @@
 namespace luthier::hsa {
 
 /// Initializes the HSA runtime if already not initialized, and increments
-/// a reference counter.\n
-/// Must only be used by unit tests
+/// a reference counter by calling the function defined in hsa.h.\n
+/// Must only be used by unit tests, as this function can be captured
+/// by HSA intercept.
 /// \return an \c llvm::Error indicating any HSA issues encountered
 /// \sa hsa_init
 llvm::Error init();
@@ -62,9 +63,11 @@ convertToHostEquivalent(llvm::ArrayRef<uint8_t> Code);
 /// host memory, or an \c llvm::Error indicating any HSA errors encountered
 llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code);
 
-/// Decreases the reference count of the HSA runtime instance; Shuts down the
-/// HSA runtime if the counter reaches zero \n
-/// Must only be used by unit tests
+/// Decreases the reference count of the HSA runtime instance by calling the 
+/// function defined in hsa.h; Shuts down the HSA runtime if the counter 
+/// reaches zero \n
+/// Must only be used by unit tests, as this function can be captured
+/// by HSA intercept.
 /// \return an \c llvm::Error indicating any HSA issues encountered
 /// \sa hsa_shutdown
 llvm::Error shutdown();

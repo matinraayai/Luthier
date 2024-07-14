@@ -37,3 +37,7 @@ target_link_libraries(luthier_tooling_common PUBLIC luthier_common luthier_hip l
         LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA LLVMAMDGPUUtils LLVMAsmPrinter LLVMCodeGen
         LLVMAMDGPUAsmParser LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject LLVMPasses
         LLVMSupport LLVMTarget LLVMTargetParser)
+
+if (${LUTHIER_BUILD_UNIT_TESTS})
+    add_subdirectory(unittest)
+endif()

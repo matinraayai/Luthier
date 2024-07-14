@@ -724,7 +724,7 @@ llvm::Error CodeLifter::liftFunction(
         // Check if at any point in the instruction we need to apply
         // relocations
         bool RelocationApplied{false};
-        for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
+        for (luthier::address_t I = InstAddr + 1; I <= InstAddr + InstSize; ++I) {
           auto RelocationInfo = resolveRelocation(*LCO, I);
           LUTHIER_RETURN_ON_ERROR(RelocationInfo.takeError());
           if (RelocationInfo->has_value()) {

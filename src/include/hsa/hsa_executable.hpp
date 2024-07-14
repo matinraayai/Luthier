@@ -31,6 +31,25 @@ class Executable final : public HandleType<hsa_executable_t> {
   friend class luthier::ToolExecutableManager;
 
 private:
+  llvm::Error defineExternalAgentGlobalVariable(const hsa::GpuAgent &Agent,
+                                                llvm::StringRef SymbolName,
+                                                void *Address);
+
+  llvm::Error defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol);
+
+  llvm::Expected<bool> validate(llvm::StringRef Options = "");
+
+
+public:
+  explicit Executable(hsa_executable_t Exec);
+
+  llvm::Expected<hsa_profile_t> getProfile();
+
+  [[nodiscard]] llvm::Expected<hsa_executable_state_t> getState() const;
+
+  llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
+  
+  /// create, freeze, destroy, and loadAgentCodeObject were originally private
   static llvm::Expected<Executable>
   create(hsa_profile_t Profile = HSA_PROFILE_FULL,
          hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
@@ -41,27 +60,10 @@ private:
   loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
                       const hsa::GpuAgent &Agent, llvm::StringRef Options = "");
 
-  llvm::Error defineExternalAgentGlobalVariable(const hsa::GpuAgent &Agent,
-                                                llvm::StringRef SymbolName,
-                                                void *Address);
-
-  llvm::Error defineAgentReadOnlyVariable(const hsa::ExecutableSymbol &Symbol);
-
   llvm::Error freeze(const char *Options = "");
-
-  llvm::Expected<bool> validate(llvm::StringRef Options = "");
-
+  
   llvm::Error destroy();
-
-public:
-  explicit Executable(hsa_executable_t Exec);
-
-  llvm::Expected<hsa_profile_t> getProfile();
-
-  [[nodiscard]] llvm::Expected<hsa_executable_state_t> getState() const;
-
-  llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
-
+  
   /**
    * \return the \p hsa::LoadedCodeObject's in the executable
    */

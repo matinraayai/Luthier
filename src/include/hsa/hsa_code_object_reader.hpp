@@ -5,6 +5,8 @@
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Error.h>
 
+// I made createFromMemory public - mark this down somewhere
+
 namespace luthier {
 
 class ToolExecutableManager;
@@ -14,7 +16,8 @@ namespace hsa {
 class CodeObjectReader : public HandleType<hsa_code_object_reader_t> {
   friend class luthier::ToolExecutableManager;
 
-private:
+// private:
+public:
   static llvm::Expected<CodeObjectReader> createFromMemory(llvm::StringRef elf);
 
   static llvm::Expected<CodeObjectReader>
@@ -22,7 +25,6 @@ private:
 
   llvm::Error destroy();
 
-public:
   explicit CodeObjectReader(hsa_code_object_reader_t reader)
       : HandleType(reader){};
 };

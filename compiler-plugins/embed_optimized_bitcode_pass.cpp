@@ -7,6 +7,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
+#include <llvm/IR/Module.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-embed-optimized-bitcode-pass"
