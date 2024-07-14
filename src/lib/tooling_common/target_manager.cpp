@@ -33,6 +33,7 @@ TargetManager::TargetManager() : Singleton<TargetManager>() {
   LLVMInitializeAMDGPUDisassembler();
   LLVMInitializeAMDGPUAsmPrinter();
   LLVMInitializeAMDGPUTargetMCA();
+  // TODO: make LLVM args separate from Luthier arguments
   auto Argv = "";
   llvm::cl::ParseCommandLineOptions(
       0, &Argv, "Luthier, An AMD GPU Binary Instrumentation Tool",
@@ -48,7 +49,6 @@ TargetManager::~TargetManager() {
     delete It.second.STI;
     delete It.second.IP;
     delete It.second.TargetOptions;
-    delete It.second.TargetMachine;
   }
   LLVMTargetInfo.clear();
   llvm::llvm_shutdown();
@@ -101,15 +101,6 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
         llvm::Triple(*TT), MAI->getAssemblerDialect(), *MAI, *MII, *MRI);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(IP));
 
-    auto TM =
-        reinterpret_cast<llvm::GCNTargetMachine *>(Target->createTargetMachine(
-            llvm::Triple(*TT).normalize(), *CPU, FeatureString->getString(),
-            *TargetOptions, llvm::Reloc::PIC_));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(TM));
-
-    auto LLVMContext = new llvm::LLVMContext();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LLVMContext));
-
     Info->second.Target = Target;
     Info->second.MRI = MRI;
     Info->second.MAI = MAI;
@@ -118,9 +109,26 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
     Info->second.STI = STI;
     Info->second.IP = IP;
     Info->second.TargetOptions = TargetOptions;
-    Info->second.TargetMachine = TM;
   }
   return LLVMTargetInfo[Isa];
+}
+llvm::Expected<std::unique_ptr<llvm::GCNTargetMachine>>
+TargetManager::createTargetMachine(
+    const hsa::ISA &ISA, const llvm::TargetOptions &TargetOptions) const {
+  auto TT = ISA.getTargetTriple();
+  LUTHIER_RETURN_ON_ERROR(TT.takeError());
+  std::string Error;
+  auto Target = llvm::TargetRegistry::lookupTarget(TT->normalize(), Error);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Target));
+  auto CPU = ISA.getProcessor();
+  LUTHIER_RETURN_ON_ERROR(CPU.takeError());
+
+  auto FeatureString = ISA.getSubTargetFeatures();
+  LUTHIER_RETURN_ON_ERROR(FeatureString.takeError());
+  return std::unique_ptr<llvm::GCNTargetMachine>(
+      reinterpret_cast<llvm::GCNTargetMachine *>(Target->createTargetMachine(
+          llvm::Triple(*TT).normalize(), *CPU, FeatureString->getString(),
+          TargetOptions, llvm::Reloc::PIC_)));
 }
 
 } // namespace luthier

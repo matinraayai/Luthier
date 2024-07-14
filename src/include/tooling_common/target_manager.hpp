@@ -1,3 +1,12 @@
+//===-- target_manager.hpp - Luthier's LLVM Target Management  ------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file describes Luthier's Target Manager, a singleton in charge of
+/// initializing and finalizing the LLVM library, as well as creating
+/// target description objects for each ISA.
+//===----------------------------------------------------------------------===//
 #ifndef TARGET_MANAGER_HPP
 #define TARGET_MANAGER_HPP
 #include <llvm/Target/TargetOptions.h>
@@ -7,8 +16,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "hsa/hsa_isa.hpp"
 #include "common/singleton.hpp"
+#include "hsa/hsa_isa.hpp"
 
 namespace llvm {
 
@@ -40,7 +49,6 @@ struct TargetInfo {
 
 private:
   const llvm::Target *Target{nullptr};
-  llvm::GCNTargetMachine *TargetMachine{nullptr};
   const llvm::MCRegisterInfo *MRI{nullptr};
   const llvm::MCAsmInfo *MAI{nullptr};
   const llvm::MCInstrInfo *MII{nullptr};
@@ -51,10 +59,6 @@ private:
 
 public:
   [[nodiscard]] const llvm::Target *getTarget() const { return Target; }
-
-  [[nodiscard]] llvm::GCNTargetMachine *getTargetMachine() const {
-    return TargetMachine;
-  }
 
   [[nodiscard]] const llvm::MCRegisterInfo *getMCRegisterInfo() const {
     return MRI;
@@ -79,23 +83,37 @@ public:
   }
 };
 
-/**
- * \brief in charge of creating and managing LLVM constructs that are shared
- * among different components of Luthier (e.g. Disassembler, CodeGenerator)
- * Initializes the AMDGPU LLVM target upon construction
- */
-class TargetManager: public Singleton<TargetManager> {
+/// \brief in charge of creating and managing LLVM constructs that are shared
+/// among different components of Luthier (e.g. CodeLifter, CodeGenerator)
+/// Initializes the AMDGPU LLVM target upon construction, and shuts down LLVM
+/// on destruction
+class TargetManager : public Singleton<TargetManager> {
 private:
   mutable std::unordered_map<hsa::ISA, TargetInfo> LLVMTargetInfo{};
 
 public:
-  TargetManager(const TargetManager &) = delete;
-  TargetManager &operator=(const TargetManager &) = delete;
-
+  /// Default constructor; Initializes the AMDGPU LLVM target, and parses the
+  /// command line arguments
   TargetManager();
+
+  /// Default destructor; Destroys all Target descriptors and shuts down LLVM
   ~TargetManager();
 
   llvm::Expected<const TargetInfo &> getTargetInfo(const hsa::ISA &Isa) const;
+
+  /// Creates an \c llvm::GCNTargetMachine given the \p ISA and the
+  /// <tt>TargetOptions</tt>
+  /// \c llvm::GCNTargetMachine provides a description of the GCN target to
+  /// an \c llvm::Module and \c llvm::MachineModuleInfo
+  /// \param ISA \c hsa::ISA of the target
+  /// \param TargetOptions target compilation options used with the target
+  /// machine
+  /// \return a unique pointer managing the newly-created
+  /// <tt>llvm::GCNTargetMachine</tt>, or an \c llvm::Error if the process
+  /// fails
+  llvm::Expected<std::unique_ptr<llvm::GCNTargetMachine>>
+  createTargetMachine(const hsa::ISA &ISA,
+                      const llvm::TargetOptions &TargetOptions = {}) const;
 };
 
 } // namespace luthier

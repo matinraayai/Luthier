@@ -297,7 +297,7 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
   auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
   LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
-  llvm::GCNTargetMachine *TM = TargetInfo->getTargetMachine();
+  LUTHIER_RETURN_ON_ERROR(TargetManager::instance().createTargetMachine(*ISA).moveInto(LR.TM));
 
   // TODO: If debug information is available, the module's name must be
   // set to its source file
@@ -308,9 +308,9 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
 
   auto Module = TSModule.getModuleUnlocked();
   // Set the data layout (very important)
-  Module->setDataLayout(TM->createDataLayout());
+  Module->setDataLayout(LR.TM->createDataLayout());
 
-  auto MMI = std::make_unique<llvm::MachineModuleInfo>(TM);
+  auto MMI = std::make_unique<llvm::MachineModuleInfo>(LR.TM.get());
 
   auto &ModuleEntry = LR.RelatedLCOs
                           .insert({LCO.asHsaType(),
@@ -921,6 +921,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   // The cloned LiftedRepresentation will share the context and the
   // lifted primitive
   DestLR->Context = SrcLR.Context;
+  DestLR->TM = SrcLR.TM;
   // This VMap will be populated by a mapping between the original global
   // objects and their cloned version. This will be useful when populating
   // the related functions and related global variable maps of the cloned

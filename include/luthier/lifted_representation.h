@@ -19,6 +19,10 @@
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <luthier/instr.h>
 
+namespace llvm {
+class GCNTargetMachine;
+}
+
 namespace luthier {
 
 class CodeLifter;
@@ -56,6 +60,9 @@ class LiftedRepresentation {
   friend luthier::CodeLifter;
 
 private:
+
+  std::shared_ptr<llvm::GCNTargetMachine> TM;
+
   /// A thread-safe context that owns all the thread-safe modules;
   /// Each LiftedRepresentation is given its own context to allow for
   /// independent processing from others\n
@@ -73,8 +80,9 @@ private:
   /// \c hsa_loaded_code_object. This is because an \c hsa_executable_t can
   /// contain multiple loaded code objects. Each module/MMI will be compiled
   /// separately from the other and then passed to Luthier to be loaded
-  /// into a single <tt>hsa_executable_t</tt>. In practice, an \c hsa_executable_t
-  /// almost always contains a single <tt>hsa_loaded_code_object_t</tt>
+  /// into a single <tt>hsa_executable_t</tt>. In practice, an \c
+  /// hsa_executable_t almost always contains a single
+  /// <tt>hsa_loaded_code_object_t</tt>
   llvm::SmallDenseMap<hsa_loaded_code_object_t,
                       std::pair<llvm::orc::ThreadSafeModule,
                                 std::unique_ptr<llvm::MachineModuleInfo>>,
@@ -117,6 +125,16 @@ public:
   /// object
   [[nodiscard]] const llvm::orc::ThreadSafeContext &getContext() const {
     return Context;
+  }
+
+  template <typename TMT>
+  const TMT& getTargetMachine() const {
+    return *reinterpret_cast<TMT*>(TM.get());
+  }
+
+  template <typename TMT>
+  TMT& getTargetMachine() {
+    return *reinterpret_cast<TMT*>(TM.get());
   }
 
   /// Related Loaded Code Object iterator

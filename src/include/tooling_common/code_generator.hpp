@@ -44,8 +44,9 @@ public:
 private:
   static llvm::Expected<llvm::Function &> generateHookIR(
       const llvm::MachineInstr &MI,
-      llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor> HookSpecs,
-      const hsa::ISA &ISA, llvm::Module &IModule);
+      const llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor>
+          HookSpecs,
+      const llvm::GCNTargetMachine &TM, llvm::Module &IModule);
 
   static llvm::Error insertHooks(LiftedRepresentation &LR,
                                  const InstrumentationTask &Tasks);

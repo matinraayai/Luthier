@@ -159,13 +159,10 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 }
 
 llvm::Expected<llvm::InlineAsm *>
-createInlineAsmMCRegLoad(llvm::MCRegister Reg, const hsa::ISA &ISA,
+createInlineAsmMCRegLoad(llvm::MCRegister Reg, const llvm::GCNTargetMachine &TM,
                          const llvm::Function &Kernel) {
   // First detect what kind of Physical register we're dealing with
-  auto TargetInfo = TargetManager::instance().getTargetInfo(ISA);
-  LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
-  auto *TM = TargetInfo->getTargetMachine();
-  auto *TRI = TM->getSubtargetImpl(Kernel)->getRegisterInfo();
+  auto *TRI = TM.getSubtargetImpl(Kernel)->getRegisterInfo();
   auto *PhysRegClass = TRI->getPhysRegBaseClass(Reg);
   auto RegName = TRI->getRegAsmName(Reg);
   llvm::outs() << "Reg name" << RegName << "\n";
@@ -191,7 +188,7 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
     const llvm::MachineInstr &MI,
     const llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor>
         HookSpecs,
-    const hsa::ISA &ISA, llvm::Module &IModule) {
+    const llvm::GCNTargetMachine &TM, llvm::Module &IModule) {
   // 1. Create an empty kernel per MI insertion point in the LCO Module with
   // no input arguments
   llvm::Type *const ReturnType = llvm::Type::getVoidTy(IModule.getContext());
@@ -219,7 +216,7 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
       if (holds_alternative<llvm::MCRegister>(Op)) {
         // Create an inline assembly to load the MC register into the value
         auto RegLoadInlineAsm = createInlineAsmMCRegLoad(
-            std::get<llvm::MCRegister>(Op), ISA, *HookIRKernel);
+            std::get<llvm::MCRegister>(Op), TM, *HookIRKernel);
         LUTHIER_RETURN_ON_ERROR(RegLoadInlineAsm.takeError());
         // Put a call to the inline assembly
         auto *InlineAsmCall = Builder.CreateCall(*RegLoadInlineAsm);
@@ -510,14 +507,14 @@ printAssembly(LiftedRepresentation &LR,
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
     auto TargetInfo =
         llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
-    auto TM = TargetInfo.getTargetMachine();
+    auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
     llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
     PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-    auto *TPC = TM->createPassConfig(PM);
+    auto *TPC = TM.createPassConfig(PM);
     TPC->setDisableVerify(true);
     TPC->setInitialized();
     PM.add(TPC);
-    auto * MMIWP = new llvm::MachineModuleInfoWrapperPass(std::move(*MMI));
+    auto *MMIWP = new llvm::MachineModuleInfoWrapperPass(std::move(*MMI));
     PM.add(MMIWP);
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM.add(UsageAnalysis);
@@ -527,7 +524,7 @@ printAssembly(LiftedRepresentation &LR,
     llvm::raw_svector_ostream ObjectFileOS(CompiledRelocatables[LCOWrapper]);
 
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        !TM->addAsmPrinter(PM, ObjectFileOS, nullptr,
+        !TM.addAsmPrinter(PM, ObjectFileOS, nullptr,
                            llvm::CodeGenFileType::ObjectFile, MCContext)));
 
     std::unique_ptr<llvm::raw_svector_ostream> AssemblyFileOS;
@@ -538,13 +535,12 @@ printAssembly(LiftedRepresentation &LR,
       AssemblyFileOS = std::make_unique<llvm::raw_svector_ostream>(
           (*AssemblyFiles)[LCOWrapper]);
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-          !TM->addAsmPrinter(PM, *AssemblyFileOS, nullptr,
+          !TM.addAsmPrinter(PM, *AssemblyFileOS, nullptr,
                              llvm::CodeGenFileType::ObjectFile, MCContext)));
     }
     llvm::outs() << "Running the printer pass manager\n";
     PM.run(M); // Run all the passes
-    MMI =
-        std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
+    MMI = std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
     llvm::outs() << "AFTER MOVE: \n";
     for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
       llvm::outs() << F.getName() << "\n";
@@ -577,9 +573,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
       // Get the target machine of the LCO's ISA
       auto ISA = hsa::LoadedCodeObject(LCO).getISA();
       LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-      auto TargetInfo =
-          llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
-      auto TM = TargetInfo.getTargetMachine();
+      auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
       LLVM_DEBUG(llvm::dbgs() << "ISA of the LCO: "
                               << llvm::cantFail(ISA->getName()) << "\n");
       // TODO: Process the read/write register functions here
@@ -592,7 +586,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
 
       for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
         // Generate the Hooks for each MI
-        auto BeforeMIFunc = generateHookIR(*MI, HookSpecs, *ISA, M);
+        auto BeforeMIFunc = generateHookIR(*MI, HookSpecs, TM, M);
         LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
         MIToHookFuncMap.insert({MI, &(*BeforeMIFunc)});
       }
@@ -601,13 +595,13 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
       LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
       // With the Hook IR generated, we put it through the normal IR
       // pipeline
-      optimizeModule(M, TM);
+      optimizeModule(M, &TM);
       LLVM_DEBUG(llvm::dbgs()
                      << "Instrumentation Module after IR optimization:\n";
                  M.print(llvm::dbgs(), nullptr));
       // Run the code gen pipeline, while enforcing the stack and register
       // constraints
-      auto [PM, MMIWP] = runCodeGenPipeline(M, TM, MIToHookFuncMap);
+      auto [PM, MMIWP] = runCodeGenPipeline(M, &TM, MIToHookFuncMap);
       for (const auto &F : M) {
         llvm::outs() << MMIWP->getMMI().getModule() << "\n";
         if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
