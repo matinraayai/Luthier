@@ -97,6 +97,18 @@ if (${LUTHIER_BUILD_INTEGRATION_TESTS})
     add_subdirectory(tests)
 endif ()
 
+if (${LUTHIER_BUILD_UNIT_TESTS})
+    include(FetchContent)
+    FetchContent_Declare(
+            doctest
+            URL https://github.com/doctest/doctest/archive/refs/heads/master.zip
+    )
+
+    FetchContent_MakeAvailable(doctest)
+    enable_testing()
+endif ()
+# ======================================================================================================================
+
 # Documentation Build With Doxygen =====================================================================================
 if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
     find_package(Doxygen REQUIRED)

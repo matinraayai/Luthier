@@ -24,9 +24,10 @@
 namespace luthier::hsa {
 
 llvm::Error init() {
-  const auto &CoreTable =
-      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
-  return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_init_fn());
+  // const auto &CoreTable =
+  //     hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
+  // return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_init_fn());
+  return LUTHIER_HSA_SUCCESS_CHECK(hsa_init());
 }
 
 llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agents) {
@@ -83,8 +84,9 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code) {
 }
 
 llvm::Error shutdown() {
-  const auto &CoreTable =
-      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
-  return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_shut_down_fn());
+  // const auto &CoreTable =
+  //     hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
+  // return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_shut_down_fn());
+  return LUTHIER_HSA_SUCCESS_CHECK(hsa_shut_down());
 }
 } // namespace luthier::hsa
