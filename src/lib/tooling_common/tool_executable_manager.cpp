@@ -99,7 +99,6 @@ static llvm::Error getHooks(const llvm::Module &M,
 llvm::Error preprocessAndSaveModuleToStream(
     llvm::Module &Module, llvm::SmallVector<std::string> &StaticVariables,
     std::string &CUID, llvm::SmallVector<char> &BitcodeOut) {
-  Module.dump();
   // Extract all the hooks
   llvm::SmallVector<llvm::Function *> Hooks;
   LUTHIER_RETURN_ON_ERROR(getHooks(Module, Hooks));

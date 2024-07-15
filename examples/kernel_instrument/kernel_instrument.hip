@@ -23,7 +23,7 @@ __attribute__((managed)) uint32_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
 //  __asm__ __volatile__("s_mov_b32 s2 300");
-  GlobalCounter = 3000;
+  GlobalCounter = read32BitReg(llvm::AMDGPU::VGPR3);
 };
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
@@ -63,23 +63,18 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                     llvm::outs() << "Mutator called!\n";
                     for (auto &[Func, MF] : LR.functions()) {
                       MF->dump();
+                      if (auto Error = IT.insertHookBefore(
+                              *MF->front().front().getNextNode(),
+                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
+                        return Error;
                       for (auto &MBB: *MF) {
                         for (auto &MI : MBB) {
                           if (MI.getOpcode() == llvm::AMDGPU::S_ADD_I32_vi) {
                             MI.getOperand(2).setImm(200);
-                            if (auto Error = IT.insertHookBefore(
-                                    *MI.getNextNode(),
-                                    LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
-                              return Error;
+
                           }
                         }
                       }
-//                      auto &MBB = *MF->begin();
-//                      auto &MI = *MBB.begin();
-//                      if (auto Error = IT.insertHookBefore(
-//                              MI,
-//                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
-//                        return Error;
                     }
                     return llvm::Error::success();
                   },

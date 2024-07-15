@@ -18,5 +18,5 @@ target_link_libraries(luthier_tooling_common PUBLIC luthier_common luthier_hip l
         hip::host rocprofiler-sdk::rocprofiler-sdk amd_comgr
         hsa-runtime64::hsa-runtime64 LLVMAMDGPUCodeGen LLVMAMDGPUDesc
         LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA LLVMAMDGPUUtils LLVMAsmPrinter LLVMCodeGen
-        LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject LLVMPasses
+        LLVMAMDGPUAsmParser LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject LLVMPasses
         LLVMSupport LLVMTarget LLVMTargetParser)

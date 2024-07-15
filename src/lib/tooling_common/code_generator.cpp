@@ -132,8 +132,6 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_action_info_set_isa_name(DataAction, IsaName->c_str()))));
-  //  std::vector<const char *> MyOptions{"-Wl",
-  //  "--unresolved-symbols=ignore-all", "-shared", "--undefined-glob=1"};
   const char *MyOptions[]{"-Wl,--unresolved-symbols=ignore-all"};
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_action_info_set_option_list(DataAction, MyOptions, 1))));
@@ -286,13 +284,6 @@ runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
   //  PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
   //                                        <#initializer #>))
   TPC->addMachinePasses();
-
-  //  TPC->disablePass(&LiveIntervalsID);
-
-  //      TPC->addPrintPass("After machine passes");
-  //          auto UsageAnalysis = new
-  //          llvm::AMDGPUResourceUsageAnalysis();
-  //          PM.add(UsageAnalysis);
   TPC->setInitialized();
 
   PM->run(M);
@@ -503,10 +494,6 @@ printAssembly(LiftedRepresentation &LR,
     llvm::MCContext &MCContext = MMI->getContext();
     // Get the target machine of the LCO's ISA
     hsa::LoadedCodeObject LCOWrapper(LCO);
-    auto ISA = LCOWrapper.getISA();
-    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-    auto TargetInfo =
-        llvm::cantFail(TargetManager::instance().getTargetInfo(*ISA));
     auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
     llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
     PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
@@ -525,7 +512,7 @@ printAssembly(LiftedRepresentation &LR,
 
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
         !TM.addAsmPrinter(PM, ObjectFileOS, nullptr,
-                           llvm::CodeGenFileType::ObjectFile, MCContext)));
+                          llvm::CodeGenFileType::ObjectFile, MCContext)));
 
     std::unique_ptr<llvm::raw_svector_ostream> AssemblyFileOS;
     if (AssemblyFiles != nullptr) {
@@ -536,7 +523,7 @@ printAssembly(LiftedRepresentation &LR,
           (*AssemblyFiles)[LCOWrapper]);
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
           !TM.addAsmPrinter(PM, *AssemblyFileOS, nullptr,
-                             llvm::CodeGenFileType::ObjectFile, MCContext)));
+                            llvm::CodeGenFileType::ObjectFile, MCContext)));
     }
     llvm::outs() << "Running the printer pass manager\n";
     PM.run(M); // Run all the passes
@@ -551,18 +538,56 @@ printAssembly(LiftedRepresentation &LR,
     return llvm::Error::success();
   }
   return llvm::Error::success();
-} // namespace luthier
+}
+
+llvm::Error processReadRegFunctions(llvm::Module &Module,
+                                    const llvm::GCNTargetMachine &TM) {
+  llvm::outs() << "Dumping users\n";
+  Module.print(llvm::outs(), nullptr);
+  for (auto &F : llvm::make_early_inc_range(Module.functions())) {
+    if (F.getName() == "read32BitReg") {
+      for (auto *User : F.users()) {
+        User->print(llvm::outs());
+        if (auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
+          auto *TRI = TM.getSubtargetImpl(F)->getRegisterInfo();
+          if (auto *Arg = llvm::dyn_cast<llvm::ConstantInt>(
+                  CallInst->getArgOperand(0))) {
+            MCRegister Reg(Arg->getZExtValue());
+            auto *PhysRegClass = TRI->getPhysRegBaseClass(Reg);
+            auto RegName = TRI->getRegAsmName(Reg);
+            auto* AsmCallInst =
+                llvm::CallInst::Create(llvm::InlineAsm::get(
+                    llvm::FunctionType::get(
+                        llvm::Type::getInt32Ty(F.getContext()), {}),
+                    llvm::formatv("v_mov_b32 $0 {0}", RegName).str(), "=v",
+                    true));
+            AsmCallInst->insertBefore(*CallInst->getParent(), CallInst->getIterator());
+            CallInst->replaceAllUsesWith(AsmCallInst);
+            CallInst->eraseFromParent();
+          } else {
+            llvm::report_fatal_error("Not good");
+          };
+        }
+      }
+      llvm::outs() << "Number of uses left: " << F.getNumUses() << "\n";
+      F.dropAllReferences();
+      F.eraseFromParent();
+    }
+  }
+  Module.print(llvm::outs(), nullptr);
+  return llvm::Error::success();
+}
 
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                                        const InstrumentationTask &Task) {
   // Early exit if no hooks are to be inserted
   if (Task.getHookInsertionTasks().empty())
     return llvm::Error::success();
+  auto Lock = LR.getContext().getLock();
   // Since (at least in theory) each LCO can have its own ISA, we need to
   // create a module/MMI per LCO to generate instrumentation code for easier
   // separation between different LCOs' Machine code
   for (auto &[LCO, LCOModule] : LR) {
-
     // Load the bitcode of the instrumentation module into the LR's context
     auto IModule = Task.getModule().readBitcodeIntoContext(LR.getContext());
     LUTHIER_RETURN_ON_ERROR(IModule.takeError());
@@ -570,14 +595,9 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                                                       -> llvm::Error {
       LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
                  M.print(llvm::dbgs(), nullptr););
-      // Get the target machine of the LCO's ISA
-      auto ISA = hsa::LoadedCodeObject(LCO).getISA();
-      LUTHIER_RETURN_ON_ERROR(ISA.takeError());
       auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
-      LLVM_DEBUG(llvm::dbgs() << "ISA of the LCO: "
-                              << llvm::cantFail(ISA->getName()) << "\n");
       // TODO: Process the read/write register functions here
-
+      LUTHIER_RETURN_ON_ERROR(processReadRegFunctions(M, TM));
       // Now that everything has been created we can start inserting hooks
       LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
                               << Task.getHookInsertionTasks().size() << "\n");

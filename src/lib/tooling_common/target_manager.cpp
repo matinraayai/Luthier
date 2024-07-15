@@ -31,6 +31,7 @@ TargetManager::TargetManager() : Singleton<TargetManager>() {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUDisassembler();
+  LLVMInitializeAMDGPUAsmParser();
   LLVMInitializeAMDGPUAsmPrinter();
   LLVMInitializeAMDGPUTargetMCA();
   // TODO: make LLVM args separate from Luthier arguments
