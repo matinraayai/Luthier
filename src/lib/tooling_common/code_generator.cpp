@@ -261,33 +261,32 @@ static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine *TM) {
   MPM.run(M, MAM);
 }
 
-std::pair<std::unique_ptr<llvm::legacy::PassManager>,
-          llvm::MachineModuleInfoWrapperPass *>
+std::unique_ptr<llvm::MachineModuleInfo>
 runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
                    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
                        &MIToHookFuncMap) {
   // TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
-  auto PM = std::make_unique<llvm::legacy::PassManager>();
+  llvm::legacy::PassManager PM;
 
   llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
-  PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+  PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
 
-  auto *TPC = TM->createPassConfig(*PM);
+  auto *TPC = TM->createPassConfig(PM);
   TPC->setDisableVerify(true);
-  PM->add(TPC);
+  PM.add(TPC);
   // Create the MMIWP for instrumentation module
   auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
-  PM->add(IMMIWP);
+  PM.add(IMMIWP);
 
   TPC->addISelPasses();
-  PM->add(new luthier::ReserveLiveRegs(MIToHookFuncMap));
+  PM.add(new luthier::ReserveLiveRegs(MIToHookFuncMap));
   //  PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
   //                                        <#initializer #>))
   TPC->addMachinePasses();
   TPC->setInitialized();
 
-  PM->run(M);
-  return {std::move(PM), IMMIWP};
+  PM.run(M);
+  return std::make_unique<llvm::MachineModuleInfo>(std::move(IMMIWP->getMMI()));
 }
 
 llvm::Error patchLiftedRepresentation(
@@ -621,17 +620,17 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                  M.print(llvm::dbgs(), nullptr));
       // Run the code gen pipeline, while enforcing the stack and register
       // constraints
-      auto [PM, MMIWP] = runCodeGenPipeline(M, &TM, MIToHookFuncMap);
+      auto MMI = runCodeGenPipeline(M, &TM, MIToHookFuncMap);
       for (const auto &F : M) {
-        llvm::outs() << MMIWP->getMMI().getModule() << "\n";
-        if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
+        llvm::outs() << MMI->getModule() << "\n";
+        if (auto MF = MMI->getMachineFunction(F)) {
           MF->print(llvm::outs());
         }
       }
       // Finally, patch in the generated machine code into the lifted
       // representation
       LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
-          M, MMIWP->getMMI(), *LCOModule.first.getModuleUnlocked(),
+          M, *MMI, *LCOModule.first.getModuleUnlocked(),
           *LCOModule.second, MIToHookFuncMap));
       for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
         llvm::outs() << "Function name inside: " << F.getName() << "\n";
