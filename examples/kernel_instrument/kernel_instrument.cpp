@@ -40,7 +40,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                 isKernelInstrumented(*KernelSymbol, "kernel instrument"))) {
           auto Exec = llvm::cantFail(hsa::getExecutableOfSymbol(*KernelSymbol));
 
-          auto LiftedKernel = luthier::lift(Exec);
+          auto LiftedKernel = luthier::lift(Exec, false);
           if (auto Err = LiftedKernel.takeError())
             llvm::report_fatal_error(std::move(Err), true);
 
@@ -91,7 +91,6 @@ static void atHsaApiTableUnload(ApiEvtPhase Phase) {
 }
 
 namespace luthier {
-
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     llvm::outs() << "Kernel instrument tool is launching.\n";
