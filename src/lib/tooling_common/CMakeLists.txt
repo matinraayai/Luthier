@@ -5,6 +5,8 @@ add_library(luthier_tooling_common STATIC
         luthier.cpp
         target_manager.cpp
         tool_executable_manager.cpp
+        lifted_representation.cpp
+        instrumentation_module.cpp
 )
 
 target_include_directories(luthier_tooling_common PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})

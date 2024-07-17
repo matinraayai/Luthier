@@ -18,14 +18,17 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <luthier/instr.h>
+#include <llvm/IR/LegacyPassManager.h>
 
 namespace llvm {
 class GCNTargetMachine;
-}
+} // namespace llvm
 
 namespace luthier {
 
 class CodeLifter;
+
+class CodeGenerator;
 
 /// \brief contains HSA and LLVM information regarding a lifted AMD HSA
 /// primitive.
@@ -60,7 +63,9 @@ class LiftedRepresentation {
   friend luthier::CodeLifter;
 
 private:
-
+  /// Target Machine provides hardware description of the target
+  /// It is shared among the <tt>LiftedRepresentation</tt>s of the
+  /// same lifted primitive and protected by ThreadSafeContext's lock
   std::shared_ptr<llvm::GCNTargetMachine> TM;
 
   /// A thread-safe context that owns all the thread-safe modules;
@@ -70,6 +75,27 @@ private:
   /// This ThreadSafeContext retains the underlying \c llvm::LLVMContext
   /// unique pointer's ownership
   llvm::orc::ThreadSafeContext Context;
+
+  /// \brief A list of legacy pass managers that has been run on the lifted
+  /// <tt>llvm::MachineModuleInfo</tt> (MMI), primarily to print it into an
+  /// assembly/object file
+  /// \details After running passes on a \c llvm::MachineModuleInfoWrapperPass
+  /// (MMIWP) the pass manager takes control over the lifetime of the
+  /// <tt>MII</tt>, and destroys it once it goes out of scope; Therefore,
+  /// all passes run on any of the <tt>MMIWP</tt>s need to be stored here to
+  /// prevent deletion of the <tt>MMI</tt>s \n
+  /// This will be removed once the LLVM Code Gen port to the new pass manager
+  /// is complete
+  llvm::SmallVector<std::unique_ptr<llvm::legacy::PassManager>, 1> PMs{};
+
+  /// \brief primary storage of the Module and the Machine Module Info of the
+  /// lifted loaded code objects
+  llvm::SmallDenseMap<
+      hsa_loaded_code_object_t,
+      std::pair<llvm::orc::ThreadSafeModule,
+                std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
+      1>
+      Modules{};
 
   /// \brief Mapping between an \c hsa_loaded_code_object_t and the
   /// thread-safe Module and MMI representing it in LLVM
@@ -84,9 +110,7 @@ private:
   /// hsa_executable_t almost always contains a single
   /// <tt>hsa_loaded_code_object_t</tt>
   llvm::SmallDenseMap<hsa_loaded_code_object_t,
-                      std::pair<llvm::orc::ThreadSafeModule,
-                                std::unique_ptr<llvm::MachineModuleInfo>>,
-                      1>
+                      std::pair<llvm::Module *, llvm::MachineModuleInfo *>, 1>
       RelatedLCOs{};
 
   /// Mapping between an \c hsa_executable_symbol_t (of type kernel and
@@ -109,7 +133,7 @@ private:
   /// underlying allocator, and this map becomes invalid
   llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> MachineInstrToMCMap{};
 
-  LiftedRepresentation() = default;
+  LiftedRepresentation();
 
 public:
   /// Disallowed copy construction
@@ -127,15 +151,43 @@ public:
     return Context;
   }
 
-  template <typename TMT>
-  const TMT& getTargetMachine() const {
-    return *reinterpret_cast<TMT*>(TM.get());
+  /// \return a scoped lock protecting the Context and the TargetMachine of this
+  /// \c LiftedRepresentation
+  llvm::orc::ThreadSafeContext::Lock getLock() const {
+    return getContext().getLock();
   }
 
+  /// Const \c llvm::TargetMachine accessor
+  /// \tparam TMT a base type of the \c llvm::GCNTargetMachine; Since
+  /// \c llvm::GCNTargetMachine is not part of the public LLVM interface,
+  /// this getter casts it to an \c llvm::LLVMTargetMachine or an
+  /// \c llvm::TargetMachine instead for tool-facing functionality
+  /// \return this <tt>LiftedRepresentation</tt>'s \c llvm::TargetMachine
   template <typename TMT>
-  TMT& getTargetMachine() {
-    return *reinterpret_cast<TMT*>(TM.get());
+  const TMT &getTargetMachine() const {
+    static_assert(std::is_base_of_v<TMT, llvm::GCNTargetMachine> == true);
+    return *reinterpret_cast<const TMT *>(TM.get());
   }
+
+  /// Non-const \c llvm::TargetMachine accessor
+  /// \tparam TMT a base type of the \c llvm::GCNTargetMachine; Since
+  /// \c llvm::GCNTargetMachine is not part of the public LLVM interface,
+  /// this getter casts it to an \c llvm::LLVMTargetMachine or an
+  /// \c llvm::TargetMachine instead for tool-facing functionality
+  /// \return this <tt>LiftedRepresentation</tt>'s \c llvm::TargetMachine
+  template <typename TMT>
+  TMT &getTargetMachine() {
+    static_assert(std::is_base_of_v<TMT, llvm::GCNTargetMachine> == true);
+    return *reinterpret_cast<TMT *>(TM.get());
+  }
+
+  /// Primarily used by luthier's \c CodeGenerator to manage the lifetime of
+  /// legacy Pass managers that operated on any of the
+  /// <tt>llvm::MachineModuleInfoWrapperPasses</tt> managed by this
+  /// <tt>LiftedRepresentation</tt>
+  /// \param PM the pass manager that used any of the MMIWPs in this LR
+  /// as an analysis pass
+  void managePassManagerLifetime(std::unique_ptr<llvm::legacy::PassManager> PM);
 
   /// Related Loaded Code Object iterator
   using iterator = decltype(RelatedLCOs)::iterator;

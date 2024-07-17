@@ -7,6 +7,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LLVM_DENSE_MAP_INFO
 #define LUTHIER_LLVM_DENSE_MAP_INFO
+#include <hsa/hsa.h>
+#include <llvm/ADT/DenseMapInfo.h>
+
 namespace llvm {
 
 #define HSA_PRIMITIVE_DENSE_MAP_INFO_DEFINE(T)                                 \

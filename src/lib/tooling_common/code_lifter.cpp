@@ -30,6 +30,7 @@
 #include <memory>
 
 #include "common/error.hpp"
+#include "common/object_utils.hpp"
 #include "hsa/hsa.hpp"
 #include "hsa/hsa_agent.hpp"
 #include "hsa/hsa_executable.hpp"
@@ -37,7 +38,6 @@
 #include "hsa/hsa_loaded_code_object.hpp"
 #include "luthier/instr.h"
 #include "luthier/types.h"
-#include "common/object_utils.hpp"
 #include "tooling_common/target_manager.hpp"
 
 #undef DEBUG_TYPE
@@ -297,7 +297,8 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
   auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
   LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
-  LUTHIER_RETURN_ON_ERROR(TargetManager::instance().createTargetMachine(*ISA).moveInto(LR.TM));
+  LUTHIER_RETURN_ON_ERROR(
+      TargetManager::instance().createTargetMachine(*ISA).moveInto(LR.TM));
 
   // TODO: If debug information is available, the module's name must be
   // set to its source file
@@ -310,13 +311,17 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
   // Set the data layout (very important)
   Module->setDataLayout(LR.TM->createDataLayout());
 
-  auto MMI = std::make_unique<llvm::MachineModuleInfo>(LR.TM.get());
+  auto MMIWP =
+      std::make_unique<llvm::MachineModuleInfoWrapperPass>(LR.TM.get());
 
-  auto &ModuleEntry = LR.RelatedLCOs
+  auto &ModuleEntry = LR.Modules
                           .insert({LCO.asHsaType(),
                                    std::move(std::make_pair(std::move(TSModule),
-                                                            std::move(MMI)))})
+                                                            std::move(MMIWP)))})
                           .first->getSecond();
+  LR.RelatedLCOs.insert(
+      {LCO.asHsaType(),
+       {ModuleEntry.first.getModuleUnlocked(), &ModuleEntry.second->getMMI()}});
   return llvm::Error::success();
 }
 
@@ -325,7 +330,7 @@ CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
                                           const hsa::ExecutableSymbol &GV,
                                           LiftedRepresentation &LR) {
   auto &LLVMContext = *LR.getContext().getContext();
-  auto &Module = *LR.RelatedLCOs[LCO.asHsaType()].first.getModuleUnlocked();
+  auto &Module = *LR.Modules[LCO.asHsaType()].first.getModuleUnlocked();
   auto GVName = GV.getName();
   LUTHIER_RETURN_ON_ERROR(GVName.takeError());
   size_t GVSize = GV.getSize();
@@ -343,7 +348,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
                                   const hsa::ExecutableSymbol &Kernel,
                                   LiftedRepresentation &LR) {
   auto &LLVMContext = *LR.Context.getContext();
-  auto &Module = *LR.RelatedLCOs[LCO.asHsaType()].first.getModuleUnlocked();
+  auto &Module = *LR.Modules[LCO.asHsaType()].first.getModuleUnlocked();
   // Populate the Arguments ==================================================
   auto SymbolName = Kernel.getName();
   LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
@@ -490,7 +495,7 @@ CodeLifter::initLiftedDeviceFunctionEntry(const hsa::LoadedCodeObject &LCO,
                                           const hsa::ExecutableSymbol &Func,
                                           LiftedRepresentation &LR) {
   auto &LLVMContext = *LR.Context.getContext();
-  auto &Module = *LR.RelatedLCOs[LCO.asHsaType()].first.getModuleUnlocked();
+  auto &Module = *LR.Modules[LCO.asHsaType()].first.getModuleUnlocked();
   llvm::MachineModuleInfo &MMI = *LR.RelatedLCOs.at(LCO.asHsaType()).second;
 
   auto FuncName = Func.getName();
@@ -556,7 +561,7 @@ llvm::Error CodeLifter::liftFunction(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCO.has_value()));
 
   llvm::Module &Module =
-      *LR.RelatedLCOs[LCO->asHsaType()].first.getModuleUnlocked();
+      *LR.Modules[LCO->asHsaType()].first.getModuleUnlocked();
   llvm::MachineModuleInfo &MMI = *LR.RelatedLCOs.at(LCO->asHsaType()).second;
   llvm::MachineFunction &MF = *LR.RelatedFunctions.at(Symbol.asHsaType());
   auto &F = MF.getFunction();
@@ -929,40 +934,39 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   llvm::ValueToValueMapTy VMap;
   // This map helps us populate the MachineInstr to hsa::Instr map
   llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> SrcToDstInstrMap;
-  for (const auto &[LCOHandle, SrcModuleAndMMI] : SrcLR.RelatedLCOs) {
+  for (const auto &[LCOHandle, SrcModuleAndMMI] : SrcLR.Modules) {
     const llvm::orc::ThreadSafeModule &SrcModule = SrcModuleAndMMI.first;
-    const std::unique_ptr<llvm::MachineModuleInfo> &SrcMMI =
-        SrcModuleAndMMI.second;
+    const llvm::MachineModuleInfo &SrcMMI = SrcModuleAndMMI.second->getMMI();
 
     auto ClonedModuleAndMMI = SrcModule.withModuleDo(
         [&](const llvm::Module &M)
             -> llvm::Expected<std::tuple<
                 std::unique_ptr<llvm::Module>,
-                std::unique_ptr<llvm::MachineModuleInfo>>> {
+                std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>> {
           auto ClonedModule = llvm::CloneModule(M, VMap);
-          auto ClonedMMI =
-              std::make_unique<llvm::MachineModuleInfo>(
-                  &SrcMMI->getTarget());
-          LUTHIER_RETURN_ON_ERROR(cloneMMI(*SrcMMI, M, VMap,
-                                           *ClonedMMI,
+          auto ClonedMMI = std::make_unique<llvm::MachineModuleInfoWrapperPass>(
+              &SrcMMI.getTarget());
+          LUTHIER_RETURN_ON_ERROR(cloneMMI(SrcMMI, M, VMap, ClonedMMI->getMMI(),
                                            &SrcToDstInstrMap));
-          return std::make_tuple(std::move(ClonedModule),
-                                 std::move(ClonedMMI));
+          return std::make_tuple(std::move(ClonedModule), std::move(ClonedMMI));
         });
     LUTHIER_RETURN_ON_ERROR(ClonedModuleAndMMI.takeError());
 
-    auto &[DestModule, DestMMI] = *ClonedModuleAndMMI;
+    auto &[DestModule, DestMMIWP] = *ClonedModuleAndMMI;
     // Now that the module and the MMI are cloned, create a thread-safe module
     // and put it in the Output's Module list
     llvm::orc::ThreadSafeModule DestTSModule{std::move(DestModule),
                                              DestLR->Context};
 
     auto &DestModuleEntry =
-        DestLR->RelatedLCOs
+        DestLR->Modules
             .insert(
                 {LCOHandle, std::move(std::make_pair(std::move(DestTSModule),
-                                                     std::move(DestMMI)))})
+                                                     std::move(DestMMIWP)))})
             .first->getSecond();
+    DestLR->RelatedLCOs.insert({LCOHandle,
+                                {DestModuleEntry.first.getModuleUnlocked(),
+                                 &DestModuleEntry.second->getMMI()}});
   }
   // With all Modules and MMIs cloned, we need to populate the related
   // functions and related global variables. We use the VMap to do this

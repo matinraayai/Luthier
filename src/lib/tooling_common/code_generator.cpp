@@ -2,6 +2,9 @@
 
 #include <memory>
 
+#define protected public
+#include <llvm/CodeGen/TargetPassConfig.h>
+#undef protected
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
@@ -54,6 +57,7 @@
 #include "hsa/hsa_intercept.hpp"
 #include "hsa/hsa_isa.hpp"
 #include "hsa/hsa_loaded_code_object.hpp"
+#include "tooling_common/MachineModuleInfoAdaptorPass.hpp"
 #include "tooling_common/code_lifter.hpp"
 #include "tooling_common/target_manager.hpp"
 #include "tooling_common/tool_executable_manager.hpp"
@@ -261,32 +265,56 @@ static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine *TM) {
   MPM.run(M, MAM);
 }
 
-std::unique_ptr<llvm::MachineModuleInfo>
+
+std::pair<llvm::MachineModuleInfoWrapperPass*,
+          std::unique_ptr<llvm::legacy::PassManager>>
 runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
                    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-                       &MIToHookFuncMap) {
-  // TM->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
-  llvm::legacy::PassManager PM;
+                       &MIToHookFuncMap,
+                   bool DisableVerify = true) {
+  // Create a new pass manager on the heap to have better control over its
+  // lifetime and the lifetime of the MMIWP
+  auto PM = std::make_unique<llvm::legacy::PassManager>();
 
   llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
-  PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
 
-  auto *TPC = TM->createPassConfig(PM);
-  TPC->setDisableVerify(true);
-  PM.add(TPC);
-  // Create the MMIWP for instrumentation module
+  PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+
+  auto *TPC = TM->createPassConfig(*PM);
+
+  TPC->setDisableVerify(DisableVerify);
+
+  PM->add(TPC);
+
   auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
-  PM.add(IMMIWP);
+
+  PM->add(IMMIWP);
 
   TPC->addISelPasses();
-  PM.add(new luthier::ReserveLiveRegs(MIToHookFuncMap));
+  PM->add(new luthier::ReserveLiveRegs(MIToHookFuncMap));
+  //TODO: Stack Frame Offset correction
   //  PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
   //                                        <#initializer #>))
   TPC->addMachinePasses();
   TPC->setInitialized();
 
-  PM.run(M);
-  return std::make_unique<llvm::MachineModuleInfo>(std::move(IMMIWP->getMMI()));
+  PM->run(M);
+
+  for (const auto &F : M) {
+    llvm::outs() << "AFTER MOVE:\n";
+    llvm::outs() << IMMIWP->getMMI().getModule() << "\n";
+    llvm::outs() << "Function name: " << F.getName() << "\n";
+    if (auto MF = IMMIWP->getMMI().getMachineFunction(F)) {
+      llvm::outs() << "wrapper pass has it:\n";
+      MF->print(llvm::outs());
+    }
+    if (auto MF = IMMIWP->getMMI().getMachineFunction(F)) {
+      llvm::outs() << "MMI has it:\n";
+      MF->print(llvm::outs());
+    }
+  }
+
+  return {IMMIWP, std::move(PM)};
 }
 
 llvm::Error patchLiftedRepresentation(
@@ -481,20 +509,19 @@ printAssembly(LiftedRepresentation &LR,
                   *AssemblyFiles = nullptr) {
   auto Lock = LR.getContext().getLock();
   for (auto &[LCO, LCOModule] : LR) {
-    for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+    for (const auto &F : *LCOModule.first) {
       llvm::outs() << F.getName() << "\n";
       if (auto MF = LCOModule.second->getMachineFunction(F)) {
         MF->print(llvm::outs());
       }
     }
-    auto &[TSModule, MMI] = LCOModule;
-    auto &M = *TSModule.getModuleUnlocked();
+    auto &[M, MMI] = LCOModule;
     llvm::legacy::PassManager PM;
     llvm::MCContext &MCContext = MMI->getContext();
     // Get the target machine of the LCO's ISA
     hsa::LoadedCodeObject LCOWrapper(LCO);
     auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
-    llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
+    llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M->getTargetTriple()));
     PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
     auto *TPC = TM.createPassConfig(PM);
     TPC->setDisableVerify(true);
@@ -525,15 +552,15 @@ printAssembly(LiftedRepresentation &LR,
                             llvm::CodeGenFileType::ObjectFile, MCContext)));
     }
     llvm::outs() << "Running the printer pass manager\n";
-    PM.run(M); // Run all the passes
-    MMI = std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
-    llvm::outs() << "AFTER MOVE: \n";
-    for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
-      llvm::outs() << F.getName() << "\n";
-      if (auto MF = MMI->getMachineFunction(F)) {
-        MF->print(llvm::outs());
-      }
-    }
+    PM.run(*M); // Run all the passes
+//    MMI = std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
+    //    llvm::outs() << "AFTER MOVE: \n";
+    //    for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+    //      llvm::outs() << F.getName() << "\n";
+    //      if (auto MF = MMI->getMachineFunction(F)) {
+    //        MF->print(llvm::outs());
+    //      }
+    //    }
     return llvm::Error::success();
   }
   return llvm::Error::success();
@@ -542,7 +569,7 @@ printAssembly(LiftedRepresentation &LR,
 llvm::Error processReadRegFunctions(llvm::Module &Module,
                                     const llvm::GCNTargetMachine &TM) {
   llvm::outs() << "Dumping users\n";
-  Module.print(llvm::outs(), nullptr);
+  //  Module.print(llvm::outs(), nullptr);
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
     if (F.getName() == "read32BitReg") {
       for (auto *User : F.users()) {
@@ -554,13 +581,12 @@ llvm::Error processReadRegFunctions(llvm::Module &Module,
             MCRegister Reg(Arg->getZExtValue());
             auto *PhysRegClass = TRI->getPhysRegBaseClass(Reg);
             auto RegName = TRI->getRegAsmName(Reg);
-            auto* AsmCallInst =
-                llvm::CallInst::Create(llvm::InlineAsm::get(
-                    llvm::FunctionType::get(
-                        llvm::Type::getInt32Ty(F.getContext()), {}),
-                    llvm::formatv("v_mov_b32 $0 {0}", RegName).str(), "=v",
-                    true));
-            AsmCallInst->insertBefore(*CallInst->getParent(), CallInst->getIterator());
+            auto *AsmCallInst = llvm::CallInst::Create(llvm::InlineAsm::get(
+                llvm::FunctionType::get(llvm::Type::getInt32Ty(F.getContext()),
+                                        {}),
+                llvm::formatv("v_mov_b32 $0 {0}", RegName).str(), "=v", true));
+            AsmCallInst->insertBefore(*CallInst->getParent(),
+                                      CallInst->getIterator());
             CallInst->replaceAllUsesWith(AsmCallInst);
             CallInst->eraseFromParent();
           } else {
@@ -573,13 +599,13 @@ llvm::Error processReadRegFunctions(llvm::Module &Module,
       F.eraseFromParent();
     }
   }
-  Module.print(llvm::outs(), nullptr);
+  //  Module.print(llvm::outs(), nullptr);
   return llvm::Error::success();
 }
 
 llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                                        const InstrumentationTask &Task) {
-  // Early exit if no hooks are to be inserted
+  // Early exit if no hooks are to be inserted into the LR
   if (Task.getHookInsertionTasks().empty())
     return llvm::Error::success();
   auto Lock = LR.getContext().getLock();
@@ -620,19 +646,21 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                  M.print(llvm::dbgs(), nullptr));
       // Run the code gen pipeline, while enforcing the stack and register
       // constraints
-      auto MMI = runCodeGenPipeline(M, &TM, MIToHookFuncMap);
+      auto [MMIWP, PM] = runCodeGenPipeline(M, &TM, MIToHookFuncMap);
+      LR.managePassManagerLifetime(std::move(PM));
       for (const auto &F : M) {
-        llvm::outs() << MMI->getModule() << "\n";
-        if (auto MF = MMI->getMachineFunction(F)) {
-          MF->print(llvm::outs());
-        }
+        llvm::outs() << "AFTER MOVE:\n";
+        llvm::outs() << MMIWP->getMMI().getModule() << "\n";
+        //        if (auto MF = MMI->getMachineFunction(F)) {
+        //          MF->print(llvm::outs());
+        //        }
       }
       // Finally, patch in the generated machine code into the lifted
       // representation
       LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
-          M, *MMI, *LCOModule.first.getModuleUnlocked(),
-          *LCOModule.second, MIToHookFuncMap));
-      for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
+          M, MMIWP->getMMI(), *LCOModule.first, *LCOModule.second,
+          MIToHookFuncMap));
+      for (const auto &F : *LCOModule.first) {
         llvm::outs() << "Function name inside: " << F.getName() << "\n";
         llvm::outs() << LCOModule.second->getModule() << "\n";
         if (auto MF = LCOModule.second->getMachineFunction(F)) {
