@@ -5,6 +5,11 @@
 #include <rocprofiler-sdk/hip/api_args.h>
 #include <rocprofiler-sdk/hip/api_id.h>
 
+rocprofiler_dim3_t convertToRocprofilerDim3(const dim3& d) {
+    return rocprofiler_dim3_t{d.x, d.y, d.z};
+}
+
+
 static const char* hipApiName_callback(uint32_t id) {
   auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
@@ -387,37 +392,6 @@ static hipError_t hipChooseDevice_callback(int* device, const hipDeviceProp_t* p
   }
 }
 
-static hipError_t hipChooseDeviceR0000_callback(int* device, const hipDeviceProp_tR0000* properties) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipChooseDeviceR0000;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipChooseDeviceR0000.device = device;
-    Args.hipChooseDeviceR0000.properties = properties;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipChooseDeviceR0000_fn(Args.hipChooseDeviceR0000.device, Args.hipChooseDeviceR0000.properties);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipChooseDeviceR0000_fn(device, properties);
-  }
-}
-
 static hipError_t hipConfigureCall_callback(dim3 gridDim, dim3 blockDim, size_t sharedMem, hipStream_t stream) {
   auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipConfigureCall;
@@ -430,8 +404,8 @@ static hipError_t hipConfigureCall_callback(dim3 gridDim, dim3 blockDim, size_t 
     auto& HipInternalCallback = HipInterceptor.getInternalCallback();
     rocprofiler_hip_api_args_t Args;
     bool SkipFunction{false};
-    Args.hipConfigureCall.gridDim = gridDim;
-    Args.hipConfigureCall.blockDim = blockDim;
+    Args.hipConfigureCall.gridDim = convertToRocprofilerDim3(gridDim);
+    Args.hipConfigureCall.blockDim = convertToRocprofilerDim3(blockDim);
     Args.hipConfigureCall.sharedMem = sharedMem;
     Args.hipConfigureCall.stream = stream;
     if (IsUserCallbackEnabled)
@@ -439,7 +413,7 @@ static hipError_t hipConfigureCall_callback(dim3 gridDim, dim3 blockDim, size_t 
     if (IsInternalCallbackEnabled)
       HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
     if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipConfigureCall_fn(Args.hipConfigureCall.gridDim, Args.hipConfigureCall.blockDim, Args.hipConfigureCall.sharedMem, Args.hipConfigureCall.stream);
+      Out = HipInterceptor.getSavedRuntimeTable().hipConfigureCall_fn(gridDim, blockDim, Args.hipConfigureCall.sharedMem, Args.hipConfigureCall.stream);
     if (IsUserCallbackEnabled)
       HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
     if (IsInternalCallbackEnabled)
@@ -2619,8 +2593,8 @@ static hipError_t hipExtLaunchKernel_callback(const void* function_address, dim3
     rocprofiler_hip_api_args_t Args;
     bool SkipFunction{false};
     Args.hipExtLaunchKernel.function_address = function_address;
-    Args.hipExtLaunchKernel.numBlocks = numBlocks;
-    Args.hipExtLaunchKernel.dimBlocks = dimBlocks;
+    Args.hipExtLaunchKernel.numBlocks = convertToRocprofilerDim3(numBlocks);
+    Args.hipExtLaunchKernel.dimBlocks = convertToRocprofilerDim3(dimBlocks);
     Args.hipExtLaunchKernel.args = args;
     Args.hipExtLaunchKernel.sharedMemBytes = sharedMemBytes;
     Args.hipExtLaunchKernel.stream = stream;
@@ -2632,7 +2606,7 @@ static hipError_t hipExtLaunchKernel_callback(const void* function_address, dim3
     if (IsInternalCallbackEnabled)
       HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
     if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipExtLaunchKernel_fn(Args.hipExtLaunchKernel.function_address, Args.hipExtLaunchKernel.numBlocks, Args.hipExtLaunchKernel.dimBlocks, Args.hipExtLaunchKernel.args, Args.hipExtLaunchKernel.sharedMemBytes, Args.hipExtLaunchKernel.stream, Args.hipExtLaunchKernel.startEvent, Args.hipExtLaunchKernel.stopEvent, Args.hipExtLaunchKernel.flags);
+      Out = HipInterceptor.getSavedRuntimeTable().hipExtLaunchKernel_fn(Args.hipExtLaunchKernel.function_address, numBlocks, dimBlocks, Args.hipExtLaunchKernel.args, Args.hipExtLaunchKernel.sharedMemBytes, Args.hipExtLaunchKernel.stream, Args.hipExtLaunchKernel.startEvent, Args.hipExtLaunchKernel.stopEvent, Args.hipExtLaunchKernel.flags);
     if (IsUserCallbackEnabled)
       HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
     if (IsInternalCallbackEnabled)
@@ -3263,68 +3237,6 @@ static hipError_t hipGetDeviceFlags_callback(unsigned int* flags) {
   }
   else {
     return HipInterceptor.getSavedRuntimeTable().hipGetDeviceFlags_fn(flags);
-  }
-}
-
-static hipError_t hipGetDevicePropertiesR0600_callback(hipDeviceProp_tR0600* prop, int device) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipGetDevicePropertiesR0600;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipGetDevicePropertiesR0600.prop = prop;
-    Args.hipGetDevicePropertiesR0600.device = device;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipGetDevicePropertiesR0600_fn(Args.hipGetDevicePropertiesR0600.prop, Args.hipGetDevicePropertiesR0600.device);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipGetDevicePropertiesR0600_fn(prop, device);
-  }
-}
-
-static hipError_t hipGetDevicePropertiesR0000_callback(hipDeviceProp_tR0000* prop, int device) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipGetDevicePropertiesR0000;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipGetDevicePropertiesR0000.prop = prop;
-    Args.hipGetDevicePropertiesR0000.device = device;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipGetDevicePropertiesR0000_fn(Args.hipGetDevicePropertiesR0000.prop, Args.hipGetDevicePropertiesR0000.device);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipGetDevicePropertiesR0000_fn(prop, device);
   }
 }
 
@@ -6567,36 +6479,6 @@ static hipError_t hipIpcOpenMemHandle_callback(void** devPtr, hipIpcMemHandle_t 
   }
 }
 
-static const char* hipKernelNameRef_callback(const hipFunction_t f) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipKernelNameRef;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    const char* Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipKernelNameRef.f = f;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipKernelNameRef_fn(Args.hipKernelNameRef.f);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipKernelNameRef_fn(f);
-  }
-}
-
 static const char* hipKernelNameRefByPtr_callback(const void* hostFunction, hipStream_t stream) {
   auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipKernelNameRefByPtr;
@@ -6655,41 +6537,6 @@ static hipError_t hipLaunchByPtr_callback(const void* func) {
   }
   else {
     return HipInterceptor.getSavedRuntimeTable().hipLaunchByPtr_fn(func);
-  }
-}
-
-static hipError_t hipLaunchCooperativeKernel_callback(const void* f, dim3 gridDim, dim3 blockDimX, void** kernelParams, unsigned int sharedMemBytes, hipStream_t stream) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchCooperativeKernel;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipLaunchCooperativeKernel.f = f;
-    Args.hipLaunchCooperativeKernel.gridDim = gridDim;
-    Args.hipLaunchCooperativeKernel.blockDimX = blockDimX;
-    Args.hipLaunchCooperativeKernel.kernelParams = kernelParams;
-    Args.hipLaunchCooperativeKernel.sharedMemBytes = sharedMemBytes;
-    Args.hipLaunchCooperativeKernel.stream = stream;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipLaunchCooperativeKernel_fn(Args.hipLaunchCooperativeKernel.f, Args.hipLaunchCooperativeKernel.gridDim, Args.hipLaunchCooperativeKernel.blockDimX, Args.hipLaunchCooperativeKernel.kernelParams, Args.hipLaunchCooperativeKernel.sharedMemBytes, Args.hipLaunchCooperativeKernel.stream);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipLaunchCooperativeKernel_fn(f, gridDim, blockDimX, kernelParams, sharedMemBytes, stream);
   }
 }
 
@@ -6770,8 +6617,8 @@ static hipError_t hipLaunchKernel_callback(const void* function_address, dim3 nu
     rocprofiler_hip_api_args_t Args;
     bool SkipFunction{false};
     Args.hipLaunchKernel.function_address = function_address;
-    Args.hipLaunchKernel.numBlocks = numBlocks;
-    Args.hipLaunchKernel.dimBlocks = dimBlocks;
+    Args.hipLaunchKernel.numBlocks = convertToRocprofilerDim3(numBlocks);
+    Args.hipLaunchKernel.dimBlocks = convertToRocprofilerDim3(dimBlocks);
     Args.hipLaunchKernel.args = args;
     Args.hipLaunchKernel.sharedMemBytes = sharedMemBytes;
     Args.hipLaunchKernel.stream = stream;
@@ -6780,7 +6627,7 @@ static hipError_t hipLaunchKernel_callback(const void* function_address, dim3 nu
     if (IsInternalCallbackEnabled)
       HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
     if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipLaunchKernel_fn(Args.hipLaunchKernel.function_address, Args.hipLaunchKernel.numBlocks, Args.hipLaunchKernel.dimBlocks, Args.hipLaunchKernel.args, Args.hipLaunchKernel.sharedMemBytes, Args.hipLaunchKernel.stream);
+      Out = HipInterceptor.getSavedRuntimeTable().hipLaunchKernel_fn(Args.hipLaunchKernel.function_address, numBlocks, dimBlocks, Args.hipLaunchKernel.args, Args.hipLaunchKernel.sharedMemBytes, Args.hipLaunchKernel.stream);
     if (IsUserCallbackEnabled)
       HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
     if (IsInternalCallbackEnabled)
@@ -9777,45 +9624,6 @@ static hipError_t hipModuleGetTexRef_callback(textureReference** texRef, hipModu
   }
 }
 
-static hipError_t hipModuleLaunchCooperativeKernel_callback(hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream, void** kernelParams) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleLaunchCooperativeKernel;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipModuleLaunchCooperativeKernel.f = f;
-    Args.hipModuleLaunchCooperativeKernel.gridDimX = gridDimX;
-    Args.hipModuleLaunchCooperativeKernel.gridDimY = gridDimY;
-    Args.hipModuleLaunchCooperativeKernel.gridDimZ = gridDimZ;
-    Args.hipModuleLaunchCooperativeKernel.blockDimX = blockDimX;
-    Args.hipModuleLaunchCooperativeKernel.blockDimY = blockDimY;
-    Args.hipModuleLaunchCooperativeKernel.blockDimZ = blockDimZ;
-    Args.hipModuleLaunchCooperativeKernel.sharedMemBytes = sharedMemBytes;
-    Args.hipModuleLaunchCooperativeKernel.stream = stream;
-    Args.hipModuleLaunchCooperativeKernel.kernelParams = kernelParams;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipModuleLaunchCooperativeKernel_fn(Args.hipModuleLaunchCooperativeKernel.f, Args.hipModuleLaunchCooperativeKernel.gridDimX, Args.hipModuleLaunchCooperativeKernel.gridDimY, Args.hipModuleLaunchCooperativeKernel.gridDimZ, Args.hipModuleLaunchCooperativeKernel.blockDimX, Args.hipModuleLaunchCooperativeKernel.blockDimY, Args.hipModuleLaunchCooperativeKernel.blockDimZ, Args.hipModuleLaunchCooperativeKernel.sharedMemBytes, Args.hipModuleLaunchCooperativeKernel.stream, Args.hipModuleLaunchCooperativeKernel.kernelParams);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipModuleLaunchCooperativeKernel_fn(f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, stream, kernelParams);
-  }
-}
-
 static hipError_t hipModuleLaunchCooperativeKernelMultiDevice_callback(hipFunctionLaunchParams* launchParamsList, unsigned int numDevices, unsigned int flags) {
   auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleLaunchCooperativeKernelMultiDevice;
@@ -9845,46 +9653,6 @@ static hipError_t hipModuleLaunchCooperativeKernelMultiDevice_callback(hipFuncti
   }
   else {
     return HipInterceptor.getSavedRuntimeTable().hipModuleLaunchCooperativeKernelMultiDevice_fn(launchParamsList, numDevices, flags);
-  }
-}
-
-static hipError_t hipModuleLaunchKernel_callback(hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream, void** kernelParams, void** extra) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleLaunchKernel;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipModuleLaunchKernel.f = f;
-    Args.hipModuleLaunchKernel.gridDimX = gridDimX;
-    Args.hipModuleLaunchKernel.gridDimY = gridDimY;
-    Args.hipModuleLaunchKernel.gridDimZ = gridDimZ;
-    Args.hipModuleLaunchKernel.blockDimX = blockDimX;
-    Args.hipModuleLaunchKernel.blockDimY = blockDimY;
-    Args.hipModuleLaunchKernel.blockDimZ = blockDimZ;
-    Args.hipModuleLaunchKernel.sharedMemBytes = sharedMemBytes;
-    Args.hipModuleLaunchKernel.stream = stream;
-    Args.hipModuleLaunchKernel.kernelParams = kernelParams;
-    Args.hipModuleLaunchKernel.extra = extra;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipModuleLaunchKernel_fn(Args.hipModuleLaunchKernel.f, Args.hipModuleLaunchKernel.gridDimX, Args.hipModuleLaunchKernel.gridDimY, Args.hipModuleLaunchKernel.gridDimZ, Args.hipModuleLaunchKernel.blockDimX, Args.hipModuleLaunchKernel.blockDimY, Args.hipModuleLaunchKernel.blockDimZ, Args.hipModuleLaunchKernel.sharedMemBytes, Args.hipModuleLaunchKernel.stream, Args.hipModuleLaunchKernel.kernelParams, Args.hipModuleLaunchKernel.extra);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipModuleLaunchKernel_fn(f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, stream, kernelParams, extra);
   }
 }
 
@@ -9984,142 +9752,6 @@ static hipError_t hipModuleLoadDataEx_callback(hipModule_t* module, const void* 
   }
 }
 
-static hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor_callback(int* numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleOccupancyMaxActiveBlocksPerMultiprocessor;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.numBlocks = numBlocks;
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.f = f;
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.blockSize = blockSize;
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.dynSharedMemPerBlk = dynSharedMemPerBlk;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxActiveBlocksPerMultiprocessor_fn(Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.numBlocks, Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.f, Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.blockSize, Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessor.dynSharedMemPerBlk);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxActiveBlocksPerMultiprocessor_fn(numBlocks, f, blockSize, dynSharedMemPerBlk);
-  }
-}
-
-static hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags_callback(int* numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.numBlocks = numBlocks;
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.f = f;
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.blockSize = blockSize;
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.dynSharedMemPerBlk = dynSharedMemPerBlk;
-    Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.flags = flags;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags_fn(Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.numBlocks, Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.f, Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.blockSize, Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.dynSharedMemPerBlk, Args.hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.flags);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags_fn(numBlocks, f, blockSize, dynSharedMemPerBlk, flags);
-  }
-}
-
-static hipError_t hipModuleOccupancyMaxPotentialBlockSize_callback(int* gridSize, int* blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleOccupancyMaxPotentialBlockSize;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipModuleOccupancyMaxPotentialBlockSize.gridSize = gridSize;
-    Args.hipModuleOccupancyMaxPotentialBlockSize.blockSize = blockSize;
-    Args.hipModuleOccupancyMaxPotentialBlockSize.f = f;
-    Args.hipModuleOccupancyMaxPotentialBlockSize.dynSharedMemPerBlk = dynSharedMemPerBlk;
-    Args.hipModuleOccupancyMaxPotentialBlockSize.blockSizeLimit = blockSizeLimit;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxPotentialBlockSize_fn(Args.hipModuleOccupancyMaxPotentialBlockSize.gridSize, Args.hipModuleOccupancyMaxPotentialBlockSize.blockSize, Args.hipModuleOccupancyMaxPotentialBlockSize.f, Args.hipModuleOccupancyMaxPotentialBlockSize.dynSharedMemPerBlk, Args.hipModuleOccupancyMaxPotentialBlockSize.blockSizeLimit);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxPotentialBlockSize_fn(gridSize, blockSize, f, dynSharedMemPerBlk, blockSizeLimit);
-  }
-}
-
-static hipError_t hipModuleOccupancyMaxPotentialBlockSizeWithFlags_callback(int* gridSize, int* blockSize, hipFunction_t f, size_t dynSharedMemPerBlk, int blockSizeLimit, unsigned int flags) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleOccupancyMaxPotentialBlockSizeWithFlags;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.gridSize = gridSize;
-    Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.blockSize = blockSize;
-    Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.f = f;
-    Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.dynSharedMemPerBlk = dynSharedMemPerBlk;
-    Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.blockSizeLimit = blockSizeLimit;
-    Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.flags = flags;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxPotentialBlockSizeWithFlags_fn(Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.gridSize, Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.blockSize, Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.f, Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.dynSharedMemPerBlk, Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.blockSizeLimit, Args.hipModuleOccupancyMaxPotentialBlockSizeWithFlags.flags);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipModuleOccupancyMaxPotentialBlockSizeWithFlags_fn(gridSize, blockSize, f, dynSharedMemPerBlk, blockSizeLimit, flags);
-  }
-}
-
 static hipError_t hipModuleUnload_callback(hipModule_t module) {
   auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleUnload;
@@ -10147,107 +9779,6 @@ static hipError_t hipModuleUnload_callback(hipModule_t module) {
   }
   else {
     return HipInterceptor.getSavedRuntimeTable().hipModuleUnload_fn(module);
-  }
-}
-
-static hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor_callback(int* numBlocks, const void* f, int blockSize, size_t dynSharedMemPerBlk) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipOccupancyMaxActiveBlocksPerMultiprocessor;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.numBlocks = numBlocks;
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.f = f;
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.blockSize = blockSize;
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.dynSharedMemPerBlk = dynSharedMemPerBlk;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipOccupancyMaxActiveBlocksPerMultiprocessor_fn(Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.numBlocks, Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.f, Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.blockSize, Args.hipOccupancyMaxActiveBlocksPerMultiprocessor.dynSharedMemPerBlk);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipOccupancyMaxActiveBlocksPerMultiprocessor_fn(numBlocks, f, blockSize, dynSharedMemPerBlk);
-  }
-}
-
-static hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags_callback(int* numBlocks, const void* f, int blockSize, size_t dynSharedMemPerBlk, unsigned int flags) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.numBlocks = numBlocks;
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.f = f;
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.blockSize = blockSize;
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.dynSharedMemPerBlk = dynSharedMemPerBlk;
-    Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.flags = flags;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags_fn(Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.numBlocks, Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.f, Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.blockSize, Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.dynSharedMemPerBlk, Args.hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags.flags);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags_fn(numBlocks, f, blockSize, dynSharedMemPerBlk, flags);
-  }
-}
-
-static hipError_t hipOccupancyMaxPotentialBlockSize_callback(int* gridSize, int* blockSize, const void* f, size_t dynSharedMemPerBlk, int blockSizeLimit) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipOccupancyMaxPotentialBlockSize;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipOccupancyMaxPotentialBlockSize.gridSize = gridSize;
-    Args.hipOccupancyMaxPotentialBlockSize.blockSize = blockSize;
-    Args.hipOccupancyMaxPotentialBlockSize.f = f;
-    Args.hipOccupancyMaxPotentialBlockSize.dynSharedMemPerBlk = dynSharedMemPerBlk;
-    Args.hipOccupancyMaxPotentialBlockSize.blockSizeLimit = blockSizeLimit;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipOccupancyMaxPotentialBlockSize_fn(Args.hipOccupancyMaxPotentialBlockSize.gridSize, Args.hipOccupancyMaxPotentialBlockSize.blockSize, Args.hipOccupancyMaxPotentialBlockSize.f, Args.hipOccupancyMaxPotentialBlockSize.dynSharedMemPerBlk, Args.hipOccupancyMaxPotentialBlockSize.blockSizeLimit);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipOccupancyMaxPotentialBlockSize_fn(gridSize, blockSize, f, dynSharedMemPerBlk, blockSizeLimit);
   }
 }
 
@@ -12393,91 +11924,6 @@ static hipChannelFormatDesc hipCreateChannelDesc_callback(int x, int y, int z, i
   }
 }
 
-static hipError_t hipExtModuleLaunchKernel_callback(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t localWorkSizeX, uint32_t localWorkSizeY, uint32_t localWorkSizeZ, size_t sharedMemBytes, hipStream_t hStream, void** kernelParams, void** extra, hipEvent_t startEvent, hipEvent_t stopEvent, uint32_t flags) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipExtModuleLaunchKernel;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipExtModuleLaunchKernel.f = f;
-    Args.hipExtModuleLaunchKernel.globalWorkSizeX = globalWorkSizeX;
-    Args.hipExtModuleLaunchKernel.globalWorkSizeY = globalWorkSizeY;
-    Args.hipExtModuleLaunchKernel.globalWorkSizeZ = globalWorkSizeZ;
-    Args.hipExtModuleLaunchKernel.localWorkSizeX = localWorkSizeX;
-    Args.hipExtModuleLaunchKernel.localWorkSizeY = localWorkSizeY;
-    Args.hipExtModuleLaunchKernel.localWorkSizeZ = localWorkSizeZ;
-    Args.hipExtModuleLaunchKernel.sharedMemBytes = sharedMemBytes;
-    Args.hipExtModuleLaunchKernel.hStream = hStream;
-    Args.hipExtModuleLaunchKernel.kernelParams = kernelParams;
-    Args.hipExtModuleLaunchKernel.extra = extra;
-    Args.hipExtModuleLaunchKernel.startEvent = startEvent;
-    Args.hipExtModuleLaunchKernel.stopEvent = stopEvent;
-    Args.hipExtModuleLaunchKernel.flags = flags;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipExtModuleLaunchKernel_fn(Args.hipExtModuleLaunchKernel.f, Args.hipExtModuleLaunchKernel.globalWorkSizeX, Args.hipExtModuleLaunchKernel.globalWorkSizeY, Args.hipExtModuleLaunchKernel.globalWorkSizeZ, Args.hipExtModuleLaunchKernel.localWorkSizeX, Args.hipExtModuleLaunchKernel.localWorkSizeY, Args.hipExtModuleLaunchKernel.localWorkSizeZ, Args.hipExtModuleLaunchKernel.sharedMemBytes, Args.hipExtModuleLaunchKernel.hStream, Args.hipExtModuleLaunchKernel.kernelParams, Args.hipExtModuleLaunchKernel.extra, Args.hipExtModuleLaunchKernel.startEvent, Args.hipExtModuleLaunchKernel.stopEvent, Args.hipExtModuleLaunchKernel.flags);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipExtModuleLaunchKernel_fn(f, globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ, localWorkSizeX, localWorkSizeY, localWorkSizeZ, sharedMemBytes, hStream, kernelParams, extra, startEvent, stopEvent, flags);
-  }
-}
-
-static hipError_t hipHccModuleLaunchKernel_callback(hipFunction_t f, uint32_t globalWorkSizeX, uint32_t globalWorkSizeY, uint32_t globalWorkSizeZ, uint32_t localWorkSizeX, uint32_t localWorkSizeY, uint32_t localWorkSizeZ, size_t sharedMemBytes, hipStream_t hStream, void** kernelParams, void** extra, hipEvent_t startEvent, hipEvent_t stopEvent) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipHccModuleLaunchKernel;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipHccModuleLaunchKernel.f = f;
-    Args.hipHccModuleLaunchKernel.globalWorkSizeX = globalWorkSizeX;
-    Args.hipHccModuleLaunchKernel.globalWorkSizeY = globalWorkSizeY;
-    Args.hipHccModuleLaunchKernel.globalWorkSizeZ = globalWorkSizeZ;
-    Args.hipHccModuleLaunchKernel.localWorkSizeX = localWorkSizeX;
-    Args.hipHccModuleLaunchKernel.localWorkSizeY = localWorkSizeY;
-    Args.hipHccModuleLaunchKernel.localWorkSizeZ = localWorkSizeZ;
-    Args.hipHccModuleLaunchKernel.sharedMemBytes = sharedMemBytes;
-    Args.hipHccModuleLaunchKernel.hStream = hStream;
-    Args.hipHccModuleLaunchKernel.kernelParams = kernelParams;
-    Args.hipHccModuleLaunchKernel.extra = extra;
-    Args.hipHccModuleLaunchKernel.startEvent = startEvent;
-    Args.hipHccModuleLaunchKernel.stopEvent = stopEvent;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipHccModuleLaunchKernel_fn(Args.hipHccModuleLaunchKernel.f, Args.hipHccModuleLaunchKernel.globalWorkSizeX, Args.hipHccModuleLaunchKernel.globalWorkSizeY, Args.hipHccModuleLaunchKernel.globalWorkSizeZ, Args.hipHccModuleLaunchKernel.localWorkSizeX, Args.hipHccModuleLaunchKernel.localWorkSizeY, Args.hipHccModuleLaunchKernel.localWorkSizeZ, Args.hipHccModuleLaunchKernel.sharedMemBytes, Args.hipHccModuleLaunchKernel.hStream, Args.hipHccModuleLaunchKernel.kernelParams, Args.hipHccModuleLaunchKernel.extra, Args.hipHccModuleLaunchKernel.startEvent, Args.hipHccModuleLaunchKernel.stopEvent);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipHccModuleLaunchKernel_fn(f, globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ, localWorkSizeX, localWorkSizeY, localWorkSizeZ, sharedMemBytes, hStream, kernelParams, extra, startEvent, stopEvent);
-  }
-}
-
 static hipError_t hipMemcpy_spt_callback(void* dst, const void* src, size_t sizeBytes, hipMemcpyKind kind) {
   auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy_spt;
@@ -13419,41 +12865,6 @@ static hipError_t hipEventRecord_spt_callback(hipEvent_t event, hipStream_t stre
   }
 }
 
-static hipError_t hipLaunchCooperativeKernel_spt_callback(const void* f, dim3 gridDim, dim3 blockDim, void** kernelParams, uint32_t sharedMemBytes, hipStream_t hStream) {
-  auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
-  auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchCooperativeKernel_spt;
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {
-    hipError_t Out{};
-    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-    Args.hipLaunchCooperativeKernel_spt.f = f;
-    Args.hipLaunchCooperativeKernel_spt.gridDim = gridDim;
-    Args.hipLaunchCooperativeKernel_spt.blockDim = blockDim;
-    Args.hipLaunchCooperativeKernel_spt.kernelParams = kernelParams;
-    Args.hipLaunchCooperativeKernel_spt.sharedMemBytes = sharedMemBytes;
-    Args.hipLaunchCooperativeKernel_spt.hStream = hStream;
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
-    if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipLaunchCooperativeKernel_spt_fn(Args.hipLaunchCooperativeKernel_spt.f, Args.hipLaunchCooperativeKernel_spt.gridDim, Args.hipLaunchCooperativeKernel_spt.blockDim, Args.hipLaunchCooperativeKernel_spt.kernelParams, Args.hipLaunchCooperativeKernel_spt.sharedMemBytes, Args.hipLaunchCooperativeKernel_spt.hStream);
-    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
-    if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
-    return Out;
-  }
-  else {
-    return HipInterceptor.getSavedRuntimeTable().hipLaunchCooperativeKernel_spt_fn(f, gridDim, blockDim, kernelParams, sharedMemBytes, hStream);
-  }
-}
-
 static hipError_t hipLaunchKernel_spt_callback(const void* function_address, dim3 numBlocks, dim3 dimBlocks, void** args, size_t sharedMemBytes, hipStream_t stream) {
   auto& HipInterceptor = luthier::hip::RuntimeInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchKernel_spt;
@@ -13467,8 +12878,8 @@ static hipError_t hipLaunchKernel_spt_callback(const void* function_address, dim
     rocprofiler_hip_api_args_t Args;
     bool SkipFunction{false};
     Args.hipLaunchKernel_spt.function_address = function_address;
-    Args.hipLaunchKernel_spt.numBlocks = numBlocks;
-    Args.hipLaunchKernel_spt.dimBlocks = dimBlocks;
+    Args.hipLaunchKernel_spt.numBlocks = convertToRocprofilerDim3(numBlocks);
+    Args.hipLaunchKernel_spt.dimBlocks = convertToRocprofilerDim3(dimBlocks);
     Args.hipLaunchKernel_spt.args = args;
     Args.hipLaunchKernel_spt.sharedMemBytes = sharedMemBytes;
     Args.hipLaunchKernel_spt.stream = stream;
@@ -13477,7 +12888,7 @@ static hipError_t hipLaunchKernel_spt_callback(const void* function_address, dim
     if (IsInternalCallbackEnabled)
       HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
     if (!SkipFunction)
-      Out = HipInterceptor.getSavedRuntimeTable().hipLaunchKernel_spt_fn(Args.hipLaunchKernel_spt.function_address, Args.hipLaunchKernel_spt.numBlocks, Args.hipLaunchKernel_spt.dimBlocks, Args.hipLaunchKernel_spt.args, Args.hipLaunchKernel_spt.sharedMemBytes, Args.hipLaunchKernel_spt.stream);
+      Out = HipInterceptor.getSavedRuntimeTable().hipLaunchKernel_spt_fn(Args.hipLaunchKernel_spt.function_address, numBlocks, dimBlocks, Args.hipLaunchKernel_spt.args, Args.hipLaunchKernel_spt.sharedMemBytes, Args.hipLaunchKernel_spt.stream);
     if (IsUserCallbackEnabled)
       HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
     if (IsInternalCallbackEnabled)
@@ -13742,5 +13153,420 @@ static int hipGetStreamDeviceId_callback(hipStream_t stream) {
   }
 }
 
+
+void luthier::hip::RuntimeInterceptor::captureRuntimeTable(HipDispatchTable *RuntimeTable) {
+	SavedDispatchTable = *RuntimeTable;
+	RuntimeTable->hipApiName_fn = hipApiName_callback;
+	RuntimeTable->hipArray3DCreate_fn = hipArray3DCreate_callback;
+	RuntimeTable->hipArray3DGetDescriptor_fn = hipArray3DGetDescriptor_callback;
+	RuntimeTable->hipArrayCreate_fn = hipArrayCreate_callback;
+	RuntimeTable->hipArrayDestroy_fn = hipArrayDestroy_callback;
+	RuntimeTable->hipArrayGetDescriptor_fn = hipArrayGetDescriptor_callback;
+	RuntimeTable->hipArrayGetInfo_fn = hipArrayGetInfo_callback;
+	RuntimeTable->hipBindTexture_fn = hipBindTexture_callback;
+	RuntimeTable->hipBindTexture2D_fn = hipBindTexture2D_callback;
+	RuntimeTable->hipBindTextureToArray_fn = hipBindTextureToArray_callback;
+	RuntimeTable->hipBindTextureToMipmappedArray_fn = hipBindTextureToMipmappedArray_callback;
+	RuntimeTable->hipChooseDevice_fn = hipChooseDevice_callback;
+	RuntimeTable->hipConfigureCall_fn = hipConfigureCall_callback;
+	RuntimeTable->hipCreateSurfaceObject_fn = hipCreateSurfaceObject_callback;
+	RuntimeTable->hipCreateTextureObject_fn = hipCreateTextureObject_callback;
+	RuntimeTable->hipCtxCreate_fn = hipCtxCreate_callback;
+	RuntimeTable->hipCtxDestroy_fn = hipCtxDestroy_callback;
+	RuntimeTable->hipCtxDisablePeerAccess_fn = hipCtxDisablePeerAccess_callback;
+	RuntimeTable->hipCtxEnablePeerAccess_fn = hipCtxEnablePeerAccess_callback;
+	RuntimeTable->hipCtxGetApiVersion_fn = hipCtxGetApiVersion_callback;
+	RuntimeTable->hipCtxGetCacheConfig_fn = hipCtxGetCacheConfig_callback;
+	RuntimeTable->hipCtxGetCurrent_fn = hipCtxGetCurrent_callback;
+	RuntimeTable->hipCtxGetDevice_fn = hipCtxGetDevice_callback;
+	RuntimeTable->hipCtxGetFlags_fn = hipCtxGetFlags_callback;
+	RuntimeTable->hipCtxGetSharedMemConfig_fn = hipCtxGetSharedMemConfig_callback;
+	RuntimeTable->hipCtxPopCurrent_fn = hipCtxPopCurrent_callback;
+	RuntimeTable->hipCtxPushCurrent_fn = hipCtxPushCurrent_callback;
+	RuntimeTable->hipCtxSetCacheConfig_fn = hipCtxSetCacheConfig_callback;
+	RuntimeTable->hipCtxSetCurrent_fn = hipCtxSetCurrent_callback;
+	RuntimeTable->hipCtxSetSharedMemConfig_fn = hipCtxSetSharedMemConfig_callback;
+	RuntimeTable->hipCtxSynchronize_fn = hipCtxSynchronize_callback;
+	RuntimeTable->hipDestroyExternalMemory_fn = hipDestroyExternalMemory_callback;
+	RuntimeTable->hipDestroyExternalSemaphore_fn = hipDestroyExternalSemaphore_callback;
+	RuntimeTable->hipDestroySurfaceObject_fn = hipDestroySurfaceObject_callback;
+	RuntimeTable->hipDestroyTextureObject_fn = hipDestroyTextureObject_callback;
+	RuntimeTable->hipDeviceCanAccessPeer_fn = hipDeviceCanAccessPeer_callback;
+	RuntimeTable->hipDeviceComputeCapability_fn = hipDeviceComputeCapability_callback;
+	RuntimeTable->hipDeviceDisablePeerAccess_fn = hipDeviceDisablePeerAccess_callback;
+	RuntimeTable->hipDeviceEnablePeerAccess_fn = hipDeviceEnablePeerAccess_callback;
+	RuntimeTable->hipDeviceGet_fn = hipDeviceGet_callback;
+	RuntimeTable->hipDeviceGetAttribute_fn = hipDeviceGetAttribute_callback;
+	RuntimeTable->hipDeviceGetByPCIBusId_fn = hipDeviceGetByPCIBusId_callback;
+	RuntimeTable->hipDeviceGetCacheConfig_fn = hipDeviceGetCacheConfig_callback;
+	RuntimeTable->hipDeviceGetDefaultMemPool_fn = hipDeviceGetDefaultMemPool_callback;
+	RuntimeTable->hipDeviceGetGraphMemAttribute_fn = hipDeviceGetGraphMemAttribute_callback;
+	RuntimeTable->hipDeviceGetLimit_fn = hipDeviceGetLimit_callback;
+	RuntimeTable->hipDeviceGetMemPool_fn = hipDeviceGetMemPool_callback;
+	RuntimeTable->hipDeviceGetName_fn = hipDeviceGetName_callback;
+	RuntimeTable->hipDeviceGetP2PAttribute_fn = hipDeviceGetP2PAttribute_callback;
+	RuntimeTable->hipDeviceGetPCIBusId_fn = hipDeviceGetPCIBusId_callback;
+	RuntimeTable->hipDeviceGetSharedMemConfig_fn = hipDeviceGetSharedMemConfig_callback;
+	RuntimeTable->hipDeviceGetStreamPriorityRange_fn = hipDeviceGetStreamPriorityRange_callback;
+	RuntimeTable->hipDeviceGetUuid_fn = hipDeviceGetUuid_callback;
+	RuntimeTable->hipDeviceGraphMemTrim_fn = hipDeviceGraphMemTrim_callback;
+	RuntimeTable->hipDevicePrimaryCtxGetState_fn = hipDevicePrimaryCtxGetState_callback;
+	RuntimeTable->hipDevicePrimaryCtxRelease_fn = hipDevicePrimaryCtxRelease_callback;
+	RuntimeTable->hipDevicePrimaryCtxReset_fn = hipDevicePrimaryCtxReset_callback;
+	RuntimeTable->hipDevicePrimaryCtxRetain_fn = hipDevicePrimaryCtxRetain_callback;
+	RuntimeTable->hipDevicePrimaryCtxSetFlags_fn = hipDevicePrimaryCtxSetFlags_callback;
+	RuntimeTable->hipDeviceReset_fn = hipDeviceReset_callback;
+	RuntimeTable->hipDeviceSetCacheConfig_fn = hipDeviceSetCacheConfig_callback;
+	RuntimeTable->hipDeviceSetGraphMemAttribute_fn = hipDeviceSetGraphMemAttribute_callback;
+	RuntimeTable->hipDeviceSetLimit_fn = hipDeviceSetLimit_callback;
+	RuntimeTable->hipDeviceSetMemPool_fn = hipDeviceSetMemPool_callback;
+	RuntimeTable->hipDeviceSetSharedMemConfig_fn = hipDeviceSetSharedMemConfig_callback;
+	RuntimeTable->hipDeviceSynchronize_fn = hipDeviceSynchronize_callback;
+	RuntimeTable->hipDeviceTotalMem_fn = hipDeviceTotalMem_callback;
+	RuntimeTable->hipDriverGetVersion_fn = hipDriverGetVersion_callback;
+	RuntimeTable->hipDrvGetErrorName_fn = hipDrvGetErrorName_callback;
+	RuntimeTable->hipDrvGetErrorString_fn = hipDrvGetErrorString_callback;
+	RuntimeTable->hipDrvGraphAddMemcpyNode_fn = hipDrvGraphAddMemcpyNode_callback;
+	RuntimeTable->hipDrvMemcpy2DUnaligned_fn = hipDrvMemcpy2DUnaligned_callback;
+	RuntimeTable->hipDrvMemcpy3D_fn = hipDrvMemcpy3D_callback;
+	RuntimeTable->hipDrvMemcpy3DAsync_fn = hipDrvMemcpy3DAsync_callback;
+	RuntimeTable->hipDrvPointerGetAttributes_fn = hipDrvPointerGetAttributes_callback;
+	RuntimeTable->hipEventCreate_fn = hipEventCreate_callback;
+	RuntimeTable->hipEventCreateWithFlags_fn = hipEventCreateWithFlags_callback;
+	RuntimeTable->hipEventDestroy_fn = hipEventDestroy_callback;
+	RuntimeTable->hipEventElapsedTime_fn = hipEventElapsedTime_callback;
+	RuntimeTable->hipEventQuery_fn = hipEventQuery_callback;
+	RuntimeTable->hipEventRecord_fn = hipEventRecord_callback;
+	RuntimeTable->hipEventSynchronize_fn = hipEventSynchronize_callback;
+	RuntimeTable->hipExtGetLinkTypeAndHopCount_fn = hipExtGetLinkTypeAndHopCount_callback;
+	RuntimeTable->hipExtLaunchKernel_fn = hipExtLaunchKernel_callback;
+	RuntimeTable->hipExtLaunchMultiKernelMultiDevice_fn = hipExtLaunchMultiKernelMultiDevice_callback;
+	RuntimeTable->hipExtMallocWithFlags_fn = hipExtMallocWithFlags_callback;
+	RuntimeTable->hipExtStreamCreateWithCUMask_fn = hipExtStreamCreateWithCUMask_callback;
+	RuntimeTable->hipExtStreamGetCUMask_fn = hipExtStreamGetCUMask_callback;
+	RuntimeTable->hipExternalMemoryGetMappedBuffer_fn = hipExternalMemoryGetMappedBuffer_callback;
+	RuntimeTable->hipFree_fn = hipFree_callback;
+	RuntimeTable->hipFreeArray_fn = hipFreeArray_callback;
+	RuntimeTable->hipFreeAsync_fn = hipFreeAsync_callback;
+	RuntimeTable->hipFreeHost_fn = hipFreeHost_callback;
+	RuntimeTable->hipFreeMipmappedArray_fn = hipFreeMipmappedArray_callback;
+	RuntimeTable->hipFuncGetAttribute_fn = hipFuncGetAttribute_callback;
+	RuntimeTable->hipFuncGetAttributes_fn = hipFuncGetAttributes_callback;
+	RuntimeTable->hipFuncSetAttribute_fn = hipFuncSetAttribute_callback;
+	RuntimeTable->hipFuncSetCacheConfig_fn = hipFuncSetCacheConfig_callback;
+	RuntimeTable->hipFuncSetSharedMemConfig_fn = hipFuncSetSharedMemConfig_callback;
+	RuntimeTable->hipGLGetDevices_fn = hipGLGetDevices_callback;
+	RuntimeTable->hipGetChannelDesc_fn = hipGetChannelDesc_callback;
+	RuntimeTable->hipGetDevice_fn = hipGetDevice_callback;
+	RuntimeTable->hipGetDeviceCount_fn = hipGetDeviceCount_callback;
+	RuntimeTable->hipGetDeviceFlags_fn = hipGetDeviceFlags_callback;
+	RuntimeTable->hipGetErrorName_fn = hipGetErrorName_callback;
+	RuntimeTable->hipGetErrorString_fn = hipGetErrorString_callback;
+	RuntimeTable->hipGetLastError_fn = hipGetLastError_callback;
+	RuntimeTable->hipGetMipmappedArrayLevel_fn = hipGetMipmappedArrayLevel_callback;
+	RuntimeTable->hipGetSymbolAddress_fn = hipGetSymbolAddress_callback;
+	RuntimeTable->hipGetSymbolSize_fn = hipGetSymbolSize_callback;
+	RuntimeTable->hipGetTextureAlignmentOffset_fn = hipGetTextureAlignmentOffset_callback;
+	RuntimeTable->hipGetTextureObjectResourceDesc_fn = hipGetTextureObjectResourceDesc_callback;
+	RuntimeTable->hipGetTextureObjectResourceViewDesc_fn = hipGetTextureObjectResourceViewDesc_callback;
+	RuntimeTable->hipGetTextureObjectTextureDesc_fn = hipGetTextureObjectTextureDesc_callback;
+	RuntimeTable->hipGetTextureReference_fn = hipGetTextureReference_callback;
+	RuntimeTable->hipGraphAddChildGraphNode_fn = hipGraphAddChildGraphNode_callback;
+	RuntimeTable->hipGraphAddDependencies_fn = hipGraphAddDependencies_callback;
+	RuntimeTable->hipGraphAddEmptyNode_fn = hipGraphAddEmptyNode_callback;
+	RuntimeTable->hipGraphAddEventRecordNode_fn = hipGraphAddEventRecordNode_callback;
+	RuntimeTable->hipGraphAddEventWaitNode_fn = hipGraphAddEventWaitNode_callback;
+	RuntimeTable->hipGraphAddHostNode_fn = hipGraphAddHostNode_callback;
+	RuntimeTable->hipGraphAddKernelNode_fn = hipGraphAddKernelNode_callback;
+	RuntimeTable->hipGraphAddMemAllocNode_fn = hipGraphAddMemAllocNode_callback;
+	RuntimeTable->hipGraphAddMemFreeNode_fn = hipGraphAddMemFreeNode_callback;
+	RuntimeTable->hipGraphAddMemcpyNode_fn = hipGraphAddMemcpyNode_callback;
+	RuntimeTable->hipGraphAddMemcpyNode1D_fn = hipGraphAddMemcpyNode1D_callback;
+	RuntimeTable->hipGraphAddMemcpyNodeFromSymbol_fn = hipGraphAddMemcpyNodeFromSymbol_callback;
+	RuntimeTable->hipGraphAddMemcpyNodeToSymbol_fn = hipGraphAddMemcpyNodeToSymbol_callback;
+	RuntimeTable->hipGraphAddMemsetNode_fn = hipGraphAddMemsetNode_callback;
+	RuntimeTable->hipGraphChildGraphNodeGetGraph_fn = hipGraphChildGraphNodeGetGraph_callback;
+	RuntimeTable->hipGraphClone_fn = hipGraphClone_callback;
+	RuntimeTable->hipGraphCreate_fn = hipGraphCreate_callback;
+	RuntimeTable->hipGraphDebugDotPrint_fn = hipGraphDebugDotPrint_callback;
+	RuntimeTable->hipGraphDestroy_fn = hipGraphDestroy_callback;
+	RuntimeTable->hipGraphDestroyNode_fn = hipGraphDestroyNode_callback;
+	RuntimeTable->hipGraphEventRecordNodeGetEvent_fn = hipGraphEventRecordNodeGetEvent_callback;
+	RuntimeTable->hipGraphEventRecordNodeSetEvent_fn = hipGraphEventRecordNodeSetEvent_callback;
+	RuntimeTable->hipGraphEventWaitNodeGetEvent_fn = hipGraphEventWaitNodeGetEvent_callback;
+	RuntimeTable->hipGraphEventWaitNodeSetEvent_fn = hipGraphEventWaitNodeSetEvent_callback;
+	RuntimeTable->hipGraphExecChildGraphNodeSetParams_fn = hipGraphExecChildGraphNodeSetParams_callback;
+	RuntimeTable->hipGraphExecDestroy_fn = hipGraphExecDestroy_callback;
+	RuntimeTable->hipGraphExecEventRecordNodeSetEvent_fn = hipGraphExecEventRecordNodeSetEvent_callback;
+	RuntimeTable->hipGraphExecEventWaitNodeSetEvent_fn = hipGraphExecEventWaitNodeSetEvent_callback;
+	RuntimeTable->hipGraphExecHostNodeSetParams_fn = hipGraphExecHostNodeSetParams_callback;
+	RuntimeTable->hipGraphExecKernelNodeSetParams_fn = hipGraphExecKernelNodeSetParams_callback;
+	RuntimeTable->hipGraphExecMemcpyNodeSetParams_fn = hipGraphExecMemcpyNodeSetParams_callback;
+	RuntimeTable->hipGraphExecMemcpyNodeSetParams1D_fn = hipGraphExecMemcpyNodeSetParams1D_callback;
+	RuntimeTable->hipGraphExecMemcpyNodeSetParamsFromSymbol_fn = hipGraphExecMemcpyNodeSetParamsFromSymbol_callback;
+	RuntimeTable->hipGraphExecMemcpyNodeSetParamsToSymbol_fn = hipGraphExecMemcpyNodeSetParamsToSymbol_callback;
+	RuntimeTable->hipGraphExecMemsetNodeSetParams_fn = hipGraphExecMemsetNodeSetParams_callback;
+	RuntimeTable->hipGraphExecUpdate_fn = hipGraphExecUpdate_callback;
+	RuntimeTable->hipGraphGetEdges_fn = hipGraphGetEdges_callback;
+	RuntimeTable->hipGraphGetNodes_fn = hipGraphGetNodes_callback;
+	RuntimeTable->hipGraphGetRootNodes_fn = hipGraphGetRootNodes_callback;
+	RuntimeTable->hipGraphHostNodeGetParams_fn = hipGraphHostNodeGetParams_callback;
+	RuntimeTable->hipGraphHostNodeSetParams_fn = hipGraphHostNodeSetParams_callback;
+	RuntimeTable->hipGraphInstantiate_fn = hipGraphInstantiate_callback;
+	RuntimeTable->hipGraphInstantiateWithFlags_fn = hipGraphInstantiateWithFlags_callback;
+	RuntimeTable->hipGraphKernelNodeCopyAttributes_fn = hipGraphKernelNodeCopyAttributes_callback;
+	RuntimeTable->hipGraphKernelNodeGetAttribute_fn = hipGraphKernelNodeGetAttribute_callback;
+	RuntimeTable->hipGraphKernelNodeGetParams_fn = hipGraphKernelNodeGetParams_callback;
+	RuntimeTable->hipGraphKernelNodeSetAttribute_fn = hipGraphKernelNodeSetAttribute_callback;
+	RuntimeTable->hipGraphKernelNodeSetParams_fn = hipGraphKernelNodeSetParams_callback;
+	RuntimeTable->hipGraphLaunch_fn = hipGraphLaunch_callback;
+	RuntimeTable->hipGraphMemAllocNodeGetParams_fn = hipGraphMemAllocNodeGetParams_callback;
+	RuntimeTable->hipGraphMemFreeNodeGetParams_fn = hipGraphMemFreeNodeGetParams_callback;
+	RuntimeTable->hipGraphMemcpyNodeGetParams_fn = hipGraphMemcpyNodeGetParams_callback;
+	RuntimeTable->hipGraphMemcpyNodeSetParams_fn = hipGraphMemcpyNodeSetParams_callback;
+	RuntimeTable->hipGraphMemcpyNodeSetParams1D_fn = hipGraphMemcpyNodeSetParams1D_callback;
+	RuntimeTable->hipGraphMemcpyNodeSetParamsFromSymbol_fn = hipGraphMemcpyNodeSetParamsFromSymbol_callback;
+	RuntimeTable->hipGraphMemcpyNodeSetParamsToSymbol_fn = hipGraphMemcpyNodeSetParamsToSymbol_callback;
+	RuntimeTable->hipGraphMemsetNodeGetParams_fn = hipGraphMemsetNodeGetParams_callback;
+	RuntimeTable->hipGraphMemsetNodeSetParams_fn = hipGraphMemsetNodeSetParams_callback;
+	RuntimeTable->hipGraphNodeFindInClone_fn = hipGraphNodeFindInClone_callback;
+	RuntimeTable->hipGraphNodeGetDependencies_fn = hipGraphNodeGetDependencies_callback;
+	RuntimeTable->hipGraphNodeGetDependentNodes_fn = hipGraphNodeGetDependentNodes_callback;
+	RuntimeTable->hipGraphNodeGetEnabled_fn = hipGraphNodeGetEnabled_callback;
+	RuntimeTable->hipGraphNodeGetType_fn = hipGraphNodeGetType_callback;
+	RuntimeTable->hipGraphNodeSetEnabled_fn = hipGraphNodeSetEnabled_callback;
+	RuntimeTable->hipGraphReleaseUserObject_fn = hipGraphReleaseUserObject_callback;
+	RuntimeTable->hipGraphRemoveDependencies_fn = hipGraphRemoveDependencies_callback;
+	RuntimeTable->hipGraphRetainUserObject_fn = hipGraphRetainUserObject_callback;
+	RuntimeTable->hipGraphUpload_fn = hipGraphUpload_callback;
+	RuntimeTable->hipGraphicsGLRegisterBuffer_fn = hipGraphicsGLRegisterBuffer_callback;
+	RuntimeTable->hipGraphicsGLRegisterImage_fn = hipGraphicsGLRegisterImage_callback;
+	RuntimeTable->hipGraphicsMapResources_fn = hipGraphicsMapResources_callback;
+	RuntimeTable->hipGraphicsResourceGetMappedPointer_fn = hipGraphicsResourceGetMappedPointer_callback;
+	RuntimeTable->hipGraphicsSubResourceGetMappedArray_fn = hipGraphicsSubResourceGetMappedArray_callback;
+	RuntimeTable->hipGraphicsUnmapResources_fn = hipGraphicsUnmapResources_callback;
+	RuntimeTable->hipGraphicsUnregisterResource_fn = hipGraphicsUnregisterResource_callback;
+	RuntimeTable->hipHostAlloc_fn = hipHostAlloc_callback;
+	RuntimeTable->hipHostFree_fn = hipHostFree_callback;
+	RuntimeTable->hipHostGetDevicePointer_fn = hipHostGetDevicePointer_callback;
+	RuntimeTable->hipHostGetFlags_fn = hipHostGetFlags_callback;
+	RuntimeTable->hipHostMalloc_fn = hipHostMalloc_callback;
+	RuntimeTable->hipHostRegister_fn = hipHostRegister_callback;
+	RuntimeTable->hipHostUnregister_fn = hipHostUnregister_callback;
+	RuntimeTable->hipImportExternalMemory_fn = hipImportExternalMemory_callback;
+	RuntimeTable->hipImportExternalSemaphore_fn = hipImportExternalSemaphore_callback;
+	RuntimeTable->hipInit_fn = hipInit_callback;
+	RuntimeTable->hipIpcCloseMemHandle_fn = hipIpcCloseMemHandle_callback;
+	RuntimeTable->hipIpcGetEventHandle_fn = hipIpcGetEventHandle_callback;
+	RuntimeTable->hipIpcGetMemHandle_fn = hipIpcGetMemHandle_callback;
+	RuntimeTable->hipIpcOpenEventHandle_fn = hipIpcOpenEventHandle_callback;
+	RuntimeTable->hipIpcOpenMemHandle_fn = hipIpcOpenMemHandle_callback;
+	RuntimeTable->hipKernelNameRefByPtr_fn = hipKernelNameRefByPtr_callback;
+	RuntimeTable->hipLaunchByPtr_fn = hipLaunchByPtr_callback;
+	RuntimeTable->hipLaunchCooperativeKernelMultiDevice_fn = hipLaunchCooperativeKernelMultiDevice_callback;
+	RuntimeTable->hipLaunchHostFunc_fn = hipLaunchHostFunc_callback;
+	RuntimeTable->hipLaunchKernel_fn = hipLaunchKernel_callback;
+	RuntimeTable->hipMalloc_fn = hipMalloc_callback;
+	RuntimeTable->hipMalloc3D_fn = hipMalloc3D_callback;
+	RuntimeTable->hipMalloc3DArray_fn = hipMalloc3DArray_callback;
+	RuntimeTable->hipMallocArray_fn = hipMallocArray_callback;
+	RuntimeTable->hipMallocAsync_fn = hipMallocAsync_callback;
+	RuntimeTable->hipMallocFromPoolAsync_fn = hipMallocFromPoolAsync_callback;
+	RuntimeTable->hipMallocHost_fn = hipMallocHost_callback;
+	RuntimeTable->hipMallocManaged_fn = hipMallocManaged_callback;
+	RuntimeTable->hipMallocMipmappedArray_fn = hipMallocMipmappedArray_callback;
+	RuntimeTable->hipMallocPitch_fn = hipMallocPitch_callback;
+	RuntimeTable->hipMemAddressFree_fn = hipMemAddressFree_callback;
+	RuntimeTable->hipMemAddressReserve_fn = hipMemAddressReserve_callback;
+	RuntimeTable->hipMemAdvise_fn = hipMemAdvise_callback;
+	RuntimeTable->hipMemAllocHost_fn = hipMemAllocHost_callback;
+	RuntimeTable->hipMemAllocPitch_fn = hipMemAllocPitch_callback;
+	RuntimeTable->hipMemCreate_fn = hipMemCreate_callback;
+	RuntimeTable->hipMemExportToShareableHandle_fn = hipMemExportToShareableHandle_callback;
+	RuntimeTable->hipMemGetAccess_fn = hipMemGetAccess_callback;
+	RuntimeTable->hipMemGetAddressRange_fn = hipMemGetAddressRange_callback;
+	RuntimeTable->hipMemGetAllocationGranularity_fn = hipMemGetAllocationGranularity_callback;
+	RuntimeTable->hipMemGetAllocationPropertiesFromHandle_fn = hipMemGetAllocationPropertiesFromHandle_callback;
+	RuntimeTable->hipMemGetInfo_fn = hipMemGetInfo_callback;
+	RuntimeTable->hipMemImportFromShareableHandle_fn = hipMemImportFromShareableHandle_callback;
+	RuntimeTable->hipMemMap_fn = hipMemMap_callback;
+	RuntimeTable->hipMemMapArrayAsync_fn = hipMemMapArrayAsync_callback;
+	RuntimeTable->hipMemPoolCreate_fn = hipMemPoolCreate_callback;
+	RuntimeTable->hipMemPoolDestroy_fn = hipMemPoolDestroy_callback;
+	RuntimeTable->hipMemPoolExportPointer_fn = hipMemPoolExportPointer_callback;
+	RuntimeTable->hipMemPoolExportToShareableHandle_fn = hipMemPoolExportToShareableHandle_callback;
+	RuntimeTable->hipMemPoolGetAccess_fn = hipMemPoolGetAccess_callback;
+	RuntimeTable->hipMemPoolGetAttribute_fn = hipMemPoolGetAttribute_callback;
+	RuntimeTable->hipMemPoolImportFromShareableHandle_fn = hipMemPoolImportFromShareableHandle_callback;
+	RuntimeTable->hipMemPoolImportPointer_fn = hipMemPoolImportPointer_callback;
+	RuntimeTable->hipMemPoolSetAccess_fn = hipMemPoolSetAccess_callback;
+	RuntimeTable->hipMemPoolSetAttribute_fn = hipMemPoolSetAttribute_callback;
+	RuntimeTable->hipMemPoolTrimTo_fn = hipMemPoolTrimTo_callback;
+	RuntimeTable->hipMemPrefetchAsync_fn = hipMemPrefetchAsync_callback;
+	RuntimeTable->hipMemPtrGetInfo_fn = hipMemPtrGetInfo_callback;
+	RuntimeTable->hipMemRangeGetAttribute_fn = hipMemRangeGetAttribute_callback;
+	RuntimeTable->hipMemRangeGetAttributes_fn = hipMemRangeGetAttributes_callback;
+	RuntimeTable->hipMemRelease_fn = hipMemRelease_callback;
+	RuntimeTable->hipMemRetainAllocationHandle_fn = hipMemRetainAllocationHandle_callback;
+	RuntimeTable->hipMemSetAccess_fn = hipMemSetAccess_callback;
+	RuntimeTable->hipMemUnmap_fn = hipMemUnmap_callback;
+	RuntimeTable->hipMemcpy_fn = hipMemcpy_callback;
+	RuntimeTable->hipMemcpy2D_fn = hipMemcpy2D_callback;
+	RuntimeTable->hipMemcpy2DAsync_fn = hipMemcpy2DAsync_callback;
+	RuntimeTable->hipMemcpy2DFromArray_fn = hipMemcpy2DFromArray_callback;
+	RuntimeTable->hipMemcpy2DFromArrayAsync_fn = hipMemcpy2DFromArrayAsync_callback;
+	RuntimeTable->hipMemcpy2DToArray_fn = hipMemcpy2DToArray_callback;
+	RuntimeTable->hipMemcpy2DToArrayAsync_fn = hipMemcpy2DToArrayAsync_callback;
+	RuntimeTable->hipMemcpy3D_fn = hipMemcpy3D_callback;
+	RuntimeTable->hipMemcpy3DAsync_fn = hipMemcpy3DAsync_callback;
+	RuntimeTable->hipMemcpyAsync_fn = hipMemcpyAsync_callback;
+	RuntimeTable->hipMemcpyAtoH_fn = hipMemcpyAtoH_callback;
+	RuntimeTable->hipMemcpyDtoD_fn = hipMemcpyDtoD_callback;
+	RuntimeTable->hipMemcpyDtoDAsync_fn = hipMemcpyDtoDAsync_callback;
+	RuntimeTable->hipMemcpyDtoH_fn = hipMemcpyDtoH_callback;
+	RuntimeTable->hipMemcpyDtoHAsync_fn = hipMemcpyDtoHAsync_callback;
+	RuntimeTable->hipMemcpyFromArray_fn = hipMemcpyFromArray_callback;
+	RuntimeTable->hipMemcpyFromSymbol_fn = hipMemcpyFromSymbol_callback;
+	RuntimeTable->hipMemcpyFromSymbolAsync_fn = hipMemcpyFromSymbolAsync_callback;
+	RuntimeTable->hipMemcpyHtoA_fn = hipMemcpyHtoA_callback;
+	RuntimeTable->hipMemcpyHtoD_fn = hipMemcpyHtoD_callback;
+	RuntimeTable->hipMemcpyHtoDAsync_fn = hipMemcpyHtoDAsync_callback;
+	RuntimeTable->hipMemcpyParam2D_fn = hipMemcpyParam2D_callback;
+	RuntimeTable->hipMemcpyParam2DAsync_fn = hipMemcpyParam2DAsync_callback;
+	RuntimeTable->hipMemcpyPeer_fn = hipMemcpyPeer_callback;
+	RuntimeTable->hipMemcpyPeerAsync_fn = hipMemcpyPeerAsync_callback;
+	RuntimeTable->hipMemcpyToArray_fn = hipMemcpyToArray_callback;
+	RuntimeTable->hipMemcpyToSymbol_fn = hipMemcpyToSymbol_callback;
+	RuntimeTable->hipMemcpyToSymbolAsync_fn = hipMemcpyToSymbolAsync_callback;
+	RuntimeTable->hipMemcpyWithStream_fn = hipMemcpyWithStream_callback;
+	RuntimeTable->hipMemset_fn = hipMemset_callback;
+	RuntimeTable->hipMemset2D_fn = hipMemset2D_callback;
+	RuntimeTable->hipMemset2DAsync_fn = hipMemset2DAsync_callback;
+	RuntimeTable->hipMemset3D_fn = hipMemset3D_callback;
+	RuntimeTable->hipMemset3DAsync_fn = hipMemset3DAsync_callback;
+	RuntimeTable->hipMemsetAsync_fn = hipMemsetAsync_callback;
+	RuntimeTable->hipMemsetD16_fn = hipMemsetD16_callback;
+	RuntimeTable->hipMemsetD16Async_fn = hipMemsetD16Async_callback;
+	RuntimeTable->hipMemsetD32_fn = hipMemsetD32_callback;
+	RuntimeTable->hipMemsetD32Async_fn = hipMemsetD32Async_callback;
+	RuntimeTable->hipMemsetD8_fn = hipMemsetD8_callback;
+	RuntimeTable->hipMemsetD8Async_fn = hipMemsetD8Async_callback;
+	RuntimeTable->hipMipmappedArrayCreate_fn = hipMipmappedArrayCreate_callback;
+	RuntimeTable->hipMipmappedArrayDestroy_fn = hipMipmappedArrayDestroy_callback;
+	RuntimeTable->hipMipmappedArrayGetLevel_fn = hipMipmappedArrayGetLevel_callback;
+	RuntimeTable->hipModuleGetFunction_fn = hipModuleGetFunction_callback;
+	RuntimeTable->hipModuleGetGlobal_fn = hipModuleGetGlobal_callback;
+	RuntimeTable->hipModuleGetTexRef_fn = hipModuleGetTexRef_callback;
+	RuntimeTable->hipModuleLaunchCooperativeKernelMultiDevice_fn = hipModuleLaunchCooperativeKernelMultiDevice_callback;
+	RuntimeTable->hipModuleLoad_fn = hipModuleLoad_callback;
+	RuntimeTable->hipModuleLoadData_fn = hipModuleLoadData_callback;
+	RuntimeTable->hipModuleLoadDataEx_fn = hipModuleLoadDataEx_callback;
+	RuntimeTable->hipModuleUnload_fn = hipModuleUnload_callback;
+	RuntimeTable->hipPeekAtLastError_fn = hipPeekAtLastError_callback;
+	RuntimeTable->hipPointerGetAttribute_fn = hipPointerGetAttribute_callback;
+	RuntimeTable->hipPointerGetAttributes_fn = hipPointerGetAttributes_callback;
+	RuntimeTable->hipPointerSetAttribute_fn = hipPointerSetAttribute_callback;
+	RuntimeTable->hipProfilerStart_fn = hipProfilerStart_callback;
+	RuntimeTable->hipProfilerStop_fn = hipProfilerStop_callback;
+	RuntimeTable->hipRuntimeGetVersion_fn = hipRuntimeGetVersion_callback;
+	RuntimeTable->hipSetDevice_fn = hipSetDevice_callback;
+	RuntimeTable->hipSetDeviceFlags_fn = hipSetDeviceFlags_callback;
+	RuntimeTable->hipSetupArgument_fn = hipSetupArgument_callback;
+	RuntimeTable->hipSignalExternalSemaphoresAsync_fn = hipSignalExternalSemaphoresAsync_callback;
+	RuntimeTable->hipStreamAddCallback_fn = hipStreamAddCallback_callback;
+	RuntimeTable->hipStreamAttachMemAsync_fn = hipStreamAttachMemAsync_callback;
+	RuntimeTable->hipStreamBeginCapture_fn = hipStreamBeginCapture_callback;
+	RuntimeTable->hipStreamCreate_fn = hipStreamCreate_callback;
+	RuntimeTable->hipStreamCreateWithFlags_fn = hipStreamCreateWithFlags_callback;
+	RuntimeTable->hipStreamCreateWithPriority_fn = hipStreamCreateWithPriority_callback;
+	RuntimeTable->hipStreamDestroy_fn = hipStreamDestroy_callback;
+	RuntimeTable->hipStreamEndCapture_fn = hipStreamEndCapture_callback;
+	RuntimeTable->hipStreamGetCaptureInfo_fn = hipStreamGetCaptureInfo_callback;
+	RuntimeTable->hipStreamGetCaptureInfo_v2_fn = hipStreamGetCaptureInfo_v2_callback;
+	RuntimeTable->hipStreamGetDevice_fn = hipStreamGetDevice_callback;
+	RuntimeTable->hipStreamGetFlags_fn = hipStreamGetFlags_callback;
+	RuntimeTable->hipStreamGetPriority_fn = hipStreamGetPriority_callback;
+	RuntimeTable->hipStreamIsCapturing_fn = hipStreamIsCapturing_callback;
+	RuntimeTable->hipStreamQuery_fn = hipStreamQuery_callback;
+	RuntimeTable->hipStreamSynchronize_fn = hipStreamSynchronize_callback;
+	RuntimeTable->hipStreamUpdateCaptureDependencies_fn = hipStreamUpdateCaptureDependencies_callback;
+	RuntimeTable->hipStreamWaitEvent_fn = hipStreamWaitEvent_callback;
+	RuntimeTable->hipStreamWaitValue32_fn = hipStreamWaitValue32_callback;
+	RuntimeTable->hipStreamWaitValue64_fn = hipStreamWaitValue64_callback;
+	RuntimeTable->hipStreamWriteValue32_fn = hipStreamWriteValue32_callback;
+	RuntimeTable->hipStreamWriteValue64_fn = hipStreamWriteValue64_callback;
+	RuntimeTable->hipTexObjectCreate_fn = hipTexObjectCreate_callback;
+	RuntimeTable->hipTexObjectDestroy_fn = hipTexObjectDestroy_callback;
+	RuntimeTable->hipTexObjectGetResourceDesc_fn = hipTexObjectGetResourceDesc_callback;
+	RuntimeTable->hipTexObjectGetResourceViewDesc_fn = hipTexObjectGetResourceViewDesc_callback;
+	RuntimeTable->hipTexObjectGetTextureDesc_fn = hipTexObjectGetTextureDesc_callback;
+	RuntimeTable->hipTexRefGetAddress_fn = hipTexRefGetAddress_callback;
+	RuntimeTable->hipTexRefGetAddressMode_fn = hipTexRefGetAddressMode_callback;
+	RuntimeTable->hipTexRefGetFilterMode_fn = hipTexRefGetFilterMode_callback;
+	RuntimeTable->hipTexRefGetFlags_fn = hipTexRefGetFlags_callback;
+	RuntimeTable->hipTexRefGetFormat_fn = hipTexRefGetFormat_callback;
+	RuntimeTable->hipTexRefGetMaxAnisotropy_fn = hipTexRefGetMaxAnisotropy_callback;
+	RuntimeTable->hipTexRefGetMipMappedArray_fn = hipTexRefGetMipMappedArray_callback;
+	RuntimeTable->hipTexRefGetMipmapFilterMode_fn = hipTexRefGetMipmapFilterMode_callback;
+	RuntimeTable->hipTexRefGetMipmapLevelBias_fn = hipTexRefGetMipmapLevelBias_callback;
+	RuntimeTable->hipTexRefGetMipmapLevelClamp_fn = hipTexRefGetMipmapLevelClamp_callback;
+	RuntimeTable->hipTexRefSetAddress_fn = hipTexRefSetAddress_callback;
+	RuntimeTable->hipTexRefSetAddress2D_fn = hipTexRefSetAddress2D_callback;
+	RuntimeTable->hipTexRefSetAddressMode_fn = hipTexRefSetAddressMode_callback;
+	RuntimeTable->hipTexRefSetArray_fn = hipTexRefSetArray_callback;
+	RuntimeTable->hipTexRefSetBorderColor_fn = hipTexRefSetBorderColor_callback;
+	RuntimeTable->hipTexRefSetFilterMode_fn = hipTexRefSetFilterMode_callback;
+	RuntimeTable->hipTexRefSetFlags_fn = hipTexRefSetFlags_callback;
+	RuntimeTable->hipTexRefSetFormat_fn = hipTexRefSetFormat_callback;
+	RuntimeTable->hipTexRefSetMaxAnisotropy_fn = hipTexRefSetMaxAnisotropy_callback;
+	RuntimeTable->hipTexRefSetMipmapFilterMode_fn = hipTexRefSetMipmapFilterMode_callback;
+	RuntimeTable->hipTexRefSetMipmapLevelBias_fn = hipTexRefSetMipmapLevelBias_callback;
+	RuntimeTable->hipTexRefSetMipmapLevelClamp_fn = hipTexRefSetMipmapLevelClamp_callback;
+	RuntimeTable->hipTexRefSetMipmappedArray_fn = hipTexRefSetMipmappedArray_callback;
+	RuntimeTable->hipThreadExchangeStreamCaptureMode_fn = hipThreadExchangeStreamCaptureMode_callback;
+	RuntimeTable->hipUnbindTexture_fn = hipUnbindTexture_callback;
+	RuntimeTable->hipUserObjectCreate_fn = hipUserObjectCreate_callback;
+	RuntimeTable->hipUserObjectRelease_fn = hipUserObjectRelease_callback;
+	RuntimeTable->hipUserObjectRetain_fn = hipUserObjectRetain_callback;
+	RuntimeTable->hipWaitExternalSemaphoresAsync_fn = hipWaitExternalSemaphoresAsync_callback;
+	RuntimeTable->hipCreateChannelDesc_fn = hipCreateChannelDesc_callback;
+	RuntimeTable->hipMemcpy_spt_fn = hipMemcpy_spt_callback;
+	RuntimeTable->hipMemcpyToSymbol_spt_fn = hipMemcpyToSymbol_spt_callback;
+	RuntimeTable->hipMemcpyFromSymbol_spt_fn = hipMemcpyFromSymbol_spt_callback;
+	RuntimeTable->hipMemcpy2D_spt_fn = hipMemcpy2D_spt_callback;
+	RuntimeTable->hipMemcpy2DFromArray_spt_fn = hipMemcpy2DFromArray_spt_callback;
+	RuntimeTable->hipMemcpy3D_spt_fn = hipMemcpy3D_spt_callback;
+	RuntimeTable->hipMemset_spt_fn = hipMemset_spt_callback;
+	RuntimeTable->hipMemsetAsync_spt_fn = hipMemsetAsync_spt_callback;
+	RuntimeTable->hipMemset2D_spt_fn = hipMemset2D_spt_callback;
+	RuntimeTable->hipMemset2DAsync_spt_fn = hipMemset2DAsync_spt_callback;
+	RuntimeTable->hipMemset3DAsync_spt_fn = hipMemset3DAsync_spt_callback;
+	RuntimeTable->hipMemset3D_spt_fn = hipMemset3D_spt_callback;
+	RuntimeTable->hipMemcpyAsync_spt_fn = hipMemcpyAsync_spt_callback;
+	RuntimeTable->hipMemcpy3DAsync_spt_fn = hipMemcpy3DAsync_spt_callback;
+	RuntimeTable->hipMemcpy2DAsync_spt_fn = hipMemcpy2DAsync_spt_callback;
+	RuntimeTable->hipMemcpyFromSymbolAsync_spt_fn = hipMemcpyFromSymbolAsync_spt_callback;
+	RuntimeTable->hipMemcpyToSymbolAsync_spt_fn = hipMemcpyToSymbolAsync_spt_callback;
+	RuntimeTable->hipMemcpyFromArray_spt_fn = hipMemcpyFromArray_spt_callback;
+	RuntimeTable->hipMemcpy2DToArray_spt_fn = hipMemcpy2DToArray_spt_callback;
+	RuntimeTable->hipMemcpy2DFromArrayAsync_spt_fn = hipMemcpy2DFromArrayAsync_spt_callback;
+	RuntimeTable->hipMemcpy2DToArrayAsync_spt_fn = hipMemcpy2DToArrayAsync_spt_callback;
+	RuntimeTable->hipStreamQuery_spt_fn = hipStreamQuery_spt_callback;
+	RuntimeTable->hipStreamSynchronize_spt_fn = hipStreamSynchronize_spt_callback;
+	RuntimeTable->hipStreamGetPriority_spt_fn = hipStreamGetPriority_spt_callback;
+	RuntimeTable->hipStreamWaitEvent_spt_fn = hipStreamWaitEvent_spt_callback;
+	RuntimeTable->hipStreamGetFlags_spt_fn = hipStreamGetFlags_spt_callback;
+	RuntimeTable->hipStreamAddCallback_spt_fn = hipStreamAddCallback_spt_callback;
+	RuntimeTable->hipEventRecord_spt_fn = hipEventRecord_spt_callback;
+	RuntimeTable->hipLaunchKernel_spt_fn = hipLaunchKernel_spt_callback;
+	RuntimeTable->hipGraphLaunch_spt_fn = hipGraphLaunch_spt_callback;
+	RuntimeTable->hipStreamBeginCapture_spt_fn = hipStreamBeginCapture_spt_callback;
+	RuntimeTable->hipStreamEndCapture_spt_fn = hipStreamEndCapture_spt_callback;
+	RuntimeTable->hipStreamIsCapturing_spt_fn = hipStreamIsCapturing_spt_callback;
+	RuntimeTable->hipStreamGetCaptureInfo_spt_fn = hipStreamGetCaptureInfo_spt_callback;
+	RuntimeTable->hipStreamGetCaptureInfo_v2_spt_fn = hipStreamGetCaptureInfo_v2_spt_callback;
+	RuntimeTable->hipLaunchHostFunc_spt_fn = hipLaunchHostFunc_spt_callback;
+	RuntimeTable->hipGetStreamDeviceId_fn = hipGetStreamDeviceId_callback;
+};
 
 // NOLINTEND

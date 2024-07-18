@@ -83,6 +83,10 @@ private:
 
 public:
   RuntimeInterceptor() = default;
+  ~RuntimeInterceptor() {
+    SavedDispatchTable = {};
+    Singleton<RuntimeInterceptor>::~Singleton();
+  }
 
   RuntimeInterceptor(const RuntimeInterceptor &) = delete;
   RuntimeInterceptor &operator=(const RuntimeInterceptor &) = delete;
