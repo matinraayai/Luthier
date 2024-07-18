@@ -83,6 +83,10 @@ private:
 
 public:
   CompilerInterceptor() = default;
+  ~CompilerInterceptor() {
+    SavedCompilerDispatchTable = {};
+    Singleton<CompilerInterceptor>::~Singleton();
+  }
 
   CompilerInterceptor(const CompilerInterceptor &) = delete;
   CompilerInterceptor &operator=(const CompilerInterceptor &) = delete;

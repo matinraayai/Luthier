@@ -5,6 +5,10 @@
 #include <rocprofiler-sdk/hip/api_args.h>
 #include <rocprofiler-sdk/hip/api_id.h>
 
+rocprofiler_dim3_t convertToRocprofilerDim3(const dim3& d) {
+    return rocprofiler_dim3_t{d.x, d.y, d.z};
+}
+
 static hipError_t __hipPopCallConfiguration_callback(dim3* gridDim, dim3* blockDim, size_t* sharedMem, hipStream_t* stream) {
   auto& HipInterceptor = luthier::hip::CompilerInterceptor::instance();
   auto ApiId = ROCPROFILER_HIP_COMPILER_API_ID___hipPopCallConfiguration;
@@ -50,8 +54,8 @@ static hipError_t __hipPushCallConfiguration_callback(dim3 gridDim, dim3 blockDi
     auto& HipInternalCallback = HipInterceptor.getInternalCallback();
     rocprofiler_hip_api_args_t Args;
     bool SkipFunction{false};
-    Args.__hipPushCallConfiguration.gridDim = gridDim;
-    Args.__hipPushCallConfiguration.blockDim = blockDim;
+    Args.__hipPushCallConfiguration.gridDim = convertToRocprofilerDim3(gridDim);
+    Args.__hipPushCallConfiguration.blockDim = convertToRocprofilerDim3(blockDim);
     Args.__hipPushCallConfiguration.sharedMem = sharedMem;
     Args.__hipPushCallConfiguration.stream = stream;
     if (IsUserCallbackEnabled)
@@ -59,7 +63,7 @@ static hipError_t __hipPushCallConfiguration_callback(dim3 gridDim, dim3 blockDi
     if (IsInternalCallbackEnabled)
       HipInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
     if (!SkipFunction)
-      Out = HipInterceptor.getSavedCompilerTable().__hipPushCallConfiguration_fn(Args.__hipPushCallConfiguration.gridDim, Args.__hipPushCallConfiguration.blockDim, Args.__hipPushCallConfiguration.sharedMem, Args.__hipPushCallConfiguration.stream);
+      Out = HipInterceptor.getSavedCompilerTable().__hipPushCallConfiguration_fn(gridDim, blockDim, Args.__hipPushCallConfiguration.sharedMem, Args.__hipPushCallConfiguration.stream);
     if (IsUserCallbackEnabled)
       HipUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
     if (IsInternalCallbackEnabled)
@@ -307,5 +311,18 @@ static void __hipUnregisterFatBinary_callback(void** modules) {
   }
 }
 
+
+void luthier::hip::CompilerInterceptor::captureCompilerDispatchTable(HipCompilerDispatchTable *CompilerTable) {
+	SavedCompilerDispatchTable = *CompilerTable;
+	CompilerTable->__hipPopCallConfiguration_fn = __hipPopCallConfiguration_callback;
+	CompilerTable->__hipPushCallConfiguration_fn = __hipPushCallConfiguration_callback;
+	CompilerTable->__hipRegisterFatBinary_fn = __hipRegisterFatBinary_callback;
+	CompilerTable->__hipRegisterFunction_fn = __hipRegisterFunction_callback;
+	CompilerTable->__hipRegisterManagedVar_fn = __hipRegisterManagedVar_callback;
+	CompilerTable->__hipRegisterSurface_fn = __hipRegisterSurface_callback;
+	CompilerTable->__hipRegisterTexture_fn = __hipRegisterTexture_callback;
+	CompilerTable->__hipRegisterVar_fn = __hipRegisterVar_callback;
+	CompilerTable->__hipUnregisterFatBinary_fn = __hipUnregisterFatBinary_callback;
+};
 
 // NOLINTEND

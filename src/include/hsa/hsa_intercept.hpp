@@ -10,6 +10,7 @@
 #include "common/error.hpp"
 #include <luthier/hsa_trace_api.h>
 #include <luthier/types.h>
+#include "singleton.hpp"
 
 // Helper to store ApiEvtID in llvm::DenseSets
 namespace llvm {
@@ -51,7 +52,7 @@ typedef std::function<void(ApiEvtArgs *, const luthier::ApiEvtPhase,
                            const ApiEvtID, bool *)>
     internal_callback_t;
 
-class Interceptor {
+class Interceptor : public Singleton<Interceptor> {
 private:
   HsaApiTable *InternalHsaApiTable{};
   HsaApiTableContainer SavedTables{};
@@ -71,14 +72,16 @@ private:
 
   void installFinalizerExtTableWrappers(FinalizerExtTable *Table);
 
+public:
+
   Interceptor() = default;
   ~Interceptor() {
     uninstallApiTables();
     SavedTables = {};
     AmdTable = {};
+    Singleton<Interceptor>::~Singleton();
   }
 
-public:
   Interceptor(const Interceptor &) = delete;
   Interceptor &operator=(const Interceptor &) = delete;
 
@@ -156,11 +159,6 @@ public:
                 HSA_EXTENSION_AMD_LOADER, 1,
                 sizeof(hsa_ven_amd_loader_1_03_pfn_t),
                 &AmdTable) == HSA_STATUS_SUCCESS);
-  }
-
-  static inline hsa::Interceptor &instance() {
-    static hsa::Interceptor Instance;
-    return Instance;
   }
 };
 } // namespace luthier::hsa
