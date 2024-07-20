@@ -57,7 +57,6 @@
 #include "hsa/hsa_intercept.hpp"
 #include "hsa/hsa_isa.hpp"
 #include "hsa/hsa_loaded_code_object.hpp"
-#include "tooling_common/MachineModuleInfoAdaptorPass.hpp"
 #include "tooling_common/code_lifter.hpp"
 #include "tooling_common/target_manager.hpp"
 #include "tooling_common/tool_executable_manager.hpp"
@@ -265,8 +264,7 @@ static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine *TM) {
   MPM.run(M, MAM);
 }
 
-
-std::pair<llvm::MachineModuleInfoWrapperPass*,
+std::pair<llvm::MachineModuleInfoWrapperPass *,
           std::unique_ptr<llvm::legacy::PassManager>>
 runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
                    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
@@ -292,9 +290,9 @@ runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
 
   TPC->addISelPasses();
   PM->add(new luthier::ReserveLiveRegs(MIToHookFuncMap));
-  //TODO: Stack Frame Offset correction
-  //  PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
-  //                                        <#initializer #>))
+  // TODO: Stack Frame Offset correction
+  //   PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
+  //                                         <#initializer #>))
   TPC->addMachinePasses();
   TPC->setInitialized();
 
@@ -553,7 +551,8 @@ printAssembly(LiftedRepresentation &LR,
     }
     llvm::outs() << "Running the printer pass manager\n";
     PM.run(*M); // Run all the passes
-//    MMI = std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
+                //    MMI =
+    //    std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
     //    llvm::outs() << "AFTER MOVE: \n";
     //    for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
     //      llvm::outs() << F.getName() << "\n";
@@ -569,7 +568,7 @@ printAssembly(LiftedRepresentation &LR,
 llvm::Error processReadRegFunctions(llvm::Module &Module,
                                     const llvm::GCNTargetMachine &TM) {
   llvm::outs() << "Dumping users\n";
-  //  Module.print(llvm::outs(), nullptr);
+  //    Module.print(llvm::outs(), nullptr);
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
     if (F.getName() == "read32BitReg") {
       for (auto *User : F.users()) {
@@ -614,62 +613,59 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
   // separation between different LCOs' Machine code
   for (auto &[LCO, LCOModule] : LR) {
     // Load the bitcode of the instrumentation module into the LR's context
-    auto IModule = Task.getModule().readBitcodeIntoContext(LR.getContext());
-    LUTHIER_RETURN_ON_ERROR(IModule.takeError());
-    LUTHIER_RETURN_ON_ERROR(IModule->withModuleDo([&](llvm::Module &M)
-                                                      -> llvm::Error {
-      LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
-                 M.print(llvm::dbgs(), nullptr););
-      auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
-      // TODO: Process the read/write register functions here
-      LUTHIER_RETURN_ON_ERROR(processReadRegFunctions(M, TM));
-      // Now that everything has been created we can start inserting hooks
-      LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
-                              << Task.getHookInsertionTasks().size() << "\n");
-      // A map to keep track of Hooks per MI
-      llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> MIToHookFuncMap;
+    auto IModuleTS = Task.getModule().readBitcodeIntoContext(LR.getContext());
+    LUTHIER_RETURN_ON_ERROR(IModuleTS.takeError());
+    auto &IModule = *IModuleTS->getModuleUnlocked();
+    LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
+               IModule.print(llvm::dbgs(), nullptr););
+    IModule.print(llvm::outs(), nullptr);
+    auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
+    // Now that everything has been created we can start inserting hooks
+    LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
+                            << Task.getHookInsertionTasks().size() << "\n");
+    // A map to keep track of Hooks per MI
+    llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> MIToHookFuncMap;
 
-      for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
-        // Generate the Hooks for each MI
-        auto BeforeMIFunc = generateHookIR(*MI, HookSpecs, TM, M);
-        LUTHIER_RETURN_ON_ERROR(BeforeMIFunc.takeError());
-        MIToHookFuncMap.insert({MI, &(*BeforeMIFunc)});
+    for (const auto &[MI, HookSpecs] : Task.getHookInsertionTasks()) {
+      // Generate the Hooks for each MI
+      auto HookFunc = generateHookIR(*MI, HookSpecs, TM, IModule);
+      LUTHIER_RETURN_ON_ERROR(HookFunc.takeError());
+      MIToHookFuncMap.insert({MI, &(*HookFunc)});
+    }
+    LLVM_DEBUG(llvm::dbgs()
+               << "Instrumentation Module After Hooks Inserted:\n");
+    LLVM_DEBUG(IModule.print(llvm::dbgs(), nullptr));
+    // With the Hook IR generated, we put it through the normal IR
+    // pipeline
+    optimizeModule(IModule, &TM);
+    LLVM_DEBUG(llvm::dbgs()
+                   << "Instrumentation Module after IR optimization:\n";
+               IModule.print(llvm::dbgs(), nullptr));
+    // Run the code gen pipeline, while enforcing the stack and register
+    // constraints
+    auto [MMIWP, PM] = runCodeGenPipeline(IModule, &TM, MIToHookFuncMap);
+    LR.managePassManagerLifetime(std::move(PM));
+    for (const auto &F : IModule) {
+      llvm::outs() << "AFTER MOVE:\n";
+      llvm::outs() << MMIWP->getMMI().getModule() << "\n";
+      //        if (auto MF = MMI->getMachineFunction(F)) {
+      //          MF->print(llvm::outs());
+      //        }
+    }
+    // Finally, patch in the generated machine code into the lifted
+    // representation
+    LUTHIER_RETURN_ON_ERROR(
+        patchLiftedRepresentation(IModule, MMIWP->getMMI(), *LCOModule.first,
+                                  *LCOModule.second, MIToHookFuncMap));
+    for (const auto &F : *LCOModule.first) {
+      llvm::outs() << "Function name inside: " << F.getName() << "\n";
+      llvm::outs() << LCOModule.second->getModule() << "\n";
+      if (auto MF = LCOModule.second->getMachineFunction(F)) {
+        MF->print(llvm::outs());
       }
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Instrumentation Module After Hooks Inserted:\n");
-      LLVM_DEBUG(M.print(llvm::dbgs(), nullptr));
-      // With the Hook IR generated, we put it through the normal IR
-      // pipeline
-      optimizeModule(M, &TM);
-      LLVM_DEBUG(llvm::dbgs()
-                     << "Instrumentation Module after IR optimization:\n";
-                 M.print(llvm::dbgs(), nullptr));
-      // Run the code gen pipeline, while enforcing the stack and register
-      // constraints
-      auto [MMIWP, PM] = runCodeGenPipeline(M, &TM, MIToHookFuncMap);
-      LR.managePassManagerLifetime(std::move(PM));
-      for (const auto &F : M) {
-        llvm::outs() << "AFTER MOVE:\n";
-        llvm::outs() << MMIWP->getMMI().getModule() << "\n";
-        //        if (auto MF = MMI->getMachineFunction(F)) {
-        //          MF->print(llvm::outs());
-        //        }
-      }
-      // Finally, patch in the generated machine code into the lifted
-      // representation
-      LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
-          M, MMIWP->getMMI(), *LCOModule.first, *LCOModule.second,
-          MIToHookFuncMap));
-      for (const auto &F : *LCOModule.first) {
-        llvm::outs() << "Function name inside: " << F.getName() << "\n";
-        llvm::outs() << LCOModule.second->getModule() << "\n";
-        if (auto MF = LCOModule.second->getMachineFunction(F)) {
-          MF->print(llvm::outs());
-        }
-      }
-      return llvm::Error::success();
-    }));
-  }
+    }
+    return llvm::Error::success();
+  };
   return llvm::Error::success();
 }
 

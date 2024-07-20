@@ -7,7 +7,7 @@
 /// luthier.h.
 /// For the controller logic of Luthier, see <tt>luthier::Controller</tt>.
 //===----------------------------------------------------------------------===//
-#include <luthier/luthier.h>
+#include "luthier/luthier.h"
 
 #include <llvm/ADT/StringRef.h>
 
