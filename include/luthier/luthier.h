@@ -304,7 +304,6 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
   reinterpret_cast<const void *>(__luthier_hook_handle_##HookName)
 
 #if defined(__HIPCC__)
-
 #define LUTHIER_DONT_OPTIMIZE __asm__ __volatile__("" : : : "memory");
 
 template <typename T>

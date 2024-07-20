@@ -1,4 +1,4 @@
-#include "luthier/luthier.h"
+#include <luthier/luthier.h>
 #include <hsa/hsa.h>
 
 #define GET_REGINFO_ENUM
@@ -20,7 +20,7 @@ __attribute__((managed)) uint32_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
 //  __asm__ __volatile__("s_mov_b32 s2 300");
-  write32BitReg(llvm::AMDGPU::VGPR3, GlobalCounter);
+  GlobalCounter = read32BitReg(llvm::AMDGPU::VGPR3);
 };
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);

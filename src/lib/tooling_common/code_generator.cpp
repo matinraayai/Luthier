@@ -234,7 +234,7 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
   return *HookIRKernel;
 }
 
-static void optimizeModule(llvm::Module &M, llvm::GCNTargetMachine *TM) {
+static void optimizeHookModuleIR(llvm::Module &M, llvm::GCNTargetMachine *TM) {
   // Create the analysis managers.
   // These must be declared in this order so that they are destroyed in
   // the correct order due to inter-analysis-manager references.
@@ -568,9 +568,12 @@ printAssembly(LiftedRepresentation &LR,
 llvm::Error processReadRegFunctions(llvm::Module &Module,
                                     const llvm::GCNTargetMachine &TM) {
   llvm::outs() << "Dumping users\n";
-  //    Module.print(llvm::outs(), nullptr);
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
-    if (F.getName() == "read32BitReg") {
+    llvm::outs() << "Name of function: " << F.getName() << "\n";
+    llvm::outs() << "Has hook attribute: "
+                 << F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE) << "\n";
+    if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE) &&
+        F.getName() == "read32BitReg") {
       for (auto *User : F.users()) {
         User->print(llvm::outs());
         if (auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
@@ -618,7 +621,6 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     auto &IModule = *IModuleTS->getModuleUnlocked();
     LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
                IModule.print(llvm::dbgs(), nullptr););
-    IModule.print(llvm::outs(), nullptr);
     auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
     // Now that everything has been created we can start inserting hooks
     LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
@@ -637,10 +639,14 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     LLVM_DEBUG(IModule.print(llvm::dbgs(), nullptr));
     // With the Hook IR generated, we put it through the normal IR
     // pipeline
-    optimizeModule(IModule, &TM);
+    optimizeHookModuleIR(IModule, &TM);
     LLVM_DEBUG(llvm::dbgs()
                    << "Instrumentation Module after IR optimization:\n";
                IModule.print(llvm::dbgs(), nullptr));
+    // Replace all Luthier intrinsics with dummy inline assembly and correct
+    // arguments
+    LUTHIER_RETURN_ON_ERROR(processReadRegFunctions(IModule, TM));
+    IModule.print(llvm::outs(), nullptr);
     // Run the code gen pipeline, while enforcing the stack and register
     // constraints
     auto [MMIWP, PM] = runCodeGenPipeline(IModule, &TM, MIToHookFuncMap);

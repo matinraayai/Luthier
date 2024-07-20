@@ -126,6 +126,7 @@ llvm::Error preprocessAndSaveModuleToStream(
   // Remove the body of each intrinsic function and make them extern
   for (auto &Intrinsic: Intrinsics) {
     Intrinsic->deleteBody();
+    Intrinsic->addFnAttr(LUTHIER_INTRINSIC_ATTRIBUTE);
   }
 
   // Remove all kernels that are meant to serve as a host handle
