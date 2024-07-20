@@ -7,7 +7,6 @@ find_package(hip REQUIRED)
 
 find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/)
 
-
 add_library(kernel_instrument SHARED kernel_instrument.hip)
 
 # Some HSA include files won't work unless this is defined

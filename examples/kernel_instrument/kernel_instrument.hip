@@ -15,15 +15,12 @@ using namespace luthier;
 
 MARK_LUTHIER_DEVICE_MODULE
 
-LUTHIER_ENABLE_REG_READER_FUNCTIONS
-
-LUTHIER_ENABLE_REG_WRITER_FUNCTIONS
 
 __attribute__((managed)) uint32_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
 //  __asm__ __volatile__("s_mov_b32 s2 300");
-  GlobalCounter = read32BitReg(llvm::AMDGPU::VGPR3);
+  write32BitReg(llvm::AMDGPU::VGPR3, GlobalCounter);
 };
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
