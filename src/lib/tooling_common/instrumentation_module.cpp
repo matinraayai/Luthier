@@ -11,9 +11,9 @@
 #include "hsa/hsa_loaded_code_object.hpp"
 #include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeReader.h>
-#include <llvm/IR/Module.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/Module.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instrumentation-module"
@@ -55,12 +55,18 @@ extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO,
   return LUTHIER_ASSERTION(FoundBitcodeSection);
 }
 
-/// Returns a list of instrumentation hooks found in the Module \p M.
+/// Returns groups the set of annotated values in \p M into instrumentation
+/// hooks and intrinsics of instrumentation hooks \n
+/// \note This function should get updated as Luthier's programming model
+/// gets updated as well
 /// \param [in] M Module to inspect
 /// \param [out] Hooks a list of hook functions found in \p M
+/// \param [out] Intrinsics a list of intrinsics found in \p M
 /// \return any \c llvm::Error encountered during the process
-static llvm::Error getHooks(const llvm::Module &M,
-                            llvm::SmallVector<llvm::Function *> &Hooks) {
+static llvm::Error
+getAnnotatedValues(const llvm::Module &M,
+                   llvm::SmallVectorImpl<llvm::Function *> &Hooks,
+                   llvm::SmallVectorImpl<llvm::Function *> &Intrinsics) {
   const llvm::GlobalVariable *V =
       M.getGlobalVariable("llvm.global.annotations");
   const llvm::ConstantArray *CA = cast<llvm::ConstantArray>(V->getOperand(0));
@@ -68,8 +74,8 @@ static llvm::Error getHooks(const llvm::Module &M,
     auto *CS = cast<llvm::ConstantStruct>(Op);
     // The first field of the struct contains a pointer to the annotated
     // variable.
-    llvm::Value *AnnotatedVar = CS->getOperand(0)->stripPointerCasts();
-    if (auto *Func = llvm::dyn_cast<llvm::Function>(AnnotatedVar)) {
+    llvm::Value *AnnotatedVal = CS->getOperand(0)->stripPointerCasts();
+    if (auto *Func = llvm::dyn_cast<llvm::Function>(AnnotatedVal)) {
       // The second field contains a pointer to a global annotation string.
       auto *GV =
           cast<llvm::GlobalVariable>(CS->getOperand(1)->stripPointerCasts());
@@ -78,33 +84,38 @@ static llvm::Error getHooks(const llvm::Module &M,
       if (Content == LUTHIER_HOOK_ATTRIBUTE) {
         Hooks.push_back(Func);
         LLVM_DEBUG(llvm::dbgs() << "Found hook " << Func->getName() << ".\n");
+      } else if (Content == LUTHIER_INTRINSIC_ATTRIBUTE) {
+        Intrinsics.push_back(Func);
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Found intrinsic " << Func->getName() << ".\n");
       }
     };
   }
   return llvm::Error::success();
 }
 
-llvm::Error processReadWriteRegFunctions(llvm::Function & F) {
-
-}
-
 llvm::Error preprocessAndSaveModuleToStream(
     llvm::Module &Module, llvm::SmallVector<std::string> &StaticVariables,
     std::string &CUID, llvm::SmallVector<char> &BitcodeOut) {
   // Extract all the hooks
-  llvm::SmallVector<llvm::Function *> Hooks;
-  LUTHIER_RETURN_ON_ERROR(getHooks(Module, Hooks));
+  llvm::SmallVector<llvm::Function *, 4> Hooks;
+  llvm::SmallVector<llvm::Function *, 4> Intrinsics;
+  LUTHIER_RETURN_ON_ERROR(getAnnotatedValues(Module, Hooks, Intrinsics));
 
-  // Remove the annotations variable from the Module
+  // Remove the annotations variable from the Module now that it is processed
   auto AnnotationGV = Module.getGlobalVariable("llvm.global.annotations");
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(AnnotationGV != nullptr));
   AnnotationGV->dropAllReferences();
   AnnotationGV->eraseFromParent();
-  // Remove the llvm.used variable list
-  auto LLVMUsed = Module.getGlobalVariable("llvm.compiler.used");
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LLVMUsed != nullptr));
-  LLVMUsed->dropAllReferences();
-  LLVMUsed->eraseFromParent();
+
+  // Remove the llvm.used and llvm.compiler.use variable list
+  for (const auto &VarName : {"llvm.compiler.used", "llvm.used"}) {
+    auto LLVMUsedVar = Module.getGlobalVariable(VarName);
+    if (LLVMUsedVar != nullptr) {
+      LLVMUsedVar->dropAllReferences();
+      LLVMUsedVar->eraseFromParent();
+    }
+  }
 
   // Give each Hook function a "hook" attribute
   for (auto &Hook : Hooks) {
@@ -112,26 +123,23 @@ llvm::Error preprocessAndSaveModuleToStream(
     Hook->addFnAttr(llvm::Attribute::AlwaysInline);
   }
 
+  // Remove the body of each intrinsic function and make them extern
+  for (auto &Intrinsic: Intrinsics) {
+    Intrinsic->deleteBody();
+  }
 
+  // Remove all kernels that are meant to serve as a host handle
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
-    // Remove all kernels that are meant to serve as a host handle
+
     if (F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
       F.dropAllReferences();
       F.eraseFromParent();
-    } else {
-      // Process the read/write register functions
-      auto FName = F.getName();
-      if (FName == "read16BitReg" || FName == "read32BitReg" ||
-          FName == "read64BitReg" || FName == "write16BitReg" ||
-          FName == "write32BitReg" || FName == "write64BitReg") {
-        F.deleteBody();
-      }
     }
   }
 
   // Convert all global variables to extern, remove any managed variable
   // initializers
-  // Remove any unnecessary variables
+  // Remove any unnecessary variables (e.g. "llvm.metadata")
   // Extract the CUID for identification
   for (auto &GV : llvm::make_early_inc_range(Module.globals())) {
     auto GVName = GV.getName();
@@ -154,7 +162,6 @@ llvm::Error preprocessAndSaveModuleToStream(
   // When the CodeGenerator asks for a copy of this Module, it should be
   // copied over to the target app's LLVMContext
   llvm::raw_svector_ostream OS(BitcodeOut);
-  Module.print(llvm::outs(), nullptr);
   llvm::WriteBitcodeToFile(Module, OS);
   return llvm::Error::success();
 }
