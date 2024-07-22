@@ -16,7 +16,9 @@ class CodeLifter;
 class TargetManager;
 
 namespace hip {
-class Interceptor;
+class CompilerInterceptor;
+
+class RuntimeInterceptor;
 
 class Platform;
 } // namespace hip
@@ -42,7 +44,9 @@ private:
 
   TargetManager *TM{nullptr};
 
-  hip::Interceptor *HipInterceptor{nullptr};
+  hip::CompilerInterceptor *HipCompilerInterceptor{nullptr};
+
+  hip::RuntimeInterceptor *HipRuntimeInterceptor{nullptr};
 
   hip::Platform *HipPlatform{nullptr};
 

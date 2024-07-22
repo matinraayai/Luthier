@@ -8,9 +8,9 @@
 #include <llvm/ADT/DenseSet.h>
 
 #include "common/error.hpp"
+#include "common/singleton.hpp"
 #include <luthier/hsa_trace_api.h>
 #include <luthier/types.h>
-#include "singleton.hpp"
 
 // Helper to store ApiEvtID in llvm::DenseSets
 namespace llvm {
@@ -73,7 +73,6 @@ private:
   void installFinalizerExtTableWrappers(FinalizerExtTable *Table);
 
 public:
-
   Interceptor() = default;
   ~Interceptor() {
     uninstallApiTables();

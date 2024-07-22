@@ -8,6 +8,7 @@
 #define LUTHIER_TYPES_H
 
 #include <hsa/hsa.h>
+#include <rocprofiler-sdk/rocprofiler.h>
 
 namespace luthier {
 

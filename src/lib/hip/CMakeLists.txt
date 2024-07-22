@@ -1,5 +1,6 @@
 add_library(luthier_hip STATIC
-        hip_intercept.cpp
+        hip_compiler_intercept.cpp
+        hip_runtime_intercept.cpp
 )
 
 target_include_directories(luthier_hip PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})

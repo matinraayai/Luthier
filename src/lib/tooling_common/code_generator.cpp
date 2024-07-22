@@ -772,7 +772,7 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
 void ReserveLiveRegs::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesCFG();
   AU.addPreservedID(llvm::MachineLoopInfoID);
-  AU.addPreserved<llvm::SlotIndexes>();
+  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
   MachineFunctionPass::getAnalysisUsage(AU);
 };
 
