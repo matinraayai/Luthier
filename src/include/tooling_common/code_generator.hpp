@@ -4,7 +4,7 @@
 ///
 /// \file
 /// This file describes Luthier's code generator, which instruments lifted
-/// representations given an instrumentation task.
+/// representations given a mutator function.
 //===----------------------------------------------------------------------===//
 #ifndef CODE_GENERATOR_HPP
 #define CODE_GENERATOR_HPP
@@ -13,9 +13,14 @@
 #include "common/singleton.hpp"
 #include "hsa/hsa_executable.hpp"
 #include "hsa/hsa_executable_symbol.hpp"
+#include <llvm/ADT/Any.h>
+#include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <luthier/instrumentation_task.h>
 #include <luthier/lifted_representation.h>
 #include <luthier/types.h>
+
+#include "tooling_common/intrinsic/IntrinsicLoweringInfo.hpp"
+#include <utility>
 
 namespace llvm {
 class LivePhysRegs;
@@ -30,7 +35,21 @@ class ISA;
 } // namespace hsa
 
 class CodeGenerator : public Singleton<CodeGenerator> {
+private:
+  /// Holds information regarding how to lower Luthier intrinsics
+  llvm::StringMap<IntrinsicProcessor> IntrinsicsProcessors;
+
 public:
+  /// Register a Luthier intrinsic with the <tt>CodeGenerator</tt> and provide a
+  /// way to lower it to Machine IR
+  /// \param Name the demangled function name of the intrinsic, without the
+  /// template arguments
+  /// \param Processor the \c IntrinsicProcessor describing how to lower the
+  /// Luthier intrinsic
+  void registerIntrinsic(llvm::StringRef Name, IntrinsicProcessor Processor) {
+    IntrinsicsProcessors[Name] = std::move(Processor);
+  }
+
   llvm::Error
   instrument(const LiftedRepresentation &LR,
              llvm::function_ref<llvm::Error(InstrumentationTask &,
@@ -42,14 +61,40 @@ public:
                  *AssemblyFiles = nullptr);
 
 private:
+  /// Returns the full demangled name of \p MangledFuncName without its template
+  /// arguments; e.g. if the demangled function name is
+  /// <tt>a::b::c<int>(int i)</tt>, then <tt>a::b::c</tt> is returned \n
+  /// This name is used as the unique identifier of the intrinsic inside the
+  /// \c CodeGenerator
+  /// \param MangledIntrinsicName name of the intrinsic used in an
+  /// instrumentation module
+  /// \return on success, the full demangled name of the function, and an
+  /// \c llvm::Error if an issue was encountered during the process
+  static llvm::Expected<std::string>
+  getDemangledIntrinsicName(llvm::StringRef MangledIntrinsicName);
+
+  /// Finds <tt>llvm::Function</tt>s marked as intrinsics inside the
+  /// \p InstModule and Applies the IR processor function to their
+  /// <tt>llvm::User</tt>s
+  /// \param [in, out] Module the instrumentation \c llvm::Module containing
+  /// hook logic IR
+  /// \param [in] TM the \c llvm::TargetMachine of the code generation process
+  /// \param [out] InlineAsmMIRMap a map which keeps track of the unique dummy
+  /// inline assembly instruction strings inserted inside the IR as well as
+  /// their \c IntrinsicValueLoweringInfo used later in the MIR processing stage
+  /// \return \c llvm::Error describing the success or failure of the
+  /// operation
+  llvm::Error processInstModuleIntrinsicsAtIRLevel(
+      llvm::Module &Module, const llvm::GCNTargetMachine &TM,
+      llvm::StringMap<IntrinsicIRLoweringInfo> &InlineAsmMIRMap);
+
   static llvm::Expected<llvm::Function &> generateHookIR(
       const llvm::MachineInstr &MI,
-      const llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor>
-          HookSpecs,
+      llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor> HookSpecs,
       const llvm::GCNTargetMachine &TM, llvm::Module &IModule);
 
-  static llvm::Error insertHooks(LiftedRepresentation &LR,
-                                 const InstrumentationTask &Tasks);
+  llvm::Error insertHooks(LiftedRepresentation &LR,
+                          const InstrumentationTask &Tasks);
 
   /// Compiles the relocatable object file in \p Code
   /// \param Code

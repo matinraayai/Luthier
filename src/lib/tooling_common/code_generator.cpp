@@ -92,6 +92,7 @@
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
+#include <llvm/Demangle/Demangle.h>
 #include <llvm/ExecutionEngine/Orc/IndirectionUtils.h>
 #include <llvm/Passes/PassBuilder.h>
 
@@ -565,43 +566,64 @@ printAssembly(LiftedRepresentation &LR,
   return llvm::Error::success();
 }
 
-llvm::Error processReadRegFunctions(llvm::Module &Module,
-                                    const llvm::GCNTargetMachine &TM) {
-  llvm::outs() << "Dumping users\n";
+llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
+    llvm::Module &Module, const llvm::GCNTargetMachine &TM,
+    llvm::StringMap<IntrinsicIRLoweringInfo> &InlineAsmMIRMap) {
+  int NextIntrinsicIdx = 0;
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
-    llvm::outs() << "Name of function: " << F.getName() << "\n";
-    llvm::outs() << "Has hook attribute: "
-                 << F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE) << "\n";
-    if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE) &&
-        F.getName() == "read32BitReg") {
+    if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE)) {
+      // Find the processor for this intrinsic
+      auto DemangledFuncName =
+          CodeGenerator::getDemangledIntrinsicName(F.getName());
+      LUTHIER_RETURN_ON_ERROR(DemangledFuncName.takeError());
+      // Ensure the processor is indeed registered with the Code Generator
+      auto It = IntrinsicsProcessors.find(*DemangledFuncName);
+      LUTHIER_RETURN_ON_ERROR(
+          LUTHIER_ASSERTION(It != IntrinsicsProcessors.end()));
+      // Iterate over all users of the intrinsic
       for (auto *User : F.users()) {
-        User->print(llvm::outs());
-        if (auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
-          auto *TRI = TM.getSubtargetImpl(F)->getRegisterInfo();
-          if (auto *Arg = llvm::dyn_cast<llvm::ConstantInt>(
-                  CallInst->getArgOperand(0))) {
-            MCRegister Reg(Arg->getZExtValue());
-            auto *PhysRegClass = TRI->getPhysRegBaseClass(Reg);
-            auto RegName = TRI->getRegAsmName(Reg);
-            auto *AsmCallInst = llvm::CallInst::Create(llvm::InlineAsm::get(
-                llvm::FunctionType::get(llvm::Type::getInt32Ty(F.getContext()),
-                                        {}),
-                llvm::formatv("v_mov_b32 $0 {0}", RegName).str(), "=v", true));
-            AsmCallInst->insertBefore(*CallInst->getParent(),
-                                      CallInst->getIterator());
-            CallInst->replaceAllUsesWith(AsmCallInst);
-            CallInst->eraseFromParent();
-          } else {
-            llvm::report_fatal_error("Not good");
-          };
+        // Ensure the user is a Call instruction; Anything other usage is
+        // illegal
+        auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User);
+        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CallInst != nullptr));
+        auto IRLoweringInfo = It->second.IRProcessor(F, *CallInst, TM);
+        LUTHIER_RETURN_ON_ERROR(IRLoweringInfo.takeError());
+
+        // Add the output operand constraint, if the output is not void
+        auto ReturnValInfo = IRLoweringInfo->getReturnValueInfo();
+        std::string Constraint;
+        if (!ReturnValInfo.Val->getType()->isVoidTy())
+          Constraint += "=" + ReturnValInfo.Constraint;
+        // Construct argument type vector
+        llvm::SmallVector<llvm::Type *, 4> ArgTypes;
+        llvm::SmallVector<llvm::Value *, 4> ArgValues;
+        ArgTypes.reserve(IRLoweringInfo->getArgsInfo().size());
+        ArgValues.reserve(IRLoweringInfo->getArgsInfo().size());
+        for (const auto &ArgInfo : IRLoweringInfo->getArgsInfo()) {
+          ArgTypes.push_back(ArgInfo.Val->getType());
+          ArgValues.push_back(ArgInfo.Val);
+          Constraint += ReturnValInfo.Constraint;
         }
+        auto *AsmCallInst = llvm::CallInst::Create(
+            llvm::InlineAsm::get(
+                llvm::FunctionType::get(ReturnValInfo.Val->getType(), ArgTypes,
+                                        false),
+                llvm::to_string(NextIntrinsicIdx), Constraint, true),
+            ArgValues);
+        AsmCallInst->dump();
+        AsmCallInst->insertBefore(*CallInst->getParent(),
+                                  CallInst->getIterator());
+
+        CallInst->replaceAllUsesWith(AsmCallInst);
+        CallInst->eraseFromParent();
+        InlineAsmMIRMap.insert(
+            {llvm::to_string(NextIntrinsicIdx), std::move(*IRLoweringInfo)});
+        NextIntrinsicIdx++;
       }
-      llvm::outs() << "Number of uses left: " << F.getNumUses() << "\n";
       F.dropAllReferences();
       F.eraseFromParent();
     }
   }
-  //  Module.print(llvm::outs(), nullptr);
   return llvm::Error::success();
 }
 
@@ -645,7 +667,9 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
                IModule.print(llvm::dbgs(), nullptr));
     // Replace all Luthier intrinsics with dummy inline assembly and correct
     // arguments
-    LUTHIER_RETURN_ON_ERROR(processReadRegFunctions(IModule, TM));
+    llvm::StringMap<IntrinsicIRLoweringInfo> DummyAsmToIRLoweringInfoMap;
+    LUTHIER_RETURN_ON_ERROR(processInstModuleIntrinsicsAtIRLevel(
+        IModule, TM, DummyAsmToIRLoweringInfoMap));
     IModule.print(llvm::outs(), nullptr);
     // Run the code gen pipeline, while enforcing the stack and register
     // constraints
@@ -709,6 +733,25 @@ llvm::Error CodeGenerator::instrument(
         llvm::cantFail(LCO.getISA()), CompiledCodeObjects[LCO]));
   }
   return llvm::Error::success();
+}
+llvm::Expected<std::string>
+CodeGenerator::getDemangledIntrinsicName(llvm::StringRef MangledIntrinsicName) {
+  auto DemangledName = llvm::demangle(MangledIntrinsicName.data());
+  // Get the name of the function, without its template arguments
+  llvm::ItaniumPartialDemangler Demangler;
+  // Ensure successful partial demangle operation
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+      !Demangler.partialDemangle(MangledIntrinsicName.data())));
+
+  std::vector<char> Buffer(DemangledName.begin(), DemangledName.end());
+
+  size_t BufferSize;
+  std::string FuncNameBase(
+      Demangler.getFunctionBaseName(&Buffer[0], &BufferSize), BufferSize);
+  std::string FuncNamespace(
+      Demangler.getFunctionDeclContextName(&Buffer[0], &BufferSize),
+      BufferSize);
+  return FuncNamespace + "::" + FuncNameBase;
 }
 
 char ReserveLiveRegs::ID = 0;

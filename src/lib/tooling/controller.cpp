@@ -7,6 +7,7 @@
 #include "tooling_common/code_lifter.hpp"
 #include "tooling_common/target_manager.hpp"
 #include "tooling_common/tool_executable_manager.hpp"
+#include "tooling_common/intrinsic/ReadReg.hpp"
 
 #include "luthier/luthier.h"
 #include "luthier/types.h"
@@ -155,6 +156,8 @@ Controller::Controller()
   CL = new CodeLifter();
   TM = new TargetManager();
   HipInterceptor = new hip::Interceptor();
+  // Register Luthier intrinsics with the Code Generator
+  CG->registerIntrinsic("luthier::readReg", {readRegIRProcessor, {}});
 }
 
 Controller::~Controller() {
