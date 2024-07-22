@@ -294,7 +294,7 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
   __attribute__((device, used, annotate("luthier_hook"))) extern "C" void
 
 #define LUTHIER_INTRINSIC_ANNOTATE                                             \
-  __attribute__((device, noinline, annotate("luthier_intrinsic"))) extern "C"
+  __attribute__((device, noinline, annotate("luthier_intrinsic")))
 
 #define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
   __attribute__((global,                                                       \
@@ -307,44 +307,18 @@ llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
 #define LUTHIER_DONT_OPTIMIZE __asm__ __volatile__("" : : : "memory");
 
 template <typename T>
-__attribute__((device, always_inline)) void
-doNotOptimize(T const &Value) {
+__attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
   __asm__ __volatile__("" : : "X"(Value) : "memory");
 }
 
-/// Macro to define register reader functions \n
-/// Ideally these should use the llvm.read_register intrinsics, but they are
-/// not implemented in the AMDGPU backend \n
-/// The body is only populated so that the compiler does not inline these
-/// functions
-LUTHIER_INTRINSIC_ANNOTATE uint16_t read16BitReg(llvm::MCRegister Reg) {
+template <typename T>
+LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
   doNotOptimize(Reg);
-  return {};
+  return T{};
 }
 
-LUTHIER_INTRINSIC_ANNOTATE uint32_t read32BitReg(llvm::MCRegister Reg) {
-  doNotOptimize(Reg);
-  return {};
-}
-
-LUTHIER_INTRINSIC_ANNOTATE uint64_t read64BitReg(llvm::MCRegister Reg) {
-  doNotOptimize(Reg);
-  return {};
-}
-
-LUTHIER_INTRINSIC_ANNOTATE void write16BitReg(llvm::MCRegister Reg,
-                                              uint16_t Val) {
-  doNotOptimize(Reg);
-  doNotOptimize(Val);
-}
-
-LUTHIER_INTRINSIC_ANNOTATE void write32BitReg(llvm::MCRegister Reg,
-                                              uint32_t Val) {
-  doNotOptimize(Reg);
-  doNotOptimize(Val);
-}
-LUTHIER_INTRINSIC_ANNOTATE void write64BitReg(llvm::MCRegister Reg,
-                                              uint64_t Val) {
+template <typename T>
+LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val) {
   doNotOptimize(Reg);
   doNotOptimize(Val);
 }
