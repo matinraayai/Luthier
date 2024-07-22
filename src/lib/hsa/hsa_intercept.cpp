@@ -5,6 +5,10 @@
 #include "hsa/hsa_intercept.hpp"
 #include "luthier/types.h"
 
+template <>
+luthier::hsa::Interceptor
+    *luthier::Singleton<luthier::hsa::Interceptor>::Instance{nullptr};
+
 void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                  uint64_t UserPktIndex, void *Data, 
                                  hsa_amd_queue_intercept_packet_writer Writer) {

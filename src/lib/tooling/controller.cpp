@@ -1,6 +1,7 @@
 #include "tooling/controller.hpp"
 #include "common/log.hpp"
-#include "hip/hip_intercept.hpp"
+#include "hip/hip_compiler_intercept.hpp"
+#include "hip/hip_runtime_intercept.hpp"
 #include "hsa/hsa_executable.hpp"
 #include "luthier/hip_trace_api.h"
 #include "tooling_common/code_generator.hpp"
@@ -28,13 +29,13 @@ template <> Controller *Singleton<Controller>::Instance{nullptr};
 Controller *Controller::C{nullptr};
 
 namespace hip {
-static void internalApiCallback(rocprofiler_hip_api_args_t *Args, ApiEvtPhase Phase,
-                                const int ApiId, bool *ApiReturn) {
-
+static void internalApiCallback(rocprofiler_hip_api_args_t *Args,
+                                ApiEvtPhase Phase, const int ApiId,
+                                bool *ApiReturn) {
   LUTHIER_LOG_FUNCTION_CALL_START
-  if (Phase == API_EVT_PHASE_ENTER) {
-    if (ROCPROFILER_HIP_COMPILER_API_ID___hipRegisterFunction) {
-      auto &COM = CodeObjectManager::instance();
+  if (Phase == API_EVT_PHASE_BEFORE) {
+    if (ApiId == ROCPROFILER_HIP_COMPILER_API_ID___hipRegisterFunction) {
+      auto &COM = ToolExecutableManager::instance();
       auto &LastRFuncArgs = Args->__hipRegisterFunction;
       // If the function doesn't have __luthier_wrap__ in its name then it
       // belongs to the instrumented application or HIP can manage it on its own
@@ -129,7 +130,8 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
   }
   if (Type == ROCPROFILER_HIP_COMPILER_TABLE) {
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Compiler API Table.\n");
-    auto &HipCompilerInterceptor = luthier::hip::CompilerInterceptor::instance();
+    auto &HipCompilerInterceptor =
+        luthier::hip::CompilerInterceptor::instance();
     auto *Table = static_cast<HipCompilerDispatchTable *>(Tables[0]);
     HipCompilerInterceptor.captureCompilerDispatchTable(Table);
     HipCompilerInterceptor.setInternalCallback(hip::internalApiCallback);
@@ -143,8 +145,6 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
     auto *Table = static_cast<HipDispatchTable *>(Tables[0]);
     HipRuntimeInterceptor.captureRuntimeTable(Table);
     HipRuntimeInterceptor.setInternalCallback(hip::internalApiCallback);
-    HipRuntimeInterceptor.enableInternalCallback(
-        ROCPROFILER_HIP_COMPILER_API_ID___hipRegisterFunction);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Runtime API Table.\n");
   }
 }
@@ -181,13 +181,13 @@ Controller::~Controller() {
   delete CG;
   delete CL;
   delete TM;
-  delete HipInterceptor;
   delete COM;
   delete HsaPlatform;
   delete HsaInterceptor;
   delete HipCompilerInterceptor;
   delete HipRuntimeInterceptor;
 }
+
 void Controller::init() {
   static std::once_flag Once{};
   std::call_once(Once, []() {
@@ -229,7 +229,9 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
   ID->name = "Luthier";
   rocprofiler_at_intercept_table_registration(
       luthier::apiRegistrationCallback,
-      ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE | ROCPROFILER_HIP_RUNTIME_TABLE, nullptr);
+      ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE |
+          ROCPROFILER_HIP_RUNTIME_TABLE,
+      nullptr);
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
       sizeof(rocprofiler_tool_configure_result_t), nullptr,

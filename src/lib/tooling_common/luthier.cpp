@@ -1,4 +1,4 @@
-//===-- luthier.cpp - Implementation of the Luthier API -------------------===//
+//===-- luthier.pp - Implementation of the Luthier API --------------------===//
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -14,7 +14,8 @@
 #include <optional>
 
 #include "common/error.hpp"
-#include "hip/hip_intercept.hpp"
+#include "hip/hip_compiler_intercept.hpp"
+#include "hip/hip_runtime_intercept.hpp"
 #include "hsa/hsa_executable_symbol.hpp"
 #include "hsa/hsa_intercept.hpp"
 #include "hsa/hsa_platform.hpp"
@@ -29,7 +30,7 @@ namespace luthier {
 namespace hip {
 
 const HipCompilerDispatchTable &getSavedCompilerTable() {
-  return hip::Interceptor::instance().getSavedCompilerTable();
+  return hip::CompilerInterceptor::instance().getSavedCompilerTable();
 }
 
 } // namespace hip
@@ -40,9 +41,7 @@ void setAtHsaApiEvtCallback(
     const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback) {
   hsa::Interceptor::instance().setUserCallback(Callback);
 }
-} // namespace hsa
 
-namespace hsa {
 
 const HsaApiTable &getHsaApiTable() {
   return hsa::Interceptor::instance().getSavedHsaTables().root;
@@ -301,6 +300,9 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
   Packet.private_segment_size = InstrumentedKernelMD->PrivateSegmentFixedSize;
 
   return llvm::Error::success();
+}
+rocprofiler_dim3_t convertToRocprofilerDim3(const dim3 &d) {
+  return rocprofiler_dim3_t{d.x, d.y, d.z};
 }
 
 } // namespace luthier

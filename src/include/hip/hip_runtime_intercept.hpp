@@ -1,4 +1,5 @@
-//===-- hip_runtime_intercept.hpp - Luthier's HIP API Interceptor -----------------===//
+//===-- hip_runtime_intercept.hpp - Luthier's HIP API Interceptor
+//-----------------===//
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -8,8 +9,8 @@
 /// tables.
 //===----------------------------------------------------------------------===//
 
-#ifndef HIP_INTERCEPT_HPP
-#define HIP_INTERCEPT_HPP
+#ifndef HIP_RUNTIME_INTERCEPT_HPP
+#define HIP_RUNTIME_INTERCEPT_HPP
 
 #include <functional>
 #include <hip/amd_detail/hip_api_trace.hpp>
@@ -21,7 +22,6 @@
 #include <luthier/types.h>
 #include <rocprofiler-sdk/hip/api_args.h>
 #include <rocprofiler-sdk/hip/api_id.h>
-
 
 // TODO: 1. Overhaul Python generation script to use the new profiler API
 //  enums + Generate Wrappers at CMake time by running the intercept generation
@@ -38,20 +38,22 @@ namespace llvm {
 template <> struct DenseMapInfo<rocprofiler_hip_runtime_api_id_t> {
   static inline rocprofiler_hip_runtime_api_id_t getEmptyKey() {
     return rocprofiler_hip_runtime_api_id_t(
-        DenseMapInfo<
-            std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>::getEmptyKey());
+        DenseMapInfo<std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>::
+            getEmptyKey());
   }
 
   static inline rocprofiler_hip_runtime_api_id_t getTombstoneKey() {
     return rocprofiler_hip_runtime_api_id_t(
-        DenseMapInfo<
-            std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>::getTombstoneKey());
+        DenseMapInfo<std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>::
+            getTombstoneKey());
   }
 
   static unsigned getHashValue(const rocprofiler_hip_runtime_api_id_t &ApiID) {
-    return DenseMapInfo<std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>::
-        getHashValue(
-            static_cast<std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>(ApiID));
+    return DenseMapInfo<
+        std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>::
+        getHashValue(static_cast<
+                     std::underlying_type_t<rocprofiler_hip_runtime_api_id_t>>(
+            ApiID));
   }
 
   static bool isEqual(const rocprofiler_hip_runtime_api_id_t &LHS,
@@ -66,11 +68,11 @@ namespace luthier::hip {
 
 typedef std::function<void(rocprofiler_hip_api_args_t *, const ApiEvtPhase,
                            const rocprofiler_hip_runtime_api_id_t, bool *)>
-    internal_callback_t;
+    runtime_internal_callback_t;
 
 typedef std::function<void(rocprofiler_hip_api_args_t *, const ApiEvtPhase,
                            const rocprofiler_hip_runtime_api_id_t)>
-    user_callback_t;
+    runtime_user_callback_t;
 
 class RuntimeInterceptor : public Singleton<RuntimeInterceptor> {
 private:
@@ -78,8 +80,8 @@ private:
   llvm::DenseSet<rocprofiler_hip_runtime_api_id_t> EnabledUserOps{};
   llvm::DenseSet<rocprofiler_hip_runtime_api_id_t> EnabledInternalOps{};
 
-  user_callback_t UserCallback{};
-  internal_callback_t InternalCallback{};
+  runtime_user_callback_t UserCallback{};
+  runtime_internal_callback_t InternalCallback{};
 
 public:
   RuntimeInterceptor() = default;
@@ -97,13 +99,14 @@ public:
 
   void captureRuntimeTable(HipDispatchTable *RuntimeTable);
 
-   [[nodiscard]] const inline user_callback_t &getUserCallback() const {
-     return UserCallback;
-   }
+  [[nodiscard]] const inline runtime_user_callback_t &getUserCallback() const {
+    return UserCallback;
+  }
 
-   [[nodiscard]] bool isUserCallbackEnabled(rocprofiler_hip_runtime_api_id_t op) const {
-     return EnabledUserOps.contains(op);
-   }
+  [[nodiscard]] bool
+  isUserCallbackEnabled(rocprofiler_hip_runtime_api_id_t op) const {
+    return EnabledUserOps.contains(op);
+  }
 
   //  void setUserCallback(const std::function<void(void *, const ApiEvtPhase,
   //                                                const int)> &callback) {
@@ -142,24 +145,30 @@ public:
   //  }
   //  void disableAllUserCallbacks() { EnabledUserCallbacks.clear(); }
 
-  [[nodiscard]] const internal_callback_t &getInternalCallback() const {
+  [[nodiscard]] const runtime_internal_callback_t &getInternalCallback() const {
     return InternalCallback;
   }
 
-  [[nodiscard]] bool isInternalCallbackEnabled(rocprofiler_hip_runtime_api_id_t Op) const {
+  [[nodiscard]] bool
+  isInternalCallbackEnabled(rocprofiler_hip_runtime_api_id_t Op) const {
     return EnabledInternalOps.contains(Op);
   }
 
-  void setInternalCallback(const internal_callback_t &CB) {
+  void setInternalCallback(const runtime_internal_callback_t &CB) {
     InternalCallback = CB;
   }
 
-  void enableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) { EnabledInternalOps.insert(Op); }
+  void enableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) {
+    EnabledInternalOps.insert(Op);
+  }
 
-  void disableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) { EnabledInternalOps.erase(Op); }
+  void disableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) {
+    EnabledInternalOps.erase(Op);
+  }
 
   void enableAllInternalCallbacks() {
-    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I = HIP_API_ID_FIRST;
+    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I =
+             HIP_API_ID_FIRST;
          I <= HIP_API_ID_LAST; I++) {
       enableInternalCallback(rocprofiler_hip_runtime_api_id_t(I));
     }
