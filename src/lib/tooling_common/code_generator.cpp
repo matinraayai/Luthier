@@ -805,7 +805,13 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
   auto &MRI = MF.getRegInfo();
   auto *TRI = MF.getSubtarget().getRegisterInfo();
   // Find the entry block of the function, and mark the live-ins
-  const auto &LivePhysRegs = *HookLiveRegs.at(F);
+  auto &LivePhysRegs = *HookLiveRegs[F];
+
+  auto & BeginMBB = MF.front();
+  for (auto &LiveIn : MF.begin()->liveins()) {
+    LivePhysRegs.addReg(LiveIn.PhysReg);
+  }
+  BeginMBB.clearLiveIns();
   llvm::addLiveIns(MF.front(), LivePhysRegs);
 
   // Find the return blocks and create dummy uses at the end of them
@@ -940,6 +946,9 @@ char IntrinsicMIRLoweringPass::ID = 0;
 
 bool IntrinsicMIRLoweringPass::runOnMachineFunction(MachineFunction &MF) {
   bool Changed{false};
+  // The set of physical registers used without being defined in the body
+  // after intrinsics has been lowered
+  llvm::LivePhysRegs InsertedPhysRegs(*MF.getSubtarget().getRegisterInfo());
   for (auto &MBB : MF) {
     for (auto &MI : llvm::make_early_inc_range(MBB)) {
       if (MI.isInlineAsm()) {
@@ -964,9 +973,15 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(MachineFunction &MF) {
           I += F.getNumOperandRegisters();
         }
         auto *TII = MF.getSubtarget().getInstrInfo();
+        llvm::SmallVector<llvm::MachineInstr *, 4> AddedMIs;
+
         auto MIBuilder = [&](int Opcode) {
-          return llvm::BuildMI(MBB, MI, llvm::MIMetadata(MI), TII->get(Opcode));
+          auto Builder =
+              llvm::BuildMI(MBB, MI, llvm::MIMetadata(MI), TII->get(Opcode));
+          AddedMIs.push_back(Builder.getInstr());
+          return Builder;
         };
+
         auto IRProcessor =
             IntrinsicsProcessors.find(It->second.getIntrinsicName());
         if (IRProcessor == IntrinsicsProcessors.end())
@@ -981,9 +996,21 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(MachineFunction &MF) {
         }
         // Remove the dummy inline assembly
         MI.eraseFromParent();
+        Changed = true;
+        // Take the
+        for (auto *AddedMI : AddedMIs) {
+          for (const auto &Op : AddedMI->operands()) {
+            if (Op.isReg() && Op.isUse() && Op.getReg().isPhysical()) {
+              InsertedPhysRegs.addReg(Op.getReg().asMCReg());
+            }
+          }
+        }
       }
     }
   }
+  // Update the used physical defs without defines to keep the machine verifier
+  // happy
+  llvm::addLiveIns(MF.front(), InsertedPhysRegs);
   return Changed;
 }
 } // namespace luthier
