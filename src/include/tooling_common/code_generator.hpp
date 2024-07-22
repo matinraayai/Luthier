@@ -47,7 +47,7 @@ public:
   /// \param Processor the \c IntrinsicProcessor describing how to lower the
   /// Luthier intrinsic
   void registerIntrinsic(llvm::StringRef Name, IntrinsicProcessor Processor) {
-    IntrinsicsProcessors[Name] = std::move(Processor);
+    IntrinsicsProcessors.insert({Name, std::move(Processor)});
   }
 
   llvm::Error
@@ -88,6 +88,15 @@ private:
       llvm::Module &Module, const llvm::GCNTargetMachine &TM,
       llvm::StringMap<IntrinsicIRLoweringInfo> &InlineAsmMIRMap);
 
+  std::pair<llvm::MachineModuleInfoWrapperPass *,
+            std::unique_ptr<llvm::legacy::PassManager>>
+  runCodeGenPipeline(
+      llvm::Module &M, llvm::GCNTargetMachine *TM,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &MIToHookFuncMap,
+      const llvm::StringMap<IntrinsicIRLoweringInfo> &ToBeLoweredIntrinsics,
+      bool DisableVerify = true);
+
   static llvm::Expected<llvm::Function &> generateHookIR(
       const llvm::MachineInstr &MI,
       llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor> HookSpecs,
@@ -124,8 +133,9 @@ private:
 public:
   llvm::StringRef getPassName() const override { return "Reserve Live Regs"; }
 
-  ReserveLiveRegs(const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-                      &MIToHookFuncMap);
+  explicit ReserveLiveRegs(
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &MIToHookFuncMap);
 
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
 
@@ -162,6 +172,30 @@ public:
 
   llvm::StringRef getPassName() const override {
     return "luthier-inst-bundler";
+  }
+
+  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
+};
+
+class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {
+private:
+  const llvm::StringMap<IntrinsicIRLoweringInfo>
+      &MIRLoweringMap;
+  const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors;
+
+public:
+  static char ID;
+
+  explicit IntrinsicMIRLoweringPass(
+      const llvm::StringMap<IntrinsicIRLoweringInfo>
+          &MIRLoweringMap,
+      const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors)
+      : MIRLoweringMap(MIRLoweringMap),
+        IntrinsicsProcessors(IntrinsicsProcessors),
+        llvm::MachineFunctionPass(ID){};
+
+  [[nodiscard]] llvm::StringRef getPassName() const override {
+    return "Luthier Intrinsic MIR Lowering";
   }
 
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;

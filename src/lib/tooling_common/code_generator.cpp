@@ -86,6 +86,7 @@
 #include "llvm/Target/TargetMachine.h"
 #include <AMDGPU.h>
 #include <SIMachineFunctionInfo.h>
+#include <cstdlib>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -267,10 +268,12 @@ static void optimizeHookModuleIR(llvm::Module &M, llvm::GCNTargetMachine *TM) {
 
 std::pair<llvm::MachineModuleInfoWrapperPass *,
           std::unique_ptr<llvm::legacy::PassManager>>
-runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
-                   const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-                       &MIToHookFuncMap,
-                   bool DisableVerify = true) {
+CodeGenerator::runCodeGenPipeline(
+    llvm::Module &M, llvm::GCNTargetMachine *TM,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+        &MIToHookFuncMap,
+    const llvm::StringMap<IntrinsicIRLoweringInfo> &ToBeLoweredIntrinsics,
+    bool DisableVerify) {
   // Create a new pass manager on the heap to have better control over its
   // lifetime and the lifetime of the MMIWP
   auto PM = std::make_unique<llvm::legacy::PassManager>();
@@ -290,6 +293,8 @@ runCodeGenPipeline(llvm::Module &M, llvm::GCNTargetMachine *TM,
   PM->add(IMMIWP);
 
   TPC->addISelPasses();
+  PM->add(new IntrinsicMIRLoweringPass(ToBeLoweredIntrinsics,
+                                       IntrinsicsProcessors));
   PM->add(new luthier::ReserveLiveRegs(MIToHookFuncMap));
   // TODO: Stack Frame Offset correction
   //   PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
@@ -569,7 +574,9 @@ printAssembly(LiftedRepresentation &LR,
 llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
     llvm::Module &Module, const llvm::GCNTargetMachine &TM,
     llvm::StringMap<IntrinsicIRLoweringInfo> &InlineAsmMIRMap) {
-  int NextIntrinsicIdx = 0;
+  int NextIntrinsicIdx = 1;
+  llvm::outs() << "Before mods\n";
+  Module.print(llvm::outs(), nullptr);
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
     if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE)) {
       // Find the processor for this intrinsic
@@ -588,7 +595,7 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
         LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CallInst != nullptr));
         auto IRLoweringInfo = It->second.IRProcessor(F, *CallInst, TM);
         LUTHIER_RETURN_ON_ERROR(IRLoweringInfo.takeError());
-
+        IRLoweringInfo->setIntrinsicName(*DemangledFuncName);
         // Add the output operand constraint, if the output is not void
         auto ReturnValInfo = IRLoweringInfo->getReturnValueInfo();
         std::string Constraint;
@@ -601,7 +608,7 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
         ArgValues.reserve(IRLoweringInfo->getArgsInfo().size());
         for (const auto &ArgInfo : IRLoweringInfo->getArgsInfo()) {
           ArgTypes.push_back(ArgInfo.Val->getType());
-          ArgValues.push_back(ArgInfo.Val);
+          ArgValues.push_back(const_cast<llvm::Value *>(ArgInfo.Val));
           Constraint += ReturnValInfo.Constraint;
         }
         auto *AsmCallInst = llvm::CallInst::Create(
@@ -610,11 +617,14 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
                                         false),
                 llvm::to_string(NextIntrinsicIdx), Constraint, true),
             ArgValues);
-        AsmCallInst->dump();
+        llvm::outs() << "After mods before inserting\n";
+        AsmCallInst->print(llvm::outs());
+        Module.print(llvm::outs(), nullptr);
         AsmCallInst->insertBefore(*CallInst->getParent(),
                                   CallInst->getIterator());
-
         CallInst->replaceAllUsesWith(AsmCallInst);
+        // transfer debug info from the original invoke to the inline assembly
+        AsmCallInst->setDebugLoc(CallInst->getDebugLoc());
         CallInst->eraseFromParent();
         InlineAsmMIRMap.insert(
             {llvm::to_string(NextIntrinsicIdx), std::move(*IRLoweringInfo)});
@@ -622,6 +632,8 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
       }
       F.dropAllReferences();
       F.eraseFromParent();
+      llvm::outs() << "After mods after inserting\n";
+      Module.print(llvm::outs(), nullptr);
     }
   }
   return llvm::Error::success();
@@ -673,7 +685,8 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     IModule.print(llvm::outs(), nullptr);
     // Run the code gen pipeline, while enforcing the stack and register
     // constraints
-    auto [MMIWP, PM] = runCodeGenPipeline(IModule, &TM, MIToHookFuncMap);
+    auto [MMIWP, PM] = runCodeGenPipeline(IModule, &TM, MIToHookFuncMap,
+                                          DummyAsmToIRLoweringInfoMap);
     LR.managePassManagerLifetime(std::move(PM));
     for (const auto &F : IModule) {
       llvm::outs() << "AFTER MOVE:\n";
@@ -736,22 +749,26 @@ llvm::Error CodeGenerator::instrument(
 }
 llvm::Expected<std::string>
 CodeGenerator::getDemangledIntrinsicName(llvm::StringRef MangledIntrinsicName) {
-  auto DemangledName = llvm::demangle(MangledIntrinsicName.data());
   // Get the name of the function, without its template arguments
   llvm::ItaniumPartialDemangler Demangler;
   // Ensure successful partial demangle operation
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
       !Demangler.partialDemangle(MangledIntrinsicName.data())));
-
-  std::vector<char> Buffer(DemangledName.begin(), DemangledName.end());
+  // Output string
+  std::string Out;
+  // Output string's ostream
+  llvm::raw_string_ostream OS(Out);
 
   size_t BufferSize;
-  std::string FuncNameBase(
-      Demangler.getFunctionBaseName(&Buffer[0], &BufferSize), BufferSize);
-  std::string FuncNamespace(
-      Demangler.getFunctionDeclContextName(&Buffer[0], &BufferSize),
-      BufferSize);
-  return FuncNamespace + "::" + FuncNameBase;
+  llvm::StringRef FuncNamespace(
+      Demangler.getFunctionDeclContextName(nullptr, &BufferSize),
+      BufferSize - 1);
+  OS << FuncNamespace;
+  OS << "::";
+  llvm::StringRef FuncNameBase(
+      Demangler.getFunctionBaseName(nullptr, &BufferSize), BufferSize - 1);
+  OS << FuncNameBase;
+  return Out;
 }
 
 char ReserveLiveRegs::ID = 0;
@@ -919,4 +936,54 @@ bool InstBundler::runOnMachineFunction(MachineFunction &MF) {
   return false;
 }
 
+char IntrinsicMIRLoweringPass::ID = 0;
+
+bool IntrinsicMIRLoweringPass::runOnMachineFunction(MachineFunction &MF) {
+  bool Changed{false};
+  for (auto &MBB : MF) {
+    for (auto &MI : llvm::make_early_inc_range(MBB)) {
+      if (MI.isInlineAsm()) {
+        // The Asm string is of type symbol
+        auto IntrinsicIdx =
+            MI.getOperand(InlineAsm::MIOp_AsmString).getSymbolName();
+        auto It = MIRLoweringMap.find(IntrinsicIdx);
+        if (It == MIRLoweringMap.end())
+          MF.getFunction().getContext().emitError(
+              "Intrinsic ID was not found in the MIR Lowering Map.");
+        llvm::SmallVector<std::pair<InlineAsm::Flag, llvm::Register>, 4> ArgVec;
+        for (unsigned I = InlineAsm::MIOp_FirstOperand,
+                      NumOps = MI.getNumOperands();
+             I < NumOps; ++I) {
+          const MachineOperand &MO = MI.getOperand(I);
+          if (!MO.isImm())
+            continue;
+          const InlineAsm::Flag F(MO.getImm());
+          const llvm::Register Reg(MI.getOperand(I + 1).getReg());
+          ArgVec.emplace_back(F, Reg);
+          // Skip to one before the next operand descriptor, if it exists.
+          I += F.getNumOperandRegisters();
+        }
+        auto *TII = MF.getSubtarget().getInstrInfo();
+        auto MIBuilder = [&](int Opcode) {
+          return llvm::BuildMI(MBB, MI, llvm::MIMetadata(MI), TII->get(Opcode));
+        };
+        auto IRProcessor =
+            IntrinsicsProcessors.find(It->second.getIntrinsicName());
+        if (IRProcessor == IntrinsicsProcessors.end())
+          MF.getFunction().getContext().emitError(
+              "Intrinsic processor was not found in the intrinsic processor "
+              "map.");
+        if (auto Err = IRProcessor->second.MIRProcessor(It->second, ArgVec,
+                                                        MIBuilder)) {
+          MF.getFunction().getContext().emitError(
+              "Failed to lower the intrinsic; Error message: " +
+              toString(std::move(Err)));
+        }
+        // Remove the dummy inline assembly
+        MI.eraseFromParent();
+      }
+    }
+  }
+  return Changed;
+}
 } // namespace luthier

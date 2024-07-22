@@ -313,8 +313,10 @@ __attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
 
 template <typename T>
 LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
+  T Out;
   doNotOptimize(Reg);
-  return T{};
+  doNotOptimize(Out);
+  return Out;
 }
 
 template <typename T>

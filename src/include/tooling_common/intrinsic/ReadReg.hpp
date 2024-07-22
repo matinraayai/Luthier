@@ -15,11 +15,15 @@
 
 namespace luthier {
 
-
 llvm::Expected<IntrinsicIRLoweringInfo>
 readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
                    const llvm::GCNTargetMachine &TM);
 
-}
+llvm::Error readRegMIRProcessor(
+    const IntrinsicIRLoweringInfo &IRLoweringInfo,
+    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
+    const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder);
+
+} // namespace luthier
 
 #endif

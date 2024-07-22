@@ -157,7 +157,7 @@ Controller::Controller()
   TM = new TargetManager();
   HipInterceptor = new hip::Interceptor();
   // Register Luthier intrinsics with the Code Generator
-  CG->registerIntrinsic("luthier::readReg", {readRegIRProcessor, {}});
+  CG->registerIntrinsic("luthier::readReg", {readRegIRProcessor, readRegMIRProcessor});
 }
 
 Controller::~Controller() {

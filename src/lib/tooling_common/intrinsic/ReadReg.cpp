@@ -3,15 +3,15 @@
 #include <AMDGPUTargetMachine.h>
 #include <SIRegisterInfo.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
 
 namespace luthier {
 
 llvm::Expected<IntrinsicIRLoweringInfo>
-luthier::readRegIRProcessor(const llvm::Function &Intrinsic,
-                            const llvm::CallInst &User,
-                            const llvm::GCNTargetMachine &TM) {
+readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
+                   const llvm::GCNTargetMachine &TM) {
   auto *TRI = TM.getSubtargetImpl(Intrinsic)->getRegisterInfo();
   // The first argument specifies the MCRegister Enum that will be read
   // The enum value should be constant; A different intrinsic should be used
@@ -37,11 +37,27 @@ luthier::readRegIRProcessor(const llvm::Function &Intrinsic,
 
   luthier::IntrinsicIRLoweringInfo Out;
   // Set the output's constraint
-  Out.setReturnValueInfo(User, Constraint);
+  Out.setReturnValueInfo(&User, Constraint);
   // Save the MCReg to be encoded during MIR processing
   Out.setLoweringData(Reg);
 
   return Out;
+}
+llvm::Error readRegMIRProcessor(
+    const IntrinsicIRLoweringInfo &IRLoweringInfo,
+    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
+    const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder) {
+  llvm::outs() << "Number of args: " << Args.size() << "\n";
+  // There should be only a single virtual register involved in the operation
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Args.size() == 1));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Args[0].first.isRegDefKind()));
+  llvm::Register Output = Args[0].second;
+
+  auto Src = IRLoweringInfo.getLoweringData<llvm::MCRegister>();
+  MIBuilder(llvm::AMDGPU::COPY)
+      .addReg(Output, llvm::RegState::Define)
+      .addReg(Src);
+  return llvm::Error::success();
 }
 
 } // namespace luthier
