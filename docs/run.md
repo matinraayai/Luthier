@@ -1,5 +1,5 @@
 # Running Luthier-based Tools
-To instrument HIP-based applications using tools developed with Luthier, run the following command:
+To instrumentAndLoad HIP-based applications using tools developed with Luthier, run the following command:
 ```shell
 LD_PRELOAD=${LUTHIER_PATH}:${TOOL_PATH} ${APPLICATION_CMD}
 ```

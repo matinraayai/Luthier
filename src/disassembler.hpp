@@ -24,6 +24,7 @@
 #include "luthier/pass.h"
 #include "luthier/types.h"
 #include "object_utils.hpp"
+#include "dwarf_debug.hpp"
 
 namespace luthier {
 
@@ -114,6 +115,14 @@ private:
                      std::unique_ptr<std::vector<hsa::Instr>>>
       MCDisassembledSymbols{};
 
+  /**
+   * Cache of DWARFDebugInfo. Maps file name of the ELF to the corresponding
+   * DWARF debug information. The DWARFDebugInfos have to be allocated as a
+   * smart pointer to stop it from calling its destructor prematurely.
+   * The disassembler is in charge of clearing the map
+  */
+  llvm::StringMap<std::unique_ptr<DWARFDebugInfo>> debugInfoELFMap{};
+
 public:
   /**
    * Disassembles the content of the given \p hsa::ExecutableSymbol
@@ -129,7 +138,7 @@ public:
    * \see hsa::Instr
    */
   llvm::Expected<const std::vector<hsa::Instr> &>
-  disassemble(const hsa::ExecutableSymbol &Symbol);
+  disassemble(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false);
 
 
   /**
@@ -254,11 +263,11 @@ public:
   llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                             std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                             LiftedSymbolInfo>>
-  liftSymbol(const hsa::ExecutableSymbol &Symbol);
+  liftSymbol(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo = false);
 
   llvm::Expected<LiftedSymbolInfo>
   liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
-                           llvm::Module &Module, llvm::MachineModuleInfo &MMI);
+                           llvm::Module &Module, llvm::MachineModuleInfo &MMI, bool includeDebugInfo = false);
 };
 
 } // namespace luthier

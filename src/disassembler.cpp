@@ -1,5 +1,4 @@
 #include "disassembler.hpp"
-
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
@@ -26,9 +25,8 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
-
+#include <llvm/DebugInfo/DWARF/DWARFContext.h>
 #include <memory>
-
 #include "error.hpp"
 #include "hsa.hpp"
 #include "hsa_agent.hpp"
@@ -124,8 +122,17 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
   return std::make_pair(Instructions, Addresses);
 }
 
+// need to add a flag:
+// tells the disassembler (want the dwarf location)
+// here we add the DWARFDie into the Instr
+// DWARFContext-> put it in CodeLifter to be cached
+// std::optional<> ->
+// To get the context: get an instance of TargetManger.instance() -> and get the context (TargetInfo->getContext()).
+// user says: I want debugloc -> also cache the debugloc
+//            if they don't want -> we won't cache it!
+// ExecutableSymbol ->
 llvm::Expected<const std::vector<hsa::Instr> &>
-luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
+luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo) {
   if (!MCDisassembledSymbols.contains(Symbol)) {
     auto SymbolType = Symbol.getType();
     LUTHIER_RETURN_ON_ERROR(
@@ -134,10 +141,10 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
     auto SymbolName = Symbol.getName();
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
 
-    // The ISA associated with the Symbol is
-    auto LCO = Symbol.getLoadedCodeObject();
-    LUTHIER_RETURN_ON_ERROR(LCO.takeError());
-
+    auto LCO = Symbol.getDefiningLoadedCodeObject();
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ASSERTION(LCO != std::nullopt));
+    // LUTHIER_RETURN_ON_ERROR(LCO.takeError());
     auto Agent = Symbol.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
@@ -169,6 +176,17 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
     auto Executable = Symbol.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
+    if (includeDebugInfo) {
+      auto elfFile = LCO->getStorageELF();
+      LUTHIER_RETURN_ON_ERROR(elfFile.takeError());
+      auto fileName = elfFile->getFileName();
+      // assume the file name is not null (cant be null if !elfFile.takeError())
+      if (!this->debugInfoELFMap.contains(fileName)) {
+        auto dwarfDebugInfo = std::make_unique<DWARFDebugInfo>(*elfFile);
+        this->debugInfoLCOMap.insert({*LCO, std::move(dwarfDebugInfo)});
+      }
+    }
+
     for (unsigned int I = 0; I < Instructions.size(); ++I) {
       auto &Inst = Instructions[I];
       auto &Address = Addresses[I];
@@ -192,6 +210,18 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
         }
       }
       PrevInstAddress = Address;
+      if (includeDebugInfo) { // think of better way! I don't want to pass a null die, because it will be "invalid" (DWARFDie has isValid method that I use, and I believe passing null will make it invalid)
+        // auto elfObjectFile = LCO->getStorageELF();
+        // // In FUTURE: NEED TO CACHE THE DWARFContext for this LCO (if it's not already cached)
+        // // Write a private caching function (gets the cached or new DWARFContext!) (use std::move for the unique pointer)
+        // std::unique_ptr<llvm::DWARFContext> context = llvm::DWARFContext::create((*elfObjectFile)); // dono if this will work, IntelliSense can't catch it
+        // auto die = getDWARFDie(*context, (*SymbolName).data());
+        // LUTHIER_RETURN_ON_ERROR(die.takeError());
+        // Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
+        //                         Address + reinterpret_cast<luthier::address_t>(
+        //                                       MachineCodeOnDevice->data()),
+        //                         Size, (*die))); // code duplication for now, will fix later.
+      }
       Out->push_back(hsa::Instr(Inst, LCO->asHsaType(), Symbol.asHsaType(),
                                 Address + reinterpret_cast<luthier::address_t>(
                                               MachineCodeOnDevice->data()),
@@ -250,6 +280,8 @@ luthier::CodeLifter::initializeLLVMFunctionFromSymbol(
     F = llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage,
                                SymbolName.substr(0, SymbolName.rfind(".kd")),
                                Module);
+    // check if can get data from debug info (for the above args)
+    // abstract
 
     F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
 
@@ -537,10 +569,12 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder,
   return llvm::Error::success();
 }
 
+
+
 llvm::Expected<LiftedSymbolInfo>
 CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                      llvm::Module &Module,
-                                     llvm::MachineModuleInfo &MMI) {
+                                     llvm::MachineModuleInfo &MMI, bool includeDebugInfo) {
   auto Agent = Symbol.getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
   auto LCO = Symbol.getLoadedCodeObject();
@@ -583,6 +617,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 
   auto MCInstInfo = TargetInfo->getMCInstrInfo();
 
+
   llvm::DenseMap<luthier::address_t,
                  llvm::SmallVector<llvm::MachineInstr *>>
       UnresolvedBranchMIs; // < Set of branch instructions located at a
@@ -593,8 +628,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       BranchTargetMBBs; // < Set of MBBs that will be the target of the
                         // UnresolvedBranchMIs
   auto MIA = TargetInfo->getMCInstrAnalysis();
-
-  auto TargetFunction = CodeLifter::instance().disassemble(Symbol);
+  auto TargetFunction = CodeLifter::instance().disassemble(Symbol, includeDebugInfo);
   LUTHIER_RETURN_ON_ERROR(TargetFunction.takeError());
 
   llvm::SmallDenseSet<unsigned>
@@ -606,14 +640,18 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
                                          // instructions (output operands)
 
   for (const auto &Inst : *TargetFunction) {
+    Inst.getLoadedDeviceAddress
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
+    // use the Module and pass it to getDebugLoc()
+    // In FUTURE: cache the MachineModuleInfo for this LCO if it's not already cached!
+    // const llvm::DebugLoc debugLocation = getDebugLoc(Inst.getDWARFDie(), TargetInfo->getLLVMContext());
+    // ISSUES WITH getDebugLoc
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
         isAddressBranchOrBranchTarget(*LCO, Inst.getLoadedDeviceAddress()) &&
         !IsDirectBranch;
-
     if (IsDirectBranchTarget) {
       // Branch targets mark the beginning of an MBB
       auto OldMBB = MBB;
@@ -622,6 +660,8 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
       OldMBB->addSuccessor(MBB);
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
     }
+    Inst.getLoadedDeviceAddress();
+    // create the DILocation (pass the line, and column, and scope = MF->getFunction().getSubprogram()
     llvm::MachineInstrBuilder Builder =
         llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
     Out.MCToMachineInstrMap.insert(
@@ -660,11 +700,11 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
         // text section)
         luthier::address_t InstAddr = Inst.getLoadedDeviceAddress();
         size_t InstSize = Inst.getSize();
-        // Check if at any point in the instruction we need to apply
-        // relocations
-        auto LCO = hsa::LoadedCodeObject(Inst.getLoadedCodeObject());
+
         bool RelocationApplied{false};
         for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
+          // Check if at any point in the instruction we need to apply relocations
+          auto LCO = hsa::LoadedCodeObject(Inst.getLoadedCodeObject());
           auto RelocationInfo = resolveRelocation(LCO, I);
           LUTHIER_RETURN_ON_ERROR(RelocationInfo.takeError());
           if (RelocationInfo->has_value()) {
@@ -829,7 +869,7 @@ CodeLifter::liftSymbolAndAddToModule(const hsa::ExecutableSymbol &Symbol,
 llvm::Expected<std::tuple<std::unique_ptr<llvm::Module>,
                           std::unique_ptr<llvm::MachineModuleInfoWrapperPass>,
                           luthier::LiftedSymbolInfo>>
-luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol) {
+luthier::CodeLifter::liftSymbol(const hsa::ExecutableSymbol &Symbol, bool includeDebugInfo) {
   auto LCO = Symbol.getLoadedCodeObject();
   LUTHIER_RETURN_ON_ERROR(LCO.takeError());
 

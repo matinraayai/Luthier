@@ -243,9 +243,9 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
     Args.hsa_queue_packet_submit.pkt_count = PktCount;
     Args.hsa_queue_packet_submit.user_pkt_index = UserPktIndex;
     if (IsUserCallbackEnabled)
-      HsaUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
     if (IsInternalCallbackEnabled)
-      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, nullptr);
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId, nullptr);
     // Write the packets to hardware queue
     // Even if the packets are not modified, this call has to be made to ensure
     // the packets are copied to the hardware queue
@@ -317,9 +317,9 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
 """)
                 callback_defs.append(
                     """    if (IsUserCallbackEnabled)
-      HsaUserCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId);
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
     if (IsInternalCallbackEnabled)
-      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_ENTER, ApiId, &SkipFunction);
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId, &SkipFunction);
     if (!SkipFunction)
 """)
                 if hsa_function_name == "hsa_queue_create":  # Create intercept queues instead
@@ -344,9 +344,9 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
                     callback_defs.append(");\n")
                 callback_defs.append(
                     f"""    if (IsUserCallbackEnabled)
-      HsaUserCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId);
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
     if (IsInternalCallbackEnabled)
-      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_EXIT, ApiId, &SkipFunction);
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId, &SkipFunction);
     {"return Out;" if return_type != "void" else ""}
   }}
   else {{
