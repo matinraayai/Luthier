@@ -52,7 +52,9 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
             llvm::report_fatal_error(std::move(Err), true);
 
           // insert a hook after the first instruction of each basic block
-
+          for (const auto &[Func, MF] : LiftedKernel->functions()) {
+            MF->dump();
+          }
           if (auto Res = luthier::instrumentAndLoad(
                   *KernelSymbol, *LiftedKernel,
                   [&](InstrumentationTask &IT,
@@ -60,18 +62,18 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                     llvm::outs() << "Mutator called!\n";
                     for (auto &[Func, MF] : LR.functions()) {
                       MF->dump();
-                      if (auto Error = IT.insertHookBefore(
-                              *MF->front().front().getNextNode(),
-                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
-                        return Error;
-                      for (auto &MBB: *MF) {
-                        for (auto &MI : MBB) {
-                          if (MI.getOpcode() == llvm::AMDGPU::S_ADD_I32_vi) {
-                            MI.getOperand(2).setImm(200);
-
-                          }
-                        }
-                      }
+//                      if (auto Error = IT.insertHookBefore(
+//                              *MF->front().front().getNextNode(),
+//                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
+//                        return Error;
+//                      for (auto &MBB: *MF) {
+//                        for (auto &MI : MBB) {
+//                          if (MI.getOpcode() == llvm::AMDGPU::S_ADD_I32_vi) {
+//                            MI.getOperand(2).setImm(200);
+//
+//                          }
+//                        }
+//                      }
                     }
                     return llvm::Error::success();
                   },

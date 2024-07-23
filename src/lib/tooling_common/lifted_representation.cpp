@@ -8,8 +8,8 @@
 /// kernel or an executable), as well as a mapping between the HSA primitives
 /// and LLVM IR primitives involved.
 //===----------------------------------------------------------------------===//
-#include <luthier/lifted_representation.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <luthier/lifted_representation.h>
 
 namespace luthier {
 
@@ -17,5 +17,16 @@ void LiftedRepresentation::managePassManagerLifetime(
     std::unique_ptr<llvm::legacy::PassManager> PM) {
   PMs.push_back(std::move(PM));
 }
-LiftedRepresentation::LiftedRepresentation() = default;
+LiftedRepresentation::~LiftedRepresentation() {
+  if (PMs.empty()) {
+    for (auto &[LCO, LCOModule] : Modules) {
+      delete LCOModule.second;
+    }
+  } else {
+    PMs.clear();
+  }
+  Modules.clear();
 }
+
+LiftedRepresentation::LiftedRepresentation() = default;
+} // namespace luthier

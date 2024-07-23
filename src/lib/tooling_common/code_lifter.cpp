@@ -27,6 +27,8 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
 
+#include <SIRegisterInfo.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
 #include <memory>
 
 #include "common/error.hpp"
@@ -197,27 +199,27 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
     auto MII = TargetInfo->getMCInstrInfo();
     auto MIA = TargetInfo->getMCInstrAnalysis();
 
-    luthier::address_t PrevInstAddress = 0;
+    luthier::address_t BaseLoadedAddress =
+        reinterpret_cast<luthier::address_t>(MachineCodeOnDevice->data());
+
+    luthier::address_t PrevInstAddress = BaseLoadedAddress;
 
     auto Executable = Symbol.getExecutable();
     LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
     for (unsigned int I = 0; I < Instructions.size(); ++I) {
       auto &Inst = Instructions[I];
-      auto &Address = Addresses[I];
+      auto Address = Addresses[I] + BaseLoadedAddress;
       auto Size = Address - PrevInstAddress;
       if (MII->get(Inst.getOpcode()).isBranch()) {
         if (!isAddressBranchOrBranchTarget(*LCO, Address)) {
           luthier::address_t Target;
-          //          TargetInfo->getMCInstPrinter()->printInst(
-          //              &Inst, Address, "", *TargetInfo->getMCSubTargetInfo(),
-          //              llvm::outs());
-          //          Inst.dump_pretty(llvm::outs(), nullptr, " ",
-          //                           TargetInfo->getMCRegisterInfo());
           if (MIA->evaluateBranch(Inst, Address, Size, Target)) {
-            //            llvm::outs() << llvm::formatv(
-            //                "Resolved branches: Address: {0:x}, Target:
-            //                {1:x}\n", Address, Target);
+            LLVM_DEBUG(
+                llvm::dbgs() << llvm::formatv(
+                    "Evaluated address {0:x} as a branch target for ", Target);
+                Inst.print(llvm::dbgs(), TargetInfo->getMCRegisterInfo());
+                llvm::dbgs() << "\n";);
 
             addBranchOrBranchTargetAddress(*LCO, Target);
           }
@@ -225,10 +227,7 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
         }
       }
       PrevInstAddress = Address;
-      Out->push_back(hsa::Instr(Inst, Symbol.asHsaType(),
-                                Address + reinterpret_cast<luthier::address_t>(
-                                              MachineCodeOnDevice->data()),
-                                Size));
+      Out->push_back(hsa::Instr(Inst, Symbol.asHsaType(), Address, Size));
     }
   }
   return *MCDisassembledSymbols.at(Symbol);
@@ -238,17 +237,17 @@ llvm::Expected<std::optional<CodeLifter::LCORelocationInfo>>
 CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
                               luthier::address_t Address) {
   if (!Relocations.contains(LCO)) {
-    // If the LCO doesn't have its relocation info cached, cache it
+    // If the LCO doesn't have its relocation info cached, calculate it
     auto LoadedMemory = LCO.getLoadedMemory();
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
-    auto LoadedMemoryBegin = reinterpret_cast<address_t>(LoadedMemory->data());
+    auto LoadedMemoryBase = reinterpret_cast<address_t>(LoadedMemory->data());
 
     auto StorageELF = LCO.getStorageELF();
     LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
     // Create an entry for the LCO in the relocations map
-    auto LCORelocationsMap =
+    auto &LCORelocationsMap =
         Relocations
             .insert({LCO, llvm::DenseMap<address_t, LCORelocationInfo>{}})
             .first->getSecond();
@@ -257,32 +256,37 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
       for (const llvm::object::ELFRelocationRef Reloc : Section.relocations()) {
         // Only rely on the loaded address of the symbol instead of its name
         // The name will be stripped from the relocation section
-        // if the symbol has a private linkage
+        // if the symbol has a private linkage (i.e. device functions)
         auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
-        llvm::outs() << llvm::cantFail(Reloc.getSymbol()->getName()) << "\n";
         LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
         // Check with the hsa::Platform which HSA executable Symbol this address
         // is associated with
         auto RelocSymbol = hsa::Platform::instance().getSymbolFromLoadedAddress(
-            LoadedMemoryBegin + *RelocSymbolLoadedAddress);
+            LoadedMemoryBase + *RelocSymbolLoadedAddress);
         LUTHIER_RETURN_ON_ERROR(RelocSymbol.takeError());
         LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(RelocSymbol->has_value()));
-        luthier::address_t TargetAddress =
-            reinterpret_cast<luthier::address_t>(LoadedMemory->data()) +
-            Reloc.getOffset();
+        // The target address will be the base of the loaded
+        luthier::address_t TargetAddress = LoadedMemoryBase + Reloc.getOffset();
+        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                       "Relocation found for symbol {0} at address {1:x} for "
+                       "LCO {2:x}.\n",
+                       llvm::cantFail(RelocSymbol.get()->getName()),
+                       TargetAddress, LCO.hsaHandle()));
         LCORelocationsMap.insert({TargetAddress, {**RelocSymbol, Reloc}});
       }
     }
   }
+  // Querying actually begins here
   const auto &LCORelocationsMap = Relocations.at(LCO);
-
+  LLVM_DEBUG(
+      llvm::dbgs() << llvm::formatv("Querying address {0:x} for LCO {1:x}",
+                                    Address, LCO.hsaHandle()));
   if (LCORelocationsMap.contains(Address)) {
     auto &Out = LCORelocationsMap.at(Address);
-    LLVM_DEBUG(
-        llvm::dbgs() << llvm::formatv(
-            "Relocation information found for loaded address: {0:x}, with data "
-            "ref: {1}.\n",
-            Address, Out.Relocation.getRawDataRefImpl()));
+    LLVM_DEBUG(llvm::dbgs()
+               << llvm::formatv("Relocation information found for loaded "
+                                "address: {0:x}, targeting symbol {1}.\n",
+                                Address, llvm::cantFail(Out.Symbol.getName())));
 
     return Out;
   }
@@ -314,11 +318,11 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
   auto MMIWP =
       std::make_unique<llvm::MachineModuleInfoWrapperPass>(LR.TM.get());
 
-  auto &ModuleEntry = LR.Modules
-                          .insert({LCO.asHsaType(),
-                                   std::move(std::make_pair(std::move(TSModule),
-                                                            std::move(MMIWP)))})
-                          .first->getSecond();
+  auto &ModuleEntry =
+      LR.Modules
+          .insert({LCO.asHsaType(), std::move(std::make_pair(
+                                        std::move(TSModule), MMIWP.release()))})
+          .first->getSecond();
   LR.RelatedLCOs.insert(
       {LCO.asHsaType(),
        {ModuleEntry.first.getModuleUnlocked(), &ModuleEntry.second->getMMI()}});
@@ -481,7 +485,6 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
     MFI->addFlatScratchInit(*TRI);
   }
   if (Rsrc2.EnableSgprPrivateSegmentWaveByteOffset == 1) {
-    //    llvm::outs() << "Private segment Wave offset\n";
     MFI->addPrivateSegmentWaveByteOffset();
   }
 
@@ -603,21 +606,40 @@ llvm::Error CodeLifter::liftFunction(
                // Kernel Descriptor
   llvm::SmallDenseSet<unsigned> Defines; // < Set of registers defined by
                                          // instructions (output operands)
-
-  for (const auto &Inst : *TargetFunction) {
+  llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
+  MBBs.push_back(MBB);
+  for (unsigned int InstIdx = 0; InstIdx < TargetFunction->size(); InstIdx++) {
+    const auto &Inst = (*TargetFunction)[InstIdx];
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
         isAddressBranchOrBranchTarget(*LCO, Inst.getLoadedDeviceAddress()) &&
-        !IsDirectBranch;
+        !MCID.isBranch();
+    LLVM_DEBUG(llvm::dbgs() << "MC Inst: ";
+               MCInst.print(llvm::dbgs(), TargetInfo->getMCRegisterInfo());
+               llvm::dbgs() << "\n";
+               llvm::dbgs() << "Instruction idx: " << InstIdx << "\n";
+               llvm::dbgs()
+               << llvm::formatv("Loaded address of the instruction: {0}\n",
+                                Inst.getLoadedDeviceAddress());
+               llvm::dbgs()
+               << llvm::formatv("Is branch? {0}\n", MCID.isBranch());
+               llvm::dbgs() << llvm::formatv("Is indirect branch? {0}\n",
+                                             MCID.isIndirectBranch()););
 
     if (IsDirectBranchTarget) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Instruction is a branch target\nCreating a new basic block\n");
       // Branch targets mark the beginning of an MBB
+      LLVM_DEBUG(llvm::dbgs() << "*********************************************"
+                                 "***************************\n");
       auto OldMBB = MBB;
       MBB = MF.CreateMachineBasicBlock();
       MF.push_back(MBB);
+      MBBs.push_back(MBB);
       OldMBB->addSuccessor(MBB);
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
     }
@@ -626,14 +648,14 @@ llvm::Error CodeLifter::liftFunction(
     LR.MachineInstrToMCMap.insert(
         {Builder.getInstr(), const_cast<hsa::Instr *>(&Inst)});
 
+    LLVM_DEBUG(llvm::dbgs() << "Number of operands according to MCID: "
+                            << MCID.operands().size() << "\n";
+               llvm::dbgs() << "Populating operands\n";);
     for (unsigned OpIndex = 0, E = MCInst.getNumOperands(); OpIndex < E;
          ++OpIndex) {
-      //      llvm::outs() << "Number of operands in MCID: " <<
-      //      MCID.operands().size()
-      //                   << "\n";
       const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
       if (Op.isReg()) {
-        //        llvm::outs() << "Reg Op detected \n";
+        LLVM_DEBUG(llvm::dbgs() << "Resolving reg operand.\n");
         unsigned RegNum = Op.getReg();
         const bool IsDef = OpIndex < MCID.getNumDefs();
         unsigned Flags = 0;
@@ -643,14 +665,13 @@ llvm::Error CodeLifter::liftFunction(
           Defines.insert(RegNum);
         } else if (!Defines.contains(RegNum)) {
           LiveIns.insert(RegNum);
-          //          llvm::outs() << "Live in detected: \n";
-          //          llvm::outs() << "Register: ";
-          //          Op.print(llvm::outs(), TargetInfo->getMCRegisterInfo());
-          //          llvm::outs() << "\n";
-          //          llvm::outs() << "Flags: " << Flags << "\n";
         }
+        LLVM_DEBUG(llvm::dbgs() << "Adding register ";
+                   Op.print(llvm::dbgs(), TargetInfo->getMCRegisterInfo());
+                   llvm::dbgs() << "with flags " << Flags << "\n";);
         Builder.addReg(Op.getReg(), Flags);
       } else if (Op.isImm()) {
+        LLVM_DEBUG(llvm::dbgs() << "Resolving an immediate operand.\n");
         // TODO: Resolve immediate load/store operands if they don't have
         // relocations associated with them (e.g. when they happen in the
         // text section)
@@ -696,58 +717,103 @@ llvm::Error CodeLifter::liftFunction(
             break;
           }
         }
-        if (!RelocationApplied) {
-          Builder.addImm(Op.getImm());
+        if (!RelocationApplied && !IsDirectBranch) {
+          LLVM_DEBUG(
+              llvm::dbgs()
+                  << "Relocation was not applied for the "
+                     "immediate operand, and it is not a direct branch.\n";
+              llvm::dbgs()
+              << "Adding the immediate operand directly to the instruction\n");
+          if (llvm::SIInstrInfo::isSOPK(*Builder)) {
+            LLVM_DEBUG(llvm::dbgs() << "Instruction is in SOPK format\n");
+            if (llvm::SIInstrInfo::sopkIsZext(Opcode)) {
+              auto Imm = static_cast<uint16_t>(Op.getImm());
+              LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                             "Adding truncated imm value: {0}\n", Imm));
+              Builder.addImm(Imm);
+            } else {
+              auto Imm = static_cast<int16_t>(Op.getImm());
+              LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                             "Adding truncated imm value: {0}\n", Imm));
+              Builder.addImm(Imm);
+            }
+          } else {
+            LLVM_DEBUG(llvm::dbgs()
+                       << llvm::formatv("Adding Imm: {0}\n", Op.getImm()));
+            Builder.addImm(Op.getImm());
+          }
         }
 
       } else if (!Op.isValid()) {
         llvm_unreachable("Operand is not set");
       } else {
+        // TODO: implement floating point operands
         llvm_unreachable("Not yet implemented");
       }
     }
     LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
+    LLVM_DEBUG(llvm::dbgs() << "Final form of the instruction (not final if "
+                               "it's a direct branch): ";
+               Builder->print(llvm::dbgs()); llvm::dbgs() << "\n");
     // Basic Block resolving
-
-    if (IsDirectBranch) {
-      luthier::address_t BranchTarget;
-      if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
-                              Inst.getSize(), BranchTarget)) {
-        if (!UnresolvedBranchMIs.contains(BranchTarget)) {
-          UnresolvedBranchMIs.insert({BranchTarget, {Builder.getInstr()}});
-        } else {
-          UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
+    if (MCID.isTerminator()) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Instruction is a terminator; Finishing basic block.\n");
+      if (IsDirectBranch) {
+        LLVM_DEBUG(llvm::dbgs() << "The terminator is a direct branch.\n");
+        luthier::address_t BranchTarget;
+        if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
+                                Inst.getSize(), BranchTarget)) {
+          LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                         "Address was resolved to {0:x}\n", BranchTarget));
+          if (!UnresolvedBranchMIs.contains(BranchTarget)) {
+            UnresolvedBranchMIs.insert({BranchTarget, {Builder.getInstr()}});
+          } else {
+            UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
+          }
         }
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Error resolving the target address of the branch\n");
       }
-      //      MCInst.dump_pretty(llvm::outs(), TargetInfo->getMCInstPrinter(),
-      //      "
-      //      ",
-      //                         TargetInfo->getMCRegisterInfo());
-      auto OldMBB = MBB;
-      MBB = MF.CreateMachineBasicBlock();
-      MF.push_back(MBB);
-      OldMBB->addSuccessor(MBB);
+      // if this is the last instruction in the stream, no need for creating
+      // a new basic block
+      if (InstIdx != TargetFunction->size() - 1) {
+        LLVM_DEBUG(llvm::dbgs() << "Creating a new basic block.\n");
+        auto OldMBB = MBB;
+        MBB = MF.CreateMachineBasicBlock();
+        MBBs.push_back(MBB);
+        MF.push_back(MBB);
+        OldMBB->addSuccessor(MBB);
+      }
+      LLVM_DEBUG(llvm::dbgs() << "*********************************************"
+                                 "***************************\n");
     }
   }
 
   // Resolve the branch and target MIs/MBBs
+  LLVM_DEBUG(llvm::dbgs() << "Resolving direct branch MIs\n");
   for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
     MBB = BranchTargetMBBs[TargetAddress];
     for (auto &MI : BranchMIs) {
+      LLVM_DEBUG(llvm::dbgs() << "Resolving branch for the instruction ";
+                 MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
       MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
       MI->getParent()->addSuccessor(MBB);
-      //      MI->print(llvm::outs());
-      //      llvm::outs() << "\n";
+      LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                     "MBB {0:x} {1} was set as the target of the branch.\n",
+                     MBB, MBB->getName()));
+      LLVM_DEBUG(llvm::dbgs() << "Final branch instruction: ";
+                 MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
     }
   }
 
+  LLVM_DEBUG(llvm::dbgs() << "*********************************************"
+                             "***************************\n");
+
+  MF.getRegInfo().freezeReservedRegs();
+
+  llvm::fullyRecomputeLiveIns(MBBs);
   // Add the Live-ins to the first MBB
-  auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
-      TM.getSubtargetImpl(F)->getRegisterInfo());
-  for (auto &LiveIn : LiveIns) {
-    MF.getRegInfo().addLiveIn(LiveIn);
-    MBBEntry->addLiveIn(LiveIn);
-  }
 
   // Populate the properties of MF
   llvm::MachineFunctionProperties &Properties = MF.getProperties();
@@ -756,6 +822,12 @@ llvm::Error CodeLifter::liftFunction(
   Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
   Properties.set(llvm::MachineFunctionProperties::Property::TracksLiveness);
   Properties.set(llvm::MachineFunctionProperties::Property::Selected);
+
+  LLVM_DEBUG(llvm::dbgs() << "Final form of the Machine function:\n";
+             MF.print(llvm::dbgs());
+             llvm::dbgs() << "\n"
+                          << "*********************************************"
+                             "***************************\n";);
   return llvm::Error::success();
 }
 
@@ -919,7 +991,6 @@ CodeLifter::lift(const hsa::Executable &Exec) {
 
 llvm::Expected<std::unique_ptr<LiftedRepresentation>>
 CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
-  llvm::outs() << "Cloning!\n";
   // Construct the output
   std::unique_ptr<LiftedRepresentation> DestLR;
   DestLR.reset(new LiftedRepresentation());
@@ -962,7 +1033,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
         DestLR->Modules
             .insert(
                 {LCOHandle, std::move(std::make_pair(std::move(DestTSModule),
-                                                     std::move(DestMMIWP)))})
+                                                     DestMMIWP.release()))})
             .first->getSecond();
     DestLR->RelatedLCOs.insert({LCOHandle,
                                 {DestModuleEntry.first.getModuleUnlocked(),
@@ -976,11 +1047,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     auto *DestGV = cast<llvm::GlobalVariable>(GVDestEntry->second);
     DestLR->RelatedGlobalVariables.insert({GVHandle, DestGV});
   }
-
-  llvm::outs() << "dump the cloned functions" << SrcLR.RelatedFunctions.size()
-               << "\n";
   for (const auto &[FuncHandle, SrcMF] : SrcLR.RelatedFunctions) {
-    SrcMF->print(llvm::outs());
     auto FDestEntry = VMap.find(&SrcMF->getFunction());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(FDestEntry != VMap.end()));
     auto *DestF = cast<llvm::Function>(FDestEntry->second);
@@ -991,8 +1058,6 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     auto &MMI = *DestLR->RelatedLCOs.at(FuncLCO).second;
 
     auto DestMF = MMI.getMachineFunction(*DestF);
-    llvm::outs() << "Cloned???\n";
-    DestMF->print(llvm::outs());
     DestLR->RelatedFunctions.insert({FuncHandle, DestMF});
   }
   // Finally, populate the instruction map

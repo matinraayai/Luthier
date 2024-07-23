@@ -512,36 +512,38 @@ printAssembly(LiftedRepresentation &LR,
               llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
                   *AssemblyFiles = nullptr) {
   auto Lock = LR.getContext().getLock();
-  for (auto &[LCO, LCOModule] : LR) {
-    for (const auto &F : *LCOModule.first) {
+  for (auto &[LCO, LCOModule] : LR.modules()) {
+    auto &[TSM, MMIWP] = LCOModule;
+    auto & M = *TSM.getModuleUnlocked();
+    auto & MMI = MMIWP->getMMI();
+    for (const auto &F : M) {
       llvm::outs() << F.getName() << "\n";
-      if (auto MF = LCOModule.second->getMachineFunction(F)) {
+      if (auto MF = MMI.getMachineFunction(F)) {
         MF->print(llvm::outs());
       }
     }
-    auto &[M, MMI] = LCOModule;
-    llvm::legacy::PassManager PM;
-    llvm::MCContext &MCContext = MMI->getContext();
+
+    auto PM = std::make_unique<llvm::legacy::PassManager>();
+    llvm::MCContext &MCContext = MMI.getContext();
     // Get the target machine of the LCO's ISA
     hsa::LoadedCodeObject LCOWrapper(LCO);
     auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
-    llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M->getTargetTriple()));
-    PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-    auto *TPC = TM.createPassConfig(PM);
+    llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
+    PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+    auto *TPC = TM.createPassConfig(*PM);
     TPC->setDisableVerify(true);
     TPC->setInitialized();
-    PM.add(TPC);
-    auto *MMIWP = new llvm::MachineModuleInfoWrapperPass(std::move(*MMI));
-    PM.add(MMIWP);
+    PM->add(TPC);
+    PM->add(MMIWP);
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
-    PM.add(UsageAnalysis);
+    PM->add(UsageAnalysis);
     if (!CompiledRelocatables.contains(LCOWrapper)) {
       CompiledRelocatables.insert({LCOWrapper, {}});
     }
     llvm::raw_svector_ostream ObjectFileOS(CompiledRelocatables[LCOWrapper]);
 
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        !TM.addAsmPrinter(PM, ObjectFileOS, nullptr,
+        !TM.addAsmPrinter(*PM, ObjectFileOS, nullptr,
                           llvm::CodeGenFileType::ObjectFile, MCContext)));
 
     std::unique_ptr<llvm::raw_svector_ostream> AssemblyFileOS;
@@ -552,11 +554,14 @@ printAssembly(LiftedRepresentation &LR,
       AssemblyFileOS = std::make_unique<llvm::raw_svector_ostream>(
           (*AssemblyFiles)[LCOWrapper]);
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-          !TM.addAsmPrinter(PM, *AssemblyFileOS, nullptr,
+          !TM.addAsmPrinter(*PM, *AssemblyFileOS, nullptr,
                             llvm::CodeGenFileType::ObjectFile, MCContext)));
     }
     llvm::outs() << "Running the printer pass manager\n";
-    PM.run(*M); // Run all the passes
+    PM->run(M);
+    LR.managePassManagerLifetime(std::move(PM));
+
+    // Run all the passes
                 //    MMI =
     //    std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
     //    llvm::outs() << "AFTER MOVE: \n";

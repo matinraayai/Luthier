@@ -86,14 +86,14 @@ private:
   /// prevent deletion of the <tt>MMI</tt>s \n
   /// This will be removed once the LLVM Code Gen port to the new pass manager
   /// is complete
-  llvm::SmallVector<std::unique_ptr<llvm::legacy::PassManager>, 1> PMs{};
+  llvm::SmallVector<std::unique_ptr<llvm::legacy::PassManager>, 2> PMs{};
 
   /// \brief primary storage of the Module and the Machine Module Info of the
   /// lifted loaded code objects
   llvm::SmallDenseMap<
       hsa_loaded_code_object_t,
       std::pair<llvm::orc::ThreadSafeModule,
-                std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
+                llvm::MachineModuleInfoWrapperPass*>,
       1>
       Modules{};
 
@@ -136,6 +136,9 @@ private:
   LiftedRepresentation();
 
 public:
+  /// Destructor
+  ~LiftedRepresentation();
+
   /// Disallowed copy construction
   LiftedRepresentation(const LiftedRepresentation &) = delete;
 
@@ -189,6 +192,10 @@ public:
   /// as an analysis pass
   void managePassManagerLifetime(std::unique_ptr<llvm::legacy::PassManager> PM);
 
+  /// Module iterator
+  using module_iterator = decltype(Modules)::iterator;
+  /// Module constant iterator
+  using const_module_iterator = decltype(Modules)::const_iterator;
   /// Related Loaded Code Object iterator
   using iterator = decltype(RelatedLCOs)::iterator;
   /// Related Loaded Code Object constant iterator
@@ -202,6 +209,29 @@ public:
   /// The Global Variable constant iterator.
   using const_global_iterator =
       decltype(RelatedGlobalVariables)::const_iterator;
+
+  /// Module iteration
+  module_iterator module_begin() { return Modules.begin(); }
+  [[nodiscard]] const_module_iterator module_begin() const {
+    return Modules.begin();
+  }
+
+  module_iterator module_end() { return Modules.end(); }
+  [[nodiscard]] const_module_iterator module_end() const {
+    return Modules.end();
+  }
+
+  [[nodiscard]] size_t module_size() const { return Modules.size(); };
+
+  [[nodiscard]] bool module_empty() const { return Modules.empty(); };
+
+  llvm::iterator_range<module_iterator> modules() {
+    return make_range(module_begin(), module_end());
+  }
+  [[nodiscard]] llvm::iterator_range<const_module_iterator> modules() const {
+    return make_range(module_begin(), module_end());
+  }
+
 
   /// LCO iteration
   iterator begin() { return RelatedLCOs.begin(); }
