@@ -1,4 +1,3 @@
-#include <hsa/hsa.h>
 #include <luthier/luthier.h>
 
 #define GET_REGINFO_ENUM
@@ -12,13 +11,13 @@
 #define DEBUG_TYPE "luthier-kernel-instrument-tool"
 
 using namespace luthier;
+//TODO: write the instruction counter tool
 
 MARK_LUTHIER_DEVICE_MODULE
 
 __attribute__((managed)) uint64_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
-  //  __asm__ __volatile__("s_mov_b32 s2 300");
   GlobalCounter = readReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5);
 };
 
