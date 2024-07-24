@@ -120,8 +120,8 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       amd_comgr_create_data(AMD_COMGR_DATA_KIND_RELOCATABLE, &DataIn)));
 
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_set_data(
-      DataIn, Code.size(), Code.data())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
+      amd_comgr_set_data(DataIn, Code.size(), Code.data())));
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_set_data_name(DataIn, "source.o"))));
@@ -505,41 +505,37 @@ llvm::Error patchLiftedRepresentation(
   return llvm::Error::success();
 }
 
-llvm::Error printAssembly(
-    LiftedRepresentation &LR,
-    llvm::SmallVectorImpl<std::pair<hsa::LoadedCodeObject,
-                                    llvm::SmallVector<char>>> &CompiledObjects,
-    llvm::CodeGenFileType FileType) {
-  auto Lock = LR.getContext().getLock();
-  CompiledObjects.reserve(LR.size());
-  for (auto &[LCO, LCOModule] : LR.modules()) {
-    auto &[TSM, MMIWP] = LCOModule;
-    auto &M = *TSM.getModuleUnlocked();
-    auto &MMI = MMIWP->getMMI();
-    auto PM = std::make_unique<llvm::legacy::PassManager>();
-    llvm::MCContext &MCContext = MMI.getContext();
-    hsa::LoadedCodeObject LCOWrapper(LCO);
-    auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
-    llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
-    PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-    auto *TPC = TM.createPassConfig(*PM);
-    TPC->setDisableVerify(true);
-    TPC->setInitialized();
-    PM->add(TPC);
-    PM->add(MMIWP);
-    auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
-    PM->add(UsageAnalysis);
+llvm::Error
+CodeGenerator::printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
+                             llvm::MachineModuleInfoWrapperPass *MMIWP,
+                             llvm::SmallVectorImpl<char> &CompiledObjectFile,
+                             llvm::CodeGenFileType FileType) {
+  auto &MMI = MMIWP->getMMI();
+  // Create the legacy pass manager with minimal passes to print the
+  // assembly file
+  llvm::legacy::PassManager PM;
+  // Add the target library info pass
+  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(Module.getTargetTriple()));
+  PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+  // TargetPassConfig is expected by the passes involved, so it must be added
+  auto *TPC = TM.createPassConfig(PM);
+  // Don't run the machine verifier after each pass
+  TPC->setDisableVerify(true);
+  TPC->setInitialized();
+  PM.add(TPC);
+  // Add the MMI Wrapper pass
+  PM.add(MMIWP);
+  // Add the resource usage analysis, which is in charge of calculating the
+  // kernel descriptor and the metadata fields
+  PM.add(new llvm::AMDGPUResourceUsageAnalysis());
 
-    CompiledObjects.push_back({LCOWrapper, {}});
-    auto & ObjectFile = CompiledObjects.back().second;
-    llvm::raw_svector_ostream ObjectFileOS(ObjectFile);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        !TM.addAsmPrinter(*PM, ObjectFileOS, nullptr, FileType, MCContext)));
+  // Finally, add the Assembly printer pass
+  llvm::raw_svector_ostream ObjectFileOS(CompiledObjectFile);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+      !TM.addAsmPrinter(PM, ObjectFileOS, nullptr, FileType, MMI.getContext())));
 
-    PM->run(M);
-//    LR.managePassManagerLifetime(std::move(PM));
-
-  }
+  // Run the passes on the module to print the assembly
+  PM.run(Module);
   return llvm::Error::success();
 }
 
@@ -684,14 +680,11 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
   return llvm::Error::success();
 }
 
-llvm::Error CodeGenerator::instrument(
+llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
     const LiftedRepresentation &LR,
     llvm::function_ref<llvm::Error(InstrumentationTask &,
                                    LiftedRepresentation &)>
-        Mutator,
-    llvm::SmallVectorImpl<std::pair<hsa::LoadedCodeObject,
-                                    llvm::SmallVector<char>>> &AssemblyFiles,
-    llvm::CodeGenFileType FileType) {
+        Mutator) {
   // Clone the Lifted Representation
   LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
       std::unique_ptr<LiftedRepresentation>, ClonedLR,
@@ -702,10 +695,7 @@ llvm::Error CodeGenerator::instrument(
   LUTHIER_RETURN_ON_ERROR(Mutator(IT, *ClonedLR));
   // Insert the hooks inside the Lifted Representation
   LUTHIER_RETURN_ON_ERROR(insertHooks(*ClonedLR, IT));
-  // Print the assembly files
-  LUTHIER_RETURN_ON_ERROR(printAssembly(*ClonedLR, AssemblyFiles,
-                                        FileType));
-  return llvm::Error::success();
+  return std::move(ClonedLR);
 }
 llvm::Expected<std::string>
 CodeGenerator::getDemangledIntrinsicName(llvm::StringRef MangledIntrinsicName) {

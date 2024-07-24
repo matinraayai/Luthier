@@ -50,20 +50,47 @@ public:
     IntrinsicsProcessors.insert({Name, std::move(Processor)});
   }
 
-  llvm::Error instrument(
-      const LiftedRepresentation &LR,
-      llvm::function_ref<llvm::Error(InstrumentationTask &,
-                                     LiftedRepresentation &)>
-          Mutator,
-      llvm::SmallVectorImpl<std::pair<hsa::LoadedCodeObject,
-                                      llvm::SmallVector<char>>> &AssemblyFiles,
-      llvm::CodeGenFileType FileType);
+  /// Instruments the passed \p LR by first cloning it and then
+  /// applying the \p Mutator onto its contents
+  /// \param LR the \c LiftedRepresentation about to be instrumented
+  /// \param Mutator
+  /// \return a new \c LiftedRepresentation containing the instrumented code,
+  /// or an \c llvm::Error in case an issue was encountered during the process
+  llvm::Expected<std::unique_ptr<LiftedRepresentation>>
+  instrument(const LiftedRepresentation &LR,
+             llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                            LiftedRepresentation &)>
+                 Mutator);
 
-  /// Compiles the relocatable object file in \p Code
-  /// \param Code
-  /// \param ISA
-  /// \param Out
-  /// \return
+  /// Runs the \c llvm::AsmPrinter pass on the \p Module and the
+  /// \c llvm::MachineModuleInfo of the \p MMIWP to generate a relocatable file
+  /// \note This function does not access the Module's \c llvm::LLVMContext in a
+  /// thread-safe manner
+  /// \note After printing, \p MMIWP will be deleted by the legacy pass manager
+  /// used to print the assembly file
+  /// \param [in] Module the \c llvm::Module to be printed
+  /// \param [in] TM the \c llvm::GCNTargetMachine the \p MMIWP was created with
+  /// \param [in] MMIWP the \c llvm::MachineModuleInfoWrapperPass to be printed;
+  /// \param [out] CompiledObjectFile the compiled relocatable file
+  /// \param FileType type of the <tt>CompiledObjectFile</tt>;
+  /// Either \c llvm::CodeGenFileType::AssemblyFile or
+  /// \c llvm::CodeGenFileType::ObjectFile
+  /// \return an \c llvm::Error in case of any issues encountered during the
+  /// process
+  static llvm::Error
+  printAssembly(llvm::Module &Module,
+                llvm::GCNTargetMachine & TM,
+                llvm::MachineModuleInfoWrapperPass *MMIWP,
+                llvm::SmallVectorImpl<char> &CompiledObjectFile,
+                llvm::CodeGenFileType FileType);
+
+  /// Links the relocatable object file passed in \p Code to an executable,
+  /// which can then be loaded into the HSA runtime
+  /// \param [in] Code the relocatable file
+  /// \param [in] ISA the ISA of the relocatable file
+  /// \param [out] Out the linked executable
+  /// \return an \c llvm::Error in case any issues were encountered during the
+  /// process
   static llvm::Error
   compileRelocatableToExecutable(const llvm::ArrayRef<char> &Code,
                                  const hsa::ISA &ISA,
@@ -113,8 +140,6 @@ private:
 
   llvm::Error insertHooks(LiftedRepresentation &LR,
                           const InstrumentationTask &Tasks);
-
-
 };
 
 /// \brief Iterate over the LiveIns of the MI and set them as reserved
