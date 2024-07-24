@@ -158,33 +158,33 @@ private:
   // MachineBasicBlock resolving
   //===--------------------------------------------------------------------===//
 
-  /// \brief Contains the addresses of the HSA instructions that are either
-  /// branches or target of other branch instructions, per
+  /// \brief Contains the addresses of the HSA instructions that are
+  /// target of other branch instructions, per
   /// \c hsa::LoadedCodeObject
   /// \details This map is used during lifting of MC instructions to MIR to
   /// indicate start/end of each \p llvm::MachineBasicBlock. It gets populated
-  /// by during MC disassembly of functions.
+  /// by during MC disassembly of functions
   llvm::DenseMap<hsa::LoadedCodeObject, llvm::DenseSet<address_t>>
-      BranchAndTargetLocations{};
+      DirectBranchTargetLocations{};
 
-  /// Checks whether the given \p Address is the start of either a branch
-  /// instruction or a target of another branch instruction
+  /// Checks whether the given \p Address is the start of a target of a
+  /// direct branch instruction
   /// \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
   /// in its loaded region
   /// \param \c Address a device address in the \p hsa::LoadedCodeObject
-  /// \return true if the Address is the start of a branch instruction, or
-  /// a target of another branch instruction; \c false otherwise
-  bool isAddressBranchOrBranchTarget(const hsa::LoadedCodeObject &LCO,
-                                     address_t Address);
+  /// \return true if the Address is the start of the target of another branch
+  /// instruction; \c false otherwise
+  bool isAddressDirectBranchTarget(const hsa::LoadedCodeObject &LCO,
+                                   address_t Address);
 
   /// Used by the MC disassembler functionality to notify
-  /// \c BranchAndTargetLocations about the loaded address of an instruction
-  /// that is either a branch or the target of another branch instruction
+  /// \c BranchLocations about the loaded address of an instruction
+  /// that is the target of a direct branch instruction
   /// \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
   /// in its loaded region
   /// \param Address a device address in the \p hsa::LoadedCodeObject
-  void addBranchOrBranchTargetAddress(const hsa::LoadedCodeObject &LCO,
-                                      address_t Address);
+  void addDirectBranchTargetAddress(const hsa::LoadedCodeObject &LCO,
+                                    address_t Address);
 
   //===--------------------------------------------------------------------===//
   // Relocation resolving

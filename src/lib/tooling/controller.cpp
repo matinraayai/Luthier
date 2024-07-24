@@ -150,11 +150,11 @@ void rocprofilerFinalize(void *Data){
 Controller::Controller()
     : Singleton<Controller>() {
   // Initialize all the singletons
+  TM = new TargetManager();
   HsaPlatform = new hsa::Platform();
   CG = new CodeGenerator();
   COM = new ToolExecutableManager();
   CL = new CodeLifter();
-  TM = new TargetManager();
   HipInterceptor = new hip::Interceptor();
   // Register Luthier intrinsics with the Code Generator
   CG->registerIntrinsic("luthier::readReg", {readRegIRProcessor, readRegMIRProcessor});

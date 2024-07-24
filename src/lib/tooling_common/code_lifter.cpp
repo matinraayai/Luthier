@@ -60,8 +60,8 @@ llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
 
   for (const auto &LCO : *LCOs) {
     // Remove the branch and branch target locations
-    if (BranchAndTargetLocations.contains(LCO))
-      BranchAndTargetLocations.erase(LCO);
+    if (DirectBranchTargetLocations.contains(LCO))
+      DirectBranchTargetLocations.erase(LCO);
     // Remove relocation info
     if (Relocations.contains(LCO)) {
       Relocations.erase(LCO);
@@ -106,22 +106,22 @@ luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &ISA) {
   return DisassemblyInfoMap[ISA];
 }
 
-bool CodeLifter::isAddressBranchOrBranchTarget(const hsa::LoadedCodeObject &LCO,
-                                               luthier::address_t Address) {
-  if (!BranchAndTargetLocations.contains(LCO)) {
+bool CodeLifter::isAddressDirectBranchTarget(const hsa::LoadedCodeObject &LCO,
+                                             address_t Address) {
+  if (!DirectBranchTargetLocations.contains(LCO)) {
     return false;
   }
-  auto &AddressInfo = BranchAndTargetLocations[LCO];
+  auto &AddressInfo = DirectBranchTargetLocations[LCO];
   return AddressInfo.contains(Address);
 }
 
-void luthier::CodeLifter::addBranchOrBranchTargetAddress(
-    const hsa::LoadedCodeObject &LCO, luthier::address_t Address) {
-  if (!BranchAndTargetLocations.contains(LCO)) {
-    BranchAndTargetLocations.insert(
+void luthier::CodeLifter::addDirectBranchTargetAddress(
+    const hsa::LoadedCodeObject &LCO, address_t Address) {
+  if (!DirectBranchTargetLocations.contains(LCO)) {
+    DirectBranchTargetLocations.insert(
         {LCO, llvm::DenseSet<luthier::address_t>{}});
   }
-  BranchAndTargetLocations[LCO].insert(Address);
+  DirectBranchTargetLocations[LCO].insert(Address);
 }
 
 llvm::Expected<
@@ -214,18 +214,26 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
       auto Address = Addresses[I] + BaseLoadedAddress;
       auto Size = Address - PrevInstAddress;
       if (MII->get(Inst.getOpcode()).isBranch()) {
-        if (!isAddressBranchOrBranchTarget(*LCO, Address)) {
-          luthier::address_t Target;
-          if (MIA->evaluateBranch(Inst, Address, Size, Target)) {
-            LLVM_DEBUG(
-                llvm::dbgs() << llvm::formatv(
-                    "Evaluated address {0:x} as a branch target for ", Target);
-                Inst.print(llvm::dbgs(), TargetInfo->getMCRegisterInfo());
-                llvm::dbgs() << "\n";);
+        LLVM_DEBUG(llvm::dbgs() << "Instruction "; Inst.dump_pretty(
+            llvm::dbgs(), TargetInfo->getMCInstPrinter(), " ",
+            TargetInfo->getMCRegisterInfo());
+                   llvm::dbgs() << " at idx " << I << " is a branch.\n";);
+        //        if (!isAddressBranchOrBranchTarget(*LCO, Address)) {
+        LLVM_DEBUG(llvm::dbgs() << "Evaluating its target.\n");
+        luthier::address_t Target;
+        if (MIA->evaluateBranch(Inst, Address, Size, Target)) {
+          LLVM_DEBUG(
+              llvm::dbgs() << llvm::formatv(
+                  "Evaluated address {0:x} as the branch target\n", Target););
 
-            addBranchOrBranchTargetAddress(*LCO, Target);
-          }
-          addBranchOrBranchTargetAddress(*LCO, Address);
+          addDirectBranchTargetAddress(*LCO, Target);
+          //          }
+          //        } else {
+          //          LLVM_DEBUG(llvm::dbgs() << "Its target has already been
+          //          recorded.\n");
+          //        }
+        } else {
+          LLVM_DEBUG(llvm::dbgs() << "Failed to evaluate the branch target.\n");
         }
       }
       PrevInstAddress = Address;
@@ -261,8 +269,8 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
         // if the symbol has a private linkage (i.e. device functions)
         auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
         LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
-        // Check with the hsa::Platform which HSA executable Symbol this address
-        // is associated with
+        // Check with the hsa::Platform which HSA executable Symbol this
+        // address is associated with
         auto RelocSymbol = hsa::Platform::instance().getSymbolFromLoadedAddress(
             LoadedMemoryBase + *RelocSymbolLoadedAddress);
         LUTHIER_RETURN_ON_ERROR(RelocSymbol.takeError());
@@ -281,7 +289,7 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
   // Querying actually begins here
   const auto &LCORelocationsMap = Relocations.at(LCO);
   LLVM_DEBUG(
-      llvm::dbgs() << llvm::formatv("Querying address {0:x} for LCO {1:x}",
+      llvm::dbgs() << llvm::formatv("Querying address {0:x} for LCO {1:x}\n",
                                     Address, LCO.hsaHandle()));
   if (LCORelocationsMap.contains(Address)) {
     auto &Out = LCORelocationsMap.at(Address);
@@ -445,6 +453,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
     F->addFnAttr("amdgpu-no-workitem-id-y");
   case 1:
     F->addFnAttr("amdgpu-no-workitem-id-z");
+  case 2:
     break;
   default:
     llvm_unreachable("KD's VGPR workitem ID is not valid");
@@ -570,6 +579,12 @@ llvm::Error CodeLifter::liftFunction(
   llvm::MachineModuleInfo &MMI = *LR.RelatedLCOs.at(LCO->asHsaType()).second;
   llvm::MachineFunction &MF = *LR.RelatedFunctions.at(Symbol.asHsaType());
   auto &F = MF.getFunction();
+
+  LLVM_DEBUG(llvm::dbgs() << "================================================="
+                             "=======================\n";
+             llvm::dbgs() << "Populating contents of Machine Function "
+                          << MF.getName() << "\n");
+
   auto &TM = MMI.getTarget();
 
   auto ISA = LCO->getISA();
@@ -611,20 +626,22 @@ llvm::Error CodeLifter::liftFunction(
   llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
   MBBs.push_back(MBB);
   for (unsigned int InstIdx = 0; InstIdx < TargetFunction->size(); InstIdx++) {
+    LLVM_DEBUG(llvm::dbgs() << "+++++++++++++++++++++++++++++++++++++++++++++++"
+                               "+++++++++++++++++++++++++\n";);
     const auto &Inst = (*TargetFunction)[InstIdx];
     auto MCInst = Inst.getMCInst();
     const unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
-        isAddressBranchOrBranchTarget(*LCO, Inst.getLoadedDeviceAddress()) &&
-        !MCID.isBranch();
-    LLVM_DEBUG(llvm::dbgs() << "MC Inst: ";
-               MCInst.print(llvm::dbgs(), TargetInfo->getMCRegisterInfo());
+        isAddressDirectBranchTarget(*LCO, Inst.getLoadedDeviceAddress());
+    LLVM_DEBUG(llvm::dbgs() << "Lifting and adding MC Inst: ";
+               MCInst.dump_pretty(llvm::dbgs(), TargetInfo->getMCInstPrinter(),
+                                  " ", TargetInfo->getMCRegisterInfo());
                llvm::dbgs() << "\n";
                llvm::dbgs() << "Instruction idx: " << InstIdx << "\n";
                llvm::dbgs()
-               << llvm::formatv("Loaded address of the instruction: {0}\n",
+               << llvm::formatv("Loaded address of the instruction: {0:x}\n",
                                 Inst.getLoadedDeviceAddress());
                llvm::dbgs()
                << llvm::formatv("Is branch? {0}\n", MCID.isBranch());
@@ -635,15 +652,18 @@ llvm::Error CodeLifter::liftFunction(
       LLVM_DEBUG(
           llvm::dbgs()
           << "Instruction is a branch target\nCreating a new basic block\n");
-      // Branch targets mark the beginning of an MBB
-      LLVM_DEBUG(llvm::dbgs() << "*********************************************"
-                                 "***************************\n");
+
       auto OldMBB = MBB;
       MBB = MF.CreateMachineBasicBlock();
       MF.push_back(MBB);
       MBBs.push_back(MBB);
       OldMBB->addSuccessor(MBB);
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
+      LLVM_DEBUG(llvm::dbgs() << "Address {0:x} marks the beginning of MBB "
+                              << MBB->getName() << "\n");
+      // Branch targets mark the beginning of an MBB
+      LLVM_DEBUG(llvm::dbgs() << "*********************************************"
+                                 "***************************\n");
     }
     llvm::MachineInstrBuilder Builder =
         llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
@@ -670,7 +690,7 @@ llvm::Error CodeLifter::liftFunction(
         }
         LLVM_DEBUG(llvm::dbgs() << "Adding register ";
                    Op.print(llvm::dbgs(), TargetInfo->getMCRegisterInfo());
-                   llvm::dbgs() << "with flags " << Flags << "\n";);
+                   llvm::dbgs() << " with flags " << Flags << "\n";);
         Builder.addReg(Op.getReg(), Flags);
       } else if (Op.isImm()) {
         LLVM_DEBUG(llvm::dbgs() << "Resolving an immediate operand.\n");
@@ -724,8 +744,8 @@ llvm::Error CodeLifter::liftFunction(
               llvm::dbgs()
                   << "Relocation was not applied for the "
                      "immediate operand, and it is not a direct branch.\n";
-              llvm::dbgs()
-              << "Adding the immediate operand directly to the instruction\n");
+              llvm::dbgs() << "Adding the immediate operand directly to the "
+                              "instruction\n");
           if (llvm::SIInstrInfo::isSOPK(*Builder)) {
             LLVM_DEBUG(llvm::dbgs() << "Instruction is in SOPK format\n");
             if (llvm::SIInstrInfo::sopkIsZext(Opcode)) {
@@ -773,9 +793,10 @@ llvm::Error CodeLifter::liftFunction(
           } else {
             UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
           }
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Error resolving the target address of the branch\n");
         }
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Error resolving the target address of the branch\n");
       }
       // if this is the last instruction in the stream, no need for creating
       // a new basic block
@@ -795,7 +816,11 @@ llvm::Error CodeLifter::liftFunction(
   // Resolve the branch and target MIs/MBBs
   LLVM_DEBUG(llvm::dbgs() << "Resolving direct branch MIs\n");
   for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
+    LLVM_DEBUG(
+        llvm::dbgs() << llvm::formatv(
+            "Resolving MIs jumping to target address {0:x}.\n", TargetAddress));
     MBB = BranchTargetMBBs[TargetAddress];
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MBB != nullptr));
     for (auto &MI : BranchMIs) {
       LLVM_DEBUG(llvm::dbgs() << "Resolving branch for the instruction ";
                  MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
