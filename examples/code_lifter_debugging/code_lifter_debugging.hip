@@ -5,8 +5,6 @@
 
 using namespace luthier;
 
-LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
-
 static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                      luthier::ApiEvtPhase Phase, luthier::hsa::ApiEvtID ApiID) {
   if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
