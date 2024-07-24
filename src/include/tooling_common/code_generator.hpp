@@ -50,15 +50,24 @@ public:
     IntrinsicsProcessors.insert({Name, std::move(Processor)});
   }
 
-  llvm::Error
-  instrument(const LiftedRepresentation &LR,
-             llvm::function_ref<llvm::Error(InstrumentationTask &,
-                                            LiftedRepresentation &)>
-                 Mutator,
-             llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
-                 &CompiledCodeObjects,
-             llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
-                 *AssemblyFiles = nullptr);
+  llvm::Error instrument(
+      const LiftedRepresentation &LR,
+      llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                     LiftedRepresentation &)>
+          Mutator,
+      llvm::SmallVectorImpl<std::pair<hsa::LoadedCodeObject,
+                                      llvm::SmallVector<char>>> &AssemblyFiles,
+      llvm::CodeGenFileType FileType);
+
+  /// Compiles the relocatable object file in \p Code
+  /// \param Code
+  /// \param ISA
+  /// \param Out
+  /// \return
+  static llvm::Error
+  compileRelocatableToExecutable(const llvm::ArrayRef<char> &Code,
+                                 const hsa::ISA &ISA,
+                                 llvm::SmallVectorImpl<uint8_t> &Out);
 
 private:
   /// Returns the full demangled name of \p MangledFuncName without its template
@@ -105,15 +114,7 @@ private:
   llvm::Error insertHooks(LiftedRepresentation &LR,
                           const InstrumentationTask &Tasks);
 
-  /// Compiles the relocatable object file in \p Code
-  /// \param Code
-  /// \param ISA
-  /// \param Out
-  /// \return
-  static llvm::Error
-  compileRelocatableToExecutable(const llvm::ArrayRef<uint8_t> &Code,
-                                 const hsa::ISA &ISA,
-                                 llvm::SmallVectorImpl<uint8_t> &Out);
+
 };
 
 /// \brief Iterate over the LiveIns of the MI and set them as reserved
@@ -179,16 +180,14 @@ public:
 
 class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {
 private:
-  const llvm::StringMap<IntrinsicIRLoweringInfo>
-      &MIRLoweringMap;
+  const llvm::StringMap<IntrinsicIRLoweringInfo> &MIRLoweringMap;
   const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors;
 
 public:
   static char ID;
 
   explicit IntrinsicMIRLoweringPass(
-      const llvm::StringMap<IntrinsicIRLoweringInfo>
-          &MIRLoweringMap,
+      const llvm::StringMap<IntrinsicIRLoweringInfo> &MIRLoweringMap,
       const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors)
       : MIRLoweringMap(MIRLoweringMap),
         IntrinsicsProcessors(IntrinsicsProcessors),

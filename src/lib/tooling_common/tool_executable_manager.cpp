@@ -128,8 +128,8 @@ ToolExecutableManager::getInstrumentedKernel(
 }
 
 llvm::Error ToolExecutableManager::loadInstrumentedKernel(
-    const llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
-        &InstrumentedElfs,
+    llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
+        InstrumentedElfs,
     const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
     const llvm::StringMap<void *> &ExternVariables) {
   // Ensure this kernel was not instrumented under this profile

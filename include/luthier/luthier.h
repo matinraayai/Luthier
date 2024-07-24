@@ -198,32 +198,41 @@ lift(hsa_executable_symbol_t Kernel);
 llvm::Expected<const luthier::LiftedRepresentation &>
 lift(hsa_executable_t Executable);
 
-/// Overrides the kernel object field of the Packet with its instrumented
-/// version under the given \p Preset, forcing HSA to launch the
-/// instrumented version instead\n Modifies the rest of the launch
-/// configuration (e.g. private segment size) if needed\n Note that this
-/// function should be called every time an instrumented kernel needs to be
-/// launched, since the content of the dispatch packet will always be set by
-/// the target application to the original, un-instrumented version\n To
-/// launch the original version of the kernel, simply refrain from calling
-/// this function
-/// \param Packet Packet the HSA dispatch packet intercepted from an HSA
-/// queue,
-// containing the kernel launch parameters/configuration
-/// \param Preset the preset the kernel was instrumented under
-/// \return an \c llvm::Error reporting
-llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
-                                     llvm::StringRef Preset);
+//===----------------------------------------------------------------------===//
+//  Instrumentation API
+//===----------------------------------------------------------------------===//
 
-/// Instruments the <tt>Kernel</tt>'s lifted representation \p LR by applying
-/// the instrumentation task <tt>ITask</tt> to it.\n
-/// After instrumentation, loads the instrumented code onto the same
-/// device as the \p Kernel
+/// Instruments the \p LR by applying the \p Mutator and
+/// \param LR the \c LiftedRepresentation about to be instrumented
+/// \param Mutator the lambda that instruments and modifies the \p LR
+/// \return returns a new \c LiftedRepresentation containing the instrumented
+/// code, or an \c llvm::Error if an issue was encountered during
+/// instrumentation
+llvm::Expected<std::unique_ptr<LiftedRepresentation>>
+instrument(const LiftedRepresentation &LR,
+           llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                          LiftedRepresentation &)>
+               Mutator);
+
+llvm::Error instrument(
+    hsa_executable_symbol_t Kernel, const LiftedRepresentation &LR,
+    llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                   LiftedRepresentation &)>
+        Mutator,
+    llvm::SmallVectorImpl<std::pair<hsa_loaded_code_object_t,
+                                    llvm::SmallVector<char>>> &AssemblyFiles,
+    llvm::CodeGenFileType FileType = llvm::CodeGenFileType::ObjectFile);
+
+/// Instruments the <tt>Kernel</tt>'s lifted representation \p LR by
+/// applying the instrumentation task <tt>ITask</tt> to it.\n After
+/// instrumentation, loads the instrumented code onto the same device as the
+/// \p Kernel
 /// \param Kernel the kernel that's about to be instrumented
 /// \param LR the lifted representation of the \p Kernel
 /// \param ITask the instrumentation task, describing the instrumentation to
 /// be performed on the <tt>kernel</tt>'s <tt>LR</t>
-/// \return an \c llvm::Error describing if the operation succeeded or failed
+/// \return an \c llvm::Error describing if the operation succeeded or
+/// failed
 llvm::Error
 instrumentAndLoad(hsa_executable_symbol_t Kernel,
                   const LiftedRepresentation &LR,
@@ -255,6 +264,23 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
 // is invalid
 llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
                                           llvm::StringRef Preset);
+
+/// Overrides the kernel object field of the Packet with its instrumented
+/// version under the given \p Preset, forcing HSA to launch the
+/// instrumented version instead\n Modifies the rest of the launch
+/// configuration (e.g. private segment size) if needed\n Note that this
+/// function should be called every time an instrumented kernel needs to be
+/// launched, since the content of the dispatch packet will always be set by
+/// the target application to the original, un-instrumented version\n To
+/// launch the original version of the kernel, simply refrain from calling
+/// this function
+/// \param Packet Packet the HSA dispatch packet intercepted from an HSA
+/// queue,
+// containing the kernel launch parameters/configuration
+/// \param Preset the preset the kernel was instrumented under
+/// \return an \c llvm::Error reporting
+llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
+                                     llvm::StringRef Preset);
 
 /// \brief If a tool contains an instrumentation hook it \b must
 /// use this macro once. Luthier hooks are annotated via the the

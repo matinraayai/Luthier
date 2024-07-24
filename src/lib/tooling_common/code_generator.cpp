@@ -105,7 +105,7 @@ namespace luthier {
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
 llvm::Error CodeGenerator::compileRelocatableToExecutable(
-    const llvm::ArrayRef<uint8_t> &Code, const hsa::ISA &ISA,
+    const llvm::ArrayRef<char> &Code, const hsa::ISA &ISA,
     llvm::SmallVectorImpl<uint8_t> &Out) {
   amd_comgr_data_t DataIn;
   amd_comgr_data_set_t DataSetIn, DataSetOut;
@@ -121,7 +121,7 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
       amd_comgr_create_data(AMD_COMGR_DATA_KIND_RELOCATABLE, &DataIn)));
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_set_data(
-      DataIn, Code.size(), reinterpret_cast<const char *>(Code.data()))));
+      DataIn, Code.size(), Code.data())));
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_set_data_name(DataIn, "source.o"))));
@@ -505,27 +505,19 @@ llvm::Error patchLiftedRepresentation(
   return llvm::Error::success();
 }
 
-llvm::Error
-printAssembly(LiftedRepresentation &LR,
-              llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
-                  &CompiledRelocatables,
-              llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
-                  *AssemblyFiles = nullptr) {
+llvm::Error printAssembly(
+    LiftedRepresentation &LR,
+    llvm::SmallVectorImpl<std::pair<hsa::LoadedCodeObject,
+                                    llvm::SmallVector<char>>> &CompiledObjects,
+    llvm::CodeGenFileType FileType) {
   auto Lock = LR.getContext().getLock();
+  CompiledObjects.reserve(LR.size());
   for (auto &[LCO, LCOModule] : LR.modules()) {
     auto &[TSM, MMIWP] = LCOModule;
-    auto & M = *TSM.getModuleUnlocked();
-    auto & MMI = MMIWP->getMMI();
-    for (const auto &F : M) {
-      llvm::outs() << F.getName() << "\n";
-      if (auto MF = MMI.getMachineFunction(F)) {
-        MF->print(llvm::outs());
-      }
-    }
-
+    auto &M = *TSM.getModuleUnlocked();
+    auto &MMI = MMIWP->getMMI();
     auto PM = std::make_unique<llvm::legacy::PassManager>();
     llvm::MCContext &MCContext = MMI.getContext();
-    // Get the target machine of the LCO's ISA
     hsa::LoadedCodeObject LCOWrapper(LCO);
     auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
     llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
@@ -537,41 +529,16 @@ printAssembly(LiftedRepresentation &LR,
     PM->add(MMIWP);
     auto UsageAnalysis = new llvm::AMDGPUResourceUsageAnalysis();
     PM->add(UsageAnalysis);
-    if (!CompiledRelocatables.contains(LCOWrapper)) {
-      CompiledRelocatables.insert({LCOWrapper, {}});
-    }
-    llvm::raw_svector_ostream ObjectFileOS(CompiledRelocatables[LCOWrapper]);
 
+    CompiledObjects.push_back({LCOWrapper, {}});
+    auto & ObjectFile = CompiledObjects.back().second;
+    llvm::raw_svector_ostream ObjectFileOS(ObjectFile);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        !TM.addAsmPrinter(*PM, ObjectFileOS, nullptr,
-                          llvm::CodeGenFileType::ObjectFile, MCContext)));
+        !TM.addAsmPrinter(*PM, ObjectFileOS, nullptr, FileType, MCContext)));
 
-    std::unique_ptr<llvm::raw_svector_ostream> AssemblyFileOS;
-    if (AssemblyFiles != nullptr) {
-      if (!AssemblyFiles->contains(LCOWrapper)) {
-        AssemblyFiles->insert({LCOWrapper, {}});
-      }
-      AssemblyFileOS = std::make_unique<llvm::raw_svector_ostream>(
-          (*AssemblyFiles)[LCOWrapper]);
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-          !TM.addAsmPrinter(*PM, *AssemblyFileOS, nullptr,
-                            llvm::CodeGenFileType::ObjectFile, MCContext)));
-    }
-    llvm::outs() << "Running the printer pass manager\n";
     PM->run(M);
-    LR.managePassManagerLifetime(std::move(PM));
+//    LR.managePassManagerLifetime(std::move(PM));
 
-    // Run all the passes
-                //    MMI =
-    //    std::make_unique<llvm::MachineModuleInfo>(std::move(MMIWP->getMMI()));
-    //    llvm::outs() << "AFTER MOVE: \n";
-    //    for (const auto &F : *LCOModule.first.getModuleUnlocked()) {
-    //      llvm::outs() << F.getName() << "\n";
-    //      if (auto MF = MMI->getMachineFunction(F)) {
-    //        MF->print(llvm::outs());
-    //      }
-    //    }
-    return llvm::Error::success();
   }
   return llvm::Error::success();
 }
@@ -692,7 +659,6 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     // constraints
     auto [MMIWP, PM] = runCodeGenPipeline(IModule, &TM, MIToHookFuncMap,
                                           DummyAsmToIRLoweringInfoMap);
-    LR.managePassManagerLifetime(std::move(PM));
     for (const auto &F : IModule) {
       llvm::outs() << "AFTER MOVE:\n";
       llvm::outs() << MMIWP->getMMI().getModule() << "\n";
@@ -705,6 +671,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     LUTHIER_RETURN_ON_ERROR(
         patchLiftedRepresentation(IModule, MMIWP->getMMI(), *LCOModule.first,
                                   *LCOModule.second, MIToHookFuncMap));
+    delete PM.release();
     for (const auto &F : *LCOModule.first) {
       llvm::outs() << "Function name inside: " << F.getName() << "\n";
       llvm::outs() << LCOModule.second->getModule() << "\n";
@@ -722,10 +689,9 @@ llvm::Error CodeGenerator::instrument(
     llvm::function_ref<llvm::Error(InstrumentationTask &,
                                    LiftedRepresentation &)>
         Mutator,
-    llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
-        &CompiledCodeObjects,
-    llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
-        *AssemblyFiles) {
+    llvm::SmallVectorImpl<std::pair<hsa::LoadedCodeObject,
+                                    llvm::SmallVector<char>>> &AssemblyFiles,
+    llvm::CodeGenFileType FileType) {
   // Clone the Lifted Representation
   LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
       std::unique_ptr<LiftedRepresentation>, ClonedLR,
@@ -736,20 +702,9 @@ llvm::Error CodeGenerator::instrument(
   LUTHIER_RETURN_ON_ERROR(Mutator(IT, *ClonedLR));
   // Insert the hooks inside the Lifted Representation
   LUTHIER_RETURN_ON_ERROR(insertHooks(*ClonedLR, IT));
-  // Generate the relocatable objects
-  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>>
-      CompiledRelocatables;
-  LUTHIER_RETURN_ON_ERROR(
-      printAssembly(*ClonedLR, CompiledRelocatables, AssemblyFiles));
-  // Link the executables
-  for (const auto &[LCO, Reloc] : CompiledRelocatables) {
-    if (!CompiledCodeObjects.contains(LCO))
-      CompiledCodeObjects.insert({LCO, {}});
-    LUTHIER_RETURN_ON_ERROR(compileRelocatableToExecutable(
-        llvm::ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(Reloc.data()),
-                                Reloc.size()),
-        llvm::cantFail(LCO.getISA()), CompiledCodeObjects[LCO]));
-  }
+  // Print the assembly files
+  LUTHIER_RETURN_ON_ERROR(printAssembly(*ClonedLR, AssemblyFiles,
+                                        FileType));
   return llvm::Error::success();
 }
 llvm::Expected<std::string>
@@ -812,7 +767,7 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
   // Find the entry block of the function, and mark the live-ins
   auto &LivePhysRegs = *HookLiveRegs[F];
 
-  auto & BeginMBB = MF.front();
+  auto &BeginMBB = MF.front();
   for (auto &LiveIn : MF.begin()->liveins()) {
     LivePhysRegs.addReg(LiveIn.PhysReg);
   }

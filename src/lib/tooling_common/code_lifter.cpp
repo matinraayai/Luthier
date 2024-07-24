@@ -303,7 +303,7 @@ llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
 
   LUTHIER_RETURN_ON_ERROR(
       TargetManager::instance().createTargetMachine(*ISA).moveInto(LR.TM));
-
+  LR.TM->Options.MCOptions.AsmVerbose = true;
   // TODO: If debug information is available, the module's name must be
   // set to its source file
   llvm::orc::ThreadSafeModule TSModule{

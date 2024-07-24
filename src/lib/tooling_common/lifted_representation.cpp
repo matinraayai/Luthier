@@ -20,7 +20,7 @@ void LiftedRepresentation::managePassManagerLifetime(
 LiftedRepresentation::~LiftedRepresentation() {
   if (PMs.empty()) {
     for (auto &[LCO, LCOModule] : Modules) {
-      delete LCOModule.second;
+//      delete LCOModule.second;
     }
   } else {
     PMs.clear();

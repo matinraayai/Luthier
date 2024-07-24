@@ -121,6 +121,31 @@ lift(hsa_executable_t Executable) {
   return CodeLifter::instance().lift(hsa::Executable{Executable});
 }
 
+llvm::Error instrument(
+    hsa_executable_symbol_t Kernel, const LiftedRepresentation &LR,
+    llvm::function_ref<llvm::Error(InstrumentationTask &,
+                                   LiftedRepresentation &)>
+        Mutator,
+    llvm::SmallVectorImpl<std::pair<hsa_loaded_code_object_t,
+                                    llvm::SmallVector<char>>> &AssemblyFiles,
+    llvm::CodeGenFileType FileType) {
+  auto KernelWrapper = hsa::ExecutableSymbol::fromHandle(Kernel);
+  LUTHIER_RETURN_ON_ERROR(KernelWrapper.takeError());
+  // Create an intermediate vector to hold the results, with the first
+  // element of the pair being the HSA wrapper of the Loaded Code Object
+  llvm::SmallVector<std::pair<hsa::LoadedCodeObject, llvm::SmallVector<char>>,
+                    1>
+      AFWrapper;
+  // Instrument the Lifted Representation
+  LUTHIER_RETURN_ON_ERROR(
+      CodeGenerator::instance().instrument(LR, Mutator, AFWrapper, FileType));
+  // Copy the results into the output buffers
+  for (const auto &[LCO, AssemblyFile] : AFWrapper) {
+    AssemblyFiles.emplace_back(LCO.asHsaType(), AssemblyFile);
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error
 instrumentAndLoad(hsa_executable_symbol_t Kernel,
                   const LiftedRepresentation &LR,
@@ -130,13 +155,26 @@ instrumentAndLoad(hsa_executable_symbol_t Kernel,
                   llvm::StringRef Preset) {
   auto KernelWrapper = hsa::ExecutableSymbol::fromHandle(Kernel);
   LUTHIER_RETURN_ON_ERROR(KernelWrapper.takeError());
-  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
-      CompiledCodeObjects;
-  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>> AssemblyFiles;
+  llvm::SmallVector<std::pair<hsa::LoadedCodeObject, llvm::SmallVector<char>>,
+                    1>
+      Relocatables;
+
+  llvm::SmallVector<
+      std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>, 1>
+      Executables;
+
   // Instrument the Lifted Representation
   LUTHIER_RETURN_ON_ERROR(CodeGenerator::instance().instrument(
-      LR, Mutator, CompiledCodeObjects, nullptr));
+      LR, Mutator, Relocatables, llvm::CodeGenFileType::ObjectFile));
   // Create a set of extern variables used in the instrumented code
+
+  // Link the relocatables into executables
+  for (const auto &[LCO, Reloc] : Relocatables) {
+    llvm::SmallVector<uint8_t> Executable;
+    LUTHIER_RETURN_ON_ERROR(CodeGenerator::compileRelocatableToExecutable(
+        Reloc, llvm::cantFail(LCO.getISA()), Executable));
+    Executables.push_back({LCO, Executable});
+  }
   llvm::StringMap<void *> ExternVariables;
   // set of static variables used in the original kernel itself
   for (const auto &[Symbol, GV] : LR.globals()) {
@@ -153,10 +191,9 @@ instrumentAndLoad(hsa_executable_symbol_t Kernel,
   for (const auto &GVName : SIM.getGlobalVariableNames()) {
     auto VarAddress = SIM.getGlobalVariablesLoadedOnAgent(GVName, Agent);
     LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
-    ExternVariables.insert(
-        {GVName, reinterpret_cast<void *>(**VarAddress)});
+    ExternVariables.insert({GVName, reinterpret_cast<void *>(**VarAddress)});
   }
-  return TEM.loadInstrumentedKernel(CompiledCodeObjects, *KernelWrapper, Preset,
+  return TEM.loadInstrumentedKernel(Executables, *KernelWrapper, Preset,
                                     ExternVariables);
 }
 
@@ -166,11 +203,6 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
                                                  LiftedRepresentation &)>
                       Mutator,
                   llvm::StringRef Preset) {
-  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
-      CompiledCodeObjects;
-  llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<char>> AssemblyFiles;
-  LUTHIER_RETURN_ON_ERROR(CodeGenerator::instance().instrument(
-      LR, Mutator, CompiledCodeObjects, nullptr));
 
   return llvm::Error::success();
 }

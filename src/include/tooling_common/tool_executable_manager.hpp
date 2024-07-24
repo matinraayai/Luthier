@@ -78,8 +78,8 @@ public:
   /// external variables of the instrumented code objects
   /// \return an \p llvm::Error if an issue was encountered in the process
   llvm::Error loadInstrumentedKernel(
-      const llvm::DenseMap<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>
-          &InstrumentedElfs,
+      llvm::ArrayRef<std::pair<hsa::LoadedCodeObject,
+                               llvm::SmallVector<uint8_t>>> InstrumentedElfs,
       const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
       const llvm::StringMap<void *> &ExternVariables);
 
