@@ -92,7 +92,7 @@ public:
   /// \return an \c llvm::Error in case any issues were encountered during the
   /// process
   static llvm::Error
-  compileRelocatableToExecutable(const llvm::ArrayRef<char> &Code,
+  linkRelocatableToExecutable(const llvm::ArrayRef<char> &Code,
                                  const hsa::ISA &ISA,
                                  llvm::SmallVectorImpl<uint8_t> &Out);
 

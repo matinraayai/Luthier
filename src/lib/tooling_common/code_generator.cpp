@@ -104,7 +104,7 @@ namespace luthier {
 
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
-llvm::Error CodeGenerator::compileRelocatableToExecutable(
+llvm::Error CodeGenerator::linkRelocatableToExecutable(
     const llvm::ArrayRef<char> &Code, const hsa::ISA &ISA,
     llvm::SmallVectorImpl<uint8_t> &Out) {
   amd_comgr_data_t DataIn;
@@ -137,9 +137,9 @@ llvm::Error CodeGenerator::compileRelocatableToExecutable(
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_action_info_set_isa_name(DataAction, IsaName->c_str()))));
-  const char *MyOptions[]{"-Wl,--unresolved-symbols=ignore-all"};
+  const char *LinkOptions[]{"-Wl,--unresolved-symbols=ignore-all"};
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_action_info_set_option_list(DataAction, MyOptions, 1))));
+      (amd_comgr_action_info_set_option_list(DataAction, LinkOptions, 1))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
                            DataAction, DataSetIn, DataSetOut))));
@@ -510,6 +510,11 @@ CodeGenerator::printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
                              llvm::MachineModuleInfoWrapperPass *MMIWP,
                              llvm::SmallVectorImpl<char> &CompiledObjectFile,
                              llvm::CodeGenFileType FileType) {
+  // Argument error checking
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ARGUMENT_ERROR_CHECK(FileType != CodeGenFileType::Null));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(MMIWP != nullptr));
+
   auto &MMI = MMIWP->getMMI();
   // Create the legacy pass manager with minimal passes to print the
   // assembly file
@@ -531,8 +536,8 @@ CodeGenerator::printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
 
   // Finally, add the Assembly printer pass
   llvm::raw_svector_ostream ObjectFileOS(CompiledObjectFile);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-      !TM.addAsmPrinter(PM, ObjectFileOS, nullptr, FileType, MMI.getContext())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!TM.addAsmPrinter(
+      PM, ObjectFileOS, nullptr, FileType, MMI.getContext())));
 
   // Run the passes on the module to print the assembly
   PM.run(Module);

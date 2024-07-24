@@ -1,5 +1,5 @@
-#include <luthier/luthier.h>
 #include <hsa/hsa.h>
+#include <luthier/luthier.h>
 
 #define GET_REGINFO_ENUM
 #include "AMDGPUGenRegisterInfo.inc"
@@ -15,11 +15,10 @@ using namespace luthier;
 
 MARK_LUTHIER_DEVICE_MODULE
 
-
 __attribute__((managed)) uint64_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
-//  __asm__ __volatile__("s_mov_b32 s2 300");
+  //  __asm__ __volatile__("s_mov_b32 s2 300");
   GlobalCounter = readReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5);
 };
 
@@ -55,36 +54,30 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           for (const auto &[Func, MF] : LiftedKernel->functions()) {
             MF->dump();
           }
-          if (auto Res = luthier::instrumentAndLoad(
-                  *KernelSymbol, *LiftedKernel,
-                  [&](InstrumentationTask &IT,
-                      LiftedRepresentation &LR) -> llvm::Error {
-                    llvm::outs() << "Mutator called!\n";
-                    for (auto &[Func, MF] : LR.functions()) {
-                      MF->dump();
-//                      if (auto Error = IT.insertHookBefore(
-//                              *MF->front().front().getNextNode(),
-//                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook)))
-//                        return Error;
-//                      for (auto &MBB: *MF) {
-//                        for (auto &MI : MBB) {
-//                          if (MI.getOpcode() == llvm::AMDGPU::S_ADD_I32_vi) {
-//                            MI.getOperand(2).setImm(200);
-//
-//                          }
-//                        }
-//                      }
-                    }
-                    return llvm::Error::success();
-                  },
-                  ""))
-            llvm::report_fatal_error(std::move(Res), true);
+          llvm::SmallVector<
+              std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>,
+              1>
+              SourceFiles;
+          auto InstrumentedLR =
+              luthier::instrument(*LiftedKernel,
+                                  [&](InstrumentationTask &IT,
+                                      LiftedRepresentation &LR) -> llvm::Error {
+                                    return llvm::Error::success();
+                                  });
+          if (auto Err = InstrumentedLR.takeError())
+            llvm::report_fatal_error(std::move(Err), true);
+          if (auto Err = luthier::printLiftedRepresentation(
+                  **InstrumentedLR, SourceFiles,
+                  llvm::CodeGenFileType::AssemblyFile))
+            llvm::report_fatal_error(std::move(Err), true);
+
+          for (const auto &[LCO, SourceFile] : SourceFiles) {
+            llvm::outs() << "Instrumented code object for LCO " << LCO.handle
+                         << "\n";
+            llvm::outs() << SourceFile;
+            llvm::outs() << "\n";
+          }
         }
-        llvm::outs() << "Pointer of counter at host: "
-                     << llvm::to_address(&GlobalCounter) << "\n";
-                if (auto Res = luthier::overrideWithInstrumented(
-                        DispatchPacket, ""))
-                  llvm::report_fatal_error(std::move(Res), true);
       }
     }
   }

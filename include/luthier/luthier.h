@@ -214,14 +214,30 @@ instrument(const LiftedRepresentation &LR,
                                           LiftedRepresentation &)>
                Mutator);
 
-llvm::Error instrument(
-    hsa_executable_symbol_t Kernel, const LiftedRepresentation &LR,
-    llvm::function_ref<llvm::Error(InstrumentationTask &,
-                                   LiftedRepresentation &)>
-        Mutator,
-    llvm::SmallVectorImpl<std::pair<hsa_loaded_code_object_t,
-                                    llvm::SmallVector<char>>> &AssemblyFiles,
+/// Applies the assembly printer pass on the \p LR to generate object files or
+/// assembly files for each of its <tt>llvm::Module</tt>s and
+/// <tt>llvm::MachineModuleInfo</tt>s
+/// \note After printing, and all of the <tt>LR</tt>'s
+/// <tt>llvm::MachineModuleInfo</tt>s will be deleted; This is due to an LLVM
+/// design shortcoming which is being worked on
+/// \param [in] LR the \c LiftedRepresentation to be printed into an assembly
+/// file; Its \c llvm::LLVMTargetMachine can be used to control the
+/// \c llvm::TargetOptions of the compilation process
+/// \param [out] CompiledObjectFiles the printed assembly file
+/// \param [in] FileType Type of the assembly file printed; Can be either
+/// \c llvm::CodeGenFileType::AssemblyFile or
+/// \c llvm::CodeGenFileType::ObjectFile
+/// \return an \c llvm::Error in case of any issues encountered during the
+/// process
+llvm::Error printLiftedRepresentation(
+    LiftedRepresentation &LR,
+    llvm::SmallVectorImpl<
+        std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>>
+        &CompiledObjectFiles,
     llvm::CodeGenFileType FileType = llvm::CodeGenFileType::ObjectFile);
+
+//TODO: Implement link to executable, and load methods individually +
+// update the instrumentAndLoad docs
 
 /// Instruments the <tt>Kernel</tt>'s lifted representation \p LR by
 /// applying the instrumentation task <tt>ITask</tt> to it.\n After
