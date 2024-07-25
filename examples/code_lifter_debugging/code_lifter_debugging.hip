@@ -19,9 +19,18 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                 DispatchPacket.kernel_object)
                                 ->getHsaExecutableSymbol();
-
         if (auto Err = KernelSymbol.takeError())
           llvm::report_fatal_error(std::move(Err), true);
+
+        auto KernelName = hsa::getSymbolName(*KernelSymbol);
+        if (auto Err = KernelName.takeError())
+          llvm::report_fatal_error(std::move(Err), true);
+        // Skip kernels coming from rocclr; The image store instructions
+        // don't pass the machine verifier check because of missing mem operands
+        // TODO: Remove this once the image instruction issue is resolved
+        if (KernelName->starts_with("__amd"))
+          return;
+
         auto Exec = llvm::cantFail(hsa::getExecutableOfSymbol(*KernelSymbol));
 
         auto LiftedExecutable = luthier::lift(Exec);

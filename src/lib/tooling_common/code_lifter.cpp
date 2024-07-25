@@ -49,6 +49,19 @@
 
 namespace luthier {
 
+// TODO: Merge this fix to upstream LLVM
+bool evaluateBranch(const llvm::MCInst &Inst, uint64_t Addr, uint64_t Size,
+                    uint64_t &Target) {
+  if (!Inst.getOperand(0).isImm())
+    return false;
+  int64_t Imm = Inst.getOperand(0).getImm();
+  // Our branches take a simm16, but we need two extra bits to account for
+  // the factor of 4.
+  llvm::APInt SignedOffset(18, Imm * 4, true);
+  Target = (SignedOffset.sext(64) + Addr + 4).getZExtValue();
+  return true;
+}
+
 template <> CodeLifter *Singleton<CodeLifter>::Instance{nullptr};
 
 llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
@@ -217,21 +230,17 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
         LLVM_DEBUG(llvm::dbgs() << "Instruction "; Inst.dump_pretty(
             llvm::dbgs(), TargetInfo->getMCInstPrinter(), " ",
             TargetInfo->getMCRegisterInfo());
-                   llvm::dbgs() << " at idx " << I << " is a branch.\n";);
+                   llvm::dbgs() << llvm::formatv(
+                       " at idx {0}, address {1:x}, size {2} is a branch.\n", I,
+                       Address, Size););
         //        if (!isAddressBranchOrBranchTarget(*LCO, Address)) {
         LLVM_DEBUG(llvm::dbgs() << "Evaluating its target.\n");
         luthier::address_t Target;
-        if (MIA->evaluateBranch(Inst, Address, Size, Target)) {
+        if (evaluateBranch(Inst, Address, Size, Target)) {
           LLVM_DEBUG(
               llvm::dbgs() << llvm::formatv(
                   "Evaluated address {0:x} as the branch target\n", Target););
-
           addDirectBranchTargetAddress(*LCO, Target);
-          //          }
-          //        } else {
-          //          LLVM_DEBUG(llvm::dbgs() << "Its target has already been
-          //          recorded.\n");
-          //        }
         } else {
           LLVM_DEBUG(llvm::dbgs() << "Failed to evaluate the branch target.\n");
         }
@@ -659,8 +668,9 @@ llvm::Error CodeLifter::liftFunction(
       MBBs.push_back(MBB);
       OldMBB->addSuccessor(MBB);
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
-      LLVM_DEBUG(llvm::dbgs() << "Address {0:x} marks the beginning of MBB "
-                              << MBB->getName() << "\n");
+      LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                     "Address {0:x} marks the beginning of MBB idx {1}.\n",
+                     Inst.getLoadedDeviceAddress(), MBB->getNumber()););
       // Branch targets mark the beginning of an MBB
       LLVM_DEBUG(llvm::dbgs() << "*********************************************"
                                  "***************************\n");
@@ -773,6 +783,9 @@ llvm::Error CodeLifter::liftFunction(
         llvm_unreachable("Not yet implemented");
       }
     }
+    // TODO: Create a (fake) memory operand to keep the machine verifier happy
+    // when encountering image instructions
+
     LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
     LLVM_DEBUG(llvm::dbgs() << "Final form of the instruction (not final if "
                                "it's a direct branch): ";
@@ -784,8 +797,8 @@ llvm::Error CodeLifter::liftFunction(
       if (IsDirectBranch) {
         LLVM_DEBUG(llvm::dbgs() << "The terminator is a direct branch.\n");
         luthier::address_t BranchTarget;
-        if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
-                                Inst.getSize(), BranchTarget)) {
+        if (evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
+                           Inst.getSize(), BranchTarget)) {
           LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                          "Address was resolved to {0:x}\n", BranchTarget));
           if (!UnresolvedBranchMIs.contains(BranchTarget)) {
@@ -807,6 +820,9 @@ llvm::Error CodeLifter::liftFunction(
         MBBs.push_back(MBB);
         MF.push_back(MBB);
         OldMBB->addSuccessor(MBB);
+        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                       "Address {0:x} marks the beginning of MBB idx {1}.\n",
+                       Inst.getLoadedDeviceAddress(), MBB->getNumber()););
       }
       LLVM_DEBUG(llvm::dbgs() << "*********************************************"
                                  "***************************\n");
