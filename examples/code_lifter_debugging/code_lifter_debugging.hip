@@ -5,6 +5,8 @@
 
 using namespace luthier;
 
+static llvm::DenseSet<hsa_executable_t> PrintedExecutables;
+
 static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                      luthier::ApiEvtPhase Phase, luthier::hsa::ApiEvtID ApiID) {
   if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
@@ -32,35 +34,37 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           return;
 
         auto Exec = llvm::cantFail(hsa::getExecutableOfSymbol(*KernelSymbol));
+        if (!PrintedExecutables.contains(Exec)) {
+          auto LiftedExecutable = luthier::lift(Exec);
+          if (auto Err = LiftedExecutable.takeError())
+            llvm::report_fatal_error(std::move(Err), true);
 
-        auto LiftedExecutable = luthier::lift(Exec);
-        if (auto Err = LiftedExecutable.takeError())
-          llvm::report_fatal_error(std::move(Err), true);
+          llvm::SmallVector<
+              std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
+              SourceFiles;
+          // Call the instrument function without any work so that the LR gets
+          // cloned
+          auto InstrumentedLR =
+              luthier::instrument(*LiftedExecutable,
+                                  [&](InstrumentationTask &IT,
+                                      LiftedRepresentation &LR) -> llvm::Error {
+                                    return llvm::Error::success();
+                                  });
+          if (auto Err = InstrumentedLR.takeError())
+            llvm::report_fatal_error(std::move(Err), true);
+          // Print the assembly files
+          if (auto Err = luthier::printLiftedRepresentation(
+                  **InstrumentedLR, SourceFiles,
+                  llvm::CodeGenFileType::AssemblyFile))
+            llvm::report_fatal_error(std::move(Err), true);
 
-        llvm::SmallVector<
-            std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
-            SourceFiles;
-        // Call the instrument function without any work so that the LR gets
-        // cloned
-        auto InstrumentedLR =
-            luthier::instrument(*LiftedExecutable,
-                                [&](InstrumentationTask &IT,
-                                    LiftedRepresentation &LR) -> llvm::Error {
-                                  return llvm::Error::success();
-                                });
-        if (auto Err = InstrumentedLR.takeError())
-          llvm::report_fatal_error(std::move(Err), true);
-        // Print the assembly files
-        if (auto Err = luthier::printLiftedRepresentation(
-                **InstrumentedLR, SourceFiles,
-                llvm::CodeGenFileType::AssemblyFile))
-          llvm::report_fatal_error(std::move(Err), true);
-
-        for (const auto &[LCO, SourceFile] : SourceFiles) {
-          llvm::outs() << "Instrumented code object for LCO "
-                       << llvm::format_hex(LCO.handle, 8) << "\n";
-          llvm::outs() << SourceFile;
-          llvm::outs() << "\n";
+          for (const auto &[LCO, SourceFile] : SourceFiles) {
+            llvm::outs() << "Instrumented code object for LCO "
+                         << llvm::format_hex(LCO.handle, 8) << "\n";
+            llvm::outs() << SourceFile;
+            llvm::outs() << "\n";
+          }
+          PrintedExecutables.insert(Exec);
         }
       }
     }
