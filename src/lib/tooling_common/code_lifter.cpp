@@ -278,6 +278,11 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
         // if the symbol has a private linkage (i.e. device functions)
         auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
         LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
+        LLVM_DEBUG(LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
+                       llvm::StringRef, SymName, Reloc.getSymbol()->getName());
+                   llvm::dbgs() << llvm::formatv(
+                       "Found relocation for symbol {0} at address {1:x}.\n",
+                       SymName, LoadedMemoryBase + *RelocSymbolLoadedAddress));
         // Check with the hsa::Platform which HSA executable Symbol this
         // address is associated with
         auto RelocSymbol = hsa::Platform::instance().getSymbolFromLoadedAddress(
@@ -359,7 +364,7 @@ CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
   size_t GVSize = GV.getSize();
   // Lift each variable as an array of bytes, with a length of GVSize
   // We remove any initializers present in the LCO
-  new llvm::GlobalVariable(
+  LR.RelatedGlobalVariables[GV.asHsaType()] = new llvm::GlobalVariable(
       Module, llvm::ArrayType::get(llvm::Type::getInt8Ty(LLVMContext), GVSize),
       false, llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
       *GVName);
@@ -727,6 +732,16 @@ llvm::Error CodeLifter::liftFunction(
 
             SymbolUsageMap[TargetSymbol] = true;
             if (TargetSymbolType == hsa::VARIABLE) {
+              LLVM_DEBUG(LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
+                             llvm::StringRef, TargetSymbolName,
+                             TargetSymbol.getName());
+                         LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
+                             luthier::address_t, TargetSymbolAddress,
+                             TargetSymbol.getVariableAddress());
+                         llvm::dbgs() << llvm::formatv(
+                             "Relocation is being resolved to the global "
+                             "variables {0} at address {1:x}.\n",
+                             TargetSymbolName, TargetSymbolAddress));
               auto *GV = LR.RelatedGlobalVariables.at(TargetSymbol.asHsaType());
               if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
                 Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
