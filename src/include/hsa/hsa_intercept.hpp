@@ -122,13 +122,13 @@ public:
     return EnabledInternalOps.contains(Op);
   }
 
-  void enableUserCallback(ApiEvtID Op) { EnabledUserOps.insert(Op); }
+  void enableUserCallback(ApiEvtID Op);
 
-  void disableUserCallback(ApiEvtID Op) { EnabledUserOps.erase(Op); }
+  void disableUserCallback(ApiEvtID Op);
 
-  void enableInternalCallback(ApiEvtID Op) { EnabledInternalOps.insert(Op); }
+  void enableInternalCallback(ApiEvtID Op);
 
-  void disableInternalCallback(ApiEvtID Op) { EnabledInternalOps.erase(Op); }
+  void disableInternalCallback(ApiEvtID Op);
 
   void enableAllUserCallbacks() {
     for (std::underlying_type<ApiEvtID>::type I = HSA_API_EVT_ID_FIRST;
@@ -136,7 +136,12 @@ public:
       enableUserCallback(ApiEvtID(I));
     }
   }
-  void disableAllUserCallbacks() { EnabledUserOps.clear(); }
+  void disableAllUserCallbacks() { 
+      for (std::underlying_type<ApiEvtID>::type I = HSA_API_EVT_ID_FIRST;
+         I <= HSA_API_EVT_ID_LAST; ++I) {
+      disableUserCallback(ApiEvtID(I));
+    }
+  }
 
   void enableAllInternalCallbacks() {
     for (std::underlying_type<ApiEvtID>::type I = HSA_API_EVT_ID_FIRST;
@@ -145,7 +150,12 @@ public:
     }
   }
 
-  void disableAllInternalCallbacks() { EnabledInternalOps.clear(); }
+  void disableAllInternalCallbacks() {
+      for (std::underlying_type<ApiEvtID>::type I = HSA_API_EVT_ID_FIRST;
+         I <= HSA_API_EVT_ID_LAST; ++I) {
+      disableInternalCallback(ApiEvtID(I));
+    }
+  }
 
   bool captureHsaApiTable(HsaApiTable *Table) {
     InternalHsaApiTable = Table;

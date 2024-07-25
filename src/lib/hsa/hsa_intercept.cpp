@@ -4,7 +4,7 @@
 #include "luthier/hsa_trace_api.h"
 #include "hsa/hsa_intercept.hpp"
 #include "luthier/types.h"
-
+                     
 template <>
 luthier::hsa::Interceptor
     *luthier::Singleton<luthier::hsa::Interceptor>::Instance{nullptr};
@@ -6193,6 +6193,69 @@ static hsa_status_t hsa_amd_vmem_get_alloc_properties_from_handle_callback(hsa_a
   }
 }
 
+static hsa_status_t hsa_amd_agent_set_async_scratch_limit_callback(hsa_agent_t agent, size_t threshold) {
+  auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
+  auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_agent_set_async_scratch_limit;
+  bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
+  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  if (ShouldCallback) {
+    hsa_status_t Out{};
+    auto& HsaUserCallback = HsaInterceptor.getUserCallback();
+    auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
+    luthier::hsa::ApiEvtArgs Args;
+    bool SkipFunction{false};
+    Args.hsa_amd_agent_set_async_scratch_limit.agent = agent;
+    Args.hsa_amd_agent_set_async_scratch_limit.threshold = threshold;
+    if (IsUserCallbackEnabled)
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
+    if (IsInternalCallbackEnabled)
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId, &SkipFunction);
+    if (!SkipFunction)
+      Out = HsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_set_async_scratch_limit_fn(Args.hsa_amd_agent_set_async_scratch_limit.agent, Args.hsa_amd_agent_set_async_scratch_limit.threshold);
+    if (IsUserCallbackEnabled)
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
+    if (IsInternalCallbackEnabled)
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId, &SkipFunction);
+    return Out;
+  }
+  else {
+    return HsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_agent_set_async_scratch_limit_fn(agent, threshold);
+  }
+}
+
+static hsa_status_t hsa_amd_queue_get_info_callback(hsa_queue_t* queue, hsa_queue_info_attribute_t attribute, void* value) {
+  auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
+  auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_get_info;
+  bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
+  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
+  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
+  if (ShouldCallback) {
+    hsa_status_t Out{};
+    auto& HsaUserCallback = HsaInterceptor.getUserCallback();
+    auto& HsaInternalCallback = HsaInterceptor.getInternalCallback();
+    luthier::hsa::ApiEvtArgs Args;
+    bool SkipFunction{false};
+    Args.hsa_amd_queue_get_info.queue = queue;
+    Args.hsa_amd_queue_get_info.attribute = attribute;
+    Args.hsa_amd_queue_get_info.value = value;
+    if (IsUserCallbackEnabled)
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
+    if (IsInternalCallbackEnabled)
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId, &SkipFunction);
+    if (!SkipFunction)
+      Out = HsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_get_info_fn(Args.hsa_amd_queue_get_info.queue, Args.hsa_amd_queue_get_info.attribute, Args.hsa_amd_queue_get_info.value);
+    if (IsUserCallbackEnabled)
+      HsaUserCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
+    if (IsInternalCallbackEnabled)
+      HsaInternalCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId, &SkipFunction);
+    return Out;
+  }
+  else {
+    return HsaInterceptor.getSavedHsaTables().amd_ext.hsa_amd_queue_get_info_fn(queue, attribute, value);
+  }
+}
+
 static hsa_status_t hsa_ext_image_get_capability_callback(hsa_agent_t agent, hsa_ext_image_geometry_t geometry, const hsa_ext_image_format_t* image_format, uint32_t* capability_mask) {
   auto& HsaInterceptor = luthier::hsa::Interceptor::instance();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_get_capability;
@@ -6828,231 +6891,1751 @@ static hsa_status_t hsa_ext_program_finalize_callback(hsa_ext_program_t program,
 }
 
 
+static void toggle_hsa_init(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_init_fn = hsa_init_callback;
+    else
+        InternalHsaApiTable->core_->hsa_init_fn = SavedTables.core.hsa_init_fn;
+}
+
+static void toggle_hsa_shut_down(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_shut_down_fn = hsa_shut_down_callback;
+    else
+        InternalHsaApiTable->core_->hsa_shut_down_fn = SavedTables.core.hsa_shut_down_fn;
+}
+
+static void toggle_hsa_system_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_system_get_info_fn = hsa_system_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_system_get_info_fn = SavedTables.core.hsa_system_get_info_fn;
+}
+
+static void toggle_hsa_system_extension_supported(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_system_extension_supported_fn = hsa_system_extension_supported_callback;
+    else
+        InternalHsaApiTable->core_->hsa_system_extension_supported_fn = SavedTables.core.hsa_system_extension_supported_fn;
+}
+
+static void toggle_hsa_system_get_extension_table(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_system_get_extension_table_fn = hsa_system_get_extension_table_callback;
+    else
+        InternalHsaApiTable->core_->hsa_system_get_extension_table_fn = SavedTables.core.hsa_system_get_extension_table_fn;
+}
+
+static void toggle_hsa_iterate_agents(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_iterate_agents_fn = hsa_iterate_agents_callback;
+    else
+        InternalHsaApiTable->core_->hsa_iterate_agents_fn = SavedTables.core.hsa_iterate_agents_fn;
+}
+
+static void toggle_hsa_agent_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_agent_get_info_fn = hsa_agent_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_agent_get_info_fn = SavedTables.core.hsa_agent_get_info_fn;
+}
+
+static void toggle_hsa_queue_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_create_fn = hsa_queue_create_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_create_fn = createInterceptQueue;
+}
+
+static void toggle_hsa_soft_queue_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_soft_queue_create_fn = hsa_soft_queue_create_callback;
+    else
+        InternalHsaApiTable->core_->hsa_soft_queue_create_fn = SavedTables.core.hsa_soft_queue_create_fn;
+}
+
+static void toggle_hsa_queue_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_destroy_fn = hsa_queue_destroy_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_destroy_fn = SavedTables.core.hsa_queue_destroy_fn;
+}
+
+static void toggle_hsa_queue_inactivate(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_inactivate_fn = hsa_queue_inactivate_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_inactivate_fn = SavedTables.core.hsa_queue_inactivate_fn;
+}
+
+static void toggle_hsa_queue_load_read_index_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_load_read_index_scacquire_fn = hsa_queue_load_read_index_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_load_read_index_scacquire_fn = SavedTables.core.hsa_queue_load_read_index_scacquire_fn;
+}
+
+static void toggle_hsa_queue_load_read_index_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_load_read_index_relaxed_fn = hsa_queue_load_read_index_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_load_read_index_relaxed_fn = SavedTables.core.hsa_queue_load_read_index_relaxed_fn;
+}
+
+static void toggle_hsa_queue_load_write_index_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_load_write_index_scacquire_fn = hsa_queue_load_write_index_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_load_write_index_scacquire_fn = SavedTables.core.hsa_queue_load_write_index_scacquire_fn;
+}
+
+static void toggle_hsa_queue_load_write_index_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_load_write_index_relaxed_fn = hsa_queue_load_write_index_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_load_write_index_relaxed_fn = SavedTables.core.hsa_queue_load_write_index_relaxed_fn;
+}
+
+static void toggle_hsa_queue_store_write_index_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_store_write_index_relaxed_fn = hsa_queue_store_write_index_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_store_write_index_relaxed_fn = SavedTables.core.hsa_queue_store_write_index_relaxed_fn;
+}
+
+static void toggle_hsa_queue_store_write_index_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_store_write_index_screlease_fn = hsa_queue_store_write_index_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_store_write_index_screlease_fn = SavedTables.core.hsa_queue_store_write_index_screlease_fn;
+}
+
+static void toggle_hsa_queue_cas_write_index_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_scacq_screl_fn = hsa_queue_cas_write_index_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_scacq_screl_fn = SavedTables.core.hsa_queue_cas_write_index_scacq_screl_fn;
+}
+
+static void toggle_hsa_queue_cas_write_index_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_scacquire_fn = hsa_queue_cas_write_index_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_scacquire_fn = SavedTables.core.hsa_queue_cas_write_index_scacquire_fn;
+}
+
+static void toggle_hsa_queue_cas_write_index_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_relaxed_fn = hsa_queue_cas_write_index_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_relaxed_fn = SavedTables.core.hsa_queue_cas_write_index_relaxed_fn;
+}
+
+static void toggle_hsa_queue_cas_write_index_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_screlease_fn = hsa_queue_cas_write_index_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_cas_write_index_screlease_fn = SavedTables.core.hsa_queue_cas_write_index_screlease_fn;
+}
+
+static void toggle_hsa_queue_add_write_index_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_scacq_screl_fn = hsa_queue_add_write_index_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_scacq_screl_fn = SavedTables.core.hsa_queue_add_write_index_scacq_screl_fn;
+}
+
+static void toggle_hsa_queue_add_write_index_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_scacquire_fn = hsa_queue_add_write_index_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_scacquire_fn = SavedTables.core.hsa_queue_add_write_index_scacquire_fn;
+}
+
+static void toggle_hsa_queue_add_write_index_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_relaxed_fn = hsa_queue_add_write_index_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_relaxed_fn = SavedTables.core.hsa_queue_add_write_index_relaxed_fn;
+}
+
+static void toggle_hsa_queue_add_write_index_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_screlease_fn = hsa_queue_add_write_index_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_add_write_index_screlease_fn = SavedTables.core.hsa_queue_add_write_index_screlease_fn;
+}
+
+static void toggle_hsa_queue_store_read_index_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_store_read_index_relaxed_fn = hsa_queue_store_read_index_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_store_read_index_relaxed_fn = SavedTables.core.hsa_queue_store_read_index_relaxed_fn;
+}
+
+static void toggle_hsa_queue_store_read_index_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_queue_store_read_index_screlease_fn = hsa_queue_store_read_index_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_queue_store_read_index_screlease_fn = SavedTables.core.hsa_queue_store_read_index_screlease_fn;
+}
+
+static void toggle_hsa_agent_iterate_regions(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_agent_iterate_regions_fn = hsa_agent_iterate_regions_callback;
+    else
+        InternalHsaApiTable->core_->hsa_agent_iterate_regions_fn = SavedTables.core.hsa_agent_iterate_regions_fn;
+}
+
+static void toggle_hsa_region_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_region_get_info_fn = hsa_region_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_region_get_info_fn = SavedTables.core.hsa_region_get_info_fn;
+}
+
+static void toggle_hsa_agent_get_exception_policies(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_agent_get_exception_policies_fn = hsa_agent_get_exception_policies_callback;
+    else
+        InternalHsaApiTable->core_->hsa_agent_get_exception_policies_fn = SavedTables.core.hsa_agent_get_exception_policies_fn;
+}
+
+static void toggle_hsa_agent_extension_supported(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_agent_extension_supported_fn = hsa_agent_extension_supported_callback;
+    else
+        InternalHsaApiTable->core_->hsa_agent_extension_supported_fn = SavedTables.core.hsa_agent_extension_supported_fn;
+}
+
+static void toggle_hsa_memory_register(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_memory_register_fn = hsa_memory_register_callback;
+    else
+        InternalHsaApiTable->core_->hsa_memory_register_fn = SavedTables.core.hsa_memory_register_fn;
+}
+
+static void toggle_hsa_memory_deregister(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_memory_deregister_fn = hsa_memory_deregister_callback;
+    else
+        InternalHsaApiTable->core_->hsa_memory_deregister_fn = SavedTables.core.hsa_memory_deregister_fn;
+}
+
+static void toggle_hsa_memory_allocate(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_memory_allocate_fn = hsa_memory_allocate_callback;
+    else
+        InternalHsaApiTable->core_->hsa_memory_allocate_fn = SavedTables.core.hsa_memory_allocate_fn;
+}
+
+static void toggle_hsa_memory_free(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_memory_free_fn = hsa_memory_free_callback;
+    else
+        InternalHsaApiTable->core_->hsa_memory_free_fn = SavedTables.core.hsa_memory_free_fn;
+}
+
+static void toggle_hsa_memory_copy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_memory_copy_fn = hsa_memory_copy_callback;
+    else
+        InternalHsaApiTable->core_->hsa_memory_copy_fn = SavedTables.core.hsa_memory_copy_fn;
+}
+
+static void toggle_hsa_memory_assign_agent(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_memory_assign_agent_fn = hsa_memory_assign_agent_callback;
+    else
+        InternalHsaApiTable->core_->hsa_memory_assign_agent_fn = SavedTables.core.hsa_memory_assign_agent_fn;
+}
+
+static void toggle_hsa_signal_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_create_fn = hsa_signal_create_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_create_fn = SavedTables.core.hsa_signal_create_fn;
+}
+
+static void toggle_hsa_signal_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_destroy_fn = hsa_signal_destroy_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_destroy_fn = SavedTables.core.hsa_signal_destroy_fn;
+}
+
+static void toggle_hsa_signal_load_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_load_relaxed_fn = hsa_signal_load_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_load_relaxed_fn = SavedTables.core.hsa_signal_load_relaxed_fn;
+}
+
+static void toggle_hsa_signal_load_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_load_scacquire_fn = hsa_signal_load_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_load_scacquire_fn = SavedTables.core.hsa_signal_load_scacquire_fn;
+}
+
+static void toggle_hsa_signal_store_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_store_relaxed_fn = hsa_signal_store_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_store_relaxed_fn = SavedTables.core.hsa_signal_store_relaxed_fn;
+}
+
+static void toggle_hsa_signal_store_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_store_screlease_fn = hsa_signal_store_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_store_screlease_fn = SavedTables.core.hsa_signal_store_screlease_fn;
+}
+
+static void toggle_hsa_signal_wait_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_wait_relaxed_fn = hsa_signal_wait_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_wait_relaxed_fn = SavedTables.core.hsa_signal_wait_relaxed_fn;
+}
+
+static void toggle_hsa_signal_wait_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_wait_scacquire_fn = hsa_signal_wait_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_wait_scacquire_fn = SavedTables.core.hsa_signal_wait_scacquire_fn;
+}
+
+static void toggle_hsa_signal_and_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_and_relaxed_fn = hsa_signal_and_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_and_relaxed_fn = SavedTables.core.hsa_signal_and_relaxed_fn;
+}
+
+static void toggle_hsa_signal_and_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_and_scacquire_fn = hsa_signal_and_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_and_scacquire_fn = SavedTables.core.hsa_signal_and_scacquire_fn;
+}
+
+static void toggle_hsa_signal_and_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_and_screlease_fn = hsa_signal_and_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_and_screlease_fn = SavedTables.core.hsa_signal_and_screlease_fn;
+}
+
+static void toggle_hsa_signal_and_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_and_scacq_screl_fn = hsa_signal_and_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_and_scacq_screl_fn = SavedTables.core.hsa_signal_and_scacq_screl_fn;
+}
+
+static void toggle_hsa_signal_or_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_or_relaxed_fn = hsa_signal_or_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_or_relaxed_fn = SavedTables.core.hsa_signal_or_relaxed_fn;
+}
+
+static void toggle_hsa_signal_or_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_or_scacquire_fn = hsa_signal_or_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_or_scacquire_fn = SavedTables.core.hsa_signal_or_scacquire_fn;
+}
+
+static void toggle_hsa_signal_or_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_or_screlease_fn = hsa_signal_or_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_or_screlease_fn = SavedTables.core.hsa_signal_or_screlease_fn;
+}
+
+static void toggle_hsa_signal_or_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_or_scacq_screl_fn = hsa_signal_or_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_or_scacq_screl_fn = SavedTables.core.hsa_signal_or_scacq_screl_fn;
+}
+
+static void toggle_hsa_signal_xor_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_xor_relaxed_fn = hsa_signal_xor_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_xor_relaxed_fn = SavedTables.core.hsa_signal_xor_relaxed_fn;
+}
+
+static void toggle_hsa_signal_xor_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_xor_scacquire_fn = hsa_signal_xor_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_xor_scacquire_fn = SavedTables.core.hsa_signal_xor_scacquire_fn;
+}
+
+static void toggle_hsa_signal_xor_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_xor_screlease_fn = hsa_signal_xor_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_xor_screlease_fn = SavedTables.core.hsa_signal_xor_screlease_fn;
+}
+
+static void toggle_hsa_signal_xor_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_xor_scacq_screl_fn = hsa_signal_xor_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_xor_scacq_screl_fn = SavedTables.core.hsa_signal_xor_scacq_screl_fn;
+}
+
+static void toggle_hsa_signal_exchange_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_exchange_relaxed_fn = hsa_signal_exchange_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_exchange_relaxed_fn = SavedTables.core.hsa_signal_exchange_relaxed_fn;
+}
+
+static void toggle_hsa_signal_exchange_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_exchange_scacquire_fn = hsa_signal_exchange_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_exchange_scacquire_fn = SavedTables.core.hsa_signal_exchange_scacquire_fn;
+}
+
+static void toggle_hsa_signal_exchange_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_exchange_screlease_fn = hsa_signal_exchange_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_exchange_screlease_fn = SavedTables.core.hsa_signal_exchange_screlease_fn;
+}
+
+static void toggle_hsa_signal_exchange_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_exchange_scacq_screl_fn = hsa_signal_exchange_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_exchange_scacq_screl_fn = SavedTables.core.hsa_signal_exchange_scacq_screl_fn;
+}
+
+static void toggle_hsa_signal_add_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_add_relaxed_fn = hsa_signal_add_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_add_relaxed_fn = SavedTables.core.hsa_signal_add_relaxed_fn;
+}
+
+static void toggle_hsa_signal_add_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_add_scacquire_fn = hsa_signal_add_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_add_scacquire_fn = SavedTables.core.hsa_signal_add_scacquire_fn;
+}
+
+static void toggle_hsa_signal_add_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_add_screlease_fn = hsa_signal_add_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_add_screlease_fn = SavedTables.core.hsa_signal_add_screlease_fn;
+}
+
+static void toggle_hsa_signal_add_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_add_scacq_screl_fn = hsa_signal_add_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_add_scacq_screl_fn = SavedTables.core.hsa_signal_add_scacq_screl_fn;
+}
+
+static void toggle_hsa_signal_subtract_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_subtract_relaxed_fn = hsa_signal_subtract_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_subtract_relaxed_fn = SavedTables.core.hsa_signal_subtract_relaxed_fn;
+}
+
+static void toggle_hsa_signal_subtract_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_subtract_scacquire_fn = hsa_signal_subtract_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_subtract_scacquire_fn = SavedTables.core.hsa_signal_subtract_scacquire_fn;
+}
+
+static void toggle_hsa_signal_subtract_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_subtract_screlease_fn = hsa_signal_subtract_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_subtract_screlease_fn = SavedTables.core.hsa_signal_subtract_screlease_fn;
+}
+
+static void toggle_hsa_signal_subtract_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_subtract_scacq_screl_fn = hsa_signal_subtract_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_subtract_scacq_screl_fn = SavedTables.core.hsa_signal_subtract_scacq_screl_fn;
+}
+
+static void toggle_hsa_signal_cas_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_cas_relaxed_fn = hsa_signal_cas_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_cas_relaxed_fn = SavedTables.core.hsa_signal_cas_relaxed_fn;
+}
+
+static void toggle_hsa_signal_cas_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_cas_scacquire_fn = hsa_signal_cas_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_cas_scacquire_fn = SavedTables.core.hsa_signal_cas_scacquire_fn;
+}
+
+static void toggle_hsa_signal_cas_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_cas_screlease_fn = hsa_signal_cas_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_cas_screlease_fn = SavedTables.core.hsa_signal_cas_screlease_fn;
+}
+
+static void toggle_hsa_signal_cas_scacq_screl(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_cas_scacq_screl_fn = hsa_signal_cas_scacq_screl_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_cas_scacq_screl_fn = SavedTables.core.hsa_signal_cas_scacq_screl_fn;
+}
+
+static void toggle_hsa_isa_from_name(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_isa_from_name_fn = hsa_isa_from_name_callback;
+    else
+        InternalHsaApiTable->core_->hsa_isa_from_name_fn = SavedTables.core.hsa_isa_from_name_fn;
+}
+
+static void toggle_hsa_isa_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_isa_get_info_fn = hsa_isa_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_isa_get_info_fn = SavedTables.core.hsa_isa_get_info_fn;
+}
+
+static void toggle_hsa_isa_compatible(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_isa_compatible_fn = hsa_isa_compatible_callback;
+    else
+        InternalHsaApiTable->core_->hsa_isa_compatible_fn = SavedTables.core.hsa_isa_compatible_fn;
+}
+
+static void toggle_hsa_code_object_serialize(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_serialize_fn = hsa_code_object_serialize_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_serialize_fn = SavedTables.core.hsa_code_object_serialize_fn;
+}
+
+static void toggle_hsa_code_object_deserialize(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_deserialize_fn = hsa_code_object_deserialize_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_deserialize_fn = SavedTables.core.hsa_code_object_deserialize_fn;
+}
+
+static void toggle_hsa_code_object_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_destroy_fn = hsa_code_object_destroy_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_destroy_fn = SavedTables.core.hsa_code_object_destroy_fn;
+}
+
+static void toggle_hsa_code_object_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_get_info_fn = hsa_code_object_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_get_info_fn = SavedTables.core.hsa_code_object_get_info_fn;
+}
+
+static void toggle_hsa_code_object_get_symbol(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_get_symbol_fn = hsa_code_object_get_symbol_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_get_symbol_fn = SavedTables.core.hsa_code_object_get_symbol_fn;
+}
+
+static void toggle_hsa_code_symbol_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_symbol_get_info_fn = hsa_code_symbol_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_symbol_get_info_fn = SavedTables.core.hsa_code_symbol_get_info_fn;
+}
+
+static void toggle_hsa_code_object_iterate_symbols(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_iterate_symbols_fn = hsa_code_object_iterate_symbols_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_iterate_symbols_fn = SavedTables.core.hsa_code_object_iterate_symbols_fn;
+}
+
+static void toggle_hsa_executable_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_create_fn = hsa_executable_create_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_create_fn = SavedTables.core.hsa_executable_create_fn;
+}
+
+static void toggle_hsa_executable_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_destroy_fn = hsa_executable_destroy_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_destroy_fn = SavedTables.core.hsa_executable_destroy_fn;
+}
+
+static void toggle_hsa_executable_load_code_object(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_load_code_object_fn = hsa_executable_load_code_object_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_load_code_object_fn = SavedTables.core.hsa_executable_load_code_object_fn;
+}
+
+static void toggle_hsa_executable_freeze(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_freeze_fn = hsa_executable_freeze_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_freeze_fn = SavedTables.core.hsa_executable_freeze_fn;
+}
+
+static void toggle_hsa_executable_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_get_info_fn = hsa_executable_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_get_info_fn = SavedTables.core.hsa_executable_get_info_fn;
+}
+
+static void toggle_hsa_executable_global_variable_define(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_global_variable_define_fn = hsa_executable_global_variable_define_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_global_variable_define_fn = SavedTables.core.hsa_executable_global_variable_define_fn;
+}
+
+static void toggle_hsa_executable_agent_global_variable_define(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_agent_global_variable_define_fn = hsa_executable_agent_global_variable_define_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_agent_global_variable_define_fn = SavedTables.core.hsa_executable_agent_global_variable_define_fn;
+}
+
+static void toggle_hsa_executable_readonly_variable_define(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_readonly_variable_define_fn = hsa_executable_readonly_variable_define_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_readonly_variable_define_fn = SavedTables.core.hsa_executable_readonly_variable_define_fn;
+}
+
+static void toggle_hsa_executable_validate(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_validate_fn = hsa_executable_validate_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_validate_fn = SavedTables.core.hsa_executable_validate_fn;
+}
+
+static void toggle_hsa_executable_get_symbol(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_get_symbol_fn = hsa_executable_get_symbol_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_get_symbol_fn = SavedTables.core.hsa_executable_get_symbol_fn;
+}
+
+static void toggle_hsa_executable_symbol_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_symbol_get_info_fn = hsa_executable_symbol_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_symbol_get_info_fn = SavedTables.core.hsa_executable_symbol_get_info_fn;
+}
+
+static void toggle_hsa_executable_iterate_symbols(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_iterate_symbols_fn = hsa_executable_iterate_symbols_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_iterate_symbols_fn = SavedTables.core.hsa_executable_iterate_symbols_fn;
+}
+
+static void toggle_hsa_status_string(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_status_string_fn = hsa_status_string_callback;
+    else
+        InternalHsaApiTable->core_->hsa_status_string_fn = SavedTables.core.hsa_status_string_fn;
+}
+
+static void toggle_hsa_extension_get_name(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_extension_get_name_fn = hsa_extension_get_name_callback;
+    else
+        InternalHsaApiTable->core_->hsa_extension_get_name_fn = SavedTables.core.hsa_extension_get_name_fn;
+}
+
+static void toggle_hsa_system_major_extension_supported(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_system_major_extension_supported_fn = hsa_system_major_extension_supported_callback;
+    else
+        InternalHsaApiTable->core_->hsa_system_major_extension_supported_fn = SavedTables.core.hsa_system_major_extension_supported_fn;
+}
+
+static void toggle_hsa_system_get_major_extension_table(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_system_get_major_extension_table_fn = hsa_system_get_major_extension_table_callback;
+    else
+        InternalHsaApiTable->core_->hsa_system_get_major_extension_table_fn = SavedTables.core.hsa_system_get_major_extension_table_fn;
+}
+
+static void toggle_hsa_agent_major_extension_supported(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_agent_major_extension_supported_fn = hsa_agent_major_extension_supported_callback;
+    else
+        InternalHsaApiTable->core_->hsa_agent_major_extension_supported_fn = SavedTables.core.hsa_agent_major_extension_supported_fn;
+}
+
+static void toggle_hsa_cache_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_cache_get_info_fn = hsa_cache_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_cache_get_info_fn = SavedTables.core.hsa_cache_get_info_fn;
+}
+
+static void toggle_hsa_agent_iterate_caches(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_agent_iterate_caches_fn = hsa_agent_iterate_caches_callback;
+    else
+        InternalHsaApiTable->core_->hsa_agent_iterate_caches_fn = SavedTables.core.hsa_agent_iterate_caches_fn;
+}
+
+static void toggle_hsa_signal_silent_store_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_silent_store_relaxed_fn = hsa_signal_silent_store_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_silent_store_relaxed_fn = SavedTables.core.hsa_signal_silent_store_relaxed_fn;
+}
+
+static void toggle_hsa_signal_silent_store_screlease(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_silent_store_screlease_fn = hsa_signal_silent_store_screlease_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_silent_store_screlease_fn = SavedTables.core.hsa_signal_silent_store_screlease_fn;
+}
+
+static void toggle_hsa_signal_group_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_group_create_fn = hsa_signal_group_create_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_group_create_fn = SavedTables.core.hsa_signal_group_create_fn;
+}
+
+static void toggle_hsa_signal_group_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_group_destroy_fn = hsa_signal_group_destroy_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_group_destroy_fn = SavedTables.core.hsa_signal_group_destroy_fn;
+}
+
+static void toggle_hsa_signal_group_wait_any_scacquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_group_wait_any_scacquire_fn = hsa_signal_group_wait_any_scacquire_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_group_wait_any_scacquire_fn = SavedTables.core.hsa_signal_group_wait_any_scacquire_fn;
+}
+
+static void toggle_hsa_signal_group_wait_any_relaxed(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_signal_group_wait_any_relaxed_fn = hsa_signal_group_wait_any_relaxed_callback;
+    else
+        InternalHsaApiTable->core_->hsa_signal_group_wait_any_relaxed_fn = SavedTables.core.hsa_signal_group_wait_any_relaxed_fn;
+}
+
+static void toggle_hsa_agent_iterate_isas(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_agent_iterate_isas_fn = hsa_agent_iterate_isas_callback;
+    else
+        InternalHsaApiTable->core_->hsa_agent_iterate_isas_fn = SavedTables.core.hsa_agent_iterate_isas_fn;
+}
+
+static void toggle_hsa_isa_get_info_alt(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_isa_get_info_alt_fn = hsa_isa_get_info_alt_callback;
+    else
+        InternalHsaApiTable->core_->hsa_isa_get_info_alt_fn = SavedTables.core.hsa_isa_get_info_alt_fn;
+}
+
+static void toggle_hsa_isa_get_exception_policies(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_isa_get_exception_policies_fn = hsa_isa_get_exception_policies_callback;
+    else
+        InternalHsaApiTable->core_->hsa_isa_get_exception_policies_fn = SavedTables.core.hsa_isa_get_exception_policies_fn;
+}
+
+static void toggle_hsa_isa_get_round_method(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_isa_get_round_method_fn = hsa_isa_get_round_method_callback;
+    else
+        InternalHsaApiTable->core_->hsa_isa_get_round_method_fn = SavedTables.core.hsa_isa_get_round_method_fn;
+}
+
+static void toggle_hsa_wavefront_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_wavefront_get_info_fn = hsa_wavefront_get_info_callback;
+    else
+        InternalHsaApiTable->core_->hsa_wavefront_get_info_fn = SavedTables.core.hsa_wavefront_get_info_fn;
+}
+
+static void toggle_hsa_isa_iterate_wavefronts(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_isa_iterate_wavefronts_fn = hsa_isa_iterate_wavefronts_callback;
+    else
+        InternalHsaApiTable->core_->hsa_isa_iterate_wavefronts_fn = SavedTables.core.hsa_isa_iterate_wavefronts_fn;
+}
+
+static void toggle_hsa_code_object_get_symbol_from_name(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_get_symbol_from_name_fn = hsa_code_object_get_symbol_from_name_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_get_symbol_from_name_fn = SavedTables.core.hsa_code_object_get_symbol_from_name_fn;
+}
+
+static void toggle_hsa_code_object_reader_create_from_file(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_reader_create_from_file_fn = hsa_code_object_reader_create_from_file_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_reader_create_from_file_fn = SavedTables.core.hsa_code_object_reader_create_from_file_fn;
+}
+
+static void toggle_hsa_code_object_reader_create_from_memory(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_reader_create_from_memory_fn = hsa_code_object_reader_create_from_memory_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_reader_create_from_memory_fn = SavedTables.core.hsa_code_object_reader_create_from_memory_fn;
+}
+
+static void toggle_hsa_code_object_reader_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_code_object_reader_destroy_fn = hsa_code_object_reader_destroy_callback;
+    else
+        InternalHsaApiTable->core_->hsa_code_object_reader_destroy_fn = SavedTables.core.hsa_code_object_reader_destroy_fn;
+}
+
+static void toggle_hsa_executable_create_alt(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_create_alt_fn = hsa_executable_create_alt_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_create_alt_fn = SavedTables.core.hsa_executable_create_alt_fn;
+}
+
+static void toggle_hsa_executable_load_program_code_object(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_load_program_code_object_fn = hsa_executable_load_program_code_object_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_load_program_code_object_fn = SavedTables.core.hsa_executable_load_program_code_object_fn;
+}
+
+static void toggle_hsa_executable_load_agent_code_object(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_load_agent_code_object_fn = hsa_executable_load_agent_code_object_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_load_agent_code_object_fn = SavedTables.core.hsa_executable_load_agent_code_object_fn;
+}
+
+static void toggle_hsa_executable_validate_alt(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_validate_alt_fn = hsa_executable_validate_alt_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_validate_alt_fn = SavedTables.core.hsa_executable_validate_alt_fn;
+}
+
+static void toggle_hsa_executable_get_symbol_by_name(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_get_symbol_by_name_fn = hsa_executable_get_symbol_by_name_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_get_symbol_by_name_fn = SavedTables.core.hsa_executable_get_symbol_by_name_fn;
+}
+
+static void toggle_hsa_executable_iterate_agent_symbols(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_iterate_agent_symbols_fn = hsa_executable_iterate_agent_symbols_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_iterate_agent_symbols_fn = SavedTables.core.hsa_executable_iterate_agent_symbols_fn;
+}
+
+static void toggle_hsa_executable_iterate_program_symbols(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->core_->hsa_executable_iterate_program_symbols_fn = hsa_executable_iterate_program_symbols_callback;
+    else
+        InternalHsaApiTable->core_->hsa_executable_iterate_program_symbols_fn = SavedTables.core.hsa_executable_iterate_program_symbols_fn;
+}
+
+static void toggle_hsa_amd_coherency_get_type(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_coherency_get_type_fn = hsa_amd_coherency_get_type_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_coherency_get_type_fn = SavedTables.amd_ext.hsa_amd_coherency_get_type_fn;
+}
+
+static void toggle_hsa_amd_coherency_set_type(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_coherency_set_type_fn = hsa_amd_coherency_set_type_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_coherency_set_type_fn = SavedTables.amd_ext.hsa_amd_coherency_set_type_fn;
+}
+
+static void toggle_hsa_amd_profiling_set_profiler_enabled(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_set_profiler_enabled_fn = hsa_amd_profiling_set_profiler_enabled_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_set_profiler_enabled_fn = SavedTables.amd_ext.hsa_amd_profiling_set_profiler_enabled_fn;
+}
+
+static void toggle_hsa_amd_profiling_async_copy_enable(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_async_copy_enable_fn = hsa_amd_profiling_async_copy_enable_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_async_copy_enable_fn = SavedTables.amd_ext.hsa_amd_profiling_async_copy_enable_fn;
+}
+
+static void toggle_hsa_amd_profiling_get_dispatch_time(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_get_dispatch_time_fn = hsa_amd_profiling_get_dispatch_time_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_get_dispatch_time_fn = SavedTables.amd_ext.hsa_amd_profiling_get_dispatch_time_fn;
+}
+
+static void toggle_hsa_amd_profiling_get_async_copy_time(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_get_async_copy_time_fn = hsa_amd_profiling_get_async_copy_time_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_get_async_copy_time_fn = SavedTables.amd_ext.hsa_amd_profiling_get_async_copy_time_fn;
+}
+
+static void toggle_hsa_amd_profiling_convert_tick_to_system_domain(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_convert_tick_to_system_domain_fn = hsa_amd_profiling_convert_tick_to_system_domain_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_profiling_convert_tick_to_system_domain_fn = SavedTables.amd_ext.hsa_amd_profiling_convert_tick_to_system_domain_fn;
+}
+
+static void toggle_hsa_amd_signal_async_handler(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_async_handler_fn = hsa_amd_signal_async_handler_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_async_handler_fn = SavedTables.amd_ext.hsa_amd_signal_async_handler_fn;
+}
+
+static void toggle_hsa_amd_async_function(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_async_function_fn = hsa_amd_async_function_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_async_function_fn = SavedTables.amd_ext.hsa_amd_async_function_fn;
+}
+
+static void toggle_hsa_amd_signal_wait_any(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_wait_any_fn = hsa_amd_signal_wait_any_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_wait_any_fn = SavedTables.amd_ext.hsa_amd_signal_wait_any_fn;
+}
+
+static void toggle_hsa_amd_queue_cu_set_mask(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_cu_set_mask_fn = hsa_amd_queue_cu_set_mask_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_cu_set_mask_fn = SavedTables.amd_ext.hsa_amd_queue_cu_set_mask_fn;
+}
+
+static void toggle_hsa_amd_memory_pool_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_get_info_fn = hsa_amd_memory_pool_get_info_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_get_info_fn = SavedTables.amd_ext.hsa_amd_memory_pool_get_info_fn;
+}
+
+static void toggle_hsa_amd_agent_iterate_memory_pools(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_agent_iterate_memory_pools_fn = hsa_amd_agent_iterate_memory_pools_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_agent_iterate_memory_pools_fn = SavedTables.amd_ext.hsa_amd_agent_iterate_memory_pools_fn;
+}
+
+static void toggle_hsa_amd_memory_pool_allocate(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_allocate_fn = hsa_amd_memory_pool_allocate_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_allocate_fn = SavedTables.amd_ext.hsa_amd_memory_pool_allocate_fn;
+}
+
+static void toggle_hsa_amd_memory_pool_free(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_free_fn = hsa_amd_memory_pool_free_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_free_fn = SavedTables.amd_ext.hsa_amd_memory_pool_free_fn;
+}
+
+static void toggle_hsa_amd_memory_async_copy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_async_copy_fn = hsa_amd_memory_async_copy_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_async_copy_fn = SavedTables.amd_ext.hsa_amd_memory_async_copy_fn;
+}
+
+static void toggle_hsa_amd_memory_async_copy_on_engine(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_async_copy_on_engine_fn = hsa_amd_memory_async_copy_on_engine_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_async_copy_on_engine_fn = SavedTables.amd_ext.hsa_amd_memory_async_copy_on_engine_fn;
+}
+
+static void toggle_hsa_amd_memory_copy_engine_status(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_copy_engine_status_fn = hsa_amd_memory_copy_engine_status_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_copy_engine_status_fn = SavedTables.amd_ext.hsa_amd_memory_copy_engine_status_fn;
+}
+
+static void toggle_hsa_amd_agent_memory_pool_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_agent_memory_pool_get_info_fn = hsa_amd_agent_memory_pool_get_info_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_agent_memory_pool_get_info_fn = SavedTables.amd_ext.hsa_amd_agent_memory_pool_get_info_fn;
+}
+
+static void toggle_hsa_amd_agents_allow_access(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_agents_allow_access_fn = hsa_amd_agents_allow_access_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_agents_allow_access_fn = SavedTables.amd_ext.hsa_amd_agents_allow_access_fn;
+}
+
+static void toggle_hsa_amd_memory_pool_can_migrate(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_can_migrate_fn = hsa_amd_memory_pool_can_migrate_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_pool_can_migrate_fn = SavedTables.amd_ext.hsa_amd_memory_pool_can_migrate_fn;
+}
+
+static void toggle_hsa_amd_memory_migrate(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_migrate_fn = hsa_amd_memory_migrate_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_migrate_fn = SavedTables.amd_ext.hsa_amd_memory_migrate_fn;
+}
+
+static void toggle_hsa_amd_memory_lock(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_lock_fn = hsa_amd_memory_lock_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_lock_fn = SavedTables.amd_ext.hsa_amd_memory_lock_fn;
+}
+
+static void toggle_hsa_amd_memory_unlock(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_unlock_fn = hsa_amd_memory_unlock_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_unlock_fn = SavedTables.amd_ext.hsa_amd_memory_unlock_fn;
+}
+
+static void toggle_hsa_amd_memory_fill(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_fill_fn = hsa_amd_memory_fill_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_fill_fn = SavedTables.amd_ext.hsa_amd_memory_fill_fn;
+}
+
+static void toggle_hsa_amd_interop_map_buffer(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_interop_map_buffer_fn = hsa_amd_interop_map_buffer_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_interop_map_buffer_fn = SavedTables.amd_ext.hsa_amd_interop_map_buffer_fn;
+}
+
+static void toggle_hsa_amd_interop_unmap_buffer(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_interop_unmap_buffer_fn = hsa_amd_interop_unmap_buffer_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_interop_unmap_buffer_fn = SavedTables.amd_ext.hsa_amd_interop_unmap_buffer_fn;
+}
+
+static void toggle_hsa_amd_image_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_image_create_fn = hsa_amd_image_create_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_image_create_fn = SavedTables.amd_ext.hsa_amd_image_create_fn;
+}
+
+static void toggle_hsa_amd_pointer_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_pointer_info_fn = hsa_amd_pointer_info_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_pointer_info_fn = SavedTables.amd_ext.hsa_amd_pointer_info_fn;
+}
+
+static void toggle_hsa_amd_pointer_info_set_userdata(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_pointer_info_set_userdata_fn = hsa_amd_pointer_info_set_userdata_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_pointer_info_set_userdata_fn = SavedTables.amd_ext.hsa_amd_pointer_info_set_userdata_fn;
+}
+
+static void toggle_hsa_amd_ipc_memory_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_memory_create_fn = hsa_amd_ipc_memory_create_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_memory_create_fn = SavedTables.amd_ext.hsa_amd_ipc_memory_create_fn;
+}
+
+static void toggle_hsa_amd_ipc_memory_attach(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_memory_attach_fn = hsa_amd_ipc_memory_attach_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_memory_attach_fn = SavedTables.amd_ext.hsa_amd_ipc_memory_attach_fn;
+}
+
+static void toggle_hsa_amd_ipc_memory_detach(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_memory_detach_fn = hsa_amd_ipc_memory_detach_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_memory_detach_fn = SavedTables.amd_ext.hsa_amd_ipc_memory_detach_fn;
+}
+
+static void toggle_hsa_amd_signal_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_create_fn = hsa_amd_signal_create_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_create_fn = SavedTables.amd_ext.hsa_amd_signal_create_fn;
+}
+
+static void toggle_hsa_amd_ipc_signal_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_signal_create_fn = hsa_amd_ipc_signal_create_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_signal_create_fn = SavedTables.amd_ext.hsa_amd_ipc_signal_create_fn;
+}
+
+static void toggle_hsa_amd_ipc_signal_attach(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_signal_attach_fn = hsa_amd_ipc_signal_attach_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_ipc_signal_attach_fn = SavedTables.amd_ext.hsa_amd_ipc_signal_attach_fn;
+}
+
+static void toggle_hsa_amd_register_system_event_handler(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_register_system_event_handler_fn = hsa_amd_register_system_event_handler_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_register_system_event_handler_fn = SavedTables.amd_ext.hsa_amd_register_system_event_handler_fn;
+}
+
+static void toggle_hsa_amd_queue_intercept_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_intercept_create_fn = hsa_amd_queue_intercept_create_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_intercept_create_fn = SavedTables.amd_ext.hsa_amd_queue_intercept_create_fn;
+}
+
+static void toggle_hsa_amd_queue_intercept_register(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_intercept_register_fn = hsa_amd_queue_intercept_register_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_intercept_register_fn = SavedTables.amd_ext.hsa_amd_queue_intercept_register_fn;
+}
+
+static void toggle_hsa_amd_queue_set_priority(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_set_priority_fn = hsa_amd_queue_set_priority_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_set_priority_fn = SavedTables.amd_ext.hsa_amd_queue_set_priority_fn;
+}
+
+static void toggle_hsa_amd_memory_async_copy_rect(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_async_copy_rect_fn = hsa_amd_memory_async_copy_rect_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_async_copy_rect_fn = SavedTables.amd_ext.hsa_amd_memory_async_copy_rect_fn;
+}
+
+static void toggle_hsa_amd_runtime_queue_create_register(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_runtime_queue_create_register_fn = hsa_amd_runtime_queue_create_register_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_runtime_queue_create_register_fn = SavedTables.amd_ext.hsa_amd_runtime_queue_create_register_fn;
+}
+
+static void toggle_hsa_amd_memory_lock_to_pool(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_lock_to_pool_fn = hsa_amd_memory_lock_to_pool_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_memory_lock_to_pool_fn = SavedTables.amd_ext.hsa_amd_memory_lock_to_pool_fn;
+}
+
+static void toggle_hsa_amd_register_deallocation_callback(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_register_deallocation_callback_fn = hsa_amd_register_deallocation_callback_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_register_deallocation_callback_fn = SavedTables.amd_ext.hsa_amd_register_deallocation_callback_fn;
+}
+
+static void toggle_hsa_amd_deregister_deallocation_callback(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_deregister_deallocation_callback_fn = hsa_amd_deregister_deallocation_callback_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_deregister_deallocation_callback_fn = SavedTables.amd_ext.hsa_amd_deregister_deallocation_callback_fn;
+}
+
+static void toggle_hsa_amd_signal_value_pointer(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_value_pointer_fn = hsa_amd_signal_value_pointer_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_signal_value_pointer_fn = SavedTables.amd_ext.hsa_amd_signal_value_pointer_fn;
+}
+
+static void toggle_hsa_amd_svm_attributes_set(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_svm_attributes_set_fn = hsa_amd_svm_attributes_set_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_svm_attributes_set_fn = SavedTables.amd_ext.hsa_amd_svm_attributes_set_fn;
+}
+
+static void toggle_hsa_amd_svm_attributes_get(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_svm_attributes_get_fn = hsa_amd_svm_attributes_get_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_svm_attributes_get_fn = SavedTables.amd_ext.hsa_amd_svm_attributes_get_fn;
+}
+
+static void toggle_hsa_amd_svm_prefetch_async(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_svm_prefetch_async_fn = hsa_amd_svm_prefetch_async_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_svm_prefetch_async_fn = SavedTables.amd_ext.hsa_amd_svm_prefetch_async_fn;
+}
+
+static void toggle_hsa_amd_spm_acquire(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_spm_acquire_fn = hsa_amd_spm_acquire_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_spm_acquire_fn = SavedTables.amd_ext.hsa_amd_spm_acquire_fn;
+}
+
+static void toggle_hsa_amd_spm_release(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_spm_release_fn = hsa_amd_spm_release_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_spm_release_fn = SavedTables.amd_ext.hsa_amd_spm_release_fn;
+}
+
+static void toggle_hsa_amd_spm_set_dest_buffer(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_spm_set_dest_buffer_fn = hsa_amd_spm_set_dest_buffer_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_spm_set_dest_buffer_fn = SavedTables.amd_ext.hsa_amd_spm_set_dest_buffer_fn;
+}
+
+static void toggle_hsa_amd_queue_cu_get_mask(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_cu_get_mask_fn = hsa_amd_queue_cu_get_mask_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_cu_get_mask_fn = SavedTables.amd_ext.hsa_amd_queue_cu_get_mask_fn;
+}
+
+static void toggle_hsa_amd_portable_export_dmabuf(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_portable_export_dmabuf_fn = hsa_amd_portable_export_dmabuf_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_portable_export_dmabuf_fn = SavedTables.amd_ext.hsa_amd_portable_export_dmabuf_fn;
+}
+
+static void toggle_hsa_amd_portable_close_dmabuf(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_portable_close_dmabuf_fn = hsa_amd_portable_close_dmabuf_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_portable_close_dmabuf_fn = SavedTables.amd_ext.hsa_amd_portable_close_dmabuf_fn;
+}
+
+static void toggle_hsa_amd_vmem_address_reserve(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_address_reserve_fn = hsa_amd_vmem_address_reserve_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_address_reserve_fn = SavedTables.amd_ext.hsa_amd_vmem_address_reserve_fn;
+}
+
+static void toggle_hsa_amd_vmem_address_free(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_address_free_fn = hsa_amd_vmem_address_free_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_address_free_fn = SavedTables.amd_ext.hsa_amd_vmem_address_free_fn;
+}
+
+static void toggle_hsa_amd_vmem_handle_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_handle_create_fn = hsa_amd_vmem_handle_create_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_handle_create_fn = SavedTables.amd_ext.hsa_amd_vmem_handle_create_fn;
+}
+
+static void toggle_hsa_amd_vmem_handle_release(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_handle_release_fn = hsa_amd_vmem_handle_release_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_handle_release_fn = SavedTables.amd_ext.hsa_amd_vmem_handle_release_fn;
+}
+
+static void toggle_hsa_amd_vmem_map(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_map_fn = hsa_amd_vmem_map_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_map_fn = SavedTables.amd_ext.hsa_amd_vmem_map_fn;
+}
+
+static void toggle_hsa_amd_vmem_unmap(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_unmap_fn = hsa_amd_vmem_unmap_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_unmap_fn = SavedTables.amd_ext.hsa_amd_vmem_unmap_fn;
+}
+
+static void toggle_hsa_amd_vmem_set_access(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_set_access_fn = hsa_amd_vmem_set_access_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_set_access_fn = SavedTables.amd_ext.hsa_amd_vmem_set_access_fn;
+}
+
+static void toggle_hsa_amd_vmem_get_access(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_get_access_fn = hsa_amd_vmem_get_access_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_get_access_fn = SavedTables.amd_ext.hsa_amd_vmem_get_access_fn;
+}
+
+static void toggle_hsa_amd_vmem_export_shareable_handle(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_export_shareable_handle_fn = hsa_amd_vmem_export_shareable_handle_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_export_shareable_handle_fn = SavedTables.amd_ext.hsa_amd_vmem_export_shareable_handle_fn;
+}
+
+static void toggle_hsa_amd_vmem_import_shareable_handle(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_import_shareable_handle_fn = hsa_amd_vmem_import_shareable_handle_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_import_shareable_handle_fn = SavedTables.amd_ext.hsa_amd_vmem_import_shareable_handle_fn;
+}
+
+static void toggle_hsa_amd_vmem_retain_alloc_handle(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_retain_alloc_handle_fn = hsa_amd_vmem_retain_alloc_handle_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_retain_alloc_handle_fn = SavedTables.amd_ext.hsa_amd_vmem_retain_alloc_handle_fn;
+}
+
+static void toggle_hsa_amd_vmem_get_alloc_properties_from_handle(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_get_alloc_properties_from_handle_fn = hsa_amd_vmem_get_alloc_properties_from_handle_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_vmem_get_alloc_properties_from_handle_fn = SavedTables.amd_ext.hsa_amd_vmem_get_alloc_properties_from_handle_fn;
+}
+
+static void toggle_hsa_amd_agent_set_async_scratch_limit(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_agent_set_async_scratch_limit_fn = hsa_amd_agent_set_async_scratch_limit_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_agent_set_async_scratch_limit_fn = SavedTables.amd_ext.hsa_amd_agent_set_async_scratch_limit_fn;
+}
+
+static void toggle_hsa_amd_queue_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_get_info_fn = hsa_amd_queue_get_info_callback;
+    else
+        InternalHsaApiTable->amd_ext_->hsa_amd_queue_get_info_fn = SavedTables.amd_ext.hsa_amd_queue_get_info_fn;
+}
+
+static void toggle_hsa_ext_image_get_capability(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_get_capability_fn = hsa_ext_image_get_capability_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_get_capability_fn = SavedTables.image_ext.hsa_ext_image_get_capability_fn;
+}
+
+static void toggle_hsa_ext_image_data_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_data_get_info_fn = hsa_ext_image_data_get_info_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_data_get_info_fn = SavedTables.image_ext.hsa_ext_image_data_get_info_fn;
+}
+
+static void toggle_hsa_ext_image_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_create_fn = hsa_ext_image_create_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_create_fn = SavedTables.image_ext.hsa_ext_image_create_fn;
+}
+
+static void toggle_hsa_ext_image_import(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_import_fn = hsa_ext_image_import_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_import_fn = SavedTables.image_ext.hsa_ext_image_import_fn;
+}
+
+static void toggle_hsa_ext_image_export(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_export_fn = hsa_ext_image_export_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_export_fn = SavedTables.image_ext.hsa_ext_image_export_fn;
+}
+
+static void toggle_hsa_ext_image_copy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_copy_fn = hsa_ext_image_copy_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_copy_fn = SavedTables.image_ext.hsa_ext_image_copy_fn;
+}
+
+static void toggle_hsa_ext_image_clear(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_clear_fn = hsa_ext_image_clear_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_clear_fn = SavedTables.image_ext.hsa_ext_image_clear_fn;
+}
+
+static void toggle_hsa_ext_image_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_destroy_fn = hsa_ext_image_destroy_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_destroy_fn = SavedTables.image_ext.hsa_ext_image_destroy_fn;
+}
+
+static void toggle_hsa_ext_sampler_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_sampler_create_fn = hsa_ext_sampler_create_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_sampler_create_fn = SavedTables.image_ext.hsa_ext_sampler_create_fn;
+}
+
+static void toggle_hsa_ext_sampler_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_sampler_destroy_fn = hsa_ext_sampler_destroy_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_sampler_destroy_fn = SavedTables.image_ext.hsa_ext_sampler_destroy_fn;
+}
+
+static void toggle_hsa_ext_image_get_capability_with_layout(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_get_capability_with_layout_fn = hsa_ext_image_get_capability_with_layout_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_get_capability_with_layout_fn = SavedTables.image_ext.hsa_ext_image_get_capability_with_layout_fn;
+}
+
+static void toggle_hsa_ext_image_data_get_info_with_layout(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_data_get_info_with_layout_fn = hsa_ext_image_data_get_info_with_layout_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_data_get_info_with_layout_fn = SavedTables.image_ext.hsa_ext_image_data_get_info_with_layout_fn;
+}
+
+static void toggle_hsa_ext_image_create_with_layout(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->image_ext_->hsa_ext_image_create_with_layout_fn = hsa_ext_image_create_with_layout_callback;
+    else
+        InternalHsaApiTable->image_ext_->hsa_ext_image_create_with_layout_fn = SavedTables.image_ext.hsa_ext_image_create_with_layout_fn;
+}
+
+static void toggle_hsa_ext_program_create(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_create_fn = hsa_ext_program_create_callback;
+    else
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_create_fn = SavedTables.finalizer_ext.hsa_ext_program_create_fn;
+}
+
+static void toggle_hsa_ext_program_destroy(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_destroy_fn = hsa_ext_program_destroy_callback;
+    else
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_destroy_fn = SavedTables.finalizer_ext.hsa_ext_program_destroy_fn;
+}
+
+static void toggle_hsa_ext_program_add_module(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_add_module_fn = hsa_ext_program_add_module_callback;
+    else
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_add_module_fn = SavedTables.finalizer_ext.hsa_ext_program_add_module_fn;
+}
+
+static void toggle_hsa_ext_program_iterate_modules(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_iterate_modules_fn = hsa_ext_program_iterate_modules_callback;
+    else
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_iterate_modules_fn = SavedTables.finalizer_ext.hsa_ext_program_iterate_modules_fn;
+}
+
+static void toggle_hsa_ext_program_get_info(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_get_info_fn = hsa_ext_program_get_info_callback;
+    else
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_get_info_fn = SavedTables.finalizer_ext.hsa_ext_program_get_info_fn;
+}
+
+static void toggle_hsa_ext_program_finalize(HsaApiTable *InternalHsaApiTable, HsaApiTableContainer SavedTables, bool On) {
+    if (On)
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_finalize_fn = hsa_ext_program_finalize_callback;
+    else
+        InternalHsaApiTable->finalizer_ext_->hsa_ext_program_finalize_fn = SavedTables.finalizer_ext.hsa_ext_program_finalize_fn;
+}
+
+
 void luthier::hsa::Interceptor::installCoreApiTableWrappers(CoreApiTable *Table) {
 	SavedTables.core = *Table;
-	Table->hsa_init_fn = hsa_init_callback;
-	Table->hsa_shut_down_fn = hsa_shut_down_callback;
-	Table->hsa_system_get_info_fn = hsa_system_get_info_callback;
-	Table->hsa_system_extension_supported_fn = hsa_system_extension_supported_callback;
-	Table->hsa_system_get_extension_table_fn = hsa_system_get_extension_table_callback;
-	Table->hsa_iterate_agents_fn = hsa_iterate_agents_callback;
-	Table->hsa_agent_get_info_fn = hsa_agent_get_info_callback;
-	Table->hsa_queue_create_fn = hsa_queue_create_callback;
-	Table->hsa_soft_queue_create_fn = hsa_soft_queue_create_callback;
-	Table->hsa_queue_destroy_fn = hsa_queue_destroy_callback;
-	Table->hsa_queue_inactivate_fn = hsa_queue_inactivate_callback;
-	Table->hsa_queue_load_read_index_scacquire_fn = hsa_queue_load_read_index_scacquire_callback;
-	Table->hsa_queue_load_read_index_relaxed_fn = hsa_queue_load_read_index_relaxed_callback;
-	Table->hsa_queue_load_write_index_scacquire_fn = hsa_queue_load_write_index_scacquire_callback;
-	Table->hsa_queue_load_write_index_relaxed_fn = hsa_queue_load_write_index_relaxed_callback;
-	Table->hsa_queue_store_write_index_relaxed_fn = hsa_queue_store_write_index_relaxed_callback;
-	Table->hsa_queue_store_write_index_screlease_fn = hsa_queue_store_write_index_screlease_callback;
-	Table->hsa_queue_cas_write_index_scacq_screl_fn = hsa_queue_cas_write_index_scacq_screl_callback;
-	Table->hsa_queue_cas_write_index_scacquire_fn = hsa_queue_cas_write_index_scacquire_callback;
-	Table->hsa_queue_cas_write_index_relaxed_fn = hsa_queue_cas_write_index_relaxed_callback;
-	Table->hsa_queue_cas_write_index_screlease_fn = hsa_queue_cas_write_index_screlease_callback;
-	Table->hsa_queue_add_write_index_scacq_screl_fn = hsa_queue_add_write_index_scacq_screl_callback;
-	Table->hsa_queue_add_write_index_scacquire_fn = hsa_queue_add_write_index_scacquire_callback;
-	Table->hsa_queue_add_write_index_relaxed_fn = hsa_queue_add_write_index_relaxed_callback;
-	Table->hsa_queue_add_write_index_screlease_fn = hsa_queue_add_write_index_screlease_callback;
-	Table->hsa_queue_store_read_index_relaxed_fn = hsa_queue_store_read_index_relaxed_callback;
-	Table->hsa_queue_store_read_index_screlease_fn = hsa_queue_store_read_index_screlease_callback;
-	Table->hsa_agent_iterate_regions_fn = hsa_agent_iterate_regions_callback;
-	Table->hsa_region_get_info_fn = hsa_region_get_info_callback;
-	Table->hsa_agent_get_exception_policies_fn = hsa_agent_get_exception_policies_callback;
-	Table->hsa_agent_extension_supported_fn = hsa_agent_extension_supported_callback;
-	Table->hsa_memory_register_fn = hsa_memory_register_callback;
-	Table->hsa_memory_deregister_fn = hsa_memory_deregister_callback;
-	Table->hsa_memory_allocate_fn = hsa_memory_allocate_callback;
-	Table->hsa_memory_free_fn = hsa_memory_free_callback;
-	Table->hsa_memory_copy_fn = hsa_memory_copy_callback;
-	Table->hsa_memory_assign_agent_fn = hsa_memory_assign_agent_callback;
-	Table->hsa_signal_create_fn = hsa_signal_create_callback;
-	Table->hsa_signal_destroy_fn = hsa_signal_destroy_callback;
-	Table->hsa_signal_load_relaxed_fn = hsa_signal_load_relaxed_callback;
-	Table->hsa_signal_load_scacquire_fn = hsa_signal_load_scacquire_callback;
-	Table->hsa_signal_store_relaxed_fn = hsa_signal_store_relaxed_callback;
-	Table->hsa_signal_store_screlease_fn = hsa_signal_store_screlease_callback;
-	Table->hsa_signal_wait_relaxed_fn = hsa_signal_wait_relaxed_callback;
-	Table->hsa_signal_wait_scacquire_fn = hsa_signal_wait_scacquire_callback;
-	Table->hsa_signal_and_relaxed_fn = hsa_signal_and_relaxed_callback;
-	Table->hsa_signal_and_scacquire_fn = hsa_signal_and_scacquire_callback;
-	Table->hsa_signal_and_screlease_fn = hsa_signal_and_screlease_callback;
-	Table->hsa_signal_and_scacq_screl_fn = hsa_signal_and_scacq_screl_callback;
-	Table->hsa_signal_or_relaxed_fn = hsa_signal_or_relaxed_callback;
-	Table->hsa_signal_or_scacquire_fn = hsa_signal_or_scacquire_callback;
-	Table->hsa_signal_or_screlease_fn = hsa_signal_or_screlease_callback;
-	Table->hsa_signal_or_scacq_screl_fn = hsa_signal_or_scacq_screl_callback;
-	Table->hsa_signal_xor_relaxed_fn = hsa_signal_xor_relaxed_callback;
-	Table->hsa_signal_xor_scacquire_fn = hsa_signal_xor_scacquire_callback;
-	Table->hsa_signal_xor_screlease_fn = hsa_signal_xor_screlease_callback;
-	Table->hsa_signal_xor_scacq_screl_fn = hsa_signal_xor_scacq_screl_callback;
-	Table->hsa_signal_exchange_relaxed_fn = hsa_signal_exchange_relaxed_callback;
-	Table->hsa_signal_exchange_scacquire_fn = hsa_signal_exchange_scacquire_callback;
-	Table->hsa_signal_exchange_screlease_fn = hsa_signal_exchange_screlease_callback;
-	Table->hsa_signal_exchange_scacq_screl_fn = hsa_signal_exchange_scacq_screl_callback;
-	Table->hsa_signal_add_relaxed_fn = hsa_signal_add_relaxed_callback;
-	Table->hsa_signal_add_scacquire_fn = hsa_signal_add_scacquire_callback;
-	Table->hsa_signal_add_screlease_fn = hsa_signal_add_screlease_callback;
-	Table->hsa_signal_add_scacq_screl_fn = hsa_signal_add_scacq_screl_callback;
-	Table->hsa_signal_subtract_relaxed_fn = hsa_signal_subtract_relaxed_callback;
-	Table->hsa_signal_subtract_scacquire_fn = hsa_signal_subtract_scacquire_callback;
-	Table->hsa_signal_subtract_screlease_fn = hsa_signal_subtract_screlease_callback;
-	Table->hsa_signal_subtract_scacq_screl_fn = hsa_signal_subtract_scacq_screl_callback;
-	Table->hsa_signal_cas_relaxed_fn = hsa_signal_cas_relaxed_callback;
-	Table->hsa_signal_cas_scacquire_fn = hsa_signal_cas_scacquire_callback;
-	Table->hsa_signal_cas_screlease_fn = hsa_signal_cas_screlease_callback;
-	Table->hsa_signal_cas_scacq_screl_fn = hsa_signal_cas_scacq_screl_callback;
-	Table->hsa_isa_from_name_fn = hsa_isa_from_name_callback;
-	Table->hsa_isa_get_info_fn = hsa_isa_get_info_callback;
-	Table->hsa_isa_compatible_fn = hsa_isa_compatible_callback;
-	Table->hsa_code_object_serialize_fn = hsa_code_object_serialize_callback;
-	Table->hsa_code_object_deserialize_fn = hsa_code_object_deserialize_callback;
-	Table->hsa_code_object_destroy_fn = hsa_code_object_destroy_callback;
-	Table->hsa_code_object_get_info_fn = hsa_code_object_get_info_callback;
-	Table->hsa_code_object_get_symbol_fn = hsa_code_object_get_symbol_callback;
-	Table->hsa_code_symbol_get_info_fn = hsa_code_symbol_get_info_callback;
-	Table->hsa_code_object_iterate_symbols_fn = hsa_code_object_iterate_symbols_callback;
-	Table->hsa_executable_create_fn = hsa_executable_create_callback;
-	Table->hsa_executable_destroy_fn = hsa_executable_destroy_callback;
-	Table->hsa_executable_load_code_object_fn = hsa_executable_load_code_object_callback;
-	Table->hsa_executable_freeze_fn = hsa_executable_freeze_callback;
-	Table->hsa_executable_get_info_fn = hsa_executable_get_info_callback;
-	Table->hsa_executable_global_variable_define_fn = hsa_executable_global_variable_define_callback;
-	Table->hsa_executable_agent_global_variable_define_fn = hsa_executable_agent_global_variable_define_callback;
-	Table->hsa_executable_readonly_variable_define_fn = hsa_executable_readonly_variable_define_callback;
-	Table->hsa_executable_validate_fn = hsa_executable_validate_callback;
-	Table->hsa_executable_get_symbol_fn = hsa_executable_get_symbol_callback;
-	Table->hsa_executable_symbol_get_info_fn = hsa_executable_symbol_get_info_callback;
-	Table->hsa_executable_iterate_symbols_fn = hsa_executable_iterate_symbols_callback;
-	Table->hsa_status_string_fn = hsa_status_string_callback;
-	Table->hsa_extension_get_name_fn = hsa_extension_get_name_callback;
-	Table->hsa_system_major_extension_supported_fn = hsa_system_major_extension_supported_callback;
-	Table->hsa_system_get_major_extension_table_fn = hsa_system_get_major_extension_table_callback;
-	Table->hsa_agent_major_extension_supported_fn = hsa_agent_major_extension_supported_callback;
-	Table->hsa_cache_get_info_fn = hsa_cache_get_info_callback;
-	Table->hsa_agent_iterate_caches_fn = hsa_agent_iterate_caches_callback;
-	Table->hsa_signal_silent_store_relaxed_fn = hsa_signal_silent_store_relaxed_callback;
-	Table->hsa_signal_silent_store_screlease_fn = hsa_signal_silent_store_screlease_callback;
-	Table->hsa_signal_group_create_fn = hsa_signal_group_create_callback;
-	Table->hsa_signal_group_destroy_fn = hsa_signal_group_destroy_callback;
-	Table->hsa_signal_group_wait_any_scacquire_fn = hsa_signal_group_wait_any_scacquire_callback;
-	Table->hsa_signal_group_wait_any_relaxed_fn = hsa_signal_group_wait_any_relaxed_callback;
-	Table->hsa_agent_iterate_isas_fn = hsa_agent_iterate_isas_callback;
-	Table->hsa_isa_get_info_alt_fn = hsa_isa_get_info_alt_callback;
-	Table->hsa_isa_get_exception_policies_fn = hsa_isa_get_exception_policies_callback;
-	Table->hsa_isa_get_round_method_fn = hsa_isa_get_round_method_callback;
-	Table->hsa_wavefront_get_info_fn = hsa_wavefront_get_info_callback;
-	Table->hsa_isa_iterate_wavefronts_fn = hsa_isa_iterate_wavefronts_callback;
-	Table->hsa_code_object_get_symbol_from_name_fn = hsa_code_object_get_symbol_from_name_callback;
-	Table->hsa_code_object_reader_create_from_file_fn = hsa_code_object_reader_create_from_file_callback;
-	Table->hsa_code_object_reader_create_from_memory_fn = hsa_code_object_reader_create_from_memory_callback;
-	Table->hsa_code_object_reader_destroy_fn = hsa_code_object_reader_destroy_callback;
-	Table->hsa_executable_create_alt_fn = hsa_executable_create_alt_callback;
-	Table->hsa_executable_load_program_code_object_fn = hsa_executable_load_program_code_object_callback;
-	Table->hsa_executable_load_agent_code_object_fn = hsa_executable_load_agent_code_object_callback;
-	Table->hsa_executable_validate_alt_fn = hsa_executable_validate_alt_callback;
-	Table->hsa_executable_get_symbol_by_name_fn = hsa_executable_get_symbol_by_name_callback;
-	Table->hsa_executable_iterate_agent_symbols_fn = hsa_executable_iterate_agent_symbols_callback;
-	Table->hsa_executable_iterate_program_symbols_fn = hsa_executable_iterate_program_symbols_callback;
+  Table->hsa_queue_create_fn = createInterceptQueue;
 };
 
 void luthier::hsa::Interceptor::installAmdExtTableWrappers(AmdExtTable *Table) {
 	SavedTables.amd_ext = *Table;
-	Table->hsa_amd_coherency_get_type_fn = hsa_amd_coherency_get_type_callback;
-	Table->hsa_amd_coherency_set_type_fn = hsa_amd_coherency_set_type_callback;
-	Table->hsa_amd_profiling_set_profiler_enabled_fn = hsa_amd_profiling_set_profiler_enabled_callback;
-	Table->hsa_amd_profiling_async_copy_enable_fn = hsa_amd_profiling_async_copy_enable_callback;
-	Table->hsa_amd_profiling_get_dispatch_time_fn = hsa_amd_profiling_get_dispatch_time_callback;
-	Table->hsa_amd_profiling_get_async_copy_time_fn = hsa_amd_profiling_get_async_copy_time_callback;
-	Table->hsa_amd_profiling_convert_tick_to_system_domain_fn = hsa_amd_profiling_convert_tick_to_system_domain_callback;
-	Table->hsa_amd_signal_async_handler_fn = hsa_amd_signal_async_handler_callback;
-	Table->hsa_amd_async_function_fn = hsa_amd_async_function_callback;
-	Table->hsa_amd_signal_wait_any_fn = hsa_amd_signal_wait_any_callback;
-	Table->hsa_amd_queue_cu_set_mask_fn = hsa_amd_queue_cu_set_mask_callback;
-	Table->hsa_amd_memory_pool_get_info_fn = hsa_amd_memory_pool_get_info_callback;
-	Table->hsa_amd_agent_iterate_memory_pools_fn = hsa_amd_agent_iterate_memory_pools_callback;
-	Table->hsa_amd_memory_pool_allocate_fn = hsa_amd_memory_pool_allocate_callback;
-	Table->hsa_amd_memory_pool_free_fn = hsa_amd_memory_pool_free_callback;
-	Table->hsa_amd_memory_async_copy_fn = hsa_amd_memory_async_copy_callback;
-	Table->hsa_amd_memory_async_copy_on_engine_fn = hsa_amd_memory_async_copy_on_engine_callback;
-	Table->hsa_amd_memory_copy_engine_status_fn = hsa_amd_memory_copy_engine_status_callback;
-	Table->hsa_amd_agent_memory_pool_get_info_fn = hsa_amd_agent_memory_pool_get_info_callback;
-	Table->hsa_amd_agents_allow_access_fn = hsa_amd_agents_allow_access_callback;
-	Table->hsa_amd_memory_pool_can_migrate_fn = hsa_amd_memory_pool_can_migrate_callback;
-	Table->hsa_amd_memory_migrate_fn = hsa_amd_memory_migrate_callback;
-	Table->hsa_amd_memory_lock_fn = hsa_amd_memory_lock_callback;
-	Table->hsa_amd_memory_unlock_fn = hsa_amd_memory_unlock_callback;
-	Table->hsa_amd_memory_fill_fn = hsa_amd_memory_fill_callback;
-	Table->hsa_amd_interop_map_buffer_fn = hsa_amd_interop_map_buffer_callback;
-	Table->hsa_amd_interop_unmap_buffer_fn = hsa_amd_interop_unmap_buffer_callback;
-	Table->hsa_amd_image_create_fn = hsa_amd_image_create_callback;
-	Table->hsa_amd_pointer_info_fn = hsa_amd_pointer_info_callback;
-	Table->hsa_amd_pointer_info_set_userdata_fn = hsa_amd_pointer_info_set_userdata_callback;
-	Table->hsa_amd_ipc_memory_create_fn = hsa_amd_ipc_memory_create_callback;
-	Table->hsa_amd_ipc_memory_attach_fn = hsa_amd_ipc_memory_attach_callback;
-	Table->hsa_amd_ipc_memory_detach_fn = hsa_amd_ipc_memory_detach_callback;
-	Table->hsa_amd_signal_create_fn = hsa_amd_signal_create_callback;
-	Table->hsa_amd_ipc_signal_create_fn = hsa_amd_ipc_signal_create_callback;
-	Table->hsa_amd_ipc_signal_attach_fn = hsa_amd_ipc_signal_attach_callback;
-	Table->hsa_amd_register_system_event_handler_fn = hsa_amd_register_system_event_handler_callback;
-	Table->hsa_amd_queue_intercept_create_fn = hsa_amd_queue_intercept_create_callback;
-	Table->hsa_amd_queue_intercept_register_fn = hsa_amd_queue_intercept_register_callback;
-	Table->hsa_amd_queue_set_priority_fn = hsa_amd_queue_set_priority_callback;
-	Table->hsa_amd_memory_async_copy_rect_fn = hsa_amd_memory_async_copy_rect_callback;
-	Table->hsa_amd_runtime_queue_create_register_fn = hsa_amd_runtime_queue_create_register_callback;
-	Table->hsa_amd_memory_lock_to_pool_fn = hsa_amd_memory_lock_to_pool_callback;
-	Table->hsa_amd_register_deallocation_callback_fn = hsa_amd_register_deallocation_callback_callback;
-	Table->hsa_amd_deregister_deallocation_callback_fn = hsa_amd_deregister_deallocation_callback_callback;
-	Table->hsa_amd_signal_value_pointer_fn = hsa_amd_signal_value_pointer_callback;
-	Table->hsa_amd_svm_attributes_set_fn = hsa_amd_svm_attributes_set_callback;
-	Table->hsa_amd_svm_attributes_get_fn = hsa_amd_svm_attributes_get_callback;
-	Table->hsa_amd_svm_prefetch_async_fn = hsa_amd_svm_prefetch_async_callback;
-	Table->hsa_amd_spm_acquire_fn = hsa_amd_spm_acquire_callback;
-	Table->hsa_amd_spm_release_fn = hsa_amd_spm_release_callback;
-	Table->hsa_amd_spm_set_dest_buffer_fn = hsa_amd_spm_set_dest_buffer_callback;
-	Table->hsa_amd_queue_cu_get_mask_fn = hsa_amd_queue_cu_get_mask_callback;
-	Table->hsa_amd_portable_export_dmabuf_fn = hsa_amd_portable_export_dmabuf_callback;
-	Table->hsa_amd_portable_close_dmabuf_fn = hsa_amd_portable_close_dmabuf_callback;
-	Table->hsa_amd_vmem_address_reserve_fn = hsa_amd_vmem_address_reserve_callback;
-	Table->hsa_amd_vmem_address_free_fn = hsa_amd_vmem_address_free_callback;
-	Table->hsa_amd_vmem_handle_create_fn = hsa_amd_vmem_handle_create_callback;
-	Table->hsa_amd_vmem_handle_release_fn = hsa_amd_vmem_handle_release_callback;
-	Table->hsa_amd_vmem_map_fn = hsa_amd_vmem_map_callback;
-	Table->hsa_amd_vmem_unmap_fn = hsa_amd_vmem_unmap_callback;
-	Table->hsa_amd_vmem_set_access_fn = hsa_amd_vmem_set_access_callback;
-	Table->hsa_amd_vmem_get_access_fn = hsa_amd_vmem_get_access_callback;
-	Table->hsa_amd_vmem_export_shareable_handle_fn = hsa_amd_vmem_export_shareable_handle_callback;
-	Table->hsa_amd_vmem_import_shareable_handle_fn = hsa_amd_vmem_import_shareable_handle_callback;
-	Table->hsa_amd_vmem_retain_alloc_handle_fn = hsa_amd_vmem_retain_alloc_handle_callback;
-	Table->hsa_amd_vmem_get_alloc_properties_from_handle_fn = hsa_amd_vmem_get_alloc_properties_from_handle_callback;
 };
 
 void luthier::hsa::Interceptor::installImageExtTableWrappers(ImageExtTable *Table) {
 	SavedTables.image_ext = *Table;
-	Table->hsa_ext_image_get_capability_fn = hsa_ext_image_get_capability_callback;
-	Table->hsa_ext_image_data_get_info_fn = hsa_ext_image_data_get_info_callback;
-	Table->hsa_ext_image_create_fn = hsa_ext_image_create_callback;
-	Table->hsa_ext_image_import_fn = hsa_ext_image_import_callback;
-	Table->hsa_ext_image_export_fn = hsa_ext_image_export_callback;
-	Table->hsa_ext_image_copy_fn = hsa_ext_image_copy_callback;
-	Table->hsa_ext_image_clear_fn = hsa_ext_image_clear_callback;
-	Table->hsa_ext_image_destroy_fn = hsa_ext_image_destroy_callback;
-	Table->hsa_ext_sampler_create_fn = hsa_ext_sampler_create_callback;
-	Table->hsa_ext_sampler_destroy_fn = hsa_ext_sampler_destroy_callback;
-	Table->hsa_ext_image_get_capability_with_layout_fn = hsa_ext_image_get_capability_with_layout_callback;
-	Table->hsa_ext_image_data_get_info_with_layout_fn = hsa_ext_image_data_get_info_with_layout_callback;
-	Table->hsa_ext_image_create_with_layout_fn = hsa_ext_image_create_with_layout_callback;
 };
 
 void luthier::hsa::Interceptor::installFinalizerExtTableWrappers(FinalizerExtTable *Table) {
 	SavedTables.finalizer_ext = *Table;
-	Table->hsa_ext_program_create_fn = hsa_ext_program_create_callback;
-	Table->hsa_ext_program_destroy_fn = hsa_ext_program_destroy_callback;
-	Table->hsa_ext_program_add_module_fn = hsa_ext_program_add_module_callback;
-	Table->hsa_ext_program_iterate_modules_fn = hsa_ext_program_iterate_modules_callback;
-	Table->hsa_ext_program_get_info_fn = hsa_ext_program_get_info_callback;
-	Table->hsa_ext_program_finalize_fn = hsa_ext_program_finalize_callback;
 };
 
+
+static const llvm::DenseMap<luthier::hsa::ApiEvtID, std::function<void(HsaApiTable *, const HsaApiTableContainer &, bool On)>> HsaCallbackToggleFunctionsMap {
+  { luthier::hsa::HSA_API_EVT_ID_hsa_init, toggle_hsa_init },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_shut_down, toggle_hsa_shut_down },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_system_get_info, toggle_hsa_system_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_system_extension_supported, toggle_hsa_system_extension_supported },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_system_get_extension_table, toggle_hsa_system_get_extension_table },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_iterate_agents, toggle_hsa_iterate_agents },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_agent_get_info, toggle_hsa_agent_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_create, toggle_hsa_queue_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_soft_queue_create, toggle_hsa_soft_queue_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_destroy, toggle_hsa_queue_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_inactivate, toggle_hsa_queue_inactivate },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_read_index_scacquire, toggle_hsa_queue_load_read_index_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_read_index_relaxed, toggle_hsa_queue_load_read_index_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_write_index_scacquire, toggle_hsa_queue_load_write_index_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_load_write_index_relaxed, toggle_hsa_queue_load_write_index_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_write_index_relaxed, toggle_hsa_queue_store_write_index_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_write_index_screlease, toggle_hsa_queue_store_write_index_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_scacq_screl, toggle_hsa_queue_cas_write_index_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_scacquire, toggle_hsa_queue_cas_write_index_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_relaxed, toggle_hsa_queue_cas_write_index_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_cas_write_index_screlease, toggle_hsa_queue_cas_write_index_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_scacq_screl, toggle_hsa_queue_add_write_index_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_scacquire, toggle_hsa_queue_add_write_index_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_relaxed, toggle_hsa_queue_add_write_index_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_add_write_index_screlease, toggle_hsa_queue_add_write_index_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_read_index_relaxed, toggle_hsa_queue_store_read_index_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_queue_store_read_index_screlease, toggle_hsa_queue_store_read_index_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_agent_iterate_regions, toggle_hsa_agent_iterate_regions },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_region_get_info, toggle_hsa_region_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_agent_get_exception_policies, toggle_hsa_agent_get_exception_policies },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_agent_extension_supported, toggle_hsa_agent_extension_supported },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_memory_register, toggle_hsa_memory_register },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_memory_deregister, toggle_hsa_memory_deregister },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_memory_allocate, toggle_hsa_memory_allocate },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_memory_free, toggle_hsa_memory_free },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_memory_copy, toggle_hsa_memory_copy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_memory_assign_agent, toggle_hsa_memory_assign_agent },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_create, toggle_hsa_signal_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_destroy, toggle_hsa_signal_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_load_relaxed, toggle_hsa_signal_load_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_load_scacquire, toggle_hsa_signal_load_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_store_relaxed, toggle_hsa_signal_store_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_store_screlease, toggle_hsa_signal_store_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_wait_relaxed, toggle_hsa_signal_wait_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_wait_scacquire, toggle_hsa_signal_wait_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_relaxed, toggle_hsa_signal_and_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_scacquire, toggle_hsa_signal_and_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_screlease, toggle_hsa_signal_and_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_and_scacq_screl, toggle_hsa_signal_and_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_relaxed, toggle_hsa_signal_or_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_scacquire, toggle_hsa_signal_or_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_screlease, toggle_hsa_signal_or_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_or_scacq_screl, toggle_hsa_signal_or_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_relaxed, toggle_hsa_signal_xor_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_scacquire, toggle_hsa_signal_xor_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_screlease, toggle_hsa_signal_xor_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_xor_scacq_screl, toggle_hsa_signal_xor_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_relaxed, toggle_hsa_signal_exchange_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_scacquire, toggle_hsa_signal_exchange_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_screlease, toggle_hsa_signal_exchange_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_exchange_scacq_screl, toggle_hsa_signal_exchange_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_relaxed, toggle_hsa_signal_add_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_scacquire, toggle_hsa_signal_add_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_screlease, toggle_hsa_signal_add_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_add_scacq_screl, toggle_hsa_signal_add_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_relaxed, toggle_hsa_signal_subtract_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_scacquire, toggle_hsa_signal_subtract_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_screlease, toggle_hsa_signal_subtract_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_subtract_scacq_screl, toggle_hsa_signal_subtract_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_relaxed, toggle_hsa_signal_cas_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_scacquire, toggle_hsa_signal_cas_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_screlease, toggle_hsa_signal_cas_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_cas_scacq_screl, toggle_hsa_signal_cas_scacq_screl },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_isa_from_name, toggle_hsa_isa_from_name },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_info, toggle_hsa_isa_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_isa_compatible, toggle_hsa_isa_compatible },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_serialize, toggle_hsa_code_object_serialize },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_deserialize, toggle_hsa_code_object_deserialize },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_destroy, toggle_hsa_code_object_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_get_info, toggle_hsa_code_object_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_get_symbol, toggle_hsa_code_object_get_symbol },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_symbol_get_info, toggle_hsa_code_symbol_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_iterate_symbols, toggle_hsa_code_object_iterate_symbols },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_create, toggle_hsa_executable_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy, toggle_hsa_executable_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_code_object, toggle_hsa_executable_load_code_object },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze, toggle_hsa_executable_freeze },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_get_info, toggle_hsa_executable_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_global_variable_define, toggle_hsa_executable_global_variable_define },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_agent_global_variable_define, toggle_hsa_executable_agent_global_variable_define },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_readonly_variable_define, toggle_hsa_executable_readonly_variable_define },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_validate, toggle_hsa_executable_validate },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_get_symbol, toggle_hsa_executable_get_symbol },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_symbol_get_info, toggle_hsa_executable_symbol_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_iterate_symbols, toggle_hsa_executable_iterate_symbols },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_status_string, toggle_hsa_status_string },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_extension_get_name, toggle_hsa_extension_get_name },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_system_major_extension_supported, toggle_hsa_system_major_extension_supported },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_system_get_major_extension_table, toggle_hsa_system_get_major_extension_table },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_agent_major_extension_supported, toggle_hsa_agent_major_extension_supported },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_cache_get_info, toggle_hsa_cache_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_agent_iterate_caches, toggle_hsa_agent_iterate_caches },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_silent_store_relaxed, toggle_hsa_signal_silent_store_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_silent_store_screlease, toggle_hsa_signal_silent_store_screlease },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_create, toggle_hsa_signal_group_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_destroy, toggle_hsa_signal_group_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_wait_any_scacquire, toggle_hsa_signal_group_wait_any_scacquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_signal_group_wait_any_relaxed, toggle_hsa_signal_group_wait_any_relaxed },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_agent_iterate_isas, toggle_hsa_agent_iterate_isas },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_info_alt, toggle_hsa_isa_get_info_alt },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_exception_policies, toggle_hsa_isa_get_exception_policies },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_isa_get_round_method, toggle_hsa_isa_get_round_method },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_wavefront_get_info, toggle_hsa_wavefront_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_isa_iterate_wavefronts, toggle_hsa_isa_iterate_wavefronts },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_get_symbol_from_name, toggle_hsa_code_object_get_symbol_from_name },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_reader_create_from_file, toggle_hsa_code_object_reader_create_from_file },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_reader_create_from_memory, toggle_hsa_code_object_reader_create_from_memory },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_code_object_reader_destroy, toggle_hsa_code_object_reader_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_create_alt, toggle_hsa_executable_create_alt },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_program_code_object, toggle_hsa_executable_load_program_code_object },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object, toggle_hsa_executable_load_agent_code_object },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_validate_alt, toggle_hsa_executable_validate_alt },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_get_symbol_by_name, toggle_hsa_executable_get_symbol_by_name },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_iterate_agent_symbols, toggle_hsa_executable_iterate_agent_symbols },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_executable_iterate_program_symbols, toggle_hsa_executable_iterate_program_symbols },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_coherency_get_type, toggle_hsa_amd_coherency_get_type },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_coherency_set_type, toggle_hsa_amd_coherency_set_type },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_set_profiler_enabled, toggle_hsa_amd_profiling_set_profiler_enabled },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_async_copy_enable, toggle_hsa_amd_profiling_async_copy_enable },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_get_dispatch_time, toggle_hsa_amd_profiling_get_dispatch_time },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_get_async_copy_time, toggle_hsa_amd_profiling_get_async_copy_time },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_profiling_convert_tick_to_system_domain, toggle_hsa_amd_profiling_convert_tick_to_system_domain },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_async_handler, toggle_hsa_amd_signal_async_handler },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_async_function, toggle_hsa_amd_async_function },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_wait_any, toggle_hsa_amd_signal_wait_any },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_cu_set_mask, toggle_hsa_amd_queue_cu_set_mask },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_get_info, toggle_hsa_amd_memory_pool_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_agent_iterate_memory_pools, toggle_hsa_amd_agent_iterate_memory_pools },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_allocate, toggle_hsa_amd_memory_pool_allocate },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_free, toggle_hsa_amd_memory_pool_free },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_async_copy, toggle_hsa_amd_memory_async_copy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_async_copy_on_engine, toggle_hsa_amd_memory_async_copy_on_engine },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_copy_engine_status, toggle_hsa_amd_memory_copy_engine_status },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_agent_memory_pool_get_info, toggle_hsa_amd_agent_memory_pool_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_agents_allow_access, toggle_hsa_amd_agents_allow_access },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_pool_can_migrate, toggle_hsa_amd_memory_pool_can_migrate },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_migrate, toggle_hsa_amd_memory_migrate },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_lock, toggle_hsa_amd_memory_lock },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_unlock, toggle_hsa_amd_memory_unlock },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_fill, toggle_hsa_amd_memory_fill },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_interop_map_buffer, toggle_hsa_amd_interop_map_buffer },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_interop_unmap_buffer, toggle_hsa_amd_interop_unmap_buffer },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_image_create, toggle_hsa_amd_image_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_pointer_info, toggle_hsa_amd_pointer_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_pointer_info_set_userdata, toggle_hsa_amd_pointer_info_set_userdata },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_memory_create, toggle_hsa_amd_ipc_memory_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_memory_attach, toggle_hsa_amd_ipc_memory_attach },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_memory_detach, toggle_hsa_amd_ipc_memory_detach },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_create, toggle_hsa_amd_signal_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_signal_create, toggle_hsa_amd_ipc_signal_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_ipc_signal_attach, toggle_hsa_amd_ipc_signal_attach },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_register_system_event_handler, toggle_hsa_amd_register_system_event_handler },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_intercept_create, toggle_hsa_amd_queue_intercept_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_intercept_register, toggle_hsa_amd_queue_intercept_register },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_set_priority, toggle_hsa_amd_queue_set_priority },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_async_copy_rect, toggle_hsa_amd_memory_async_copy_rect },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_runtime_queue_create_register, toggle_hsa_amd_runtime_queue_create_register },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_memory_lock_to_pool, toggle_hsa_amd_memory_lock_to_pool },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_register_deallocation_callback, toggle_hsa_amd_register_deallocation_callback },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_deregister_deallocation_callback, toggle_hsa_amd_deregister_deallocation_callback },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_signal_value_pointer, toggle_hsa_amd_signal_value_pointer },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_svm_attributes_set, toggle_hsa_amd_svm_attributes_set },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_svm_attributes_get, toggle_hsa_amd_svm_attributes_get },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_svm_prefetch_async, toggle_hsa_amd_svm_prefetch_async },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_spm_acquire, toggle_hsa_amd_spm_acquire },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_spm_release, toggle_hsa_amd_spm_release },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_spm_set_dest_buffer, toggle_hsa_amd_spm_set_dest_buffer },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_cu_get_mask, toggle_hsa_amd_queue_cu_get_mask },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_portable_export_dmabuf, toggle_hsa_amd_portable_export_dmabuf },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_portable_close_dmabuf, toggle_hsa_amd_portable_close_dmabuf },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_address_reserve, toggle_hsa_amd_vmem_address_reserve },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_address_free, toggle_hsa_amd_vmem_address_free },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_handle_create, toggle_hsa_amd_vmem_handle_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_handle_release, toggle_hsa_amd_vmem_handle_release },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_map, toggle_hsa_amd_vmem_map },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_unmap, toggle_hsa_amd_vmem_unmap },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_set_access, toggle_hsa_amd_vmem_set_access },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_get_access, toggle_hsa_amd_vmem_get_access },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_export_shareable_handle, toggle_hsa_amd_vmem_export_shareable_handle },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_import_shareable_handle, toggle_hsa_amd_vmem_import_shareable_handle },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_retain_alloc_handle, toggle_hsa_amd_vmem_retain_alloc_handle },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_vmem_get_alloc_properties_from_handle, toggle_hsa_amd_vmem_get_alloc_properties_from_handle },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_agent_set_async_scratch_limit, toggle_hsa_amd_agent_set_async_scratch_limit },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_amd_queue_get_info, toggle_hsa_amd_queue_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_get_capability, toggle_hsa_ext_image_get_capability },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_data_get_info, toggle_hsa_ext_image_data_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_create, toggle_hsa_ext_image_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_import, toggle_hsa_ext_image_import },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_export, toggle_hsa_ext_image_export },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_copy, toggle_hsa_ext_image_copy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_clear, toggle_hsa_ext_image_clear },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_destroy, toggle_hsa_ext_image_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_sampler_create, toggle_hsa_ext_sampler_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_sampler_destroy, toggle_hsa_ext_sampler_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_get_capability_with_layout, toggle_hsa_ext_image_get_capability_with_layout },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_data_get_info_with_layout, toggle_hsa_ext_image_data_get_info_with_layout },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_image_create_with_layout, toggle_hsa_ext_image_create_with_layout },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_create, toggle_hsa_ext_program_create },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_destroy, toggle_hsa_ext_program_destroy },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_add_module, toggle_hsa_ext_program_add_module },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_iterate_modules, toggle_hsa_ext_program_iterate_modules },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_get_info, toggle_hsa_ext_program_get_info },
+  { luthier::hsa::HSA_API_EVT_ID_hsa_ext_program_finalize, toggle_hsa_ext_program_finalize },
+};
+
+void luthier::hsa::Interceptor::enableUserCallback(ApiEvtID Op) {
+  HsaCallbackToggleFunctionsMap.at(Op)(InternalHsaApiTable, SavedTables, true);
+  EnabledUserOps.insert(Op);
+}
+
+void luthier::hsa::Interceptor::disableUserCallback(ApiEvtID Op) {
+  EnabledUserOps.erase(Op);
+  if (!EnabledInternalOps.contains(Op))
+    HsaCallbackToggleFunctionsMap.at(Op)(InternalHsaApiTable, SavedTables, false);
+}
+
+void luthier::hsa::Interceptor::enableInternalCallback(ApiEvtID Op) {
+  HsaCallbackToggleFunctionsMap.at(Op)(InternalHsaApiTable, SavedTables, true);
+  EnabledInternalOps.insert(Op);
+}
+
+void luthier::hsa::Interceptor::disableInternalCallback(ApiEvtID Op) {
+  EnabledInternalOps.erase(Op);
+  if (!EnabledUserOps.contains(Op))
+    HsaCallbackToggleFunctionsMap.at(Op)(InternalHsaApiTable, SavedTables, false);
+}
 // NOLINTEND
