@@ -203,29 +203,31 @@ enum ApiEvtID: unsigned int {
   HSA_API_EVT_ID_hsa_amd_vmem_import_shareable_handle = 189, 
   HSA_API_EVT_ID_hsa_amd_vmem_retain_alloc_handle = 190, 
   HSA_API_EVT_ID_hsa_amd_vmem_get_alloc_properties_from_handle = 191, 
+  HSA_API_EVT_ID_hsa_amd_agent_set_async_scratch_limit = 192, 
+  HSA_API_EVT_ID_hsa_amd_queue_get_info = 193, 
   // ImageExtTable API
-  HSA_API_EVT_ID_hsa_ext_image_get_capability = 192, 
-  HSA_API_EVT_ID_hsa_ext_image_data_get_info = 193, 
-  HSA_API_EVT_ID_hsa_ext_image_create = 194, 
-  HSA_API_EVT_ID_hsa_ext_image_import = 195, 
-  HSA_API_EVT_ID_hsa_ext_image_export = 196, 
-  HSA_API_EVT_ID_hsa_ext_image_copy = 197, 
-  HSA_API_EVT_ID_hsa_ext_image_clear = 198, 
-  HSA_API_EVT_ID_hsa_ext_image_destroy = 199, 
-  HSA_API_EVT_ID_hsa_ext_sampler_create = 200, 
-  HSA_API_EVT_ID_hsa_ext_sampler_destroy = 201, 
-  HSA_API_EVT_ID_hsa_ext_image_get_capability_with_layout = 202, 
-  HSA_API_EVT_ID_hsa_ext_image_data_get_info_with_layout = 203, 
-  HSA_API_EVT_ID_hsa_ext_image_create_with_layout = 204, 
+  HSA_API_EVT_ID_hsa_ext_image_get_capability = 194, 
+  HSA_API_EVT_ID_hsa_ext_image_data_get_info = 195, 
+  HSA_API_EVT_ID_hsa_ext_image_create = 196, 
+  HSA_API_EVT_ID_hsa_ext_image_import = 197, 
+  HSA_API_EVT_ID_hsa_ext_image_export = 198, 
+  HSA_API_EVT_ID_hsa_ext_image_copy = 199, 
+  HSA_API_EVT_ID_hsa_ext_image_clear = 200, 
+  HSA_API_EVT_ID_hsa_ext_image_destroy = 201, 
+  HSA_API_EVT_ID_hsa_ext_sampler_create = 202, 
+  HSA_API_EVT_ID_hsa_ext_sampler_destroy = 203, 
+  HSA_API_EVT_ID_hsa_ext_image_get_capability_with_layout = 204, 
+  HSA_API_EVT_ID_hsa_ext_image_data_get_info_with_layout = 205, 
+  HSA_API_EVT_ID_hsa_ext_image_create_with_layout = 206, 
   // FinalizerExtTable API
-  HSA_API_EVT_ID_hsa_ext_program_create = 205, 
-  HSA_API_EVT_ID_hsa_ext_program_destroy = 206, 
-  HSA_API_EVT_ID_hsa_ext_program_add_module = 207, 
-  HSA_API_EVT_ID_hsa_ext_program_iterate_modules = 208, 
-  HSA_API_EVT_ID_hsa_ext_program_get_info = 209, 
-  HSA_API_EVT_ID_hsa_ext_program_finalize = 210, 
-  HSA_API_EVT_ID_hsa_queue_packet_submit = 211,
-  HSA_API_EVT_ID_LAST = 211, 
+  HSA_API_EVT_ID_hsa_ext_program_create = 207, 
+  HSA_API_EVT_ID_hsa_ext_program_destroy = 208, 
+  HSA_API_EVT_ID_hsa_ext_program_add_module = 209, 
+  HSA_API_EVT_ID_hsa_ext_program_iterate_modules = 210, 
+  HSA_API_EVT_ID_hsa_ext_program_get_info = 211, 
+  HSA_API_EVT_ID_hsa_ext_program_finalize = 212, 
+  HSA_API_EVT_ID_hsa_queue_packet_submit = 213,
+  HSA_API_EVT_ID_LAST = 213, 
 };
 
 
@@ -1192,6 +1194,15 @@ typedef union {
     hsa_amd_memory_pool_t* pool;
     hsa_amd_memory_type_t* type;
   } hsa_amd_vmem_get_alloc_properties_from_handle;
+  struct {
+    hsa_agent_t agent;
+    size_t threshold;
+  } hsa_amd_agent_set_async_scratch_limit;
+  struct {
+    hsa_queue_t* queue;
+    hsa_queue_info_attribute_t attribute;
+    void* value;
+  } hsa_amd_queue_get_info;
   struct {
     hsa_agent_t agent;
     hsa_ext_image_geometry_t geometry;
