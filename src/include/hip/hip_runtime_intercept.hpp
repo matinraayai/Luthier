@@ -18,7 +18,6 @@
 
 #include "common/error.hpp"
 #include "common/singleton.hpp"
-#include <luthier/hip_trace_api.h>
 #include <luthier/types.h>
 #include <rocprofiler-sdk/hip/api_args.h>
 #include <rocprofiler-sdk/hip/api_id.h>
@@ -76,6 +75,7 @@ typedef std::function<void(rocprofiler_hip_api_args_t *, const ApiEvtPhase,
 
 class RuntimeInterceptor : public Singleton<RuntimeInterceptor> {
 private:
+  HipDispatchTable *InternalRuntimeDispatchTable{};
   HipDispatchTable SavedDispatchTable{};
   llvm::DenseSet<rocprofiler_hip_runtime_api_id_t> EnabledUserOps{};
   llvm::DenseSet<rocprofiler_hip_runtime_api_id_t> EnabledInternalOps{};
@@ -97,84 +97,71 @@ public:
     return SavedDispatchTable;
   }
 
-  void captureRuntimeTable(HipDispatchTable *RuntimeTable);
-
-  [[nodiscard]] const inline runtime_user_callback_t &getUserCallback() const {
-    return UserCallback;
-  }
-
-  [[nodiscard]] bool
-  isUserCallbackEnabled(rocprofiler_hip_runtime_api_id_t op) const {
-    return EnabledUserOps.contains(op);
-  }
-
-  //  void setUserCallback(const std::function<void(void *, const ApiEvtPhase,
-  //                                                const int)> &callback) {
-  //    UserCallback = callback;
-  //  }
-
-  //  void enableUserCallback(uint32_t op) {
-  //    if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST ||
-  //          op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
-  //      llvm::report_fatal_error(
-  //          llvm::formatv(
-  //              "Op ID {0} not in hip_api_id_t or hip_private_api_id_t."),
-  //          op);
-  //    EnabledUserCallbacks.insert(op);
-  //  }
-
-  //  void disableUserCallback(uint32_t op) {
-  //    if (!(op >= HIP_API_ID_FIRST && op <= HIP_API_ID_LAST ||
-  //          op >= HIP_PRIVATE_API_ID_FIRST && op <= HIP_PRIVATE_API_ID_LAST))
-  //      llvm::report_fatal_error(
-  //          llvm::formatv(
-  //              "Op ID {0} not in hip_api_id_t or hip_private_api_id_t."),
-  //          op);
-  //    EnabledUserCallbacks.erase(op);
-  //  }
-
-  //  void enableAllUserCallbacks() {
-  //    for (int i = static_cast<int>(HIP_API_ID_FIRST);
-  //         i <= static_cast<int>(HIP_API_ID_LAST); ++i) {
-  //      enableUserCallback(i);
-  //    }
-  //    for (int i = static_cast<int>(HIP_PRIVATE_API_ID_FIRST);
-  //         i <= static_cast<int>(HIP_PRIVATE_API_ID_LAST); ++i) {
-  //      enableUserCallback(i);
-  //    }
-  //  }
-  //  void disableAllUserCallbacks() { EnabledUserCallbacks.clear(); }
-
-  [[nodiscard]] const runtime_internal_callback_t &getInternalCallback() const {
-    return InternalCallback;
-  }
-
-  [[nodiscard]] bool
-  isInternalCallbackEnabled(rocprofiler_hip_runtime_api_id_t Op) const {
-    return EnabledInternalOps.contains(Op);
+  void setUserCallback(runtime_user_callback_t &CB) {
+    UserCallback = CB;
   }
 
   void setInternalCallback(const runtime_internal_callback_t &CB) {
     InternalCallback = CB;
   }
 
-  void enableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) {
-    EnabledInternalOps.insert(Op);
+  [[nodiscard]] const inline runtime_user_callback_t &getUserCallback() const {
+    return UserCallback;
   }
 
-  void disableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) {
-    EnabledInternalOps.erase(Op);
+  [[nodiscard]] const runtime_internal_callback_t &getInternalCallback() const {
+    return InternalCallback;
+  }
+
+  [[nodiscard]] bool isUserCallbackEnabled(rocprofiler_hip_runtime_api_id_t op) const {
+    return EnabledUserOps.contains(op);
+  }
+
+  [[nodiscard]] bool isInternalCallbackEnabled(rocprofiler_hip_runtime_api_id_t Op) const {
+    return EnabledInternalOps.contains(Op);
+  }
+
+  void enableUserCallback(rocprofiler_hip_runtime_api_id_t op);
+
+  void disableUserCallback(rocprofiler_hip_runtime_api_id_t op);
+
+  void enableInternalCallback(rocprofiler_hip_runtime_api_id_t Op);
+
+  void disableInternalCallback(rocprofiler_hip_runtime_api_id_t Op);
+
+  void enableAllUserCallbacks() {
+    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I 
+      = rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
+      I < rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST; I++) {
+      enableUserCallback(rocprofiler_hip_runtime_api_id_t(I));
+    }
+  }
+
+  void disableAllUserCallbacks() {
+    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I 
+      = rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
+      I < rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST; I++) {
+      disableUserCallback(rocprofiler_hip_runtime_api_id_t(I));
+    }
   }
 
   void enableAllInternalCallbacks() {
-    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I =
-             HIP_API_ID_FIRST;
-         I <= HIP_API_ID_LAST; I++) {
+    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I 
+      = rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
+      I < rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST; I++) {
       enableInternalCallback(rocprofiler_hip_runtime_api_id_t(I));
     }
   }
 
-  void disableAllInternalCallbacks() { EnabledInternalOps.clear(); }
+  void disableAllInternalCallbacks() {
+    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I 
+      = rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
+      I < rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST; I++) {
+      disableInternalCallback(rocprofiler_hip_runtime_api_id_t(I));
+    }
+  }
+
+  void captureRuntimeTable(HipDispatchTable *RuntimeTable);
 };
 
 } // namespace luthier::hip
