@@ -3,7 +3,6 @@
 #include "hip/hip_compiler_intercept.hpp"
 #include "hip/hip_runtime_intercept.hpp"
 #include "hsa/hsa_executable.hpp"
-#include "luthier/hip_trace_api.h"
 #include "tooling_common/code_generator.hpp"
 #include "tooling_common/code_lifter.hpp"
 #include "tooling_common/target_manager.hpp"

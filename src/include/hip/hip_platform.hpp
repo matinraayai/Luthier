@@ -1,6 +1,5 @@
 #ifndef HIP_PLATFORM_HPP
 #define HIP_PLATFORM_HPP
-#include <luthier/hip_trace_api.h>
 #include <llvm/ADT/DenseMap.h>
 
 namespace luthier::hip {

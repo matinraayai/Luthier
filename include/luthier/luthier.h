@@ -11,7 +11,6 @@
 #include <llvm/Support/Error.h>
 
 #include <hip/amd_detail/hip_api_trace.hpp>
-#include <luthier/hip_trace_api.h>
 #include <luthier/hsa_trace_api.h>
 #include <luthier/instr.h>
 #include <luthier/instrumentation_task.h>
