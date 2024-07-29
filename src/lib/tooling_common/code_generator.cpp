@@ -2,9 +2,6 @@
 
 #include <memory>
 
-#define protected public
-#include <llvm/CodeGen/TargetPassConfig.h>
-#undef protected
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
@@ -431,7 +428,6 @@ llvm::Error patchLiftedRepresentation(
     for (const uint32_t *Mask : TRI->getRegMasks())
       ConstRegisterMasks.insert(Mask);
     for (const auto &MBB : HookMF) {
-
       auto *DstMBB = MBBMap[&MBB];
       llvm::MachineBasicBlock::iterator InsertionPoint;
       if (ReturnBlocks.contains(&MBB)) {
@@ -450,7 +446,7 @@ llvm::Error patchLiftedRepresentation(
       for (auto &SrcMI : MBB.instrs()) {
         auto *PreInstrSymbol = SrcMI.getPreInstrSymbol();
         if (PreInstrSymbol != nullptr &&
-            PreInstrSymbol->getName() == "use-instr") {
+            PreInstrSymbol->getName() == "use-instr" || SrcMI.isTerminator()) {
           break;
         }
         // Don't clone the bundle headers
@@ -462,7 +458,6 @@ llvm::Error patchLiftedRepresentation(
                                                   /*NoImplicit=*/true);
         DstMI->setFlags(SrcMI.getFlags());
         DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
-
         DstMBB->insert(InsertionPoint, DstMI);
         for (auto &SrcMO : SrcMI.operands()) {
           llvm::MachineOperand DstMO(SrcMO);
@@ -655,7 +650,6 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     llvm::StringMap<IntrinsicIRLoweringInfo> DummyAsmToIRLoweringInfoMap;
     LUTHIER_RETURN_ON_ERROR(processInstModuleIntrinsicsAtIRLevel(
         IModule, TM, DummyAsmToIRLoweringInfoMap));
-    IModule.print(llvm::outs(), nullptr);
     // Run the code gen pipeline, while enforcing the stack and register
     // constraints
     auto [MMIWP, PM] = runCodeGenPipeline(IModule, &TM, MIToHookFuncMap,
@@ -663,9 +657,6 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     for (const auto &F : IModule) {
       llvm::outs() << "AFTER MOVE:\n";
       llvm::outs() << MMIWP->getMMI().getModule() << "\n";
-      //        if (auto MF = MMI->getMachineFunction(F)) {
-      //          MF->print(llvm::outs());
-      //        }
     }
     // Finally, patch in the generated machine code into the lifted
     // representation
@@ -768,84 +759,93 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
   }
   BeginMBB.clearLiveIns();
   llvm::addLiveIns(MF.front(), LivePhysRegs);
-
-  // Find the return blocks and create dummy uses at the end of them
-  // Mark the dummy uses with MC symbols to keep track of them
-  // Check if s[0:1] is included in the LivePhysRegs; If not, define it
-  bool S01IsLive = LivePhysRegs.contains(AMDGPU::SGPR0_SGPR1);
-  // Check if v0 is included in the LivePhysRegs; If not, define it
-  bool V0IsLive = LivePhysRegs.contains(AMDGPU::VGPR0);
-  // MCInstrInfo for building instruction opcodes
-  auto MCII = MF.getTarget().getMCInstrInfo();
   for (auto &MBB : MF) {
     if (MBB.isReturnBlock()) {
-      // If s[0:1] is not live, define it
-      if (!S01IsLive) {
-        // s0 = S_MOV_B32 0
-        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-                      MCII->get(AMDGPU::S_MOV_B32))
-            .addDef(llvm::AMDGPU::SGPR0)
-            .addImm(0)
-            ->setPreInstrSymbol(MF,
-                                MF.getContext().getOrCreateSymbol("use-instr"));
-        // s1 = S_MOV_B32 0
-        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-                      MCII->get(AMDGPU::S_MOV_B32))
-            .addDef(llvm::AMDGPU::SGPR1)
-            .addImm(0)
-            ->setPreInstrSymbol(MF,
-                                MF.getContext().getOrCreateSymbol("use-instr"));
-      }
-      if (!V0IsLive) {
-        // v0 = V_MOV_B32 0
-        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-                      MCII->get(AMDGPU::V_MOV_B32_e32))
-            .addDef(llvm::AMDGPU::VGPR0)
-            .addImm(0)
-            ->setPreInstrSymbol(MF,
-                                MF.getContext().getOrCreateSymbol("use-instr"));
-      }
-      for (const auto &[PhysLiveInReg, LaneMask] : MF.front().liveins()) {
-        auto PhysRegClass = TRI->getPhysRegBaseClass(PhysLiveInReg);
-        auto BitWidth = llvm::AMDGPU::getRegBitWidth(*PhysRegClass);
-        if (SIRegisterInfo::isSGPRClass(PhysRegClass)) {
-          if (BitWidth == 32) {
-            // s0 = S_ADD_U32 s0, $LiveIn
-            // S_STORE_DWORDX2_IMM s[0:1], s[0:1], 0, 0
-            //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-            //                          MCII->get(AMDGPU::S_ADD_U32))
-            //                .addReg(llvm::AMDGPU::SGPR0)
-            //                .addReg(llvm::AMDGPU::SGPR0)
-            //                .addReg(PhysLiveInReg)
-            //                ->setPreInstrSymbol(
-            //                    MF,
-            //                    MF.getContext().getOrCreateSymbol("use-instr"));
-            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-                          MCII->get(AMDGPU::S_STORE_DWORD_IMM))
-                .addReg(PhysLiveInReg)
-                .addReg(llvm::AMDGPU::SGPR0_SGPR1)
-                .addImm(0)
-                .addImm(0)
-                ->setPreInstrSymbol(
-                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
-          } else if (BitWidth == 64) {
-            // S_STORE_DWORDX2_IMM s[0:1] $LiveIn, 0, 0
-            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-                          MCII->get(AMDGPU::S_STORE_DWORDX2_IMM))
-                .addReg(llvm::AMDGPU::SGPR0_SGPR1)
-                .addReg(PhysLiveInReg)
-                .addImm(0)
-                .addImm(0)
-                ->setPreInstrSymbol(
-                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
-          } else
-            llvm_unreachable("not implemented");
-        }
+      for (auto &LiveIn : MF.begin()->liveins()) {
+        MBB.back().addOperand(
+            llvm::MachineOperand::CreateReg(LiveIn.PhysReg, false, true));
       }
     }
   }
+//  for (auto &LiveIn : MF)
 
-  return true;
+    //  // Find the return blocks and create dummy uses at the end of them
+    //  // Mark the dummy uses with MC symbols to keep track of them
+    //  // Check if s[0:1] is included in the LivePhysRegs; If not, define it
+    //  bool S01IsLive = LivePhysRegs.contains(AMDGPU::SGPR0_SGPR1);
+    //  // Check if v0 is included in the LivePhysRegs; If not, define it
+    //  bool V0IsLive = LivePhysRegs.contains(AMDGPU::VGPR0);
+    //  // MCInstrInfo for building instruction opcodes
+    //  auto MCII = MF.getTarget().getMCInstrInfo();
+    //  for (auto &MBB : MF) {
+    //    if (MBB.isReturnBlock()) {
+    //      // If s[0:1] is not live, define it
+    //      if (!S01IsLive) {
+    //        // s0 = S_MOV_B32 0
+    //        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+    //                      MCII->get(AMDGPU::S_MOV_B32))
+    //            .addDef(llvm::AMDGPU::SGPR0)
+    //            .addImm(0)
+    //            ->setPreInstrSymbol(MF,
+    //                                MF.getContext().getOrCreateSymbol("use-instr"));
+    //        // s1 = S_MOV_B32 0
+    //        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+    //                      MCII->get(AMDGPU::S_MOV_B32))
+    //            .addDef(llvm::AMDGPU::SGPR1)
+    //            .addImm(0)
+    //            ->setPreInstrSymbol(MF,
+    //                                MF.getContext().getOrCreateSymbol("use-instr"));
+    //      }
+    //      if (!V0IsLive) {
+    //        // v0 = V_MOV_B32 0
+    //        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+    //                      MCII->get(AMDGPU::V_MOV_B32_e32))
+    //            .addDef(llvm::AMDGPU::VGPR0)
+    //            .addImm(0)
+    //            ->setPreInstrSymbol(MF,
+    //                                MF.getContext().getOrCreateSymbol("use-instr"));
+    //      }
+    //      for (const auto &[PhysLiveInReg, LaneMask] : MF.front().liveins()) {
+    //        auto PhysRegClass = TRI->getPhysRegBaseClass(PhysLiveInReg);
+    //        auto BitWidth = llvm::AMDGPU::getRegBitWidth(*PhysRegClass);
+    //        if (SIRegisterInfo::isSGPRClass(PhysRegClass)) {
+    //          if (BitWidth == 32) {
+    //            // s0 = S_ADD_U32 s0, $LiveIn
+    //            // S_STORE_DWORDX2_IMM s[0:1], s[0:1], 0, 0
+    //            //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+    //            //                          MCII->get(AMDGPU::S_ADD_U32))
+    //            //                .addReg(llvm::AMDGPU::SGPR0)
+    //            //                .addReg(llvm::AMDGPU::SGPR0)
+    //            //                .addReg(PhysLiveInReg)
+    //            //                ->setPreInstrSymbol(
+    //            //                    MF,
+    //            // MF.getContext().getOrCreateSymbol("use-instr"));
+    //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+    //                          MCII->get(AMDGPU::S_STORE_DWORD_IMM))
+    //                .addReg(PhysLiveInReg)
+    //                .addReg(llvm::AMDGPU::SGPR0_SGPR1)
+    //                .addImm(0)
+    //                .addImm(0)
+    //                ->setPreInstrSymbol(
+    //                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
+    //          } else if (BitWidth == 64) {
+    //            // S_STORE_DWORDX2_IMM s[0:1] $LiveIn, 0, 0
+    //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
+    //                          MCII->get(AMDGPU::S_STORE_DWORDX2_IMM))
+    //                .addReg(llvm::AMDGPU::SGPR0_SGPR1)
+    //                .addReg(PhysLiveInReg)
+    //                .addImm(0)
+    //                .addImm(0)
+    //                ->setPreInstrSymbol(
+    //                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
+    //          } else
+    //            llvm_unreachable("not implemented");
+    //        }
+    //      }
+    //    }
+    //  }
+
+    return true;
 }
 void ReserveLiveRegs::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesCFG();
