@@ -68,6 +68,7 @@ endmacro()
 # Library Declaration ==================================================================================================
 set(LUTHIER_PUBLIC_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 set(LUTHIER_PRIVATE_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/src/include)
+add_subdirectory(luthier-tblgen)
 add_subdirectory(src)
 # ======================================================================================================================
 

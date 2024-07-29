@@ -1,3 +1,10 @@
+# Add target to generate real to pseudo opcode map and the function to query it
+set(luthier_tooling_common_TABLEGEN_EXE luthier-tblgen)
+set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td")
+tablegen(luthier_tooling_common LuthierRealToPseudoOpcodeMap.inc EXTRA_INCLUDES
+        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
+add_public_tablegen_target(LuthierRealToPseudoOpcodeMap)
+
 add_library(luthier_tooling_common STATIC
         code_generator.cpp
         code_lifter.cpp
@@ -11,8 +18,14 @@ add_library(luthier_tooling_common STATIC
         intrinsic/ReadReg.cpp
 )
 
+# Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
+# tablegen-ed target first
+add_dependencies(luthier_tooling_common LuthierRealToPseudoOpcodeMap)
+
 target_include_directories(luthier_tooling_common PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})
 target_include_directories(luthier_tooling_common PUBLIC ${LUTHIER_PUBLIC_INCLUDE_DIR})
+# Add the binary folder to the include directory to use LuthierRealToPseudoOpcodeMap.inc
+target_include_directories(luthier_tooling_common PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
 target_compile_options(luthier_tooling_common PUBLIC "-fPIC")
 add_hsa_compile_definitions(luthier_tooling_common)
