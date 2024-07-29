@@ -11,7 +11,7 @@
 #include <llvm/TableGen/Main.h>
 #include <llvm/TableGen/Record.h>
 
-#include "PseudoRealInstMapBackend.hpp"
+#include "RealToPseudoOpcodeMapBackend.hpp"
 
 namespace {
 
