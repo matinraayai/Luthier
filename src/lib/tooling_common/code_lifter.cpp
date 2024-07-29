@@ -665,20 +665,27 @@ llvm::Error CodeLifter::liftFunction(
     if (IsDirectBranchTarget) {
       LLVM_DEBUG(
           llvm::dbgs()
-          << "Instruction is a branch target\nCreating a new basic block\n");
-
-      auto OldMBB = MBB;
-      MBB = MF.CreateMachineBasicBlock();
-      MF.push_back(MBB);
-      MBBs.push_back(MBB);
-      OldMBB->addSuccessor(MBB);
+          << "Instruction is a branch target.\n";);
+      if (!MBB->empty()) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Current MBB is not empty; Creating a new basic block\n");
+        auto OldMBB = MBB;
+        MBB = MF.CreateMachineBasicBlock();
+        MF.push_back(MBB);
+        MBBs.push_back(MBB);
+        OldMBB->addSuccessor(MBB);
+        // Branch targets mark the beginning of an MBB
+        LLVM_DEBUG(llvm::dbgs()
+                   << "*********************************************"
+                      "***************************\n");
+      } else {
+        LLVM_DEBUG(llvm::dbgs() << "Current MBB is empty; No new block created "
+                                   "for the branch target.\n");
+      }
       BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
       LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                      "Address {0:x} marks the beginning of MBB idx {1}.\n",
                      Inst.getLoadedDeviceAddress(), MBB->getNumber()););
-      // Branch targets mark the beginning of an MBB
-      LLVM_DEBUG(llvm::dbgs() << "*********************************************"
-                                 "***************************\n");
     }
     llvm::MachineInstrBuilder Builder =
         llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
@@ -834,7 +841,10 @@ llvm::Error CodeLifter::liftFunction(
         MBB = MF.CreateMachineBasicBlock();
         MBBs.push_back(MBB);
         MF.push_back(MBB);
-        OldMBB->addSuccessor(MBB);
+        // Don't add the next block to the list of successors if the
+        // terminator is an unconditional branch
+        if (!MCID.isUnconditionalBranch())
+          OldMBB->addSuccessor(MBB);
         LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                        "Address {0:x} marks the beginning of MBB idx {1}.\n",
                        Inst.getLoadedDeviceAddress(), MBB->getNumber()););
@@ -1086,7 +1096,6 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     // and put it in the Output's Module list
     llvm::orc::ThreadSafeModule DestTSModule{std::move(DestModule),
                                              DestLR->Context};
-
     auto &DestModuleEntry =
         DestLR->Modules
             .insert(
