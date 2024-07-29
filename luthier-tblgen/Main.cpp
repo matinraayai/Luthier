@@ -16,7 +16,7 @@
 namespace {
 
 llvm::cl::opt<bool> GenerateSiRealToPseudoOpcode(
-    "si-real-to-pseudo-opcode-map",
+    "gen-si-real-to-pseudo-opcode-map",
     llvm::cl::desc(
         "Generate a Real to Pseudo Opcode map for the AMDGPU backend"));
 
