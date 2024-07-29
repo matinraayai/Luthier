@@ -11,7 +11,7 @@
 #define DEBUG_TYPE "luthier-kernel-instrument-tool"
 
 using namespace luthier;
-//TODO: write the instruction counter tool
+// TODO: write the instruction counter tool
 
 MARK_LUTHIER_DEVICE_MODULE
 
@@ -49,33 +49,32 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           if (auto Err = LiftedKernel.takeError())
             llvm::report_fatal_error(std::move(Err), true);
 
-          // insert a hook after the first instruction of each basic block
-          for (const auto &[Func, MF] : LiftedKernel->functions()) {
-            MF->dump();
-          }
           llvm::SmallVector<
               std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>,
               1>
               SourceFiles;
-          auto InstrumentedLR =
-              luthier::instrument(*LiftedKernel,
-                                  [&](InstrumentationTask &IT,
-                                      LiftedRepresentation &LR) -> llvm::Error {
-                                    return llvm::Error::success();
-                                  });
-          if (auto Err = InstrumentedLR.takeError())
+          if (auto Err = luthier::instrumentAndLoad(
+              *KernelSymbol, *LiftedKernel,
+              [&](InstrumentationTask &IT,
+                  LiftedRepresentation &LR) -> llvm::Error {
+                // insert a hook after the first instruction of each basic block
+                for (auto &[Func, MF] : LR.functions()) {
+                  for (auto &MBB : *MF) {
+                    if (auto Err = IT.insertHookBefore(
+                            *MBB.begin(),
+                            LUTHIER_GET_HOOK_HANDLE(instrumentationHook))) {
+                      return Err;
+                    }
+                  }
+                }
+                return llvm::Error::success();
+              },
+              "instrumented")) {
             llvm::report_fatal_error(std::move(Err), true);
-          if (auto Err = luthier::printLiftedRepresentation(
-                  **InstrumentedLR, SourceFiles,
-                  llvm::CodeGenFileType::AssemblyFile))
-            llvm::report_fatal_error(std::move(Err), true);
-
-          for (const auto &[LCO, SourceFile] : SourceFiles) {
-            llvm::outs() << "Instrumented code object for LCO " << LCO.handle
-                         << "\n";
-            llvm::outs() << SourceFile;
-            llvm::outs() << "\n";
           }
+          if (auto Err =
+          overrideWithInstrumented(DispatchPacket, "instrumented"))
+            llvm::report_fatal_error(std::move(Err), true);
         }
       }
     }
