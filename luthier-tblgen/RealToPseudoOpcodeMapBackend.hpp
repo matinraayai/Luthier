@@ -16,39 +16,31 @@
 #include <llvm/TableGen/Error.h>
 #include <llvm/TableGen/Record.h>
 
-//===----------------------------------------------------------------------===//
-// class MapTableEmitter : It builds the instruction relation maps using
-// the information provided in InstrMapping records. It outputs these
-// relationship maps as tables into XXXGenInstrInfo.inc file along with the
-// functions to query them.
-
 namespace luthier {
-class MapTableEmitter {
+/// \brief Emits a map between real opcodes and their pseudo equivalent in
+/// the AMDGPU backend
+class RealToPseudoOpcodeMapEmitter {
 private:
-  //  std::string TargetName;
+  /// The CodeGen target class of the AMDGPU backend; Used to emit instruction
+  /// enums in order
   const llvm::CodeGenTarget &Target;
 
   /// A mapping between the pseudo inst string opcode and the SI Pseudo
   /// instruction
   llvm::StringMap<llvm::Record *> PseudoInsts;
 
-  /// Number of
-  unsigned int NumRealSIInsts{0};
-
 public:
-  MapTableEmitter(llvm::CodeGenTarget &Target, llvm::RecordKeeper &Records)
+  RealToPseudoOpcodeMapEmitter(llvm::CodeGenTarget &Target,
+                               llvm::RecordKeeper &Records)
       : Target(Target) {
     auto SIInsts = Records.getAllDerivedDefinitions("SIMCInstr");
     for (auto SIInst : SIInsts) {
-      // Find all pseudo SI instructions
+      // Find all pseudo SI instructions and store them in the PseudoInsts map
       bool IsPseudo =
           SIInst->getValue("isPseudo")->getValue()->getAsUnquotedString() ==
           "1";
       if (IsPseudo) {
-        PseudoInsts.insert(
-            {SIInst->getValueAsString("PseudoInstr"), SIInst});
-      } else {
-        NumRealSIInsts++;
+        PseudoInsts.insert({SIInst->getValueAsString("PseudoInstr"), SIInst});
       }
     }
   }

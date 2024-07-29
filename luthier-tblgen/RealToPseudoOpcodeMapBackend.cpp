@@ -16,7 +16,8 @@ namespace luthier {
 // Binary search is used for locating instructions in the table.
 //===----------------------------------------------------------------------===//
 
-unsigned MapTableEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
+unsigned
+RealToPseudoOpcodeMapEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
   llvm::ArrayRef<const llvm::CodeGenInstruction *> NumberedInstructions =
       Target.getInstructionsByEnumValue();
 
@@ -64,7 +65,7 @@ unsigned MapTableEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
 // relation tables.
 //===----------------------------------------------------------------------===//
 
-void MapTableEmitter::emitBinSearch(llvm::raw_ostream &OS, unsigned TableSize) {
+void RealToPseudoOpcodeMapEmitter::emitBinSearch(llvm::raw_ostream &OS, unsigned TableSize) {
   OS << "  unsigned mid;\n";
   OS << "  unsigned start = 0;\n";
   OS << "  unsigned end = " << TableSize << ";\n";
@@ -86,7 +87,7 @@ void MapTableEmitter::emitBinSearch(llvm::raw_ostream &OS, unsigned TableSize) {
 // Emit functions to query relation tables.
 //===----------------------------------------------------------------------===//
 
-void MapTableEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
+void RealToPseudoOpcodeMapEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
                                       unsigned TableSize) {
   // Emit binary search algorithm to locate instructions in the
   // relation table. If found, return opcode value from the appropriate column
@@ -102,7 +103,7 @@ void MapTableEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
 // Emit relation tables and the functions to query them.
 //===----------------------------------------------------------------------===//
 
-void MapTableEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
+void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
 
   // Emit function name and the input parameters : mostly opcode value of the
   // current instruction. However, if a table has multiple columns (more than 2
@@ -134,7 +135,7 @@ void EmitMapTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS) {
   // Iterate over all instruction mapping records and construct relationship
   // maps based on the information specified there.
   //
-  MapTableEmitter IMap(Target, Records);
+  RealToPseudoOpcodeMapEmitter IMap(Target, Records);
 
   // Emit map tables and the functions to query them.
   IMap.emitTablesWithFunc(OS);

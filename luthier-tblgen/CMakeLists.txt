@@ -1,7 +1,6 @@
 include(AddLLVM)
 include(TableGen)
 
-
 add_tablegen(luthier-tblgen luthier
         RealToPseudoOpcodeMapBackend.hpp
         RealToPseudoOpcodeMapBackend.cpp
