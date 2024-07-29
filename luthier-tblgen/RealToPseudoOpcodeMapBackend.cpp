@@ -1,6 +1,13 @@
 //===- RealToPseudoOpcodeMapBackend.cpp - Real To Pseudo Opcode Map  ------===//
 //
 //===----------------------------------------------------------------------===//
+///
+/// \file
+/// Contains implementation for the real to pseudo opcode tablegen backend
+/// for the Luthier tablegen. It is inspired by the InstrMap class in tablegen,
+/// except modified to handle cases where real opcodes don't have a pseudo
+/// equivalent, or when the same real instructions has multiple pseudo opcodes.
+//===----------------------------------------------------------------------===//
 
 #include "RealToPseudoOpcodeMapBackend.hpp"
 #include <Common/CodeGenInstruction.h>
@@ -9,12 +16,6 @@
 #include <llvm/TableGen/Record.h>
 
 namespace luthier {
-
-//===----------------------------------------------------------------------===//
-// Emit one table per relation. Only instructions with a valid relation of a
-// given type are included in the table sorted by their enum values (opcodes).
-// Binary search is used for locating instructions in the table.
-//===----------------------------------------------------------------------===//
 
 unsigned
 RealToPseudoOpcodeMapEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
@@ -60,12 +61,8 @@ RealToPseudoOpcodeMapEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
   return TableSize;
 }
 
-//===----------------------------------------------------------------------===//
-// Emit binary search algorithm as part of the functions used to query
-// relation tables.
-//===----------------------------------------------------------------------===//
-
-void RealToPseudoOpcodeMapEmitter::emitBinSearch(llvm::raw_ostream &OS, unsigned TableSize) {
+void RealToPseudoOpcodeMapEmitter::emitBinSearch(llvm::raw_ostream &OS,
+                                                 unsigned TableSize) {
   OS << "  unsigned mid;\n";
   OS << "  unsigned start = 0;\n";
   OS << "  unsigned end = " << TableSize << ";\n";
@@ -83,12 +80,8 @@ void RealToPseudoOpcodeMapEmitter::emitBinSearch(llvm::raw_ostream &OS, unsigned
   OS << "    return -1; // Instruction doesn't exist in this table.\n\n";
 }
 
-//===----------------------------------------------------------------------===//
-// Emit functions to query relation tables.
-//===----------------------------------------------------------------------===//
-
 void RealToPseudoOpcodeMapEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
-                                      unsigned TableSize) {
+                                                   unsigned TableSize) {
   // Emit binary search algorithm to locate instructions in the
   // relation table. If found, return opcode value from the appropriate column
   // of the table.
@@ -99,17 +92,7 @@ void RealToPseudoOpcodeMapEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
   OS << "}\n\n";
 }
 
-//===----------------------------------------------------------------------===//
-// Emit relation tables and the functions to query them.
-//===----------------------------------------------------------------------===//
-
 void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
-
-  // Emit function name and the input parameters : mostly opcode value of the
-  // current instruction. However, if a table has multiple columns (more than 2
-  // since first column is used for the key instructions), then we also need
-  // to pass another input to indicate the column to be selected.
-
   OS << "LLVM_READONLY\n";
   OS << "uint16_t getPseudoOpcodeFromReal (uint16_t Opcode) {\n";
 
@@ -120,11 +103,6 @@ void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   emitMapFuncBody(OS, TableSize);
 }
 
-//===----------------------------------------------------------------------===//
-// Parse 'InstrMapping' records and use the information to form relationship
-// between instructions. These relations are emitted as a tables along with the
-// functions to query them.
-//===----------------------------------------------------------------------===//
 void EmitMapTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS) {
   llvm::CodeGenTarget Target(Records);
 
@@ -132,9 +110,6 @@ void EmitMapTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS) {
   OS << "#undef GET_INSTRMAP_INFO\n";
   OS << "namespace luthier {\n\n";
 
-  // Iterate over all instruction mapping records and construct relationship
-  // maps based on the information specified there.
-  //
   RealToPseudoOpcodeMapEmitter IMap(Target, Records);
 
   // Emit map tables and the functions to query them.
