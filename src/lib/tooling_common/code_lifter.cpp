@@ -1,5 +1,7 @@
 #include "tooling_common/code_lifter.hpp"
 
+#include "LuthierRealToPseudoOpcodeMap.hpp"
+
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
@@ -611,7 +613,7 @@ llvm::Error CodeLifter::liftFunction(
   for (unsigned int InstIdx = 0; InstIdx < TargetFunction->size(); InstIdx++) {
     const auto &Inst = (*TargetFunction)[InstIdx];
     auto MCInst = Inst.getMCInst();
-    const unsigned Opcode = MCInst.getOpcode();
+    const unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =

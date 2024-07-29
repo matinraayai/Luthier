@@ -1,7 +1,7 @@
 # Add target to generate real to pseudo opcode map and the function to query it
 set(luthier_tooling_common_TABLEGEN_EXE luthier-tblgen)
 set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td")
-tablegen(luthier_tooling_common LuthierRealToPseudoOpcodeMap.inc -gen-si-real-to-pseudo-opcode-map EXTRA_INCLUDES
+tablegen(luthier_tooling_common LuthierRealToPseudoOpcodeMap.hpp -gen-si-real-to-pseudo-opcode-map EXTRA_INCLUDES
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 add_public_tablegen_target(LuthierRealToPseudoOpcodeMap)
 
