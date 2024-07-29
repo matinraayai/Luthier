@@ -3,9 +3,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains utility functions used to clone LLVM MIR constructs,
-/// used frequently by Luthier components involved in the code generation
-/// process. It is essentially a modified version of llvm-reduce.
+/// This file contains the main function for the Luthier tablegen utility
 //===----------------------------------------------------------------------===//
 #include <llvm/Support/CommandLine.h>
 #include <llvm/TableGen/Main.h>
