@@ -49,12 +49,8 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           if (auto Err = LiftedKernel.takeError())
             llvm::report_fatal_error(std::move(Err), true);
 
-          llvm::SmallVector<
-              std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>,
-              1>
-              SourceFiles;
           if (auto Err = luthier::instrumentAndLoad(
-              *KernelSymbol, *LiftedKernel,
+              Exec, *LiftedKernel,
               [&](InstrumentationTask &IT,
                   LiftedRepresentation &LR) -> llvm::Error {
                 // insert a hook after the first instruction of each basic block

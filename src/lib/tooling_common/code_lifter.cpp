@@ -8,6 +8,7 @@
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/BinaryFormat/MsgPackDocument.h>
 #include <llvm/CodeGen/AsmPrinter.h>
+#include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
@@ -395,6 +396,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
     // For now, we only rely on required argument metadata
     // This should be updated as new cases are encountered
     for (const auto &ArgMD : *KernelMD->Args) {
+      LLVM_DEBUG(llvm::dbgs() << "Argument size: " << ArgMD.Size << "\n");
       llvm::Type *ParamType =
           llvm::Type::getIntNTy(Module.getContext(), ArgMD.Size);
       // if argument is not passed by value, then it's probably a pointer
@@ -663,9 +665,7 @@ llvm::Error CodeLifter::liftFunction(
                                              MCID.isIndirectBranch()););
 
     if (IsDirectBranchTarget) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "Instruction is a branch target.\n";);
+      LLVM_DEBUG(llvm::dbgs() << "Instruction is a branch target.\n";);
       if (!MBB->empty()) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Current MBB is not empty; Creating a new basic block\n");
@@ -881,7 +881,19 @@ llvm::Error CodeLifter::liftFunction(
   MF.getRegInfo().freezeReservedRegs();
 
   llvm::fullyRecomputeLiveIns(MBBs);
-  // Add the Live-ins to the first MBB
+
+  // Manually set the stack frame size
+  // TODO: might need to explicitly create stack objects if the lifted
+  // representation needs to go through frame lowering
+  auto KernelMD = Symbol.getKernelMetadata();
+  LUTHIER_RETURN_ON_ERROR(KernelMD.takeError());
+  LLVM_DEBUG(llvm::dbgs() << "Stack size according to the metadata: "
+                          << KernelMD->PrivateSegmentFixedSize << "\n");
+  if (KernelMD->PrivateSegmentFixedSize != 0) {
+    MF.getFrameInfo().CreateFixedObject(KernelMD->PrivateSegmentFixedSize, 0,
+                                        true);
+    MF.getFrameInfo().setStackSize(KernelMD->PrivateSegmentFixedSize);
+  }
 
   // Populate the properties of MF
   llvm::MachineFunctionProperties &Properties = MF.getProperties();

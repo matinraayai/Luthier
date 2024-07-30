@@ -95,7 +95,8 @@ public:
   /// external variables of the instrumented code objects
   /// \return an \p llvm::Error if an issue was encountered in the process
   llvm::Error loadInstrumentedExecutable(
-      llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::ArrayRef<uint8_t>>>
+      llvm::ArrayRef<
+          std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
           InstrumentedElfs,
       llvm::StringRef Preset,
       llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, void *>>

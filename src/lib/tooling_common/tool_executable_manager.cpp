@@ -186,7 +186,7 @@ llvm::Error ToolExecutableManager::loadInstrumentedKernel(
 }
 
 llvm::Error ToolExecutableManager::loadInstrumentedExecutable(
-    llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::ArrayRef<uint8_t>>>
+    llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
         InstrumentedElfs,
     llvm::StringRef Preset,
     llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, void *>>

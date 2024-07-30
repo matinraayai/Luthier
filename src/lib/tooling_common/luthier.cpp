@@ -212,8 +212,62 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
                                                  LiftedRepresentation &)>
                       Mutator,
                   llvm::StringRef Preset) {
+  // Instrument the lifted representation
+  auto InstrumentedLR = CodeGenerator::instance().instrument(LR, Mutator);
+  LUTHIER_RETURN_ON_ERROR(InstrumentedLR.takeError());
 
-  return llvm::Error::success();
+  // Print the assembly files of the Instrumented LR
+  llvm::SmallVector<
+      std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
+      Relocatables;
+
+  LUTHIER_RETURN_ON_ERROR(printLiftedRepresentation(
+      **InstrumentedLR, Relocatables, llvm::CodeGenFileType::ObjectFile));
+
+  // Link the object files into executables
+  llvm::SmallVector<
+      std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>, 1>
+      Executables;
+  for (const auto &[LCO, Relocatable] : Relocatables) {
+    llvm::SmallVector<uint8_t> Executable;
+    auto ISA = hsa::LoadedCodeObject(LCO).getISA();
+    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+    LUTHIER_RETURN_ON_ERROR(CodeGenerator::linkRelocatableToExecutable(
+        Relocatable, *ISA, Executable));
+    Executables.emplace_back(LCO, Executable);
+  }
+  // Create a set of extern variables used in the instrumented code
+  hsa::Executable ExecWrapper(Exec);
+
+  llvm::SmallVector<std::tuple<hsa::GpuAgent, llvm::StringRef, void *>>
+      ExternVariables;
+  // set of static variables used in the original kernel itself
+  for (const auto &[Symbol, GV] : LR.globals()) {
+    auto SymbolWrapper = hsa::ExecutableSymbol::fromHandle(Symbol);
+    LUTHIER_RETURN_ON_ERROR(SymbolWrapper.takeError());
+    ExternVariables.emplace_back(llvm::cantFail(SymbolWrapper->getAgent()),
+                                 llvm::cantFail(SymbolWrapper->getName()),
+                                 reinterpret_cast<void *>(llvm::cantFail(
+                                     SymbolWrapper->getVariableAddress())));
+  }
+  // Get all the Agents involved in this executable
+  llvm::SmallDenseSet<hsa::GpuAgent, 4> Agents;
+  for (const auto &[LCO, ELF] : Executables) {
+    Agents.insert(llvm::cantFail(LCO.getAgent()));
+  }
+  auto &TEM = ToolExecutableManager::instance();
+  const auto &SIM = TEM.getStaticInstrumentationModule();
+  // Set of static variables used in the instrumentation module
+  for (const auto &GVName : SIM.getGlobalVariableNames()) {
+    for (const auto &Agent : Agents) {
+      auto VarAddress = SIM.getGlobalVariablesLoadedOnAgent(GVName, Agent);
+      LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VarAddress->has_value()));
+      ExternVariables.emplace_back(Agent, GVName,
+                                   reinterpret_cast<void *>(**VarAddress));
+    }
+  }
+  return TEM.loadInstrumentedExecutable(Executables, Preset, ExternVariables);
 }
 
 llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
