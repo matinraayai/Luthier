@@ -25,7 +25,9 @@ static void cloneFrameInfo(
   DstMFI.ensureMaxAlignment(SrcMFI.getMaxAlign());
   assert(DstMFI.getMaxAlign() == SrcMFI.getMaxAlign() &&
          "we need to set exact alignment");
-
+  // If the stack size is already estimated, set it in the destination as well
+  if (SrcMFI.getStackSize() != 0)
+    DstMFI.setStackSize(SrcMFI.getStackSize());
   DstMFI.setAdjustsStack(SrcMFI.adjustsStack());
   DstMFI.setHasCalls(SrcMFI.hasCalls());
   DstMFI.setHasOpaqueSPAdjustment(SrcMFI.hasOpaqueSPAdjustment());

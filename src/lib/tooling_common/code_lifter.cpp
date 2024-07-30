@@ -883,8 +883,7 @@ llvm::Error CodeLifter::liftFunction(
   llvm::fullyRecomputeLiveIns(MBBs);
 
   // Manually set the stack frame size
-  // TODO: might need to explicitly create stack objects if the lifted
-  // representation needs to go through frame lowering
+  // TODO: dynamic stack kernels
   auto KernelMD = Symbol.getKernelMetadata();
   LUTHIER_RETURN_ON_ERROR(KernelMD.takeError());
   LLVM_DEBUG(llvm::dbgs() << "Stack size according to the metadata: "
@@ -893,6 +892,8 @@ llvm::Error CodeLifter::liftFunction(
     MF.getFrameInfo().CreateFixedObject(KernelMD->PrivateSegmentFixedSize, 0,
                                         true);
     MF.getFrameInfo().setStackSize(KernelMD->PrivateSegmentFixedSize);
+    LLVM_DEBUG(llvm::dbgs()
+               << "Stack size: " << MF.getFrameInfo().getStackSize() << "\n");
   }
 
   // Populate the properties of MF
