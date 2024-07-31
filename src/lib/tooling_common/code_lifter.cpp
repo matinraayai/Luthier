@@ -215,7 +215,7 @@ luthier::CodeLifter::disassemble(const hsa::ExecutableSymbol &Symbol) {
     auto MII = TargetInfo->getMCInstrInfo();
     auto MIA = TargetInfo->getMCInstrAnalysis();
 
-    luthier::address_t BaseLoadedAddress =
+    auto BaseLoadedAddress =
         reinterpret_cast<luthier::address_t>(MachineCodeOnDevice->data());
 
     luthier::address_t PrevInstAddress = BaseLoadedAddress;
@@ -437,8 +437,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
 
   F->addFnAttr(
       "amdgpu-lds-size",
-      llvm::formatv("0, {0}", (*KDOnHost)->GroupSegmentFixedSize).str());
-  // Private (scratch) segment size is determined by Analysis Usage pass
+      llvm::to_string((*KDOnHost)->GroupSegmentFixedSize));
   // Kern Arg is determined via analysis usage + args set earlier
   auto Rsrc1 = (*KDOnHost)->getRsrc1();
   auto Rsrc2 = (*KDOnHost)->getRsrc2();
@@ -481,7 +480,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   // TODO: Set the rest of the attributes
   //    llvm::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload <<
   //    "\n";
-  F->addFnAttr("amdgpu-calls");
+  //  F->addFnAttr("amdgpu-calls");
   // Add dummy IR instructions ===============================================
   // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
   // won't run

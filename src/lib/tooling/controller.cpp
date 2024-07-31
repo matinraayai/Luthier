@@ -5,9 +5,10 @@
 #include "luthier/hip_trace_api.h"
 #include "tooling_common/code_generator.hpp"
 #include "tooling_common/code_lifter.hpp"
+#include "tooling_common/intrinsic/ReadReg.hpp"
+#include "tooling_common/intrinsic/WriteReg.hpp"
 #include "tooling_common/target_manager.hpp"
 #include "tooling_common/tool_executable_manager.hpp"
-#include "tooling_common/intrinsic/ReadReg.hpp"
 
 #include "luthier/luthier.h"
 #include "luthier/types.h"
@@ -157,7 +158,10 @@ Controller::Controller()
   CL = new CodeLifter();
   HipInterceptor = new hip::Interceptor();
   // Register Luthier intrinsics with the Code Generator
-  CG->registerIntrinsic("luthier::readReg", {readRegIRProcessor, readRegMIRProcessor});
+  CG->registerIntrinsic("luthier::readReg",
+                        {readRegIRProcessor, readRegMIRProcessor});
+  CG->registerIntrinsic("luthier::writeReg",
+                        {writeRegIRProcessor, writeRegMIRProcessor});
 }
 
 Controller::~Controller() {

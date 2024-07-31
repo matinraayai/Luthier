@@ -16,6 +16,7 @@ add_library(luthier_tooling_common STATIC
         instrumentation_module.cpp
         intrinsic/IntrinsicLoweringInfo.cpp
         intrinsic/ReadReg.cpp
+        intrinsic/WriteReg.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
