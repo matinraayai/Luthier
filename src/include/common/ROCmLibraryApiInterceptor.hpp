@@ -1,28 +1,28 @@
-//===-- Interceptor.hpp - Luthier's API Table Interceptor Interface -------===//
+//===-- ROCmLibraryApiInterceptor.hpp - ROCMm Interceptor Interface -------===//
 //
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains Luthier's API table interceptor interface,
+/// This file contains Luthier's ROCm library API table interceptor interface,
 /// which provides the basics of all other API table interceptor singletons
 /// in Luthier.
 //===----------------------------------------------------------------------===//
 
-#ifndef LUTHIER_COMMON_INTERCEPT_HPP
-#define LUTHIER_COMMON_INTERCEPT_HPP
+#ifndef LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
+#define LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
 
-#include <atomic>
 #include <functional>
 #include <llvm/ADT/DenseSet.h>
 #include <shared_mutex>
 
+#include "common/error.hpp"
 #include <luthier/llvm_dense_map_info.h>
 
 namespace luthier {
 
 template <typename ApiIDEnumType, typename ApiArgsType, typename ApiTableType,
           typename ApiTableContainerType>
-class Interceptor {
+class ROCmLibraryApiInterceptor {
 public:
   /// typedef for the callback functions used by the interceptor
   typedef std::function<void(ApiArgsType *, const ApiEvtPhase,
@@ -38,20 +38,22 @@ protected:
   /// functions; Depending on the runtime, its type can be the same as the
   /// \c ApiTableType
   ApiTableContainerType SavedRuntimeApiTable{};
-  /// Set of API functions set to be intercepted by the user of the tool
-  llvm::DenseSet<ApiIDEnumType> EnabledUserOps{};
   /// Mutex to protect \c EnabledUserOps, \c EnabledInternalOps, and enabling
   /// disabling capturing of each Op
-  std::shared_mutex OpSwitchMutex;
+  std::shared_mutex EnabledOpsMutex;
+  /// Set of API functions set to be intercepted by the user of the tool
+  llvm::DenseSet<ApiIDEnumType> EnabledUserOps{};
   /// Set of API functions set to be intercepted by Luthier internally
   llvm::DenseSet<ApiIDEnumType> EnabledInternalOps{};
+  /// Mutex to protect Callback functions
+  std::shared_mutex CallbackMutex;
   /// Callback requested by the user to be performed on interception of each
   /// enabled API
-  std::atomic<callback_t> UserCallback{
+  callback_t UserCallback{
       [](ApiArgsType *, const luthier::ApiEvtPhase, const ApiIDEnumType) {}};
   /// Callback requested by Luthier internally to be performed on interception
   /// of each enabled API
-  std::atomic<callback_t> InternalCallback{
+  callback_t InternalCallback{
       [](ApiArgsType *, const luthier::ApiEvtPhase, const ApiIDEnumType) {}};
   /// Ensures the \c freezeRuntimeApiTable will be performed only once
   std::once_flag FreezeRuntimeApiTableFlag{};
@@ -59,11 +61,12 @@ protected:
   bool IsRuntimeApiTableFrozen{false};
 
 public:
-  Interceptor() = default;
-  ~Interceptor() = default;
+  ROCmLibraryApiInterceptor() = default;
+  ~ROCmLibraryApiInterceptor() = default;
 
-  Interceptor(const Interceptor &) = delete;
-  Interceptor &operator=(const Interceptor &) = delete;
+  ROCmLibraryApiInterceptor(const ROCmLibraryApiInterceptor &) = delete;
+  ROCmLibraryApiInterceptor &
+  operator=(const ROCmLibraryApiInterceptor &) = delete;
 
   /// \return a const reference to the saved API table container with
   /// the "actual" API functions
@@ -74,21 +77,38 @@ public:
   /// Sets the callback function \p CB to be performed on each captured API
   /// for the user of the Luthier tool
   /// \param CB callback to be performed
-  void setUserCallback(const callback_t &CB) { UserCallback = CB; }
+  /// \note this function acquires a unique lock over the callback
+  /// mutex; Hence any read locks over the callbacks must be released first
+  void setUserCallback(const callback_t &CB) {
+    std::unique_lock Lock(CallbackMutex);
+    UserCallback = CB;
+  }
 
   /// Sets the callback function \p CB to be performed on each captured API
   /// internally by Luthier
   /// \param CB callback to be performed
-  void setInternalCallback(const callback_t &CB) { InternalCallback = CB; }
+  /// \note this function acquires a unique lock over the callback
+  /// mutex; Hence any read locks over the callbacks must be released first
+  void setInternalCallback(const callback_t &CB) {
+    std::unique_lock Lock(CallbackMutex);
+    InternalCallback = CB;
+  }
 
   /// \return a reference to the user callback
-  [[nodiscard]] const inline callback_t &getUserCallback() const {
-    return UserCallback.load(std::memory_order_relaxed);
+  /// \note this function is not thread-safe; Call
+  [[nodiscard]] const inline std::pair<callback_t &,
+                                       std::shared_lock<std::shared_mutex>> &
+  getUserCallback() const {
+    std::shared_lock Lock(CallbackMutex);
+    return {UserCallback, std::move(Lock)};
   }
 
   /// \return a reference to the internal Luthier callback
-  [[nodiscard]] const inline callback_t &getInternalCallback() const {
-    return InternalCallback.load(std::memory_order_relaxed);
+  [[nodiscard]] const inline std::pair<callback_t &,
+                                       std::shared_lock<std::shared_mutex>> &
+  getInternalCallback() const {
+    std::shared_lock Lock(CallbackMutex);
+    return {InternalCallback, std::move(Lock)};
   }
 
   /// Checks if the Luthier tool user will get a callback every time a function
@@ -96,7 +116,7 @@ public:
   /// \param Op the API enum queried
   /// \return true if the Luthier tool user will get a callback, false otherwise
   [[nodiscard]] bool isUserCallbackEnabled(ApiIDEnumType Op) const {
-    std::shared_lock Lock(OpSwitchMutex);
+    std::shared_lock Lock(EnabledOpsMutex);
     return EnabledUserOps.contains(Op);
   }
 
@@ -105,7 +125,7 @@ public:
   /// \param Op the API enum queried
   /// \return true if the Luthier tool will get a callback, false otherwise
   [[nodiscard]] bool isInternalCallbackEnabled(ApiIDEnumType Op) const {
-    std::shared_lock Lock(OpSwitchMutex);
+    std::shared_lock Lock(EnabledOpsMutex);
     return EnabledInternalOps.contains(Op);
   }
 
@@ -147,14 +167,15 @@ public:
   /// Disables callbacks for the Luthier tool internally every time the API of
   /// type \p Op is captured by the interceptor
   /// \param Op the API enum to be captured
-  virtual void
-  disableInternalCallback(ApiIDEnumType Op) = 0;
+  virtual void disableInternalCallback(ApiIDEnumType Op) = 0;
 
   /// Called by rocprofiler when the API table of choice has been captured and
   /// passed to Luthier
   /// \param Table the pointer to the API table the target runtime uses to
   /// dispatch functions
-  virtual void captureApiTable(ApiTableType *Table) = 0;
+  /// \returns an \c llvm::Error describing if the operation was successful or
+  /// not
+  virtual llvm::Error captureApiTable(ApiTableType *Table) = 0;
 };
 
 } // namespace luthier
