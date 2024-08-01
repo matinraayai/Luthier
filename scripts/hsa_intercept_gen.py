@@ -1,19 +1,16 @@
 # !/usr/bin/env python3
 import os
-import io
-import re
 
 import argparse
 
-from cxxheaderparser.simple import parse_string, ClassScope, ParsedData, Function
+from cxxheaderparser.simple import ClassScope, ParsedData, Function
 import cxxheaderparser.types as cxx_types
-from header_preprocessor import ROCmPreprocessor
+from header_preprocessor import parse_header_file
 from typing import *
 
 
 def parse_and_validate_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser("HSA API interception generation script for Luthier; Originally used by AMD in "
-                                     "the Roctracer project")
+    parser = argparse.ArgumentParser("HSA API interception generation script for Luthier")
     parser.add_argument("--hsa-include-dir", type=str,
                         default="/opt/rocm/include/hsa",
                         help="location of the HSA include directory")
@@ -28,30 +25,13 @@ def parse_and_validate_args() -> argparse.Namespace:
     return args
 
 
-def parse_header_file(header_file: str) -> ParsedData:
-    preprocessor = ROCmPreprocessor()
-    preprocessor.line_directive = None
-    preprocessor.passthru_unfound_includes = True
-    preprocessor.passthru_includes = re.compile(r".*")
-    preprocessor.define("__GNUC__")
-    preprocessor.define("LITTLEENDIAN_CPU")
-    preprocessor.define("_M_X64")
-    preprocessor.define("__inline__ __attribute__((always_inline))")
-    api_tables = {}
-    with open(header_file, 'r') as hf:
-        preprocessor.parse(hf)
-        str_io = io.StringIO()
-        preprocessor.write(str_io)
-    preprocessed_header = str_io.getvalue()
-    parsed = parse_string(preprocessed_header)
-    str_io.close()
-    return parsed
+defines = ("__GNUC__", "LITTLEENDIAN_CPU", "_M_X64", "__inline__ __attribute__((always_inline))")
 
 
 def parse_hsa_functions(header_files: Iterable[str]) -> dict[str, Function]:
     functions = {}
     for header in header_files:
-        phf = parse_header_file(header)
+        phf = parse_header_file(header, defines)
         for f in phf.namespace.functions:
             functions[f.name.segments[0].name] = f
     return functions
@@ -87,7 +67,7 @@ def main():
     # It maps the name of the function (e.g. hsa_init) to its cxxheaderparser Function type
     hsa_functions = parse_hsa_functions(hsa_include_files)
 
-    parsed_api_trace_header = parse_header_file(os.path.join(args.hsa_include_dir, "hsa_api_trace.h"))
+    parsed_api_trace_header = parse_header_file(os.path.join(args.hsa_include_dir, "hsa_api_trace.h"), defines)
 
     # Parse the API tables in hsa_api_trace.h
     api_tables = get_api_tables(parsed_api_trace_header, api_table_names)
