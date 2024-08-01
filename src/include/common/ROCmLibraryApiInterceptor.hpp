@@ -40,13 +40,13 @@ protected:
   ApiTableContainerType SavedRuntimeApiTable{};
   /// Mutex to protect \c EnabledUserOps, \c EnabledInternalOps, and enabling
   /// disabling capturing of each Op
-  std::shared_mutex EnabledOpsMutex;
+  mutable std::shared_mutex EnabledOpsMutex;
   /// Set of API functions set to be intercepted by the user of the tool
   llvm::DenseSet<ApiIDEnumType> EnabledUserOps{};
   /// Set of API functions set to be intercepted by Luthier internally
   llvm::DenseSet<ApiIDEnumType> EnabledInternalOps{};
   /// Mutex to protect Callback functions
-  std::shared_mutex CallbackMutex;
+  mutable std::shared_mutex CallbackMutex;
   /// Callback requested by the user to be performed on interception of each
   /// enabled API
   callback_t UserCallback{
@@ -96,19 +96,19 @@ public:
 
   /// \return a reference to the user callback
   /// \note this function is not thread-safe; Call
-  [[nodiscard]] const inline std::pair<callback_t &,
-                                       std::shared_lock<std::shared_mutex>> &
+  [[nodiscard]] inline std::pair<const callback_t *,
+                                 std::shared_lock<std::shared_mutex>>
   getUserCallback() const {
     std::shared_lock Lock(CallbackMutex);
-    return {UserCallback, std::move(Lock)};
+    return std::make_pair(&UserCallback, std::move(Lock));
   }
 
   /// \return a reference to the internal Luthier callback
-  [[nodiscard]] const inline std::pair<callback_t &,
-                                       std::shared_lock<std::shared_mutex>> &
+  [[nodiscard]] inline std::pair<const callback_t *,
+                                 std::shared_lock<std::shared_mutex>>
   getInternalCallback() const {
     std::shared_lock Lock(CallbackMutex);
-    return {InternalCallback, std::move(Lock)};
+    return std::make_pair(&InternalCallback, std::move(Lock));
   }
 
   /// Checks if the Luthier tool user will get a callback every time a function
@@ -149,20 +149,36 @@ public:
                    [&]() { IsRuntimeApiTableFrozen = true; });
   }
 
-  /// Enables callbacks for the Luthier tool user every time the API of
-  /// type \p Op is captured by the interceptor
+  /// If successful, enables callbacks for the Luthier tool user every time the
+  /// API of type \p Op is captured by the interceptor
+  /// \note This function is almost certain to be successful if called before the
+  /// runtime api table is frozen; After freezing the api table however, if the
+  /// \p Op has not been set to be captured before (either internally by
+  /// Luthier or externally by the tool user), it will fail. This is because
+  /// at that point, it will be too late to install a wrapper function for the
+  /// \p Op
   /// \param Op the API enum to be captured
-  virtual void enableUserCallback(ApiIDEnumType Op) = 0;
+  /// \returns true if the callback has been successfully enabled; false if
+  /// the API table has been frozen and a wrapper cannot be installed
+  virtual bool enableUserCallback(ApiIDEnumType Op) = 0;
 
   /// Disables callbacks for the Luthier tool user every time the API of
   /// type \p Op is captured by the interceptor
   /// \param Op the API enum to be captured
   virtual void disableUserCallback(ApiIDEnumType Op) = 0;
 
-  /// Enables callbacks for the Luthier tool internally every time the API of
-  /// type \p Op is captured by the interceptor
+  /// If successful, enables callbacks for the Luthier tool internally every time
+  /// the API of type \p Op is captured by the interceptor
+  /// \note This function is almost certain to be successful if called before the
+  /// runtime api table is frozen; After freezing the api table however, if the
+  /// \p Op has not been set to be captured before (either internally by
+  /// Luthier or externally by the tool user), it will fail. This is because
+  /// at that point, it will be too late to install a wrapper function for the
+  /// \p Op
   /// \param Op the API enum to be captured
-  virtual void enableInternalCallback(ApiIDEnumType Op) = 0;
+  /// \returns true if the callback has been successfully enabled; false if
+  /// the API table has been frozen and a wrapper cannot be installed
+  virtual bool enableInternalCallback(ApiIDEnumType Op) = 0;
 
   /// Disables callbacks for the Luthier tool internally every time the API of
   /// type \p Op is captured by the interceptor
