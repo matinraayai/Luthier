@@ -51,11 +51,11 @@ public:
     *RuntimeApiTable->image_ext_ = SavedRuntimeApiTable.image_ext;
   }
 
-  void enableUserCallback(ApiEvtID Op);
+  bool enableUserCallback(ApiEvtID Op);
 
   void disableUserCallback(ApiEvtID Op);
 
-  void enableInternalCallback(ApiEvtID Op);
+  bool enableInternalCallback(ApiEvtID Op);
 
   void disableInternalCallback(ApiEvtID Op);
 
