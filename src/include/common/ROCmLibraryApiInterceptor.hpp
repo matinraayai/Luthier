@@ -1,4 +1,4 @@
-//===-- ROCmLibraryApiInterceptor.hpp - ROCMm Interceptor Interface -------===//
+//===-- ROCmLibraryApiInterceptor.hpp - ROCm Interceptor Interface --------===//
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -31,6 +31,20 @@ public:
       callback_t;
 
 protected:
+  enum InterceptorStatus {
+    WAITING_FOR_API_TABLE, ///< At this state the API table has not been
+                           ///< captured by the interceptor, and \c
+                           ///< RuntimeApiTable is
+                           ///< \c nullptr
+    API_TABLE_CAPTURED,    ///< At this state the API table has been captured
+                           ///< by the interceptor, and \c RuntimeApiTable is
+                           /// < not \c nullptr. It is safe to install/uninstall
+                           /// < wrapper functions
+    FROZEN,                ///< API calls have been made and done in the target
+                            ///< runtime, hence it is not safe to modify the
+                            ///< \c RuntimeApiTable
+  };
+
   /// Pointer to where the intercepted runtime stores the API table;
   /// Modifying fields of this struct will cause the intercepted runtime to call
   /// different functions
@@ -58,8 +72,8 @@ protected:
       [](ApiArgsType *, const luthier::ApiEvtPhase, const ApiIDEnumType) {}};
   /// Ensures the \c freezeRuntimeApiTable will be performed only once
   std::once_flag FreezeRuntimeApiTableFlag{};
-  /// Keeps track of whether the runtime API table has been frozen or not
-  bool IsRuntimeApiTableFrozen{false};
+  /// Keeps track of the status of the interceptor
+  InterceptorStatus Status{WAITING_FOR_API_TABLE};
 
 public:
   ROCmLibraryApiInterceptor() = default;
@@ -146,45 +160,52 @@ public:
   /// also be invoked manually. \n
   /// Subsequent calls to this function does not do anything
   void freezeRuntimeApiTable() {
-    std::call_once(FreezeRuntimeApiTableFlag,
-                   [&]() { IsRuntimeApiTableFrozen = true; });
+    std::call_once(FreezeRuntimeApiTableFlag, [&]() { Status = FROZEN; });
   }
 
   /// If successful, enables callbacks for the Luthier tool user every time the
   /// API of type \p Op is captured by the interceptor
-  /// \note This function is almost certain to be successful if called before the
-  /// runtime api table is frozen; After freezing the api table however, if the
-  /// \p Op has not been set to be captured before (either internally by
-  /// Luthier or externally by the tool user), it will fail. This is because
-  /// at that point, it will be too late to install a wrapper function for the
-  /// \p Op
+  /// \note This function is almost certain to be successful if called before
+  /// the runtime api table is frozen and after the API table has been captured;
+  /// After freezing the api table however, if the \p Op has not been set to
+  /// be captured before (either internally by Luthier or externally by the tool
+  /// user), it will fail. This is because at that point, it will be too late
+  /// to install a wrapper function for the \p Op. The function fails if
+  /// the API table has not been captured yet
   /// \param Op the API enum to be captured
-  /// \returns true if the callback has been successfully enabled; false if
-  /// the API table has been frozen and a wrapper cannot be installed
-  virtual bool enableUserCallback(ApiIDEnumType Op) = 0;
+  /// \returns an \c llvm::Error indicating whether the callback has been
+  /// successfully enabled or an issue was encountered during the
+  /// process
+  virtual llvm::Error enableUserCallback(ApiIDEnumType Op) = 0;
 
   /// Disables callbacks for the Luthier tool user every time the API of
   /// type \p Op is captured by the interceptor
+  /// \note this function will fail if the API table has not been captured
+  /// by the interceptor
   /// \param Op the API enum to be captured
   virtual void disableUserCallback(ApiIDEnumType Op) = 0;
 
-  /// If successful, enables callbacks for the Luthier tool internally every time
-  /// the API of type \p Op is captured by the interceptor
-  /// \note This function is almost certain to be successful if called before the
-  /// runtime api table is frozen; After freezing the api table however, if the
-  /// \p Op has not been set to be captured before (either internally by
-  /// Luthier or externally by the tool user), it will fail. This is because
-  /// at that point, it will be too late to install a wrapper function for the
-  /// \p Op
+  /// If successful, enables callbacks for the Luthier tool internally every
+  /// time the API of type \p Op is captured by the interceptor
+  /// \note This function is almost certain to be successful if called before
+  /// the runtime api table is frozen and after the API table has been captured;
+  /// After freezing the api table however, if the \p Op has not been set to
+  /// be captured before (either internally by Luthier or externally by the tool
+  /// user), it will fail. This is because at that point, it will be too late
+  /// to install a wrapper function for the \p Op. The function fails if
+  /// the API table has not been captured yet
   /// \param Op the API enum to be captured
-  /// \returns true if the callback has been successfully enabled; false if
-  /// the API table has been frozen and a wrapper cannot be installed
-  virtual bool enableInternalCallback(ApiIDEnumType Op) = 0;
+  /// \returns an \c llvm::Error indicating whether the callback has been
+  /// successfully enabled or an issue was encountered during the
+  /// process
+  virtual llvm::Error enableInternalCallback(ApiIDEnumType Op) = 0;
 
   /// Disables callbacks for the Luthier tool internally every time the API of
   /// type \p Op is captured by the interceptor
+  /// \note this function will fail if the API table has not been captured
+  /// by the interceptor
   /// \param Op the API enum to be captured
-  virtual void disableInternalCallback(ApiIDEnumType Op) = 0;
+  virtual llvm::Error disableInternalCallback(ApiIDEnumType Op) = 0;
 
   /// Called by rocprofiler when the API table of choice has been captured and
   /// passed to Luthier
