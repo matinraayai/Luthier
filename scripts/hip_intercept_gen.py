@@ -1,59 +1,58 @@
 # !/usr/bin/env python3
 import os
-import io
-import re
 
 import argparse
 
-from cxxheaderparser.simple import parse_string, ClassScope, ParsedData, Function
+import cxxheaderparser.types
+from cxxheaderparser.simple import ClassScope, ParsedData, Typedef
 import cxxheaderparser.types as cxx_types
-from header_preprocessor import ROCmPreprocessor
+from header_preprocessor import parse_header_file
 from typing import *
 
 
 def parse_and_validate_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser("HIP API interception generation script for Luthier; Originally used by AMD in "
-                                     "the Roctracer project")
-    parser.add_argument("--hip-include-dir", type=str,
-                        default="/opt/rocm/include/hip/amd_detail/",
-                        help="location of the HIP include directory")
+    parser = argparse.ArgumentParser("HIP API interception generation script for Luthier")
+    parser.add_argument("--hip-api-trace-path", type=str,
+                        default="/opt/rocm/include/hip/amd_detail/hip_api_trace.hpp",
+                        help="directory of the HIP API Trace header file")
+    parser.add_argument("--rocprofiler-api-enum-header-dir", type=str,
+                        default="/opt/rocm/include/rocprofiler-sdk/hip/",
+                        help="directory of the ROCProfiler HIP API Enums headers")
+    parser.add_argument("--hpp-structs-save-path", type=str,
+                        default="../include/luthier/hip_trace_api.h",
+                        help="location of where the generated C++ header file containing the callback args struct "
+                             "and callback enumerators will be saved")
     parser.add_argument("--cpp-compiler-callback-save-path", type=str,
                         default="../src/lib/hip/hip_compiler_intercept.cpp",
-                        help="location of where the generated C++ callback file will be saved")
+                        help="location of where the generated C++ callbacks for the HIP compiler API will be saved")
     parser.add_argument("--cpp-runtime-callback-save-path", type=str,
                         default="../src/lib/hip/hip_runtime_intercept.cpp",
-                        help="location of where the generated C++ callback file will be saved")
+                        help="location of where the generated C++ callbacks for the HIP runtime API will be saved")
     args = parser.parse_args()
     return args
 
 
-def parse_header_file(header_file: str) -> ParsedData:
-    preprocessor = ROCmPreprocessor()
-    preprocessor.line_directive = None
-    preprocessor.passthru_unfound_includes = True
-    preprocessor.passthru_includes = re.compile(r".*")
-    preprocessor.define("__GNUC__")
-    preprocessor.define("LITTLEENDIAN_CPU")
-    preprocessor.define("_M_X64")
-    preprocessor.define("ROCPROFILER_EXTERN_C_INIT")
-    preprocessor.define("ROCPROFILER_EXTERN_C_FINI")
-    with open(header_file, 'r') as hf:
-        preprocessor.parse(hf)
-        str_io = io.StringIO()
-        preprocessor.write(str_io)
-    preprocessed_header = str_io.getvalue()
-    parsed = parse_string(preprocessed_header)
-    str_io.close()
-    return parsed
+defines = ("ROCPROFILER_EXTERN_C_INIT", "ROCPROFILER_EXTERN_C_FINI")
 
 
-def parse_hip_typedefs(header_files: Iterable[str]) -> dict[str, Function]:
+def parse_hip_functions(phf: ParsedData) -> dict[str, cxx_types.FunctionType]:
     functions = {}
-    for header in header_files:
-        phf = parse_header_file(header)
-        for f in phf.namespace.typedefs:
-            functions[f.name] = f
+    for f in phf.namespace.typedefs:
+        function_name = f.name.removeprefix("t_")
+        functions[function_name] = f.type.ptr_to
     return functions
+
+
+def is_param_dim3_type(p: cxx_types.Parameter) -> bool:
+    if isinstance(p.type, cxx_types.Pointer):
+        pointer_to = p.type.ptr_to
+        while isinstance(pointer_to, cxx_types.Pointer):
+            pointer_to = pointer_to.ptr_to
+        return pointer_to.typename.segments[0].name == "dim3"
+    elif isinstance(p.type, cxx_types.Type):
+        return p.type.typename.segments[0].name == "dim3"
+    else:
+        return False
 
 
 def get_api_tables(parsed_hip_api_trace_header: ParsedData, api_table_names: List[str]) -> Dict[str, ClassScope]:
@@ -66,379 +65,421 @@ def get_api_tables(parsed_hip_api_trace_header: ParsedData, api_table_names: Lis
     return api_tables
 
 
-def main():
-    # Name of the API tables to capture in HIP
-    api_table_names = ["HipCompilerDispatchTable", "HipDispatchTable"]
-
-    args = parse_and_validate_args()
-    # All possible HIP API functions are located in these headers
-    hip_include_files = tuple(os.path.join(args.hip_include_dir, header_file) for header_file in
-                              ["hip_api_trace.hpp"])
-
-    parsed_api_enum = parse_header_file("/opt/rocm/include/rocprofiler-sdk/hip/runtime_api_id.h")
-    parsed_api_enum = [ting.name for ting in parsed_api_enum.namespace.enums[0].values]
-
-    # parsed_args = parse_header_file("/opt/rocm/include/rocprofiler-sdk/hip/api_args.h")
-    # print(parsed_args.namespace.classes[2].classes)
-    # print([ting.class_decl.typename.segments[0].name for ting in parsed_args.namespace.classes[2]])
-
-    # This returns a Dict that contains all HIP API functions and other functions not of interest to us.
-    # It maps the name of the function (e.g. hip_init) to its cxxheaderparser Function type
-    hip_functions = parse_hip_typedefs(hip_include_files)
-
-    parsed_api_trace_header = parse_header_file(os.path.join(args.hip_include_dir, "hip_api_trace.hpp"))
-
-    # Parse the API tables in hip_api_trace.h
-    api_tables = get_api_tables(parsed_api_trace_header, api_table_names)
-
-    table_gets = { "HipCompilerDispatchTable" : 'getSavedCompilerTable()', "HipDispatchTable" : "getSavedRuntimeTable()" }
-
-    api_id_types  = { "HipCompilerDispatchTable" : "ROCPROFILER_HIP_COMPILER_API_ID_",
-                     "HipDispatchTable" : "ROCPROFILER_HIP_RUNTIME_API_ID_" }
-
-    # Generate the callback functions that will replace the original HIP functions
-    callback_defs = []
-    compiler_defs = [f"""/* Generated by {os.path.basename(__file__)}. DO NOT EDIT! */
-#include "hip/hip_compiler_intercept.hpp"
+def generate_callback_file_contents(api_enums, api_table_struct: ClassScope,
+                                    functions: dict[str, cxxheaderparser.types.FunctionType],
+                                    interceptor_header_file_name: str,
+                                    api_table_name: str,
+                                    interceptor_name: str,
+                                    api_table_getter_func: str,
+                                    api_enum_prefix: str):
+    callback_defs = [
+        # @formatter:off
+f"""/* Generated by {os.path.basename(__file__)}. DO NOT EDIT! */
+#include "{interceptor_header_file_name}"
 #include "luthier/luthier.h"
 #include "luthier/types.h"
-#include <rocprofiler-sdk/hip/api_args.h>
-#include <rocprofiler-sdk/hip/api_id.h>
-
-"""]
-
-    runtime_defs = [f"""/* Generated by {os.path.basename(__file__)}. DO NOT EDIT! */
-#include "hip/hip_runtime_intercept.hpp"
-#include "luthier/luthier.h"
-#include "luthier/types.h"
-#include <rocprofiler-sdk/hip/api_args.h>
-#include <rocprofiler-sdk/hip/api_id.h>
-
-
-"""]
-
-    bad = [
-"hipChooseDeviceR0000",
-"hipGetDevicePropertiesR0600",
-"hipGetDevicePropertiesR0000",
-"hipKernelNameRef",
-"hipLaunchCooperativeKernel",
-"hipModuleLaunchCooperativeKernel",
-"hipModuleLaunchKernel",
-"hipModuleOccupancyMaxActiveBlocksPerMultiprocessor",
-"hipModuleOccupancyMaxActiveBlocksPerMultiprocessorWithFlags",
-"hipModuleOccupancyMaxPotentialBlockSize",
-"hipModuleOccupancyMaxPotentialBlockSizeWithFlags",
-"hipOccupancyMaxActiveBlocksPerMultiprocessor",
-"hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags",
-"hipOccupancyMaxPotentialBlockSize",
-"hipExtModuleLaunchKernel",
-"hipHccModuleLaunchKernel",
-"hipLaunchCooperativeKernel_spt"
+#include "luthier/hip_trace_api.h"
+    
+"""
+        # @formatter:on
     ]
+    for f in api_table_struct.fields:
+        # look for functions in the API Tables, not fields (e.g. size)
+        # function fields in the API table are defined as pointers to typedefs of their target HIP function
+        if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
 
-    dim_threes = [
-        "gridDim",
-        "blockDim",
-        "numBlocks",
-        "dimBlocks"
-    ]
+            # The field of the API Table this function corresponds to (e.g.) hipApiName_fn
+            function_api_table_field_name = f.name
+            # Name of the function (e.g. hipApiName)
+            function_name = function_api_table_field_name.removesuffix("_fn")
+            # The hip function representation parsed by cxxheaderparser
+            hip_function_cxx: cxx_types.FunctionType = functions[function_name]
 
-    for api_name in api_table_names:
-        api_table = api_tables[api_name]
-        get_func = table_gets[api_name]
-        api_id_type = api_id_types[api_name]
-        for f in api_table.fields:
-            # look for functions in the API Tables, not fields
-            # function fields in the API table are defined as pointers to the decltype of their target HIP function
-            if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
-                # Name of the hip function (e.g.) hip_init
-                hip_function_name = f.type.typename.segments[0].name
-                # The field of the API Table this function corresponds to (e.g.) hip_init_fn
-                api_table_function_name = f.name
-                # The hip function representation parsed by cxxheaderparser
-                hip_function_cxx = hip_functions[hip_function_name]
+            # Format the args for later
+            formatted_params = [p.format() for p in hip_function_cxx.parameters]
+            # Generate the callback
+            return_type = hip_function_cxx.return_type.format()
 
-                # Format the args for later
-                formatted_params = [p.format() for p in hip_function_cxx.type.ptr_to.parameters]
-                # Generate the callback
-                return_type = hip_function_cxx.type.ptr_to.return_type.format()
-                actual_fun_name = api_table_function_name[:-3]
-
-                if ((api_name == "HipDispatchTable" and ("ROCPROFILER_HIP_RUNTIME_API_ID_" + actual_fun_name) not in parsed_api_enum)
-                    or actual_fun_name in bad):
-                    continue
-
-                callback_defs.append(
-                    f"""static {return_type} {actual_fun_name}_callback({", ".join(formatted_params)}) {{
-  auto& HipInterceptor = luthier::hip::{"Compiler" if (api_name == "HipCompilerDispatchTable") else "Runtime"}Interceptor::instance();
-  auto ApiId = {api_id_type}{actual_fun_name};
+            callback_defs.append(
+                # @formatter:off
+f"""static {return_type} {function_name}_callback({", ".join(formatted_params)}) {{
+  auto& HipInterceptor = luthier::hip::{interceptor_name}::instance();
+  auto ApiId = luthier::hip::{api_enum_prefix}{function_name};
   bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
   bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
   bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
   if (ShouldCallback) {{
-""")
-                if return_type != "void":
-                    callback_defs.append(f"""    {return_type} Out{{}};
-""")
-                callback_defs.append("""    auto& HipUserCallback = HipInterceptor.getUserCallback();
-    auto& HipInternalCallback = HipInterceptor.getInternalCallback();
-    rocprofiler_hip_api_args_t Args;
-    bool SkipFunction{false};
-""")
-                for p in hip_function_cxx.type.ptr_to.parameters:
-                    dimmy_three =  p.name in dim_threes and (api_name == "HipDispatchTable" or actual_fun_name == "__hipPushCallConfiguration")
-                    callback_defs.append(f"""    Args.{actual_fun_name}.{p.name} = {f"luthier::convertToRocprofilerDim3({p.name})" if dimmy_three else p.name};
-""")
-                callback_defs.append(
-                    """    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
+"""
+                # @formatter:on
+            )
+            if return_type != "void":
+                callback_defs.append(f"""    {return_type} Out{{}};\n""")
+            callback_defs.append(
+                # @formatter:off
+"""    auto [HipUserCallback, UserCallbackLock] = HipInterceptor.getUserCallback();
+    auto [HipInternalCallback, InternalCallbackLock] = HipInterceptor.getInternalCallback();
+    luthier::hip::ApiEvtArgs Args;
+"""
+                # @formatter:on
+            )
+            for param in hip_function_cxx.parameters:
+                is_dim3_type = is_param_dim3_type(param)
+                # Special handling of HIP dim3 arguments, to convert them to rocprofiler dim3
+                if is_dim3_type:
+                    is_ptr_type = isinstance(param.type, cxx_types.Pointer)
+                    field_accessor = "->" if is_ptr_type else "."
+                    callback_defs.append(
+                        # @formatter:off
+f"""    Args.{function_name}.{param.name}{field_accessor}x = {param.name}{field_accessor}x;
+    Args.{function_name}.{param.name}{field_accessor}y = {param.name}{field_accessor}y;
+    Args.{function_name}.{param.name}{field_accessor}z = {param.name}{field_accessor}z;                    
+"""
+                        # @formatter:on
+                    )
+                else:
+                    callback_defs.append(
+                        f"    Args.{function_name}.{param.name} = {param.name};\n")
+            callback_defs.append(
+                # @formatter:off
+"""    if (IsUserCallbackEnabled)
+      (*HipUserCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
     if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId, &SkipFunction);
-    if (!SkipFunction)
-""")
-                callback_defs.append(
-                    f"""      {"Out =" if return_type != "void" else ""} HipInterceptor.{get_func}.{api_table_function_name}(""")
-                for i, p in enumerate(hip_function_cxx.type.ptr_to.parameters):
-                    dimmy_three =  p.name in dim_threes and (api_name == "HipDispatchTable" or actual_fun_name == "__hipPushCallConfiguration")
-                    callback_defs.append(f'Args.{actual_fun_name}.{p.name}' if not dimmy_three else f"{p.name}")
-                    if i != len(hip_function_cxx.type.ptr_to.parameters) - 1:
-                        callback_defs.append(", ")
-                callback_defs.append(");\n")
-                callback_defs.append(
-                    f"""    if (IsUserCallbackEnabled)
-      HipUserCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
+      (*HipInternalCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
+"""
+                    # @formatter:on
+            )
+            callback_defs.append(
+                f'    {"Out =" if return_type != "void" else ""} HipInterceptor.{api_table_getter_func}.'
+                f"{function_api_table_field_name}(")
+
+            for i, param in enumerate(hip_function_cxx.parameters):
+                is_dim3_type = is_param_dim3_type(param)
+                # Dim3 arguments must be passed as an initializer list for conversion to dim3
+                if is_dim3_type:
+                    is_ptr_type = isinstance(param.type, cxx_types.Pointer)
+                    cast_dim3 = f"reinterpret_cast<dim3*>(Args.{function_name}.{param.name})" if is_ptr_type else \
+                        f"*reinterpret_cast<dim3*>(&Args.{function_name}.{param.name})"
+                    callback_defs.append(cast_dim3)
+                else:
+                    callback_defs.append(f'Args.{function_name}.{param.name}')
+                if i != len(hip_function_cxx.parameters) - 1:
+                    callback_defs.append(", ")
+            callback_defs.append(");\n")
+            callback_defs.append(
+                # @formatter:off
+f"""    if (IsUserCallbackEnabled)
+      (*HipUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
     if (IsInternalCallbackEnabled)
-      HipInternalCallback(&Args, luthier::API_EVT_PHASE_AFTER, ApiId, &SkipFunction);
+      (*HipInternalCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
     {"return Out;" if return_type != "void" else ""}
   }}
   else {{
-""")
-                callback_defs.append(f"""    return HipInterceptor.{get_func}.{api_table_function_name}(""")
-                for i, p in enumerate(hip_function_cxx.type.ptr_to.parameters):
-                    dimmy_three =  p.name in dim_threes and (api_name == "HipDispatchTable" or actual_fun_name == "__hipPushCallConfiguration")
-                    callback_defs.append(p.name)
-                    if i != len(hip_function_cxx.type.ptr_to.parameters) - 1:
-                        callback_defs.append(", ")
-                callback_defs.append(""");
+"""
+                # # @formatter:on
+            )
+            callback_defs.append(f"    return HipInterceptor.{api_table_getter_func}.{function_api_table_field_name}(")
+            for i, param in enumerate(hip_function_cxx.parameters):
+                callback_defs.append(param.name)
+                if i != len(hip_function_cxx.parameters) - 1:
+                    callback_defs.append(", ")
+            callback_defs.append(""");
   }
 """)
-                callback_defs.append("""}
+            callback_defs.append("""}
 
 """)
 
-                if (api_name == "HipCompilerDispatchTable"):
-                    compiler_defs += callback_defs
-                else:
-                    runtime_defs += callback_defs
-
-                callback_defs.clear()
+    return callback_defs
 
 
-    # compiler captureCompilerDispatchTable
-    compiler_capture_defs = []
-    api_table = api_tables["HipCompilerDispatchTable"]
-    # First create the wrapper install function's prototype
-    compiler_capture_defs.append(
-        f'void luthier::hip::CompilerInterceptor::captureCompilerDispatchTable(HipCompilerDispatchTable *CompilerTable) {{\n')
-    compiler_capture_defs.append(f'\tSavedCompilerDispatchTable = *CompilerTable;\n')
-    # for f in api_table.fields:
-    #     # look for functions in the API Tables, not fields
-    #     # function fields in the API table are defined as pointers to the decltype of their target HSA function
-    #     if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
-    #         # Name of the hsa function (e.g.) hsa_init
-    #         # hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
-    #         # The field of the API Table this function corresponds to (e.g.) hsa_init_fn
-    #         api_table_function_name = f.name
-    #         actual_fun_name = api_table_function_name[:-3]
+def generate_api_id_enums(api_tables, api_names, api_table_names):
+    # Create the HIP_API_EVT_ID enums, enumerating all HIP APIs
+    callback_enums = [
+        f"""/* Generated by {os.path.basename(__file__)}. DO NOT EDIT!*/
+#ifndef LUTHIER_HIP_API_TRACE_H
+#define LUTHIER_HIP_API_TRACE_H
+#include <hip/amd_detail/hip_api_trace.hpp>
+#include "luthier/types.h"
+#include "luthier/hip_dim3.h"
 
-    #         if (actual_fun_name in bad):
-    #             continue
-
-    #         # Install the callback
-    #         compiler_capture_defs.append(f'\tCompilerTable->{api_table_function_name} = {actual_fun_name}_callback;\n')
-    compiler_capture_defs.append("};\n\n")
-
-
-    # Runtime captureRuntimeTable
-    runtime_capture_defs = []
-    api_table = api_tables["HipDispatchTable"]
-    # First create the wrapper install function's prototype
-    runtime_capture_defs.append(
-        f'void luthier::hip::RuntimeInterceptor::captureRuntimeTable(HipDispatchTable *RuntimeTable) {{\n')
-    runtime_capture_defs.append(f'\tSavedDispatchTable = *RuntimeTable;\n')
-    # for f in api_table.fields:
-    #     # look for functions in the API Tables, not fields
-    #     # function fields in the API table are defined as pointers to the decltype of their target HSA function
-    #     if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
-    #         # Name of the hsa function (e.g.) hsa_init
-    #         # hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
-    #         # The field of the API Table this function corresponds to (e.g.) hsa_init_fn
-    #         api_table_function_name = f.name
-    #         actual_fun_name = api_table_function_name[:-3]
-    #         # Install the callback
-    #         if ((("ROCPROFILER_HIP_RUNTIME_API_ID_" + actual_fun_name) not in parsed_api_enum)
-    #             or actual_fun_name in bad):
-    #             continue
-
-    #         runtime_capture_defs.append(f'\tRuntimeTable->{api_table_function_name} = {actual_fun_name}_callback;\n')
-    runtime_capture_defs.append("};\n\n")
-
-    compiler_callback_toggles = []
-    runtime_callback_toggles = []
-    toggle_defs = []
-    for api_name in api_table_names:
-        api_table = api_tables[api_name]
-        get_func = table_gets[api_name]
-        api_id_type = api_id_types[api_name]
+namespace luthier::hip {{
+  
+"""]
+    for (api_name, api_table_name) in zip(api_names, api_table_names):
+        next_enum_idx = 0
+        api_table = api_tables[api_table_name]
+        # Mark the beginning of the API Table in the enum
+        callback_enums.append(
+            f"""enum {api_name}ApiEvtID: unsigned int {{
+  HIP_{api_name.upper()}_API_EVT_ID_FIRST = 0,
+""")
         for f in api_table.fields:
-            # look for functions in the API Tables, not fields
-            # function fields in the API table are defined as pointers to the decltype of their target HIP function
-            if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
-                # Name of the hip function (e.g.) hip_init
-                hip_function_name = f.type.typename.segments[0].name
-                # The field of the API Table this function corresponds to (e.g.) hip_init_fn
-                api_table_function_name = f.name
-                # The hip function representation parsed by cxxheaderparser
-                hip_function_cxx = hip_functions[hip_function_name]
+            # Skip the API table size field
+            if f.name == "size" or f.type.typename.segments[0].name == "size_t":
+                continue
+            # Name of the HIP function is the name of the field minus the "_fn" suffix
+            function_name = f.name.removesuffix("_fn")
+            # Add the function to the enums list
+            callback_enums.append(f"""  HIP_{api_name.upper()}_API_EVT_ID_{function_name} = {next_enum_idx}, 
+""")
+            next_enum_idx += 1
+        # Finalize the API EVT ID Enum
+        callback_enums.append(f"""  HIP_{api_name.upper()}_API_EVT_ID_LAST = {next_enum_idx - 1}, 
+}};
 
-                # Format the args for later
-                formatted_params = [p.format() for p in hip_function_cxx.type.ptr_to.parameters]
-                # Generate the callback
-                return_type = hip_function_cxx.type.ptr_to.return_type.format()
-                actual_fun_name = api_table_function_name[:-3]
-                if ((api_name == "HipDispatchTable" and ("ROCPROFILER_HIP_RUNTIME_API_ID_" + actual_fun_name) not in parsed_api_enum)
-                    or actual_fun_name in bad):
-                    continue
+""")
+    callback_enums.append("""
+""")
+    return callback_enums
 
-                if api_name == "HipCompilerDispatchTable":
-                    toggle_defs.append(f"""static void toggle_{actual_fun_name}(HipCompilerDispatchTable *InternalHipApiTable, HipCompilerDispatchTable SavedTable, bool On) {{
-  if (On)
-    InternalHipApiTable->{actual_fun_name}_fn = {actual_fun_name}_callback;
+
+def generate_wrapper_switch_functions(api_name, api_table_struct: ClassScope,
+                                      functions: dict[str, cxxheaderparser.types.FunctionType],
+                                      interceptor_header_file_name: str,
+                                      api_table_name: str,
+                                      interceptor_name: str,
+                                      api_table_getter_func: str,
+                                      api_enum_prefix: str):
+    # Generate wrapper switch functions, which can switch between the real and the wrapper version of each API function
+    wrapper_switches = []
+    for f in api_table_struct.fields:
+        # look for functions in the API Tables, not fields (e.g. size)
+        # function fields in the API table are defined as pointers to typedefs of their target HIP function
+        if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
+            # The field of the API Table this function corresponds to (e.g.) hipApiName_fn
+            function_api_table_field_name = f.name
+            # Name of the function (e.g. hipApiName)
+            function_name = function_api_table_field_name.removesuffix("_fn")
+
+            wrapper_switches.append(
+                # @formatter:off
+                f"""static void switch_{function_name}_wrapper({api_table_name} *RuntimeApiTable, 
+    const {api_table_name} &SavedApiTable, bool State) {{
+  if (State)
+    RuntimeApiTable->{function_api_table_field_name} = {function_name}_wrapper;
   else
-    InternalHipApiTable->{actual_fun_name}_fn = {"createInterceptQueue" if actual_fun_name == "hsa_queue_create" else f"SavedTable.{actual_fun_name}_fn"};
-}}\n\n""")
-                else:
-                    toggle_defs.append(f"""static void toggle_{actual_fun_name}(HipDispatchTable *InternalRuntimeDispatchTable, HipDispatchTable SavedTable, bool On) {{
-  if (On)
-    InternalRuntimeDispatchTable->{actual_fun_name}_fn = {actual_fun_name}_callback;
-  else
-    InternalRuntimeDispatchTable->{actual_fun_name}_fn = {"createInterceptQueue" if actual_fun_name == "hsa_queue_create" else f"SavedTable.{actual_fun_name}_fn"};
-}}\n\n""")
-                
-                if (api_name == "HipCompilerDispatchTable"):
-                    compiler_callback_toggles += toggle_defs
-                else:
-                    runtime_callback_toggles += toggle_defs
+    RuntimeApiTable->{function_api_table_field_name} = SavedApiTable.{function_api_table_field_name};
+}}\n\n"""
+                # @formatter:off
+            )
+    return wrapper_switches
 
-                toggle_defs.clear()
 
-    compiler_map_def = ["static const llvm::DenseMap<rocprofiler_hip_compiler_api_id_t, std::function<void(HipCompilerDispatchTable *, const HipCompilerDispatchTable &, bool On)>> HipCompilerDispatchCallbackToggleFunctionsMap {\n"]
-    runtime_map_def = ["static const llvm::DenseMap<rocprofiler_hip_runtime_api_id_t, std::function<void(HipDispatchTable *, const HipDispatchTable &, bool On)>> HipDispatchCallbackToggleFunctionsMap {\n"]
+def generate_wrapper_check_functions(api_name, api_table_struct: ClassScope,
+                                     functions: dict[str, cxxheaderparser.types.FunctionType],
+                                     interceptor_header_file_name: str,
+                                     api_table_name: str,
+                                     interceptor_name: str,
+                                     api_table_getter_func: str,
+                                     api_enum_prefix: str):
+    # Generate wrapper installation functions, which checks whether the wrapper function or the real function
+    # is currently installed over the API runtime table
+    wrapper_checks = []
+    for f in api_table_struct.fields:
+        # look for functions in the API Tables, not fields
+        # function fields in the API table are defined as pointers to typedefs of their target HIP function
+        if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
+            # The field of the API Table this function corresponds to (e.g.) hipApiName_fn
+            function_api_table_field_name = f.name
+            # Name of the function (e.g. hipApiName)
+            function_name = function_api_table_field_name.removesuffix("_fn")
+            wrapper_checks.append(
+                # @formatter:off
+                f"""static bool is_{function_name}_wrapper_installed({api_table_name} *RuntimeApiTable) {{
+  return RuntimeApiTable->{function_api_table_field_name} == {function_name}_wrapper;
+}}\n\n"""
+                # @formatter:off
+            )
+    return wrapper_checks
 
-    for api_name in api_table_names:
-        api_table = api_tables[api_name]
-        get_func = table_gets[api_name]
-        api_id_type = api_id_types[api_name]
-        for f in api_table.fields:
-            # look for functions in the API Tables, not fields
-            # function fields in the API table are defined as pointers to the decltype of their target HIP function
-            if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
-                # Name of the hip function (e.g.) hip_init
-                hip_function_name = f.type.typename.segments[0].name
-                # The field of the API Table this function corresponds to (e.g.) hip_init_fn
-                api_table_function_name = f.name
-                # The hip function representation parsed by cxxheaderparser
-                hip_function_cxx = hip_functions[hip_function_name]
 
-                # Format the args for later
-                formatted_params = [p.format() for p in hip_function_cxx.type.ptr_to.parameters]
-                # Generate the callback
-                return_type = hip_function_cxx.type.ptr_to.return_type.format()
-                actual_fun_name = api_table_function_name[:-3]
-                if ((api_name == "HipDispatchTable" and ("ROCPROFILER_HIP_RUNTIME_API_ID_" + actual_fun_name) not in parsed_api_enum)
-                    or actual_fun_name in bad):
-                    continue
+def generate_wrapper_switch_functions_map(api_name, api_table_struct: ClassScope,
+                                          functions: dict[str, cxxheaderparser.types.FunctionType],
+                                          interceptor_header_file_name: str,
+                                          api_table_name: str,
+                                          interceptor_name: str,
+                                          api_table_getter_func: str,
+                                          api_enum_prefix: str):
+    # Generate a static const mapping between the API IDs and the switch wrapper functions
+    # This is used to switch between wrappers and reals for each the API IDs
+    switch_functions_map = [f"static const llvm::DenseMap<luthier::hip::{api_name}ApiEvtID, "
+                            f"std::function<void({api_table_name} *, const {api_table_name} &, bool)>> "
+                            f"Hip{api_name}WrapperSwitchFunctionsMap {{\n"]
+    for f in api_table_struct.fields:
+        # look for functions in the API Tables, not fields
+        # function fields in the API table are defined as pointers to typedefs of their target HIP function
+        if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
+            # The field of the API Table this function corresponds to (e.g.) hipApiName_fn
+            function_api_table_field_name = f.name
+            # Name of the function (e.g. hipApiName)
+            function_name = function_api_table_field_name.removesuffix("_fn")
+            switch_functions_map.append(f"  {{luthier::hsa::HSA_API_EVT_ID_{function_name}, "
+                                        f"switch_{function_name}_wrapper}},\n")
+    switch_functions_map.append("};")
+    return switch_functions_map
 
-                if (api_name == "HipCompilerDispatchTable"):
-                    compiler_map_def.append(f"""  {{ ROCPROFILER_HIP_COMPILER_API_ID_{actual_fun_name}, toggle_{actual_fun_name} }},\n""")
-                else:
-                    runtime_map_def.append(f"""  {{ ROCPROFILER_HIP_RUNTIME_API_ID_{actual_fun_name}, toggle_{actual_fun_name} }},\n""")
 
-    compiler_map_def.append("};")
-    runtime_map_def.append("};")
+def generate_wrapper_check_functions_map(api_name, api_table_struct: ClassScope,
+                                         functions: dict[str, cxxheaderparser.types.FunctionType],
+                                         interceptor_header_file_name: str,
+                                         api_table_name: str,
+                                         interceptor_name: str,
+                                         api_table_getter_func: str,
+                                         api_enum_prefix: str):
+    # Generate a static const mapping between the API IDs and the wrapper installation check functions
+    # This is used to confirm wrapper installation status of each API ID
+    wrapper_check_functions_map = [f"static const llvm::DenseMap<luthier::hip::{api_name}ApiEvtID, "
+                                   f"std::function<bool({api_table_name} *)>> "
+                                   f"Hip{api_name}WrapperInstallationCheckFunctionsMap {{\n"]
+    for f in api_table_struct.fields:
+        # look for functions in the API Tables, not fields
+        # function fields in the API table are defined as pointers to typedefs of their target HIP function
+        if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
+            # The field of the API Table this function corresponds to (e.g.) hipApiName_fn
+            function_api_table_field_name = f.name
+            # Name of the function (e.g. hipApiName)
+            function_name = function_api_table_field_name.removesuffix("_fn")
+            wrapper_check_functions_map.append(f"  {{luthier::hsa::HSA_API_EVT_ID_{function_name}, "
+                                               f"is_{function_name}_wrapper_installed}},\n")
+    wrapper_check_functions_map.append("};")
 
-    compiler_enable_disable_funcs = f"""
-void luthier::hip::CompilerInterceptor::enableUserCallback(rocprofiler_hip_compiler_api_id_t Op) {{
-  HipCompilerDispatchCallbackToggleFunctionsMap.at(Op)(InternalCompilerDispatchTable, SavedCompilerDispatchTable, true);
+def generate_wrapper_enable_disable_functions(api_name, api_table_struct: ClassScope,
+                                              functions: dict[str, cxxheaderparser.types.FunctionType],
+                                              interceptor_header_file_name: str,
+                                              api_table_name: str,
+                                              interceptor_name: str,
+                                              api_table_getter_func: str,
+                                              api_enum_prefix: str):
+    # Generate enable/disable callback functions for the interceptor
+    enable_disable_funcs = f"""
+bool luthier::hip::{interceptor_name}::enableUserCallback({api_name}ApiEvtID Op) {{
+  if (!IsRuntimeApiTableFrozen)
+    Hip{api_name}WrapperSwitchFunctionsMap.at(Op)(RuntimeApiTable, SavedRuntimeApiTable, true);
+  else if (!Hip{api_name}InstallationCheckFunctionsMap.at(Op)(RuntimeApiTable))
+    return false;
   EnabledUserOps.insert(Op);
+  return true;
 }}
 
-void luthier::hip::CompilerInterceptor::disableUserCallback(rocprofiler_hip_compiler_api_id_t Op) {{
+void luthier::hsa::HsaRuntimeInterceptor::disableUserCallback(ApiEvtID Op) {{
   EnabledUserOps.erase(Op);
-  if (!EnabledInternalOps.contains(Op))
-    HipCompilerDispatchCallbackToggleFunctionsMap.at(Op)(InternalCompilerDispatchTable, SavedCompilerDispatchTable, false);
+  if (!IsRuntimeApiTableFrozen && !EnabledInternalOps.contains(Op))
+    HsaWrapperSwitchFunctionsMap.at(Op)(RuntimeApiTable, SavedRuntimeApiTable, false);
 }}
 
-void luthier::hip::CompilerInterceptor::enableInternalCallback(rocprofiler_hip_compiler_api_id_t Op) {{
-  HipCompilerDispatchCallbackToggleFunctionsMap.at(Op)(InternalCompilerDispatchTable, SavedCompilerDispatchTable, true);
+bool luthier::hsa::HsaRuntimeInterceptor::enableInternalCallback(ApiEvtID Op) {{
+  if (!IsRuntimeApiTableFrozen)
+    HsaWrapperSwitchFunctionsMap.at(Op)(RuntimeApiTable, SavedRuntimeApiTable, true);
+  else if (!HsaWrapperInstallationCheckFunctionsMap.at(Op)(RuntimeApiTable))
+    return false;
   EnabledInternalOps.insert(Op);
+  return true;
 }}
 
-void luthier::hip::CompilerInterceptor::disableInternalCallback(rocprofiler_hip_compiler_api_id_t Op) {{
+void luthier::hsa::HsaRuntimeInterceptor::disableInternalCallback(ApiEvtID Op) {{
   EnabledInternalOps.erase(Op);
   if (!EnabledUserOps.contains(Op))
-    HipCompilerDispatchCallbackToggleFunctionsMap.at(Op)(InternalCompilerDispatchTable, SavedCompilerDispatchTable, false);
-}}\n\n"""
-    
-    runtime_enable_disable_funcs = f"""
-void luthier::hip::RuntimeInterceptor::enableUserCallback(rocprofiler_hip_runtime_api_id_t Op) {{
-  HipDispatchCallbackToggleFunctionsMap.at(Op)(InternalRuntimeDispatchTable, SavedDispatchTable, true);
-  EnabledUserOps.insert(Op);
-}}
+    HsaWrapperSwitchFunctionsMap.at(Op)(RuntimeApiTable, SavedRuntimeApiTable, false);
+}}"""
+    return enable_disable_funcs
 
-void luthier::hip::RuntimeInterceptor::disableUserCallback(rocprofiler_hip_runtime_api_id_t Op) {{
-  EnabledUserOps.erase(Op);
-  if (!EnabledInternalOps.contains(Op))
-    HipDispatchCallbackToggleFunctionsMap.at(Op)(InternalRuntimeDispatchTable, SavedDispatchTable, false);
-}}
 
-void luthier::hip::RuntimeInterceptor::enableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) {{
-  HipDispatchCallbackToggleFunctionsMap.at(Op)(InternalRuntimeDispatchTable, SavedDispatchTable, true);
-  EnabledInternalOps.insert(Op);
-}}
+def generate_api_args_struct(api_tables, api_names, api_table_names, hip_functions):
+    # Create a union struct containing the arguments to all HIP APIs used in Luthier
+    callback_arguments_struct = ["""typedef union {
+"""
+                                 ]
+    for (api_name, api_table_name) in zip(api_names, api_table_names):
+        api_table = api_tables[api_table_name]
+        for f in api_table.fields:
+            # Skip the API table size field
+            if f.name == "size" or f.type.typename.segments[0].name == "size_t":
+                continue
+            # Name of the HIP function is the name of the field minus the "_fn" suffix
+            function_name = f.name.removesuffix("_fn")
+            # The hsa function representation parsed by cxxheaderparser
+            hsa_function_cxx = hip_functions[function_name]
+            # Format the args for later
 
-void luthier::hip::RuntimeInterceptor::disableInternalCallback(rocprofiler_hip_runtime_api_id_t Op) {{
-  EnabledInternalOps.erase(Op);
-  if (!EnabledUserOps.contains(Op))
-    HipDispatchCallbackToggleFunctionsMap.at(Op)(InternalRuntimeDispatchTable, SavedDispatchTable, false);
-}}\n\n"""
+            formatted_params = [
+                p.format().replace("dim3", "luthier::hip::Dim3").replace("const hipFunction_t", "hipFunction_t") for p
+                in hsa_function_cxx.parameters]
+            # Generate the argument struct field
+            callback_arguments_struct.append("""  struct {
+""")
+            for p in formatted_params:
+                callback_arguments_struct.append(f"""    {p};
+""")
+            callback_arguments_struct.append(f"""  }} {function_name};
+""")
+    callback_arguments_struct.append("""} ApiEvtArgs;
+
+};
+
+
+#endif
+""")
+    return callback_arguments_struct
+
+
+def main():
+    # Name of the API tables to capture in HIP
+    api_table_names = ["HipCompilerDispatchTable", "HipDispatchTable"]
+    # Name of the HIP APIs
+    api_names = ["Compiler", "Runtime"]
+
+    args = parse_and_validate_args()
+    # Parse the Runtime API table enumerators from the runtime_api_id.h in ROCProfiler
+    runtime_api_enums = parse_header_file(os.path.join(args.rocprofiler_api_enum_header_dir, "runtime_api_id.h"),
+                                          defines).namespace.enums[0]
+    # Parse the Compiler API table enumerators from the compiler_api_id.h in ROCProfiler
+    compiler_api_enums = parse_header_file(os.path.join(args.rocprofiler_api_enum_header_dir, "compiler_api_id.h"),
+                                           defines).namespace.enums[0]
+    # Parse the hip_api_trace.hpp, which contains typedefs for each function in the API tables + the API tables
+    # themselves
+    parsed_hip_api_trace_header = parse_header_file(args.hip_api_trace_path, defines)
+    # Map between the name of the function (e.g. hip_init) to its cxxheaderparser Function type
+    hip_functions = parse_hip_functions(parsed_hip_api_trace_header)
+
+    # Parse the API tables in hip_api_trace.hpp
+    api_tables = get_api_tables(parsed_hip_api_trace_header, api_table_names)
+
+    callback_enums = generate_api_id_enums(api_tables, api_names, api_table_names)
+    callback_args_struct = generate_api_args_struct(api_tables, api_names, api_table_names, hip_functions)
+    with open(args.hpp_structs_save_path, "w") as f:
+        f.writelines("// NOLINTBEGIN\n")
+        f.writelines(callback_enums)
+        f.writelines(callback_args_struct)
+        f.writelines("\n// NOLINTEND\n")
+
+    # Generate the Compiler API callbacks file =========================================================================
+    compiler_cpp_file_contents = generate_callback_file_contents(compiler_api_enums,
+                                                                 api_tables["HipCompilerDispatchTable"],
+                                                                 hip_functions,
+                                                                 "hip/HipCompilerApiInterceptor.hpp",
+                                                                 "HipCompilerDispatchTable",
+                                                                 "HipCompilerApiInterceptor",
+                                                                 "getSavedApiTableContainer()",
+                                                                 "HIP_COMPILER_API_EVT_ID_")
+
+    runtime_cpp_file_contents = generate_callback_file_contents(runtime_api_enums,
+                                                                api_tables["HipDispatchTable"],
+                                                                hip_functions,
+                                                                "hip/HipRuntimeApiInterceptor.hpp",
+                                                                "HipDispatchTables",
+                                                                "HipRuntimeApiInterceptor",
+                                                                "getSavedApiTableContainer()",
+                                                                "HIP_RUNTIME_API_EVT_ID_")
 
     with open(args.cpp_compiler_callback_save_path, "w") as f:
         f.writelines("// NOLINTBEGIN\n")
-        f.writelines(compiler_defs)
-        f.write("\n")
-        f.writelines(compiler_capture_defs)
-        f.write("\n")
-        f.writelines(compiler_callback_toggles)
-        f.write("\n")
-        f.writelines(compiler_map_def)
-        f.write("\n")
-        f.writelines(compiler_enable_disable_funcs)
-        f.writelines("// NOLINTEND\n")
+        f.writelines(compiler_cpp_file_contents)
+        f.writelines("\n// NOLINTEND\n")
 
     with open(args.cpp_runtime_callback_save_path, "w") as f:
         f.writelines("// NOLINTBEGIN\n")
-        f.writelines(runtime_defs)
-        f.write("\n")
-        f.writelines(runtime_capture_defs)
-        f.write("\n")
-        f.writelines(runtime_callback_toggles)
-        f.write("\n")
-        f.writelines(runtime_map_def)
-        f.write("\n")
-        f.writelines(runtime_enable_disable_funcs)
-        f.writelines("// NOLINTEND\n")
+        f.writelines(runtime_cpp_file_contents)
+        f.writelines("\n// NOLINTEND\n")
 
 
 if __name__ == "__main__":
