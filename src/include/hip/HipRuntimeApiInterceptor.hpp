@@ -23,7 +23,7 @@
 namespace luthier::hip {
 
 class HipRuntimeApiInterceptor
-    : public ROCmLibraryApiInterceptor<luthier::hip::RuntimeApiEvtID,
+    : public ROCmLibraryApiInterceptor<luthier::hip::ApiEvtID,
                                        luthier::hip::ApiEvtArgs,
                                        HipDispatchTable, HipDispatchTable>,
       public Singleton<HipRuntimeApiInterceptor> {
@@ -35,18 +35,22 @@ public:
     Singleton<HipRuntimeApiInterceptor>::~Singleton();
   }
 
-  bool enableUserCallback(luthier::hip::RuntimeApiEvtID op);
+  llvm::Error enableUserCallback(luthier::hip::ApiEvtID Op);
 
-  void disableUserCallback(luthier::hip::RuntimeApiEvtID op);
+  llvm::Error disableUserCallback(luthier::hip::ApiEvtID Op);
 
-  bool enableInternalCallback(luthier::hip::RuntimeApiEvtID Op);
+  llvm::Error enableInternalCallback(luthier::hip::ApiEvtID Op);
 
-  void disableInternalCallback(luthier::hip::RuntimeApiEvtID Op);
+  llvm::Error disableInternalCallback(luthier::hip::ApiEvtID Op);
 
   llvm::Error captureApiTable(HipDispatchTable *Table) {
     RuntimeApiTable = Table;
     SavedRuntimeApiTable = *Table;
-    return llvm::Error::success();
+    Status = API_TABLE_CAPTURED;
+    return ROCmLibraryApiInterceptor<luthier::hip::ApiEvtID,
+                                     luthier::hip::ApiEvtArgs, HipDispatchTable,
+                                     HipDispatchTable>::captureApiTable(Table);
+
   }
 };
 

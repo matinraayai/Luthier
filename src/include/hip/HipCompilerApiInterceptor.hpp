@@ -24,7 +24,7 @@ namespace luthier::hip {
 
 class HipCompilerApiInterceptor
     : public ROCmLibraryApiInterceptor<
-          luthier::hip::CompilerApiEvtID, luthier::hip::ApiEvtArgs,
+          luthier::hip::ApiEvtID, luthier::hip::ApiEvtArgs,
           HipCompilerDispatchTable, HipCompilerDispatchTable>,
       public Singleton<HipCompilerApiInterceptor> {
 private:
@@ -35,17 +35,18 @@ public:
     Singleton<HipCompilerApiInterceptor>::~Singleton();
   }
 
-  bool enableUserCallback(luthier::hip::CompilerApiEvtID Op);
+  bool enableUserCallback(luthier::hip::ApiEvtID Op);
 
-  void disableUserCallback(luthier::hip::CompilerApiEvtID Op);
+  void disableUserCallback(luthier::hip::ApiEvtID Op);
 
-  bool enableInternalCallback(luthier::hip::CompilerApiEvtID Op);
+  bool enableInternalCallback(luthier::hip::ApiEvtID Op);
 
-  void disableInternalCallback(luthier::hip::CompilerApiEvtID Op);
+  void disableInternalCallback(luthier::hip::ApiEvtID Op);
 
   llvm::Error captureApiTable(HipCompilerDispatchTable *Table) {
     RuntimeApiTable = Table;
     SavedRuntimeApiTable = *Table;
+    Status = API_TABLE_CAPTURED;
     return llvm::Error::success();
   }
 };
