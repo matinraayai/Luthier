@@ -19,24 +19,13 @@
 #include "common/error.hpp"
 #include "common/singleton.hpp"
 #include <luthier/types.h>
-#include <rocprofiler-sdk/hip/api_args.h>
-#include <rocprofiler-sdk/hip/api_id.h>
-
-// TODO: 1. Overhaul Python generation script to use the new profiler API
-//  enums + Generate Wrappers at CMake time by running the intercept generation
-//  Python script + Enable HIP API runtime callbacks again
-//  2. Move setting the callbacks to constructor arguments
-//  3. Make a table of (APIID -> (Orig Func, Wrapper Func) in the auto generated
-//  Python file to allow for complete uninstallation of wrapper functions when
-//  No callback is requested from both the user and the tool
-//  4. Update the Header of hip_intercept.cpp once the Python script is
-//  overhauled
+#include <luthier/hip_trace_api.h>
 
 namespace luthier::hip {
 
 class HipRuntimeApiInterceptor
-    : public ROCmLibraryApiInterceptor<rocprofiler_hip_runtime_api_id_t,
-                                       rocprofiler_hip_api_args_t,
+    : public ROCmLibraryApiInterceptor<luthier::hip::RuntimeApiEvtID,
+                                       luthier::hip::ApiEvtArgs,
                                        HipDispatchTable, HipDispatchTable>,
       public Singleton<HipRuntimeApiInterceptor> {
 
@@ -47,57 +36,13 @@ public:
     Singleton<HipRuntimeApiInterceptor>::~Singleton();
   }
 
-  void enableUserCallback(rocprofiler_hip_runtime_api_id_t op);
+  bool enableUserCallback(luthier::hip::RuntimeApiEvtID op);
 
-  void disableUserCallback(rocprofiler_hip_runtime_api_id_t op);
+  void disableUserCallback(luthier::hip::RuntimeApiEvtID op);
 
-  void enableInternalCallback(rocprofiler_hip_runtime_api_id_t Op);
+  bool enableInternalCallback(luthier::hip::RuntimeApiEvtID Op);
 
-  void disableInternalCallback(rocprofiler_hip_runtime_api_id_t Op);
-
-  void enableAllUserCallbacks() {
-    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I =
-             rocprofiler_hip_runtime_api_id_t::
-                 ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
-         I <
-         rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST;
-         I++) {
-      enableUserCallback(rocprofiler_hip_runtime_api_id_t(I));
-    }
-  }
-
-  void disableAllUserCallbacks() {
-    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I =
-             rocprofiler_hip_runtime_api_id_t::
-                 ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
-         I <
-         rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST;
-         I++) {
-      disableUserCallback(rocprofiler_hip_runtime_api_id_t(I));
-    }
-  }
-
-  void enableAllInternalCallbacks() {
-    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I =
-             rocprofiler_hip_runtime_api_id_t::
-                 ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
-         I <
-         rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST;
-         I++) {
-      enableInternalCallback(rocprofiler_hip_runtime_api_id_t(I));
-    }
-  }
-
-  void disableAllInternalCallbacks() {
-    for (std::underlying_type<rocprofiler_hip_runtime_api_id_t>::type I =
-             rocprofiler_hip_runtime_api_id_t::
-                 ROCPROFILER_HIP_RUNTIME_API_ID_hipApiName;
-         I <
-         rocprofiler_hip_runtime_api_id_t::ROCPROFILER_HIP_RUNTIME_API_ID_LAST;
-         I++) {
-      disableInternalCallback(rocprofiler_hip_runtime_api_id_t(I));
-    }
-  }
+  void disableInternalCallback(luthier::hip::RuntimeApiEvtID Op);
 
   llvm::Error captureApiTable(HipDispatchTable *Table) {
     RuntimeApiTable = Table;
