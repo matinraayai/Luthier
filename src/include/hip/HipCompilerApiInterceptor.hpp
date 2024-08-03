@@ -31,6 +31,7 @@ private:
 public:
   HipCompilerApiInterceptor() = default;
   ~HipCompilerApiInterceptor() {
+    *RuntimeApiTable = SavedRuntimeApiTable;
     SavedRuntimeApiTable = {};
     Singleton<HipCompilerApiInterceptor>::~Singleton();
   }

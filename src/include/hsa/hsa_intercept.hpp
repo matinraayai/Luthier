@@ -51,13 +51,13 @@ public:
     *RuntimeApiTable->image_ext_ = SavedRuntimeApiTable.image_ext;
   }
 
-  bool enableUserCallback(ApiEvtID Op);
+  llvm::Error enableUserCallback(ApiEvtID Op);
 
-  void disableUserCallback(ApiEvtID Op);
+  llvm::Error disableUserCallback(ApiEvtID Op);
 
-  bool enableInternalCallback(ApiEvtID Op);
+  llvm::Error enableInternalCallback(ApiEvtID Op);
 
-  void disableInternalCallback(ApiEvtID Op);
+  llvm::Error disableInternalCallback(ApiEvtID Op);
 
   llvm::Error captureApiTable(HsaApiTable *Table) {
     RuntimeApiTable = Table;
@@ -69,9 +69,9 @@ public:
         Table->core_->hsa_system_get_major_extension_table_fn(
             HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_03_pfn_t),
             &AmdTable)));
+    Status = API_TABLE_CAPTURED;
     // Run the disable API function to install the queue interceptor function
-    disableInternalCallback(HSA_API_EVT_ID_hsa_queue_create);
-    return llvm::Error::success();
+    return disableInternalCallback(HSA_API_EVT_ID_hsa_queue_create);
   }
 };
 } // namespace luthier::hsa
