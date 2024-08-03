@@ -14,8 +14,8 @@
 #include <optional>
 
 #include "common/error.hpp"
-#include "hip/hip_compiler_intercept.hpp"
-#include "hip/hip_runtime_intercept.hpp"
+#include "hip/HipCompilerApiInterceptor.hpp"
+#include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/hsa_executable_symbol.hpp"
 #include "hsa/hsa_intercept.hpp"
 #include "hsa/hsa_platform.hpp"
@@ -30,7 +30,7 @@ namespace luthier {
 namespace hip {
 
 const HipCompilerDispatchTable &getSavedCompilerTable() {
-  return hip::CompilerInterceptor::instance().getSavedCompilerTable();
+  return hip::HipCompilerApiInterceptor::instance().getSavedApiTableContainer();
 }
 
 } // namespace hip
@@ -39,16 +39,16 @@ namespace hsa {
 
 void setAtHsaApiEvtCallback(
     const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback) {
-  hsa::Interceptor::instance().setUserCallback(Callback);
+  hsa::HsaRuntimeInterceptor::instance().setUserCallback(Callback);
 }
 
 
 const HsaApiTable &getHsaApiTable() {
-  return hsa::Interceptor::instance().getSavedHsaTables().root;
+  return hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().root;
 }
 
 const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable() {
-  return hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
+  return hsa::HsaRuntimeInterceptor::instance().getHsaVenAmdLoaderTable();
 }
 
 llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol) {
@@ -84,19 +84,11 @@ getDefiningLoadedCodeObject(hsa_executable_symbol_t Symbol) {
 }
 
 void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
-  hsa::Interceptor::instance().enableUserCallback(ApiID);
+  hsa::HsaRuntimeInterceptor::instance().enableUserCallback(ApiID);
 }
 
 void disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
-  hsa::Interceptor::instance().disableUserCallback(ApiID);
-}
-
-void enableAllHsaApiEvtCallbacks() {
-  hsa::Interceptor::instance().enableAllUserCallbacks();
-}
-
-void disableAllHsaCallbacks() {
-  hsa::Interceptor::instance().disableAllUserCallbacks();
+  hsa::HsaRuntimeInterceptor::instance().disableUserCallback(ApiID);
 }
 
 } // namespace hsa
@@ -300,9 +292,6 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
   Packet.private_segment_size = InstrumentedKernelMD->PrivateSegmentFixedSize;
 
   return llvm::Error::success();
-}
-rocprofiler_dim3_t convertToRocprofilerDim3(const dim3 &d) {
-  return rocprofiler_dim3_t{d.x, d.y, d.z};
 }
 
 } // namespace luthier

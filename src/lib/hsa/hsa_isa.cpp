@@ -8,8 +8,9 @@ namespace luthier::hsa {
 
 llvm::Expected<ISA> ISA::fromName(const char *IsaName) {
   hsa_isa_t Isa;
-  const auto &CoreApi =
-      luthier::hsa::Interceptor::instance().getSavedHsaTables().core;
+  const auto &CoreApi = luthier::hsa::HsaRuntimeInterceptor::instance()
+                            .getSavedApiTableContainer()
+                            .core;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(CoreApi.hsa_isa_from_name_fn(IsaName, &Isa)));
 

@@ -13,10 +13,11 @@
 
 #include <functional>
 #include <llvm/ADT/DenseSet.h>
+#include <mutex>
 #include <shared_mutex>
 
 #include "common/error.hpp"
-#include <luthier/llvm_dense_map_info.h>
+#include <luthier/hsa_dense_map_info.h>
 
 namespace luthier {
 

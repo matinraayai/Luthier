@@ -12,14 +12,13 @@
 #define LUTHIER_HIP_HIP_RUNTIME_API_INTERCEPTOR_HPP
 
 #include <functional>
-#include <hip/amd_detail/hip_api_trace.hpp>
 #include <llvm/ADT/DenseSet.h>
 
 #include "common/ROCmLibraryApiInterceptor.hpp"
 #include "common/error.hpp"
 #include "common/singleton.hpp"
-#include <luthier/types.h>
 #include <luthier/hip_trace_api.h>
+#include <luthier/types.h>
 
 namespace luthier::hip {
 

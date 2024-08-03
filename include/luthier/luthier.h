@@ -20,8 +20,6 @@
 
 namespace luthier {
 
-rocprofiler_dim3_t convertToRocprofilerDim3(const dim3& d);
-
 /// A function that will be called before and after Luthier's sub-systems are
 /// initialized, with timing indicated by \p Phase\n
 /// Use this function to print a banner for the tool, parse arguments,
@@ -80,12 +78,6 @@ void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 /// \sa setAtHsaApiEvtCallback, enableHsaApiEvtIDCallback,
 /// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
 void disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
-
-/// Convenience method for enabling all HSA API/EVT IDs capture and callbacks
-void enableAllHsaApiEvtCallbacks();
-
-/// Convenience method for disabling all HSA API/EVT
-void disableAllHsaCallbacks();
 
 } // namespace hsa
 

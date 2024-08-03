@@ -11,14 +11,14 @@
 
 #ifndef LUTHIER_LIFTED_REPRESENTATION_H
 #define LUTHIER_LIFTED_REPRESENTATION_H
-#include "llvm_dense_map_info.h"
+#include "hsa_dense_map_info.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
-#include <luthier/instr.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <luthier/instr.h>
 
 namespace llvm {
 class GCNTargetMachine;

@@ -39,7 +39,8 @@ llvm::Expected<std::vector<Executable>> getAllExecutables();
 /// \c llvm::Error indicating any HSA errors encountered
 /// \sa hsa_ven_amd_loader_query_host_address
 template <typename T> llvm::Expected<T *> queryHostAddress(T *DeviceAddress) {
-  const auto &LoaderApi = Interceptor::instance().getHsaVenAmdLoaderTable();
+  const auto &LoaderApi =
+      HsaRuntimeInterceptor::instance().getHsaVenAmdLoaderTable();
   const T *HostAddress;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(LoaderApi.hsa_ven_amd_loader_query_host_address(

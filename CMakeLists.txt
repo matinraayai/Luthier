@@ -10,6 +10,8 @@ project(luthier
 set(CMAKE_CXX_STANDARD 20)
 # ======================================================================================================================
 # User Options =========================================================================================================
+option(LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG "Generates the interceptor implementations
+                                                   during the first cmake config time" ON)
 option(LUTHIER_BUILD_INTEGRATION_TESTS "Builds the integration tests" OFF)
 option(LUTHIER_BUILD_UNIT_TESTS "Builds the unit test" OFF)
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
@@ -30,6 +32,8 @@ find_package(amd_comgr REQUIRED)
 find_package(rocprofiler-sdk REQUIRED)
 
 find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 find_package(LLVM REQUIRED CONFIG PATHS ${LUTHIER_LLVM_BIN_DIR} NO_DEFAULT_PATH)
 

@@ -1,8 +1,15 @@
-execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+if (${LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG})
+    execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+endif ()
+
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
+        COMMENT "Generating HSA API interceptor implementation")
 
 add_library(luthier_hsa STATIC
-        hsa_intercept.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
         hsa_executable.cpp
         hsa_agent.cpp
         hsa_executable_symbol.cpp

@@ -12,21 +12,19 @@
 #define LUTHIER_HIP_HIP_COMPILER_API_INTERCEPT_HPP
 
 #include <functional>
-#include <hip/amd_detail/hip_api_trace.hpp>
 #include <llvm/ADT/DenseSet.h>
-#include <luthier/llvm_dense_map_info.h>
 
 #include "common/ROCmLibraryApiInterceptor.hpp"
 #include "common/error.hpp"
 #include "common/singleton.hpp"
-#include <luthier/types.h>
 #include <luthier/hip_trace_api.h>
+#include <luthier/types.h>
 
 namespace luthier::hip {
 
 class HipCompilerApiInterceptor
     : public ROCmLibraryApiInterceptor<
-          luthier::hip::CompilerApiEvtID, luthier::hip::ApiEvtArgs ,
+          luthier::hip::CompilerApiEvtID, luthier::hip::ApiEvtArgs,
           HipCompilerDispatchTable, HipCompilerDispatchTable>,
       public Singleton<HipCompilerApiInterceptor> {
 private:
