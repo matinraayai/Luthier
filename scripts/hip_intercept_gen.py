@@ -428,17 +428,6 @@ def main():
         f.writelines(callback_args_struct)
         f.writelines("\n// NOLINTEND\n")
 
-    # Name of the API tables to capture in HIP
-    api_table_names = ["HipCompilerDispatchTable", "HipDispatchTable"]
-    # Name of the HIP APIs
-    api_names = ["Compiler", "Runtime"]
-    # Name of the header files for each API
-    interceptor_header_file_names = ["hip/HipCompilerApiInterceptor.hpp", "hip/HipRuntimeApiInterceptor.hpp"]
-    # Name of the interceptor singleton classes
-    interceptor_names = ["HipCompilerApiInterceptor", "HipRuntimeApiInterceptor"]
-    # Path to where the .cpp file of each interceptor will be written to
-    interceptor_cpp_paths = [args.cpp_compiler_callback_save_path, args.cpp_runtime_callback_save_path]
-
     for api_table_name, api_name, api_table, interceptor_header_file_name, interceptor_name, interceptor_cpp_path in (
             zip(api_table_names, api_names, [api_tables["HipCompilerDispatchTable"], api_tables["HipDispatchTable"]],
                 interceptor_header_file_names, interceptor_names,

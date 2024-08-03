@@ -1,3 +1,6 @@
+execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hip_intercept_gen.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+
 add_library(luthier_hip STATIC
         hip_compiler_intercept.cpp
         hip_runtime_intercept.cpp

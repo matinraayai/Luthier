@@ -1,3 +1,6 @@
+execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+
 add_library(luthier_hsa STATIC
         hsa_intercept.cpp
         hsa_executable.cpp
