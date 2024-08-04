@@ -1,4 +1,4 @@
-//===-- luthier.pp - Implementation of the Luthier API --------------------===//
+//===-- luthier.cpp - Implementation of the Luthier API -------------------===//
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -83,12 +83,12 @@ getDefiningLoadedCodeObject(hsa_executable_symbol_t Symbol) {
     return std::nullopt;
 }
 
-void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
-  hsa::HsaRuntimeInterceptor::instance().enableUserCallback(ApiID);
+llvm::Error enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
+  return hsa::HsaRuntimeInterceptor::instance().enableUserCallback(ApiID);
 }
 
-void disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
-  hsa::HsaRuntimeInterceptor::instance().disableUserCallback(ApiID);
+llvm::Error disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
+  return hsa::HsaRuntimeInterceptor::instance().disableUserCallback(ApiID);
 }
 
 } // namespace hsa
