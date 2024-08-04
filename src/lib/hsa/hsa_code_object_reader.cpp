@@ -9,7 +9,8 @@ namespace luthier::hsa {
 
 llvm::Expected<CodeObjectReader>
 CodeObjectReader::createFromMemory(llvm::StringRef elf) {
-  const auto &coreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
+  const auto &coreTable =
+      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
   hsa_code_object_reader_t reader;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       coreTable.hsa_code_object_reader_create_from_memory_fn(

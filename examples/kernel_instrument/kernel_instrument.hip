@@ -50,26 +50,27 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
             llvm::report_fatal_error(std::move(Err), true);
 
           if (auto Err = luthier::instrumentAndLoad(
-              Exec, *LiftedKernel,
-              [&](InstrumentationTask &IT,
-                  LiftedRepresentation &LR) -> llvm::Error {
-                // insert a hook after the first instruction of each basic block
-                for (auto &[Func, MF] : LR.functions()) {
-                  for (auto &MBB : *MF) {
-                    if (auto Err = IT.insertHookBefore(
-                            *MBB.begin(),
-                            LUTHIER_GET_HOOK_HANDLE(instrumentationHook))) {
-                      return Err;
+                  Exec, *LiftedKernel,
+                  [&](InstrumentationTask &IT,
+                      LiftedRepresentation &LR) -> llvm::Error {
+                    // insert a hook after the first instruction of each basic
+                    // block
+                    for (auto &[Func, MF] : LR.functions()) {
+                      for (auto &MBB : *MF) {
+                        if (auto Err = IT.insertHookBefore(
+                                *MBB.begin(),
+                                LUTHIER_GET_HOOK_HANDLE(instrumentationHook))) {
+                          return Err;
+                        }
+                      }
                     }
-                  }
-                }
-                return llvm::Error::success();
-              },
-              "instrumented")) {
+                    return llvm::Error::success();
+                  },
+                  "instrumented")) {
             llvm::report_fatal_error(std::move(Err), true);
           }
           if (auto Err =
-          overrideWithInstrumented(DispatchPacket, "instrumented"))
+                  overrideWithInstrumented(DispatchPacket, "instrumented"))
             llvm::report_fatal_error(std::move(Err), true);
         }
       }
@@ -82,13 +83,21 @@ static void atHsaApiTableUnload(ApiEvtPhase Phase) {
   }
 }
 
+static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
+  if (Phase == API_EVT_PHASE_AFTER) {
+    if (auto Err = luthier::hsa::enableHsaApiEvtIDCallback(
+            hsa::HSA_API_EVT_ID_hsa_queue_packet_submit))
+      llvm::report_fatal_error(std::move(Err), true);
+  }
+}
+
 namespace luthier {
 
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     llvm::outs() << "Kernel instrument tool is launching.\n";
   } else {
-    hsa::enableHsaApiEvtIDCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
+    hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
     hsa::setAtHsaApiEvtCallback(atHsaEvt);
     setAtApiTableReleaseEvtCallback(atHsaApiTableUnload);
   }

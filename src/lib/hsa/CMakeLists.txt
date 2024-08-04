@@ -1,5 +1,23 @@
+get_target_property(HSA_INCLUDE_DIRS hsa-runtime64::hsa-runtime64 INTERFACE_INCLUDE_DIRECTORIES)
+
+if (${LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG})
+    execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
+            --hsa-include-dir ${HSA_INCLUDE_DIRS}/hsa
+            --cpp-implementation-save-path ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
+            --h-api-enums-structs-save-path ${CMAKE_SOURCE_DIR}/include/luthier/hsa_trace_api.h
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+endif ()
+
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
+        --hsa-include-dir ${HSA_INCLUDE_DIRS}/hsa
+        --cpp-implementation-save-path ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
+        --h-api-enums-structs-save-path ${CMAKE_SOURCE_DIR}/include/luthier/hsa_trace_api.h
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
+        COMMENT "Generating HSA API interceptor implementation")
+
 add_library(luthier_hsa STATIC
-        hsa_intercept.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
         hsa_executable.cpp
         hsa_agent.cpp
         hsa_executable_symbol.cpp

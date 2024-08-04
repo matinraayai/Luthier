@@ -12,12 +12,14 @@
 namespace luthier::hsa {
 
 llvm::Error init() {
-  const auto &CoreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
+  const auto &CoreTable =
+      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
   return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_init_fn());
 }
 
 llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
-  const auto &CoreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
+  const auto &CoreTable =
+      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
   auto ReturnGpuAgentsCallback = [](hsa_agent_t agent, void *data) {
     auto AgentMap = reinterpret_cast<llvm::SmallVector<GpuAgent> *>(data);
     hsa_device_type_t DevType = HSA_DEVICE_TYPE_CPU;
@@ -38,7 +40,7 @@ llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
 
 llvm::Expected<std::vector<Executable>> getAllExecutables() {
   const auto &LoaderApi =
-      hsa::Interceptor::instance().getHsaVenAmdLoaderTable();
+      hsa::HsaRuntimeInterceptor::instance().getHsaVenAmdLoaderTable();
   typedef std::vector<Executable> OutType;
   OutType Out;
   auto Iterator = [](hsa_executable_t exec, void *data) {
@@ -65,7 +67,8 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code) {
   return llvm::toStringRef(*Out);
 }
 llvm::Error shutdown() {
-  const auto &CoreTable = hsa::Interceptor::instance().getSavedHsaTables().core;
+  const auto &CoreTable =
+      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
   return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_shut_down_fn());
 }
 } // namespace luthier::hsa

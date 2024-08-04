@@ -40,7 +40,8 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
             llvm::report_fatal_error(std::move(Err), true);
 
           llvm::SmallVector<
-              std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
+              std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>,
+              1>
               SourceFiles;
           // Call the instrument function without any work so that the LR gets
           // cloned
@@ -71,13 +72,21 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
   }
 }
 
+static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
+  if (Phase == API_EVT_PHASE_AFTER) {
+    if (auto Err = luthier::hsa::enableHsaApiEvtIDCallback(
+            hsa::HSA_API_EVT_ID_hsa_queue_packet_submit))
+      llvm::report_fatal_error(std::move(Err), true);
+  }
+}
+
 namespace luthier {
 
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     llvm::outs() << "Luthier Code Lifter Debug Tool is launching!\n";
   } else {
-    hsa::enableHsaApiEvtIDCallback(hsa::HSA_API_EVT_ID_hsa_queue_packet_submit);
+    hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
     hsa::setAtHsaApiEvtCallback(atHsaEvt);
   }
 }

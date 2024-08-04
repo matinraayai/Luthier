@@ -1,12 +1,12 @@
-//===-- llvm_dense_map_info.h - DenseMapInfo Implementation  -----*- C++-*-===//
+//===-- hsa_dense_map_info.h - HSA DenseMapInfo Implementation  --*- C++-*-===//
 //
 //===----------------------------------------------------------------------===//
 ///
 /// \file Includes the <tt>DenseMapInfo</tt> for primitives used by Luthier,
 /// so that they can be stored in LLVM-based maps.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LLVM_DENSE_MAP_INFO
-#define LUTHIER_LLVM_DENSE_MAP_INFO
+#ifndef LUTHIER_HSA_DENSE_MAP_INFO
+#define LUTHIER_HSA_DENSE_MAP_INFO
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMapInfo.h>
 
@@ -35,6 +35,7 @@ HSA_PRIMITIVE_DENSE_MAP_INFO_DEFINE(hsa_loaded_code_object_t);
 HSA_PRIMITIVE_DENSE_MAP_INFO_DEFINE(hsa_executable_symbol_t);
 
 #undef HSA_PRIMITIVE_DENSE_MAP_INFO_DEFINE
+
 } // namespace llvm
 
 #endif

@@ -1,8 +1,8 @@
 #include "tooling/controller.hpp"
 #include "common/log.hpp"
-#include "hip/hip_intercept.hpp"
+#include "hip/HipCompilerApiInterceptor.hpp"
+#include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/hsa_executable.hpp"
-#include "luthier/hip_trace_api.h"
 #include "tooling_common/code_generator.hpp"
 #include "tooling_common/code_lifter.hpp"
 #include "tooling_common/intrinsic/ReadReg.hpp"
@@ -28,13 +28,13 @@ template <> Controller *Singleton<Controller>::Instance{nullptr};
 Controller *Controller::C{nullptr};
 
 namespace hip {
-static void internalApiCallback(ApiArgs &Args, ApiReturn *Out,
-                                ApiEvtPhase Phase, int ApiId) {
+static void internalApiCallback(ApiEvtArgs *Args,
+                                ApiEvtPhase Phase, ApiEvtID ApiId) {
   LUTHIER_LOG_FUNCTION_CALL_START
   if (Phase == API_EVT_PHASE_BEFORE) {
-    if (ApiId == hip::HIP_API_ID___hipRegisterFunction) {
+    if (ApiId == HIP_COMPILER_API_EVT_ID___hipRegisterFunction) {
       auto &COM = ToolExecutableManager::instance();
-      auto &LastRFuncArgs = Args.__hipRegisterFunction;
+      auto &LastRFuncArgs = Args->__hipRegisterFunction;
       // If the function doesn't have __luthier_wrap__ in its name then it
       // belongs to the instrumented application or HIP can manage it on its own
       // since no device function is present to strip from it
@@ -52,7 +52,7 @@ static void internalApiCallback(ApiArgs &Args, ApiReturn *Out,
 namespace hsa {
 
 void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
-                         hsa::ApiEvtID ApiId, bool *SkipFunction) {
+                         hsa::ApiEvtID ApiId) {
   LUTHIER_LOG_FUNCTION_CALL_START
   if (Phase == API_EVT_PHASE_AFTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
@@ -108,33 +108,53 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
                                     void **Tables, uint64_t NumTables,
                                     void *Data) {
   if (Type == ROCPROFILER_HSA_TABLE) {
-    LLVM_DEBUG(llvm::dbgs() << "Capturing the HSA API Tables.\n");
-    auto &HsaInterceptor = luthier::hsa::Interceptor::instance();
+    auto &HsaInterceptor = luthier::hsa::HsaRuntimeInterceptor::instance();
     auto &HsaApiTableCaptureCallback =
         Controller::instance().getAtHSAApiTableCaptureEvtCallback();
     HsaApiTableCaptureCallback(API_EVT_PHASE_BEFORE);
+    LLVM_DEBUG(llvm::dbgs() << "Capturing the HSA API Tables.\n");
     auto *Table = static_cast<HsaApiTable *>(Tables[0]);
-    HsaInterceptor.captureHsaApiTable(Table);
+    if (auto Err = HsaInterceptor.captureApiTable(Table)) {
+      llvm::report_fatal_error(std::move(Err), true);
+    }
     HsaApiTableCaptureCallback(API_EVT_PHASE_AFTER);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HSA API Tables.\n");
 
     HsaInterceptor.setInternalCallback(luthier::hsa::internalApiCallback);
-    HsaInterceptor.enableInternalCallback(
-        luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze);
-    HsaInterceptor.enableInternalCallback(
-        luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy);
-    HsaInterceptor.enableInternalCallback(
-        luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object);
+    if (auto Err = HsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze)) {
+      llvm::report_fatal_error(std::move(Err), true);
+    }
+    if (auto Err = HsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy)) {
+      llvm::report_fatal_error(std::move(Err), true);
+    }
+    if (auto Err = HsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object)) {
+      llvm::report_fatal_error(std::move(Err), true);
+    }
   }
   if (Type == ROCPROFILER_HIP_COMPILER_TABLE) {
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Compiler API Table.\n");
-    auto &HipInterceptor = hip::Interceptor::instance();
+    auto &HipCompilerInterceptor =
+        luthier::hip::HipCompilerApiInterceptor::instance();
     auto *Table = static_cast<HipCompilerDispatchTable *>(Tables[0]);
-    HipInterceptor.captureCompilerDispatchTable(Table);
-    HipInterceptor.setInternalCallback(hip::internalApiCallback);
-    HipInterceptor.enableInternalCallback(
-        luthier::hip::HIP_API_ID___hipRegisterFunction);
+    if (auto Err = HipCompilerInterceptor.captureApiTable(Table))
+      llvm::report_fatal_error(std::move(Err), true);
+    HipCompilerInterceptor.setInternalCallback(hip::internalApiCallback);
+    if (auto Err = HipCompilerInterceptor.enableInternalCallback(
+        hip::HIP_COMPILER_API_EVT_ID___hipRegisterFunction))
+      llvm::report_fatal_error(std::move(Err), true);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Compiler API Table.\n");
+  }
+  if (Type == ROCPROFILER_HIP_RUNTIME_TABLE) {
+    LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Runtime API Table.\n");
+    auto &HipRuntimeInterceptor = luthier::hip::HipRuntimeApiInterceptor::instance();
+    auto *Table = static_cast<HipDispatchTable *>(Tables[0]);
+    if (auto Err = HipRuntimeInterceptor.captureApiTable(Table))
+      llvm::report_fatal_error(std::move(Err), true);
+    HipRuntimeInterceptor.setInternalCallback(hip::internalApiCallback);
+    LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Runtime API Table.\n");
   }
 }
 
@@ -156,7 +176,9 @@ Controller::Controller()
   CG = new CodeGenerator();
   COM = new ToolExecutableManager();
   CL = new CodeLifter();
-  HipInterceptor = new hip::Interceptor();
+  HsaInterceptor = new hsa::HsaRuntimeInterceptor();
+  HipCompilerInterceptor = new hip::HipCompilerApiInterceptor();
+  HipRuntimeInterceptor = new hip::HipRuntimeApiInterceptor();
   // Register Luthier intrinsics with the Code Generator
   CG->registerIntrinsic("luthier::readReg",
                         {readRegIRProcessor, readRegMIRProcessor});
@@ -168,10 +190,13 @@ Controller::~Controller() {
   delete CG;
   delete CL;
   delete TM;
-  delete HipInterceptor;
   delete COM;
   delete HsaPlatform;
+  delete HsaInterceptor;
+  delete HipCompilerInterceptor;
+  delete HipRuntimeInterceptor;
 }
+
 void Controller::init() {
   static std::once_flag Once{};
   std::call_once(Once, []() {
@@ -194,6 +219,7 @@ void Controller::finalize() {
     atFinalization(API_EVT_PHASE_AFTER);
   });
 }
+
 namespace hsa {
 void setAtApiTableCaptureEvtCallback(
     const std::function<void(ApiEvtPhase)> &Callback) {
@@ -213,7 +239,9 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
   ID->name = "Luthier";
   rocprofiler_at_intercept_table_registration(
       luthier::apiRegistrationCallback,
-      ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE, nullptr);
+      ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE |
+          ROCPROFILER_HIP_RUNTIME_TABLE,
+      nullptr);
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
       sizeof(rocprofiler_tool_configure_result_t), nullptr,
