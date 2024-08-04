@@ -20,36 +20,51 @@
 
 namespace luthier {
 
-/// A function that will be called before and after Luthier's sub-systems are
-/// initialized, with timing indicated by \p Phase\n
-/// Use this function to print a banner for the tool, parse arguments,
-/// or (only after init) setup different types of Luthier callbacks\n
-/// No HSA or HIP function should be used inside this function, as at this
-/// point non of them would likely to be initialized\n
-/// This function is required to be implemented by tools
+//===----------------------------------------------------------------------===//
+// Luthier Callback APIs
+//===----------------------------------------------------------------------===//
+
+/// A callback invoked before and after Luthier's internal components are
+/// initialized \n
+/// This function is typically used for initializing callback functions,
+/// printing a banner for the tool, and argument parsing with LLVM's \c cl
+/// namespace \n
+/// \warning It is not safe to use HSA or HIP functions in this callback,
+/// as at this point of execution neither HIP or HSA are likely to be
+/// initialized\n
+/// \warning This callback should not enable callbacks for HIP/HSA APIs, as
+/// at this point of execution, HIP/HSA API tables have not been captured by
+/// Luthier; Use \c hsa::setAtApiTableCaptureEvtCallback and
+/// \c hip::setAtApiTableCaptureEvtCallback instead
+/// \note This function is required to be implemented by all Luthier tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool initialization
 /// or \c API_EVT_PHASE_AFTER when called after tool initialization
 void atToolInit(ApiEvtPhase Phase);
 
-/// A function that will be called before and after Luthier's sub-systems are
+/// A callback invoked before and after Luthier's sub-systems are
 /// destroyed and finalized\n
-/// Use this function to print out/process results that are already on the host,
-/// and clean up after the tool\n
-/// No HSA or HIP function should be used inside this function, as at this
-/// point non of them are likely to be initialized\n
-/// This function is required to be implemented by tools
+/// Use this callback to print out/process results that are already on the host,
+/// and finalize the tool\n
+/// \warning No HSA or HIP function should be used inside this callback,
+/// as at this point both HSA and HIP runtimes are finalized\n
+/// \warning If any interactions are to happen inside this callback and
+/// Luthier's internal components, it must be only be done when \p Phase
+/// is \c API_EVT_PHASE_BEFORE
+/// \note This function is required to be implemented by all Luthier tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
 /// or \c API_EVT_PHASE_AFTER when called after tool finalization
 void atFinalization(ApiEvtPhase Phase);
-
-namespace hsa {
 
 //===----------------------------------------------------------------------===//
 // HSA/HIP callback functions
 //===----------------------------------------------------------------------===//
 
-/// If called, performs the \p Callback before and after the HSA API table has
+namespace hsa {
+
+/// If called, invokes the \p Callback before and after the HSA API table has
 /// been captured by Luthier\n
+/// Use this function to request callbacks for each \c luthier::hsa::ApiEvtID
+/// (only after tables have been captured)
 /// If the \p Callback is called during <tt>API_EVT_PHASE_AFTER</tt>, it
 /// is allowed to use HSA functions via <tt>luthier::hsa::getHsaApiTable</tt>
 /// \param Callback the function to be called before/after the HSA API tables
@@ -68,16 +83,26 @@ void setAtHsaApiEvtCallback(
 
 /// Enables capturing of the given \p Op and performs a HSA API/EVT
 /// callback everytime it is reached in the application
+/// \note This function must be called after the HSA API tables have been
+/// captured by Luthier. The tool will be notified of this event by the
+/// \c luthier::setAtApiTableCaptureEvtCallback function, when \c ApiEvtPhase
+/// is <tt>API_EVT_PHASE_AFTER</tt>.
 /// \param ApiID the API/EVT ID to be captured
+/// \returns an \c llvm::Error if any issue was encountered during the process
 /// \sa setAtHsaApiEvtCallback, disableHsaApiEvtIDCallback,
 /// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
-void enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
+llvm::Error enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 
 /// Disables capturing of the given HSA \p Op and its callback
-/// \param ApiID the API/EVT to stop capturing
+/// \note This function must be called after the HSA API tables have been
+/// captured by Luthier. The tool will be notified of this event by the
+/// \c luthier::setAtApiTableCaptureEvtCallback function, when \c ApiEvtPhase
+/// is <tt>API_EVT_PHASE_AFTER</tt>.
+/// \param ApiID the API/EVT ID to stop capturing
+/// \returns an \c llvm::Error if any issue was encountered during the process
 /// \sa setAtHsaApiEvtCallback, enableHsaApiEvtIDCallback,
 /// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
-void disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
+llvm::Error disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 
 } // namespace hsa
 
