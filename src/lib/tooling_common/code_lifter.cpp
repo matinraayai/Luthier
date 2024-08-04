@@ -435,9 +435,8 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   auto KDOnHost = hsa::queryHostAddress(*KDOnDevice);
   LUTHIER_RETURN_ON_ERROR(KDOnHost.takeError());
 
-  F->addFnAttr(
-      "amdgpu-lds-size",
-      llvm::to_string((*KDOnHost)->GroupSegmentFixedSize));
+  F->addFnAttr("amdgpu-lds-size",
+               llvm::to_string((*KDOnHost)->GroupSegmentFixedSize));
   // Kern Arg is determined via analysis usage + args set earlier
   auto Rsrc1 = (*KDOnHost)->getRsrc1();
   auto Rsrc2 = (*KDOnHost)->getRsrc2();
@@ -581,6 +580,75 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
         llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
   }
   return llvm::Error::success();
+}
+
+void computeLiveIns(
+    llvm::LivePhysRegs &LiveRegs, const llvm::MachineBasicBlock &MBB,
+    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
+        &PerMILiveIns) {
+  const llvm::MachineFunction &MF = *MBB.getParent();
+  const llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
+  const llvm::TargetRegisterInfo &TRI = *MRI.getTargetRegisterInfo();
+  LiveRegs.init(TRI);
+  LiveRegs.addLiveOutsNoPristines(MBB);
+  for (const llvm::MachineInstr &MI : llvm::reverse(MBB)) {
+    LiveRegs.stepBackward(MI);
+    // Update the MI LiveIns map
+    if (!PerMILiveIns.contains(&MI))
+      (void)PerMILiveIns.insert(
+          {const_cast<llvm::MachineInstr *>(&MI),
+           std::move(std::make_unique<llvm::LivePhysRegs>())});
+    auto &MILivePhysRegs = PerMILiveIns[const_cast<llvm::MachineInstr *>(&MI)];
+    MILivePhysRegs->init(TRI);
+    for (const auto &LivePhysReg : LiveRegs) {
+      MILivePhysRegs->addReg(LivePhysReg);
+    }
+  }
+}
+
+void computeAndAddLiveIns(
+    llvm::LivePhysRegs &LiveRegs, llvm::MachineBasicBlock &MBB,
+    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
+        &PerMILiveIns) {
+  luthier::computeLiveIns(LiveRegs, MBB, PerMILiveIns);
+  llvm::addLiveIns(MBB, LiveRegs);
+}
+
+/// Convenience function for recomputing live-in's for a MBB. Returns true if
+/// any changes were made.
+static bool recomputeLiveIns(
+    llvm::MachineBasicBlock &MBB,
+    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
+        &PerMILiveIns) {
+  llvm::LivePhysRegs LPR;
+  std::vector<llvm::MachineBasicBlock::RegisterMaskPair> OldLiveIns;
+
+  MBB.clearLiveIns(OldLiveIns);
+  luthier::computeAndAddLiveIns(LPR, MBB, PerMILiveIns);
+  MBB.sortUniqueLiveIns();
+
+  const std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &NewLiveIns =
+      MBB.getLiveIns();
+  return OldLiveIns != NewLiveIns;
+}
+
+/// Re-implementation of \c llvm::fullyRecomputeLiveIns to save
+/// the Live-ins at each MI as well
+/// \param MF the lifted \c llvm::MachineFunction
+/// \param PerMILiveIns a map which keeps track of the \c llvm::LivePhysRegs at
+/// each \c llvm::MachineInstr
+static void fullyComputeLiveInsOfLiftedMF(
+    llvm::MachineFunction &MF,
+    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
+        &PerMILiveIns) {
+  while (true) {
+    bool AnyChange = false;
+    for (auto &MBB : MF)
+      if (luthier::recomputeLiveIns(MBB, PerMILiveIns))
+        AnyChange = true;
+    if (!AnyChange)
+      return;
+  }
 }
 
 llvm::Error CodeLifter::liftFunction(
@@ -879,7 +947,7 @@ llvm::Error CodeLifter::liftFunction(
 
   MF.getRegInfo().freezeReservedRegs();
 
-  llvm::fullyRecomputeLiveIns(MBBs);
+  luthier::fullyComputeLiveInsOfLiftedMF(MF, LR.MachineInstrLivenessMap);
 
   // Manually set the stack frame size
   // TODO: dynamic stack kernels
@@ -1139,9 +1207,23 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     auto DestMF = MMI.getMachineFunction(*DestF);
     DestLR->RelatedFunctions.insert({FuncHandle, DestMF});
   }
-  // Finally, populate the instruction map
+  // Finally, populate the instruction map and the Live-ins map
   for (const auto &[SrcMI, HSAInst] : SrcLR.MachineInstrToMCMap) {
     DestLR->MachineInstrToMCMap.insert({SrcToDstInstrMap[SrcMI], HSAInst});
+  }
+
+  for (const auto &[SrcMI, SrcMILivePhysReg] : SrcLR.MachineInstrLivenessMap) {
+    auto &[DestMI, DestMILivePhysRegs] =
+        *(DestLR->MachineInstrLivenessMap
+              .insert({SrcToDstInstrMap[SrcMI],
+                       std::make_unique<llvm::LivePhysRegs>()})
+              .first);
+    auto *DestMF = DestMI->getParent()->getParent();
+    auto *TRI = DestMF->getRegInfo().getTargetRegisterInfo();
+    DestMILivePhysRegs->init(*TRI);
+    for (const auto &LivePhysReg : *SrcMILivePhysReg) {
+      DestMILivePhysRegs->addReg(LivePhysReg);
+    }
   }
 
   return DestLR;

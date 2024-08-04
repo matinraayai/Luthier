@@ -14,6 +14,7 @@
 #include "hsa_dense_map_info.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
@@ -90,11 +91,10 @@ private:
 
   /// \brief primary storage of the Module and the Machine Module Info of the
   /// lifted loaded code objects
-  llvm::SmallDenseMap<
-      hsa_loaded_code_object_t,
-      std::pair<llvm::orc::ThreadSafeModule,
-                llvm::MachineModuleInfoWrapperPass*>,
-      1>
+  llvm::SmallDenseMap<hsa_loaded_code_object_t,
+                      std::pair<llvm::orc::ThreadSafeModule,
+                                llvm::MachineModuleInfoWrapperPass *>,
+                      1>
       Modules{};
 
   /// \brief Mapping between an \c hsa_loaded_code_object_t and the
@@ -133,6 +133,15 @@ private:
   /// underlying allocator, and this map becomes invalid
   llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> MachineInstrToMCMap{};
 
+  /// A mapping between an \c llvm::MachineInstr and the set of physical
+  /// registers that are live before it is executed \n
+  /// This mapping is only valid before any LLVM pass is run over the MMIs;
+  /// After that pointers of each machine instruction gets changed by the
+  /// underlying allocator, and this map becomes invalid
+  llvm::DenseMap<llvm::MachineInstr *,
+                 std::unique_ptr<llvm::LivePhysRegs>>
+      MachineInstrLivenessMap{};
+
   LiftedRepresentation();
 
 public:
@@ -166,8 +175,7 @@ public:
   /// this getter casts it to an \c llvm::LLVMTargetMachine or an
   /// \c llvm::TargetMachine instead for tool-facing functionality
   /// \return this <tt>LiftedRepresentation</tt>'s \c llvm::TargetMachine
-  template <typename TMT>
-  const TMT &getTargetMachine() const {
+  template <typename TMT> const TMT &getTargetMachine() const {
     static_assert(std::is_base_of_v<TMT, llvm::GCNTargetMachine> == true);
     return *reinterpret_cast<const TMT *>(TM.get());
   }
@@ -178,8 +186,7 @@ public:
   /// this getter casts it to an \c llvm::LLVMTargetMachine or an
   /// \c llvm::TargetMachine instead for tool-facing functionality
   /// \return this <tt>LiftedRepresentation</tt>'s \c llvm::TargetMachine
-  template <typename TMT>
-  TMT &getTargetMachine() {
+  template <typename TMT> TMT &getTargetMachine() {
     static_assert(std::is_base_of_v<TMT, llvm::GCNTargetMachine> == true);
     return *reinterpret_cast<TMT *>(TM.get());
   }
@@ -231,7 +238,6 @@ public:
   [[nodiscard]] llvm::iterator_range<const_module_iterator> modules() const {
     return make_range(module_begin(), module_end());
   }
-
 
   /// LCO iteration
   iterator begin() { return RelatedLCOs.begin(); }
@@ -316,6 +322,11 @@ public:
   [[nodiscard]] const hsa::Instr &
   getHSAInstrOfMachineInstr(const llvm::MachineInstr &MI) const {
     return *MachineInstrToMCMap.at(const_cast<llvm::MachineInstr *>(&MI));
+  }
+
+  [[nodiscard]] const llvm::LivePhysRegs &
+  getLiveInPhysRegsOfMachineInstr(const llvm::MachineInstr &MI) const {
+    return *MachineInstrLivenessMap.at(&MI);
   }
 };
 

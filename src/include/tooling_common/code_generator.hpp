@@ -78,8 +78,7 @@ public:
   /// \return an \c llvm::Error in case of any issues encountered during the
   /// process
   static llvm::Error
-  printAssembly(llvm::Module &Module,
-                llvm::GCNTargetMachine & TM,
+  printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
                 llvm::MachineModuleInfoWrapperPass *MMIWP,
                 llvm::SmallVectorImpl<char> &CompiledObjectFile,
                 llvm::CodeGenFileType FileType);
@@ -93,8 +92,8 @@ public:
   /// process
   static llvm::Error
   linkRelocatableToExecutable(const llvm::ArrayRef<char> &Code,
-                                 const hsa::ISA &ISA,
-                                 llvm::SmallVectorImpl<uint8_t> &Out);
+                              const hsa::ISA &ISA,
+                              llvm::SmallVectorImpl<uint8_t> &Out);
 
 private:
   /// Returns the full demangled name of \p MangledFuncName without its template
@@ -131,7 +130,7 @@ private:
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
           &MIToHookFuncMap,
       const llvm::StringMap<IntrinsicIRLoweringInfo> &ToBeLoweredIntrinsics,
-      bool DisableVerify = true);
+      bool DisableVerify, const LiftedRepresentation &LR);
 
   static llvm::Expected<llvm::Function &> generateHookIR(
       const llvm::MachineInstr &MI,
@@ -148,7 +147,7 @@ private:
 class ReserveLiveRegs : public llvm::MachineFunctionPass {
 public:
   static char ID;
-  typedef llvm::DenseMap<llvm::Function *, std::unique_ptr<llvm::LivePhysRegs>>
+  typedef llvm::DenseMap<llvm::Function *, llvm::LivePhysRegs*>
       hook_live_regs_map_t;
 
 private:
@@ -161,7 +160,8 @@ public:
 
   explicit ReserveLiveRegs(
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-          &MIToHookFuncMap);
+          &MIToHookFuncMap,
+      const LiftedRepresentation &LR);
 
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
 
