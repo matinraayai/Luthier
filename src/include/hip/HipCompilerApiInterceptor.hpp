@@ -36,13 +36,13 @@ public:
     Singleton<HipCompilerApiInterceptor>::~Singleton();
   }
 
-  bool enableUserCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error enableUserCallback(luthier::hip::ApiEvtID Op);
 
-  void disableUserCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error disableUserCallback(luthier::hip::ApiEvtID Op);
 
-  bool enableInternalCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error enableInternalCallback(luthier::hip::ApiEvtID Op);
 
-  void disableInternalCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error disableInternalCallback(luthier::hip::ApiEvtID Op);
 
   llvm::Error captureApiTable(HipCompilerDispatchTable *Table) {
     RuntimeApiTable = Table;

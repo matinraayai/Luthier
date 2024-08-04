@@ -48,10 +48,7 @@ public:
     RuntimeApiTable = Table;
     SavedRuntimeApiTable = *Table;
     Status = API_TABLE_CAPTURED;
-    return ROCmLibraryApiInterceptor<luthier::hip::ApiEvtID,
-                                     luthier::hip::ApiEvtArgs, HipDispatchTable,
-                                     HipDispatchTable>::captureApiTable(Table);
-
+    return llvm::Error::success();
   }
 };
 
