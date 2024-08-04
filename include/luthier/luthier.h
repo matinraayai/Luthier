@@ -175,6 +175,8 @@ namespace hip {
 
 /// \return a const reference to the original HIP Compiler API table
 /// TODO: introduce thread-local temp callback disabling
+/// TODO: introduce hip compiler/runtime API tracing
+/// TODO: introduce hip runtime api table getter
 const HipCompilerDispatchTable &getSavedCompilerTable();
 
 } // namespace hip
