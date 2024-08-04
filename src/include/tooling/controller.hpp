@@ -1,5 +1,15 @@
-#ifndef CONTROLLER_HPP
-#define CONTROLLER_HPP
+//===-- controller.hpp - Luthier tool's Controller Logic ------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file contains the main Luthier logic behind a Luthier tool. It
+/// defines a \c Controller singleton class in charge of keeping track of
+/// All other singletons of Luthier and different callbacks invoked during
+/// execution of an instrumented application.
+//===----------------------------------------------------------------------===//
+#ifndef LUTHIER_TOOLING_CONTROLLER_HPP
+#define LUTHIER_TOOLING_CONTROLLER_HPP
 
 #include "luthier/types.h"
 #include "common/singleton.hpp"
@@ -16,15 +26,15 @@ class CodeLifter;
 class TargetManager;
 
 namespace hip {
-class CompilerInterceptor;
+class HipCompilerApiInterceptor;
 
-class RuntimeInterceptor;
+class HipRuntimeApiInterceptor;
 
 class Platform;
 } // namespace hip
 
 namespace hsa {
-class Interceptor;
+class HsaRuntimeInterceptor;
 
 class Platform;
 } // namespace hsa
@@ -44,13 +54,13 @@ private:
 
   TargetManager *TM{nullptr};
 
-  hip::CompilerInterceptor *HipCompilerInterceptor{nullptr};
+  hip::HipCompilerApiInterceptor *HipCompilerInterceptor{nullptr};
 
-  hip::RuntimeInterceptor *HipRuntimeInterceptor{nullptr};
+  hip::HipRuntimeApiInterceptor *HipRuntimeInterceptor{nullptr};
 
   hip::Platform *HipPlatform{nullptr};
 
-  hsa::Interceptor *HsaInterceptor{nullptr};
+  hsa::HsaRuntimeInterceptor *HsaInterceptor{nullptr};
 
   hsa::Platform *HsaPlatform{nullptr};
 
