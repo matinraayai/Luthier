@@ -7,7 +7,6 @@
 /// which provides the basics of all other API table interceptor singletons
 /// in Luthier.
 //===----------------------------------------------------------------------===//
-
 #ifndef LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
 #define LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
 
@@ -183,7 +182,7 @@ public:
   /// \note this function will fail if the API table has not been captured
   /// by the interceptor
   /// \param Op the API enum to be captured
-  virtual void disableUserCallback(ApiIDEnumType Op) = 0;
+  virtual llvm::Error disableUserCallback(ApiIDEnumType Op) = 0;
 
   /// If successful, enables callbacks for the Luthier tool internally every
   /// time the API of type \p Op is captured by the interceptor
