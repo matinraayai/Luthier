@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 20)
 # ======================================================================================================================
 # User Options =========================================================================================================
 option(LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG "Generates the interceptor implementations
-                                                   during the first cmake config time" ON)
+                                                   during the first cmake config" ON)
 option(LUTHIER_BUILD_INTEGRATION_TESTS "Builds the integration tests" OFF)
 option(LUTHIER_BUILD_UNIT_TESTS "Builds the unit test" OFF)
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
