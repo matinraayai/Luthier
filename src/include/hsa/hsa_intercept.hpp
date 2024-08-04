@@ -1,5 +1,13 @@
-#ifndef HSA_INTERCEPT_HPP
-#define HSA_INTERCEPT_HPP
+//===-- hsa_intercept.hpp - HSA Runtime API Interceptor -------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements the <tt>luthier::hsa::HsaRuntimeInterceptor</tt>,
+/// in charge of capturing HSA API functions as well as packet dispatch events.
+//===----------------------------------------------------------------------===//
+#ifndef LUTHIER_HSA_HSA_RUNTIME_INTERCEPT_HPP
+#define LUTHIER_HSA_HSA_RUNTIME_INTERCEPT_HPP
 
 #include <hsa/hsa_ven_amd_loader.h>
 
@@ -28,9 +36,6 @@ public:
   HsaRuntimeInterceptor() = default;
 
   ~HsaRuntimeInterceptor() {
-    ROCmLibraryApiInterceptor<
-        ApiEvtID, ApiEvtArgs, HsaApiTable,
-        HsaApiTableContainer>::~ROCmLibraryApiInterceptor();
     uninstallApiTables();
     AmdTable = {};
     Singleton<HsaRuntimeInterceptor>::~Singleton();
