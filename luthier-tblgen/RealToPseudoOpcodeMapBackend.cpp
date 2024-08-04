@@ -12,7 +12,7 @@
 #include "RealToPseudoOpcodeMapBackend.hpp"
 #include <Common/CodeGenInstruction.h>
 #include <Common/CodeGenTarget.h>
-#include <llvm/TableGen/Error.h>
+#include <llvm/Support/FormatVariadic.h>
 #include <llvm/TableGen/Record.h>
 
 namespace luthier {
@@ -22,19 +22,16 @@ RealToPseudoOpcodeMapEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
   llvm::ArrayRef<const llvm::CodeGenInstruction *> NumberedInstructions =
       Target.getInstructionsByEnumValue();
 
-  unsigned TotalNumInstr = NumberedInstructions.size();
-  unsigned TableSize = 0;
-
   llvm::StringRef Namespace = Target.getInstNamespace();
   llvm::outs() << "Number of pseudo insts: " << PseudoInsts.size() << "\n";
-  OS << "static std::unordered_map<uint16_t, uint16_t> RealToPseudoOpcodeMapTable{\n";
+  OS << "static constexpr uint16_t RealToPseudoOpcodeMapTable[] {\n";
   for (const auto &NumberedInst : NumberedInstructions) {
     llvm::Record *SIInst = NumberedInst->TheDef;
+    llvm::StringRef PseudoInstName;
     bool IsReal =
         SIInst->getValue("isPseudo")->getValue()->getAsUnquotedString() == "0";
+    llvm::StringRef InstName = SIInst->getName();
     if (IsReal) {
-      llvm::StringRef RealInstName = SIInst->getName();
-      llvm::StringRef PseudoInstName;
       auto *PseudoInstrRecord = SIInst->getValue("PseudoInstr");
       // If there is a pseudo instr string record for this real inst, query
       // it from the map
@@ -44,30 +41,29 @@ RealToPseudoOpcodeMapEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
         // If the pseudo instr record was not in the map, return the real instr
         // name; Otherwise, assign the map value
         if (PseudoSIInstIt == PseudoInsts.end())
-          PseudoInstName = RealInstName;
+          PseudoInstName = InstName;
         else
           PseudoInstName = PseudoSIInstIt->second->getName();
-        TableSize++;
       } // This inst doesn't have a pseudo inst record, assign it its real instr
       // name
       else {
-        PseudoInstName = RealInstName;
+        PseudoInstName = InstName;
       }
-      OS << "{ llvm::" << Namespace << "::" << RealInstName
-         << ", llvm::" << Namespace << "::" << PseudoInstName << "}, \n";
+    } else {
+      PseudoInstName = InstName;
     }
+    OS << "llvm::" << Namespace << "::" << PseudoInstName << ", \n";
   }
   OS << "}; // End of Table\n\n";
-  return TableSize;
+  return NumberedInstructions.size();
 }
 
 void RealToPseudoOpcodeMapEmitter::emitBinSearch(llvm::raw_ostream &OS,
                                                  unsigned TableSize) {
-  OS << "  auto It = RealToPseudoOpcodeMapTable.find(Opcode);\n";
-  OS << "  if (It == RealToPseudoOpcodeMapTable.end())\n";
+  OS << llvm::formatv("  if (Opcode > {0})\n", TableSize);
   OS << "    return -1;\n";
   OS << "  else\n";
-  OS << "    return It->second;\n";
+  OS << "    return RealToPseudoOpcodeMapTable[Opcode];\n";
 }
 
 void RealToPseudoOpcodeMapEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
@@ -95,7 +91,6 @@ void EmitMapTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS) {
   llvm::CodeGenTarget Target(Records);
   OS << "#ifndef GET_REAL_TO_PSEUDO_OPCODE_MAP\n";
   OS << "#define GET_REAL_TO_PSEUDO_OPCODE_MAP\n";
-  OS << "#include <unordered_map>\n\n";
   OS << "namespace luthier {\n\n";
 
   RealToPseudoOpcodeMapEmitter IMap(Target, Records);
