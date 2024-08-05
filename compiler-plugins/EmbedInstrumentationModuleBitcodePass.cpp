@@ -1,4 +1,14 @@
-#include "embed_optimized_bitcode_pass.hpp"
+//===-- EmbedInstrumentationModuleBitcodePass.cpp -------------------------===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements the \c luthier::EmbedInstrumentationModuleBitcode pass,
+/// used by Luthier tools to preprocess instrumentation modules and embedding
+/// them inside device code objects.
+//===----------------------------------------------------------------------===//
+
+#include "EmbedInstrumentationModuleBitcodePass.hpp"
 
 #include "llvm/Passes/PassPlugin.h"
 #include <llvm/ADT/StringExtras.h>
@@ -16,8 +26,8 @@
 
 namespace luthier {
 
-// TODO: Import these from Luthier proper once the separate compilation
-// issue is resolved
+// TODO: Import these variables as well as the static functions from
+//  Luthier proper once the separate compilation issue is resolved
 
 static constexpr const char *ReservedManagedVar = "__luthier_reserved";
 
@@ -94,14 +104,14 @@ getAnnotatedValues(const llvm::Module &M,
         LLVM_DEBUG(llvm::dbgs()
                    << "Found intrinsic " << Func->getName() << ".\n");
       }
-    };
+    }
   }
   return llvm::Error::success();
 }
 
 llvm::PreservedAnalyses
-EmbedOptimizedBitcodePass::run(llvm::Module &M,
-                               llvm::ModuleAnalysisManager &AM) {
+EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
+                                           llvm::ModuleAnalysisManager &AM) {
   if (M.getGlobalVariable("llvm.embedded.module", /*AllowInternal=*/true))
     llvm::report_fatal_error(
         "Attempted to embed bitcode twice. Are you passing -fembed-bitcode?",
@@ -157,14 +167,12 @@ EmbedOptimizedBitcodePass::run(llvm::Module &M,
     std::string DemangledIntrinsicName =
         getDemangledFunctionNameWithNamespace(MangledIntrinsicName);
     FINOS << DemangledIntrinsicName;
-    llvm::outs() << FormattedIntrinsicName << "\n";
     // Add the output type if it's not void
     auto *ReturnType = Intrinsic->getReturnType();
     if (!ReturnType->isVoidTy()) {
       FINOS << ".";
       ReturnType->print(FINOS);
     }
-    llvm::outs() << FormattedIntrinsicName << "\n";
     // Add the argument types
     for (const auto &Arg : Intrinsic->args()) {
       FINOS << ".";
@@ -221,13 +229,13 @@ llvm::PassPluginLibraryInfo getEmbedLuthierBitcodePassPluginInfo() {
   const auto Callback = [](llvm::PassBuilder &PB) {
     PB.registerOptimizerLastEPCallback(
         [](llvm::ModulePassManager &MPM, llvm::OptimizationLevel Opt) {
-          MPM.addPass(luthier::EmbedOptimizedBitcodePass());
+          MPM.addPass(luthier::EmbedInstrumentationModuleBitcodePass());
         });
   };
 
-  return {LLVM_PLUGIN_API_VERSION, "embed-luthier-bitcode", LLVM_VERSION_STRING,
-          Callback};
-};
+  return {LLVM_PLUGIN_API_VERSION, "pre-process-and-embed-luthier-bitcode",
+          LLVM_VERSION_STRING, Callback};
+}
 
 #ifndef LLVM_LUTHIER_TOOL_COMPILE_PLUGIN_LINK_INTO_TOOLS
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
