@@ -178,7 +178,7 @@ EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
       FINOS << ".";
       Arg.getType()->print(FINOS);
     }
-    Intrinsic->addFnAttr("luthier_intrinsic", DemangledIntrinsicName);
+    Intrinsic->addFnAttr(IntrinsicAttribute, DemangledIntrinsicName);
     Intrinsic->setName(FormattedIntrinsicName);
   }
 
