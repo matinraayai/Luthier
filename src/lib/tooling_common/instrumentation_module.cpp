@@ -26,15 +26,12 @@ namespace luthier {
 
 static constexpr const char *HipCUIDPrefix = "__hip_cuid_";
 
-/// Extracts the LLVM bitcode from the ".llvmbc" section of the LCO's storage
-/// ELF
+/// Finds the ".llvmbc" section of the <tt>LCO</tt>'s host storage ELF
 /// \param LCO the \c hsa::LoadedCodeObject containing the bitcode
-/// \return an owning reference to the extracted \c llvm::Module, or an
-/// \c llvm::Error if the bitcode was not found, or any other error that was
-/// encountered during the extraction process
-static llvm::Expected<std::unique_ptr<llvm::Module>>
-extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO,
-                      llvm::LLVMContext &Context) {
+/// \return an \c llvm::ArrayRef to the contents of the ".llvmbc" section
+/// if found, or an \c llvm::Error if the bitcode was not found
+static llvm::Expected<llvm::ArrayRef<char>>
+getBitcodeBufferOfLCO(const hsa::LoadedCodeObject &LCO) {
   auto StorageELF = LCO.getStorageELF();
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
@@ -46,10 +43,7 @@ extractBitcodeFromLCO(const hsa::LoadedCodeObject &LCO,
     if (*SectionName == ".llvmbc") {
       auto SectionContents = Section.getContents();
       LUTHIER_RETURN_ON_ERROR(SectionContents.takeError());
-      auto Module = llvm::parseBitcodeFile(
-          llvm::MemoryBufferRef(*SectionContents, ""), Context);
-      LUTHIER_RETURN_ON_ERROR(Module.takeError());
-      return std::move(*Module);
+      return llvm::ArrayRef(SectionContents->data(), SectionContents->size());
     }
   }
   return LUTHIER_ASSERTION(FoundBitcodeSection);
@@ -124,7 +118,7 @@ llvm::Error preprocessAndSaveModuleToStream(
   }
 
   // Remove the body of each intrinsic function and make them extern
-  for (auto &Intrinsic: Intrinsics) {
+  for (auto &Intrinsic : Intrinsics) {
     Intrinsic->deleteBody();
     Intrinsic->addFnAttr(LUTHIER_INTRINSIC_ATTRIBUTE);
   }
@@ -193,20 +187,14 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOs.size() == 1));
 
   if (PerAgentModuleExecutables.empty()) {
-    // Initialize the bitcode if this is the first executable to be registered
-    // Make a new context for modifying the bitcode before saving it to memory
-    auto Context = std::make_unique<llvm::LLVMContext>();
-    auto Module = extractBitcodeFromLCO(LCOs[0], *Context);
-    LUTHIER_RETURN_ON_ERROR(Module.takeError());
-    // Preprocess the Module, extract all its static variable names, and its
-    // CUID
-    LUTHIER_RETURN_ON_ERROR(preprocessAndSaveModuleToStream(
-        **Module, GlobalVariables, CUID, BitcodeBuffer));
+    // Record the CUID of the module
+    LUTHIER_RETURN_ON_ERROR(getCUIDOfLCO(LCOs[0]).moveInto(CUID));
+  } else {
+    // Ensure the CUID of the Executable and the Module match
+    auto ExecCUID = getCUIDOfLCO(LCOs[0]);
+    LUTHIER_RETURN_ON_ERROR(ExecCUID.takeError());
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(*ExecCUID == CUID));
   }
-  // Ensure the CUID of the Executable and the Module match
-  auto ExecCUID = getCUIDOfLCO(LCOs[0]);
-  LUTHIER_RETURN_ON_ERROR(ExecCUID.takeError());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(*ExecCUID == CUID));
   // Ensure this executable's agent doesn't already have another copy of this
   // executable loaded on it, then insert its information into the map
   auto Agent = LCOs[0].getAgent();
@@ -214,13 +202,23 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ASSERTION(!PerAgentModuleExecutables.contains(*Agent)));
   PerAgentModuleExecutables.insert({*Agent, Exec});
-  // Populate the variables of this executable on its agent
+  // Record the LCO's bitcode buffer for instrumentation use on its agent
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(!PerAgentBitcodeBufferMap.contains(*Agent)));
+  auto BitcodeBuffer = getBitcodeBufferOfLCO(LCOs[0]);
+  LUTHIER_RETURN_ON_ERROR(BitcodeBuffer.takeError());
+  PerAgentBitcodeBufferMap.insert({*Agent, *BitcodeBuffer});
+
+  // Populate the variables of this executable on its agent as well as the
+  // global variable list
   auto &SymbolMap = PerAgentGlobalVariables.insert({*Agent, {}}).first->second;
-  for (const auto &GVName : GlobalVariables) {
-    auto VariableExecSymbol = LCOs[0].getExecutableSymbolByName(GVName);
-    LUTHIER_RETURN_ON_ERROR(VariableExecSymbol.takeError());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VariableExecSymbol->has_value()));
-    SymbolMap.insert({GVName, **VariableExecSymbol});
+  llvm::SmallVector<hsa::ExecutableSymbol, 4> LCOGlobalVariables;
+  LUTHIER_RETURN_ON_ERROR(LCOs[0].getVariableSymbols(LCOGlobalVariables));
+  for (const auto &GVSymbol : LCOGlobalVariables) {
+    auto GVName = GVSymbol.getName();
+    LUTHIER_RETURN_ON_ERROR(GVName.takeError());
+    GlobalVariables.push_back(std::string(*GVName));
+    SymbolMap.insert({*GVName, GVSymbol});
   }
 
   return llvm::Error::success();
@@ -236,9 +234,11 @@ StaticInstrumentationModule::unregisterExecutable(const hsa::Executable &Exec) {
   // Remove the agent from the variable list and the executable list
   PerAgentGlobalVariables.erase(*Agent);
   PerAgentModuleExecutables.erase(*Agent);
+  PerAgentBitcodeBufferMap.erase(*Agent);
   // If no copies of this module is present on any of the agents, then
   // the lifetime of the static module has ended. Perform a cleanup
   if (PerAgentModuleExecutables.empty()) {
+    PerAgentBitcodeBufferMap.clear();
     HookHandleMap.clear();
     GlobalVariables.clear();
   }
@@ -298,10 +298,12 @@ StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
 
 llvm::Expected<llvm::orc::ThreadSafeModule>
 InstrumentationModule::readBitcodeIntoContext(
-    llvm::orc::ThreadSafeContext &Ctx) const {
+    llvm::orc::ThreadSafeContext &Ctx, const hsa::GpuAgent &Agent) const {
   auto Lock = Ctx.getLock();
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(PerAgentBitcodeBufferMap.contains(Agent)));
   auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::toStringRef(BitcodeBuffer), "", false);
+      llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent)), "", false);
   auto Module = llvm::parseBitcodeFile(*BCBuffer, *Ctx.getContext());
   LUTHIER_RETURN_ON_ERROR(Module.takeError());
   return llvm::orc::ThreadSafeModule(std::move(*Module), Ctx);

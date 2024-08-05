@@ -2,10 +2,6 @@
 
 #include <memory>
 
-#include "llvm/Analysis/BasicAliasAnalysis.h"
-#include "llvm/Analysis/CallGraphSCCPass.h"
-#include "llvm/Analysis/ScopedNoAliasAA.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
 #include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
 #include "llvm/CodeGen/CSEConfigBase.h"
@@ -91,7 +87,6 @@
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/Demangle/Demangle.h>
-#include <llvm/ExecutionEngine/Orc/IndirectionUtils.h>
 #include <llvm/Passes/PassBuilder.h>
 
 #undef DEBUG_TYPE
@@ -158,30 +153,33 @@ llvm::Error CodeGenerator::linkRelocatableToExecutable(
   return llvm::Error::success();
 }
 
-llvm::Expected<llvm::InlineAsm *>
-createInlineAsmMCRegLoad(llvm::MCRegister Reg, const llvm::GCNTargetMachine &TM,
-                         const llvm::Function &Kernel) {
-  // First detect what kind of Physical register we're dealing with
-  auto *TRI = TM.getSubtargetImpl(Kernel)->getRegisterInfo();
-  auto *PhysRegClass = TRI->getPhysRegBaseClass(Reg);
-  auto RegName = TRI->getRegAsmName(Reg);
-  llvm::outs() << "Reg name" << RegName << "\n";
-  auto PhysRegWidth = llvm::AMDGPU::getRegBitWidth(*PhysRegClass);
-  if (PhysRegWidth != 32)
-    llvm_unreachable("Non-32 bit register arguments are not yet supported");
-  if (llvm::SIRegisterInfo::isVGPRClass(PhysRegClass)) {
-    return llvm::InlineAsm::get(
-        llvm::FunctionType::get(llvm::Type::getInt32Ty(Kernel.getContext()),
-                                {}),
-        llvm::formatv("v_mov_b32 $0 {0}", RegName).str(), "=v", true);
-  } else if (llvm::SIRegisterInfo::isSGPRClass(PhysRegClass)) {
-    return llvm::InlineAsm::get(
-        llvm::FunctionType::get(llvm::Type::getInt32Ty(Kernel.getContext()),
-                                {}),
-        llvm::formatv("s_mov_b32 $0 {0}", RegName).str(), "=s", true);
-  } else
-    llvm_unreachable(
-        "Adding arguments to the specified register is not implemented yet");
+static llvm::CallInst *passRegAsArgument(llvm::IRBuilderBase &Builder,
+                                         llvm::MCRegister Reg, llvm::Module &M,
+                                         llvm::Argument *HookArg) {
+  auto &LLVMContext = M.getContext();
+  auto *HookArgType = HookArg->getType();
+
+  auto *UnsignedIntType = llvm::Type::getInt32Ty(LLVMContext);
+  auto *MCRegConstantInt = llvm::ConstantInt::get(UnsignedIntType, Reg);
+  auto *ReadRegFuncType =
+      llvm::FunctionType::get(HookArgType, {UnsignedIntType}, false);
+  // Format the readReg intrinsic function name
+  //TODO: create a common place/method for constructing luthier intrinsics
+  std::string FormattedIntrinsicName{"luthier::readReg"};
+  llvm::raw_string_ostream FINOS(FormattedIntrinsicName);
+  // Format the output type
+  FINOS << ".";
+  ReadRegFuncType->getReturnType()->print(FINOS);
+  // Format the input type
+  FINOS << ".";
+  UnsignedIntType->print(FINOS);
+  // Create the read reg intrinsic function
+  auto ReadRegFunc =
+      M.getOrInsertFunction(FormattedIntrinsicName, ReadRegFuncType,
+                            llvm::AttributeList().addFnAttribute(
+                                LLVMContext, LUTHIER_INTRINSIC_ATTRIBUTE));
+
+  return Builder.CreateCall(ReadRegFunc, {MCRegConstantInt});
 }
 
 llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
@@ -196,7 +194,7 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
       llvm::FunctionType::get(ReturnType, {}, false);
   auto *HookIRKernel =
       llvm::Function::Create(FunctionType, llvm::GlobalValue::ExternalLinkage,
-                             llvm::formatv("HookAt{1}", &MI), IModule);
+                             llvm::formatv("HookAt{0}", &MI), IModule);
   HookIRKernel->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
   // Prevent emission of the prologue/epilogue code, but still lower the stack
   // operands
@@ -212,15 +210,14 @@ llvm::Expected<llvm::Function &> CodeGenerator::generateHookIR(
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Hook != nullptr));
     // Get the arguments of the hook
     llvm::SmallVector<llvm::Value *, 4> Operands;
-    for (const auto &Op : HookSpec.Args) {
+    for (const auto &[Idx, Op] : llvm::enumerate(HookSpec.Args)) {
       if (holds_alternative<llvm::MCRegister>(Op)) {
-        // Create an inline assembly to load the MC register into the value
-        auto RegLoadInlineAsm = createInlineAsmMCRegLoad(
-            std::get<llvm::MCRegister>(Op), TM, *HookIRKernel);
-        LUTHIER_RETURN_ON_ERROR(RegLoadInlineAsm.takeError());
-        // Put a call to the inline assembly
-        auto *InlineAsmCall = Builder.CreateCall(*RegLoadInlineAsm);
-        Operands.push_back(InlineAsmCall);
+        // Create a call to the read reg intrinsic to load the MC register
+        // into the value
+        auto ReadRegVal =
+            passRegAsArgument(Builder, std::get<llvm::MCRegister>(Op),
+                              *Hook->getParent(), Hook->getArg(Idx));
+        Operands.push_back(ReadRegVal);
       } else {
         // Otherwise it's a constant, we can just push it back as an argument
         Operands.push_back(std::get<llvm::Constant *>(Op));
@@ -549,11 +546,10 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
   for (auto &F : llvm::make_early_inc_range(Module.functions())) {
     if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE)) {
       // Find the processor for this intrinsic
-      auto DemangledFuncName =
-          CodeGenerator::getDemangledIntrinsicName(F.getName());
-      LUTHIER_RETURN_ON_ERROR(DemangledFuncName.takeError());
+      auto IntrinsicName =
+          F.getFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE).getValueAsString();
       // Ensure the processor is indeed registered with the Code Generator
-      auto It = IntrinsicsProcessors.find(*DemangledFuncName);
+      auto It = IntrinsicsProcessors.find(IntrinsicName);
       LUTHIER_RETURN_ON_ERROR(
           LUTHIER_ASSERTION(It != IntrinsicsProcessors.end()));
       // Iterate over all users of the intrinsic
@@ -564,7 +560,7 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
         LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CallInst != nullptr));
         auto IRLoweringInfo = It->second.IRProcessor(F, *CallInst, TM);
         LUTHIER_RETURN_ON_ERROR(IRLoweringInfo.takeError());
-        IRLoweringInfo->setIntrinsicName(*DemangledFuncName);
+        IRLoweringInfo->setIntrinsicName(IntrinsicName);
         // Add the output operand constraint, if the output is not void
         auto ReturnValInfo = IRLoweringInfo->getReturnValueInfo();
         std::string Constraint;
@@ -618,8 +614,11 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
   // create a module/MMI per LCO to generate instrumentation code for easier
   // separation between different LCOs' Machine code
   for (auto &[LCO, LCOModule] : LR) {
+    auto Agent = hsa::LoadedCodeObject(LCO).getAgent();
+    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
     // Load the bitcode of the instrumentation module into the LR's context
-    auto IModuleTS = Task.getModule().readBitcodeIntoContext(LR.getContext());
+    auto IModuleTS =
+        Task.getModule().readBitcodeIntoContext(LR.getContext(), *Agent);
     LUTHIER_RETURN_ON_ERROR(IModuleTS.takeError());
     auto &IModule = *IModuleTS->getModuleUnlocked();
     LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
@@ -694,29 +693,6 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
   LUTHIER_RETURN_ON_ERROR(insertHooks(*ClonedLR, IT));
   return std::move(ClonedLR);
 }
-llvm::Expected<std::string>
-CodeGenerator::getDemangledIntrinsicName(llvm::StringRef MangledIntrinsicName) {
-  // Get the name of the function, without its template arguments
-  llvm::ItaniumPartialDemangler Demangler;
-  // Ensure successful partial demangle operation
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-      !Demangler.partialDemangle(MangledIntrinsicName.data())));
-  // Output string
-  std::string Out;
-  // Output string's ostream
-  llvm::raw_string_ostream OS(Out);
-
-  size_t BufferSize;
-  llvm::StringRef FuncNamespace(
-      Demangler.getFunctionDeclContextName(nullptr, &BufferSize),
-      BufferSize - 1);
-  OS << FuncNamespace;
-  OS << "::";
-  llvm::StringRef FuncNameBase(
-      Demangler.getFunctionBaseName(nullptr, &BufferSize), BufferSize - 1);
-  OS << FuncNameBase;
-  return Out;
-}
 
 char ReserveLiveRegs::ID = 0;
 
@@ -726,7 +702,7 @@ ReserveLiveRegs::ReserveLiveRegs(
     const LiftedRepresentation &LR)
     : llvm::MachineFunctionPass(ID) {
 
-  // Calculate the Live-ins at each instruction for before MI hooks
+  // Grave the Live-ins at each instruction for before MI hooks from the LR
   for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
     (void)HookToInsertionPointMap.insert({HookKernel, MI});
     auto *MBB = MI->getParent();
@@ -735,14 +711,6 @@ ReserveLiveRegs::ReserveLiveRegs(
     (void)HookLiveRegs.insert(
         {HookKernel, const_cast<llvm::LivePhysRegs *>(&MILivePhysRegs)});
 
-    //    auto &LiveRegs = *HookLiveRegs[HookKernel];
-    //
-    //    LiveRegs.addLiveOuts(*MBB);
-    //    for (auto I = MBB->rbegin(); I != MI->getReverseIterator(); I++) {
-    //      LiveRegs.stepBackward(*I);
-    //    }
-    //    // Before MI hooks need to remove the defs of the MI itself
-    //    LiveRegs.stepBackward(*MI);
     LLVM_DEBUG(llvm::dbgs() << "Live regs at instruction " << MI << ": \n";
                auto *TRI = MF->getSubtarget().getRegisterInfo();
                for (const auto &Reg

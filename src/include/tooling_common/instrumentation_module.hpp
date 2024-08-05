@@ -11,6 +11,7 @@
 #ifndef LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
 #define LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
 #include "hsa/hsa_agent.hpp"
+#include "hsa/hsa_executable.hpp"
 #include "hsa/hsa_executable_symbol.hpp"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
@@ -43,22 +44,19 @@ protected:
   /// Modules
   friend ToolExecutableManager;
 
-  /// A buffer owned by the InstrumentationModule object to save a copy of its
-  /// processed bitcode \n
-  /// Upon creation, The bitcode of the module must be read and processed; This
-  /// involves:
-  /// 1. Removing any kernels that were used to create host pointers to hooks.
-  /// \n
-  /// 2. Extracting the device functions annotated as hooks and add a hook
-  /// attribute to them. \n
-  /// 3. Extracting the CUID of the module for its unique identification.
-  /// 4. Removing the definition of all global variables.
-  /// 5. Removing any managed global variable initializers i.e. variables
-  /// suffixed with ".managed". The processed LLVM Module will then be converted
-  /// back to a bitcode and stored here; This is so that the bitcode can be
-  /// copied over to different LLVM Contexts, to allow independent,
-  /// parallelization-friendly compilation.
-  llvm::SmallVector<char> BitcodeBuffer{};
+  /// A map where indicates the "compatible" bitcode for each \c hsa::GpuAgent
+  /// Compatible means that: \n
+  /// 1. The bitcode has a compatible ISA with the target agent
+  /// 2. The instrumentation module ensures that the external global variables
+  /// of this module are loaded on the agent \n
+  /// This map does not own the underlying bitcode buffer; If the module needs
+  /// to take control of the buffer's lifetime it needs to save it in another
+  /// field \n
+  /// The instrumentation IR remains in bitcode format until the
+  /// \c CodeGenerator asks for a copy of it in its \c llvm::LLVMContext
+  /// to allow independent, parallelization-friendly compilation
+  llvm::SmallDenseMap<hsa::GpuAgent, llvm::ArrayRef<char>, 2>
+      PerAgentBitcodeBufferMap{};
 
   explicit InstrumentationModule(ModuleKind Kind) : Kind(Kind){};
 
@@ -77,14 +75,16 @@ protected:
 public:
   ModuleKind getKind() const { return Kind; }
 
-  /// Reads the bitcode of this InstrumentationModule into a new
-  /// \c llvm::orc::ThreadSafeModule backed by the passed \p Ctx \n
+  /// Reads the bitcode of this InstrumentationModule for the given \p ISA
+  /// into a new \c llvm::orc::ThreadSafeModule backed by the
+  /// passed \p Ctx \n
   /// The Context is locked during the process
   /// \param Ctx a thread-safe context to back the returned Module
   /// \return a thread-safe Module, or an \c llvm::Error if any problem was
   /// encountered during the process
   llvm::Expected<llvm::orc::ThreadSafeModule>
-  readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx) const;
+  readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx,
+                         const hsa::GpuAgent &Agent) const;
 
   const llvm::SmallVector<std::string> &getGlobalVariableNames() const {
     return GlobalVariables;
@@ -116,7 +116,7 @@ public:
 /// tool.\n
 /// For now we anticipate that only a single Luthier tool will be loaded at any
 /// given time; i.e. we don't think there is a case to instrument an already
-/// instrumented GPU device code; Therefore we can assume only a single static
+/// instrumented GPU device code; Therefore we assume only a single static
 /// HIP FAT binary will be loaded at any given time. \c ToolExecutableManager
 /// enforces this by keeping a single instance of this variable, as
 /// well as keeping its constructor private to itself. \n
@@ -129,19 +129,14 @@ public:
 /// meaning the loading only occurs on a device if the app starts using it. \n
 /// \c StaticInstrumentationModule gets notified when a new \c hsa::Executable
 /// of the FAT binary gets loaded onto each device. On the first occurrence,
-/// it will process the bitcode embedded inside its code object
-/// (see \c InstrumentationModule::BitcodeBuffer)
-/// and creates a list of global variables in the module, as well as their
-/// associated
-/// \c hsa::ExecutableSymbol on the loaded \c hsa::GpuAgent.
-/// On subsequent executable loads, it only updates the global variable list.
-/// It should be clear by now that \c StaticInstrumentationModule does not do
-/// any GPU memory management and relies solely on HIP.\n
-/// A similar mechanism is in place to detect unloading of the instrumentation
-/// module's executables; As they get destroyed, the affected \c
-/// hsa::ExecutableSymbols get invalidated as well. When the last \c
-/// hsa::Executable of the module is destroyed, the bitcode buffer also gets
-/// wiped.\n
+/// it will record the CUID of the module, and creates a list of global
+/// variables in the module, as well as their associated \c
+/// hsa::ExecutableSymbol on the loaded \c hsa::GpuAgent. On subsequent
+/// executable loads, it only updates the global variable list. It should be
+/// clear by now that \c StaticInstrumentationModule does not do any GPU memory
+/// management and relies solely on HIP.\n A similar mechanism is in place to
+/// detect unloading of the instrumentation module's executables; As they get
+/// destroyed, the affected \c hsa::ExecutableSymbols get invalidated as well.\n
 /// \c StaticInstrumentationModule also gets notified of the kernel shadow host
 /// pointers of each hook, and converts them to the correct hook name to
 /// be found in the module later on.
