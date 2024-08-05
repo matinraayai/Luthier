@@ -86,7 +86,7 @@ getAnnotatedValues(const llvm::Module &M,
           cast<llvm::GlobalVariable>(CS->getOperand(1)->stripPointerCasts());
       llvm::StringRef Content;
       llvm::getConstantStringInfo(GV, Content);
-      if (Content == "luthier_hook") {
+      if (Content == HookAttribute) {
         Hooks.push_back(Func);
         LLVM_DEBUG(llvm::dbgs() << "Found hook " << Func->getName() << ".\n");
       } else if (Content == IntrinsicAttribute) {
