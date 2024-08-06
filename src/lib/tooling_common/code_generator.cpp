@@ -164,7 +164,7 @@ static llvm::CallInst *passRegAsArgument(llvm::IRBuilderBase &Builder,
   auto *ReadRegFuncType =
       llvm::FunctionType::get(HookArgType, {UnsignedIntType}, false);
   // Format the readReg intrinsic function name
-  //TODO: create a common place/method for constructing luthier intrinsics
+  // TODO: create a common place/method for constructing luthier intrinsics
   std::string FormattedIntrinsicName{"luthier::readReg"};
   llvm::raw_string_ostream FINOS(FormattedIntrinsicName);
   // Format the output type
@@ -289,7 +289,7 @@ CodeGenerator::runCodeGenPipeline(
   TPC->addISelPasses();
   PM->add(new IntrinsicMIRLoweringPass(ToBeLoweredIntrinsics,
                                        IntrinsicsProcessors));
-  PM->add(new luthier::ReserveLiveRegs(MIToHookFuncMap, LR));
+  PM->add(new luthier::DefineLiveRegsAndAppStackUsagePass(MIToHookFuncMap, LR));
   // TODO: Stack Frame Offset correction
   //   PM->add(new luthier::StackFrameOffset(<#initializer #>, <#initializer #>,
   //                                         <#initializer #>))
@@ -694,17 +694,15 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
   return std::move(ClonedLR);
 }
 
-char ReserveLiveRegs::ID = 0;
+char DefineLiveRegsAndAppStackUsagePass::ID = 0;
 
-ReserveLiveRegs::ReserveLiveRegs(
+DefineLiveRegsAndAppStackUsagePass::DefineLiveRegsAndAppStackUsagePass(
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
         &MIToHookFuncMap,
     const LiftedRepresentation &LR)
     : llvm::MachineFunctionPass(ID) {
-
-  // Grave the Live-ins at each instruction for before MI hooks from the LR
+  // Fetch the Live-ins at each instruction for before MI hooks from the LR
   for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
-    (void)HookToInsertionPointMap.insert({HookKernel, MI});
     auto *MBB = MI->getParent();
     auto *MF = MBB->getParent();
     auto &MILivePhysRegs = LR.getLiveInPhysRegsOfMachineInstr(*MI);
@@ -718,8 +716,55 @@ ReserveLiveRegs::ReserveLiveRegs(
                  llvm::dbgs() << TRI->getRegAsmName(Reg) << "\n";
                });
   }
+  // Fetch the upper bound of the stack used by each insertion point
+  for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
+    // Get the function of this MI
+    auto &InstrumentedMF = *MI->getParent()->getParent();
+    auto &InstrumentedFunction = InstrumentedMF.getFunction();
+    // If the function of the MI is a kernel, then its private segment usage
+    // is known by the metadata, or it has dynamic stack usage
+    auto CC = InstrumentedFunction.getCallingConv();
+    if (CC == llvm::CallingConv::AMDGPU_KERNEL) {
+      auto &FrameInfo = InstrumentedMF.getFrameInfo();
+      if (FrameInfo.hasVarSizedObjects())
+        llvm_unreachable("Dynamic stack kernels are not yet implemented");
+      else
+        StaticSizedHooksToStackSize.insert(
+            {HookKernel, FrameInfo.getStackSize()});
+    } else {
+      // If this is a device function, then its stack usage is the kernel that
+      // calls it with the largest stack usage
+      size_t LargestStackUsage = 0;
+      llvm::SmallPtrSet<llvm::Function *, 3> VisitedFunctions{};
+      llvm::SmallVector<llvm::MachineInstr *> UnvisitedUses(
+          LR.getUsesOfGlobalValue(InstrumentedFunction));
+      while (UnvisitedUses.empty()) {
+        auto &CurrentUse = UnvisitedUses.front();
+        auto &UseFunction = CurrentUse->getParent()->getParent()->getFunction();
+        if (UseFunction.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
+          auto &FrameInfo = InstrumentedMF.getFrameInfo();
+          if (FrameInfo.hasVarSizedObjects())
+            llvm_unreachable("Dynamic stack kernels are not yet implemented");
+          else {
+            if (LargestStackUsage < FrameInfo.getStackSize()) {
+              LargestStackUsage = FrameInfo.getStackSize();
+            }
+          }
+        } else {
+          if (!VisitedFunctions.contains(&UseFunction)) {
+            for (const auto &NewUse : LR.getUsesOfGlobalValue(UseFunction)) {
+              UnvisitedUses.push_back(NewUse);
+            }
+            VisitedFunctions.insert(&UseFunction);
+          }
+        }
+        UnvisitedUses.erase(UnvisitedUses.begin());
+      }
+    }
+  }
 }
-bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
+bool DefineLiveRegsAndAppStackUsagePass::runOnMachineFunction(
+    MachineFunction &MF) {
   auto *F = &MF.getFunction();
   auto &MRI = MF.getRegInfo();
   auto *TRI = MF.getSubtarget().getRegisterInfo();
@@ -732,6 +777,13 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
   }
   BeginMBB.clearLiveIns();
   llvm::addLiveIns(MF.front(), LivePhysRegs);
+  int StackIdx = 0;
+  if (StaticSizedHooksToStackSize.contains(F)) {
+    // Create a fixed stack operand at the bottom
+    StackIdx = MF.getFrameInfo().CreateFixedObject(
+        StaticSizedHooksToStackSize.at(F), 0, true);
+  }
+
   for (auto &MBB : MF) {
     if (MBB.isReturnBlock()) {
       for (auto &LiveIn : MF.begin()->liveins()) {
@@ -740,87 +792,11 @@ bool ReserveLiveRegs::runOnMachineFunction(MachineFunction &MF) {
       }
     }
   }
-  //  for (auto &LiveIn : MF)
-
-  //  // Find the return blocks and create dummy uses at the end of them
-  //  // Mark the dummy uses with MC symbols to keep track of them
-  //  // Check if s[0:1] is included in the LivePhysRegs; If not, define it
-  //  bool S01IsLive = LivePhysRegs.contains(AMDGPU::SGPR0_SGPR1);
-  //  // Check if v0 is included in the LivePhysRegs; If not, define it
-  //  bool V0IsLive = LivePhysRegs.contains(AMDGPU::VGPR0);
-  //  // MCInstrInfo for building instruction opcodes
-  //  auto MCII = MF.getTarget().getMCInstrInfo();
-  //  for (auto &MBB : MF) {
-  //    if (MBB.isReturnBlock()) {
-  //      // If s[0:1] is not live, define it
-  //      if (!S01IsLive) {
-  //        // s0 = S_MOV_B32 0
-  //        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-  //                      MCII->get(AMDGPU::S_MOV_B32))
-  //            .addDef(llvm::AMDGPU::SGPR0)
-  //            .addImm(0)
-  //            ->setPreInstrSymbol(MF,
-  //                                MF.getContext().getOrCreateSymbol("use-instr"));
-  //        // s1 = S_MOV_B32 0
-  //        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-  //                      MCII->get(AMDGPU::S_MOV_B32))
-  //            .addDef(llvm::AMDGPU::SGPR1)
-  //            .addImm(0)
-  //            ->setPreInstrSymbol(MF,
-  //                                MF.getContext().getOrCreateSymbol("use-instr"));
-  //      }
-  //      if (!V0IsLive) {
-  //        // v0 = V_MOV_B32 0
-  //        llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-  //                      MCII->get(AMDGPU::V_MOV_B32_e32))
-  //            .addDef(llvm::AMDGPU::VGPR0)
-  //            .addImm(0)
-  //            ->setPreInstrSymbol(MF,
-  //                                MF.getContext().getOrCreateSymbol("use-instr"));
-  //      }
-  //      for (const auto &[PhysLiveInReg, LaneMask] : MF.front().liveins()) {
-  //        auto PhysRegClass = TRI->getPhysRegBaseClass(PhysLiveInReg);
-  //        auto BitWidth = llvm::AMDGPU::getRegBitWidth(*PhysRegClass);
-  //        if (SIRegisterInfo::isSGPRClass(PhysRegClass)) {
-  //          if (BitWidth == 32) {
-  //            // s0 = S_ADD_U32 s0, $LiveIn
-  //            // S_STORE_DWORDX2_IMM s[0:1], s[0:1], 0, 0
-  //            //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-  //            //                          MCII->get(AMDGPU::S_ADD_U32))
-  //            //                .addReg(llvm::AMDGPU::SGPR0)
-  //            //                .addReg(llvm::AMDGPU::SGPR0)
-  //            //                .addReg(PhysLiveInReg)
-  //            //                ->setPreInstrSymbol(
-  //            //                    MF,
-  //            // MF.getContext().getOrCreateSymbol("use-instr"));
-  //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-  //                          MCII->get(AMDGPU::S_STORE_DWORD_IMM))
-  //                .addReg(PhysLiveInReg)
-  //                .addReg(llvm::AMDGPU::SGPR0_SGPR1)
-  //                .addImm(0)
-  //                .addImm(0)
-  //                ->setPreInstrSymbol(
-  //                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
-  //          } else if (BitWidth == 64) {
-  //            // S_STORE_DWORDX2_IMM s[0:1] $LiveIn, 0, 0
-  //            llvm::BuildMI(MBB, MBB.back(), llvm::DebugLoc(),
-  //                          MCII->get(AMDGPU::S_STORE_DWORDX2_IMM))
-  //                .addReg(llvm::AMDGPU::SGPR0_SGPR1)
-  //                .addReg(PhysLiveInReg)
-  //                .addImm(0)
-  //                .addImm(0)
-  //                ->setPreInstrSymbol(
-  //                    MF, MF.getContext().getOrCreateSymbol("use-instr"));
-  //          } else
-  //            llvm_unreachable("not implemented");
-  //        }
-  //      }
-  //    }
-  //  }
 
   return true;
 }
-void ReserveLiveRegs::getAnalysisUsage(AnalysisUsage &AU) const {
+void DefineLiveRegsAndAppStackUsagePass::getAnalysisUsage(
+    AnalysisUsage &AU) const {
   AU.setPreservesCFG();
   AU.addPreservedID(llvm::MachineLoopInfoID);
   AU.addPreserved<llvm::SlotIndexesWrapperPass>();

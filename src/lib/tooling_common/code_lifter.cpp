@@ -653,7 +653,9 @@ static void fullyComputeLiveInsOfLiftedMF(
 
 llvm::Error CodeLifter::liftFunction(
     const hsa::ExecutableSymbol &Symbol, LiftedRepresentation &LR,
-    llvm::DenseMap<hsa::ExecutableSymbol, bool> &SymbolUsageMap) {
+    llvm::DenseMap<hsa::ExecutableSymbol, bool> &SymbolUsageMap,
+    llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>>
+        &GlobalValueUses) {
   auto LCO = Symbol.getDefiningLoadedCodeObject();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCO.has_value()));
 
@@ -817,6 +819,12 @@ llvm::Error CodeLifter::liftFunction(
                              "variables {0} at address {1:x}.\n",
                              TargetSymbolName, TargetSymbolAddress));
               auto *GV = LR.RelatedGlobalVariables.at(TargetSymbol.asHsaType());
+
+              if (!GlobalValueUses.contains(GV))
+                GlobalValueUses.insert({GV, {Builder.getInstr()}});
+              else
+                GlobalValueUses[GV].push_back(Builder.getInstr());
+
               if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
                 Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
               else if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
@@ -824,12 +832,18 @@ llvm::Error CodeLifter::liftFunction(
               Builder.addGlobalAddress(GV, *Addend, Type);
             } else if (TargetSymbolType == hsa::DEVICE_FUNCTION) {
               auto *UsedMF = LR.RelatedFunctions.at(TargetSymbol.asHsaType());
+              auto *UsedF = &UsedMF->getFunction();
+              if (!GlobalValueUses.contains(UsedF))
+                GlobalValueUses.insert({UsedF, {Builder.getInstr()}});
+              else
+                GlobalValueUses[UsedF].push_back(Builder.getInstr());
+
               // Add the function as the operand
               if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
                 Type = llvm::SIInstrInfo::MO_REL32_LO;
               if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
                 Type = llvm::SIInstrInfo::MO_REL32_HI;
-              Builder.addGlobalAddress(&UsedMF->getFunction(), *Addend, Type);
+              Builder.addGlobalAddress(UsedF, *Addend, Type);
             } else {
               // For now, we don't handle calling kernels from kernels
               llvm_unreachable("not implemented");
@@ -1034,8 +1048,8 @@ luthier::CodeLifter::lift(const hsa::ExecutableSymbol &Symbol) {
     auto KernelLCO = Symbol.getDefiningLoadedCodeObject();
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelLCO.has_value()));
 
-    LUTHIER_RETURN_ON_ERROR(liftFunction(Symbol, LR, UsageMap));
-    LR.RelatedFunctions[Symbol.asHsaType()]->dump();
+    LUTHIER_RETURN_ON_ERROR(
+        liftFunction(Symbol, LR, UsageMap, LR.GlobalValueMIUses));
     Populated.insert(Symbol);
     bool WereAnySymbolsPopulatedDuringLoop{true};
     while (WereAnySymbolsPopulatedDuringLoop) {
@@ -1045,7 +1059,8 @@ luthier::CodeLifter::lift(const hsa::ExecutableSymbol &Symbol) {
           auto Type = S.getType();
           if (Type == hsa::KERNEL || Type == hsa::DEVICE_FUNCTION) {
             if (!Populated.contains(S)) {
-              LUTHIER_RETURN_ON_ERROR(liftFunction(S, LR, UsageMap));
+              LUTHIER_RETURN_ON_ERROR(
+                  liftFunction(S, LR, UsageMap, LR.GlobalValueMIUses));
               Populated.insert(S);
               WereAnySymbolsPopulatedDuringLoop = true;
             }
@@ -1127,10 +1142,12 @@ CodeLifter::lift(const hsa::Executable &Exec) {
       // Now that all global objects are initialized, we can now populate
       // individual functions' instructions
       for (const auto &Kernel : Kernels) {
-        LUTHIER_RETURN_ON_ERROR(liftFunction(Kernel, LR, UsageMap));
+        LUTHIER_RETURN_ON_ERROR(
+            liftFunction(Kernel, LR, UsageMap, LR.GlobalValueMIUses));
       }
       for (const auto &Func : DeviceFuncs) {
-        LUTHIER_RETURN_ON_ERROR(liftFunction(Func, LR, UsageMap));
+        LUTHIER_RETURN_ON_ERROR(
+            liftFunction(Func, LR, UsageMap, LR.GlobalValueMIUses));
       }
     }
   }
@@ -1207,7 +1224,8 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     auto DestMF = MMI.getMachineFunction(*DestF);
     DestLR->RelatedFunctions.insert({FuncHandle, DestMF});
   }
-  // Finally, populate the instruction map and the Live-ins map
+  // Finally, populate the instruction map, the Live-ins map, and the global
+  // value uses
   for (const auto &[SrcMI, HSAInst] : SrcLR.MachineInstrToMCMap) {
     DestLR->MachineInstrToMCMap.insert({SrcToDstInstrMap[SrcMI], HSAInst});
   }
@@ -1223,6 +1241,18 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     DestMILivePhysRegs->init(*TRI);
     for (const auto &LivePhysReg : *SrcMILivePhysReg) {
       DestMILivePhysRegs->addReg(LivePhysReg);
+    }
+  }
+
+  for (const auto &[SrcGV, SrcMIUses] : SrcLR.GlobalValueMIUses) {
+    auto DestGVIterator = VMap.find(SrcGV);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(DestGVIterator != VMap.end()));
+    auto *DestGV = llvm::dyn_cast<llvm::GlobalValue>(DestGVIterator->second);
+    auto &DestGVUses =
+        DestLR->GlobalValueMIUses.insert({DestGV, {}}).first->getSecond();
+    DestGVUses.reserve(SrcMIUses.size());
+    for (const auto SrcMIUse: SrcMIUses) {
+      DestGVUses.push_back(SrcToDstInstrMap[SrcMIUse]);
     }
   }
 

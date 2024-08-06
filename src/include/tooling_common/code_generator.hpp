@@ -141,24 +141,29 @@ private:
                           const InstrumentationTask &Tasks);
 };
 
-/// \brief Iterate over the LiveIns of the MI and set them as reserved
-/// so that the register allocator does not overwrite them in the generated
-/// instrumentation kernel
-class ReserveLiveRegs : public llvm::MachineFunctionPass {
+/// \brief Aggregates the app's live registers at each hook insertion point,
+/// as well as physical registers read by the hook itself, and creates def/uses
+/// for them in appropriate places. If the target app uses the stack, creates
+/// a stack operand as well as appropriate defs/uses.
+/// TODO: Make this pass work with dynamic stack usage
+class DefineLiveRegsAndAppStackUsagePass : public llvm::MachineFunctionPass {
 public:
   static char ID;
-  typedef llvm::DenseMap<llvm::Function *, llvm::LivePhysRegs*>
+  typedef llvm::DenseMap<llvm::Function *, llvm::LivePhysRegs *>
       hook_live_regs_map_t;
 
 private:
   hook_live_regs_map_t HookLiveRegs;
-  llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-      HookToInsertionPointMap;
+
+  llvm::DenseMap<llvm::Function *, size_t> StaticSizedHooksToStackSize;
+
 
 public:
-  llvm::StringRef getPassName() const override { return "Reserve Live Regs"; }
+  llvm::StringRef getPassName() const override {
+    return "Define Live Regs and Stack Usage Pass";
+  }
 
-  explicit ReserveLiveRegs(
+  explicit DefineLiveRegsAndAppStackUsagePass(
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
           &MIToHookFuncMap,
       const LiftedRepresentation &LR);

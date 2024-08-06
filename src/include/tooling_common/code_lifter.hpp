@@ -272,9 +272,10 @@ private:
   /// \param Symbol
   /// \param LR
   /// \return
-  llvm::Error
-  liftFunction(const hsa::ExecutableSymbol &Symbol, LiftedRepresentation &LR,
-               llvm::DenseMap<hsa::ExecutableSymbol, bool> &SymbolUsageMap);
+  llvm::Error liftFunction(
+      const hsa::ExecutableSymbol &Symbol, LiftedRepresentation &LR,
+      llvm::DenseMap<hsa::ExecutableSymbol, bool> &SymbolUsageMap,
+      llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>> &GlobalValueUses);
 
   //===--------------------------------------------------------------------===//
   // Cached Lifted Representations

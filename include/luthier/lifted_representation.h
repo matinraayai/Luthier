@@ -138,9 +138,14 @@ private:
   /// This mapping is only valid before any LLVM pass is run over the MMIs;
   /// After that pointers of each machine instruction gets changed by the
   /// underlying allocator, and this map becomes invalid
-  llvm::DenseMap<llvm::MachineInstr *,
-                 std::unique_ptr<llvm::LivePhysRegs>>
+  llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
       MachineInstrLivenessMap{};
+
+  /// A mapping between a \c llvm::GlobalValue
+  /// (either \c llvm::GlobalVariable or a \c llvm::Function)
+  /// and its machine instruction users
+  llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>>
+      GlobalValueMIUses{};
 
   LiftedRepresentation();
 
@@ -327,6 +332,18 @@ public:
   [[nodiscard]] const llvm::LivePhysRegs &
   getLiveInPhysRegsOfMachineInstr(const llvm::MachineInstr &MI) const {
     return *MachineInstrLivenessMap.at(&MI);
+  }
+
+  llvm::ArrayRef<llvm::MachineInstr*>
+  getUsesOfGlobalValue(hsa_executable_symbol_t GV) const;
+
+  llvm::ArrayRef<llvm::MachineInstr*>
+  getUsesOfGlobalValue(const llvm::GlobalValue & GV) const {
+    auto UsesIt = GlobalValueMIUses.find(&GV);
+    if (UsesIt == GlobalValueMIUses.end())
+      return {};
+    else
+      return UsesIt->getSecond();
   }
 };
 
