@@ -687,7 +687,7 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
       CodeLifter::instance().cloneRepresentation(LR));
   // Run the mutator function on the Lifted Representation and populate the
   // instrumentation task
-  InstrumentationTask IT("");
+  InstrumentationTask IT(*ClonedLR);
   LUTHIER_RETURN_ON_ERROR(Mutator(IT, *ClonedLR));
   // Insert the hooks inside the Lifted Representation
   LUTHIER_RETURN_ON_ERROR(insertHooks(*ClonedLR, IT));
@@ -705,7 +705,7 @@ DefineLiveRegsAndAppStackUsagePass::DefineLiveRegsAndAppStackUsagePass(
   for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
     auto *MBB = MI->getParent();
     auto *MF = MBB->getParent();
-    auto &MILivePhysRegs = LR.getLiveInPhysRegsOfMachineInstr(*MI);
+    auto &MILivePhysRegs = *LR.getLiveInPhysRegsOfMachineInstr(*MI);
     (void)HookLiveRegs.insert(
         {HookKernel, const_cast<llvm::LivePhysRegs *>(&MILivePhysRegs)});
 
@@ -763,6 +763,7 @@ DefineLiveRegsAndAppStackUsagePass::DefineLiveRegsAndAppStackUsagePass(
     }
   }
 }
+
 bool DefineLiveRegsAndAppStackUsagePass::runOnMachineFunction(
     MachineFunction &MF) {
   auto *F = &MF.getFunction();
@@ -777,10 +778,9 @@ bool DefineLiveRegsAndAppStackUsagePass::runOnMachineFunction(
   }
   BeginMBB.clearLiveIns();
   llvm::addLiveIns(MF.front(), LivePhysRegs);
-  int StackIdx = 0;
   if (StaticSizedHooksToStackSize.contains(F)) {
     // Create a fixed stack operand at the bottom
-    StackIdx = MF.getFrameInfo().CreateFixedObject(
+    MF.getFrameInfo().CreateFixedObject(
         StaticSizedHooksToStackSize.at(F), 0, true);
   }
 
@@ -802,49 +802,6 @@ void DefineLiveRegsAndAppStackUsagePass::getAnalysisUsage(
   AU.addPreserved<llvm::SlotIndexesWrapperPass>();
   MachineFunctionPass::getAnalysisUsage(AU);
 };
-
-char StackFrameOffset::ID = 0;
-
-StackFrameOffset::StackFrameOffset(
-    const LiftedRepresentation &LR,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &BeforeMIHooks,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &AfterMIHooks)
-    : MachineFunctionPass(ID) {
-  for (const auto &[Func, LLVMFunc] : LR.functions()) {
-  }
-}
-
-bool StackFrameOffset::runOnMachineFunction(MachineFunction &MF) {
-  auto &MFI = MF.getFrameInfo();
-
-  llvm::outs() << "machine function " << MF.getName() << "\n"
-               << "\tStack Size of: " << MFI.getStackSize() << "\n"
-               << "\tContains " << MFI.getNumObjects() << " Stack Objects\n";
-
-  for (int SOIdx = 0; SOIdx < MFI.getNumObjects(); ++SOIdx) {
-    llvm::outs() << " - Stack Object Num " << SOIdx << "\n"
-                 << "   Stack ID:             " << MFI.getStackID(SOIdx) << "\n"
-                 << "   Stack object Size:    " << MFI.getObjectSize(SOIdx)
-                 << "\n";
-    // Add to Stack Frame object offset
-    auto NewOffset =
-        MFI.getObjectOffset(SOIdx) +
-        FrameOffset.at(&MF.getFunction()); // value to add: amount of stack
-                                           // the original app is using
-    MFI.setObjectOffset(SOIdx, NewOffset);
-    llvm::outs() << "   Stack Pointer Offset: " << NewOffset << "\n";
-  }
-  return false;
-}
-
-char InstBundler::ID = 0;
-bool InstBundler::runOnMachineFunction(MachineFunction &MF) {
-  for (auto &MBB : MF) {
-    auto Bundler = llvm::MIBundleBuilder(MBB, MBB.begin(), MBB.end());
-    llvm::finalizeBundle(MBB, Bundler.begin());
-  }
-  return false;
-}
 
 char IntrinsicMIRLoweringPass::ID = 0;
 

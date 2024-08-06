@@ -96,17 +96,6 @@ public:
                               llvm::SmallVectorImpl<uint8_t> &Out);
 
 private:
-  /// Returns the full demangled name of \p MangledFuncName without its template
-  /// arguments; e.g. if the demangled function name is
-  /// <tt>a::b::c<int>(int i)</tt>, then <tt>a::b::c</tt> is returned \n
-  /// This name is used as the unique identifier of the intrinsic inside the
-  /// \c CodeGenerator
-  /// \param MangledIntrinsicName name of the intrinsic used in an
-  /// instrumentation module
-  /// \return on success, the full demangled name of the function, and an
-  /// \c llvm::Error if an issue was encountered during the process
-  static llvm::Expected<std::string>
-  getDemangledIntrinsicName(llvm::StringRef MangledIntrinsicName);
 
   /// Finds <tt>llvm::Function</tt>s marked as intrinsics inside the
   /// \p InstModule and Applies the IR processor function to their
@@ -171,41 +160,6 @@ public:
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
 
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
-};
-
-// This custom pass iterates through the Instrumentation Modules frame objects
-// and adds the amount of stack allocated by the IPointMI's parent Machine
-// Function to the frame object offset
-class StackFrameOffset : public llvm::MachineFunctionPass {
-public:
-  static char ID;
-
-private:
-  llvm::DenseMap<llvm::Function *, unsigned int> FrameOffset;
-
-public:
-  explicit StackFrameOffset(
-      const LiftedRepresentation &LR,
-      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-          &BeforeMIHooks,
-      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-          &AfterMIHooks);
-
-  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
-};
-
-class InstBundler : public llvm::MachineFunctionPass {
-public:
-  static char ID;
-
-public:
-  InstBundler() : llvm::MachineFunctionPass(ID){};
-
-  llvm::StringRef getPassName() const override {
-    return "luthier-inst-bundler";
-  }
-
-  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
 };
 
 class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {

@@ -963,18 +963,21 @@ llvm::Error CodeLifter::liftFunction(
 
   luthier::fullyComputeLiveInsOfLiftedMF(MF, LR.MachineInstrLivenessMap);
 
-  // Manually set the stack frame size
-  // TODO: dynamic stack kernels
-  auto KernelMD = Symbol.getKernelMetadata();
-  LUTHIER_RETURN_ON_ERROR(KernelMD.takeError());
-  LLVM_DEBUG(llvm::dbgs() << "Stack size according to the metadata: "
-                          << KernelMD->PrivateSegmentFixedSize << "\n");
-  if (KernelMD->PrivateSegmentFixedSize != 0) {
-    MF.getFrameInfo().CreateFixedObject(KernelMD->PrivateSegmentFixedSize, 0,
-                                        true);
-    MF.getFrameInfo().setStackSize(KernelMD->PrivateSegmentFixedSize);
-    LLVM_DEBUG(llvm::dbgs()
-               << "Stack size: " << MF.getFrameInfo().getStackSize() << "\n");
+
+  if (MF.getFunction().getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
+    // Manually set the stack frame size if the function is a kernel
+    // TODO: dynamic stack kernels
+    auto KernelMD = Symbol.getKernelMetadata();
+    LUTHIER_RETURN_ON_ERROR(KernelMD.takeError());
+    LLVM_DEBUG(llvm::dbgs() << "Stack size according to the metadata: "
+                            << KernelMD->PrivateSegmentFixedSize << "\n");
+    if (KernelMD->PrivateSegmentFixedSize != 0) {
+      MF.getFrameInfo().CreateFixedObject(KernelMD->PrivateSegmentFixedSize, 0,
+                                          true);
+      MF.getFrameInfo().setStackSize(KernelMD->PrivateSegmentFixedSize);
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Stack size: " << MF.getFrameInfo().getStackSize() << "\n");
+    }
   }
 
   // Populate the properties of MF

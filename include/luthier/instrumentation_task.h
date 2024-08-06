@@ -54,8 +54,8 @@ public:
       hook_insertion_tasks;
 
 private:
-  /// The preset to instrument <tt>LiftedRepresentation</tt>s under
-  std::string Preset;
+  /// The \c LiftedRepresentation being instrumented
+  LiftedRepresentation &LR;
   /// The instrumentation module used to instrument the
   /// <tt>LiftedRepresentation</tt>s
   const InstrumentationModule &IM;
@@ -65,11 +65,8 @@ private:
 
 public:
   /// InstrumentationTask constructor
-  /// \param Preset a name which a primitive will be instrumented
-  /// under. The same HSA primitive cannot be instrumented under the same
-  /// preset name. To have multiple instrumented versions of the same primitive,
-  /// one can use different preset name to identify and keep track of them
-  explicit InstrumentationTask(llvm::StringRef Preset);
+  /// \param LR the \c LiftedRepresentation being instrumented
+  explicit InstrumentationTask(LiftedRepresentation & LR);
 
   /// Queues a hook insertion task, which will insert a hook before the
   /// \p MI \n

@@ -316,29 +316,45 @@ public:
     return make_range(global_begin(), global_end());
   }
 
-  const llvm::MachineFunction &getMF(hsa_executable_symbol_t Func) {
-    return *RelatedFunctions.at(Func);
+  const llvm::MachineFunction *getMF(hsa_executable_symbol_t Func) {
+    auto It = RelatedFunctions.find(Func);
+    if (It == RelatedFunctions.end())
+      return nullptr;
+    else
+      return It->second;
   }
 
-  const llvm::GlobalVariable &getGV(hsa_executable_symbol_t GV) {
-    return *RelatedGlobalVariables.at(GV);
+  const llvm::GlobalVariable *getGV(hsa_executable_symbol_t GV) {
+    auto It = RelatedGlobalVariables.find(GV);
+    if (It == RelatedGlobalVariables.end())
+      return nullptr;
+    else
+      return It->second;
   }
 
-  [[nodiscard]] const hsa::Instr &
+  [[nodiscard]] const hsa::Instr *
   getHSAInstrOfMachineInstr(const llvm::MachineInstr &MI) const {
-    return *MachineInstrToMCMap.at(const_cast<llvm::MachineInstr *>(&MI));
+    auto It = MachineInstrToMCMap.find(&MI);
+    if (It == MachineInstrToMCMap.end())
+      return nullptr;
+    else
+      return It->second;
   }
 
-  [[nodiscard]] const llvm::LivePhysRegs &
+  [[nodiscard]] const llvm::LivePhysRegs *
   getLiveInPhysRegsOfMachineInstr(const llvm::MachineInstr &MI) const {
-    return *MachineInstrLivenessMap.at(&MI);
+    auto It = MachineInstrLivenessMap.find(&MI);
+    if (It == MachineInstrLivenessMap.end())
+      return nullptr;
+    else
+      return It->second.get();
   }
 
-  llvm::ArrayRef<llvm::MachineInstr*>
+  llvm::ArrayRef<llvm::MachineInstr *>
   getUsesOfGlobalValue(hsa_executable_symbol_t GV) const;
 
-  llvm::ArrayRef<llvm::MachineInstr*>
-  getUsesOfGlobalValue(const llvm::GlobalValue & GV) const {
+  llvm::ArrayRef<llvm::MachineInstr *>
+  getUsesOfGlobalValue(const llvm::GlobalValue &GV) const {
     auto UsesIt = GlobalValueMIUses.find(&GV);
     if (UsesIt == GlobalValueMIUses.end())
       return {};
