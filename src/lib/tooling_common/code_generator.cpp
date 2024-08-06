@@ -778,10 +778,11 @@ bool DefineLiveRegsAndAppStackUsagePass::runOnMachineFunction(
   }
   BeginMBB.clearLiveIns();
   llvm::addLiveIns(MF.front(), LivePhysRegs);
-  if (StaticSizedHooksToStackSize.contains(F)) {
+  if (StaticSizedHooksToStackSize.contains(F) &&
+      StaticSizedHooksToStackSize.at(F) != 0) {
     // Create a fixed stack operand at the bottom
-    MF.getFrameInfo().CreateFixedObject(
-        StaticSizedHooksToStackSize.at(F), 0, true);
+    MF.getFrameInfo().CreateFixedObject(StaticSizedHooksToStackSize.at(F), 0,
+                                        true);
   }
 
   for (auto &MBB : MF) {
