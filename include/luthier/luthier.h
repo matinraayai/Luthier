@@ -17,6 +17,7 @@
 #include <luthier/kernel_descriptor.h>
 #include <luthier/lifted_representation.h>
 #include <luthier/types.h>
+#include <luthier/Intrinsic/Intrinsics.h>
 
 namespace luthier {
 
@@ -355,37 +356,12 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
 #define LUTHIER_HOOK_ANNOTATE                                                  \
   __attribute__((device, used, annotate("luthier_hook"))) extern "C" void
 
-#define LUTHIER_INTRINSIC_ANNOTATE                                             \
-  __attribute__((device, noinline, annotate("luthier_intrinsic")))
-
 #define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
   __attribute__((global,                                                       \
                  used)) extern "C" void __luthier_hook_handle_##HookName(){};
 
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
   reinterpret_cast<const void *>(__luthier_hook_handle_##HookName)
-
-#if defined(__HIPCC__)
-#define LUTHIER_DONT_OPTIMIZE __asm__ __volatile__("" : : : "memory");
-
-template <typename T>
-__attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
-  __asm__ __volatile__("" : : "X"(Value) : "memory");
-}
-
-template <typename T>
-LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
-  T Out;
-  doNotOptimize(Reg);
-  doNotOptimize(Out);
-  return Out;
-}
-
-template <typename T>
-LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val) {
-  doNotOptimize(Reg);
-  doNotOptimize(Val);
-}
 
 #endif
 } // namespace luthier

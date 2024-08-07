@@ -1,4 +1,4 @@
-//===-- ReadReg.hpp - Luthier ReadReg Intrinsic  --------------------------===//
+//===-- ReadReg.hpp - Luthier ReadReg Intrinsic  ---------------------===//
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -10,7 +10,7 @@
 #ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
 #define LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
 
-#include "IntrinsicLoweringInfo.hpp"
+#include "luthier/IntrinsicProcessor.h"
 #include <llvm/Support/Error.h>
 
 namespace luthier {
