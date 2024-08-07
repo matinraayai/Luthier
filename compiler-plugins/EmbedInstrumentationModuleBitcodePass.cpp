@@ -57,12 +57,13 @@ getDemangledFunctionNameWithNamespace(llvm::StringRef MangledFuncName) {
   // Output string's ostream
   llvm::raw_string_ostream OS(Out);
 
-  // TODO: check if this works when no namespace is present
   size_t BufferSize;
   char *FuncNamespaceBegin =
       Demangler.getFunctionDeclContextName(nullptr, &BufferSize);
-  OS << FuncNamespaceBegin;
-  OS << "::";
+  if (strlen(FuncNamespaceBegin) != 0) {
+    OS << FuncNamespaceBegin;
+    OS << "::";
+  }
   char *FuncNameBase = Demangler.getFunctionBaseName(nullptr, &BufferSize);
   OS << FuncNameBase;
   return Out;
