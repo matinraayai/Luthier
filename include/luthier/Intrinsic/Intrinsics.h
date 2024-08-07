@@ -43,9 +43,17 @@ __attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
   __asm__ __volatile__("" : : "X"(Value) : "memory");
 }
 
-//TODO: Write docs for the bindings
-
-template <typename T>
+/// \brief Intrinsic to read the value of a register
+/// \details The readReg intrinsic reads the value of the \p Reg and returns it
+/// For now, VGPRs, SGPRs, and the EXEC mask are supported;
+/// \tparam T the return type of the output; Must be of integral type and be compatible
+/// with the size of \p Reg; For example reading \c llvm::AMDGPU::SGPR4_SGPR5
+/// must return a <tt>uint64_t</tt>
+/// \param Reg the ID of the register to be read; It will be removed during
+/// the IR processing stage from the IR; Must be a constant value,
+/// and the register must be at most 64-bit wide
+/// \returns the value of the read register
+template <typename T, typename = std::enable_if_t<std::is_integral<Integer>::value>>
 LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
   T Out;
   doNotOptimize(Reg);
@@ -53,7 +61,17 @@ LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
   return Out;
 }
 
-template <typename T>
+/// \brief Intrinsic to write the value of a register
+/// \details The writeReg intrinsic writes \p Val into the register named \p Reg
+/// For now, VGPRs, SGPRs, and the EXEC mask are supported;
+/// \tparam T the type of value to be written output; Must be of integral type and
+/// be compatible with the size of \p Reg; For example writing to
+// \c llvm::AMDGPU::SGPR4_SGPR5 requires a <tt>uint64_t</tt> \p Val
+/// \param Reg the ID of the register to be read; It will be removed during
+/// the IR processing stage from the IR; Must be a constant value,
+/// and the register must be at most 64-bit wide
+/// \param Val the value to write into the register
+template <typename T, typename = std::enable_if_t<std::is_integral<Integer>::value>>
 LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val) {
   doNotOptimize(Reg);
   doNotOptimize(Val);
