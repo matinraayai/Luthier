@@ -30,9 +30,10 @@ def get_code_objects(dir):
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "path_to_unittest",
+    "-e", "--unittest_executable",
     type=is_file,
-    help="name of unittest to run"
+    default=os.getenv('LUTHIER_UNITTEST_EXECUTABLE', None),
+    help="Path to unittest executable. Can also be set with the environment var \'LUTHIER_UNITTEST_EXECUTABLE\'"
 )
 parser.add_argument(
     "-i", "--input_code_obj",
@@ -46,17 +47,19 @@ parser.add_argument(
 )
 parser.add_argument(
     "-o-dir", "--output_dir",
-    default=os.getenv('LUTHER_UNITTEST_OUTPUT_DIR', os.getcwd()),
-    help="directory for all unittest output files"
+    default=os.getenv('LUTHIER_UNITTEST_OUTPUT_DIR', os.getcwd()),
+    help="Directory for all unittest output files. Can also be set with the environment var \'LUTHIER_UNITTEST_OUTPUT_DIR\'"
 )
 
 args = parser.parse_args()
-test_name = args.path_to_unittest
+test_name = args.unittest_executable
 
 code_objs = []
 cmd_lst = []
 
-print("Executing test found in:", test_name, "\n")
+print("==============================================")
+print("Executing test found in:", test_name)
+print("----------------------------------------------")
 
 # If you are specifying an input dir, we are assuming you want to run this
 # unit test on multiple code object files
@@ -76,5 +79,7 @@ for cmd in cmd_lst:
 for cmd in cmd_lst:
     print("Running command:", cmd)
     unittest_result = subprocess.run(cmd)
+    print("----------------------------------------------")
 
 print("Finished run_unittest script")
+print("==============================================")
