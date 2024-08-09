@@ -30,7 +30,7 @@ using namespace luthier;
 // Commandline arguments for the tool
 //===----------------------------------------------------------------------===//
 
-/// Define an option
+/// Define an option category for the instruction count tool
 llvm::cl::OptionCategory
     InstrCountToolOptionCategory("Instruction Count Tool Options");
 
@@ -45,7 +45,8 @@ static llvm::cl::opt<unsigned int>
     InstrEndInterval("instr-end-interval",
                      llvm::cl::desc("End of the instruction interval where to "
                                     "apply instrumentation, exclusive"),
-                     llvm::cl::init(9), llvm::cl::NotHidden,
+                     llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+                     llvm::cl::NotHidden,
                      llvm::cl::cat(InstrCountToolOptionCategory));
 
 static llvm::cl::opt<unsigned int> KernelBeginInterval(
@@ -269,9 +270,8 @@ namespace luthier {
 
 static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
-    if (auto Err = luthier::hsa::enableHsaApiEvtIDCallback(
-            hsa::HSA_API_EVT_ID_hsa_queue_packet_submit))
-      llvm::report_fatal_error(std::move(Err), true);
+    LUTHIER_REPORT_FATAL_ON_ERROR(hsa::enableHsaApiEvtIDCallback(
+        hsa::HSA_API_EVT_ID_hsa_queue_packet_submit));
   } else {
     // Parse the tool arguments
     auto Argv = "";
