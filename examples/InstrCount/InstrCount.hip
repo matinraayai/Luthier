@@ -103,7 +103,10 @@ std::mutex Mutex;
 MARK_LUTHIER_DEVICE_MODULE
 
 // TODO: Can this be done instead with only scalar instruction?
+// TODO: Move SCC save/restore to code generator
 LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
+  // Save the SCC of the wavefront
+  uint32_t SCC = readReg<uint32_t>(llvm::AMDGPU::SCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask =
       luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
@@ -125,6 +128,8 @@ LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
       atomicAdd(&Counter, NumActiveThreads);
     }
   }
+  // Restore the SCC of the wavefront
+  writeReg(llvm::AMDGPU::SCC, SCC);
 }
 
 //  Counter += 1;
