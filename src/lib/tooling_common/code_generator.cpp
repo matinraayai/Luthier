@@ -380,9 +380,6 @@ llvm::Error patchLiftedRepresentation(
     }
 
     for (const auto &HookMBB : HookMF) {
-      llvm::outs()
-          << "=========================================================\n";
-      HookMBB.print(llvm::outs());
 
       // Special handling of the entry block
       if (HookMBB.isEntryBlock()) {
@@ -407,12 +404,18 @@ llvm::Error patchLiftedRepresentation(
           auto *NewEntryBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
           ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
                                     NewEntryBlock);
-          for (auto It = InsertionPointMBB.pred_begin(),
-                    IterEnd = InsertionPointMBB.pred_end();
-               It != IterEnd; ++It) {
+          // First add the NewEntryBlock as a pred to all
+          // InsertionPointMBB's preds
+          llvm::SmallVector<llvm::MachineBasicBlock*, 2> PredMBBs;
+          for (auto It = InsertionPointMBB.pred_begin();
+               It != InsertionPointMBB.pred_end(); ++It) {
             auto PredMBB = *It;
-            PredMBB->removeSuccessor(&InsertionPointMBB);
             PredMBB->addSuccessor(NewEntryBlock);
+            PredMBBs.push_back(PredMBB);
+          }
+          // Remove the insertion point mbb from the PredMBB's successor list
+          for (auto & PredMBB : PredMBBs) {
+            PredMBB->removeSuccessor(&InsertionPointMBB);
           }
           // Add the insertion point MBB as the successor of this block
           NewEntryBlock->addSuccessor(&InsertionPointMBB);
@@ -440,17 +443,7 @@ llvm::Error patchLiftedRepresentation(
                                   NewHookMBB);
         MBBMap.insert({&HookMBB, NewHookMBB});
       }
-      ToBeInstrumentedMF.print(llvm::outs());
     }
-    llvm::outs() << "Before handling term blocks\n";
-    for (const auto &[OldMBB, NewMBB] : MBBMap) {
-      OldMBB->print(llvm::outs());
-      NewMBB->print(llvm::outs());
-    }
-    //    InstrumentedMF.print(llvm::outs());
-
-    llvm::outs()
-        << "=========================================================\n";
 
     // Link blocks
     for (auto &MBB : HookMF) {
