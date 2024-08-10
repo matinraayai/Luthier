@@ -104,7 +104,6 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 static void parseEnvVariableArgs() {
 
   llvm::StringMap<llvm::cl::Option *> &Map = llvm::cl::getRegisteredOptions();
-  // 1. Ensure there's no need for adding live-ins for each MBB
   // Disable machine verifier since it takes too much time + it causes
   // issues with live-in registers in code generator
   reinterpret_cast<llvm::cl::opt<llvm::cl::boolOrDefault> *>(
