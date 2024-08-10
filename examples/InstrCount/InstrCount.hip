@@ -107,15 +107,15 @@ LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask =
       luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
-  // Get the position of the thread in the current wavefront
-  const uint32_t ThreadPosition = getThreadPosition();
+  // Get the position of the thread in the current wavefront (1-index)
+  const uint32_t LaneId = __lane_id() + 1;
   // Get the first active thread id inside this wavefront
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
   // Get the number of active threads in this wavefront
   uint32_t NumActiveThreads = __popcll(ExecMask);
 
   // Have only the first active thread perform the atomic add
-  if (FirstActiveThreadId == ThreadPosition) {
+  if (FirstActiveThreadId == LaneId) {
     if (CountWaveFrontLevel) {
       // Num threads can be zero when accounting for predicates off
       if (NumActiveThreads > 0) {
@@ -126,6 +126,24 @@ LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
     }
   }
 }
+
+//  Counter += 1;
+//  __builtin_amdgcn_s_dcache_wb();
+//    __builtin_amdgcn_s_dcache_inv();
+//atomicAdd(&Counter, 5);
+//  // Get the exec mask of the wavefront
+//  unsigned long long int ExecMask =
+//      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
+//  // Get the position of the thread in the current wavefront
+//  const uint32_t ThreadPosition = __lane_id();
+//  // Get the first active thread id inside this wavefront
+//  uint32_t FirstActiveThreadId = __ffsll(ExecMask);
+//  // Get the number of active threads in this wavefront
+//  uint32_t NumActiveThreads = __popcll(ExecMask);
+//
+//  // Have only the first active thread perform the atomic add
+//  if (FirstActiveThreadId == ThreadPosition)
+//      atomicAdd(&Counter, NumActiveThreads);
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructions);
 
@@ -154,28 +172,29 @@ static void instrumentAllFunctionsOfExecutable(hsa_executable_t Exec) {
   auto LR = lift(Exec);
   LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
 
-  //  LUTHIER_REPORT_FATAL_ON_ERROR(
-  //      instrumentAndLoad(Exec, *LR, instrumentationLoop, "instr_count"));
+  LUTHIER_REPORT_FATAL_ON_ERROR(
+      instrumentAndLoad(Exec, *LR, instrumentationLoop, "instr_count"));
 
-  llvm::SmallVector<
-      std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
-      SourceFiles;
-
-  auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
-  LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
-  LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
-      **InstrumentedLR, SourceFiles, llvm::CodeGenFileType::AssemblyFile));
-
-  for (const auto &[LCO, SourceFile] : SourceFiles) {
-    llvm::outs() << "Instrumented code object for LCO "
-                 << llvm::format_hex(LCO.handle, 8) << "\n";
-    llvm::outs() << SourceFile;
-    llvm::outs() << "\n";
-  }
+  //    llvm::SmallVector<
+  //        std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
+  //        SourceFiles;
+  //
+  //    auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
+  //    LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
+  //    LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
+  //        **InstrumentedLR, SourceFiles,
+  //        llvm::CodeGenFileType::AssemblyFile));
+  //
+  //    for (const auto &[LCO, SourceFile] : SourceFiles) {
+  //      llvm::outs() << "Instrumented code object for LCO "
+  //                   << llvm::format_hex(LCO.handle, 8) << "\n";
+  //      llvm::outs() << SourceFile;
+  //      llvm::outs() << "\n";
+  //    }
 }
 
-static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
-                     luthier::ApiEvtPhase Phase, luthier::hsa::ApiEvtID ApiID) {
+static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
+                     hsa::ApiEvtID ApiID) {
   if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
     auto Packets = CBData->hsa_queue_packet_submit.packets;
     for (unsigned int I = 0; I < CBData->hsa_queue_packet_submit.pkt_count;
@@ -239,22 +258,30 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
           /// 2. Get the number of wave fronts in the kernel
           /// 3. Print the counter for this kernel
           /// 4. Release the lock
-          hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
-              DispatchPacket.completion_signal, HSA_SIGNAL_CONDITION_EQ,
-              SignalVal, std::numeric_limits<uint64_t>::max(),
-              HSA_WAIT_STATE_BLOCKED);
-
-          TotalNumInstructions += Counter;
+          hipDeviceSynchronize();
+          sleep(5);
+//          hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
+//              DispatchPacket.completion_signal, HSA_SIGNAL_CONDITION_EQ,
+//              SignalVal, std::numeric_limits<uint64_t>::max(),
+//              HSA_WAIT_STATE_BLOCKED);
+          //          uint64_t CounterHost;
+          //          hipMemcpyDtoH(&CounterHost, &Counter, sizeof(uint64_t));
+//          uint64_t HostCounter = Counter;
+//          llvm::outs() << "Counter value: " << HostCounter << "\n";
+          //          TotalNumInstructions += Counter;
 
           auto KernelName = hsa::getSymbolName(*KernelSymbol);
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
 
           llvm::outs() << llvm::formatv(
-              "Kernel {0} - {1}: Grid Dims: ({2}, {3}, {4}) Kernel Instruction "
-              "Count: {5}, Total Instructions counted so far: {6}\n",
+              "Kernel {0} - {1}: Grid Dims: ({2}, {3}, {4}) Workgroup Dims: "
+              "({5}, {6}, {7}) Kernel Instruction "
+              "Count: {8}, Total Instructions counted so far: {9}\n",
               NumKernelLaunched++, *KernelName, DispatchPacket.grid_size_x,
-              DispatchPacket.grid_size_y, DispatchPacket.grid_size_z, Counter,
-              TotalNumInstructions);
+              DispatchPacket.grid_size_y, DispatchPacket.grid_size_z,
+              DispatchPacket.workgroup_size_x, DispatchPacket.workgroup_size_y,
+              DispatchPacket.grid_size_z, Counter, TotalNumInstructions);
+          TotalNumInstructions += Counter;
           if (MustDestroySignalAfterLaunch) {
             hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
                 DispatchPacket.completion_signal);
