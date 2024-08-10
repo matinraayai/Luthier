@@ -304,12 +304,6 @@ static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     LUTHIER_REPORT_FATAL_ON_ERROR(hsa::enableHsaApiEvtIDCallback(
         hsa::HSA_API_EVT_ID_hsa_queue_packet_submit));
-  } else {
-    // Parse the tool arguments
-    auto Argv = "";
-    llvm::cl::ParseCommandLineOptions(0, &Argv,
-                                      "Kernel Instruction Counter Tool",
-                                      &llvm::errs(), "INSTR_COUNT_ARGS");
   }
 }
 
