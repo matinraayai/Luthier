@@ -25,7 +25,8 @@ LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
 
 static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                      luthier::ApiEvtPhase Phase, luthier::hsa::ApiEvtID ApiID) {
-  if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
+  if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit &&
+      Phase == API_EVT_PHASE_BEFORE) {
     LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
     auto Packets = CBData->hsa_queue_packet_submit.packets;
     for (unsigned int I = 0; I < CBData->hsa_queue_packet_submit.pkt_count;
@@ -56,12 +57,11 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                     // insert a hook after the first instruction of each basic
                     // block
                     for (auto &[Func, MF] : LR.functions()) {
-                      for (auto &MBB : *MF) {
-                        if (auto Err = IT.insertHookBefore(
-                                *MBB.begin(),
-                                LUTHIER_GET_HOOK_HANDLE(instrumentationHook))) {
-                          return Err;
-                        }
+                      auto &MBB = MF->front();
+                      if (auto Err = IT.insertHookBefore(
+                              *MBB.begin()->getNextNode(),
+                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook))) {
+                        return Err;
                       }
                     }
                     return llvm::Error::success();
