@@ -27,6 +27,9 @@ constexpr const char *ReservedManagedVar = X_STRINGIFY(RESERVED_MANAGED_VAR);
 
 #define LUTHIER_HOOK_ATTRIBUTE "luthier_hook"
 
+/// All bindings to Luthier intrinsics must have this attribute
+#define LUTHIER_INTRINSIC_ATTRIBUTE "luthier_intrinsic"
+
 #undef X_STRINGIFY
 
 #undef STRINGIFY

@@ -11,13 +11,14 @@
 #include <llvm/Support/Error.h>
 
 #include <hip/amd_detail/hip_api_trace.hpp>
+#include <luthier/Intrinsic/Intrinsics.h>
+#include <luthier/ErrorCheck.h>
 #include <luthier/hsa_trace_api.h>
 #include <luthier/instr.h>
 #include <luthier/instrumentation_task.h>
 #include <luthier/kernel_descriptor.h>
 #include <luthier/lifted_representation.h>
 #include <luthier/types.h>
-#include <luthier/Intrinsic/Intrinsics.h>
 
 namespace luthier {
 
@@ -257,8 +258,8 @@ llvm::Error printLiftedRepresentation(
         &CompiledObjectFiles,
     llvm::CodeGenFileType FileType = llvm::CodeGenFileType::ObjectFile);
 
-//TODO: Implement link to executable, and load methods individually +
-// update the instrumentAndLoad docs
+// TODO: Implement link to executable, and load methods individually +
+//  update the instrumentAndLoad docs
 
 /// Instruments the <tt>Kernel</tt>'s lifted representation \p LR by
 /// applying the instrumentation task <tt>ITask</tt> to it.\n After
@@ -362,142 +363,6 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
 
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
   reinterpret_cast<const void *>(__luthier_hook_handle_##HookName)
-
-#endif
 } // namespace luthier
-
-////
-/////*********************************************************************
-//// *
-//// *          NVBit inspection APIs  (provided by NVBit)
-//// *
-//// **********************************************************************/
-
-////
-/////* Get line information for a particular instruction offset if available,
-//// * binary must be compiled with --generate-line-info   (-lineinfo) */
-////bool nvbit_get_line_info(CUcontext cuctx, CUfunction cufunc, uint32_t
-/// offset, /                         char** file_name, char** dir_name,
-/// uint32_t* line);
-////
-/////* Get the SM family */
-////uint32_t nvbit_get_sm_family(CUcontext cuctx);
-////
-/////* Allows to get PC address of the function */
-////uint64_t nvbit_get_func_addr(CUfunction func);
-////
-////
-/////* Allows to get shmem base address from CUcontext
-//// * shmem range is [shmem_base_addr, shmem_base_addr+16MB) and
-//// * the base address is 16MB aligned.  */
-////uint64_t nvbit_get_shmem_base_addr(CUcontext cuctx);
-////
-/////* Allows to get local memory base address from CUcontext
-//// * local mem range is [shmem_base_addr, shmem_base_addr+16MB) and
-//// * the base address is 16MB aligned.  */
-////uint64_t nvbit_get_local_mem_base_addr(CUcontext cuctx);
-////
-/////*********************************************************************
-//// *
-//// *          NVBit injection APIs  (provided by NVBit)
-//// *
-//// **********************************************************************/
-
-/////* Add int32_t argument to last injected call, value of the predicate for
-/// this / * instruction */ /
-/// void nvbit_add_call_arg_pred_val(const Instr*
-/// instr, /                                 bool is_variadic_arg = false);
-////
-/////* Add int32_t argument to last injected call, value of the entire predicate
-//// * register for this thread */
-////void nvbit_add_call_arg_pred_reg(const Instr* instr,
-////                                 bool is_variadic_arg = false);
-////
-/* Add uint32_t argument to last injected call, constant 32-bit value */
-// void luthier_add_call_arg_const_val32(luthier_instruction_t instr,
-//                                       uint32_t val);
-////
-/////* Add uint64_t argument to last injected call, constant 64-bit value */
-// void luthier_add_call_arg_const_val64(luthier_instruction_t instr,
-//                                       uint64_t val);
-////
-/////* Add uint32_t argument to last injected call, content of the register
-/// reg_num / */ /void nvbit_add_call_arg_reg_val(const Instr* instr, int
-/// reg_num, /                                bool is_variadic_arg = false);
-////
-/////* Add uint32_t argument to last injected call, content of the
-//// * uniform register reg_num */
-////void nvbit_add_call_arg_ureg_val(const Instr* instr, int reg_num,
-////                                 bool is_variadic_arg = false);
-////
-/////* Add uint32_t argument to last injected call, 32-bit at launch value at
-/// offset / * "offset", set at launch time with nvbit_set_at_launch */ /void
-/// nvbit_add_call_arg_launch_val32(const Instr* instr, int offset, / bool
-/// is_variadic_arg = false);
-////
-/////* Add uint64_t argument to last injected call, 64-bit at launch value at
-/// offset / * "offset", set at launch time with nvbit_set_at_launch */ /void
-/// nvbit_add_call_arg_launch_val64(const Instr* instr, int offset, / bool
-/// is_variadic_arg = false);
-////
-/////* Add uint32_t argument to last injected call, constant bank value at
-//// * c[bankid][bankoffset] */
-////void nvbit_add_call_arg_cbank_val(const Instr* instr, int bankid,
-////                                  int bankoffset, bool is_variadic_arg =
-/// false);
-////
-/////* The 64-bit memory reference address accessed by this instruction
-////  Typically memory instructions have only 1 MREF so in general id = 0 */
-////void nvbit_add_call_arg_mref_addr64(const Instr* instr, int id = 0,
-////                                    bool is_variadic_arg = false);
-////
-
-////
-/////*********************************************************************
-//// *
-//// *          NVBit device level APIs  (provided by NVBit)
-//// *
-//// **********************************************************************/
-////
-////#ifdef __CUDACC__
-/////* device function used to read/write register values
-//// * writes are permanent into application state */
-// Save callee registers
-// Call
-// Sync
-// Read content of register to SGPR[30:31]
-// return SGPR[30:31]
-// SGPR3 (where it actually is in the app) -> SGRP[30:31]
-//
-
-// __device__ __noinline__ int32_t nvbit_read_reg(uint64_t reg_num);
-////__device__ __noinline__ void nvbit_write_reg(uint64_t reg_num, int32_t
-/// reg_val);
-// -> instrmnt -> nvbit_write_reg(R2, 2000);
-// R5 = R5 + 2
-// -> instrmnt -> nvbit_write_reg(R2, 2000); R5 = 2000;
-////__device__ __noinline__ int32_t nvbit_read_ureg(uint64_t reg_num);
-////__device__ __noinline__ void nvbit_write_ureg(uint64_t reg_num, int32_t
-/// reg_val);
-////__device__ __noinline__ int32_t nvbit_read_pred_reg(void);
-////__device__ __noinline__ void nvbit_write_pred_reg(int32_t reg_val);
-////__device__ __noinline__ int32_t nvbit_read_upred_reg(void);
-////__device__ __noinline__ void nvbit_write_upred_reg(int32_t reg_val);
-////#endif
-////
-/////*********************************************************************
-//// *
-//// *          NVBit control APIs  (provided by NVBit)
-//// *
-//// **********************************************************************/
-////
-
-////
-/////* Set arguments at launch time, that will be loaded on input argument of
-//// * the instrumentation function */
-////void nvbit_set_at_launch(CUcontext ctx, CUfunction func, void* buf,
-////                         uint32_t nbytes);
-////
-// NOLINTEND
 
 #endif
