@@ -34,11 +34,6 @@ TargetManager::TargetManager() : Singleton<TargetManager>() {
   LLVMInitializeAMDGPUAsmParser();
   LLVMInitializeAMDGPUAsmPrinter();
   LLVMInitializeAMDGPUTargetMCA();
-  // TODO: make LLVM args separate from Luthier arguments
-  auto Argv = "";
-  llvm::cl::ParseCommandLineOptions(
-      0, &Argv, "Luthier, An AMD GPU Binary Instrumentation Tool",
-      &llvm::errs(), "LUTHIER_ARGS");
 }
 
 TargetManager::~TargetManager() {

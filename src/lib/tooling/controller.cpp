@@ -1,3 +1,12 @@
+//===-- controller.cpp - Luthier tool's Controller Logic implementation ---===//
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements the \c Controller singleton class logic, as well as
+/// any other interactions that needs to happen with the rocprofiler library.
+//===----------------------------------------------------------------------===//
+
 #include "tooling/controller.hpp"
 #include "common/log.hpp"
 #include "hip/HipCompilerApiInterceptor.hpp"
@@ -92,10 +101,25 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 }
 } // namespace hsa
 
+static void parseEnvVariableArgs() {
+  auto Argv = "";
+  LUTHIER_REPORT_FATAL_ON_ERROR(
+      LUTHIER_ASSERTION(llvm::cl::ParseCommandLineOptions(
+          0, &Argv, "Luthier, An AMD GPU Dynamic Binary Instrumentation Tool",
+          &llvm::errs(), "LUTHIER_ARGS")));
+}
+
 static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
                                     uint64_t LibVersion, uint64_t LibInstance,
                                     void **Tables, uint64_t NumTables,
                                     void *Data) {
+  // Argument parsing is done the first time any of the API tables have been
+  // intercepted;
+  // This is because at this point, all statically-defined cl arguments should
+  // be initialized by now
+  static std::once_flag ArgParseOnceFlag;
+  std::call_once(ArgParseOnceFlag, parseEnvVariableArgs);
+
   if (Type == ROCPROFILER_HSA_TABLE) {
     auto &HsaInterceptor = luthier::hsa::HsaRuntimeInterceptor::instance();
     auto &HsaApiTableCaptureCallback =

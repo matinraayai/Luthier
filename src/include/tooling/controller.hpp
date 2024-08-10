@@ -29,8 +29,6 @@ namespace hip {
 class HipCompilerApiInterceptor;
 
 class HipRuntimeApiInterceptor;
-
-class Platform;
 } // namespace hip
 
 namespace hsa {
@@ -57,8 +55,6 @@ private:
   hip::HipCompilerApiInterceptor *HipCompilerInterceptor{nullptr};
 
   hip::HipRuntimeApiInterceptor *HipRuntimeInterceptor{nullptr};
-
-  hip::Platform *HipPlatform{nullptr};
 
   hsa::HsaRuntimeInterceptor *HsaInterceptor{nullptr};
 
