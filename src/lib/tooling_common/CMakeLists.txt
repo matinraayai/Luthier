@@ -14,7 +14,6 @@ add_library(luthier_tooling_common STATIC
         tool_executable_manager.cpp
         lifted_representation.cpp
         instrumentation_module.cpp
-        intrinsic/IntrinsicLoweringInfo.cpp
         intrinsic/ReadReg.cpp
         intrinsic/WriteReg.cpp
 )
