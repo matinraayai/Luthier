@@ -6,8 +6,8 @@
 /// This file describes Luthier's code generator, which instruments lifted
 /// representations given a mutator function.
 //===----------------------------------------------------------------------===//
-#ifndef CODE_GENERATOR_HPP
-#define CODE_GENERATOR_HPP
+#ifndef LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
+#define LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
 
 #include "common/object_utils.hpp"
 #include "common/singleton.hpp"
@@ -15,11 +15,11 @@
 #include "hsa/hsa_executable_symbol.hpp"
 #include <llvm/ADT/Any.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
+#include <luthier/Intrinsic/IntrinsicProcessor.h>
 #include <luthier/instrumentation_task.h>
 #include <luthier/lifted_representation.h>
 #include <luthier/types.h>
 
-#include "tooling_common/intrinsic/IntrinsicLoweringInfo.hpp"
 #include <utility>
 
 namespace llvm {
@@ -96,7 +96,6 @@ public:
                               llvm::SmallVectorImpl<uint8_t> &Out);
 
 private:
-
   /// Finds <tt>llvm::Function</tt>s marked as intrinsics inside the
   /// \p InstModule and Applies the IR processor function to their
   /// <tt>llvm::User</tt>s
@@ -145,7 +144,6 @@ private:
   hook_live_regs_map_t HookLiveRegs;
 
   llvm::DenseMap<llvm::Function *, size_t> StaticSizedHooksToStackSize;
-
 
 public:
   llvm::StringRef getPassName() const override {
