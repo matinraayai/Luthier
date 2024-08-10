@@ -7,6 +7,7 @@
 #include <llvm/Support/FormatVariadic.h>
 
 #include <luthier/types.h>
+#include <luthier/ErrorCheck.h>
 
 // Workaround for GCC or other compilers that don't have this macro built-in
 // Source:
@@ -26,16 +27,6 @@
             .str()                                                             \
             .c_str());                                                         \
   }
-/**
- * \brief returns from the function if the given \p llvm::Error argument
- * is not llvm::Error::success()
- */
-#define LUTHIER_RETURN_ON_ERROR(Error)                                         \
-  do {                                                                         \
-    if (Error) {                                                               \
-      return (Error);                                                          \
-    }                                                                          \
-  } while (0)
 
 #define LUTHIER_RETURN_ON_MOVE_INTO_FAIL(Type, VarName, Operation)             \
   Type VarName;                                                                \
