@@ -28,8 +28,8 @@ template <> Controller *Singleton<Controller>::Instance{nullptr};
 Controller *Controller::C{nullptr};
 
 namespace hip {
-static void internalApiCallback(ApiEvtArgs *Args,
-                                ApiEvtPhase Phase, ApiEvtID ApiId) {
+static void internalApiCallback(ApiEvtArgs *Args, ApiEvtPhase Phase,
+                                ApiEvtID ApiId) {
   LUTHIER_LOG_FUNCTION_CALL_START
   if (Phase == API_EVT_PHASE_BEFORE) {
     if (ApiId == HIP_COMPILER_API_EVT_ID___hipRegisterFunction) {
@@ -122,15 +122,16 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
 
     HsaInterceptor.setInternalCallback(luthier::hsa::internalApiCallback);
     if (auto Err = HsaInterceptor.enableInternalCallback(
-        luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze)) {
+            luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze)) {
       llvm::report_fatal_error(std::move(Err), true);
     }
     if (auto Err = HsaInterceptor.enableInternalCallback(
-        luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy)) {
+            luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy)) {
       llvm::report_fatal_error(std::move(Err), true);
     }
     if (auto Err = HsaInterceptor.enableInternalCallback(
-        luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object)) {
+            luthier::hsa::
+                HSA_API_EVT_ID_hsa_executable_load_agent_code_object)) {
       llvm::report_fatal_error(std::move(Err), true);
     }
   }
@@ -143,13 +144,14 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
       llvm::report_fatal_error(std::move(Err), true);
     HipCompilerInterceptor.setInternalCallback(hip::internalApiCallback);
     if (auto Err = HipCompilerInterceptor.enableInternalCallback(
-        hip::HIP_COMPILER_API_EVT_ID___hipRegisterFunction))
+            hip::HIP_COMPILER_API_EVT_ID___hipRegisterFunction))
       llvm::report_fatal_error(std::move(Err), true);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Compiler API Table.\n");
   }
   if (Type == ROCPROFILER_HIP_RUNTIME_TABLE) {
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Runtime API Table.\n");
-    auto &HipRuntimeInterceptor = luthier::hip::HipRuntimeApiInterceptor::instance();
+    auto &HipRuntimeInterceptor =
+        luthier::hip::HipRuntimeApiInterceptor::instance();
     auto *Table = static_cast<HipDispatchTable *>(Tables[0]);
     if (auto Err = HipRuntimeInterceptor.captureApiTable(Table))
       llvm::report_fatal_error(std::move(Err), true);
