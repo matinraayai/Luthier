@@ -235,6 +235,10 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
     // Even if the packets are not modified, this call has to be made to ensure
     // the packets are copied to the hardware queue
     Writer(Args.hsa_queue_packet_submit.packets, Args.hsa_queue_packet_submit.pkt_count);
+    if (IsUserCallbackEnabled)
+      (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
+    if (IsInternalCallbackEnabled)
+      (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
   }} else {{
     Writer(Packets, PktCount);
   }}
