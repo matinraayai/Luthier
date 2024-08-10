@@ -58,14 +58,12 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
       ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
     hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
     // Cache the executable and its items
-    if (auto Err = Platform::instance().cacheExecutableOnExecutableFreeze(Exec))
-      llvm::report_fatal_error("Tool executable register failed");
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        Platform::instance().cacheExecutableOnExecutableFreeze(Exec));
     // Check if the executable belongs to the tool and not the app
-    if (auto Err =
-            ToolExecutableManager::instance().registerIfLuthierToolExecutable(
-                Exec)) {
-      llvm::report_fatal_error("Tool executable check failed");
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        ToolExecutableManager::instance().registerIfLuthierToolExecutable(
+            Exec));
   }
   if (Phase == API_EVT_PHASE_AFTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_load_agent_code_object) {
@@ -74,30 +72,21 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
     // the Exec it was created for
     hsa::Executable Exec(
         CBData->hsa_executable_load_agent_code_object.executable);
-    if (auto Err =
-            Platform::instance().cacheExecutableOnLoadedCodeObjectCreation(
-                Exec)) {
-      llvm::report_fatal_error("Caching of Loaded Code Object failed!");
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        Platform::instance().cacheExecutableOnLoadedCodeObjectCreation(Exec));
   }
   if (Phase == API_EVT_PHASE_BEFORE &&
       ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
     hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
-    if (auto Err =
-            CodeLifter::instance().invalidateCachedExecutableItems(Exec)) {
-      llvm::report_fatal_error("Executable cache invalidation failed");
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        CodeLifter::instance().invalidateCachedExecutableItems(Exec));
 
-    if (auto Err =
-            ToolExecutableManager::instance().unregisterIfLuthierToolExecutable(
-                Exec)) {
-      llvm::report_fatal_error("Unregistering tool executable failed");
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        ToolExecutableManager::instance().unregisterIfLuthierToolExecutable(
+            Exec));
 
-    if (auto Err = Platform::instance().invalidateExecutableOnExecutableDestroy(
-            Exec)) {
-      llvm::report_fatal_error("Executable cache invalidation failed");
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        Platform::instance().invalidateExecutableOnExecutableDestroy(Exec));
   }
   LUTHIER_LOG_FUNCTION_CALL_END
 }
@@ -114,38 +103,29 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
     HsaApiTableCaptureCallback(API_EVT_PHASE_BEFORE);
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HSA API Tables.\n");
     auto *Table = static_cast<HsaApiTable *>(Tables[0]);
-    if (auto Err = HsaInterceptor.captureApiTable(Table)) {
-      llvm::report_fatal_error(std::move(Err), true);
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(HsaInterceptor.captureApiTable(Table));
     HsaApiTableCaptureCallback(API_EVT_PHASE_AFTER);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HSA API Tables.\n");
 
     HsaInterceptor.setInternalCallback(luthier::hsa::internalApiCallback);
-    if (auto Err = HsaInterceptor.enableInternalCallback(
-            luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze)) {
-      llvm::report_fatal_error(std::move(Err), true);
-    }
-    if (auto Err = HsaInterceptor.enableInternalCallback(
-            luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy)) {
-      llvm::report_fatal_error(std::move(Err), true);
-    }
-    if (auto Err = HsaInterceptor.enableInternalCallback(
-            luthier::hsa::
-                HSA_API_EVT_ID_hsa_executable_load_agent_code_object)) {
-      llvm::report_fatal_error(std::move(Err), true);
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(HsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_freeze));
+    LUTHIER_REPORT_FATAL_ON_ERROR(HsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_destroy));
+    LUTHIER_REPORT_FATAL_ON_ERROR(HsaInterceptor.enableInternalCallback(
+        luthier::hsa::HSA_API_EVT_ID_hsa_executable_load_agent_code_object));
   }
   if (Type == ROCPROFILER_HIP_COMPILER_TABLE) {
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Compiler API Table.\n");
     auto &HipCompilerInterceptor =
         luthier::hip::HipCompilerApiInterceptor::instance();
     auto *Table = static_cast<HipCompilerDispatchTable *>(Tables[0]);
-    if (auto Err = HipCompilerInterceptor.captureApiTable(Table))
-      llvm::report_fatal_error(std::move(Err), true);
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        HipCompilerInterceptor.captureApiTable(Table));
     HipCompilerInterceptor.setInternalCallback(hip::internalApiCallback);
-    if (auto Err = HipCompilerInterceptor.enableInternalCallback(
-            hip::HIP_COMPILER_API_EVT_ID___hipRegisterFunction))
-      llvm::report_fatal_error(std::move(Err), true);
+
+    LUTHIER_REPORT_FATAL_ON_ERROR(HipCompilerInterceptor.enableInternalCallback(
+        hip::HIP_COMPILER_API_EVT_ID___hipRegisterFunction));
     LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Compiler API Table.\n");
   }
   if (Type == ROCPROFILER_HIP_RUNTIME_TABLE) {
@@ -153,8 +133,7 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
     auto &HipRuntimeInterceptor =
         luthier::hip::HipRuntimeApiInterceptor::instance();
     auto *Table = static_cast<HipDispatchTable *>(Tables[0]);
-    if (auto Err = HipRuntimeInterceptor.captureApiTable(Table))
-      llvm::report_fatal_error(std::move(Err), true);
+    LUTHIER_REPORT_FATAL_ON_ERROR(HipRuntimeInterceptor.captureApiTable(Table));
     HipRuntimeInterceptor.setInternalCallback(hip::internalApiCallback);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Runtime API Table.\n");
   }
