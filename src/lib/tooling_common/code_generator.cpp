@@ -406,7 +406,7 @@ llvm::Error patchLiftedRepresentation(
                                     NewEntryBlock);
           // First add the NewEntryBlock as a pred to all
           // InsertionPointMBB's preds
-          llvm::SmallVector<llvm::MachineBasicBlock*, 2> PredMBBs;
+          llvm::SmallVector<llvm::MachineBasicBlock *, 2> PredMBBs;
           for (auto It = InsertionPointMBB.pred_begin();
                It != InsertionPointMBB.pred_end(); ++It) {
             auto PredMBB = *It;
@@ -414,7 +414,7 @@ llvm::Error patchLiftedRepresentation(
             PredMBBs.push_back(PredMBB);
           }
           // Remove the insertion point mbb from the PredMBB's successor list
-          for (auto & PredMBB : PredMBBs) {
+          for (auto &PredMBB : PredMBBs) {
             PredMBB->removeSuccessor(&InsertionPointMBB);
           }
           // Add the insertion point MBB as the successor of this block
@@ -831,16 +831,41 @@ bool DefineLiveRegsAndAppStackUsagePass::runOnMachineFunction(
   auto *F = &MF.getFunction();
   auto &MRI = MF.getRegInfo();
   auto *TRI = MF.getSubtarget().getRegisterInfo();
+  auto &EntryMBB = MF.front();
+
   // Find the entry block of the function, and mark the live-ins
   auto &LivePhysRegs = *HookLiveRegs[F];
 
-  auto &BeginMBB = MF.front();
-  for (auto &LiveIn : MF.begin()->liveins()) {
+  for (auto &LiveIn : EntryMBB.liveins()) {
     LivePhysRegs.addReg(LiveIn.PhysReg);
   }
-  BeginMBB.clearLiveIns();
+  EntryMBB.clearLiveIns();
+
+  // TODO: Fix machine verifier's live-in use detection issue
   for (auto &MBB : MF) {
     llvm::addLiveIns(MBB, LivePhysRegs);
+  }
+
+  // If the SCC bit is live before entering the hook, then we need to save in
+  // the very first instruction and restore it before all return instructions
+  if (EntryMBB.isLiveIn(llvm::AMDGPU::SCC)) {
+    // Put a copy from the SCC register to a virtual scalar 32-bit register in
+    // the
+    auto &CopyMCID = MF.getSubtarget().getInstrInfo()->get(llvm::AMDGPU::COPY);
+    auto VirtualSReg =
+        MF.getRegInfo().createVirtualRegister(&llvm::AMDGPU::SReg_32RegClass);
+    llvm::BuildMI(EntryMBB, EntryMBB.begin(), llvm::DebugLoc(), CopyMCID)
+        .addReg(VirtualSReg, llvm::RegState::Define)
+        .addReg(llvm::AMDGPU::SCC, llvm::RegState::Kill);
+    // Iterate over all MBBs, and add a copy back before the term instruction
+    // inside all return blocks
+    for (auto &MBB : MF) {
+      if (MBB.isReturnBlock()) {
+        llvm::BuildMI(MBB, MBB.getFirstTerminator(), llvm::DebugLoc(), CopyMCID)
+            .addReg(llvm::AMDGPU::SCC, llvm::RegState::Define)
+            .addReg(VirtualSReg, llvm::RegState::Kill);
+      }
+    }
   }
 
   //  for (auto &MBB: MF) {
