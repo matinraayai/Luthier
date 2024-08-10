@@ -18,7 +18,8 @@ MARK_LUTHIER_DEVICE_MODULE
 __attribute__((managed)) uint64_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
-  GlobalCounter = readReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5);
+  GlobalCounter = __builtin_amdgcn_wavefrontsize();
+//  GlobalCounter = readReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5);
 };
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
@@ -28,10 +29,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
   if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit &&
       Phase == API_EVT_PHASE_BEFORE) {
     LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
-    auto Packets = CBData->hsa_queue_packet_submit.packets;
-    for (unsigned int I = 0; I < CBData->hsa_queue_packet_submit.pkt_count;
-         I++) {
-      auto &Packet = Packets[I];
+    for (auto &Packet: *CBData->hsa_queue_packet_submit.packets) {
       hsa_packet_type_t PacketType = Packet.getPacketType();
 
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {

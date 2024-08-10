@@ -51,12 +51,14 @@ enum InstrPoint : unsigned short {
   INSTR_POINT_AFTER = 1
 };
 
+namespace hsa {
+
 /// \brief AMD Vendor Packet POD struct
 typedef struct {
   uint16_t Header;
   uint8_t Format;
   uint8_t Rest[61];
-} hsa_amd_vendor_packet_t;
+} amd_vendor_packet_t;
 
 /// \brief POD struct to provide an abstraction over HSA AQL packets as well
 /// as some convenience methods
@@ -65,7 +67,7 @@ typedef struct {
 /// \code
 /// auto& Packet = *reinterpret_cast<HsaAqlPacket*>(PacketAddress);
 /// \endcode
-struct HsaAqlPacket {
+struct AqlPacket {
   /// \brief Generic packet struct
   struct {
     uint16_t Header;
@@ -84,14 +86,14 @@ struct HsaAqlPacket {
 
   /// \return a non-const reference to this as a AMD vendor packet
   /// \sa hsa_amd_vendor_packet_t
-  [[nodiscard]] hsa_amd_vendor_packet_t &asAMDVendor() {
-    return *reinterpret_cast<hsa_amd_vendor_packet_t *>(&Packet);
+  [[nodiscard]] amd_vendor_packet_t &asAMDVendor() {
+    return *reinterpret_cast<amd_vendor_packet_t *>(&Packet);
   }
 
   /// \return a non-const reference to this a AMD vendor packet
   /// \sa hsa_amd_vendor_packet_t
-  [[nodiscard]] const hsa_amd_vendor_packet_t &asAMDVendor() const {
-    return *reinterpret_cast<const hsa_amd_vendor_packet_t *>(&Packet);
+  [[nodiscard]] const amd_vendor_packet_t &asAMDVendor() const {
+    return *reinterpret_cast<const amd_vendor_packet_t *>(&Packet);
   }
 
   /// \return a non-const reference to this as a kernel dispatch packet
@@ -142,7 +144,6 @@ struct HsaAqlPacket {
     return *reinterpret_cast<const hsa_agent_dispatch_packet_t *>(&Packet);
   }
 };
-namespace hsa {
 
 /// \brief HSA Symbol kinds; Use this instead of \c hsa_symbol_kind_t
 /// \details At the time of writing HSA only supports kernel and variable symbols;

@@ -100,6 +100,7 @@ def main():
 #define LUTHIER_HSA_API_TRACE_H
 #include <hsa/hsa_api_trace.h>
 #include <llvm/ADT/DenseMapInfo.h>
+#include <vector>
 #include "luthier/types.h"
 
 namespace luthier::hsa {{
@@ -163,8 +164,7 @@ enum ApiEvtID: unsigned int {{
 """)
     # Handle the kernel launch event separately
     callback_arguments_struct.append("  struct {\n"
-                                     "    luthier::HsaAqlPacket* packets;\n"
-                                     "    uint64_t pkt_count;\n"
+                                     "    std::vector<luthier::hsa::AqlPacket>* packets;\n"
                                      "    uint64_t user_pkt_index;\n"
                                      "  } hsa_queue_packet_submit;\n")
     callback_arguments_struct.append("""} ApiEvtArgs;
@@ -221,11 +221,10 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
   bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
   if (IsUserCallbackEnabled || IsInternalCallbackEnabled) {{
     // Copy the packets to a non-const buffer
-    std::vector<luthier::HsaAqlPacket> ModifiedPackets(
-      reinterpret_cast<const luthier::HsaAqlPacket*>(Packets),
-      reinterpret_cast<const luthier::HsaAqlPacket*>(Packets) + PktCount);
-    Args.hsa_queue_packet_submit.packets = ModifiedPackets.data();
-    Args.hsa_queue_packet_submit.pkt_count = PktCount;
+    std::vector<luthier::hsa::AqlPacket> ModifiedPackets(
+      reinterpret_cast<const luthier::hsa::AqlPacket*>(Packets),
+      reinterpret_cast<const luthier::hsa::AqlPacket*>(Packets) + PktCount);
+    Args.hsa_queue_packet_submit.packets = &ModifiedPackets;
     Args.hsa_queue_packet_submit.user_pkt_index = UserPktIndex;
     if (IsUserCallbackEnabled)
       (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
@@ -234,7 +233,7 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
     // Write the packets to hardware queue
     // Even if the packets are not modified, this call has to be made to ensure
     // the packets are copied to the hardware queue
-    Writer(Args.hsa_queue_packet_submit.packets, Args.hsa_queue_packet_submit.pkt_count);
+    Writer(ModifiedPackets.data(), ModifiedPackets.size());
     if (IsUserCallbackEnabled)
       (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
     if (IsInternalCallbackEnabled)

@@ -103,7 +103,6 @@ std::mutex Mutex;
 MARK_LUTHIER_DEVICE_MODULE
 
 // TODO: Can this be done instead with only scalar instruction?
-// TODO: Move SCC save/restore to code generator
 LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask =
@@ -131,7 +130,7 @@ LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
 //  Counter += 1;
 //  __builtin_amdgcn_s_dcache_wb();
 //    __builtin_amdgcn_s_dcache_inv();
-//atomicAdd(&Counter, 5);
+// atomicAdd(&Counter, 5);
 //  // Get the exec mask of the wavefront
 //  unsigned long long int ExecMask =
 //      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
@@ -197,12 +196,16 @@ static void instrumentAllFunctionsOfExecutable(hsa_executable_t Exec) {
 static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                      hsa::ApiEvtID ApiID) {
   if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
-    auto Packets = CBData->hsa_queue_packet_submit.packets;
-    for (unsigned int I = 0; I < CBData->hsa_queue_packet_submit.pkt_count;
-         I++) {
-      auto &Packet = Packets[I];
+    // Copy the app packets because we are going to modify the packets field
+    // of the argument, and it will be easier to mutate
+    std::vector<hsa::AqlPacket> AppPackets(
+        *CBData->hsa_queue_packet_submit.packets);
+    auto *ToBeSubmittedPackets = CBData->hsa_queue_packet_submit.packets;
+    // Clear the packets that are about to be submitted, as we will repopulate
+    // it again after analyzing the AppPackets
+    ToBeSubmittedPackets->clear();
+    for (auto &Packet : AppPackets) {
       hsa_packet_type_t PacketType = Packet.getPacketType();
-
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         auto &DispatchPacket = Packet.asKernelDispatch();
         // Get the kernel that is about to get launched + its completion signal
@@ -211,15 +214,16 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                                 DispatchPacket.kernel_object)
                                 ->getHsaExecutableSymbol();
         // Create a signal if the application didn't create one for this packet
-        if (DispatchPacket.completion_signal.handle == 0) {
-          hsa::getHsaApiTable().core_->hsa_signal_create_fn(
-              0, 0, {}, &DispatchPacket.completion_signal);
-          MustDestroySignalAfterLaunch = true;
-        } else {
-          MustDestroySignalAfterLaunch = false;
-        }
-        SignalVal = hsa::getHsaApiTable().core_->hsa_signal_load_relaxed_fn(
-            DispatchPacket.completion_signal);
+        //        if (DispatchPacket.completion_signal.handle == 0) {
+        //          hsa::getHsaApiTable().core_->hsa_signal_create_fn(
+        //              0, 0, {}, &DispatchPacket.completion_signal);
+        //          MustDestroySignalAfterLaunch = true;
+        //        } else {
+        //          MustDestroySignalAfterLaunch = false;
+        //        }
+        //        SignalVal =
+        //        hsa::getHsaApiTable().core_->hsa_signal_load_relaxed_fn(
+        //            DispatchPacket.completion_signal);
 
         LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
         if (Phase == luthier::API_EVT_PHASE_BEFORE) {
@@ -253,22 +257,24 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket, "instr_count"));
           }
           Counter = 0;
+          ToBeSubmittedPackets->push_back(Packet);
         } else {
           /// If we are exiting a kernel launch:
           /// 1. Wait on the signal of the kernel being launched
           /// 2. Get the number of wave fronts in the kernel
           /// 3. Print the counter for this kernel
           /// 4. Release the lock
-          hipDeviceSynchronize();
-          sleep(5);
-//          hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
-//              DispatchPacket.completion_signal, HSA_SIGNAL_CONDITION_EQ,
-//              SignalVal, std::numeric_limits<uint64_t>::max(),
-//              HSA_WAIT_STATE_BLOCKED);
+          //          hipDeviceSynchronize();
+          //          sleep(5);
+          //          hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
+          //              DispatchPacket.completion_signal,
+          //              HSA_SIGNAL_CONDITION_EQ, SignalVal,
+          //              std::numeric_limits<uint64_t>::max(),
+          //              HSA_WAIT_STATE_BLOCKED);
           //          uint64_t CounterHost;
           //          hipMemcpyDtoH(&CounterHost, &Counter, sizeof(uint64_t));
-//          uint64_t HostCounter = Counter;
-//          llvm::outs() << "Counter value: " << HostCounter << "\n";
+          //          uint64_t HostCounter = Counter;
+          //          llvm::outs() << "Counter value: " << HostCounter << "\n";
           //          TotalNumInstructions += Counter;
 
           auto KernelName = hsa::getSymbolName(*KernelSymbol);
@@ -283,12 +289,16 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               DispatchPacket.workgroup_size_x, DispatchPacket.workgroup_size_y,
               DispatchPacket.grid_size_z, Counter, TotalNumInstructions);
           TotalNumInstructions += Counter;
-          if (MustDestroySignalAfterLaunch) {
-            hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
-                DispatchPacket.completion_signal);
-          }
+          //          if (MustDestroySignalAfterLaunch) {
+          //            hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
+          //                DispatchPacket.completion_signal);
+          //          }
           Mutex.unlock();
         }
+      }
+      // If the packet is not of type kernel dispatch, then submit it as is
+      else {
+        ToBeSubmittedPackets->push_back(Packet);
       }
     }
   }

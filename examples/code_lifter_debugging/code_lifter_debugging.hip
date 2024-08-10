@@ -12,9 +12,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
   if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
     LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
     auto Packets = CBData->hsa_queue_packet_submit.packets;
-    for (unsigned int I = 0; I < CBData->hsa_queue_packet_submit.pkt_count;
-         I++) {
-      auto &Packet = Packets[I];
+    for (auto &Packet : *Packets) {
       hsa_packet_type_t PacketType = Packet.getPacketType();
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         auto &DispatchPacket = Packet.asKernelDispatch();
