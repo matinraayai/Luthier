@@ -10,7 +10,7 @@
 #ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
 #define LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
 
-#include "luthier/IntrinsicProcessor.h"
+#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include <llvm/Support/Error.h>
 
 namespace luthier {
