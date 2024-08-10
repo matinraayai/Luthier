@@ -150,6 +150,13 @@ typedef std::function<llvm::Error(
     const std::function<llvm::MachineInstrBuilder(int)> &)>
     IntrinsicMIRProcessorFunc;
 
+/// \brief Used internally by \c luthier::CodeGenerator to keep track of
+/// registered intrinsics and how to process them
+struct IntrinsicProcessor {
+  IntrinsicIRProcessorFunc IRProcessor{};
+  IntrinsicMIRProcessorFunc MIRProcessor{};
+};
+
 } // namespace luthier
 
 #endif
