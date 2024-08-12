@@ -11,6 +11,7 @@
 #include <thread>
 // undef ICMP_NE macro that was ill-defined in HIP headers
 #undef ICMP_NE
+#include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
@@ -189,7 +190,8 @@ static void instrumentAllFunctionsOfExecutable(hsa_executable_t Exec) {
 }
 
 // TODO: Think of a way of integrating this as a callback inside luthier
-// This function is spawned as a thread to wait on kernel launches to be completed
+// This function is spawned as a thread to wait on kernel launches to be
+// completed
 static void
 atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
                    bool MustDestroyAfterWait,
@@ -227,18 +229,21 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
 
   auto KernelName = hsa::getSymbolName(*KernelSymbol);
   LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
-
+  std::string KernelNameToBePrinted = DemangleKernelNames
+                                          ? llvm::demangle(*KernelName)
+                                          : std::string(*KernelName);
   TotalNumInstructions += Counter;
 
   llvm::outs() << llvm::formatv(
       "Kernel {0} - {1}: Grid Dims: ({2}, {3}, {4}) Workgroup Dims: "
       "({5}, {6}, {7}) Kernel Instruction "
       "Count: {8}, Total Instructions counted so far: {9}\n",
-      NumKernelLaunched++, *KernelName, SubmittedDispatchPacket.grid_size_x,
-      SubmittedDispatchPacket.grid_size_y, SubmittedDispatchPacket.grid_size_z,
+      NumKernelLaunched++, KernelNameToBePrinted,
+      SubmittedDispatchPacket.grid_size_x, SubmittedDispatchPacket.grid_size_y,
+      SubmittedDispatchPacket.grid_size_z,
       SubmittedDispatchPacket.workgroup_size_x,
       SubmittedDispatchPacket.workgroup_size_y,
-      SubmittedDispatchPacket.grid_size_z, Counter, TotalNumInstructions);
+      SubmittedDispatchPacket.workgroup_size_z, Counter, TotalNumInstructions);
 
   Mutex.unlock();
 }
