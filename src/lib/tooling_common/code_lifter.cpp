@@ -591,6 +591,8 @@ void computeLiveIns(
   const llvm::TargetRegisterInfo &TRI = *MRI.getTargetRegisterInfo();
   LiveRegs.init(TRI);
   LiveRegs.addLiveOutsNoPristines(MBB);
+  LLVM_DEBUG(llvm::dbgs() << "Live out registers of MBB " << MBB.getFullName()
+                          << ": " << LiveRegs << "\n");
   for (const llvm::MachineInstr &MI : llvm::reverse(MBB)) {
     LiveRegs.stepBackward(MI);
     // Update the MI LiveIns map
@@ -606,12 +608,18 @@ void computeLiveIns(
   }
 }
 
-void computeAndAddLiveIns(
+std::vector<llvm::MachineBasicBlock::RegisterMaskPair> computeAndAddLiveIns(
     llvm::LivePhysRegs &LiveRegs, llvm::MachineBasicBlock &MBB,
     llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
         &PerMILiveIns) {
   luthier::computeLiveIns(LiveRegs, MBB, PerMILiveIns);
+  std::vector<llvm::MachineBasicBlock::RegisterMaskPair> OldLiveIns;
+  // Clear out the live-ins before adding the new ones
+  // This ensures correct live-out information calculations in loops i.e.
+  // where the MBB is a successor/predecessor of itself
+  MBB.clearLiveIns(OldLiveIns);
   llvm::addLiveIns(MBB, LiveRegs);
+  return OldLiveIns;
 }
 
 /// Convenience function for recomputing live-in's for a MBB. Returns true if
@@ -621,10 +629,19 @@ static bool recomputeLiveIns(
     llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
         &PerMILiveIns) {
   llvm::LivePhysRegs LPR;
-  std::vector<llvm::MachineBasicBlock::RegisterMaskPair> OldLiveIns;
+  LLVM_DEBUG(auto TRI = MBB.getParent()->getSubtarget().getRegisterInfo();
+             llvm::dbgs() << "Old live-in registers for MBB "
+                          << MBB.getFullName() << "\n";
+             for (auto &LiveInPhysReg
+                  : MBB.getLiveIns()) {
+               llvm::dbgs()
+                   << printReg(llvm::Register(LiveInPhysReg.PhysReg), TRI)
+                   << "\n";
+             }
 
-  MBB.clearLiveIns(OldLiveIns);
-  luthier::computeAndAddLiveIns(LPR, MBB, PerMILiveIns);
+  );
+
+  auto OldLiveIns = luthier::computeAndAddLiveIns(LPR, MBB, PerMILiveIns);
   MBB.sortUniqueLiveIns();
 
   const std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &NewLiveIns =
@@ -963,7 +980,6 @@ llvm::Error CodeLifter::liftFunction(
 
   luthier::fullyComputeLiveInsOfLiftedMF(MF, LR.MachineInstrLivenessMap);
 
-
   if (MF.getFunction().getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
     // Manually set the stack frame size if the function is a kernel
     // TODO: dynamic stack kernels
@@ -1254,7 +1270,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     auto &DestGVUses =
         DestLR->GlobalValueMIUses.insert({DestGV, {}}).first->getSecond();
     DestGVUses.reserve(SrcMIUses.size());
-    for (const auto SrcMIUse: SrcMIUses) {
+    for (const auto SrcMIUse : SrcMIUses) {
       DestGVUses.push_back(SrcToDstInstrMap[SrcMIUse]);
     }
   }
