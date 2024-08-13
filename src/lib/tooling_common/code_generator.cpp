@@ -297,20 +297,6 @@ CodeGenerator::runCodeGenPipeline(
 
   PM->run(M);
 
-  for (const auto &F : M) {
-    llvm::outs() << "AFTER MOVE:\n";
-    llvm::outs() << IMMIWP->getMMI().getModule() << "\n";
-    llvm::outs() << "Function name: " << F.getName() << "\n";
-    if (auto MF = IMMIWP->getMMI().getMachineFunction(F)) {
-      llvm::outs() << "wrapper pass has it:\n";
-      MF->print(llvm::outs());
-    }
-    if (auto MF = IMMIWP->getMMI().getMachineFunction(F)) {
-      llvm::outs() << "MMI has it:\n";
-      MF->print(llvm::outs());
-    }
-  }
-
   return {IMMIWP, std::move(PM)};
 }
 
@@ -597,14 +583,18 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
       // Find the processor for this intrinsic
       auto IntrinsicName =
           F.getFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE).getValueAsString();
+      LLVM_DEBUG(llvm::dbgs() << "Intrinsic name to be processed: "
+                              << IntrinsicName << "\n");
       // Ensure the processor is indeed registered with the Code Generator
       auto It = IntrinsicsProcessors.find(IntrinsicName);
       LUTHIER_RETURN_ON_ERROR(
           LUTHIER_ASSERTION(It != IntrinsicsProcessors.end()));
-      llvm::outs() << "Num uses: " << F.getNumUses() << "\n";
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Num uses of the intrinsic: " << F.getNumUses() << "\n");
       // Iterate over all users of the intrinsic
       for (auto *User : llvm::make_early_inc_range(F.users())) {
-        User->dump();
+        LLVM_DEBUG(llvm::dbgs() << "User being processed: \n";
+                   User->print(llvm::dbgs()););
         // Ensure the user is a Call instruction; Anything other usage is
         // illegal
         auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User);
@@ -633,22 +623,21 @@ llvm::Error CodeGenerator::processInstModuleIntrinsicsAtIRLevel(
                                         false),
                 llvm::to_string(NextIntrinsicIdx), Constraint, true),
             ArgValues);
-        llvm::outs() << "After mods before inserting\n";
         AsmCallInst->insertBefore(*CallInst->getParent(),
                                   CallInst->getIterator());
         CallInst->replaceAllUsesWith(AsmCallInst);
         // transfer debug info from the original invoke to the inline assembly
         AsmCallInst->setDebugLoc(CallInst->getDebugLoc());
-        AsmCallInst->print(llvm::outs());
         CallInst->eraseFromParent();
+        LLVM_DEBUG(llvm::dbgs()
+                       << "Use's inline assembly after IR processing: \n";
+                   AsmCallInst->print(llvm::dbgs()););
         InlineAsmMIRMap.insert(
             {llvm::to_string(NextIntrinsicIdx), std::move(*IRLoweringInfo)});
         NextIntrinsicIdx++;
-        //        Module.print(llvm::outs(), nullptr);
       }
       F.dropAllReferences();
       F.eraseFromParent();
-      llvm::outs() << "After mods after inserting\n";
     }
   }
   return llvm::Error::success();
@@ -704,25 +693,25 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     // constraints
     auto [MMIWP, PM] = runCodeGenPipeline(
         IModule, &TM, MIToHookFuncMap, DummyAsmToIRLoweringInfoMap, false, LR);
-    PM.release();
-    for (const auto &F : IModule) {
-      llvm::outs() << "AFTER MOVE:\n";
-      llvm::outs() << MMIWP->getMMI().getModule() << "\n";
-    }
+    LLVM_DEBUG(llvm::dbgs() << "The instrumentation Machine Code before being "
+                               "patched into the Lifted Representation:\n";
+               llvm::dbgs() << "Location of instr. MMI in memory: "
+                            << &MMIWP->getMMI() << "\n";
+               llvm::dbgs() << "Location of instr. Module in memory: "
+                            << MMIWP->getMMI().getModule() << "\n";
+               for (const auto &F
+                    : IModule) {
+                 if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
+                   MF->print(llvm::dbgs());
+                 }
+               });
     // Finally, patch in the generated machine code into the lifted
     // representation
     LUTHIER_RETURN_ON_ERROR(
         patchLiftedRepresentation(IModule, MMIWP->getMMI(), *LCOModule.first,
                                   *LCOModule.second, MIToHookFuncMap));
-
-    for (const auto &F : *LCOModule.first) {
-      llvm::outs() << "Function name inside: " << F.getName() << "\n";
-      llvm::outs() << LCOModule.second << "\n";
-      if (auto MF = LCOModule.second->getMachineFunction(F)) {
-        llvm::outs() << "Function pointer location: " << MF << "\n";
-        MF->print(llvm::outs());
-      }
-    }
+    // TODO: remove this once the move constructor for MMI makes it to master
+    delete PM.release();
   };
   return llvm::Error::success();
 }
@@ -742,16 +731,21 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
   LUTHIER_RETURN_ON_ERROR(Mutator(IT, *ClonedLR));
   // Insert the hooks inside the Lifted Representation
   LUTHIER_RETURN_ON_ERROR(insertHooks(*ClonedLR, IT));
-  for (const auto &[LCO, LCOModule] : *ClonedLR) {
-    for (const auto &F : *LCOModule.first) {
-      llvm::outs() << "Function name outside: " << F.getName() << "\n";
-      llvm::outs() << LCOModule.second << "\n";
-      if (auto MF = LCOModule.second->getMachineFunction(F)) {
-        llvm::outs() << "Function pointer location: " << MF << "\n";
-        MF->print(llvm::outs());
-      }
-    }
-  }
+  LLVM_DEBUG(llvm::dbgs() << "Patched lifted representation machine code:\n";
+             for (const auto &[LCO, LCOModule]
+                  : *ClonedLR) {
+               for (const auto &F : *LCOModule.first) {
+                 llvm::dbgs()
+                     << "Function name in the LLVM Module: " << F.getName()
+                     << "\n";
+                 if (auto MF = LCOModule.second->getMachineFunction(F)) {
+                   llvm::dbgs()
+                       << "Location of the Machine Function in memory: " << MF
+                       << "\n";
+                   MF->print(llvm::dbgs());
+                 }
+               }
+             });
 
   return std::move(ClonedLR);
 }

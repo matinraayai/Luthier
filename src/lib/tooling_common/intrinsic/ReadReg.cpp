@@ -47,7 +47,6 @@ llvm::Error readRegMIRProcessor(
     const IntrinsicIRLoweringInfo &IRLoweringInfo,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder) {
-  llvm::outs() << "Number of args: " << Args.size() << "\n";
   // There should be only a single virtual register involved in the operation
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Args.size() == 1));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Args[0].first.isRegDefKind()));

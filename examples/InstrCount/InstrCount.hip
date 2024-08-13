@@ -99,6 +99,7 @@ std::mutex Mutex;
 MARK_LUTHIER_DEVICE_MODULE
 
 // TODO: Can this be done instead with only scalar instruction?
+// TODO: Is this hook applicable to scalar instructions?
 LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask =
