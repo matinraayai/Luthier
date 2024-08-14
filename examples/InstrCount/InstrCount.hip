@@ -177,9 +177,13 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
               llvm::SIInstrInfo::isSOP1(MI) || llvm::SIInstrInfo::isSOP2(MI) ||
               llvm::SIInstrInfo::isSOPK(MI) || llvm::SIInstrInfo::isSOPC(MI) ||
               llvm::SIInstrInfo::isSOPP(MI) || llvm::SIInstrInfo::isSMRD(MI);
-          if (IsScalar)
+          bool IsLaneAccess =
+              MI.getOpcode() == llvm::AMDGPU::V_READFIRSTLANE_B32 ||
+              MI.getOpcode() == llvm::AMDGPU::V_READLANE_B32 ||
+              MI.getOpcode() == llvm::AMDGPU::V_WRITELANE_B32;
+          if (IsScalar || IsLaneAccess)
             LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-                    MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
+                MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
           else
             LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
                 MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
