@@ -11,17 +11,11 @@
 #include <thread>
 // undef ICMP_NE macro that was ill-defined in HIP headers
 #undef ICMP_NE
+#include <SIInstrInfo.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
-
-#define GET_REGINFO_ENUM
-#include "AMDGPUGenRegisterInfo.inc"
-
-#define GET_INSTRINFO_ENUM
-#define GET_INSTRINFO_OPERAND_ENUM
-#include "AMDGPUGenInstrInfo.inc"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instr-counter-tool"
@@ -78,11 +72,15 @@ static llvm::cl::opt<bool> DemangleKernelNames(
     llvm::cl::init(true), llvm::cl::NotHidden,
     llvm::cl::cat(InstrCountToolOptionCategory));
 
+//===----------------------------------------------------------------------===//
+// Global variables of the tool
+//===----------------------------------------------------------------------===//
+
 /// Number of kernels launched so far
 static uint32_t NumKernelLaunched = 0;
 
-/* total instruction counter, maintained in system memory, incremented by
- * "counter" every time a kernel completes  */
+/// Total number of instructions, incremented by the managed variable
+/// \c Counter every time a kernel finishes executing
 static uint64_t TotalNumInstructions = 0;
 
 /// Kernel instruction counter
@@ -94,13 +92,16 @@ static bool ActiveRegion = true;
 /// A Mutex, used to protect the Counter value and ActiveRegion
 std::mutex Mutex;
 
+//===----------------------------------------------------------------------===//
+// Hook definitions
+//===----------------------------------------------------------------------===//
+
 /// If the Luthier tool contains a hook, then this macro must be used to mark it
 /// for Luthier's Tool Executable Manager
 MARK_LUTHIER_DEVICE_MODULE
 
-// TODO: Can this be done instead with only scalar instruction?
-// TODO: Is this hook applicable to scalar instructions?
-LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
+// TODO: Can the optimizations around atomic add be removed here?
+LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask =
       luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
@@ -124,6 +125,22 @@ LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
   }
 }
 
+LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsVector);
+
+LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
+  // Get the exec mask of the wavefront
+  unsigned long long int ExecMask =
+      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
+  // Overwrite the exec mask with one so that only a single thread is active
+  luthier::writeReg(llvm::AMDGPU::EXEC, 1);
+  // Increment the counter by 1
+  atomicAdd(&Counter, 1);
+  // Restore the exec mask
+  luthier::writeReg(llvm::AMDGPU::EXEC, ExecMask);
+}
+
+LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
+
 //  Counter += 1;
 //  __builtin_amdgcn_s_dcache_wb();
 //    __builtin_amdgcn_s_dcache_inv();
@@ -142,7 +159,9 @@ LUTHIER_HOOK_ANNOTATE countInstructions(bool CountWaveFrontLevel) {
 //  if (FirstActiveThreadId == ThreadPosition)
 //      atomicAdd(&Counter, NumActiveThreads);
 
-LUTHIER_EXPORT_HOOK_HANDLE(countInstructions);
+//===----------------------------------------------------------------------===//
+// Tool Callbacks
+//===----------------------------------------------------------------------===//
 
 static llvm::Error instrumentationLoop(InstrumentationTask &IT,
                                        LiftedRepresentation &LR) {
@@ -154,9 +173,17 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
         if (I >= InstrBeginInterval && I < InstrEndInterval) {
-          LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-              MI, LUTHIER_GET_HOOK_HANDLE(countInstructions),
-              {CountWavefrontLevelConstVal}));
+          bool IsScalar =
+              llvm::SIInstrInfo::isSOP1(MI) || llvm::SIInstrInfo::isSOP2(MI) ||
+              llvm::SIInstrInfo::isSOPK(MI) || llvm::SIInstrInfo::isSOPC(MI) ||
+              llvm::SIInstrInfo::isSOPP(MI) || llvm::SIInstrInfo::isSMRD(MI);
+          if (IsScalar)
+            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+                    MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
+          else
+            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+                MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
+                {CountWavefrontLevelConstVal}));
         }
         I++;
       }
@@ -172,6 +199,7 @@ static void instrumentAllFunctionsOfExecutable(hsa_executable_t Exec) {
   LUTHIER_REPORT_FATAL_ON_ERROR(
       instrumentAndLoad(Exec, *LR, instrumentationLoop, "instr_count"));
 
+  // Uncomment this part to print out the final assembly
   //    llvm::SmallVector<
   //        std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
   //        SourceFiles;
@@ -235,8 +263,15 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
                                           : std::string(*KernelName);
   TotalNumInstructions += Counter;
 
+  // Note: Grid size in HSA contains all the work items in the kernel. This
+  // is different from the number of blocks (grid dim) in CUDA or HIP
+  // For example, if a kernel is launched from HIP with 16 blocks, each with
+  // 64 threads, this will be indicated as a grid size dim of (1024, 1, 1) and
+  // workgroup size of (64, 1, 1), since 1024 = 64 x 16.
+  // As is evident from the example, workgroup size in HSA has the same meaning
+  // as CUDA/HIP
   llvm::outs() << llvm::formatv(
-      "Kernel {0} - {1}: Grid Dims: ({2}, {3}, {4}) Workgroup Dims: "
+      "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) Workgroup Dims: "
       "({5}, {6}, {7}) Kernel Instruction "
       "Count: {8}, Total Instructions counted so far: {9}\n",
       NumKernelLaunched++, KernelNameToBePrinted,
