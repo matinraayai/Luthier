@@ -21,7 +21,7 @@
 
 #ifndef HSA_HSA_HPP
 #define HSA_HSA_HPP
-#include "hsa/hsa_agent.hpp"
+#include "hsa/GpuAgent.hpp"
 #include "hsa/hsa_executable.hpp"
 #include <llvm/ADT/SmallVector.h>
 
