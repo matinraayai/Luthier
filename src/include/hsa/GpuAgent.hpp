@@ -20,8 +20,8 @@
 /// \c HSA_DEVICE_TYPE_CPU and its related functionality.
 //===----------------------------------------------------------------------===//
 
-#ifndef HSA_AGENT_HPP
-#define HSA_AGENT_HPP
+#ifndef HSA_GPU_AGENT_HPP
+#define HSA_GPU_AGENT_HPP
 #include "hsa/hsa_handle_type.hpp"
 #include "hsa/hsa_intercept.hpp"
 #include "hsa/hsa_isa.hpp"
@@ -71,9 +71,9 @@ template <> struct DenseMapInfo<luthier::hsa::GpuAgent> {
         Agent.hsaHandle());
   }
 
-  static bool isEqual(const luthier::hsa::GpuAgent &lhs,
-                      const luthier::hsa::GpuAgent &rhs) {
-    return lhs.hsaHandle() == rhs.hsaHandle();
+  static bool isEqual(const luthier::hsa::GpuAgent &Lhs,
+                      const luthier::hsa::GpuAgent &Rhs) {
+    return Lhs.hsaHandle() == Rhs.hsaHandle();
   }
 };
 
@@ -87,50 +87,50 @@ template <> struct DenseMapInfo<luthier::hsa::GpuAgent> {
 namespace std {
 
 template <> struct hash<luthier::hsa::GpuAgent> {
-  size_t operator()(const luthier::hsa::GpuAgent &obj) const {
-    return hash<unsigned long>()(obj.hsaHandle());
+  size_t operator()(const luthier::hsa::GpuAgent &Obj) const {
+    return hash<unsigned long>()(Obj.hsaHandle());
   }
 };
 
 template <> struct less<luthier::hsa::GpuAgent> {
-  bool operator()(const luthier::hsa::GpuAgent &lhs,
-                  const luthier::hsa::GpuAgent &rhs) const {
-    return lhs.hsaHandle() < rhs.hsaHandle();
+  bool operator()(const luthier::hsa::GpuAgent &Lhs,
+                  const luthier::hsa::GpuAgent &Rhs) const {
+    return Lhs.hsaHandle() < Rhs.hsaHandle();
   }
 };
 
 template <> struct less_equal<luthier::hsa::GpuAgent> {
-  bool operator()(const luthier::hsa::GpuAgent &lhs,
-                  const luthier::hsa::GpuAgent &rhs) const {
-    return lhs.hsaHandle() <= rhs.hsaHandle();
+  bool operator()(const luthier::hsa::GpuAgent &Lhs,
+                  const luthier::hsa::GpuAgent &Rhs) const {
+    return Lhs.hsaHandle() <= Rhs.hsaHandle();
   }
 };
 
 template <> struct equal_to<luthier::hsa::GpuAgent> {
-  bool operator()(const luthier::hsa::GpuAgent &lhs,
-                  const luthier::hsa::GpuAgent &rhs) const {
-    return lhs.hsaHandle() == rhs.hsaHandle();
+  bool operator()(const luthier::hsa::GpuAgent &Lhs,
+                  const luthier::hsa::GpuAgent &Rhs) const {
+    return Lhs.hsaHandle() == Rhs.hsaHandle();
   }
 };
 
 template <> struct not_equal_to<luthier::hsa::GpuAgent> {
-  bool operator()(const luthier::hsa::GpuAgent &lhs,
-                  const luthier::hsa::GpuAgent &rhs) const {
-    return lhs.hsaHandle() != rhs.hsaHandle();
+  bool operator()(const luthier::hsa::GpuAgent &Lhs,
+                  const luthier::hsa::GpuAgent &Rhs) const {
+    return Lhs.hsaHandle() != Rhs.hsaHandle();
   }
 };
 
 template <> struct greater<luthier::hsa::GpuAgent> {
-  bool operator()(const luthier::hsa::GpuAgent &lhs,
-                  const luthier::hsa::GpuAgent &rhs) const {
-    return lhs.hsaHandle() > rhs.hsaHandle();
+  bool operator()(const luthier::hsa::GpuAgent &Lhs,
+                  const luthier::hsa::GpuAgent &Rhs) const {
+    return Lhs.hsaHandle() > Rhs.hsaHandle();
   }
 };
 
 template <> struct greater_equal<luthier::hsa::GpuAgent> {
-  bool operator()(const luthier::hsa::GpuAgent &lhs,
-                  const luthier::hsa::GpuAgent &rhs) const {
-    return lhs.hsaHandle() >= rhs.hsaHandle();
+  bool operator()(const luthier::hsa::GpuAgent &Lhs,
+                  const luthier::hsa::GpuAgent &Rhs) const {
+    return Lhs.hsaHandle() >= Rhs.hsaHandle();
   }
 };
 
