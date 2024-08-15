@@ -44,10 +44,10 @@ llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agents);
 /// \sa hsa_ven_amd_loader_iterate_executables
 llvm::Expected<std::vector<Executable>> getAllExecutables();
 
-/// Queries the host-equivalent address of the given \p DeviceAddress \n
+/// Queries the host-accessible address of the given \p DeviceAddress \n
 /// \tparam T Pointer type of the address
 /// \param DeviceAddress Address residing on the device
-/// \return The host equivalent address of the <tt>DeviceAddress</tt>, or an
+/// \return The host accessible address of the <tt>DeviceAddress</tt>, or an
 /// \c llvm::Error indicating any HSA errors encountered
 /// \sa hsa_ven_amd_loader_query_host_address
 template <typename T> llvm::Expected<T *> queryHostAddress(T *DeviceAddress) {
@@ -61,23 +61,25 @@ template <typename T> llvm::Expected<T *> queryHostAddress(T *DeviceAddress) {
 }
 
 /// Convenience version of <tt>hsa::queryHostAddress(T *)</tt> for locating
-/// device code on the host
-/// \param Code Device code on the device
+/// device code on the host-accessible memory
+/// \param Code an \c llvm::ArrayRef<uint8_t> encapsulating the GPU code region
+/// residing on the device
 /// \return an \c llvm::ArrayRef<uint8_t> pointing to the code accessible on
 /// host memory, or an \c llvm::Error indicating any HSA errors encountered
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 convertToHostEquivalent(llvm::ArrayRef<uint8_t> Code);
 
 /// Convenience version of <tt>hsa::queryHostAddress(T *)</tt> for locating
-/// device code on the host
-/// \param Code Device code on the device
+/// device code on the host-accessible memory
+/// \param Code an \c llvm::StringRef encapsulating the GPU code region
+/// residing on the device
 /// \return an \c llvm::StringRef pointing to the code accessible on
 /// host memory, or an \c llvm::Error indicating any HSA errors encountered
 llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code);
 
 /// Decreases the reference count of the HSA runtime instance; Shuts down the
-/// HSA runtime if the counter reaches zero \n
-/// Must only be used by unit tests
+/// HSA runtime if the counter reaches zero
+/// \warning Must only be used by unit tests
 /// \return an \c llvm::Error indicating any HSA issues encountered
 /// \sa hsa_shutdown
 llvm::Error shutdown();
