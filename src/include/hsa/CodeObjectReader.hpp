@@ -38,7 +38,7 @@ public:
   /// an \p Elf in memory
   /// \param Elf the code object to be loaded
   /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an \c hsa::Executable
+  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
   /// \sa hsa_code_object_reader_create_from_memory
   static llvm::Expected<CodeObjectReader> createFromMemory(llvm::StringRef Elf);
 
@@ -46,14 +46,14 @@ public:
   /// an \p Elf in memory
   /// \param Elf the code object to be loaded
   /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an \c hsa::Executable
+  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
   /// \sa hsa_code_object_reader_create_from_memory
   static llvm::Expected<CodeObjectReader>
   createFromMemory(llvm::ArrayRef<uint8_t> Elf);
 
   /// Destroys the code object reader instance
   /// \return an \c llvm::HsaError if any issues where encountered, or
-  /// an \c llvm::SuccessError if the operation was successful
+  /// an \c llvm::ErrorSuccess if the operation was successful
   /// \sa hsa_code_object_reader_destroy
   llvm::Error destroy();
 
