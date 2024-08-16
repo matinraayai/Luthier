@@ -64,25 +64,15 @@ protected:
   /// LLVM RTTI
   SymbolKind Kind;
 
-  /// Protected constructor used by sub-classes
+public:
+  /// Constructor used by sub-classes
   /// \param LCO the \c hsa_loaded_code_object_t which the symbol belongs to
   /// \param Symbol a reference to the \c llvm::object::ELFSymbolRef
   /// that was obtained from parsing the storage ELF of the \p LCO and cached
   LoadedCodeObjectSymbol(hsa_loaded_code_object_t LCO,
-                         const llvm::object::ELFSymbolRef &Symbol,
+                         const llvm::object::ELFSymbolRef *Symbol,
                          SymbolKind Kind)
-      : BackingLCO(LCO), Symbol(&Symbol), Kind(Kind){};
-
-public:
-  /// Copy constructor
-  LoadedCodeObjectSymbol(const LoadedCodeObjectSymbol &Other) = default;
-
-  /// Copy assignment constructor
-  LoadedCodeObjectSymbol &
-  operator=(const LoadedCodeObjectSymbol &Other) = default;
-
-  /// Move constructor
-  LoadedCodeObjectSymbol &operator=(LoadedCodeObjectSymbol &&Other) = default;
+      : BackingLCO(LCO), Symbol(Symbol), Kind(Kind){};
 
   /// Factory method which constructs a \c LoadedCodeObjectSymbol from its
   /// \c hsa_executable_symbol_t
@@ -128,13 +118,14 @@ public:
   /// an \c std::nullopt otherwise; On failure, an llvm::Error if an issue
   /// occurred during the process
   [[nodiscard]] llvm::Expected<std::optional<hsa_executable_symbol_t>>
-  getExecutableSymbol();
+  getExecutableSymbol() const;
 
   /// \return a unique hash value associated with this symbol
-  [[nodiscard]] unsigned getHashValue() {
-    return llvm::DenseMapInfo<std::tuple<hsa_loaded_code_object_t::handle,
-                                         const llvm::object::ELFSymbolRef *>>::
-        getHashValue({BackingLCO.handle, Symbol});
+  [[nodiscard]] unsigned getHashValue() const {
+    return llvm::DenseMapInfo<std::tuple<
+        decltype(hsa_loaded_code_object_t::handle),
+        const llvm::object::ELFSymbolRef *>>::getHashValue({BackingLCO.handle,
+                                                            Symbol});
   }
 };
 
@@ -147,25 +138,21 @@ template <> struct DenseMapInfo<luthier::hsa::LoadedCodeObjectSymbol> {
     return luthier::hsa::LoadedCodeObjectSymbol{
         {DenseMapInfo<
             decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()},
-        DenseMapInfo<
-            decltype(const llvm::object::ELFSymbolRef *)>::getEmptyKey(),
-        luthier::hsa::LoadedCodeObjectSymbol::SK_KERNEL}
-        .getHashValue();
+        DenseMapInfo<const llvm::object::ELFSymbolRef *>::getEmptyKey(),
+        luthier::hsa::LoadedCodeObjectSymbol::SK_KERNEL};
   }
 
   static inline luthier::hsa::LoadedCodeObjectSymbol getTombstoneKey() {
     return luthier::hsa::LoadedCodeObjectSymbol{
         {DenseMapInfo<
             decltype(hsa_loaded_code_object_t::handle)>::getTombstoneKey()},
-        DenseMapInfo<
-            decltype(const llvm::object::ELFSymbolRef *)>::getTombstoneKey(),
-        luthier::hsa::LoadedCodeObjectSymbol::SK_KERNEL}
-        .getHashValue();
+        DenseMapInfo<const llvm::object::ELFSymbolRef *>::getTombstoneKey(),
+        luthier::hsa::LoadedCodeObjectSymbol::SK_KERNEL};
   }
 
   static unsigned
   getHashValue(const luthier::hsa::LoadedCodeObjectSymbol &Symbol) {
-    return symbol.getHashValue();
+    return Symbol.getHashValue();
   }
 
   static bool isEqual(const luthier::hsa::LoadedCodeObjectSymbol &Lhs,

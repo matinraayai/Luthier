@@ -72,18 +72,19 @@ hsa::LoadedCodeObjectSymbol::getSymbolContentsOnDevice() const {
 }
 
 llvm::Expected<std::optional<hsa_executable_symbol_t>>
-hsa::LoadedCodeObjectSymbol::getExecutableSymbol() {
+hsa::LoadedCodeObjectSymbol::getExecutableSymbol() const {
   hsa_executable_symbol_t Out;
   LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_agent_t, Agent, this->getAgent());
   auto Exec = this->getExecutable();
   LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-  auto Name = getName();
-  LUTHIER_RETURN_ON_ERROR(Name.takeError());
+  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, Name, getName());
+  if (Kind == SK_KERNEL)
+    Name += ".kd";
 
   auto Status = hsa::HsaRuntimeInterceptor::instance()
                     .getSavedApiTableContainer()
                     .core.hsa_executable_get_symbol_by_name_fn(
-                        *Exec, Name->data(), &Agent, &Out);
+                        *Exec, Name.data(), &Agent, &Out);
   if (Status == HSA_STATUS_SUCCESS)
     return Out;
   else if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME)
