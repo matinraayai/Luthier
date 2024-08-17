@@ -1,5 +1,17 @@
 //===-- hsa.cpp - Top Level HSA API Wrapper -------------------------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -17,25 +29,25 @@ llvm::Error init() {
   return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_init_fn());
 }
 
-llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &agents) {
+llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agents) {
   const auto &CoreTable =
       hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
-  auto ReturnGpuAgentsCallback = [](hsa_agent_t agent, void *data) {
-    auto AgentMap = reinterpret_cast<llvm::SmallVector<GpuAgent> *>(data);
+  auto ReturnGpuAgentsCallback = [](hsa_agent_t Agent, void *Data) {
+    auto AgentMap = reinterpret_cast<llvm::SmallVector<GpuAgent> *>(Data);
     hsa_device_type_t DevType = HSA_DEVICE_TYPE_CPU;
 
-    hsa_status_t Stat =
-        hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &DevType);
+    hsa_status_t Status =
+        hsa_agent_get_info(Agent, HSA_AGENT_INFO_DEVICE, &DevType);
 
-    if (Stat != HSA_STATUS_SUCCESS)
-      return Stat;
+    if (Status != HSA_STATUS_SUCCESS)
+      return Status;
     if (DevType == HSA_DEVICE_TYPE_GPU) {
-      AgentMap->emplace_back(agent);
+      AgentMap->emplace_back(Agent);
     }
-    return Stat;
+    return Status;
   };
   return LUTHIER_HSA_SUCCESS_CHECK(
-      CoreTable.hsa_iterate_agents_fn(ReturnGpuAgentsCallback, &agents));
+      CoreTable.hsa_iterate_agents_fn(ReturnGpuAgentsCallback, &Agents));
 }
 
 llvm::Expected<std::vector<Executable>> getAllExecutables() {
@@ -43,10 +55,13 @@ llvm::Expected<std::vector<Executable>> getAllExecutables() {
       hsa::HsaRuntimeInterceptor::instance().getHsaVenAmdLoaderTable();
   typedef std::vector<Executable> OutType;
   OutType Out;
-  auto Iterator = [](hsa_executable_t exec, void *data) {
-    if (exec.handle != 0) {
-      auto Out = reinterpret_cast<OutType *>(data);
-      Out->emplace_back(exec);
+  auto Iterator = [](hsa_executable_t Exec, void *Data) {
+    // Remove executables with nullptr handles
+    // This is a workaround for an HSA issue explained here:
+    // https://github.com/ROCm/ROCR-Runtime/issues/206
+    if (Exec.handle != 0) {
+      auto Out = reinterpret_cast<OutType *>(Data);
+      Out->emplace_back(Exec);
     }
     return HSA_STATUS_SUCCESS;
   };
@@ -55,10 +70,10 @@ llvm::Expected<std::vector<Executable>> getAllExecutables() {
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
-convertToHostEquivalent(llvm::ArrayRef<uint8_t> code) {
-  auto CodeStartHostAddress = queryHostAddress(code.data());
+convertToHostEquivalent(llvm::ArrayRef<uint8_t> Code) {
+  auto CodeStartHostAddress = queryHostAddress(Code.data());
   LUTHIER_RETURN_ON_ERROR(CodeStartHostAddress.takeError());
-  return llvm::ArrayRef<uint8_t>{*CodeStartHostAddress, code.size()};
+  return llvm::ArrayRef<uint8_t>{*CodeStartHostAddress, Code.size()};
 }
 
 llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code) {
@@ -66,6 +81,7 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code) {
   LUTHIER_RETURN_ON_ERROR(Out.takeError());
   return llvm::toStringRef(*Out);
 }
+
 llvm::Error shutdown() {
   const auto &CoreTable =
       hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;

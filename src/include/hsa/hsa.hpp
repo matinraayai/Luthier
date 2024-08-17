@@ -21,8 +21,8 @@
 
 #ifndef HSA_HSA_HPP
 #define HSA_HSA_HPP
+#include "hsa/Executable.hpp"
 #include "hsa/GpuAgent.hpp"
-#include "hsa/hsa_executable.hpp"
 #include <llvm/ADT/SmallVector.h>
 
 namespace luthier::hsa {
@@ -35,10 +35,10 @@ namespace luthier::hsa {
 llvm::Error init();
 
 /// Queries the <tt>GpuAgent</tt>s attached to the device
-/// \param [out] Agents <tt>GpuAgent</tt>s attached to the device
+/// \param [out] Agent <tt>GpuAgent</tt>s attached to the device
 /// \return an \c llvm::Error indicating any HSA issues encountered
 /// \sa hsa_iterate_agents
-llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agents);
+llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agent);
 
 /// \return All <tt>hsa::Executable</tt>s currently loaded into the HSA runtime
 /// \sa hsa_ven_amd_loader_iterate_executables
