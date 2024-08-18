@@ -1,15 +1,28 @@
-//===-- kernel_descriptor.cpp - HSA Kernel Descriptor ---------------------===//
+//===-- KernelDescriptor.cpp - HSA Kernel Descriptor ---------------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
 /// This file implements the HSA kernel descriptor POD struct methods.
 //===----------------------------------------------------------------------===//
-#include <luthier/kernel_descriptor.h>
-
-#include "hsa/hsa_executable_symbol.hpp"
+#include "common/error.hpp"
+#include "hsa/RuntimeStateCache.hpp"
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
+#include <luthier/hsa/KernelDescriptor.h>
+#include <luthier/hsa/LoadedCodeObjectKernel.h>
 
 namespace luthier::hsa {
 
@@ -204,12 +217,14 @@ const KernelDescriptor *
 KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
   return reinterpret_cast<KernelDescriptor *>(KernelObject);
 }
-llvm::Expected<hsa_executable_symbol_t>
 
-KernelDescriptor::getHsaExecutableSymbol() const {
-  auto Symbol = hsa::ExecutableSymbol::fromKernelDescriptor(this);
-  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-  return Symbol->asHsaType();
+llvm::Expected<const LoadedCodeObjectKernel &>
+KernelDescriptor::getLoadedCodeObjectKernel() const {
+  auto Symbol = hsa::RuntimeStateCache::instance()
+                    .getLoadedCodeObjectSymbolFromLoadedAddress(
+                        reinterpret_cast<luthier::address_t>(this));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Symbol != nullptr));
+  return *Symbol;
 }
 
 } // namespace luthier::hsa

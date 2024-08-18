@@ -1,5 +1,17 @@
-//===-- kernel_descriptor.h - HSA Kernel Descriptor -------------*- C++ -*-===//
+//===-- KernelDescriptor.h - HSA Kernel Descriptor POD Wrapper --*- C++ -*-===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -14,18 +26,17 @@
 
 namespace luthier::hsa {
 
+class LoadedCodeObjectKernel;
+
 /// \brief POD (plain-old-data) struct to provide an abstraction over the kernel
 /// descriptor, plus some convenience methods
-/// \details This should not be constructed directly. It should only be obtained
-/// by using <tt>reinterpret_cast</tt> over the address of a kernel descriptor:
+/// \details To inspect the contents of a kernel descriptor, simply use
+/// <tt>reinterpret_cast</tt> over its address:
 /// \code
-/// auto* KD = reinterpret_cast<KernelDescriptor*>(KDAddress);
+/// const auto* KD = reinterpret_cast<const KernelDescriptor*>(KDAddress);
 /// \endcode
-/// Furthermore, kernel descriptors should not be modified directly.
-/// Modification of kernel descriptor entries should be done via modifying
-/// the attributes of kernel functions or fields of the
-/// \c llvm::SIMachineFunctionInfo in the lifted representation.
-/// See the LLVM AMDGPU backend docs for more details about individual fields
+/// \warning Kernel descriptors in a \c hsa_loaded_code_object_t should never
+/// be modified using this struct (both on host or device memory)
 struct KernelDescriptor {
   uint32_t GroupSegmentFixedSize;
   uint32_t PrivateSegmentFixedSize;
@@ -127,11 +138,10 @@ struct KernelDescriptor {
   /// \return the kernel descriptor of the <tt>KernelObject</tt>
   static const KernelDescriptor *fromKernelObject(uint64_t KernelObject);
 
-  /// Use this instead of the HSA Loader API to get the symbol of the KD
-  /// \return the kernel's \c hsa_executable_symbol_t on success, or an
-  /// \c llvm::Error if the KD is invalid
-  [[nodiscard]] llvm::Expected<hsa_executable_symbol_t>
-  getHsaExecutableSymbol() const;
+  /// \return a const reference to the kernel's \c hsa::LoadedCodeObjectKernel on
+  /// success, or an \c llvm::Error if the KD is invalid
+  [[nodiscard]] llvm::Expected<const LoadedCodeObjectKernel &>
+  getLoadedCodeObjectKernel() const;
 };
 } // namespace luthier::hsa
 
