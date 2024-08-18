@@ -16,8 +16,8 @@
 ///
 /// \file
 /// This file defines the \c LoadedCodeObjectDeviceFunction under the
-/// \c luthier::hsa namespace, which represents all device non-kernel functions
-/// inside a \c hsa::LoadedCodeObject.
+/// \c luthier::hsa namespace, which represents all device (non-kernel)
+/// functions inside a \c hsa::LoadedCodeObject.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LOADED_CODE_OBJECT_DEVICE_FUNCTION_H
 #define LUTHIER_LOADED_CODE_OBJECT_DEVICE_FUNCTION_H
@@ -25,22 +25,35 @@
 
 namespace luthier::hsa {
 
+class LoadedCodeObject;
+
 /// \brief a \c LoadedCodeObjectSymbol of type
 /// \c LoadedCodeObjectSymbol::ST_DEVICE_FUNCTION
 class LoadedCodeObjectDeviceFunction final : public LoadedCodeObjectSymbol {
 
-public:
+private:
   /// Constructor
   /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
   /// \param FuncSymbol the function symbol of the device function,
   /// cached internally by Luthier
   LoadedCodeObjectDeviceFunction(hsa_loaded_code_object_t LCO,
-                                 const llvm::object::ELFSymbolRef *FuncSymbol)
-      : LoadedCodeObjectSymbol(LCO, FuncSymbol,
-                               SymbolKind::SK_DEVICE_FUNCTION) {}
+                                 const llvm::object::ELFSymbolRef &FuncSymbol)
+      : LoadedCodeObjectSymbol(LCO, &FuncSymbol, SymbolKind::SK_DEVICE_FUNCTION,
+                               std::nullopt) {}
+
+public:
+  /// Factory method used internally by Luthier
+  /// Symbols created using this method will be cached, and a reference to them
+  /// will be returned to the tool writer when queried
+  /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
+  /// \param FuncSymbol the function symbol of the device function,
+  /// cached internally by Luthier
+  static llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
+  create(const hsa::LoadedCodeObject &LCO,
+         const llvm::object::ELFSymbolRef &FuncSymbol);
 
   /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const LoadedCodeObjectSymbol *S) {
+  __attribute__((used)) static bool classof(const LoadedCodeObjectSymbol *S) {
     return S->getType() == SK_DEVICE_FUNCTION;
   }
 };
