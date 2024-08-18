@@ -1,17 +1,29 @@
-//===-- lifted_representation.h - Lifted Representation  --------*- C++ -*-===//
+//===-- LiftedRepresentation.h ----------------------------------*- C++ -*-===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
 /// This file describes Luthier's Lifted Representation, which contains the
-/// \c llvm::Module and \c llvm::MachineModuleInfo of a lifted HSA primitive (a
-/// kernel or an executable), as well as a mapping between the HSA primitives
-/// and LLVM IR primitives involved.
+/// \c llvm::Module and \c llvm::MachineModuleInfo of a HSA primitive (a
+/// kernel or an executable) disassembled and lifted to LLVM Machine IR,
+/// as well as a mapping between the HSA primitives and LLVM IR objects
+/// involved.
 //===----------------------------------------------------------------------===//
 
 #ifndef LUTHIER_LIFTED_REPRESENTATION_H
 #define LUTHIER_LIFTED_REPRESENTATION_H
-#include "hsa_dense_map_info.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -19,7 +31,8 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LegacyPassManager.h>
-#include <luthier/instr.h>
+#include <luthier/hsa/DenseMapInfo.h>
+#include <luthier/hsa/Instr.h>
 
 namespace llvm {
 class GCNTargetMachine;
@@ -31,14 +44,17 @@ class CodeLifter;
 
 class CodeGenerator;
 
-/// \brief contains HSA and LLVM information regarding a lifted AMD HSA
-/// primitive.
-/// \details The primitive can be either an \c hsa_executable_t or a
-/// \c hsa_executable_symbol_t of type kernel. Luthier's \c CodeLifter is
+/// \brief contains information regarding a lifted HSA primitive
+/// \details "Lifting" in Luthier is the process of inspecting the contents
+/// of AMDGPU binaries loaded onto a device to recover a valid LLVM Machine IR
+/// representation equivalent or very close to what the clang compiler used (or
+/// would have used) to create the inspected binaries.
+/// The scope of the lift can be either an \c hsa_executable_t or a
+/// <tt>hsa::LoadedCodeObjectKernel</tt>. Luthier's \c CodeLifter is
 /// the only entity allowed to construct or clone a
 /// <tt>LiftedRepresentation</tt>. This allows internal caching and thread-safe
-/// access to them by other components. It also allows invalidation of the
-/// representations when the executable backing the lifted primitive gets
+/// access to its instances by other components. It also allows invalidation of
+/// the representations when the executable backing the lifted primitive gets
 /// destroyed. \n Each lifted primitive has an independent \c
 /// llvm::orc::ThreadSafeContext created for it internally by Luthier's
 /// <tt>CodeLifter</tt> to let independent processing of different primitives by
@@ -115,12 +131,12 @@ private:
 
   /// Mapping between an \c hsa_executable_symbol_t (of type kernel and
   /// device function) and its \c llvm::MachineFunction
-  llvm::DenseMap<hsa_executable_symbol_t, llvm::MachineFunction *>
+  llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, llvm::MachineFunction *>
       RelatedFunctions{};
 
   /// Mapping between an \c hsa_executable_symbol_t of type variable
   /// and its \c llvm::GlobalVariable
-  llvm::DenseMap<hsa_executable_symbol_t, llvm::GlobalVariable *>
+  llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, llvm::GlobalVariable *>
       RelatedGlobalVariables{};
 
   /// A mapping between an \c llvm::MachineInstr in one of the MMIs and
@@ -151,7 +167,7 @@ private:
 
 public:
   /// Destructor
-  ~LiftedRepresentation();
+  ~LiftedRepresentation() = default;
 
   /// Disallowed copy construction
   LiftedRepresentation(const LiftedRepresentation &) = delete;
@@ -195,14 +211,6 @@ public:
     static_assert(std::is_base_of_v<TMT, llvm::GCNTargetMachine> == true);
     return *reinterpret_cast<TMT *>(TM.get());
   }
-
-  /// Primarily used by luthier's \c CodeGenerator to manage the lifetime of
-  /// legacy Pass managers that operated on any of the
-  /// <tt>llvm::MachineModuleInfoWrapperPasses</tt> managed by this
-  /// <tt>LiftedRepresentation</tt>
-  /// \param PM the pass manager that used any of the MMIWPs in this LR
-  /// as an analysis pass
-  void managePassManagerLifetime(std::unique_ptr<llvm::legacy::PassManager> PM);
 
   /// Module iterator
   using module_iterator = decltype(Modules)::iterator;
@@ -316,16 +324,16 @@ public:
     return make_range(global_begin(), global_end());
   }
 
-  const llvm::MachineFunction *getMF(hsa_executable_symbol_t Func) {
-    auto It = RelatedFunctions.find(Func);
+  const llvm::MachineFunction *getMF(const hsa::LoadedCodeObjectSymbol &Func) {
+    auto It = RelatedFunctions.find(&Func);
     if (It == RelatedFunctions.end())
       return nullptr;
     else
       return It->second;
   }
 
-  const llvm::GlobalVariable *getGV(hsa_executable_symbol_t GV) {
-    auto It = RelatedGlobalVariables.find(GV);
+  const llvm::GlobalVariable *getGV(const hsa::LoadedCodeObjectSymbol &GV) {
+    auto It = RelatedGlobalVariables.find(&GV);
     if (It == RelatedGlobalVariables.end())
       return nullptr;
     else
@@ -351,7 +359,7 @@ public:
   }
 
   llvm::ArrayRef<llvm::MachineInstr *>
-  getUsesOfGlobalValue(hsa_executable_symbol_t GV) const;
+  getUsesOfGlobalValue(const hsa::LoadedCodeObjectSymbol &GV) const;
 
   llvm::ArrayRef<llvm::MachineInstr *>
   getUsesOfGlobalValue(const llvm::GlobalValue &GV) const {
