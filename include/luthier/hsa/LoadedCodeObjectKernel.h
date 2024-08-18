@@ -25,9 +25,12 @@
 
 namespace luthier::hsa {
 
+class LoadedCodeObject;
+
 /// \brief a \c LoadedCodeObjectSymbol of type
 /// \c LoadedCodeObjectSymbol::ST_KERNEL
 class LoadedCodeObjectKernel final : public LoadedCodeObjectSymbol {
+
 private:
   /// A reference to the Kernel descriptor symbol of the kernel,
   /// cached internally by Luthier
@@ -36,7 +39,6 @@ private:
   /// The Kernel metadata, cached internally by Luthier
   const md::Kernel::Metadata *MD;
 
-public:
   /// Constructor
   /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
   /// \param KFuncSymbol the function symbol of the kernel, cached internally
@@ -44,12 +46,34 @@ public:
   /// \param KDSymbol the kernel descriptor symbol of the kernel, cached
   /// internally by Luthier
   /// \param Metadata the Metadata of the kernel, cached internally by Luthier
+  /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
+  /// the kernel
   LoadedCodeObjectKernel(hsa_loaded_code_object_t LCO,
-                         const llvm::object::ELFSymbolRef *KFuncSymbol,
-                         const llvm::object::ELFSymbolRef *KDSymbol,
-                         const md::Kernel::Metadata &Metadata)
-      : LoadedCodeObjectSymbol(LCO, KFuncSymbol, SymbolKind::SK_KERNEL),
-        KDSymbol(KDSymbol), MD(&Metadata) {}
+                         const llvm::object::ELFSymbolRef &KFuncSymbol,
+                         const llvm::object::ELFSymbolRef &KDSymbol,
+                         const md::Kernel::Metadata &Metadata,
+                         hsa_executable_symbol_t ExecutableSymbol)
+      : LoadedCodeObjectSymbol(LCO, &KFuncSymbol, SymbolKind::SK_KERNEL,
+                               ExecutableSymbol),
+        KDSymbol(&KDSymbol), MD(&Metadata) {}
+
+public:
+  /// Factory method used internally by Luthier
+  /// Symbols created using this method will be cached, and a reference to them
+  /// will be returned to the tool writer
+  /// \param LCO the \c hsa_loaded_code_object_t wrapper handle, only accessible
+  /// internally to Luthier
+  /// \param KFuncSymbol the function symbol of the kernel, cached internally
+  /// by Luthier
+  /// \param KDSymbol the kernel descriptor symbol of the kernel, cached
+  /// internally by Luthier
+  /// \param Metadata the Metadata of the kernel, cached internally by Luthier
+  /// \return on success
+  static llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
+  create(const hsa::LoadedCodeObject &LCO,
+         const llvm::object::ELFSymbolRef &KFuncSymbol,
+         const llvm::object::ELFSymbolRef &KDSymbol,
+         const md::Kernel::Metadata &Metadata);
 
   /// \return a pointer to the \c hsa::KernelDescriptor of the kernel on the
   /// agent it is loaded on
