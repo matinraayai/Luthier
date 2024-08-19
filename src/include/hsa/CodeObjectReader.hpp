@@ -22,7 +22,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef HSA_CODE_OBJECT_READER_HPP
 #define HSA_CODE_OBJECT_READER_HPP
-#include "hsa/hsa_handle_type.hpp"
+#include "hsa/HandleType.hpp"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Error.h>
