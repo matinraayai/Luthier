@@ -29,14 +29,23 @@ namespace luthier::hsa {
 /// \c LoadedCodeObjectSymbol::SK_EXTERNAL
 class LoadedCodeObjectExternSymbol final : public LoadedCodeObjectSymbol {
 
-public:
+private:
   /// Constructor
   /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
   /// \param ExternSymbol the external symbol,
   /// cached internally by Luthier
+  /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
+  /// the extern symbol
   LoadedCodeObjectExternSymbol(hsa_loaded_code_object_t LCO,
-                               const llvm::object::ELFSymbolRef *ExternSymbol)
-      : LoadedCodeObjectSymbol(LCO, ExternSymbol, SymbolKind::SK_EXTERNAL) {}
+                               llvm::object::ELFSymbolRef ExternSymbol,
+                               hsa_executable_symbol_t ExecutableSymbol)
+      : LoadedCodeObjectSymbol(LCO, ExternSymbol, SymbolKind::SK_EXTERNAL,
+                               ExecutableSymbol) {}
+
+public:
+  static llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
+  create(hsa_loaded_code_object_t LCO,
+         llvm::object::ELFSymbolRef ExternSymbol);
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const LoadedCodeObjectSymbol *S) {

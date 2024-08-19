@@ -25,8 +25,6 @@
 
 namespace luthier::hsa {
 
-class LoadedCodeObject;
-
 /// \brief a \c LoadedCodeObjectSymbol of type
 /// \c LoadedCodeObjectSymbol::ST_DEVICE_FUNCTION
 class LoadedCodeObjectDeviceFunction final : public LoadedCodeObjectSymbol {
@@ -37,8 +35,8 @@ private:
   /// \param FuncSymbol the function symbol of the device function,
   /// cached internally by Luthier
   LoadedCodeObjectDeviceFunction(hsa_loaded_code_object_t LCO,
-                                 const llvm::object::ELFSymbolRef &FuncSymbol)
-      : LoadedCodeObjectSymbol(LCO, &FuncSymbol, SymbolKind::SK_DEVICE_FUNCTION,
+                                 llvm::object::ELFSymbolRef FuncSymbol)
+      : LoadedCodeObjectSymbol(LCO, FuncSymbol, SymbolKind::SK_DEVICE_FUNCTION,
                                std::nullopt) {}
 
 public:
@@ -49,8 +47,8 @@ public:
   /// \param FuncSymbol the function symbol of the device function,
   /// cached internally by Luthier
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
-  create(const hsa::LoadedCodeObject &LCO,
-         const llvm::object::ELFSymbolRef &FuncSymbol);
+  create(hsa_loaded_code_object_t LCO,
+         llvm::object::ELFSymbolRef FuncSymbol);
 
   /// method for providing LLVM RTTI
   __attribute__((used)) static bool classof(const LoadedCodeObjectSymbol *S) {

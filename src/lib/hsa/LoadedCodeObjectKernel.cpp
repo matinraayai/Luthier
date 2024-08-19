@@ -31,15 +31,16 @@
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
-LoadedCodeObjectKernel::create(const hsa::LoadedCodeObject &LCO,
-                               const llvm::object::ELFSymbolRef &KFuncSymbol,
-                               const llvm::object::ELFSymbolRef &KDSymbol,
+LoadedCodeObjectKernel::create(hsa_loaded_code_object_t LCO,
+                               llvm::object::ELFSymbolRef KFuncSymbol,
+                               llvm::object::ELFSymbolRef KDSymbol,
                                const md::Kernel::Metadata &Metadata) {
+  hsa::LoadedCodeObject LCOWrapper(LCO);
   // Get the kernel symbol associated with this kernel
-  auto Exec = LCO.getExecutable();
+  auto Exec = LCOWrapper.getExecutable();
   LUTHIER_RETURN_ON_ERROR(Exec.takeError());
 
-  auto Agent = LCO.getAgent();
+  auto Agent = LCOWrapper.getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
   auto NameWithKDSuffixed = KDSymbol.getName();
@@ -50,9 +51,8 @@ LoadedCodeObjectKernel::create(const hsa::LoadedCodeObject &LCO,
   LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ExecSymbol->has_value()));
 
-  return std::unique_ptr<LoadedCodeObjectKernel>(
-      new LoadedCodeObjectKernel(LCO.asHsaType(), KFuncSymbol, KDSymbol,
-                                 Metadata, ExecSymbol.get()->asHsaType()));
+  return std::unique_ptr<LoadedCodeObjectKernel>(new LoadedCodeObjectKernel(
+      LCO, KFuncSymbol, KDSymbol, Metadata, ExecSymbol.get()->asHsaType()));
 }
 
 llvm::Expected<const KernelDescriptor *>

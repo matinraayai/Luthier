@@ -17,7 +17,7 @@
 /// \file
 /// This file defines the \c LoadedCodeObjectVariable under the
 /// \c luthier::hsa namespace, which represents all device variable symbols
-/// inside a \c hsa::LoadedCodeObject.
+/// inside a <tt>hsa::LoadedCodeObject</tt>.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LOADED_CODE_OBJECT_VARIABLE_H
 #define LUTHIER_LOADED_CODE_OBJECT_VARIABLE_H
@@ -29,15 +29,22 @@ namespace luthier::hsa {
 /// \c LoadedCodeObjectSymbol::ST_DEVICE_FUNCTION
 class LoadedCodeObjectVariable final : public LoadedCodeObjectSymbol {
 
-public:
+private:
   /// Constructor
   /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
   /// \param VarSymbol the symbol of the variable,
   /// cached internally by Luthier
-  LoadedCodeObjectVariable(hsa_loaded_code_object_t LCO,
-                                 const llvm::object::ELFSymbolRef *VarSymbol)
-      : LoadedCodeObjectSymbol(LCO, VarSymbol,
-                               SymbolKind::SK_VARIABLE) {}
+  /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
+  /// the variable symbol, if exists
+  LoadedCodeObjectVariable(
+      hsa_loaded_code_object_t LCO, llvm::object::ELFSymbolRef VarSymbol,
+      std::optional<hsa_executable_symbol_t> ExecutableSymbol)
+      : LoadedCodeObjectSymbol(LCO, VarSymbol, SymbolKind::SK_VARIABLE,
+                               ExecutableSymbol) {}
+
+public:
+  static llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
+  create(hsa_loaded_code_object_t LCO, llvm::object::ELFSymbolRef VarSymbol);
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const LoadedCodeObjectSymbol *S) {
