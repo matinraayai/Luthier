@@ -22,8 +22,8 @@
 
 #include <llvm/ADT/StringExtras.h>
 
-#include "common/error.hpp"
-#include "hsa/hsa_intercept.hpp"
+#include "common/Error.hpp"
+#include "hsa/HsaRuntimeInterceptor.hpp"
 
 namespace luthier::hsa {
 
