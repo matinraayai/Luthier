@@ -29,7 +29,7 @@
 #include <optional>
 #include <string>
 
-#include "hsa/hsa_handle_type.hpp"
+#include "hsa/HandleType.hpp"
 #include <luthier/types.h>
 
 namespace luthier::hsa {

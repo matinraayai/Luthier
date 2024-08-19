@@ -21,7 +21,7 @@
 
 #include "hsa/ExecutableSymbol.hpp"
 
-#include "common/error.hpp"
+#include "common/Error.hpp"
 #include "hsa/GpuAgent.hpp"
 
 #undef DEBUG_TYPE

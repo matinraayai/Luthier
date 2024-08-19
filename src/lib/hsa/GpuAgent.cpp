@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "hsa/GpuAgent.hpp"
-#include "hsa/hsa_isa.hpp"
+#include "hsa/ISA.hpp"
 
 namespace luthier::hsa {
 

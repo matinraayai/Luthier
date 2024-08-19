@@ -22,9 +22,9 @@
 
 #ifndef HSA_GPU_AGENT_HPP
 #define HSA_GPU_AGENT_HPP
-#include "hsa/hsa_handle_type.hpp"
-#include "hsa/hsa_intercept.hpp"
-#include "hsa/hsa_isa.hpp"
+#include "hsa/HandleType.hpp"
+#include "hsa/HsaRuntimeInterceptor.hpp"
+#include "hsa/ISA.hpp"
 #include <hsa/hsa.h>
 #include <llvm/ADT/SmallVector.h>
 
