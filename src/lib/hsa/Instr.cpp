@@ -22,8 +22,8 @@
 
 namespace luthier::hsa {
 
-Instr::Instr(llvm::MCInst Inst, LoadedCodeObjectSymbol Symbol,
-             luthier::address_t Address, size_t Size)
+Instr::Instr(llvm::MCInst Inst, const LoadedCodeObjectSymbol &Symbol,
+             address_t Address, size_t Size)
     : Inst(std::move(Inst)), Symbol(Symbol), LoadedDeviceAddress(Address),
       Size(Size) {
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ASSERTION(
@@ -31,7 +31,7 @@ Instr::Instr(llvm::MCInst Inst, LoadedCodeObjectSymbol Symbol,
       Symbol.getType() == LoadedCodeObjectSymbol::SK_DEVICE_FUNCTION));
 }
 
-LoadedCodeObjectSymbol Instr::getLoadedCodeObjectSymbol() const {
+const LoadedCodeObjectSymbol &Instr::getLoadedCodeObjectSymbol() const {
   return Symbol;
 }
 
