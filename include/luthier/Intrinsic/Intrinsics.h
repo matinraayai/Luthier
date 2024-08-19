@@ -1,5 +1,17 @@
 //===-- Intrinsics.h - Luthier's built-in Intrinsics ------------*- C++ -*-===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -12,9 +24,10 @@
 
 namespace luthier {
 
-/// All bindings to Luthier intrinsics must be annotated using this macro; It
-/// defines the binding as a device function, adds a noinline attribute as
-/// well as a \c LUTHIER_INTRINSIC_ATTRIBUTE attribute
+/// \brief All bindings to Luthier intrinsics must be annotated using this macro
+/// \details This macro defines the binding as a device function, adds a
+/// noinline attribute as  well as a \c LUTHIER_INTRINSIC_ATTRIBUTE attribute
+/// to be recognized by Luthier as an intrinsic
 #define LUTHIER_INTRINSIC_ANNOTATE                                             \
   __attribute__((device, noinline, annotate("luthier_intrinsic")))
 
@@ -44,7 +57,6 @@ __attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
 
 /// \brief Intrinsic to read the value of a register
 /// \details The readReg intrinsic reads the value of the \p Reg and returns it
-/// For now, VGPRs, SGPRs, and the EXEC mask are supported;
 /// \tparam T the return type of the output; Must be of integral type and be
 /// compatible with the size of \p Reg; For example reading \c
 /// llvm::AMDGPU::SGPR4_SGPR5 must return a <tt>uint64_t</tt>
@@ -62,7 +74,6 @@ LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
 
 /// \brief Intrinsic to write the value of a register
 /// \details The writeReg intrinsic writes \p Val into the register named \p Reg
-/// For now, VGPRs, SGPRs, and the EXEC mask are supported;
 /// \tparam T the type of value to be written output; Must be of integral type
 /// and be compatible with the size of \p Reg; For example writing to
 // \c llvm::AMDGPU::SGPR4_SGPR5 requires a <tt>uint64_t</tt> \p Val
