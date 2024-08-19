@@ -16,15 +16,15 @@ def parse_and_validate_args() -> argparse.Namespace:
                         default="/opt/rocm/include/hip/amd_detail/hip_api_trace.hpp",
                         help="directory of the HIP API Trace header file")
     parser.add_argument("--hpp-structs-save-path", type=str,
-                        default="../include/luthier/hip_trace_api.h",
+                        default="../include/luthier/hip/TraceApi.h",
                         help="location of where the generated C++ header file containing the callback args struct "
                              "and api id enumerators will be saved")
     parser.add_argument("--cpp-compiler-implementation-save-path", type=str,
-                        default="../src/lib/hip/hip_compiler_intercept.cpp",
+                        default="../src/lib/hip/HipCompilerApiInterceptor.cpp",
                         help="location of where the generated C++ implementation for the HIP compiler "
                              "API will be saved")
     parser.add_argument("--cpp-runtime-implementation-save-path", type=str,
-                        default="../src/lib/hip/hip_runtime_intercept.cpp",
+                        default="../src/lib/hip/HipRuntimeApiInterceptor.cpp",
                         help="location of where the generated C++ implementation for the HIP runtime"
                              " API will be saved")
     args = parser.parse_args()
