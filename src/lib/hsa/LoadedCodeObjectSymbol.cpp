@@ -22,16 +22,29 @@
 #include "common/error.hpp"
 #include "common/object_utils.hpp"
 #include "hsa/Executable.hpp"
+#include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/GpuAgent.hpp"
-#include "hsa/hsa_loaded_code_object.hpp"
-#include <luthier/LoadedCodeObjectSymbol.h>
+#include "hsa/LoadedCodeObject.hpp"
+#include <luthier/hsa/LoadedCodeObjectSymbol.h>
 
 namespace luthier {
 
-llvm::Expected<hsa::LoadedCodeObjectSymbol>
+hsa::LoadedCodeObjectSymbol::LoadedCodeObjectSymbol(
+    hsa_loaded_code_object_t LCO, const llvm::object::ELFSymbolRef Symbol,
+    hsa::LoadedCodeObjectSymbol::SymbolKind Kind,
+    std::optional<hsa_executable_symbol_t> ExecutableSymbol)
+    : BackingLCO(LCO), Symbol(Symbol), Kind(Kind),
+      ExecutableSymbol(ExecutableSymbol){};
+
+llvm::Expected<const hsa::LoadedCodeObjectSymbol &>
 luthier::hsa::LoadedCodeObjectSymbol::fromExecutableSymbol(
     hsa_executable_symbol_t Symbol) {
-  return llvm::Expected<LoadedCodeObjectSymbol>(llvm::Error());
+  auto &LCOSymbolCache =
+      ExecutableBackedObjectsCache::instance().getLoadedCodeObjectSymbolCache();
+  std::lock_guard Lock(LCOSymbolCache.CacheMutex);
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ASSERTION(LCOSymbolCache.ExecToLCOSymbolMap.contains(Symbol)));
+  return *LCOSymbolCache.ExecToLCOSymbolMap.at(Symbol);
 }
 
 llvm::Expected<hsa_agent_t>
@@ -49,7 +62,18 @@ hsa::LoadedCodeObjectSymbol::getExecutable() const {
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
-hsa::LoadedCodeObjectSymbol::getSymbolContentsOnDevice() const {
+hsa::LoadedCodeObjectSymbol::getLoadedSymbolContents() const {
+  auto LoadedAddress = getLoadedSymbolAddress();
+  LUTHIER_RETURN_ON_ERROR(LoadedAddress.takeError());
+
+  auto SymbolSize = Symbol.getSize();
+
+  return llvm::ArrayRef<uint8_t>{
+      reinterpret_cast<const uint8_t *>(*LoadedAddress), SymbolSize};
+}
+
+llvm::Expected<luthier::address_t>
+hsa::LoadedCodeObjectSymbol::getLoadedSymbolAddress() const {
   auto LCOWrapper = hsa::LoadedCodeObject(BackingLCO);
   auto StorageELF = LCOWrapper.getStorageELF();
 
@@ -58,39 +82,41 @@ hsa::LoadedCodeObjectSymbol::getSymbolContentsOnDevice() const {
   auto LoadedMemory = LCOWrapper.getLoadedMemory();
   LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
-  auto SymbolElfAddress = Symbol->getAddress();
+  auto SymbolElfAddress = Symbol.getAddress();
   LUTHIER_RETURN_ON_ERROR(SymbolElfAddress.takeError());
 
-  auto SymbolSize = Symbol->getSize();
-
-  auto SymbolLMA = getSymbolLMA(StorageELF->getELFFile(), *Symbol);
+  auto SymbolLMA = getSymbolLMA(StorageELF->getELFFile(), Symbol);
   LUTHIER_RETURN_ON_ERROR(SymbolLMA.takeError());
 
-  return llvm::ArrayRef<uint8_t>{
-      reinterpret_cast<const uint8_t *>(*SymbolLMA + LoadedMemory->data()),
-      SymbolSize};
+  return reinterpret_cast<luthier::address_t>(*SymbolLMA +
+                                              LoadedMemory->data());
 }
 
-llvm::Expected<std::optional<hsa_executable_symbol_t>>
+std::optional<hsa_executable_symbol_t>
 hsa::LoadedCodeObjectSymbol::getExecutableSymbol() const {
-  hsa_executable_symbol_t Out;
-  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(hsa_agent_t, Agent, this->getAgent());
-  auto Exec = this->getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(std::string, Name, getName());
-  if (Kind == SK_KERNEL)
-    Name += ".kd";
+  return ExecutableSymbol;
+}
 
-  auto Status = hsa::HsaRuntimeInterceptor::instance()
-                    .getSavedApiTableContainer()
-                    .core.hsa_executable_get_symbol_by_name_fn(
-                        *Exec, Name.data(), &Agent, &Out);
-  if (Status == HSA_STATUS_SUCCESS)
-    return Out;
-  else if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME)
-    return std::nullopt;
+llvm::Expected<llvm::StringRef> hsa::LoadedCodeObjectSymbol::getName() const {
+  return Symbol.getName();
+}
+
+size_t hsa::LoadedCodeObjectSymbol::getSize() const { return Symbol.getSize(); }
+
+uint8_t hsa::LoadedCodeObjectSymbol::getBinding() const {
+  return Symbol.getBinding();
+}
+
+const hsa::LoadedCodeObjectSymbol *
+hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
+    luthier::address_t LoadedAddress) {
+  auto &LCOSymbolCache =
+      ExecutableBackedObjectsCache::instance().getLoadedCodeObjectSymbolCache();
+  std::lock_guard Lock(LCOSymbolCache.CacheMutex);
+  if (LCOSymbolCache.AddressToSymbolMap.contains(LoadedAddress))
+    return LCOSymbolCache.AddressToSymbolMap.at(LoadedAddress);
   else
-    return LUTHIER_HSA_ERROR_CHECK(Status, HSA_STATUS_SUCCESS);
+    return nullptr;
 }
 
 } // namespace luthier
