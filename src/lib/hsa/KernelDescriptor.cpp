@@ -18,7 +18,6 @@
 /// This file implements the HSA kernel descriptor POD struct methods.
 //===----------------------------------------------------------------------===//
 #include "common/error.hpp"
-#include "hsa/RuntimeStateCache.hpp"
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
 #include <luthier/hsa/KernelDescriptor.h>
@@ -219,12 +218,15 @@ KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
 }
 
 llvm::Expected<const LoadedCodeObjectKernel &>
-KernelDescriptor::getLoadedCodeObjectKernel() const {
-  auto Symbol = hsa::RuntimeStateCache::instance()
-                    .getLoadedCodeObjectSymbolFromLoadedAddress(
-                        reinterpret_cast<luthier::address_t>(this));
+KernelDescriptor::getLoadedCodeObjectKernelSymbol() const {
+  const auto *Symbol = LoadedCodeObjectKernel::fromLoadedAddress(
+      reinterpret_cast<luthier::address_t>(this));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Symbol != nullptr));
-  return *Symbol;
+
+  const auto *KernelSymbol = llvm::dyn_cast<LoadedCodeObjectKernel>(Symbol);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelSymbol != nullptr));
+
+  return *KernelSymbol;
 }
 
 } // namespace luthier::hsa

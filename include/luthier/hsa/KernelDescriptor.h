@@ -138,10 +138,10 @@ struct KernelDescriptor {
   /// \return the kernel descriptor of the <tt>KernelObject</tt>
   static const KernelDescriptor *fromKernelObject(uint64_t KernelObject);
 
-  /// \return a const reference to the kernel's \c hsa::LoadedCodeObjectKernel on
+  /// \return a const reference to the KD's \c hsa::LoadedCodeObjectKernel on
   /// success, or an \c llvm::Error if the KD is invalid
   [[nodiscard]] llvm::Expected<const LoadedCodeObjectKernel &>
-  getLoadedCodeObjectKernel() const;
+  getLoadedCodeObjectKernelSymbol() const;
 };
 } // namespace luthier::hsa
 
