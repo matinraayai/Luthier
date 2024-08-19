@@ -1,5 +1,17 @@
-//===-- code_lifter.hpp - Luthier's Code Lifter  --------------------------===//
+//===-- CodeLifter.hpp - Luthier's Code Lifter  ---------------------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -7,8 +19,8 @@
 /// disassembling code objects into MC and MIR representations.
 //===----------------------------------------------------------------------===//
 
-#ifndef CODE_LIFTER_HPP
-#define CODE_LIFTER_HPP
+#ifndef LUTHIER_TOOLING_COMMON_CODE_LIFTER_HPP
+#define LUTHIER_TOOLING_COMMON_CODE_LIFTER_HPP
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -26,19 +38,21 @@
 #include <vector>
 
 #include "AMDGPUTargetMachine.h"
-#include "common/cloning.hpp"
-#include "common/object_utils.hpp"
-#include "common/singleton.hpp"
+#include "common/Cloning.hpp"
+#include "common/ObjectUtils.hpp"
+#include "common/Singleton.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/ExecutableSymbol.hpp"
+#include "hsa/GpuAgent.hpp"
+#include "hsa/ISA.hpp"
+#include "hsa/LoadedCodeObject.hpp"
 #include "hsa/hsa.hpp"
-#include "hsa/hsa_agent.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
-#include "hsa/hsa_isa.hpp"
-#include "hsa/hsa_loaded_code_object.hpp"
-#include "luthier/instr.h"
-#include "luthier/lifted_representation.h"
+#include "luthier/LiftedRepresentation.h"
 #include "luthier/types.h"
 #include "target_manager.hpp"
+#include <luthier/hsa/Instr.h>
+#include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
+#include <luthier/hsa/LoadedCodeObjectKernel.h>
 
 namespace luthier {
 
@@ -121,7 +135,7 @@ private:
   /// stop the map from calling its destructor prematurely.\n
   /// Entries get invalidated once the executable associated with the symbols
   /// get destroyed.
-  llvm::DenseMap<hsa::ExecutableSymbol,
+  llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *,
                  std::unique_ptr<std::vector<hsa::Instr>>>
       MCDisassembledSymbols{};
 
@@ -138,7 +152,7 @@ public:
   /// \c std::vector<hsa::Instr>. On failure, an \p llvm::Error
   /// \sa hsa::Instr
   llvm::Expected<const std::vector<hsa::Instr> &>
-  disassemble(const hsa::ExecutableSymbol &Symbol);
+  disassemble(const hsa::LoadedCodeObjectSymbol &Symbol);
 
   /// Disassembles the machine code encapsulated by \p code for the given \p ISA
   /// \param ISA the \p hsa::Isa of the \p Code
@@ -191,11 +205,12 @@ private:
   //===--------------------------------------------------------------------===//
 
   typedef struct {
-    hsa::ExecutableSymbol Symbol; // The HSA Executable Symbol referenced by
-                                  // the relocation
-    llvm::object::ELFRelocationRef Relocation; // The ELF relocation information
-                                               // Safe to store directly since
-                                               // LCO caches the ELF
+    const hsa::LoadedCodeObjectSymbol &Symbol; /// The HSA Executable Symbol
+                                               /// referenced by the relocation
+    llvm::object::ELFRelocationRef
+        Relocation; /// The ELF relocation information
+                    /// Safe to store directly since
+                    /// LCO caches the ELF
   } LCORelocationInfo;
 
   /// Cache of \c LCORelocationInfo information per loaded address in each
@@ -239,9 +254,10 @@ private:
   /// \param [in, out] LR the lifted representation to be updated
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
-  llvm::Error initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
-                                            const hsa::ExecutableSymbol &GV,
-                                            LiftedRepresentation &LR);
+  llvm::Error
+  initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
+                                const hsa::LoadedCodeObjectSymbol &GV,
+                                LiftedRepresentation &LR);
 
   /// Initializes a module entry associated with the \p Kernel inside the \p LR
   /// \p Func must be of type KERNEL
@@ -252,7 +268,7 @@ private:
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
   llvm::Error initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
-                                    const hsa::ExecutableSymbol &Kernel,
+                                    const hsa::LoadedCodeObjectKernel &Kernel,
                                     LiftedRepresentation &LR);
 
   /// Initializes a module entry associated with the \p Func inside the \p LR
@@ -264,18 +280,20 @@ private:
   /// \param [in, out] LR the lifted representation to be updated
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
-  llvm::Error initLiftedDeviceFunctionEntry(const hsa::LoadedCodeObject &LCO,
-                                            const hsa::ExecutableSymbol &Func,
-                                            LiftedRepresentation &LR);
+  llvm::Error
+  initLiftedDeviceFunctionEntry(const hsa::LoadedCodeObject &LCO,
+                                const hsa::LoadedCodeObjectDeviceFunction &Func,
+                                LiftedRepresentation &LR);
 
   ///
   /// \param Symbol
   /// \param LR
   /// \return
   llvm::Error liftFunction(
-      const hsa::ExecutableSymbol &Symbol, LiftedRepresentation &LR,
-      llvm::DenseMap<hsa::ExecutableSymbol, bool> &SymbolUsageMap,
-      llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>> &GlobalValueUses);
+      const hsa::LoadedCodeObjectSymbol &Symbol, LiftedRepresentation &LR,
+      llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, bool> &SymbolUsageMap,
+      llvm::DenseMap<llvm::GlobalValue *,
+                     llvm::SmallVector<llvm::MachineInstr *>> &GlobalValueUses);
 
   //===--------------------------------------------------------------------===//
   // Cached Lifted Representations
@@ -284,7 +302,8 @@ private:
   llvm::DenseMap<hsa::Executable, std::unique_ptr<LiftedRepresentation>>
       LiftedExecutables{};
 
-  llvm::DenseMap<hsa::ExecutableSymbol, std::unique_ptr<LiftedRepresentation>>
+  llvm::DenseMap<const hsa::LoadedCodeObjectKernel *,
+                 std::unique_ptr<LiftedRepresentation>>
       LiftedKernelSymbols{};
 
   //===--------------------------------------------------------------------===//
@@ -297,13 +316,13 @@ public:
   /// interdependently from its parent \c hsa::LoadedCodeObject or \c
   /// hsa::Executable\n
   /// The representation gets cached on the first invocation
-  /// \param Symbol an \c hsa::ExecutableSymbol of type \c KERNEL
+  /// \param KernelSymbol an \c hsa::ExecutableSymbol of type \c KERNEL
   /// \return on success, the lifted representation of the kernel symbol; an
   /// \c llvm::Error on failure, describing the issue encountered during the
   /// process
   /// \sa LiftedRepresentation
   llvm::Expected<const LiftedRepresentation &>
-  lift(const hsa::ExecutableSymbol &Symbol);
+  lift(const hsa::LoadedCodeObjectKernel &KernelSymbol);
 
   /// Returns the \c LiftedRepresentation<hsa_executable_t> associated
   /// with the given \p Exec\n
