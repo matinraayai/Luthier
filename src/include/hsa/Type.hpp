@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef HSA_TYPE_HPP
 #define HSA_TYPE_HPP
-#include "hsa_intercept.hpp"
+#include "HsaRuntimeInterceptor.hpp"
 
 namespace luthier::hsa {
 /// \brief a wrapper around data types (e.g. structs, handles) defined and
