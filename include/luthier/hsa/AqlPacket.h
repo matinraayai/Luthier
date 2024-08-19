@@ -24,7 +24,7 @@
 #define LUTHIER_HSA_AQL_PACKET_H
 #include <hsa/hsa.h>
 
-namespace hsa {
+namespace luthier::hsa {
 
 /// \brief AMD Vendor Packet POD struct
 typedef struct {
