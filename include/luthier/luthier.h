@@ -1,5 +1,17 @@
 //===-- luthier.h - Luthier Interface  --------------------------*- C++ -*-===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -11,13 +23,15 @@
 #include <llvm/Support/Error.h>
 
 #include <hip/amd_detail/hip_api_trace.hpp>
-#include <luthier/Intrinsic/Intrinsics.h>
 #include <luthier/ErrorCheck.h>
-#include <luthier/hsa_trace_api.h>
-#include <luthier/instr.h>
+#include <luthier/Intrinsic/Intrinsics.h>
+#include <luthier/LiftedRepresentation.h>
+#include <luthier/hsa/Instr.h>
+#include <luthier/hsa/KernelDescriptor.h>
+#include <luthier/hsa/LoadedCodeObjectKernel.h>
+#include <luthier/hsa/LoadedCodeObjectSymbol.h>
+#include <luthier/hsa/TraceApi.h>
 #include <luthier/instrumentation_task.h>
-#include <luthier/kernel_descriptor.h>
-#include <luthier/lifted_representation.h>
 #include <luthier/types.h>
 
 namespace luthier {
@@ -29,8 +43,7 @@ namespace luthier {
 /// A callback invoked before and after Luthier's internal components are
 /// initialized \n
 /// This function is typically used for initializing callback functions,
-/// printing a banner for the tool, and argument parsing with LLVM's \c cl
-/// namespace \n
+/// or printing a banner for the tool
 /// \warning It is not safe to use HSA or HIP functions in this callback,
 /// as at this point of execution neither HIP or HSA are likely to be
 /// initialized\n
@@ -38,6 +51,9 @@ namespace luthier {
 /// at this point of execution, HIP/HSA API tables have not been captured by
 /// Luthier; Use \c hsa::setAtApiTableCaptureEvtCallback and
 /// \c hip::setAtApiTableCaptureEvtCallback instead
+/// \warning It is unsafe to access statically-initialized LLVM command-line
+/// arguments of the tool. Wait until any of the HIP/HSA API tables to be
+/// captured to access them
 /// \note This function is required to be implemented by all Luthier tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool initialization
 /// or \c API_EVT_PHASE_AFTER when called after tool initialization
@@ -132,45 +148,6 @@ const HsaApiTable &getHsaApiTable();
 /// \return a reference to the original AMD
 const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
 
-/// Returns the \c SymbolKind of the given \p Symbol\n
-/// Use this instead of querying the \c HSA_EXECUTABLE_SYMBOL_INFO_TYPE info
-/// using HSA; If the \p Symbol is of type \c KERNEL or \c VARIABLE, then it
-/// is safe to use with the HSA API; For symbols of type \c DEVICE_FUNCTION
-/// strictly use Luthier APIs
-/// \param Symbol the \c hsa_executable_symbol_t to be queried
-/// \return Type of symbol on success, an \c llvm::Error in case the \c Symbol
-/// is invalid
-llvm::Expected<SymbolKind> getSymbolKind(hsa_executable_symbol_t Symbol);
-
-/// Returns the name of the \p Symbol\n
-/// Use this instead of querying the \c HSA_EXECUTABLE_SYMBOL_INFO_NAME info
-/// using HSA; If the \p Symbol is of type \c KERNEL or \c VARIABLE, then it
-/// is safe to use with the HSA API; For symbols of type \c DEVICE_FUNCTION
-/// strictly use Luthier APIs
-/// \param Symbol the \c hsa_executable_symbol_t to be queried
-/// \return Name of the symbol on success, or an \c llvm::Error in case the
-/// \c Symbol is invalid
-llvm::Expected<llvm::StringRef> getSymbolName(hsa_executable_symbol_t Symbol);
-
-/// Returns the executable this \p Symbol belongs to\n
-/// Use this instead of the Loader API since Luthier internally caches the
-/// mapping between a symbol and its executable
-/// \param Symbol the \c hsa_executable_symbol_t being queried
-/// \return on success, returns the \c hsa_executable_t of <tt>Symbol</tt>; an
-/// \c llvm::Error if any issue is encountered during the process
-llvm::Expected<hsa_executable_t>
-getExecutableOfSymbol(hsa_executable_symbol_t Symbol);
-
-/// Returns the loaded code object which defines the <tt>Symbol</tt>. If the
-/// \p Symbol is external (not defined by any l
-/// \param Symbol
-/// \return the \c hsa_loaded_code_object_t that defines <tt>Symbol</tt> if
-/// \p Symbol is not external; If the \p Symbol is external, returns
-/// <tt>std::nullopt</tt>; If an error is encountered during the process,
-/// returns an \c llvm::Error
-llvm::Expected<std::optional<hsa_loaded_code_object_t>>
-getDefiningLoadedCodeObject(hsa_executable_symbol_t Symbol);
-
 } // namespace hsa
 
 namespace hip {
@@ -192,23 +169,24 @@ const HipCompilerDispatchTable &getSavedCompilerTable();
 /// first time. Subsequent calls will use a result cached internally.\n
 /// This function is provided for convenience; For instrumentation,
 /// use <tt>lift</tt>.
-/// \param Func the \c hsa_executable_symbol_t of type \c KERNEL or
-/// \c DEVICE_FUNCTION to be disassembled
+/// \param Func the \c hsa::LoadedCodeObjectSymbol of type
+/// \c hsa::LoadedCodeObjectSymbol::SK_KERNEL or
+/// \c hsa::LoadedCodeObjectSymbol::SK_DEVICE_FUNCTION to be disassembled
 /// \return a <tt>const</tt> reference to an internally cached vector of
 /// <tt>hsa::Instr</tt>s, or an \c llvm::Error if an issue was encountered
 /// during the process.
 llvm::Expected<const std::vector<hsa::Instr> &>
-disassemble(hsa_executable_symbol_t Func);
+disassemble(const hsa::LoadedCodeObjectSymbol &Func);
 
 /// Lifts the given \p Kernel and return a reference to its
 /// <tt>LiftedRepresentation</tt>.\n
 /// The lifted result gets cached internally on the first invocation.
-/// \param [in] Kernel an \c hsa_executable_symbol_t of type \c KERNEL
+/// \param [in] Kernel an \c hsa::LoadedCodeObjectKernel to be lifted
 /// \return a reference to the internally-cached <tt>LiftedRepresentation</tt>
 /// if successful, or an \c llvm::Error describing the issue encountered.
 /// \sa LiftedRepresentation, \sa lift
 llvm::Expected<const luthier::LiftedRepresentation &>
-lift(hsa_executable_symbol_t Kernel);
+lift(const hsa::LoadedCodeObjectKernel &Kernel);
 
 /// Lifts the given \p Executable and returns a reference to its
 /// <tt>LiftedRepresentation</tt>.\n
@@ -272,7 +250,7 @@ llvm::Error printLiftedRepresentation(
 /// \return an \c llvm::Error describing if the operation succeeded or
 /// failed
 llvm::Error
-instrumentAndLoad(hsa_executable_symbol_t Kernel,
+instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
                   const LiftedRepresentation &LR,
                   llvm::function_ref<llvm::Error(InstrumentationTask &,
                                                  LiftedRepresentation &)>
@@ -295,13 +273,14 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
                   llvm::StringRef Preset);
 
 /// Checks if the \p Kernel is instrumented under the given \p Preset or not
-/// \param [in] Kernel an \c hsa_executable_symbol_t of \c KERNEL type
+/// \param [in] Kernel the \c hsa::LoadedCodeObjectKernel of the app
 /// \param [in] Preset the preset name the kernel was instrumented under
 /// \return on success, returns \c true if the \p Kernel is instrumented, \c
 // false otherwise. Returns an \c llvm::Error if the \p Kernel HSA symbol handle
 // is invalid
-llvm::Expected<bool> isKernelInstrumented(hsa_executable_symbol_t Kernel,
-                                          llvm::StringRef Preset);
+llvm::Expected<bool>
+isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
+                     llvm::StringRef Preset);
 
 /// Overrides the kernel object field of the Packet with its instrumented
 /// version under the given \p Preset, forcing HSA to launch the
