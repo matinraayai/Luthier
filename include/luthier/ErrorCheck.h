@@ -39,4 +39,11 @@
     }                                                                          \
   } while (0)
 
+/// \brief declares a variable \p VarName with type \p type; Returns from the
+/// current function if moving the output value of the
+/// \p Operation to \p VarName fails
+#define LUTHIER_RETURN_ON_MOVE_INTO_FAIL(Type, VarName, Operation)             \
+  Type VarName;                                                                \
+  LUTHIER_RETURN_ON_ERROR((Operation).moveInto(VarName));
+
 #endif

@@ -21,6 +21,7 @@
 #ifndef LUTHIER_HSA_METADATA_H
 #define LUTHIER_HSA_METADATA_H
 #include <optional>
+#include <hip/hip_runtime_api.h>
 #include <string>
 #include <vector>
 
