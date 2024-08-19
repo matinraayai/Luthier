@@ -1,5 +1,17 @@
 //===-- ROCmLibraryApiInterceptor.hpp - ROCm Interceptor Interface --------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -15,8 +27,8 @@
 #include <mutex>
 #include <shared_mutex>
 
-#include "common/error.hpp"
-#include <luthier/hsa_dense_map_info.h>
+#include "common/Error.hpp"
+#include <luthier/hsa/DenseMapInfo.h>
 
 namespace luthier {
 
@@ -40,8 +52,8 @@ protected:
                            /// < not \c nullptr. It is safe to install/uninstall
                            /// < wrapper functions
     FROZEN,                ///< API calls have been made and done in the target
-                            ///< runtime, hence it is not safe to modify the
-                            ///< \c RuntimeApiTable
+                           ///< runtime, hence it is not safe to modify the
+                           ///< \c RuntimeApiTable
   };
 
   /// Pointer to where the intercepted runtime stores the API table;
