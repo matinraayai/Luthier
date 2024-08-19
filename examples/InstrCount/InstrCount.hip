@@ -1,5 +1,17 @@
 //===-- InstrCount.hip - Instruction Count Example ------------------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -254,13 +266,14 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
   /// 4. Release the lock
 
   // Get the kernel that was launched
+
   auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                           SubmittedDispatchPacket.kernel_object)
-                          ->getHsaExecutableSymbol();
+                          ->getLoadedCodeObjectKernelSymbol();
 
   LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
 
-  auto KernelName = hsa::getSymbolName(*KernelSymbol);
+  auto KernelName = KernelSymbol->getName();
   LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
   std::string KernelNameToBePrinted = DemangleKernelNames
                                           ? llvm::demangle(*KernelName)
@@ -313,7 +326,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           // Get the kernel that is about to get launched
           auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                   DispatchPacket.kernel_object)
-                                  ->getHsaExecutableSymbol();
+                                  ->getLoadedCodeObjectKernelSymbol();
 
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
           // Get the packet's completion signal and its value
@@ -342,7 +355,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
           if (!*IsKernelInstrumented) {
             // Get the executable associated with this kernel
-            auto Exec = hsa::getExecutableOfSymbol(*KernelSymbol);
+            auto Exec = KernelSymbol->getExecutable();
             LUTHIER_REPORT_FATAL_ON_ERROR(Exec.takeError());
 
             instrumentAllFunctionsOfExecutable(*Exec);

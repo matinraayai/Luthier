@@ -43,7 +43,6 @@ if (${LUTHIER_BUILD_UNIT_TESTS})
             doctest
             URL https://github.com/doctest/doctest/archive/refs/heads/master.zip
     )
-
     FetchContent_MakeAvailable(doctest)
     enable_testing()
 endif ()
@@ -86,7 +85,7 @@ add_subdirectory(src)
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-    set(SUB_DIRS examples/kernel_instrument examples/code_lifter_debugging examples/InstrCount)
+    set(SUB_DIRS examples/KernelInstrument examples/CodeLifterDebugging examples/InstrCount)
     foreach (DIR ${SUB_DIRS})
         add_subdirectory(${DIR})
     endforeach (DIR)

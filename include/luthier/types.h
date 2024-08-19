@@ -19,9 +19,6 @@
 #ifndef LUTHIER_TYPES_H
 #define LUTHIER_TYPES_H
 
-#include <hsa/hsa.h>
-#include <rocprofiler-sdk/rocprofiler.h>
-
 namespace luthier {
 
 #define HOOK_HANDLE_PREFIX __luthier_hook_handle_

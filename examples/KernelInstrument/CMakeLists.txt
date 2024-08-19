@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(InstrCount LANGUAGES HIP CXX)
+project(KernelInstrument LANGUAGES HIP CXX)
 
 set(CMAKE_HIP_STANDARD 20)
 
@@ -7,23 +7,23 @@ find_package(hip REQUIRED)
 
 find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/)
 
-add_library(InstrCount SHARED InstrCount.hip)
+add_library(KernelInstrument SHARED KernelInstrument.hip)
 
 # Some HSA include files won't work unless this is defined
-target_compile_definitions(InstrCount PUBLIC AMD_INTERNAL_BUILD)
+target_compile_definitions(KernelInstrument PUBLIC AMD_INTERNAL_BUILD)
 
-set_property(TARGET InstrCount PROPERTY COMPILE_FLAGS "-fPIC")
+set_property(TARGET KernelInstrument PROPERTY COMPILE_FLAGS "-fPIC")
 
 find_package(LLVM REQUIRED CONFIG PATHS ${LUTHIER_LLVM_BIN_DIR} NO_DEFAULT_PATH)
 
-target_include_directories(InstrCount PUBLIC ../../include/)
+target_include_directories(KernelInstrument PUBLIC ../../include/)
 
-target_include_directories(InstrCount PUBLIC ${LLVM_INCLUDE_DIRS})
+target_include_directories(KernelInstrument PUBLIC ${LLVM_INCLUDE_DIRS})
 
-target_link_directories(InstrCount PUBLIC ${LUTHIER_DIR})
+target_link_directories(KernelInstrument PUBLIC ${LUTHIER_DIR})
 
 set(LUTHIER_BC_EMBED_PLUGIN_PATH "" CACHE STRING "Path to the Luthier compiler plugin for embedding optimized bitcode")
 
 set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -fpass-plugin=${LUTHIER_BC_EMBED_PLUGIN_PATH}")
 
-target_link_libraries(InstrCount PUBLIC LuthierTooling hip::host hip::device)
+target_link_libraries(KernelInstrument PUBLIC LuthierTooling hip::host hip::device)

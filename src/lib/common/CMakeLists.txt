@@ -1,18 +1,18 @@
-add_library(luthier_common STATIC
+add_library(LuthierCommon STATIC
         Cloning.cpp
         Error.cpp
         ObjectUtils.cpp
 )
 
-target_include_directories(luthier_common PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})
+target_include_directories(LuthierCommon PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})
 
-target_include_directories(luthier_common PUBLIC ${LUTHIER_PUBLIC_INCLUDE_DIR})
+target_include_directories(LuthierCommon PUBLIC ${LUTHIER_PUBLIC_INCLUDE_DIR})
 
 
-target_compile_options(luthier_common PUBLIC "-fPIC")
-add_llvm_compile_definitions(luthier_common)
+target_compile_options(LuthierCommon PUBLIC "-fPIC")
+add_llvm_compile_definitions(LuthierCommon)
 
-target_link_libraries(luthier_common PUBLIC hip::host amd_comgr LLVMCore LLVMMC LLVMObject LLVMSupport LLVMTarget)
+target_link_libraries(LuthierCommon PUBLIC hip::host amd_comgr LLVMCore LLVMMC LLVMObject LLVMSupport LLVMTarget)
 
 if (${LUTHIER_BUILD_UNIT_TESTS})
     add_subdirectory(unittest)

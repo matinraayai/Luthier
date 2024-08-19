@@ -51,8 +51,8 @@ private:
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the kernel
   LoadedCodeObjectKernel(hsa_loaded_code_object_t LCO,
-                         const llvm::object::ELFSymbolRef KFuncSymbol,
-                         const llvm::object::ELFSymbolRef KDSymbol,
+                         llvm::object::ELFSymbolRef KFuncSymbol,
+                         llvm::object::ELFSymbolRef KDSymbol,
                          const md::Kernel::Metadata &Metadata,
                          hsa_executable_symbol_t ExecutableSymbol)
       : LoadedCodeObjectSymbol(LCO, KFuncSymbol, SymbolKind::SK_KERNEL,

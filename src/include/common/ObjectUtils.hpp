@@ -39,7 +39,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_OBJECT_UTILS_HPP
 #define LUTHIER_COMMON_OBJECT_UTILS_HPP
-#include <hip/hip_runtime_api.h>
+#include <hip/hip_runtime.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/BinaryFormat/ELF.h>
 #include <llvm/BinaryFormat/MsgPackDocument.h>

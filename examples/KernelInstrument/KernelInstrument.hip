@@ -19,7 +19,7 @@ __attribute__((managed)) uint64_t GlobalCounter = 20;
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook() {
   GlobalCounter = __builtin_amdgcn_wavefrontsize();
-//  GlobalCounter = readReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5);
+  //  GlobalCounter = readReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5);
 };
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
@@ -29,20 +29,20 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
   if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit &&
       Phase == API_EVT_PHASE_BEFORE) {
     LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
-    for (auto &Packet: *CBData->hsa_queue_packet_submit.packets) {
+    for (auto &Packet : *CBData->hsa_queue_packet_submit.packets) {
       hsa_packet_type_t PacketType = Packet.getPacketType();
 
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         auto &DispatchPacket = Packet.asKernelDispatch();
         auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                 DispatchPacket.kernel_object)
-                                ->getHsaExecutableSymbol();
+                                ->getLoadedCodeObjectKernelSymbol();
 
         if (auto Err = KernelSymbol.takeError())
           llvm::report_fatal_error(std::move(Err), true);
         if (!llvm::cantFail(
                 isKernelInstrumented(*KernelSymbol, "kernel instrument"))) {
-          auto Exec = llvm::cantFail(hsa::getExecutableOfSymbol(*KernelSymbol));
+          auto Exec = llvm::cantFail(KernelSymbol->getExecutable());
 
           auto LiftedKernel = luthier::lift(Exec);
           if (auto Err = LiftedKernel.takeError())

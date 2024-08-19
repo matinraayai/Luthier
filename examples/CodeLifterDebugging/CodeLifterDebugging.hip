@@ -18,11 +18,11 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         auto &DispatchPacket = Packet.asKernelDispatch();
         auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                 DispatchPacket.kernel_object)
-                                ->getHsaExecutableSymbol();
+                                ->getLoadedCodeObjectKernelSymbol();
         if (auto Err = KernelSymbol.takeError())
           llvm::report_fatal_error(std::move(Err), true);
 
-        auto KernelName = hsa::getSymbolName(*KernelSymbol);
+        auto KernelName = KernelSymbol->getName();
         if (auto Err = KernelName.takeError())
           llvm::report_fatal_error(std::move(Err), true);
         // Skip kernels coming from rocclr; The image store instructions
@@ -31,7 +31,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         if (KernelName->starts_with("__amd"))
           return;
 
-        auto Exec = llvm::cantFail(hsa::getExecutableOfSymbol(*KernelSymbol));
+        auto Exec = llvm::cantFail(KernelSymbol->getExecutable());
         if (!PrintedExecutables.contains(Exec)) {
           auto LiftedExecutable = luthier::lift(Exec);
           if (auto Err = LiftedExecutable.takeError())
