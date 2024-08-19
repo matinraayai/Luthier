@@ -1,5 +1,17 @@
-//===-- code_generator.hpp - Luthier Code Generator  ----------------------===//
+//===-- CodeGenerator.hpp - Luthier Code Generator ------------------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -9,15 +21,13 @@
 #ifndef LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
 #define LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
 
-#include "common/object_utils.hpp"
-#include "common/singleton.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
+#include "common/ObjectUtils.hpp"
+#include "common/Singleton.hpp"
 #include <llvm/ADT/Any.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
+#include <luthier/InstrumentationTask.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
-#include <luthier/instrumentation_task.h>
-#include <luthier/lifted_representation.h>
+#include <luthier/LiftedRepresentation.h>
 #include <luthier/types.h>
 
 #include <utility>
