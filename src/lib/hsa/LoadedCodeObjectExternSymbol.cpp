@@ -23,7 +23,7 @@
 #include "hsa/GpuAgent.hpp"
 #include "hsa/LoadedCodeObject.hpp"
 
-#include <luthier/hsa/LoadedCodeObjectVariable.h>
+#include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
 
 namespace luthier::hsa {
 

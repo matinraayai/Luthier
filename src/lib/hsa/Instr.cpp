@@ -17,7 +17,7 @@
 /// \file
 /// This file implements the \c luthier::hsa::Instr class.
 //===----------------------------------------------------------------------===//
-#include "common/error.hpp"
+#include "common/Error.hpp"
 #include <luthier/hsa/Instr.h>
 
 namespace luthier::hsa {

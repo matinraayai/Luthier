@@ -19,8 +19,8 @@
 /// namespace.
 //===----------------------------------------------------------------------===//
 
-#include "common/error.hpp"
-#include "common/object_utils.hpp"
+#include "common/Error.hpp"
+#include "common/ObjectUtils.hpp"
 #include "hsa/Executable.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/GpuAgent.hpp"
@@ -113,8 +113,8 @@ hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
   auto &LCOSymbolCache =
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectSymbolCache();
   std::lock_guard Lock(LCOSymbolCache.CacheMutex);
-  if (LCOSymbolCache.AddressToSymbolMap.contains(LoadedAddress))
-    return LCOSymbolCache.AddressToSymbolMap.at(LoadedAddress);
+  if (LCOSymbolCache.LoadedAddressToSymbolMap.contains(LoadedAddress))
+    return LCOSymbolCache.LoadedAddressToSymbolMap.at(LoadedAddress);
   else
     return nullptr;
 }

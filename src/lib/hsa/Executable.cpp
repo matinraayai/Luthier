@@ -15,13 +15,13 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements  the \c Executable class under the \c luthier::hsa
+/// This file implements the \c Executable class under the \c luthier::hsa
 /// namespace.
 //===----------------------------------------------------------------------===//
 #include "hsa/Executable.hpp"
-
 #include "common/Error.hpp"
 #include "hsa/CodeObjectReader.hpp"
+#include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/ExecutableSymbol.hpp"
 #include "hsa/GpuAgent.hpp"
 #include "hsa/LoadedCodeObject.hpp"

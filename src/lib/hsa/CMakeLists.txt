@@ -3,31 +3,36 @@ get_target_property(HSA_INCLUDE_DIRS hsa-runtime64::hsa-runtime64 INTERFACE_INCL
 if (${LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG})
     execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
             --hsa-include-dir ${HSA_INCLUDE_DIRS}/hsa
-            --cpp-implementation-save-path ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
-            --h-api-enums-structs-save-path ${CMAKE_SOURCE_DIR}/include/luthier/hsa_trace_api.h
+            --cpp-implementation-save-path ${CMAKE_CURRENT_SOURCE_DIR}/HsaRuntimeInterceptor.cpp
+            --h-api-enums-structs-save-path ${CMAKE_SOURCE_DIR}/include/luthier/hsa/TraceApi.h
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
 endif ()
 
-add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/HsaRuntimeInterceptor.cpp
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
         --hsa-include-dir ${HSA_INCLUDE_DIRS}/hsa
-        --cpp-implementation-save-path ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
-        --h-api-enums-structs-save-path ${CMAKE_SOURCE_DIR}/include/luthier/hsa_trace_api.h
+        --cpp-implementation-save-path ${CMAKE_CURRENT_SOURCE_DIR}/HsaRuntimeInterceptor.cpp
+        --h-api-enums-structs-save-path ${CMAKE_SOURCE_DIR}/include/luthier/hsa/TraceApi.h
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
         COMMENT "Generating HSA API interceptor implementation")
 
 add_library(luthier_hsa STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/hsa_intercept.cpp
-        hsa_executable.cpp
-        hsa_agent.cpp
-        hsa_executable_symbol.cpp
-        hsa_loaded_code_object.cpp
-        hsa_isa.cpp
-        instr.cpp
-        hsa_code_object_reader.cpp
-        kernel_descriptor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/HsaRuntimeInterceptor.cpp
+        Executable.cpp
+        GpuAgent.cpp
+        ExecutableSymbol.cpp
+        LoadedCodeObject.cpp
+        ISA.cpp
+        Instr.cpp
+        CodeObjectReader.cpp
+        KernelDescriptor.cpp
         hsa.cpp
-        hsa_platform.cpp
+        ExecutableBackedObjectsCache.cpp
+        LoadedCodeObjectSymbol.cpp
+        LoadedCodeObjectKernel.cpp
+        LoadedCodeObjectVariable.cpp
+        LoadedCodeObjectDeviceFunction.cpp
+        LoadedCodeObjectExternSymbol.cpp
 )
 
 target_include_directories(luthier_hsa PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})
