@@ -1,5 +1,17 @@
-//===-- tool_executable_manager.hpp - Luthier Tool Executable Manager -----===//
+//===-- ToolExecutableManager.hpp - Luthier Tool Executable Manager -------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -17,12 +29,12 @@
 #include <llvm/IR/Module.h>
 #include <vector>
 
-#include "common/singleton.hpp"
-#include "hsa/hsa_agent.hpp"
-#include "hsa/hsa_code_object_reader.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
-#include "instrumentation_module.hpp"
+#include "InstrumentationModule.hpp"
+#include "common/Singleton.hpp"
+#include "hsa/CodeObjectReader.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/GpuAgent.hpp"
+#include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include "luthier/types.h"
 
 namespace luthier {
@@ -78,10 +90,11 @@ public:
   /// external variables of the instrumented code objects
   /// \return an \p llvm::Error if an issue was encountered in the process
   llvm::Error loadInstrumentedKernel(
-      llvm::ArrayRef<std::pair<hsa::LoadedCodeObject,
-                               llvm::SmallVector<uint8_t>>> InstrumentedElfs,
-      const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
-      const llvm::StringMap<void *> &ExternVariables);
+      llvm::ArrayRef<
+          std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
+          InstrumentedElfs,
+      const hsa::LoadedCodeObjectKernel &OriginalKernel, llvm::StringRef Preset,
+      const llvm::StringMap<const void *> &ExternVariables);
 
   /// Loads a list of instrumented versions of the loaded code objects found in
   /// \p OriginalExecutable into a new executable and freezes it \n
@@ -99,7 +112,7 @@ public:
           std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
           InstrumentedElfs,
       llvm::StringRef Preset,
-      llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, void *>>
+      llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, const void *>>
           ExternVariables);
 
   /// Returns the instrumented kernel's \c hsa::ExecutableSymbol given its
@@ -110,13 +123,13 @@ public:
   /// \param OriginalKernel symbol of the un-instrumented original kernel
   /// \return symbol of the instrumented version of the target kernel, or
   /// \p llvm::Error
-  llvm::Expected<const hsa::ExecutableSymbol &>
-  getInstrumentedKernel(const hsa::ExecutableSymbol &OriginalKernel,
+  llvm::Expected<const hsa::LoadedCodeObjectKernel &>
+  getInstrumentedKernel(const hsa::LoadedCodeObjectKernel &OriginalKernel,
                         llvm::StringRef Preset) const;
 
   /// Checks if the given \p Kernel is instrumented under the given \p Preset
   /// \return \c true if it's instrumented, \c false otherwise
-  bool isKernelInstrumented(const hsa::ExecutableSymbol &Kernel,
+  bool isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
                             llvm::StringRef Preset) const;
 
   const StaticInstrumentationModule &getStaticInstrumentationModule() const {
@@ -134,16 +147,16 @@ private:
   /// \param Preset the preset name it was instrumented under
   /// \param InstrumentedKernel instrumented version of the original kernel
   void insertInstrumentedKernelIntoMap(
-      const hsa::ExecutableSymbol &OriginalKernel, llvm::StringRef Preset,
-      const hsa::ExecutableSymbol &InstrumentedKernel) {
+      const hsa::LoadedCodeObjectKernel &OriginalKernel, llvm::StringRef Preset,
+      const hsa::LoadedCodeObjectKernel &InstrumentedKernel) {
     // Create an entry for the OriginalKernel if it doesn't already exist in the
     // map
     auto &OriginalKernelEntry =
-        !OriginalToInstrumentedKernelsMap.contains(OriginalKernel)
-            ? OriginalToInstrumentedKernelsMap.insert({OriginalKernel, {}})
+        !OriginalToInstrumentedKernelsMap.contains(&OriginalKernel)
+            ? OriginalToInstrumentedKernelsMap.insert({&OriginalKernel, {}})
                   .first->getSecond()
-            : OriginalToInstrumentedKernelsMap[OriginalKernel];
-    OriginalKernelEntry.insert({Preset, InstrumentedKernel});
+            : OriginalToInstrumentedKernelsMap[&OriginalKernel];
+    OriginalKernelEntry.insert({Preset, &InstrumentedKernel});
   }
 
   mutable StaticInstrumentationModule SIM{};
@@ -159,7 +172,8 @@ private:
 
   /// \brief a mapping between the pair of an instrumented kernel, given
   /// its original kernel, and its instrumentation preset
-  llvm::DenseMap<hsa::ExecutableSymbol, llvm::StringMap<hsa::ExecutableSymbol>>
+  llvm::DenseMap<const hsa::LoadedCodeObjectKernel *,
+                 llvm::StringMap<const hsa::LoadedCodeObjectKernel *>>
       OriginalToInstrumentedKernelsMap{};
 };
 }; // namespace luthier

@@ -1,5 +1,17 @@
-//===-- instrumentation_module.hpp - Luthier Instrumentation Module -------===//
+//===-- InstrumentationModule.hpp - Luthier Instrumentation Module --------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -10,15 +22,16 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
 #define LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
-#include "hsa/hsa_agent.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/ExecutableSymbol.hpp"
+#include "hsa/GpuAgent.hpp"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/Support/Error.h>
 #include <optional>
 #include <string>
+#include <luthier/hsa/LoadedCodeObjectVariable.h>
 
 namespace luthier {
 
@@ -160,7 +173,8 @@ private:
   llvm::DenseMap<hsa::GpuAgent, hsa::Executable> PerAgentModuleExecutables{};
 
   /// Keeps track of the copies of the bitcode's global variables on each device
-  llvm::DenseMap<hsa::GpuAgent, llvm::StringMap<hsa::ExecutableSymbol>>
+  llvm::DenseMap<hsa::GpuAgent,
+                 llvm::StringMap<const hsa::LoadedCodeObjectVariable *>>
       PerAgentGlobalVariables{};
 
   /// A mapping between the shadow host pointer of a hook and its name
@@ -210,7 +224,7 @@ public:
   /// is loaded
   /// \return a const reference to the mapping between variable names and their
   /// Executable Symbols, or an \c llvm::Error if an issue is encountered
-  llvm::Expected<const llvm::StringMap<hsa::ExecutableSymbol> &>
+  llvm::Expected<const llvm::StringMap<const hsa::LoadedCodeObjectVariable *> &>
   getGlobalHsaVariablesOnAgent(hsa::GpuAgent &Agent);
 
   /// Converts the shadow host pointer \p Handle to the name of the hook it

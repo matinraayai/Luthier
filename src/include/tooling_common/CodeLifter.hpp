@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "AMDGPUTargetMachine.h"
+#include "TargetManager.hpp"
 #include "common/Cloning.hpp"
 #include "common/ObjectUtils.hpp"
 #include "common/Singleton.hpp"
@@ -49,7 +50,6 @@
 #include "hsa/hsa.hpp"
 #include "luthier/LiftedRepresentation.h"
 #include "luthier/types.h"
-#include "target_manager.hpp"
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
