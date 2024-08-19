@@ -24,6 +24,7 @@
 
 #include <hip/amd_detail/hip_api_trace.hpp>
 #include <luthier/ErrorCheck.h>
+#include <luthier/InstrumentationTask.h>
 #include <luthier/Intrinsic/Intrinsics.h>
 #include <luthier/LiftedRepresentation.h>
 #include <luthier/hsa/Instr.h>
@@ -31,7 +32,6 @@
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
 #include <luthier/hsa/TraceApi.h>
-#include <luthier/instrumentation_task.h>
 #include <luthier/types.h>
 
 namespace luthier {
