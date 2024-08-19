@@ -1,7 +1,7 @@
 add_library(luthier_common STATIC
-        cloning.cpp
-        error.cpp
-        object_utils.cpp
+        Cloning.cpp
+        Error.cpp
+        ObjectUtils.cpp
 )
 
 target_include_directories(luthier_common PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})
@@ -16,4 +16,4 @@ target_link_libraries(luthier_common PUBLIC hip::host amd_comgr LLVMCore LLVMMC 
 
 if (${LUTHIER_BUILD_UNIT_TESTS})
     add_subdirectory(unittest)
-endif()
+endif ()

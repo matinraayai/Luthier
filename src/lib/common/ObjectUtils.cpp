@@ -1,4 +1,24 @@
-#include "common/object_utils.hpp"
+//===-- ObjectUtils.cpp - Luthier's Object File Utility  ------------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements all operations related to dealing with parsing and
+/// processing AMDGPU code objects using LLVM object file and DWARF utilities.
+//===----------------------------------------------------------------------===//
+#include "common/ObjectUtils.hpp"
 
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/AMDGPUMetadata.h>
@@ -9,7 +29,7 @@
 
 #include <string>
 
-#include "common/error.hpp"
+#include "common/Error.hpp"
 
 using namespace llvm;
 
@@ -166,8 +186,6 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
     Out = {static_cast<uint32_t>(XMD.getUInt()),
            static_cast<uint32_t>(YMD.getUInt()),
            static_cast<uint32_t>(ZMD.getUInt())};
-    //    llvm::outs() << Out->x << "," << Out->y << "," << Out->z << ","
-    //                 << "\n";
   }
   return llvm::Error::success();
 }
@@ -192,8 +210,6 @@ llvm::Error parseDim3MDRequired(MapDocNode &Map, llvm::StringRef Key,
   Out = {static_cast<uint32_t>(XMD.getUInt()),
          static_cast<uint32_t>(YMD.getUInt()),
          static_cast<uint32_t>(ZMD.getUInt())};
-  //  llvm::outs() << Out.x << "," << Out.y << "," << Out.z << ","
-  //               << "\n";
   return llvm::Error::success();
 }
 
@@ -569,13 +585,6 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
   }
 
   auto KernelsMD = RootMap.find(hsa::md::Key::Kernels);
-  //  llvm::outs() << "Is kernel MD found? " << (KernelsMD != RootMap.end())
-  //               << "\n";
-  for (auto &[k, v] : RootMap) {
-    //    llvm::outs() << "Key is string: " << k.isString() << "\n";
-    //    llvm::outs() << k.toString() << "\n";
-  }
-  //  llvm::outs() << RootMap.toString() << "\n";
   if (KernelsMD != RootMap.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelsMD->second.isArray()));
     auto KernelsMDAsArray = KernelsMD->second.getArray();
@@ -644,34 +653,3 @@ getNotesFromSectionHeader(const ELFObjectFile<ELFT> *Obj) {
 }
 
 } // namespace luthier
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
-                              const luthier::hsa::md::Kernel::Metadata &MD) {
-  OS << luthier::hsa::md::Kernel::Key::Name << ": " << MD.Name << "\n";
-  OS << luthier::hsa::md::Kernel::Key::Symbol << ": " << MD.Symbol << "\n";
-  return OS;
-}
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
-                              const luthier::hsa::md::Metadata &MD) {
-  OS << luthier::hsa::md::Key::Version << ": " << MD.Version.Major << ", "
-     << MD.Version.Minor << "\n";
-
-  if (MD.Printf.has_value()) {
-    OS << luthier::hsa::md::Key::Printf << ": \n";
-    for (const auto &P : *MD.Printf) {
-      OS.indent(2);
-      OS << P << "\n";
-    }
-  }
-
-  if (!MD.Kernels.empty()) {
-    OS << luthier::hsa::md::Key::Kernels << ": \n";
-    for (const auto &Kernel : MD.Kernels) {
-      OS.indent(2);
-      OS << Kernel << "\n";
-    }
-  }
-
-  return OS;
-}
