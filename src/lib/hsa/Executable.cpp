@@ -20,13 +20,11 @@
 //===----------------------------------------------------------------------===//
 #include "hsa/Executable.hpp"
 
-#include <llvm/BinaryFormat/ELF.h>
-
-#include "common/error.hpp"
+#include "common/Error.hpp"
 #include "hsa/CodeObjectReader.hpp"
+#include "hsa/ExecutableSymbol.hpp"
 #include "hsa/GpuAgent.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
-#include "hsa/hsa_loaded_code_object.hpp"
+#include "hsa/LoadedCodeObject.hpp"
 
 namespace luthier::hsa {
 
@@ -49,22 +47,27 @@ Executable::loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
           asHsaType(), Agent.asHsaType(), Reader.asHsaType(),
           LoaderOptions.data(), &LCO)));
   LUTHIER_RETURN_ON_ERROR(
-      Platform::instance().cacheExecutableOnLoadedCodeObjectCreation(*this));
+      ExecutableBackedObjectsCache::instance()
+          .cacheExecutableOnLoadedCodeObjectCreation(*this));
   return LoadedCodeObject{LCO};
 }
 
-llvm::Error Executable::defineExternalAgentGlobalVariable(
-    const hsa::GpuAgent &Agent, llvm::StringRef SymbolName, void *Address) {
+llvm::Error
+Executable::defineExternalAgentGlobalVariable(const hsa::GpuAgent &Agent,
+                                              llvm::StringRef SymbolName,
+                                              const void *Address) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_agent_global_variable_define_fn(
-          asHsaType(), Agent.asHsaType(), SymbolName.data(), Address)));
+          asHsaType(), Agent.asHsaType(), SymbolName.data(),
+          const_cast<void *>(Address))));
   return llvm::Error::success();
 }
 
 llvm::Error Executable::freeze() {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_freeze_fn(asHsaType(), "")));
-  return Platform::instance().cacheExecutableOnExecutableFreeze(*this);
+  return ExecutableBackedObjectsCache::instance()
+      .cacheExecutableOnExecutableFreeze(*this);
 }
 
 llvm::Expected<bool> Executable::validate() {
@@ -76,8 +79,8 @@ llvm::Expected<bool> Executable::validate() {
 }
 
 llvm::Error Executable::destroy() {
-  LUTHIER_RETURN_ON_ERROR(
-      Platform::instance().invalidateExecutableOnExecutableDestroy(*this));
+  LUTHIER_RETURN_ON_ERROR(ExecutableBackedObjectsCache::instance()
+                              .invalidateExecutableOnExecutableDestroy(*this));
   return LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_destroy_fn(asHsaType()));
 }
@@ -124,6 +127,21 @@ llvm::Error Executable::getLoadedCodeObjects(
           .hsa_ven_amd_loader_executable_iterate_loaded_code_objects(
               this->asHsaType(), Iterator, &LCOs)));
   return llvm::Error::success();
+}
+llvm::Expected<std::optional<ExecutableSymbol>>
+Executable::getExecutableSymbolByName(llvm::StringRef Name,
+                                      const hsa::GpuAgent &Agent) {
+  hsa_executable_symbol_t Symbol;
+  hsa_agent_t HsaAgent = Agent.asHsaType();
+
+  auto Status = getApiTable().core.hsa_executable_get_symbol_by_name_fn(
+      this->asHsaType(), Name.str().c_str(), &HsaAgent, &Symbol);
+  if (Status == HSA_STATUS_SUCCESS)
+    return ExecutableSymbol(Symbol);
+  else if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME)
+    return std::nullopt;
+  else
+    return LUTHIER_HSA_SUCCESS_CHECK(Status);
 }
 
 } // namespace luthier::hsa

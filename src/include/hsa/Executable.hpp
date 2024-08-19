@@ -26,8 +26,7 @@
 #include <llvm/ADT/DenseMapInfo.h>
 
 #include "hsa/CodeObjectReader.hpp"
-#include "hsa/hsa_handle_type.hpp"
-#include "hsa/hsa_platform.hpp"
+#include "hsa/HandleType.hpp"
 
 namespace luthier::hsa {
 
@@ -94,7 +93,7 @@ public:
   /// \sa hsa_executable_agent_global_variable_define
   llvm::Error defineExternalAgentGlobalVariable(const hsa::GpuAgent &Agent,
                                                 llvm::StringRef SymbolName,
-                                                void *Address);
+                                                const void *Address);
 
   /// Freezes the wrapped <tt>hsa_executable_t</tt>, which prevents it from
   /// being modified.
@@ -152,6 +151,15 @@ public:
   /// \c luthier::HsaError on failure
   llvm::Error
   getLoadedCodeObjects(llvm::SmallVectorImpl<LoadedCodeObject> &LCOs) const;
+
+  /// Looks up the \c ExecutableSymbol by its \p Name in the Executable
+  /// \param Name Name of the symbol being looked up; If the queried symbol
+  /// is a kernel then it must have ".kd" as a suffix in the name
+  /// \return on success, the \c ExecutableSymbol with the given \p Name if
+  /// found, otherwise <tt>std::nullopt</tt>; Otherwise a \c luthier::HsaError
+  /// indicating any issue encountered during the process
+  llvm::Expected<std::optional<ExecutableSymbol>>
+  getExecutableSymbolByName(llvm::StringRef Name, const hsa::GpuAgent &Agent);
 };
 
 } // namespace luthier::hsa
