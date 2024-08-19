@@ -1,5 +1,5 @@
 #include "tooling_common/intrinsic/ReadReg.hpp"
-#include "common/error.hpp"
+#include "common/Error.hpp"
 #include <AMDGPUTargetMachine.h>
 #include <SIRegisterInfo.h>
 #include <llvm/IR/Function.h>

@@ -1,4 +1,23 @@
-#include "tooling_common/target_manager.hpp"
+//===-- TargetManager.cpp - Luthier's LLVM Target Management  -------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements Luthier's Target Manager Singleton.
+//===----------------------------------------------------------------------===//
+#include "tooling_common/TargetManager.hpp"
 
 #include <AMDGPUTargetMachine.h>
 #include <llvm/MC/MCAsmBackend.h>
@@ -19,8 +38,8 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 
-#include "common/error.hpp"
-#include "hsa/hsa_agent.hpp"
+#include "common/Error.hpp"
+#include "hsa/GpuAgent.hpp"
 
 namespace luthier {
 
@@ -83,7 +102,7 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
     auto MIA = Target->createMCInstrAnalysis(MII);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MIA));
 
-    auto CPU = Isa.getProcessor();
+    auto CPU = Isa.getGPUName();
     LUTHIER_RETURN_ON_ERROR(CPU.takeError());
 
     auto FeatureString = Isa.getSubTargetFeatures();
@@ -116,7 +135,7 @@ TargetManager::createTargetMachine(
   std::string Error;
   auto Target = llvm::TargetRegistry::lookupTarget(TT->normalize(), Error);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Target));
-  auto CPU = ISA.getProcessor();
+  auto CPU = ISA.getGPUName();
   LUTHIER_RETURN_ON_ERROR(CPU.takeError());
 
   auto FeatureString = ISA.getSubTargetFeatures();

@@ -1,8 +1,8 @@
-#include <luthier/instrumentation_task.h>
+#include <luthier/InstrumentationTask.h>
 
-#include "tooling_common/code_generator.hpp"
-#include "tooling_common/code_lifter.hpp"
-#include "tooling_common/tool_executable_manager.hpp"
+#include "tooling_common/CodeGenerator.hpp"
+#include "tooling_common/CodeLifter.hpp"
+#include "tooling_common/ToolExecutableManager.hpp"
 
 namespace luthier {
 

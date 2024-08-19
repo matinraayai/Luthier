@@ -1,5 +1,17 @@
-//===-- controller.cpp - Luthier tool's Controller Logic implementation ---===//
+//===-- Controller.cpp - Luthier tool's Controller Logic implementation ---===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
@@ -7,17 +19,18 @@
 /// any other interactions that needs to happen with the rocprofiler library.
 //===----------------------------------------------------------------------===//
 
-#include "tooling/controller.hpp"
-#include "common/log.hpp"
+#include "tooling/Controller.hpp"
+#include "common/Log.hpp"
 #include "hip/HipCompilerApiInterceptor.hpp"
 #include "hip/HipRuntimeApiInterceptor.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "tooling_common/code_generator.hpp"
-#include "tooling_common/code_lifter.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/ExecutableBackedObjectsCache.hpp"
+#include "tooling_common/CodeGenerator.hpp"
+#include "tooling_common/CodeLifter.hpp"
+#include "tooling_common/TargetManager.hpp"
+#include "tooling_common/ToolExecutableManager.hpp"
 #include "tooling_common/intrinsic/ReadReg.hpp"
 #include "tooling_common/intrinsic/WriteReg.hpp"
-#include "tooling_common/target_manager.hpp"
-#include "tooling_common/tool_executable_manager.hpp"
 
 #include "luthier/luthier.h"
 #include "luthier/types.h"
@@ -67,8 +80,8 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
       ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
     hsa::Executable Exec(CBData->hsa_executable_destroy.executable);
     // Cache the executable and its items
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        Platform::instance().cacheExecutableOnExecutableFreeze(Exec));
+    LUTHIER_REPORT_FATAL_ON_ERROR(ExecutableBackedObjectsCache::instance()
+                                      .cacheExecutableOnExecutableFreeze(Exec));
     // Check if the executable belongs to the tool and not the app
     LUTHIER_REPORT_FATAL_ON_ERROR(
         ToolExecutableManager::instance().registerIfLuthierToolExecutable(
@@ -82,7 +95,8 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
     hsa::Executable Exec(
         CBData->hsa_executable_load_agent_code_object.executable);
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        Platform::instance().cacheExecutableOnLoadedCodeObjectCreation(Exec));
+        ExecutableBackedObjectsCache::instance()
+            .cacheExecutableOnLoadedCodeObjectCreation(Exec));
   }
   if (Phase == API_EVT_PHASE_BEFORE &&
       ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
@@ -95,7 +109,8 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             Exec));
 
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        Platform::instance().invalidateExecutableOnExecutableDestroy(Exec));
+        ExecutableBackedObjectsCache::instance()
+            .invalidateExecutableOnExecutableDestroy(Exec));
   }
   LUTHIER_LOG_FUNCTION_CALL_END
 }
@@ -185,7 +200,7 @@ Controller::Controller()
     : Singleton<Controller>() {
   // Initialize all the singletons
   TM = new TargetManager();
-  HsaPlatform = new hsa::Platform();
+  HsaPlatform = new hsa::ExecutableBackedObjectsCache();
   CG = new CodeGenerator();
   COM = new ToolExecutableManager();
   CL = new CodeLifter();

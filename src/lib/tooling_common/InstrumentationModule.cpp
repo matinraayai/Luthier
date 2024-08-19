@@ -1,14 +1,26 @@
-//===-- instrumentation_module.cpp - Luthier Instrumentation Module -------===//
+//===-- InstrumentationModule.cpp - Luthier Instrumentation Module --------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
 /// \file
 /// This file implements Luthier's Instrumentation Module and its variants.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/instrumentation_module.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
-#include "hsa/hsa_loaded_code_object.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/ExecutableSymbol.hpp"
+#include "hsa/LoadedCodeObject.hpp"
+#include "tooling_common/InstrumentationModule.hpp"
 #include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
@@ -162,10 +174,10 @@ llvm::Error preprocessAndSaveModuleToStream(
 }
 
 llvm::Expected<llvm::StringRef> getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
-  llvm::SmallVector<hsa::ExecutableSymbol> Variables;
+  llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> Variables;
   LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(Variables));
   for (const auto &Var : Variables) {
-    auto VarName = Var.getName();
+    auto VarName = Var->getName();
     LUTHIER_RETURN_ON_ERROR(VarName.takeError());
     if (VarName->starts_with(luthier::HipCUIDPrefix)) {
       return VarName->substr(strlen(HipCUIDPrefix));
@@ -183,7 +195,8 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   // Since static instrumentation modules are generated with HIP, we can
   // safely assume each Executable has a single LCO for now. Here we assert this
   // is indeed the case
-  auto LCOs = llvm::cantFail(Exec.getLoadedCodeObjects());
+  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
+  llvm::cantFail(Exec.getLoadedCodeObjects(LCOs));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOs.size() == 1));
 
   if (PerAgentModuleExecutables.empty()) {
@@ -212,13 +225,14 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   // Populate the variables of this executable on its agent as well as the
   // global variable list
   auto &SymbolMap = PerAgentGlobalVariables.insert({*Agent, {}}).first->second;
-  llvm::SmallVector<hsa::ExecutableSymbol, 4> LCOGlobalVariables;
+  llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> LCOGlobalVariables;
   LUTHIER_RETURN_ON_ERROR(LCOs[0].getVariableSymbols(LCOGlobalVariables));
   for (const auto &GVSymbol : LCOGlobalVariables) {
-    auto GVName = GVSymbol.getName();
+    auto GVName = GVSymbol->getName();
     LUTHIER_RETURN_ON_ERROR(GVName.takeError());
     GlobalVariables.push_back(std::string(*GVName));
-    SymbolMap.insert({*GVName, GVSymbol});
+    SymbolMap.insert(
+        {*GVName, llvm::dyn_cast<hsa::LoadedCodeObjectVariable>(GVSymbol)});
   }
 
   return llvm::Error::success();
@@ -226,10 +240,10 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
 
 llvm::Error
 StaticInstrumentationModule::unregisterExecutable(const hsa::Executable &Exec) {
-  auto LCOs = Exec.getLoadedCodeObjects();
-  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
+  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
+  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
   // There's only a single LCO in HIP FAT binaries. Get its agent.
-  auto Agent = (*LCOs)[0].getAgent();
+  auto Agent = (LCOs)[0].getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
   // Remove the agent from the variable list and the executable list
   PerAgentGlobalVariables.erase(*Agent);
@@ -245,7 +259,7 @@ StaticInstrumentationModule::unregisterExecutable(const hsa::Executable &Exec) {
   return llvm::Error::success();
 }
 
-llvm::Expected<const llvm::StringMap<hsa::ExecutableSymbol> &>
+llvm::Expected<const llvm::StringMap<const hsa::LoadedCodeObjectVariable *> &>
 StaticInstrumentationModule::getGlobalHsaVariablesOnAgent(
     hsa::GpuAgent &Agent) {
   LUTHIER_RETURN_ON_ERROR(
@@ -263,13 +277,13 @@ StaticInstrumentationModule::convertHookHandleToHookName(
 llvm::Expected<bool>
 StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
     const hsa::Executable &Exec) {
-  auto LCOs = Exec.getLoadedCodeObjects();
-  LUTHIER_RETURN_ON_ERROR(LCOs.takeError());
-  for (const auto &LCO : *LCOs) {
+  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
+  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
+  for (const auto &LCO : LCOs) {
     auto LuthierReservedSymbol =
-        LCO.getExecutableSymbolByName(luthier::ReservedManagedVar);
+        LCO.getLoadedCodeObjectSymbolByName(luthier::ReservedManagedVar);
     LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbol.takeError());
-    if (LuthierReservedSymbol->has_value()) {
+    if (*LuthierReservedSymbol != nullptr) {
       return true;
     }
   }
@@ -287,7 +301,7 @@ StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
         VariableSymbolIt != VariableSymbolMapIt->second.end()));
     auto VariableSymbol = VariableSymbolIt->second;
     LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier::address_t, VariableAddress,
-                                     VariableSymbol.getVariableAddress());
+                                     VariableSymbol->getLoadedSymbolAddress());
     return VariableAddress;
   } else {
     // If the agent is not in the map, then it probably wasn't loaded on the

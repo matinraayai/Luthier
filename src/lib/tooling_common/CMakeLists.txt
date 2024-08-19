@@ -6,14 +6,14 @@ tablegen(luthier_tooling_common LuthierRealToPseudoOpcodeMap.hpp -gen-si-real-to
 add_public_tablegen_target(LuthierRealToPseudoOpcodeMap)
 
 add_library(luthier_tooling_common STATIC
-        code_generator.cpp
-        code_lifter.cpp
+        CodeGenerator.cpp
+        CodeLifter.cpp
         instrumentation_task.cpp
         luthier.cpp
-        target_manager.cpp
-        tool_executable_manager.cpp
-        lifted_representation.cpp
-        instrumentation_module.cpp
+        TargetManager.cpp
+        ToolExecutableManager.cpp
+        LiftedRepresentation.cpp
+        InstrumentationModule.cpp
         intrinsic/ReadReg.cpp
         intrinsic/WriteReg.cpp
 )

@@ -1,4 +1,23 @@
-#include "tooling_common/code_generator.hpp"
+//===-- CodeGenerator.cpp - Luthier Code Generator ------------------------===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements Luthier's code generator.
+//===----------------------------------------------------------------------===//
+#include "tooling_common/CodeGenerator.hpp"
 
 #include <memory>
 
@@ -42,18 +61,18 @@
 #include "AMDGPUGenInstrInfo.inc"
 #include "SIInstrInfo.h"
 #include "SIRegisterInfo.h"
-#include "common/error.hpp"
-#include "common/log.hpp"
+#include "common/Error.hpp"
+#include "common/Log.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/ExecutableSymbol.hpp"
+#include "hsa/GpuAgent.hpp"
+#include "hsa/HsaRuntimeInterceptor.hpp"
+#include "hsa/ISA.hpp"
+#include "hsa/LoadedCodeObject.hpp"
 #include "hsa/hsa.hpp"
-#include "hsa/hsa_agent.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
-#include "hsa/hsa_intercept.hpp"
-#include "hsa/hsa_isa.hpp"
-#include "hsa/hsa_loaded_code_object.hpp"
-#include "tooling_common/code_lifter.hpp"
-#include "tooling_common/target_manager.hpp"
-#include "tooling_common/tool_executable_manager.hpp"
+#include "tooling_common/CodeLifter.hpp"
+#include "tooling_common/TargetManager.hpp"
+#include "tooling_common/ToolExecutableManager.hpp"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"

@@ -1,5 +1,5 @@
 add_library(luthier_tooling SHARED
-        controller.cpp
+        Controller.cpp
 )
 
 target_include_directories(luthier_tooling PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})

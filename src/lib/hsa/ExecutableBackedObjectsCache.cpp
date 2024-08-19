@@ -220,10 +220,10 @@ llvm::Error ExecutableBackedObjectsCache::LoadedCodeObjectSymbolCache::
     invalidateOnDestruction(const LoadedCodeObjectSymbol &Symbol) {
   std::lock_guard Lock(CacheMutex);
   // Invalidate the address map first
-  auto SymbolLoadedAddress = Symbol.getLoadedSymbolContents();
+  auto SymbolLoadedAddress = Symbol.getLoadedSymbolAddress();
   LUTHIER_RETURN_ON_ERROR(SymbolLoadedAddress.takeError());
   LoadedAddressToSymbolMap.erase(
-      reinterpret_cast<luthier::address_t>(SymbolLoadedAddress->data()));
+      reinterpret_cast<luthier::address_t>(*SymbolLoadedAddress));
   // If the symbol is a kernel remove the address of its KD from the map
   // as well
   if (const auto *KernelSymbol =
@@ -251,10 +251,10 @@ ExecutableBackedObjectsCache::LoadedCodeObjectSymbolCache::cacheOnDeviceLoad(
     const LoadedCodeObjectSymbol &Symbol) {
   std::lock_guard Lock(CacheMutex);
   // Record the loaded address of the symbol, and cache it
-  auto SymbolLoadedAddress = Symbol.getLoadedSymbolContents();
+  auto SymbolLoadedAddress = Symbol.getLoadedSymbolAddress();
   LUTHIER_RETURN_ON_ERROR(SymbolLoadedAddress.takeError());
   LoadedAddressToSymbolMap.insert(
-      {reinterpret_cast<luthier::address_t>(SymbolLoadedAddress->data()),
+      {reinterpret_cast<luthier::address_t>(*SymbolLoadedAddress),
        &Symbol});
   // If the symbol is a kernel, cache the address of the kernel descriptor
   // as well
