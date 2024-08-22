@@ -504,6 +504,9 @@ def main():
     callback_args_struct = generate_api_args_struct(api_tables, api_names, api_table_names, hip_functions)
     dense_map_info = generate_api_id_dense_map_info()
 
+    hpp_structs_save_folder = os.path.dirname(args.hpp_structs_save_path)
+    if not os.path.exists(hpp_structs_save_folder):
+        os.makedirs(hpp_structs_save_folder)
     with open(args.hpp_structs_save_path, "w") as f:
         f.writelines("// NOLINTBEGIN\n")
         f.writelines(api_id_enums)
@@ -535,7 +538,9 @@ def main():
 
         cpp_file_contents += generate_wrapper_enable_disable_functions(api_name,
                                                                        interceptor_name)
-
+        intercept_cpp_folder = os.path.dirname(interceptor_cpp_path)
+        if not os.path.exists(intercept_cpp_folder):
+            os.makedirs(intercept_cpp_folder)
         with open(interceptor_cpp_path, "w") as f:
             f.writelines("// NOLINTBEGIN\n")
             f.writelines(cpp_file_contents)

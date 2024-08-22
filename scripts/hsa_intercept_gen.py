@@ -520,6 +520,9 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableInternalCallback(ApiEvtI
   return llvm::Error::success();
 }}"""
 
+    h_api_enums_structs_save_folder = os.path.dirname(args.h_api_enums_structs_save_path)
+    if not os.path.exists(h_api_enums_structs_save_folder):
+        os.makedirs(h_api_enums_structs_save_folder)
     # Write the generated code into appropriate files
     with open(args.h_api_enums_structs_save_path, "w") as f:
         f.writelines("// NOLINTBEGIN\n")
@@ -528,6 +531,9 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableInternalCallback(ApiEvtI
         f.writelines(callback_arguments_struct)
         f.writelines("// NOLINTEND\n")
 
+    cpp_implementation_save_folder = os.path.dirname(args.cpp_implementation_save_path)
+    if not os.path.exists(cpp_implementation_save_folder):
+        os.makedirs(cpp_implementation_save_folder)
     with open(args.cpp_implementation_save_path, "w") as f:
         f.writelines("// NOLINTBEGIN\n")
         f.writelines(wrapper_defs)
