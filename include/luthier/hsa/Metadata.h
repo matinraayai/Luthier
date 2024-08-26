@@ -21,7 +21,7 @@
 #ifndef LUTHIER_HSA_METADATA_H
 #define LUTHIER_HSA_METADATA_H
 #include <optional>
-#include <hip/hip_runtime_api.h>
+#include <hsa/hsa.h>
 #include <string>
 #include <vector>
 
@@ -46,6 +46,7 @@ enum class ValueKind : uint8_t {
   Pipe = 5,
   Queue = 6,
   HiddenGlobalOffsetX = 7,
+  HiddenArgKindBegin = HiddenGlobalOffsetX,
   HiddenGlobalOffsetY = 8,
   HiddenGlobalOffsetZ = 9,
   HiddenNone = 10,
@@ -69,6 +70,7 @@ enum class ValueKind : uint8_t {
   HiddenPrivateBase = 28,
   HiddenSharedBase = 29,
   HiddenQueuePtr = 30,
+  HiddenArgKindEnd = HiddenQueuePtr,
   Unknown = 0xff
 };
 
@@ -214,9 +216,9 @@ struct Metadata final {
   /// Arguments metadata. Optional.
   std::optional<std::vector<Arg::Metadata>> Args{std::nullopt};
   /// 'reqd_work_group_size' attribute. Optional.
-  std::optional<dim3> ReqdWorkGroupSize{std::nullopt};
+  std::optional<hsa_dim3_t> ReqdWorkGroupSize{std::nullopt};
   /// 'work_group_size_hint' attribute. Optional.
-  std::optional<dim3> WorkGroupSizeHint{std::nullopt};
+  std::optional<hsa_dim3_t> WorkGroupSizeHint{std::nullopt};
   /// 'vec_type_hint' attribute. Optional.
   std::optional<std::string> VecTypeHint{std::nullopt};
   /// External symbol created by runtime to store the kernel address
