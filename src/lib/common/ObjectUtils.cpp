@@ -167,7 +167,7 @@ llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
 }
 
 llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
-                                std::optional<dim3> &Out) {
+                                std::optional<hsa_dim3_t> &Out) {
   auto NodeMD = Map.find(Key);
   if (NodeMD != Map.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isArray()));
