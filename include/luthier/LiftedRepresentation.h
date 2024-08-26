@@ -93,18 +93,6 @@ private:
   /// unique pointer's ownership
   llvm::orc::ThreadSafeContext Context;
 
-  /// \brief A list of legacy pass managers that has been run on the lifted
-  /// <tt>llvm::MachineModuleInfo</tt> (MMI), primarily to print it into an
-  /// assembly/object file
-  /// \details After running passes on a \c llvm::MachineModuleInfoWrapperPass
-  /// (MMIWP) the pass manager takes control over the lifetime of the
-  /// <tt>MII</tt>, and destroys it once it goes out of scope; Therefore,
-  /// all passes run on any of the <tt>MMIWP</tt>s need to be stored here to
-  /// prevent deletion of the <tt>MMI</tt>s \n
-  /// This will be removed once the LLVM Code Gen port to the new pass manager
-  /// is complete
-  llvm::SmallVector<std::unique_ptr<llvm::legacy::PassManager>, 2> PMs{};
-
   /// \brief primary storage of the Module and the Machine Module Info of the
   /// lifted loaded code objects
   llvm::SmallDenseMap<hsa_loaded_code_object_t,
@@ -162,6 +150,29 @@ private:
   /// and its machine instruction users
   llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>>
       GlobalValueMIUses{};
+public:
+  /// \brief a struct for constructing a machine call graph
+  struct CallGraphNode {
+    /// The function associated with the callgraph node
+    llvm::MachineFunction *Node;
+    /// The functions \c Node calls
+    llvm::SmallVector<llvm::MachineFunction *> CalledFunctions;
+    /// The functions that call \c Node
+    llvm::SmallVector<llvm::MachineFunction *> CalleeFunctions;
+  };
+private:
+
+  /// A map which keeps track of the \c CallGraphNode of each
+  /// \c llvm::MachineFunction in the lifted representation; It is
+  /// constructed by determining the target of all call instructions of the
+  /// functions in the lifted representation
+  /// TODO: Add more thorough analysis for the CallGraph
+  llvm::DenseMap<llvm::MachineFunction *, std::unique_ptr<CallGraphNode>>
+      CallGraph{};
+
+  /// Whether code lifter analysis was able to find the target of all
+  /// call instructions or not
+  bool HasNonDeterministicCallGraph{false};
 
   LiftedRepresentation();
 
@@ -370,6 +381,19 @@ public:
       return {};
     else
       return UsesIt->getSecond();
+  }
+
+
+  /// \return the \c CallGraphNode associated with the \p MF
+  const CallGraphNode &getCallGraphNode(llvm::MachineFunction * MF) const {
+    return *CallGraph.at(MF);
+  }
+
+
+  /// \return \c true if callgraph analysis was able to determine the target
+  /// of all call instructions in the lifted representation, \c false otherwise
+  bool hasNonDeterministicCallGraph() const {
+    return HasNonDeterministicCallGraph;
   }
 };
 

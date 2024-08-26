@@ -22,7 +22,6 @@
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
 
-#include <hip/amd_detail/hip_api_trace.hpp>
 #include <luthier/ErrorCheck.h>
 #include <luthier/InstrumentationTask.h>
 #include <luthier/Intrinsic/Intrinsics.h>
@@ -32,6 +31,7 @@
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
 #include <luthier/hsa/TraceApi.h>
+#include <luthier/hip/TraceApi.h>
 #include <luthier/types.h>
 
 namespace luthier {
