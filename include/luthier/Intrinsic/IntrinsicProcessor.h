@@ -46,6 +46,59 @@ class MachineInstrBuilder;
 
 namespace luthier {
 
+/// \brief a set of kernel arguments Luthier's intrinsic lowering mechanism
+/// can ensure access to
+/// \details these values are only available to the kernel as "arguments"
+/// as they come either preloaded in S/VGPRs or they are passed as "hidden"
+/// arguments in the kernel argument buffer. As these values (or the way to
+/// access them) are stored in GPRs they can be overwritten the moment they
+/// are unused by the instrumented app. To ensure access to these values
+/// in instrumentation routines, Luthier must emit a prologue on top of the
+/// kernel's original prologue to save these values in an unused register,
+/// or spill them to the top of the instrumentation stack's buffer to be
+/// loaded when necessary
+enum KernelArgumentType {
+  PRIVATE_SEGMENT_BUFFER = 0,
+  ALWAYS_IN_SGPR_BEGIN = PRIVATE_SEGMENT_BUFFER,
+  KERNARG_SEGMENT_PTR = 1,
+  DISPATCH_ID = 2,
+  FLAT_SCRATCH_INIT = 3,
+  PRIVATE_SEGMENT_WAVE_BYTE_OFFSET = 4,
+  ALWAYS_IN_SGPR_END = PRIVATE_SEGMENT_WAVE_BYTE_OFFSET,
+  DISPATCH_PTR = 5,
+  EITHER_IN_SGPR_OR_HIDDEN_BEGIN = DISPATCH_PTR,
+  QUEUE_PTR = 6,
+  PRIVATE_SEGMENT_SIZE = 7,
+  EITHER_IN_SGPR_OR_HIDDEN_END = PRIVATE_SEGMENT_SIZE,
+  GLOBAL_OFFSET_X = 8,
+  HIDDEN_BEGIN = GLOBAL_OFFSET_X,
+  GLOBAL_OFFSET_Y = 9,
+  GLOBAL_OFFSET_Z = 10,
+  PRINT_BUFFER = 11,
+  HOSTCALL_BUFFER = 12,
+  DEFAULT_QUEUE = 12,
+  COMPLETION_ACTION = 13,
+  MULTIGRID_SYNC = 14,
+  BLOCK_COUNT_X = 15,
+  BLOCK_COUNT_Y = 16,
+  BLOCK_COUNT_Z = 17,
+  GROUP_SIZE_X = 18,
+  GROUP_SIZE_Y = 19,
+  GROUP_SIZE_Z = 20,
+  REMAINDER_X = 21,
+  REMAINDER_Y = 22,
+  REMAINDER_Z = 23,
+  GRID_DIMS = 24,
+  HEAP_V1 = 25,
+  DYNAMIC_LDS_SIZE = 26,
+  PRIVATE_BASE = 27,
+  SHARED_BASE = 28,
+  HIDDEN_END = SHARED_BASE,
+  WORK_ITEM_X = 29,
+  WORK_ITEM_Y = 30,
+  WORK_ITEM_Z = 31
+};
+
 /// \brief Contains information about the values used/defined by
 /// a \c llvm::CallInst to a Luthier Intrinsic, and its inline assembly
 /// constraint (e.g. 'v', 's', etc)
@@ -88,6 +141,12 @@ private:
   /// An arbitrary data (if needed) to be passed from the IR processing stage to
   /// the MIR processing stage
   llvm::Any Data{};
+
+  /// A set of physical registers that needs to be accessed by this intrinsic
+  llvm::SmallDenseSet<llvm::MCRegister, 1> AccessedPhysicalRegisters{};
+
+  /// A set of kernel arguments that needs to be accessed by this intrinsic
+  llvm::SmallDenseSet<KernelArgumentType, 4> AccessedKernelArguments{};
 
 public:
 
@@ -135,6 +194,18 @@ public:
   /// \c IntrinsicMIRProcessorFunc when emitting Machine Instructions
   template <typename T> const T &getLoweringData() const {
     return *llvm::any_cast<T>(&Data);
+  }
+
+  /// Asks the code generator to ensure access to the \p PhysReg during
+  /// the MIR lowering stage
+  void requestAccessToPhysicalRegister(llvm::MCRegister PhysReg) {
+    AccessedPhysicalRegisters.insert(PhysReg);
+  }
+
+  /// Asks the code generator to ensure access to the \p KernArg during
+  /// the MIR lowering stage
+  void requestAccessToKernelArgument(KernelArgumentType KernArg) {
+    AccessedKernelArguments.insert(KernArg);
   }
 };
 
