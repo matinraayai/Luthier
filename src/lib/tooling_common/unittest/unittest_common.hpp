@@ -9,26 +9,6 @@
 #ifndef UNITTEST_COMMON_HPP
 #define UNITTEST_COMMON_HPP
 
-#include "hsa/hsa.hpp"
-#include "hsa/hsa_agent.hpp"
-#include "hsa/hsa_code_object_reader.hpp"
-#include "hsa/hsa_executable.hpp"
-#include "hsa/hsa_executable_symbol.hpp"
-#include "hsa/hsa_intercept.hpp"
-#include "hsa/hsa_intercept.hpp"
-#include "hsa/hsa_platform.hpp"
-
-#include "llvm/ADT/StringRef.h"
-#include "llvm/CodeGen/MIRPrinter.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/raw_ostream.h"
-
-#include "luthier/luthier.h"
-#include "luthier/types.h"
-#include "common/error.hpp"
-#include "common/object_utils.hpp"
-
 #include <cstring>
 #include <cstdlib>
 #include <iostream>

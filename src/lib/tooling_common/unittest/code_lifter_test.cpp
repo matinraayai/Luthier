@@ -6,29 +6,28 @@
 /// longer description
 //===----------------------------------------------------------------------===//
 
-// #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-// #include <doctest/doctest.h>
-#include "unittest_common.hpp"
-#include "tooling_common/code_lifter.hpp"
+#include "hsa/hsa.hpp"
+#include "hsa/GpuAgent.hpp"
+#include "hsa/CodeObjectReader.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/ExecutableSymbol.hpp"
+#include "hsa/ExecutableBackedObjectsCache.hpp"
+#include "hsa/HsaRuntimeInterceptor.hpp"
+
+#include "llvm/ADT/StringRef.h"
+#include "llvm/CodeGen/MIRPrinter.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cstddef>
+
+#include "luthier/luthier.h"
+#include "luthier/types.h"
+#include "common/Error.hpp"
+#include "common/ObjectUtils.hpp"
+
+#include "unittest_common.hpp"
+#include "tooling_common/CodeLifter.hpp"
 #include <string>
-
-/*
-int factorial(int number) {
-  return number <= 1 ? number : factorial(number - 1) * number;
-}
-
-TEST_CASE("testing the factorial function") {
-  CHECK(factorial(0) == 1);
-  CHECK(factorial(1) == 1);
-  CHECK(factorial(2) == 2);
-  CHECK(factorial(3) == 6);
-  CHECK(factorial(10) == 3628800);
-}
-*/
-
 
 static llvm::cl::opt<std::string> 
 CodeObjF(llvm::cl::Positional, llvm::cl::Required, 
@@ -65,22 +64,17 @@ int main(int argc, char** argv) {
   auto CodeObjBuf = llvm::MemoryBuffer::getFile(CodeObjF);
   UNITTEST_RETURN_ON_ERROR(CodeObjBuf.getError());
   
-  /// Create HSA interceptor to capture API table
-  auto &TestInterceptor = luthier::hsa::Interceptor::instance();
-  
-  /// Create Luthier components neccessary to run the component under test
-  /// In this case, the code lifter 
-  auto *TargetManager   = new luthier::TargetManager();
-  auto *TestPlatform    = new luthier::hsa::Platform();
-  auto *Lifter          = new luthier::CodeLifter();
+  /// Create Luthier singletons neccessary to run the component under test
+  auto *TargetManager  = new luthier::TargetManager();
+  auto *HsaPlatform    = new luthier::hsa::ExecutableBackedObjectsCache();
+  auto *Lifter         = new luthier::CodeLifter();
+  auto *HsaInterceptor = new luthier::hsa::HsaRuntimeInterceptor();
 
   UNITTEST_RETURN_ON_ERROR(luthier::hsa::init());
-  if (TestInterceptor.captureHsaApiTable(&CapturedTable)) {
-    llvm::outs() << "Successfully captured the HSA API Table\n\n";
-  } else {
-    llvm::outs() << "Failed to capture the HSA API Table\n\n";
-    return -1;
-  }
+  
+  llvm::outs() << "Attempting to capture API Table\n\n";
+  UNITTEST_RETURN_ON_ERROR(HsaInterceptor->captureApiTable(&CapturedTable));
+  llvm::outs() << "Successfully captured the HSA API Table\n\n";
 
   auto Reader = luthier::hsa::CodeObjectReader
                        ::createFromMemory(CodeObjBuf.get()->getBuffer());
@@ -103,10 +97,13 @@ int main(int argc, char** argv) {
 
   UNITTEST_RETURN_ON_ERROR(luthier::hsa::shutdown());
   
+  HsaInterceptor->uninstallApiTables();
+  llvm::outs() << "HSA Shutdown called and API Tables uninstalled\n\n";
+  
   delete Lifter;
-  delete TestPlatform;
   delete TargetManager;
-  TestInterceptor.uninstallApiTables();
+  delete HsaPlatform;
+  delete HsaInterceptor;
 
   llvm::outs() << "CODE LIFTER TEST FINISHED\n\n";
   return 0;

@@ -5,6 +5,5 @@ target_link_libraries(
         PUBLIC
         LuthierCommon
         doctest::doctest
-        luthier_common
 )
 
