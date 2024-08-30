@@ -4,6 +4,8 @@ include(TableGen)
 add_tablegen(luthier-tblgen luthier
         RealToPseudoOpcodeMapBackend.hpp
         RealToPseudoOpcodeMapBackend.cpp
+        RealToPseudoRegisterMapBackend.hpp
+        RealToPseudoRegisterMapBackend.cpp
         Main.cpp
 )
 

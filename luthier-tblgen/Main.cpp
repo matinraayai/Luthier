@@ -22,6 +22,7 @@
 #include <llvm/TableGen/Record.h>
 
 #include "RealToPseudoOpcodeMapBackend.hpp"
+#include "RealToPseudoRegisterMapBackend.hpp"
 
 namespace {
 
@@ -30,13 +31,21 @@ llvm::cl::opt<bool> GenerateSiRealToPseudoOpcode(
     llvm::cl::desc(
         "Generate a Real to Pseudo Opcode map for the AMDGPU backend"));
 
+llvm::cl::opt<bool> GenerateSiRealToPseudoRegEnum(
+    "gen-si-real-to-pseudo-reg-enum-map",
+    llvm::cl::desc(
+        "Generate a Real to Pseudo Register enum map for the AMDGPU backend"));
+
 } // anonymous namespace
 
 namespace luthier {
 
 bool TableGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
   if (GenerateSiRealToPseudoOpcode)
-    EmitMapTable(Records, OS);
+    emitRealToPseudoOpcodeTable(Records, OS);
+  if (GenerateSiRealToPseudoRegEnum) {
+    emitRealToPseudoRegisterTable(Records, OS);
+  }
   return false;
 }
 

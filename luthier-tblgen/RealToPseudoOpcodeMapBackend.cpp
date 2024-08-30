@@ -30,7 +30,7 @@
 namespace luthier {
 
 unsigned
-RealToPseudoOpcodeMapEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
+RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
   llvm::ArrayRef<const llvm::CodeGenInstruction *> NumberedInstructions =
       Target.getInstructionsByEnumValue();
 
@@ -70,7 +70,7 @@ RealToPseudoOpcodeMapEmitter::emitBinSearchTable(llvm::raw_ostream &OS) {
   return NumberedInstructions.size();
 }
 
-void RealToPseudoOpcodeMapEmitter::emitBinSearch(llvm::raw_ostream &OS,
+void RealToPseudoOpcodeMapEmitter::emitIndexing(llvm::raw_ostream &OS,
                                                  unsigned TableSize) {
   OS << llvm::formatv("  if (Opcode > {0})\n", TableSize);
   OS << "    return -1;\n";
@@ -80,11 +80,7 @@ void RealToPseudoOpcodeMapEmitter::emitBinSearch(llvm::raw_ostream &OS,
 
 void RealToPseudoOpcodeMapEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
                                                    unsigned TableSize) {
-  // Emit binary search algorithm to locate instructions in the
-  // relation table. If found, return opcode value from the appropriate column
-  // of the table.
-  emitBinSearch(OS, TableSize);
-
+  emitIndexing(OS, TableSize);
   OS << "}\n\n";
 }
 
@@ -93,13 +89,13 @@ void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   OS << "uint16_t getPseudoOpcodeFromReal(uint16_t Opcode) {\n";
 
   // Emit map table.
-  unsigned TableSize = emitBinSearchTable(OS);
+  unsigned TableSize = emitTable(OS);
 
   // Emit rest of the function body.
   emitMapFuncBody(OS, TableSize);
 }
 
-void EmitMapTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS) {
+void emitRealToPseudoOpcodeTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS) {
   llvm::CodeGenTarget Target(Records);
   OS << "#ifndef GET_REAL_TO_PSEUDO_OPCODE_MAP\n";
   OS << "#define GET_REAL_TO_PSEUDO_OPCODE_MAP\n";

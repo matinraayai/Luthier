@@ -41,22 +41,21 @@ private:
   /// instruction
   llvm::StringMap<llvm::Record *> PseudoInsts;
 
-  /// Emits the binary search portion of the query function; Currently works
-  /// the same way as the \c InstrMap emission in vanilla tablegen
+  /// Emits the indexing portion of the query function; This is different from
+  /// the way \c InstrMap emission in vanilla tablegen works; Instead it uses
+  /// the index of the original instruction enums as the key to find its
+  /// entry inside the map
   /// \param OS Output stream for the emitted file
-  /// \param TableSize Size of
-  void emitBinSearch(llvm::raw_ostream &OS, unsigned TableSize);
+  /// \param TableSize Size of the table
+  void emitIndexing(llvm::raw_ostream &OS, unsigned TableSize);
 
-  /// Emits the binary search table; Currently works the same way as the
-  /// \c InstrMap emission in vanilla tablegen
+  /// Emits the table mapping the instruction opcode to its pseudo variant
   /// \param OS Output stream for the emitted file
-  /// \return Number of entries in the emitted table, used by \c emitBinSearch
+  /// \return Number of entries in the emitted table, used by \c emitIndexing
   /// and \c emitMapFuncBody
-  unsigned emitBinSearchTable(llvm::raw_ostream &OS);
+  unsigned emitTable(llvm::raw_ostream &OS);
 
-  // Lookup functions to query binary search tables.
-  /// Emit lookup function to query the binary search table; Works exactly as
-  /// the \c InstrMap emission in vanilla tablegen
+  /// Emits the lookup function body
   /// \param OS Output stream for the emitted file
   /// \param TableSize Size of the table previously emitted
   void emitMapFuncBody(llvm::raw_ostream &OS, unsigned TableSize);
@@ -82,13 +81,13 @@ public:
   void emitTablesWithFunc(llvm::raw_ostream &OS);
 };
 
-
 /// Parse the \c Records and create a mapping between real to pseudo opcodes
 /// in the AMDGPU backend; This includes all instructions inherited from
 /// \c SIMCInstr class
 /// \param Records Records parsed by the tablegen parser
 /// \param OS Output stream of the emitted file
-void EmitMapTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
+void emitRealToPseudoOpcodeTable(llvm::RecordKeeper &Records,
+                                 llvm::raw_ostream &OS);
 } // namespace luthier
 
 #endif
