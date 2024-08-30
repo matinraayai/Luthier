@@ -29,7 +29,6 @@ namespace luthier {
 
 unsigned RealToPseudoRegisterMapEmitter::emitTable(llvm::raw_ostream &OS) {
   auto &NumberedRegisters = Target.getRegBank().getRegisters();
-  llvm::outs() << "Parsed the register banks\n";
   llvm::StringRef Namespace = Target.getRegNamespace();
   OS << "static constexpr uint16_t RealToPseudoRegisterMapTable[] {\n0,\n";
   for (const auto &NumberedReg : NumberedRegisters) {
@@ -42,7 +41,6 @@ unsigned RealToPseudoRegisterMapEmitter::emitTable(llvm::raw_ostream &OS) {
       auto PrefixPos = PseudoRegName.find(RealRegSuffix);
       if (PrefixPos != std::string::npos) {
         PseudoRegName.erase(PrefixPos, strlen(RealRegSuffix));
-        llvm::outs() << PseudoRegName << "\n";
       }
     }
     OS << "llvm::" << Namespace << "::" << PseudoRegName << ", \n";

@@ -35,7 +35,6 @@ RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
       Target.getInstructionsByEnumValue();
 
   llvm::StringRef Namespace = Target.getInstNamespace();
-  llvm::outs() << "Number of pseudo insts: " << PseudoInsts.size() << "\n";
   OS << "static constexpr uint16_t RealToPseudoOpcodeMapTable[] {\n";
   for (const auto &NumberedInst : NumberedInstructions) {
     llvm::Record *SIInst = NumberedInst->TheDef;
