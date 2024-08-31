@@ -40,6 +40,7 @@ private:
   /// \c KernelArgumentsRegisterLocation is stored in a free VGPR
   llvm::MCRegister FlatScratchInstrumentationStackReg;
 
+
 public:
   InstrumentationStateValueSegment(llvm::SlotIndex S, llvm::SlotIndex E,
                                    llvm::MCRegister KAReg,
@@ -96,6 +97,8 @@ private:
   std::pair<const hsa::LoadedCodeObjectKernel *, llvm::MachineFunction *>
       Kernel;
 
+  const llvm::LivePhysRegs &AccessedPhysicalRegisters;
+
   /// Slot index tracking for each machine instruction of each function in \c LR
   llvm::SmallDenseMap<llvm::MachineFunction *,
                       std::unique_ptr<llvm::SlotIndexes>>
@@ -110,6 +113,17 @@ private:
   /// Mapping between the MIs of the target app getting instrumented and their
   /// hooks
   llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap;
+
+  /// Whether or not only the kernel of the \c LR needs a prologue or not
+  /// If true, then it means we don't need to emit instructions in the
+  /// instrumented kernel and instrumented device functions for moving
+  /// the value state register and the instrumentation flat scratch register
+  OnlyKernelNeedsPrologue{false};
+
+  /// Contains a mapping between the hook insertion point's MI and its Value
+  /// Segment interval for faster lookup
+  llvm::DenseMap<const llvm::MachineInstr *, InstrumentationStateValueSegment>
+      HookMIToValueStateInterval{};
 
   /// \brief Tries to find a fixed location to store the instrumentation value
   /// register in a VPGR or an AGPR, as well as an SGPR pair to store the flat
@@ -146,7 +160,8 @@ public:
 
   explicit StateValueLocationIntervalsPass(
       const luthier::LiftedRepresentation &LR,
-      llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap);
+      llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap
+      const llvm::LivePhysRegs & AccessedPhysicalRegs);
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "State Value Location Intervals Pass";
