@@ -1,0 +1,67 @@
+//===-- LRRegisterLiveness.h ------------------------------------*- C++ -*-===//
+// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file describes the \c LRRegisterLiveness class, which analyzes the
+/// the liveness of each \c llvm::MachineInstr of a \c LiftedRepresentation
+/// at a function level.
+//===----------------------------------------------------------------------===//
+#ifndef LUTHIER_LR_REGISTER_LIVENESS_H
+#define LUTHIER_LR_REGISTER_LIVENESS_H
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
+#include <llvm/CodeGen/MachineInstr.h>
+
+namespace luthier {
+
+class LiftedRepresentation;
+
+class LRRegisterLiveness {
+private:
+  const LiftedRepresentation &LR;
+
+  /// A mapping between an \c llvm::MachineInstr and the set of physical
+  /// registers that are live before it is executed \n
+  /// This mapping is only valid before any LLVM pass is run over the MMIs;
+  /// After that pointers of each machine instruction gets changed by the
+  /// underlying allocator, and this map becomes invalid
+  llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
+      MachineInstrLivenessMap{};
+
+public:
+  explicit LRRegisterLiveness(const LiftedRepresentation &LR);
+
+  /// \returns the set of physical registers that are live before executing
+  /// the instruction \p MI
+  /// \note This
+  [[nodiscard]] const llvm::LivePhysRegs *
+  getLiveInPhysRegsOfMachineInstr(const llvm::MachineInstr &MI) const {
+    auto It = MachineInstrLivenessMap.find(&MI);
+    if (It == MachineInstrLivenessMap.end())
+      return nullptr;
+    else
+      return It->second.get();
+  }
+
+  /// Recomputes the Live-ins map for each \c llvm::MachineInstr in the Lifted
+  /// Representation
+  /// This includes both the instructions lifted from the code objects, and
+  /// the ones manually injected by the tool writer
+  void recomputeLiveIns();
+};
+} // namespace luthier
+
+#endif

@@ -137,42 +137,11 @@ private:
   /// underlying allocator, and this map becomes invalid
   llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> MachineInstrToMCMap{};
 
-  /// A mapping between an \c llvm::MachineInstr and the set of physical
-  /// registers that are live before it is executed \n
-  /// This mapping is only valid before any LLVM pass is run over the MMIs;
-  /// After that pointers of each machine instruction gets changed by the
-  /// underlying allocator, and this map becomes invalid
-  llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
-      MachineInstrLivenessMap{};
-
   /// A mapping between a \c llvm::GlobalValue
   /// (either \c llvm::GlobalVariable or a \c llvm::Function)
   /// and its machine instruction users
   llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>>
       GlobalValueMIUses{};
-public:
-  /// \brief a struct for constructing a machine call graph
-  struct CallGraphNode {
-    /// The function associated with the callgraph node
-    llvm::MachineFunction *Node;
-    /// The functions \c Node calls
-    llvm::SmallVector<llvm::MachineFunction *> CalledFunctions;
-    /// The functions that call \c Node
-    llvm::SmallVector<llvm::MachineFunction *> CalleeFunctions;
-  };
-private:
-
-  /// A map which keeps track of the \c CallGraphNode of each
-  /// \c llvm::MachineFunction in the lifted representation; It is
-  /// constructed by determining the target of all call instructions of the
-  /// functions in the lifted representation
-  /// TODO: Add more thorough analysis for the CallGraph
-  llvm::DenseMap<llvm::MachineFunction *, std::unique_ptr<CallGraphNode>>
-      CallGraph{};
-
-  /// Whether code lifter analysis was able to find the target of all
-  /// call instructions or not
-  bool HasNonDeterministicCallGraph{false};
 
   LiftedRepresentation();
 
@@ -335,6 +304,20 @@ public:
     return make_range(global_begin(), global_end());
   }
 
+  /// \return the \c llvm::Module and \c llvm::MachineModuleInfo of the
+  /// lifted \p LCO if \p LCO is included in the Lifted Representation;
+  /// Otherwise, returns <tt>{nullptr, nullptr}</tt>
+  [[nodiscard]] std::pair<llvm::Module *, llvm::MachineModuleInfo *>
+  getModuleAndMMI(hsa_loaded_code_object_t LCO) const {
+    auto It = RelatedLCOs.find(LCO);
+    if (It == RelatedLCOs.end())
+      return {nullptr, nullptr};
+    else
+      return It->second;
+  }
+
+  /// \return the \c llvm::MachineFunction associated with \p Func if exists;
+  /// \c nullptr otherwise
   const llvm::MachineFunction *
   getMF(const hsa::LoadedCodeObjectSymbol &Func) const {
     auto It = RelatedFunctions.find(&Func);
@@ -344,6 +327,8 @@ public:
       return It->second;
   }
 
+  /// \return the \c llvm::GlobalVariable associated with \p GV if exists;
+  /// \c nullptr otherwise
   const llvm::GlobalVariable *
   getGV(const hsa::LoadedCodeObjectSymbol &GV) const {
     auto It = RelatedGlobalVariables.find(&GV);
@@ -353,22 +338,15 @@ public:
       return It->second;
   }
 
+  /// \returns the \c hsa::Instr that the \p MI was lifted from; If
+  /// the \p MI was not part of the lifted code, returns <tt>nullptr</tt>
   [[nodiscard]] const hsa::Instr *
-  getHSAInstrOfMachineInstr(const llvm::MachineInstr &MI) const {
+  getHSAInstr(const llvm::MachineInstr &MI) const {
     auto It = MachineInstrToMCMap.find(&MI);
     if (It == MachineInstrToMCMap.end())
       return nullptr;
     else
       return It->second;
-  }
-
-  [[nodiscard]] const llvm::LivePhysRegs *
-  getLiveInPhysRegsOfMachineInstr(const llvm::MachineInstr &MI) const {
-    auto It = MachineInstrLivenessMap.find(&MI);
-    if (It == MachineInstrLivenessMap.end())
-      return nullptr;
-    else
-      return It->second.get();
   }
 
   llvm::ArrayRef<llvm::MachineInstr *>
@@ -381,19 +359,6 @@ public:
       return {};
     else
       return UsesIt->getSecond();
-  }
-
-
-  /// \return the \c CallGraphNode associated with the \p MF
-  const CallGraphNode &getCallGraphNode(llvm::MachineFunction * MF) const {
-    return *CallGraph.at(MF);
-  }
-
-
-  /// \return \c true if callgraph analysis was able to determine the target
-  /// of all call instructions in the lifted representation, \c false otherwise
-  bool hasNonDeterministicCallGraph() const {
-    return HasNonDeterministicCallGraph;
   }
 };
 
