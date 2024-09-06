@@ -17,13 +17,15 @@
 /// \file
 /// This file implements the State Value Location Intervals Pass.
 //===----------------------------------------------------------------------===//
-#include "common/Error.hpp"
 #include "tooling_common/LRStateValueLocations.hpp"
+#include "common/Error.hpp"
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <luthier/LRCallgraph.h>
 #include <luthier/LRRegisterLiveness.h>
+
+#include <utility>
 
 namespace luthier {
 
@@ -116,75 +118,166 @@ std::pair<llvm::MCRegister, bool> findVGPRLocationForHook(
 }
 
 LRStateValueLocations::LRStateValueLocations(
-    const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
-    llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
+    const luthier::LiftedRepresentation &LR, hsa::LoadedCodeObject LCO,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
     const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
-    const LRRegisterLiveness &RegLiveness)
-    : LR(LR), LCO(LCO), MIToHookMap(MIToHookMap),
+    const luthier::LRRegisterLiveness &RegLiveness)
+    : LR(LR), LCO(std::move(LCO)), MIToHookMap(MIToHookMap),
       HooksAccessedPhysicalRegistersNotInLiveIns(
-          HooksAccessedPhysicalRegistersNotInLiveIns) {
+          HooksAccessedPhysicalRegistersNotInLiveIns),
+      RegLiveness(RegLiveness) {}
 
-  //  for (const auto &[FuncSymbol, MF] : LR.functions()) {
-  //    // Locate the kernels in the current loaded code object being processed
-  //    if (auto *KernelSymbol =
-  //            llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(FuncSymbol)) {
-  //      if (KernelSymbol->getLoadedCodeObject().handle ==
-  //      LCO.asHsaType().handle)
-  //        Kernels.emplace_back(KernelSymbol, MF);
-  //    }
-  //    // Locate the device functions in the current loaded code object being
-  //    // processed
-  //    if (auto *DeviceFuncSymbol =
-  //            llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(FuncSymbol))
-  //            {
-  //      if (DeviceFuncSymbol->getLoadedCodeObject().handle ==
-  //          LCO.asHsaType().handle) {
-  //        DeviceFunctions.emplace_back(DeviceFuncSymbol, MF);
-  //      }
-  //    }
-  //  }
+bool allocateUnusedRegister(
+    llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
+    const llvm::TargetRegisterClass *RC,
+    const llvm::LivePhysRegs &PhysicalRegsUsed, unsigned int NumRegs,
+    llvm::SmallVectorImpl<llvm::MCRegister> &Regs) {
+  unsigned int NumRegFound = 0;
+
+  for (llvm::MCRegister Reg : *RC) {
+    bool IsUnused =
+        llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
+          auto &MRI = MF->getRegInfo();
+          return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
+                 PhysicalRegsUsed.available(MRI, Reg);
+        });
+    if (IsUnused) {
+      Regs.push_back(Reg);
+      NumRegFound++;
+      if (NumRegFound == NumRegs)
+        return true;
+    }
+  }
+  return false;
+}
+
+llvm::MCRegister
+allocateUnusedRegister(llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
+                       const llvm::TargetRegisterClass *RC,
+                       const llvm::LivePhysRegs &AccessedPhysRegsNotInLiveIns) {
+  for (llvm::MCRegister Reg : *RC) {
+    bool IsUnused =
+        llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
+          auto &MRI = MF->getRegInfo();
+          bool IsUnusedInMF = MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
+          llvm::outs() << MF->getSubtarget().getRegisterInfo()->getName(Reg) << "\n";
+          llvm::outs() << "Is allocatable: " << MRI.isAllocatable(Reg) << "\n";
+          llvm::outs() << "Is phys reg used: " << MRI.isPhysRegUsed(Reg) << "\n";
+          if (!AccessedPhysRegsNotInLiveIns.empty())
+            IsUnusedInMF = IsUnusedInMF && AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
+          return IsUnusedInMF;
+        });
+    if (IsUnused) {
+      return Reg;
+    }
+  }
+  return {};
+}
+
+std::shared_ptr<StateValueStorage>
+LRStateValueLocations::findFixedStateValueStorageLocation(
+    llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions) const {
+  // Tentative place to hold an SGPR pair for the instrumentation stack
+  // flat scratch
+  llvm::SmallVector<llvm::MCRegister, 2> FSLocation{};
+
+  // Find the next VGPR available to hold the value state
+  llvm::MCRegister ValueStateFixedLocation =
+      allocateUnusedRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
+                             HooksAccessedPhysicalRegistersNotInLiveIns);
+  // If not find two free AGPRs; one to hold the value state, the other as
+  // a temp register
+  if (ValueStateFixedLocation == 0) {
+    llvm::SmallVector<llvm::MCRegister, 2> ScavengedAGPRs;
+    bool Scavenged = allocateUnusedRegister(
+        RelatedFunctions, &llvm::AMDGPU::AGPR_32RegClass,
+        HooksAccessedPhysicalRegistersNotInLiveIns, 2, ScavengedAGPRs);
+    if (Scavenged)
+      return std::make_shared<TwoAGPRValueStorage>(ScavengedAGPRs[0],
+                                                   ScavengedAGPRs[1]);
+    else if (ScavengedAGPRs.size() == 1) {
+      ValueStateFixedLocation = ScavengedAGPRs[0];
+    }
+    // Even if we were able to scavenge an AGPR, just to be safe, we
+    // keep the flat scratch pointing to the bottom of the instrumentation
+    // stack in case of an emergency spill of a VGPR to read back the AGPR
+    // This shouldn't be necessary in GFX90A+ where AGPRs can be used as
+    // normal VGPRs
+    Scavenged = allocateUnusedRegister(
+        RelatedFunctions, &llvm::AMDGPU::SGPR_32RegClass,
+        HooksAccessedPhysicalRegistersNotInLiveIns, 2, FSLocation);
+    if (ValueStateFixedLocation != 0 && Scavenged)
+      return std::make_shared<AGPRWithTwoSGPRSValueStorage>(
+          ValueStateFixedLocation, FSLocation[0], FSLocation[1]);
+    else if (FSLocation.size() == 2) {
+      return std::make_shared<SpilledWithTwoSGPRsValueStorage>(FSLocation[0],
+                                                               FSLocation[1]);
+    } else
+      return nullptr;
+  } else {
+    return std::make_shared<VGPRValueStorage>(ValueStateFixedLocation);
+  }
+}
+
+const StateValueStorageSegment *
+LRStateValueLocations::getValueSegmentForInstr(llvm::MachineInstr &MI) const {
+  auto *MF = MI.getParent()->getParent();
+  if (!ValueStateRegAndFlatScratchIntervals.contains(MF))
+    return nullptr;
+  if (!FunctionsSlotIndexes.contains(&MF->getFunction())) {
+    return nullptr;
+  }
+  auto &Segments = ValueStateRegAndFlatScratchIntervals.at(MF);
+  auto MISlot = FunctionsSlotIndexes.at(&MF->getFunction())
+                    ->getInstructionIndex(MI, false);
+  for (auto &Segment : Segments) {
+    if (Segment.contains(MISlot))
+      return &Segment;
+  }
+  return nullptr;
+}
+
+const InsertionPointStateValueDescriptor &
+LRStateValueLocations::getStateValueDescriptorOfHookInsertionPoint(
+    const llvm::MachineInstr &MI) const {
+  return HookMIToValueStateInterval.at(&MI);
+}
+
+llvm::Expected<std::unique_ptr<LRStateValueLocations>>
+LRStateValueLocations::create(
+    const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
+    const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
+    const LRRegisterLiveness &RegLiveness) {
+  std::unique_ptr<LRStateValueLocations> Out(new LRStateValueLocations(
+      LR, LCO, MIToHookMap, HooksAccessedPhysicalRegistersNotInLiveIns,
+      RegLiveness));
+  LUTHIER_RETURN_ON_ERROR(Out->calculateStateValueLocations());
+  return Out;
+}
+
+llvm::Error LRStateValueLocations::calculateStateValueLocations() {
   // Populate the slot indexes for each instruction of both kernels and
   // device functions in the LCO being processed
   llvm::SmallVector<llvm::MachineFunction *, 4> MFs;
-  MFs.reserve(LR.function_size());
   for (const auto &[FuncSymbol, MF] : LR.functions()) {
-    auto &SlotIndexes =
-        FunctionsSlotIndexes
-            .insert({&MF->getFunction(), std::unique_ptr<llvm::SlotIndexes>()})
-            .first->getSecond();
-    SlotIndexes = std::make_unique<llvm::SlotIndexes>(*MF);
-    MFs.push_back(MF);
+    if (FuncSymbol->getLoadedCodeObject() == LCO) {
+      auto &SlotIndexes = FunctionsSlotIndexes
+                              .insert({&MF->getFunction(),
+                                       std::unique_ptr<llvm::SlotIndexes>()})
+                              .first->getSecond();
+      SlotIndexes = std::make_unique<llvm::SlotIndexes>(*MF);
+      MFs.push_back(MF);
+    }
   }
-  //  for (const auto &[DeviceFuncSymbol, MF] : DeviceFunctions) {
-  //    auto &SlotIndexes =
-  //        FunctionsSlotIndexes
-  //            .insert({&MF->getFunction(),
-  //            std::unique_ptr<llvm::SlotIndexes>()}) .first->getSecond();
-  //    SlotIndexes = std::make_unique<llvm::SlotIndexes>(*MF);
-  //  }
   // Try to find a fixed location to store the state value
   auto StateValueFixedLocation = findFixedStateValueStorageLocation(MFs);
 
-  // If we have multiple kernels, check if the callgraph is deterministic,
-  // and if so, if a function has multiple callers. We can't handle those
-  // cases yet
-  if (Kernels.size() > 1) {
-    auto CG = LRCallGraph::analyse(LR);
-    LUTHIER_REPORT_FATAL_ON_ERROR(CG.takeError());
-    if (CG.get()->hasNonDeterministicCallGraph(LCO.asHsaType()))
-      llvm::report_fatal_error("Cannot handle cases with multiple kernels and "
-                               "indeterministic call graph");
-    for (const auto &[DeviceFuncSymbol, MF] : DeviceFunctions) {
-      if (CG.get()->getCallGraphNode(MF).CalleeFunctions.size() > 1)
-        llvm::report_fatal_error("Cannot handle cases with multiple kernels "
-                                 "with multiple uses of a device function");
-    }
-  }
+
   if (StateValueFixedLocation != nullptr) {
-    for (const auto &[FuncSymbol, MF] : LR.functions()) {
+    for (const auto &MF : MFs) {
       auto &Segments = ValueStateRegAndFlatScratchIntervals.insert({MF, {}})
                            .first->getSecond();
-
       Segments.emplace_back(
           FunctionsSlotIndexes.at(&MF->getFunction())->getZeroIndex(),
           FunctionsSlotIndexes.at(&MF->getFunction())->getLastIndex(),
@@ -192,7 +285,7 @@ LRStateValueLocations::LRStateValueLocations(
     }
     for (const auto &[HookMI, HookFunction] : MIToHookMap) {
       auto *HookLiveRegs = RegLiveness.getLiveInPhysRegsOfMachineInstr(*HookMI);
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ASSERTION(HookLiveRegs != nullptr));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookLiveRegs != nullptr));
       auto [VGPRLocation, ClobbersAppReg] = findVGPRLocationForHook(
           HookMI, *StateValueFixedLocation, *HookLiveRegs,
           HooksAccessedPhysicalRegistersNotInLiveIns);
@@ -212,7 +305,7 @@ LRStateValueLocations::LRStateValueLocations(
   } else {
     // If not, we'll have to shuffle the value state reg and flat scratch
     // registers' locations around for each function involved
-    for (const auto &[_, MF] : LR.functions()) {
+    for (const auto &MF : MFs) {
       auto &MRI = MF->getRegInfo();
       // Pick the highest numbered VGPR not accessed by the Hooks
       // to hold the value state
@@ -223,8 +316,7 @@ LRStateValueLocations::LRStateValueLocations(
 
       auto FirstMILiveIns =
           RegLiveness.getLiveInPhysRegsOfMachineInstr(*MF->begin()->begin());
-      LUTHIER_REPORT_FATAL_ON_ERROR(
-          LUTHIER_ASSERTION(FirstMILiveIns != nullptr));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(FirstMILiveIns != nullptr));
 
       // The current location of the state value register
       std::shared_ptr<StateValueStorage> SVS =
@@ -232,8 +324,8 @@ LRStateValueLocations::LRStateValueLocations(
               MRI, llvm::AMDGPU::VGPR_32RegClass,
               HooksAccessedPhysicalRegistersNotInLiveIns, *FirstMILiveIns));
 
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ASSERTION(
-          llvm::dyn_cast<VGPRValueStorage>(SVS).StorageVGPR != 0));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+          llvm::dyn_cast<VGPRValueStorage>(SVS.get())->StorageVGPR != 0));
 
       // llvm::SlotIndex is used to create intervals that keep track of the
       // locations of the value state/flat scratch registers
@@ -251,8 +343,7 @@ LRStateValueLocations::LRStateValueLocations(
           if (MIToHookMap.contains(&MI))
             HookInsertionPointsInCurrentSegment.insert(&MI);
           auto *InstrLiveRegs = RegLiveness.getLiveInPhysRegsOfMachineInstr(MI);
-          LUTHIER_REPORT_FATAL_ON_ERROR(
-              LUTHIER_ASSERTION(InstrLiveRegs != nullptr));
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(InstrLiveRegs != nullptr));
           // Q: Do we have to relocate the state value register?
           // A:
           // 1. If we have spilled the state value reg and this instruction
@@ -364,123 +455,14 @@ LRStateValueLocations::LRStateValueLocations(
                 }
               }
             }
-            LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ASSERTION(WasRelocationSuccessful || !MustRelocateStateValue));
+            LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(WasRelocationSuccessful ||
+                                                      !MustRelocateStateValue));
           }
         }
       }
     }
   }
-}
-
-bool allocateUnusedRegister(
-    llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
-    const llvm::TargetRegisterClass *RC,
-    const llvm::LivePhysRegs &PhysicalRegsUsed, unsigned int NumRegs,
-    llvm::SmallVectorImpl<llvm::MCRegister> &Regs) {
-  unsigned int NumRegFound = 0;
-
-  for (llvm::MCRegister Reg : *RC) {
-    bool IsUnused =
-        llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
-          auto &MRI = MF->getRegInfo();
-          return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
-                 PhysicalRegsUsed.available(MRI, Reg);
-        });
-    if (IsUnused) {
-      Regs.push_back(Reg);
-      NumRegFound++;
-      if (NumRegFound == NumRegs)
-        return true;
-    }
-  }
-  return false;
-}
-
-llvm::MCRegister
-allocateUnusedRegister(llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
-                       const llvm::TargetRegisterClass *RC,
-                       const llvm::LivePhysRegs &AccessedPhysRegsNotInLiveIns) {
-  for (llvm::MCRegister Reg : *RC) {
-    bool IsUnused =
-        llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
-          auto &MRI = MF->getRegInfo();
-          return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
-                 AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
-        });
-    if (IsUnused) {
-      return Reg;
-    }
-  }
-  return {};
-}
-
-std::shared_ptr<StateValueStorage>
-LRStateValueLocations::findFixedStateValueStorageLocation(
-    llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions) const {
-  // Tentative place to hold an SGPR pair for the instrumentation stack
-  // flat scratch
-  llvm::SmallVector<llvm::MCRegister, 2> FSLocation{};
-
-  // Find the next VGPR available to hold the value state
-  llvm::MCRegister ValueStateFixedLocation =
-      allocateUnusedRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
-                             HooksAccessedPhysicalRegistersNotInLiveIns);
-  // If not find two free AGPRs; one to hold the value state, the other as
-  // a temp register
-  if (ValueStateFixedLocation == 0) {
-    llvm::SmallVector<llvm::MCRegister, 2> ScavengedAGPRs;
-    bool Scavenged = allocateUnusedRegister(
-        RelatedFunctions, &llvm::AMDGPU::AGPR_32RegClass,
-        HooksAccessedPhysicalRegistersNotInLiveIns, 2, ScavengedAGPRs);
-    if (Scavenged)
-      return std::make_shared<TwoAGPRValueStorage>(ScavengedAGPRs[0],
-                                                   ScavengedAGPRs[1]);
-    else if (ScavengedAGPRs.size() == 1) {
-      ValueStateFixedLocation = ScavengedAGPRs[0];
-    }
-    // Even if we were able to scavenge an AGPR, just to be safe, we
-    // keep the flat scratch pointing to the bottom of the instrumentation
-    // stack in case of an emergency spill of a VGPR to read back the AGPR
-    // This shouldn't be necessary in GFX90A+ where AGPRs can be used as
-    // normal VGPRs
-    Scavenged = allocateUnusedRegister(
-        RelatedFunctions, &llvm::AMDGPU::SGPR_32RegClass,
-        HooksAccessedPhysicalRegistersNotInLiveIns, 2, FSLocation);
-    if (ValueStateFixedLocation != 0 && Scavenged)
-      return std::make_shared<AGPRWithTwoSGPRSValueStorage>(
-          ValueStateFixedLocation, FSLocation[0], FSLocation[1]);
-    else if (FSLocation.size() == 2) {
-      return std::make_shared<SpilledWithTwoSGPRsValueStorage>(FSLocation[0],
-                                                               FSLocation[1]);
-    } else
-      return nullptr;
-  } else {
-    return std::make_shared<VGPRValueStorage>(ValueStateFixedLocation);
-  }
-}
-
-const StateValueStorageSegment *
-LRStateValueLocations::getValueSegmentForInstr(llvm::MachineInstr &MI) const {
-  auto *MF = MI.getParent()->getParent();
-  if (!ValueStateRegAndFlatScratchIntervals.contains(MF))
-    return nullptr;
-  if (!FunctionsSlotIndexes.contains(&MF->getFunction())) {
-    return nullptr;
-  }
-  auto &Segments = ValueStateRegAndFlatScratchIntervals.at(MF);
-  auto MISlot = FunctionsSlotIndexes.at(&MF->getFunction())
-                    ->getInstructionIndex(MI, false);
-  for (auto &Segment : Segments) {
-    if (Segment.contains(MISlot))
-      return &Segment;
-  }
-  return nullptr;
-}
-
-const InsertionPointStateValueDescriptor &
-LRStateValueLocations::getStateValueDescriptorOfHookInsertionPoint(
-    const llvm::MachineInstr &MI) const {
-  return HookMIToValueStateInterval.at(&MI);
+  return llvm::Error::success();
 }
 
 } // namespace luthier

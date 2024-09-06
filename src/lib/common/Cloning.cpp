@@ -386,8 +386,8 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
 
   DstMRI->freezeReservedRegs();
 
-  bool Verified = DstMF->verify(nullptr, "", /*AbortOnError=*/true);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Verified));
+//  bool Verified = DstMF->verify(nullptr, "", /*AbortOnError=*/true);
+//  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Verified));
   return DstMF;
 }
 

@@ -162,7 +162,6 @@ llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(EnumString)));
   Out = EnumMap.at(EnumString);
-  //  llvm::outs() << EnumString << "\n";
   return llvm::Error::success();
 }
 

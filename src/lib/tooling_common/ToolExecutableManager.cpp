@@ -19,7 +19,7 @@
 /// instrumentation modules which are passed to the \c CodeGenerator.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/TargetManager.hpp"
-#include "tooling_common/ToolExecutableManager.hpp"
+#include "tooling_common/ToolExecutableLoader.hpp"
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Bitcode/BitcodeReader.h>
@@ -44,16 +44,16 @@
 namespace luthier {
 
 template <>
-ToolExecutableManager *Singleton<ToolExecutableManager>::Instance{nullptr};
+ToolExecutableLoader *Singleton<ToolExecutableLoader>::Instance{nullptr};
 
-void ToolExecutableManager::registerInstrumentationHookWrapper(
+void ToolExecutableLoader::registerInstrumentationHookWrapper(
     const void *WrapperShadowHostPtr, const char *HookWrapperName) {
   SIM.HookHandleMap.insert(
       {WrapperShadowHostPtr, llvm::StringRef(HookWrapperName)
                                  .substr(strlen(luthier::HookHandlePrefix))});
 }
 
-llvm::Error ToolExecutableManager::registerIfLuthierToolExecutable(
+llvm::Error ToolExecutableLoader::registerIfLuthierToolExecutable(
     const hsa::Executable &Exec) {
   // Check if this executable is a static instrumentation module
   auto IsSIMExec =
@@ -70,7 +70,7 @@ llvm::Error ToolExecutableManager::registerIfLuthierToolExecutable(
   return llvm::Error::success();
 }
 
-llvm::Error ToolExecutableManager::unregisterIfLuthierToolExecutable(
+llvm::Error ToolExecutableLoader::unregisterIfLuthierToolExecutable(
     const hsa::Executable &Exec) {
   // Check if this belongs to the static instrumentation module
   // If so, then unregister it from the static module
@@ -131,7 +131,7 @@ llvm::Error ToolExecutableManager::unregisterIfLuthierToolExecutable(
 }
 
 llvm::Expected<const hsa::LoadedCodeObjectKernel &>
-ToolExecutableManager::getInstrumentedKernel(
+ToolExecutableLoader::getInstrumentedKernel(
     const hsa::LoadedCodeObjectKernel &OriginalKernel, llvm::StringRef Preset) const {
   // First make sure the OriginalKernel has instrumented entries
   auto InstrumentedKernelsIt =
@@ -146,7 +146,7 @@ ToolExecutableManager::getInstrumentedKernel(
   return *InstrumentedKernelIt->second;
 }
 
-llvm::Error ToolExecutableManager::loadInstrumentedKernel(
+llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
     llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
         InstrumentedElfs,
     const hsa::LoadedCodeObjectKernel &OriginalKernel, llvm::StringRef Preset,
@@ -209,7 +209,7 @@ llvm::Error ToolExecutableManager::loadInstrumentedKernel(
   return llvm::Error::success();
 }
 
-llvm::Error ToolExecutableManager::loadInstrumentedExecutable(
+llvm::Error ToolExecutableLoader::loadInstrumentedExecutable(
     llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
         InstrumentedElfs,
     llvm::StringRef Preset,
@@ -296,13 +296,13 @@ llvm::Error ToolExecutableManager::loadInstrumentedExecutable(
   return llvm::Error::success();
 }
 
-bool ToolExecutableManager::isKernelInstrumented(
+bool ToolExecutableLoader::isKernelInstrumented(
     const hsa::LoadedCodeObjectKernel &Kernel, llvm::StringRef Preset) const {
   return OriginalToInstrumentedKernelsMap.contains(&Kernel) &&
          OriginalToInstrumentedKernelsMap.at(&Kernel).contains(Preset);
 }
 
-ToolExecutableManager::~ToolExecutableManager() {
+ToolExecutableLoader::~ToolExecutableLoader() {
   // By the time the Tool Executable Manager is deleted, all instrumentation
   // kernels must have been destroyed; If not, print a warning, and clean
   // up anyway

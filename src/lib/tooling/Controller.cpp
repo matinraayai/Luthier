@@ -28,7 +28,7 @@
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/TargetManager.hpp"
-#include "tooling_common/ToolExecutableManager.hpp"
+#include "tooling_common/ToolExecutableLoader.hpp"
 #include "tooling_common/intrinsic/ReadReg.hpp"
 #include "tooling_common/intrinsic/WriteReg.hpp"
 
@@ -55,7 +55,7 @@ static void internalApiCallback(ApiEvtArgs *Args, ApiEvtPhase Phase,
   LUTHIER_LOG_FUNCTION_CALL_START
   if (Phase == API_EVT_PHASE_BEFORE) {
     if (ApiId == HIP_COMPILER_API_EVT_ID___hipRegisterFunction) {
-      auto &COM = ToolExecutableManager::instance();
+      auto &COM = ToolExecutableLoader::instance();
       auto &LastRFuncArgs = Args->__hipRegisterFunction;
       // If the function doesn't have __luthier_wrap__ in its name then it
       // belongs to the instrumented application or HIP can manage it on its own
@@ -84,7 +84,7 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                                       .cacheExecutableOnExecutableFreeze(Exec));
     // Check if the executable belongs to the tool and not the app
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        ToolExecutableManager::instance().registerIfLuthierToolExecutable(
+        ToolExecutableLoader::instance().registerIfLuthierToolExecutable(
             Exec));
   }
   if (Phase == API_EVT_PHASE_AFTER &&
@@ -105,7 +105,7 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
         CodeLifter::instance().invalidateCachedExecutableItems(Exec));
 
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        ToolExecutableManager::instance().unregisterIfLuthierToolExecutable(
+        ToolExecutableLoader::instance().unregisterIfLuthierToolExecutable(
             Exec));
 
     LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -202,7 +202,7 @@ Controller::Controller()
   TM = new TargetManager();
   HsaPlatform = new hsa::ExecutableBackedObjectsCache();
   CG = new CodeGenerator();
-  COM = new ToolExecutableManager();
+  COM = new ToolExecutableLoader();
   CL = new CodeLifter();
   HsaInterceptor = new hsa::HsaRuntimeInterceptor();
   HipCompilerInterceptor = new hip::HipCompilerApiInterceptor();

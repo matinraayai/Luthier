@@ -5,6 +5,12 @@ tablegen(LuthierToolingCommon LuthierRealToPseudoOpcodeMap.hpp -gen-si-real-to-p
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 add_public_tablegen_target(LuthierRealToPseudoOpcodeMap)
 
+set(LuthierToolingCommon_TABLEGEN_EXE luthier-tblgen)
+set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td")
+tablegen(LuthierToolingCommon LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-pseudo-reg-enum-map EXTRA_INCLUDES
+        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
+add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
+
 add_library(LuthierToolingCommon STATIC
         CodeGenerator.cpp
         CodeLifter.cpp
@@ -16,11 +22,18 @@ add_library(LuthierToolingCommon STATIC
         InstrumentationModule.cpp
         intrinsic/ReadReg.cpp
         intrinsic/WriteReg.cpp
+#        InstrumentationStateValueManager.cpp
+        PhysicalRegAccessVirtualizationPass.cpp
+        LRStateValueLocations.cpp
+        LRCallGraph.cpp
+        LRRegisterLiveness.cpp
+        IntrinsicMIRLoweringPass.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
 # tablegen-ed target first
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
+add_dependencies(LuthierToolingCommon LuthierRealToPseudoRegEnumMap)
 
 target_include_directories(LuthierToolingCommon PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})
 target_include_directories(LuthierToolingCommon PUBLIC ${LUTHIER_PUBLIC_INCLUDE_DIR})

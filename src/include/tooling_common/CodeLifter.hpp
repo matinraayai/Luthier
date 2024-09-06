@@ -289,21 +289,7 @@ private:
       const hsa::LoadedCodeObjectSymbol &Symbol, LiftedRepresentation &LR,
       llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, bool> &SymbolUsageMap,
       llvm::DenseMap<llvm::GlobalValue *,
-                     llvm::SmallVector<llvm::MachineInstr *>> &GlobalValueUses,
-      llvm::DenseMap<llvm::MachineInstr *, llvm::MachineFunction *>
-          &CallInstrToCalleeMap,
-      bool &HasUnknownCallTarget);
-
-  /// Given the results of the callgraph analysis in
-  /// \p CalledInstrToCalleeFuncMap populates the \c CallGraph field in the
-  /// \p LR
-  /// \param LR the \c LiftedRepresentation to be populated
-  /// \param CalledInstrToCalleeFuncMap callgraph analysis result, mapping
-  /// between the call instructions and their called target
-  void constructCallGraph(
-      LiftedRepresentation &LR,
-      llvm::DenseMap<llvm::MachineInstr *, llvm::MachineFunction *>
-          &CalledInstrToCalleeFuncMap);
+                     llvm::SmallVector<llvm::MachineInstr *>> &GlobalValueUses);
 
   //===--------------------------------------------------------------------===//
   // Cached Lifted Representations

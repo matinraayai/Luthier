@@ -32,7 +32,7 @@
 #include "luthier/InstrumentationTask.h"
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"
-#include "tooling_common/ToolExecutableManager.hpp"
+#include "tooling_common/ToolExecutableLoader.hpp"
 #include <luthier/hsa/Instr.h>
 
 namespace luthier {
@@ -155,7 +155,7 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
          reinterpret_cast<const void *>(
              llvm::cantFail(Symbol->getLoadedSymbolAddress()))});
   }
-  auto &TEM = ToolExecutableManager::instance();
+  auto &TEM = ToolExecutableLoader::instance();
   const auto &SIM = TEM.getStaticInstrumentationModule();
   auto Agent = llvm::cantFail(Kernel.getAgent());
   // Set of static variables used in the instrumentation module
@@ -216,7 +216,7 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
   for (const auto &[LCO, ELF] : Executables) {
     Agents.insert(llvm::cantFail(LCO.getAgent()));
   }
-  auto &TEM = ToolExecutableManager::instance();
+  auto &TEM = ToolExecutableLoader::instance();
   const auto &SIM = TEM.getStaticInstrumentationModule();
   // Set of static variables used in the instrumentation module
   for (const auto &GVName : SIM.getGlobalVariableNames()) {
@@ -234,7 +234,7 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
 llvm::Expected<bool>
 isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
                      llvm::StringRef Preset) {
-  return ToolExecutableManager::instance().isKernelInstrumented(Kernel, Preset);
+  return ToolExecutableLoader::instance().isKernelInstrumented(Kernel, Preset);
 }
 
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
@@ -245,7 +245,7 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Symbol != nullptr));
 
   auto InstrumentedKernel =
-      luthier::ToolExecutableManager::instance().getInstrumentedKernel(*Symbol,
+      luthier::ToolExecutableLoader::instance().getInstrumentedKernel(*Symbol,
                                                                        Preset);
   LUTHIER_RETURN_ON_ERROR(InstrumentedKernel.takeError());
   auto InstrumentedKD = InstrumentedKernel->getKernelDescriptor();

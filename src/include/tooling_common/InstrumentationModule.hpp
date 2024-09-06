@@ -39,7 +39,7 @@ namespace hsa {
 class Executable;
 }
 
-class ToolExecutableManager;
+class ToolExecutableLoader;
 
 //===----------------------------------------------------------------------===//
 // Instrumentation Module
@@ -55,7 +55,7 @@ public:
 protected:
   /// Only CodeObjectManager is allowed to create Instrumentation
   /// Modules
-  friend ToolExecutableManager;
+  friend ToolExecutableLoader;
 
   /// A map where indicates the "compatible" bitcode for each \c hsa::GpuAgent
   /// Compatible means that: \n
@@ -157,7 +157,7 @@ public:
 /// LUTHIER_EXPORT_HOOK_HANDLE
 class StaticInstrumentationModule final : public InstrumentationModule {
 private:
-  friend ToolExecutableManager;
+  friend ToolExecutableLoader;
   /// Private default constructor only accessible by \c ToolExecutableManager
   StaticInstrumentationModule() : InstrumentationModule(MK_Static){};
 

@@ -67,7 +67,7 @@ public:
   explicit VGPRValueStorage(llvm::MCRegister StorageVGPR)
       : StorageVGPR(StorageVGPR), StateValueStorage(SV_SINGLE_VGPR){};
 
-  llvm::MCRegister getStateValueStorageReg() const {
+  llvm::MCRegister getStateValueStorageReg() const override {
     return StorageVGPR;
   }
 };
@@ -87,7 +87,7 @@ public:
       : StorageAGPR(StorageAGPR), TempAGPR(TempAGPR),
         StateValueStorage(SV_TWO_AGPRs){};
 
-  llvm::MCRegister getStateValueStorageReg() const {
+  llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
   }
 };
@@ -112,7 +112,7 @@ public:
         FlatScratchSGPRLow(FlatScratchSGPRLow),
         StateValueStorage(SVS_SINGLE_AGPR_WITH_TWO_SGPRS){};
 
-  llvm::MCRegister getStateValueStorageReg() const {
+  llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
   }
 };
@@ -134,9 +134,7 @@ public:
         FlatScratchSGPRLow(FlatScratchSGPRLow),
         StateValueStorage(SVS_SPILLED_WITH_TWO_SGPRS){};
 
-  llvm::MCRegister getStateValueStorageReg() const {
-    return {};
-  }
+  llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 };
 
 struct StateValueStorageSegment {
@@ -152,7 +150,7 @@ public:
   StateValueStorageSegment(llvm::SlotIndex S, llvm::SlotIndex E,
                            std::shared_ptr<StateValueStorage> SVS)
       : Start(S), End(E), SVS(std::move(SVS)) {
-    if (S < E)
+    if (S > E)
       llvm::report_fatal_error("Cannot create empty or backwards segment");
   }
 
@@ -187,9 +185,9 @@ public:
 /// \brief
 struct InsertionPointStateValueDescriptor {
   /// The VGPR where the state value will be loaded into
-  llvm::MCRegister StateValueVGPR;
+  llvm::MCRegister StateValueVGPR{};
   /// Whether the State Value VGPR clobbers any live registers
-  bool ClobbersAppRegister;
+  bool ClobbersAppRegister{false};
   /// Where the state value is located before being loaded into the VGPR
   StateValueStorageSegment StateValueLocation;
 };
@@ -202,6 +200,9 @@ private:
 
   /// The loaded code object being processed
   const hsa::LoadedCodeObject LCO;
+
+  /// The reg liveness analysis of the \c LR
+  const LRRegisterLiveness & RegLiveness;
 
   /// The kernels of the loaded code object
   llvm::SmallVector<
@@ -239,7 +240,7 @@ private:
 
   /// Mapping between the MIs of the target app getting instrumented and their
   /// hooks
-  llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap;
+  const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap;
 
   /// Whether or not only the kernel of the \c LR needs a prologue or not
   /// If true, then it means we don't need to emit instructions in the
@@ -284,21 +285,34 @@ private:
   findFixedStateValueStorageLocation(
       llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions) const;
 
-public:
   LRStateValueLocations(
-      const luthier::LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
-      llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
+      const luthier::LiftedRepresentation &LR, hsa::LoadedCodeObject LCO,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
       const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
       const luthier::LRRegisterLiveness &RegLiveness);
+
+  llvm::Error calculateStateValueLocations();
+
+public:
+  static llvm::Expected<std::unique_ptr<LRStateValueLocations>>
+  create(const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
+      const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
+         const LRRegisterLiveness &RegLiveness);
 
   const StateValueStorageSegment *
   getValueSegmentForInstr(llvm::MachineInstr &MI) const;
 
   [[nodiscard]] const InsertionPointStateValueDescriptor &
-  getStateValueDescriptorOfHookInsertionPoint(const llvm::MachineInstr &MI) const;
+  getStateValueDescriptorOfHookInsertionPoint(
+      const llvm::MachineInstr &MI) const;
 
   [[nodiscard]] bool doesKernelOnlyNeedPrologue() const {
     return OnlyKernelNeedsPrologue;
+  }
+
+  [[nodiscard]] hsa::LoadedCodeObject getLCO() const {
+    return LCO;
   }
 };
 

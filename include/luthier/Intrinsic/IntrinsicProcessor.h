@@ -26,11 +26,22 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/DenseSet.h>
 #include <llvm/IR/InlineAsm.h>
 #include <llvm/Support/Error.h>
 #include <string>
+#include <llvm/MC/MCRegister.h>
 
 namespace llvm {
+
+class MachineFunction;
+
+class TargetRegisterInfo;
+
+class TargetInstrInfo;
+
+class TargetRegisterClass;
+
 class Register;
 
 class Value;
@@ -149,14 +160,11 @@ private:
   llvm::SmallDenseSet<KernelArgumentType, 4> AccessedKernelArguments{};
 
 public:
-
   /// \param Name the name of the intrinsic being lowered
   /// \note this function is called internally by Luthier on the result of
   /// \c IntrinsicIRProcessorFunc is returned; Hence setting the name of the
   /// intrinsic inside the IR processor has no effect
-  void setIntrinsicName(llvm::StringRef Name) {
-    this->IntrinsicName = Name;
-  }
+  void setIntrinsicName(llvm::StringRef Name) { this->IntrinsicName = Name; }
 
   /// \returns the name of the intrinsic being lowered
   [[nodiscard]] llvm::StringRef getIntrinsicName() const {
@@ -202,6 +210,16 @@ public:
     AccessedPhysicalRegisters.insert(PhysReg);
   }
 
+  [[nodiscard]] const llvm::SmallDenseSet<llvm::MCRegister, 1> &
+  getAccessedPhysicalRegisters() const {
+    return AccessedPhysicalRegisters;
+  }
+
+  const llvm::SmallDenseSet<KernelArgumentType, 4> &
+  getRequestedKernelArgument() const {
+    return AccessedKernelArguments;
+  }
+
   /// Asks the code generator to ensure access to the \p KernArg during
   /// the MIR lowering stage
   void requestAccessToKernelArgument(KernelArgumentType KernArg) {
@@ -210,10 +228,11 @@ public:
 };
 
 /// \brief describes a function type used by each Luthier intrinsic to process
-/// its uses in LLVM IR, and return a \c IntrinsicIRLoweringInfo which will describe
-/// how its use/def values will be lowered to <tt>llvm::MachineOperand</tt>s,
-/// as well as any arbitrary information required to be passed down from the
-/// IR processing stage to the MIR processing stage
+/// its uses in LLVM IR, and return a \c IntrinsicIRLoweringInfo which will
+/// describe how its use/def values will be lowered to
+/// <tt>llvm::MachineOperand</tt>s, as well as any arbitrary information
+/// required to be passed down from the IR processing stage to the MIR
+/// processing stage
 typedef std::function<llvm::Expected<IntrinsicIRLoweringInfo>(
     const llvm::Function &, const llvm::CallInst &,
     const llvm::GCNTargetMachine &)>
@@ -230,7 +249,11 @@ typedef std::function<llvm::Expected<IntrinsicIRLoweringInfo>(
 typedef std::function<llvm::Error(
     const IntrinsicIRLoweringInfo &,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>>,
-    const std::function<llvm::MachineInstrBuilder(int)> &)>
+    const std::function<llvm::MachineInstrBuilder(int)> &,
+    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &,
+    const llvm::MachineFunction &,
+    const std::function<llvm::Register(llvm::MCRegister)> &,
+    llvm::DenseMap<llvm::MCRegister, llvm::Register> &)>
     IntrinsicMIRProcessorFunc;
 
 /// \brief Used internally by \c luthier::CodeGenerator to keep track of

@@ -23,6 +23,7 @@
 
 #include "common/ObjectUtils.hpp"
 #include "common/Singleton.hpp"
+#include "hsa/LoadedCodeObject.hpp"
 #include <llvm/ADT/Any.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <luthier/InstrumentationTask.h>
@@ -107,7 +108,7 @@ public:
 
 private:
   /// Finds <tt>llvm::Function</tt>s marked as intrinsics inside the
-  /// \p InstModule and Applies the IR processor function to their
+  /// \p InstModule and applies the IR processor function to their
   /// <tt>llvm::User</tt>s
   /// \param [in, out] Module the instrumentation \c llvm::Module containing
   /// hook logic IR
@@ -119,16 +120,23 @@ private:
   /// operation
   llvm::Error processInstModuleIntrinsicsAtIRLevel(
       llvm::Module &Module, const llvm::GCNTargetMachine &TM,
-      llvm::StringMap<IntrinsicIRLoweringInfo> &InlineAsmMIRMap);
+      llvm::SmallVectorImpl<
+          std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
+          &InlineAsmMIRMap);
 
   std::pair<llvm::MachineModuleInfoWrapperPass *,
             std::unique_ptr<llvm::legacy::PassManager>>
   runCodeGenPipeline(
-      llvm::Module &M, llvm::GCNTargetMachine *TM,
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
           &MIToHookFuncMap,
-      const llvm::StringMap<IntrinsicIRLoweringInfo> &ToBeLoweredIntrinsics,
-      bool DisableVerify, const LiftedRepresentation &LR);
+      const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
+          &HookFuncToMIMap,
+      const llvm::SmallVectorImpl<
+          std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
+          &ToBeLoweredIntrinsics,
+      bool DisableVerify, const LiftedRepresentation &LR,
+      const luthier::hsa::LoadedCodeObject &LCO, llvm::GCNTargetMachine *TM,
+      llvm::Module &M);
 
   static llvm::Expected<llvm::Function &> generateHookIR(
       const llvm::MachineInstr &MI,
@@ -139,58 +147,36 @@ private:
                           const InstrumentationTask &Tasks);
 };
 
-/// \brief Aggregates the app's live registers at each hook insertion point,
-/// as well as physical registers read by the hook itself, and creates def/uses
-/// for them in appropriate places. If the target app uses the stack, creates
-/// a stack operand as well as appropriate defs/uses.
-/// TODO: Make this pass work with dynamic stack usage
-class DefineLiveRegsAndAppStackUsagePass : public llvm::MachineFunctionPass {
-public:
-  static char ID;
-  typedef llvm::DenseMap<llvm::Function *, llvm::LivePhysRegs *>
-      hook_live_regs_map_t;
-
-private:
-  hook_live_regs_map_t HookLiveRegs;
-
-  llvm::DenseMap<llvm::Function *, size_t> StaticSizedHooksToStackSize;
-
-public:
-  llvm::StringRef getPassName() const override {
-    return "Define Live Regs and Stack Usage Pass";
-  }
-
-  explicit DefineLiveRegsAndAppStackUsagePass(
-      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-          &MIToHookFuncMap,
-      const LiftedRepresentation &LR);
-
-  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
-};
-
-class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {
-private:
-  const llvm::StringMap<IntrinsicIRLoweringInfo> &MIRLoweringMap;
-  const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors;
-
-public:
-  static char ID;
-
-  explicit IntrinsicMIRLoweringPass(
-      const llvm::StringMap<IntrinsicIRLoweringInfo> &MIRLoweringMap,
-      const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors)
-      : MIRLoweringMap(MIRLoweringMap),
-        IntrinsicsProcessors(IntrinsicsProcessors),
-        llvm::MachineFunctionPass(ID){};
-
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Intrinsic MIR Lowering";
-  }
-
-  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
-};
+///// \brief Aggregates the app's live registers at each hook insertion point,
+///// as well as physical registers read by the hook itself, and creates def/uses
+///// for them in appropriate places. If the target app uses the stack, creates
+///// a stack operand as well as appropriate defs/uses.
+///// TODO: Make this pass work with dynamic stack usage
+//class DefineLiveRegsAndAppStackUsagePass : public llvm::MachineFunctionPass {
+//public:
+//  static char ID;
+//  typedef llvm::DenseMap<llvm::Function *, llvm::LivePhysRegs *>
+//      hook_live_regs_map_t;
+//
+//private:
+//  hook_live_regs_map_t HookLiveRegs;
+//
+//  llvm::DenseMap<llvm::Function *, size_t> StaticSizedHooksToStackSize;
+//
+//public:
+//  llvm::StringRef getPassName() const override {
+//    return "Define Live Regs and Stack Usage Pass";
+//  }
+//
+//  explicit DefineLiveRegsAndAppStackUsagePass(
+//      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+//          &MIToHookFuncMap,
+//      const LiftedRepresentation &LR);
+//
+//  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
+//
+//  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+//};
 
 } // namespace luthier
 

@@ -1,4 +1,4 @@
-//===-- ToolExecutableManager.hpp - Luthier Tool Executable Manager -------===//
+//===-- ToolExecutableLoader.hpp - Luthier Tool Executable Loader ---------===//
 // Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's Tool Executable Manager Singleton, which is
-/// in charge of managing all loaded instrumentation modules, as well as
-/// the lifetime of the instrumented executables. It also describes Luthier's
-/// instrumentation modules which are passed to the \c CodeGenerator.
+/// This file describes Luthier's Tool Executable Loader Singleton, which is
+/// in charge of managing all loaded instrumentation modules loaded
+/// automatically, the lifetime of the instrumented executables,
+/// and loading instrumented kernels into a dispatch packet when the tool
+/// requests it.
 //===----------------------------------------------------------------------===//
-#ifndef TOOL_EXECUTABLE_MANAGER_HPP
-#define TOOL_EXECUTABLE_MANAGER_HPP
+#ifndef TOOL_EXECUTABLE_LOADER_HPP
+#define TOOL_EXECUTABLE_LOADER_HPP
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
@@ -39,11 +40,10 @@
 
 namespace luthier {
 
-class ToolExecutableManager;
-
 /// \brief A singleton object that keeps track of executables that belong to
-/// Luthier, including instrumented executables and tool instrumentation modules
-class ToolExecutableManager : public Singleton<ToolExecutableManager> {
+/// Luthier, including instrumented executables and tool
+/// instrumentation modules, plus launching instrumented kernels
+class ToolExecutableLoader : public Singleton<ToolExecutableLoader> {
 public:
   /// Registers the wrapper kernel of an instrumentation hook in a static
   /// instrumentation module
@@ -136,7 +136,7 @@ public:
     return SIM;
   }
 
-  ~ToolExecutableManager();
+  ~ToolExecutableLoader();
 
 private:
   /// A private helper function to insert newly-instrumented versions of
@@ -159,6 +159,7 @@ private:
     OriginalKernelEntry.insert({Preset, &InstrumentedKernel});
   }
 
+  /// The single static instrumentation module included in Luthier tool
   mutable StaticInstrumentationModule SIM{};
 
   /// \brief a mapping between the loaded code objects instrumented and
@@ -175,6 +176,8 @@ private:
   llvm::DenseMap<const hsa::LoadedCodeObjectKernel *,
                  llvm::StringMap<const hsa::LoadedCodeObjectKernel *>>
       OriginalToInstrumentedKernelsMap{};
+
+
 };
 }; // namespace luthier
 

@@ -24,6 +24,8 @@
 
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
 #include <llvm/Support/Error.h>
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/CodeGen/MachineFunction.h>
 
 namespace luthier {
 
@@ -34,7 +36,12 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
 llvm::Error writeRegMIRProcessor(
     const IntrinsicIRLoweringInfo &IRLoweringInfo,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder);
+    const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
+    const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
+        &VirtRegBuilder,
+    const llvm::MachineFunction &MF,
+    const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
+    llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten);
 
 } // namespace luthier
 

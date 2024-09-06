@@ -20,10 +20,10 @@
 /// an instrumented application, and providing access to them to the MIR
 /// processing stage of Luthier intrinsics.
 //===----------------------------------------------------------------------===//
+#include "luthier/LRCallgraph.h"
+#include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
 #include "tooling_common/LRStateValueLocations.hpp"
-#include "luthier/LRRegisterLiveness.h"
-#include "luthier/LRCallgraph.h"
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
 
@@ -49,8 +49,12 @@ private:
   const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *> &HookFuncToMIMap;
   /// A mapping between the inline assembly instruction place holder indices
   /// and their IR lowering info
-  llvm::ArrayRef<IntrinsicIRLoweringInfo>
+  llvm::ArrayRef<std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
       InlineAsmPlaceHolderToIRLoweringInfoMap;
+
+  llvm::DenseMap<std::pair<llvm::MCRegister, const llvm::MachineBasicBlock *>,
+                 llvm::Register>
+      PhysRegLocationPerMBB;
 
 public:
   static char ID;
@@ -61,7 +65,7 @@ public:
       const LRStateValueLocations &StateValueLocations,
       const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
           &HookFuncToInstPointMI,
-      llvm::ArrayRef<IntrinsicIRLoweringInfo>
+      llvm::ArrayRef<std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
           InlineAsmPlaceHolderToIRLoweringInfoMap,
       const LRRegisterLiveness &RegLiveness);
 
@@ -73,6 +77,11 @@ public:
 
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 
+  llvm::Register
+  getMCRegLocationInMBB(llvm::MCRegister PhysReg,
+                        const llvm::MachineBasicBlock &MBB) const {
+    return PhysRegLocationPerMBB.at({PhysReg, &MBB});
+  }
 };
 
 } // namespace luthier

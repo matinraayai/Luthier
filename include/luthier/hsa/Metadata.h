@@ -71,6 +71,12 @@ enum class ValueKind : uint8_t {
   HiddenSharedBase = 29,
   HiddenQueuePtr = 30,
   HiddenArgKindEnd = HiddenQueuePtr,
+  LuthierHiddenStackPtr = 31,
+  /// The Luthier hidden args are only specific to Luthier and have nothing
+  /// to do with the HSA Code Object Metadata standards
+  LuthierHiddenArgBegin = LuthierHiddenStackPtr,
+  LuthierHiddenUserArgOffset = 32,
+  LuthierHiddenArgEnd = LuthierHiddenUserArgOffset,
   Unknown = 0xff
 };
 

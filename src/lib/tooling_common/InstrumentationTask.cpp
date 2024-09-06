@@ -20,7 +20,7 @@
 
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"
-#include "tooling_common/ToolExecutableManager.hpp"
+#include "tooling_common/ToolExecutableLoader.hpp"
 
 namespace luthier {
 
@@ -34,7 +34,7 @@ llvm::Error luthier::InstrumentationTask::insertHookBefore(
   // Check if the passed MI belongs to the LiftedRepresentation being
   // worked on
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ARGUMENT_ERROR_CHECK(LR.getHSAInstrOfMachineInstr(MI) != nullptr));
+      LUTHIER_ARGUMENT_ERROR_CHECK(LR.getHSAInstr(MI) != nullptr));
   if (!HookInsertionTasks.contains(&MI)) {
     HookInsertionTasks.insert({&MI, {}});
   }
@@ -47,6 +47,6 @@ llvm::Error luthier::InstrumentationTask::insertHookBefore(
 
 InstrumentationTask::InstrumentationTask(LiftedRepresentation &LR)
     : LR(LR),
-      IM(ToolExecutableManager::instance().getStaticInstrumentationModule()){};
+      IM(ToolExecutableLoader::instance().getStaticInstrumentationModule()){};
 
 } // namespace luthier

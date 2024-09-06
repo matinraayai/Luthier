@@ -20,6 +20,7 @@
 #include "hsa/LoadedCodeObject.hpp"
 #include <luthier/LRCallgraph.h>
 #include <luthier/LiftedRepresentation.h>
+#include <llvm/CodeGen/MachineRegisterInfo.h>
 
 #undef DEBUG_TYPE
 

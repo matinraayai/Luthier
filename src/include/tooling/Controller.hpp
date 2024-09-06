@@ -31,7 +31,7 @@
 namespace luthier {
 class CodeGenerator;
 
-class ToolExecutableManager;
+class ToolExecutableLoader;
 
 class CodeLifter;
 
@@ -58,7 +58,7 @@ private:
 
   CodeGenerator *CG{nullptr};
 
-  ToolExecutableManager *COM{nullptr};
+  ToolExecutableLoader *COM{nullptr};
 
   CodeLifter *CL{nullptr};
 

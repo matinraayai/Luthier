@@ -46,13 +46,22 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
 
   // Save the MCReg to be encoded during MIR processing
   Out.setLoweringData(DestReg);
+  // Tell intrinsic lowering that access to the physical
+  // destination is requested
+  Out.requestAccessToPhysicalRegister(DestReg);
 
   return Out;
 }
+
 llvm::Error writeRegMIRProcessor(
     const IntrinsicIRLoweringInfo &IRLoweringInfo,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder) {
+    const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
+    const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
+        &VirtRegBuilder,
+    const llvm::MachineFunction &MF,
+    const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
+    llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
   // There should be only a single virtual register involved in the operation
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Args.size() == 1));
   // It should be of reg use kind
@@ -60,9 +69,44 @@ llvm::Error writeRegMIRProcessor(
   llvm::Register InputReg = Args[0].second;
 
   auto Dest = IRLoweringInfo.getLoweringData<llvm::MCRegister>();
-  MIBuilder(llvm::AMDGPU::COPY)
-      .addReg(Dest, llvm::RegState::Define)
-      .addReg(InputReg);
+
+  auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+  auto *TRI = ST.getRegisterInfo();
+  auto &MRI = MF.getRegInfo();
+
+  uint64_t DestRegSize = TRI->getRegSizeInBits(Dest, MRI);
+  uint64_t InputRegSize = TRI->getRegSizeInBits(InputReg, MRI);
+  // Check if both the input value and the destination reg have the same size
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(InputRegSize == DestRegSize));
+
+
+  if (DestRegSize > 32) {
+    // Split the input reg into subregs, and set each subreg to replace the
+    // virtual register value of the physical reg
+    size_t NumChannels = DestRegSize / 32;
+    const llvm::TargetRegisterClass *InputRegClass = MRI.getRegClass(InputReg);
+    for (int i = 0; i < NumChannels; i++) {
+      auto SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(i);
+      auto InputSubRegClass = TRI->getSubRegisterClass(InputRegClass, SubIdx);
+      auto SubReg = VirtRegBuilder(InputSubRegClass);
+      MIBuilder(llvm::AMDGPU::COPY)
+          .addReg(SubReg, llvm::RegState::Define)
+          .addReg(InputReg, 0, SubIdx);
+      PhysRegsToBeOverwritten.insert({TRI->getSubReg(Dest, SubIdx), SubReg});
+    }
+  } else if (DestRegSize == 32) {
+    PhysRegsToBeOverwritten.insert({Dest, InputReg});
+  } else {
+    auto SuperRegDest = TRI->get32BitRegister(Dest);
+    auto SubIdx = TRI->getSubRegIndex(SuperRegDest, Dest);
+    auto SuperRegVirt = VirtRegBuilder(TRI->getPhysRegBaseClass(SuperRegDest));
+    MIBuilder(llvm::AMDGPU::INSERT_SUBREG)
+        .addReg(SuperRegVirt, llvm::RegState::Define)
+        .addReg(PhysRegAccessor(SuperRegDest))
+        .addReg(InputReg)
+        .addImm(SubIdx);
+    PhysRegsToBeOverwritten.insert({SuperRegDest, SuperRegVirt});
+  }
   return llvm::Error::success();
 }
 
