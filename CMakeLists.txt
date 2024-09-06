@@ -85,7 +85,7 @@ add_subdirectory(src)
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-    set(SUB_DIRS examples/KernelInstrument examples/CodeLifterDebugging examples/InstrCount)
+    set(SUB_DIRS examples/KernelInstrument examples/CodeLifterDebugging examples/InstrCount examples/OpcodeHistogram)
     foreach (DIR ${SUB_DIRS})
         add_subdirectory(${DIR})
     endforeach (DIR)
@@ -104,5 +104,4 @@ if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
     set(DOXYGEN_GENERATE_LATEX ${LUTHIER_BUILD_LATEX_DOCS})
     doxygen_add_docs(luthier_docs docs src compiler-plugins)
 endif ()
-
 
