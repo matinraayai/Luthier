@@ -28,6 +28,7 @@ add_library(LuthierToolingCommon STATIC
         LRCallGraph.cpp
         LRRegisterLiveness.cpp
         IntrinsicMIRLoweringPass.cpp
+        TPCOverrides.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run

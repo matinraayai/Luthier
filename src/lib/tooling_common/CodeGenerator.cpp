@@ -21,6 +21,8 @@
 
 #include <memory>
 
+#include "tooling_common/TPCOverrides.hpp"
+
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
 #include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
 #include "llvm/CodeGen/CSEConfigBase.h"
@@ -366,8 +368,9 @@ CodeGenerator::runCodeGenPipeline(
       ToBeLoweredIntrinsics, LRLiveRegs));
   PM->add(new IntrinsicMIRLoweringPass(ToBeLoweredIntrinsics,
                                        IntrinsicsProcessors));
-//  PM->add(new luthier::DefineLiveRegsAndAppStackUsagePass(MIToHookFuncMap, LR));
-  TPC->addMachinePasses();
+  //  PM->add(new luthier::DefineLiveRegsAndAppStackUsagePass(MIToHookFuncMap,
+  //  LR));
+  luthier::addMachinePassesToTPC(*TPC);
   TPC->setInitialized();
 
   PM->run(M);
@@ -911,221 +914,229 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
   return std::move(ClonedLR);
 }
 
-//char DefineLiveRegsAndAppStackUsagePass::ID = 0;
+// char DefineLiveRegsAndAppStackUsagePass::ID = 0;
 //
-//DefineLiveRegsAndAppStackUsagePass::DefineLiveRegsAndAppStackUsagePass(
-//    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-//        &MIToHookFuncMap,
-//    const LiftedRepresentation &LR)
-//    : llvm::MachineFunctionPass(ID) {
-//  // Fetch the Live-ins at each instruction for before MI hooks from the LR
-//  for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
-//    auto *MBB = MI->getParent();
-//    auto *MF = MBB->getParent();
-//    auto &MILivePhysRegs = *LR.getLiveInPhysRegsOfMachineInstr(*MI);
-//    if (MF->getFunction().getCallingConv() !=
-//        llvm::CallingConv::AMDGPU_KERNEL) {
-//      for (const auto &[CallMI, Parent] :
-//           LR.getCallGraphNode(MF).CalleeFunctions) {
-//        auto &CallMILivePhysRegs = *LR.getLiveInPhysRegsOfMachineInstr(*CallMI);
-//        for (const auto &CallMILiveIn : CallMILivePhysRegs) {
-//          const_cast<llvm::LivePhysRegs *>(&MILivePhysRegs)
-//              ->addReg(CallMILiveIn);
-//        }
-//      }
-//    }
-//    (void)HookLiveRegs.insert(
-//        {HookKernel, const_cast<llvm::LivePhysRegs *>(&MILivePhysRegs)});
+// DefineLiveRegsAndAppStackUsagePass::DefineLiveRegsAndAppStackUsagePass(
+//     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+//         &MIToHookFuncMap,
+//     const LiftedRepresentation &LR)
+//     : llvm::MachineFunctionPass(ID) {
+//   // Fetch the Live-ins at each instruction for before MI hooks from the LR
+//   for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
+//     auto *MBB = MI->getParent();
+//     auto *MF = MBB->getParent();
+//     auto &MILivePhysRegs = *LR.getLiveInPhysRegsOfMachineInstr(*MI);
+//     if (MF->getFunction().getCallingConv() !=
+//         llvm::CallingConv::AMDGPU_KERNEL) {
+//       for (const auto &[CallMI, Parent] :
+//            LR.getCallGraphNode(MF).CalleeFunctions) {
+//         auto &CallMILivePhysRegs =
+//         *LR.getLiveInPhysRegsOfMachineInstr(*CallMI); for (const auto
+//         &CallMILiveIn : CallMILivePhysRegs) {
+//           const_cast<llvm::LivePhysRegs *>(&MILivePhysRegs)
+//               ->addReg(CallMILiveIn);
+//         }
+//       }
+//     }
+//     (void)HookLiveRegs.insert(
+//         {HookKernel, const_cast<llvm::LivePhysRegs *>(&MILivePhysRegs)});
 //
-//    LLVM_DEBUG(llvm::dbgs() << "Live regs at instruction " << MI << ": \n";
-//               auto *TRI = MF->getSubtarget().getRegisterInfo();
-//               for (const auto &Reg
-//                    : MILivePhysRegs) {
-//                 llvm::dbgs() << TRI->getRegAsmName(Reg) << "\n";
-//               });
-//  }
-//  // Fetch the upper bound of the stack used by each insertion point
-//  for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
-//    // Get the function of this MI
-//    auto &InstrumentedMF = *MI->getParent()->getParent();
-//    auto &InstrumentedFunction = InstrumentedMF.getFunction();
-//    // If the function of the MI is a kernel, then its private segment usage
-//    // is known by the metadata, or it has dynamic stack usage
-//    auto CC = InstrumentedFunction.getCallingConv();
-//    if (CC == llvm::CallingConv::AMDGPU_KERNEL) {
-//      auto &FrameInfo = InstrumentedMF.getFrameInfo();
-//      if (FrameInfo.hasVarSizedObjects())
-//        llvm_unreachable("Dynamic stack kernels are not yet implemented");
-//      else
-//        StaticSizedHooksToStackSize.insert(
-//            {HookKernel, FrameInfo.getStackSize()});
-//    } else {
-//      // If this is a device function, then its stack usage is the kernel that
-//      // calls it with the largest stack usage
-//      size_t LargestStackUsage = 0;
-//      llvm::SmallPtrSet<llvm::Function *, 3> VisitedFunctions{};
-//      llvm::SmallVector<llvm::MachineInstr *> UnvisitedUses(
-//          LR.getUsesOfGlobalValue(InstrumentedFunction));
-//      while (UnvisitedUses.empty()) {
-//        auto &CurrentUse = UnvisitedUses.front();
-//        auto &UseFunction = CurrentUse->getParent()->getParent()->getFunction();
-//        if (UseFunction.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
-//          auto &FrameInfo = InstrumentedMF.getFrameInfo();
-//          if (FrameInfo.hasVarSizedObjects())
-//            llvm_unreachable("Dynamic stack kernels are not yet implemented");
-//          else {
-//            if (LargestStackUsage < FrameInfo.getStackSize()) {
-//              LargestStackUsage = FrameInfo.getStackSize();
-//            }
-//          }
-//        } else {
-//          if (!VisitedFunctions.contains(&UseFunction)) {
-//            for (const auto &NewUse : LR.getUsesOfGlobalValue(UseFunction)) {
-//              UnvisitedUses.push_back(NewUse);
-//            }
-//            VisitedFunctions.insert(&UseFunction);
-//          }
-//        }
-//        UnvisitedUses.erase(UnvisitedUses.begin());
-//      }
-//    }
-//  }
-//}
+//     LLVM_DEBUG(llvm::dbgs() << "Live regs at instruction " << MI << ": \n";
+//                auto *TRI = MF->getSubtarget().getRegisterInfo();
+//                for (const auto &Reg
+//                     : MILivePhysRegs) {
+//                  llvm::dbgs() << TRI->getRegAsmName(Reg) << "\n";
+//                });
+//   }
+//   // Fetch the upper bound of the stack used by each insertion point
+//   for (const auto &[MI, HookKernel] : MIToHookFuncMap) {
+//     // Get the function of this MI
+//     auto &InstrumentedMF = *MI->getParent()->getParent();
+//     auto &InstrumentedFunction = InstrumentedMF.getFunction();
+//     // If the function of the MI is a kernel, then its private segment usage
+//     // is known by the metadata, or it has dynamic stack usage
+//     auto CC = InstrumentedFunction.getCallingConv();
+//     if (CC == llvm::CallingConv::AMDGPU_KERNEL) {
+//       auto &FrameInfo = InstrumentedMF.getFrameInfo();
+//       if (FrameInfo.hasVarSizedObjects())
+//         llvm_unreachable("Dynamic stack kernels are not yet implemented");
+//       else
+//         StaticSizedHooksToStackSize.insert(
+//             {HookKernel, FrameInfo.getStackSize()});
+//     } else {
+//       // If this is a device function, then its stack usage is the kernel
+//       that
+//       // calls it with the largest stack usage
+//       size_t LargestStackUsage = 0;
+//       llvm::SmallPtrSet<llvm::Function *, 3> VisitedFunctions{};
+//       llvm::SmallVector<llvm::MachineInstr *> UnvisitedUses(
+//           LR.getUsesOfGlobalValue(InstrumentedFunction));
+//       while (UnvisitedUses.empty()) {
+//         auto &CurrentUse = UnvisitedUses.front();
+//         auto &UseFunction =
+//         CurrentUse->getParent()->getParent()->getFunction(); if
+//         (UseFunction.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
+//           auto &FrameInfo = InstrumentedMF.getFrameInfo();
+//           if (FrameInfo.hasVarSizedObjects())
+//             llvm_unreachable("Dynamic stack kernels are not yet
+//             implemented");
+//           else {
+//             if (LargestStackUsage < FrameInfo.getStackSize()) {
+//               LargestStackUsage = FrameInfo.getStackSize();
+//             }
+//           }
+//         } else {
+//           if (!VisitedFunctions.contains(&UseFunction)) {
+//             for (const auto &NewUse : LR.getUsesOfGlobalValue(UseFunction)) {
+//               UnvisitedUses.push_back(NewUse);
+//             }
+//             VisitedFunctions.insert(&UseFunction);
+//           }
+//         }
+//         UnvisitedUses.erase(UnvisitedUses.begin());
+//       }
+//     }
+//   }
+// }
 //
-//bool DefineLiveRegsAndAppStackUsagePass::runOnMachineFunction(
-//    llvm::MachineFunction &MF) {
-//  MF.getInfo<llvm::SIMachineFunctionInfo>()->setScratchRSrcReg(
-//      llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3);
-//  auto *F = &MF.getFunction();
-//  auto &MRI = MF.getRegInfo();
-//  auto *TRI = MF.getSubtarget().getRegisterInfo();
-//  auto &EntryMBB = MF.front();
+// bool DefineLiveRegsAndAppStackUsagePass::runOnMachineFunction(
+//     llvm::MachineFunction &MF) {
+//   MF.getInfo<llvm::SIMachineFunctionInfo>()->setScratchRSrcReg(
+//       llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3);
+//   auto *F = &MF.getFunction();
+//   auto &MRI = MF.getRegInfo();
+//   auto *TRI = MF.getSubtarget().getRegisterInfo();
+//   auto &EntryMBB = MF.front();
 //
-//  // Find the entry block of the function, and mark the live-ins
-//  auto &LivePhysRegs = *HookLiveRegs[F];
+//   // Find the entry block of the function, and mark the live-ins
+//   auto &LivePhysRegs = *HookLiveRegs[F];
 //
-//  auto &CopyMCID = MF.getSubtarget().getInstrInfo()->get(llvm::AMDGPU::COPY);
+//   auto &CopyMCID = MF.getSubtarget().getInstrInfo()->get(llvm::AMDGPU::COPY);
 //
-//  llvm::DenseMap<llvm::MCRegister, llvm::Register> PhysToVirtRegMap;
+//   llvm::DenseMap<llvm::MCRegister, llvm::Register> PhysToVirtRegMap;
 //
-//  for (auto &LiveIn : EntryMBB.liveins()) {
-//    LivePhysRegs.addReg(LiveIn.PhysReg);
-//  }
-//  llvm::outs() << "Reg idx of s[0] in s[0:3]"
-//               << TRI->getSubRegIndex(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3,
-//                                      llvm::AMDGPU::SGPR0);
-//  llvm::outs() << "Is triple reg allocatable? "
-//               << TRI->isInAllocatableClass(llvm::AMDGPU::SGPR4_SGPR5_SGPR6)
-//               << "\n";
-//  LivePhysRegs.addReg(llvm::AMDGPU::SGPR4_SGPR5_SGPR6);
-//  LivePhysRegs.addReg(llvm::AMDGPU::SGPR6_SGPR7);
+//   for (auto &LiveIn : EntryMBB.liveins()) {
+//     LivePhysRegs.addReg(LiveIn.PhysReg);
+//   }
+//   llvm::outs() << "Reg idx of s[0] in s[0:3]"
+//                << TRI->getSubRegIndex(llvm::AMDGPU::SGPR0_SGPR1_SGPR2_SGPR3,
+//                                       llvm::AMDGPU::SGPR0);
+//   llvm::outs() << "Is triple reg allocatable? "
+//                << TRI->isInAllocatableClass(llvm::AMDGPU::SGPR4_SGPR5_SGPR6)
+//                << "\n";
+//   LivePhysRegs.addReg(llvm::AMDGPU::SGPR4_SGPR5_SGPR6);
+//   LivePhysRegs.addReg(llvm::AMDGPU::SGPR6_SGPR7);
 //
-//  //  for (auto &LiveIn : LivePhysRegs) {
-//  //    if (MRI.isReserved(LiveIn))
-//  //      continue;
-//  //    // Skip the register if we are about to add one of its super registers.
-//  //    if (any_of(TRI->superregs(LiveIn), [&](llvm::MCPhysReg SReg) {
-//  //          return LivePhysRegs.contains(SReg) && !MRI.isReserved(SReg);
-//  //        }))
-//  //      continue;
-//  //    llvm::outs() << "Inserting " << TRI->getName(LiveIn) << "\n";
-//  //    auto VirtualReg =
-//  //        MF.getRegInfo().createVirtualRegister(TRI->getPhysRegBaseClass(LiveIn));
-//  //    llvm::BuildMI(EntryMBB, EntryMBB.begin(), llvm::DebugLoc(), CopyMCID)
-//  //        .addReg(VirtualReg, llvm::RegState::Define)
-//  //        .addReg(LiveIn, llvm::RegState::Kill);
-//  //    PhysToVirtRegMap.insert({LiveIn, VirtualReg});
-//  //  }
+//   //  for (auto &LiveIn : LivePhysRegs) {
+//   //    if (MRI.isReserved(LiveIn))
+//   //      continue;
+//   //    // Skip the register if we are about to add one of its super
+//   registers.
+//   //    if (any_of(TRI->superregs(LiveIn), [&](llvm::MCPhysReg SReg) {
+//   //          return LivePhysRegs.contains(SReg) && !MRI.isReserved(SReg);
+//   //        }))
+//   //      continue;
+//   //    llvm::outs() << "Inserting " << TRI->getName(LiveIn) << "\n";
+//   //    auto VirtualReg =
+//   // MF.getRegInfo().createVirtualRegister(TRI->getPhysRegBaseClass(LiveIn));
+//   //    llvm::BuildMI(EntryMBB, EntryMBB.begin(), llvm::DebugLoc(), CopyMCID)
+//   //        .addReg(VirtualReg, llvm::RegState::Define)
+//   //        .addReg(LiveIn, llvm::RegState::Kill);
+//   //    PhysToVirtRegMap.insert({LiveIn, VirtualReg});
+//   //  }
 //
-//  int i = 0;
-//  auto It = llvm::AMDGPU::VGPR_32RegClass.begin();
-//  while (i != 0) {
-//    llvm::outs() << TRI->getName(*It) << "\n";
-//    llvm::outs() << "Is allocatable? " << MRI.isAllocatable(*It) << "\n";
-//    llvm::outs() << "Is in allocatable reg class? "
-//                 << TRI->isInAllocatableClass(*It) << "\n";
-//    auto VirtualReg =
-//        MF.getRegInfo().createVirtualRegister(TRI->getPhysRegBaseClass(*It));
-//    llvm::BuildMI(EntryMBB, EntryMBB.begin(), llvm::DebugLoc(), CopyMCID)
-//        .addReg(VirtualReg, llvm::RegState::Define)
-//        .addReg(*It, llvm::RegState::Kill);
-//    PhysToVirtRegMap.insert({*It, VirtualReg});
-//    LivePhysRegs.addReg(*It);
-//    It++;
-//    i++;
-//  }
+//   int i = 0;
+//   auto It = llvm::AMDGPU::VGPR_32RegClass.begin();
+//   while (i != 0) {
+//     llvm::outs() << TRI->getName(*It) << "\n";
+//     llvm::outs() << "Is allocatable? " << MRI.isAllocatable(*It) << "\n";
+//     llvm::outs() << "Is in allocatable reg class? "
+//                  << TRI->isInAllocatableClass(*It) << "\n";
+//     auto VirtualReg =
+//         MF.getRegInfo().createVirtualRegister(TRI->getPhysRegBaseClass(*It));
+//     llvm::BuildMI(EntryMBB, EntryMBB.begin(), llvm::DebugLoc(), CopyMCID)
+//         .addReg(VirtualReg, llvm::RegState::Define)
+//         .addReg(*It, llvm::RegState::Kill);
+//     PhysToVirtRegMap.insert({*It, VirtualReg});
+//     LivePhysRegs.addReg(*It);
+//     It++;
+//     i++;
+//   }
 //
-//  EntryMBB.clearLiveIns();
+//   EntryMBB.clearLiveIns();
 //
-//  // TODO: Fix machine verifier's live-in use detection issue
-//  for (auto &MBB : MF) {
-//    llvm::addLiveIns(MBB, LivePhysRegs);
-//  }
+//   // TODO: Fix machine verifier's live-in use detection issue
+//   for (auto &MBB : MF) {
+//     llvm::addLiveIns(MBB, LivePhysRegs);
+//   }
 //
-//  // If the SCC bit is live before entering the hook, then we need to save in
-//  // the very first instruction and restore it before all return instructions
-//  if (EntryMBB.isLiveIn(llvm::AMDGPU::SCC)) {
-//    // Put a copy from the SCC register to a virtual scalar 32-bit register in
-//    // the
-//    auto &CopyMCID = MF.getSubtarget().getInstrInfo()->get(llvm::AMDGPU::COPY);
-//    auto VirtualSReg =
-//        MF.getRegInfo().createVirtualRegister(&llvm::AMDGPU::SReg_32RegClass);
-//    llvm::BuildMI(EntryMBB, EntryMBB.begin(), llvm::DebugLoc(), CopyMCID)
-//        .addReg(VirtualSReg, llvm::RegState::Define)
-//        .addReg(llvm::AMDGPU::SCC, llvm::RegState::Kill);
-//    // Iterate over all MBBs, and add a copy back before the term instruction
-//    // inside all return blocks
-//    for (auto &MBB : MF) {
-//      if (MBB.isReturnBlock()) {
-//        llvm::BuildMI(MBB, MBB.getFirstTerminator(), llvm::DebugLoc(), CopyMCID)
-//            .addReg(llvm::AMDGPU::SCC, llvm::RegState::Define)
-//            .addReg(VirtualSReg, llvm::RegState::Kill);
-//      }
-//    }
-//  }
+//   // If the SCC bit is live before entering the hook, then we need to save in
+//   // the very first instruction and restore it before all return instructions
+//   if (EntryMBB.isLiveIn(llvm::AMDGPU::SCC)) {
+//     // Put a copy from the SCC register to a virtual scalar 32-bit register
+//     in
+//     // the
+//     auto &CopyMCID =
+//     MF.getSubtarget().getInstrInfo()->get(llvm::AMDGPU::COPY); auto
+//     VirtualSReg =
+//         MF.getRegInfo().createVirtualRegister(&llvm::AMDGPU::SReg_32RegClass);
+//     llvm::BuildMI(EntryMBB, EntryMBB.begin(), llvm::DebugLoc(), CopyMCID)
+//         .addReg(VirtualSReg, llvm::RegState::Define)
+//         .addReg(llvm::AMDGPU::SCC, llvm::RegState::Kill);
+//     // Iterate over all MBBs, and add a copy back before the term instruction
+//     // inside all return blocks
+//     for (auto &MBB : MF) {
+//       if (MBB.isReturnBlock()) {
+//         llvm::BuildMI(MBB, MBB.getFirstTerminator(), llvm::DebugLoc(),
+//         CopyMCID)
+//             .addReg(llvm::AMDGPU::SCC, llvm::RegState::Define)
+//             .addReg(VirtualSReg, llvm::RegState::Kill);
+//       }
+//     }
+//   }
 //
-//  //  for (auto &MBB: MF) {
-//  //    for (auto &LiveIn : MF.front().liveins()) {
-//  ////      if (MBB.back().getOpcode() != llvm::AMDGPU::SI_END_CF)
-//  //// MBB.back().addOperand(llvm::MachineOperand::CreateReg(LiveIn.PhysReg,
-//  /// false, true)); /      auto MCID =
-//  /// MF.getSubtarget().getInstrInfo()->get(llvm::AMDGPU::COPY); /
-//  /// llvm::BuildMI(*MF.begin(), MF.begin()->begin(), llvm::DebugLoc(),
-//  /// MCID).addReg(LiveIn, llvm::RegState::Define); /
-//  /// MBB.begin()->addOperand(llvm::MachineOperand::CreateReg(LiveIn.PhysReg,
-//  /// true, true)); /      MBB.begin()->print(llvm::outs());
-//  //    }
-//  //  }
+//   //  for (auto &MBB: MF) {
+//   //    for (auto &LiveIn : MF.front().liveins()) {
+//   ////      if (MBB.back().getOpcode() != llvm::AMDGPU::SI_END_CF)
+//   //// MBB.back().addOperand(llvm::MachineOperand::CreateReg(LiveIn.PhysReg,
+//   /// false, true)); /      auto MCID =
+//   /// MF.getSubtarget().getInstrInfo()->get(llvm::AMDGPU::COPY); /
+//   /// llvm::BuildMI(*MF.begin(), MF.begin()->begin(), llvm::DebugLoc(),
+//   /// MCID).addReg(LiveIn, llvm::RegState::Define); /
+//   /// MBB.begin()->addOperand(llvm::MachineOperand::CreateReg(LiveIn.PhysReg,
+//   /// true, true)); /      MBB.begin()->print(llvm::outs());
+//   //    }
+//   //  }
 //
-//  if (StaticSizedHooksToStackSize.contains(F) &&
-//      StaticSizedHooksToStackSize.at(F) != 0) {
-//    // Create a fixed stack operand at the bottom
-//    MF.getFrameInfo().CreateFixedObject(StaticSizedHooksToStackSize.at(F), 0,
-//                                        true);
-//  }
+//   if (StaticSizedHooksToStackSize.contains(F) &&
+//       StaticSizedHooksToStackSize.at(F) != 0) {
+//     // Create a fixed stack operand at the bottom
+//     MF.getFrameInfo().CreateFixedObject(StaticSizedHooksToStackSize.at(F), 0,
+//                                         true);
+//   }
 //
-//  for (auto &MBB : MF) {
-//    if (MBB.isReturnBlock()) {
-//      for (auto &LiveIn : MF.begin()->liveins()) {
-//        //        llvm::outs() << TRI->getName(LiveIn.PhysReg) << "\n";
-//        //        llvm::BuildMI(EntryMBB, EntryMBB.back(), llvm::DebugLoc(),
-//        //        CopyMCID)
-//        //            .addReg(LiveIn.PhysReg, llvm::RegState::Define)
-//        //            .addReg(PhysToVirtRegMap.at(LiveIn.PhysReg),
-//        //            llvm::RegState::Kill);
-//        MBB.back().addOperand(
-//            llvm::MachineOperand::CreateReg(LiveIn.PhysReg, false, true));
-//      }
-//    }
-//  }
+//   for (auto &MBB : MF) {
+//     if (MBB.isReturnBlock()) {
+//       for (auto &LiveIn : MF.begin()->liveins()) {
+//         //        llvm::outs() << TRI->getName(LiveIn.PhysReg) << "\n";
+//         //        llvm::BuildMI(EntryMBB, EntryMBB.back(), llvm::DebugLoc(),
+//         //        CopyMCID)
+//         //            .addReg(LiveIn.PhysReg, llvm::RegState::Define)
+//         //            .addReg(PhysToVirtRegMap.at(LiveIn.PhysReg),
+//         //            llvm::RegState::Kill);
+//         MBB.back().addOperand(
+//             llvm::MachineOperand::CreateReg(LiveIn.PhysReg, false, true));
+//       }
+//     }
+//   }
 //
-//  return true;
-//}
-//void DefineLiveRegsAndAppStackUsagePass::getAnalysisUsage(
-//    llvm::AnalysisUsage &AU) const {
-//  AU.setPreservesCFG();
-//  AU.addPreservedID(llvm::MachineLoopInfoID);
-//  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
-//  MachineFunctionPass::getAnalysisUsage(AU);
-//};
+//   return true;
+// }
+// void DefineLiveRegsAndAppStackUsagePass::getAnalysisUsage(
+//     llvm::AnalysisUsage &AU) const {
+//   AU.setPreservesCFG();
+//   AU.addPreservedID(llvm::MachineLoopInfoID);
+//   AU.addPreserved<llvm::SlotIndexesWrapperPass>();
+//   MachineFunctionPass::getAnalysisUsage(AU);
+// };
 } // namespace luthier
