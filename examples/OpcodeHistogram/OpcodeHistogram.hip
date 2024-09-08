@@ -207,7 +207,8 @@ static void instrumentAllFunctionsOfExecutable(hsa_executable_t Exec) {
 static void
 atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
                    bool MustDestroyAfterWait,
-                   hsa_kernel_dispatch_packet_t SubmittedDispatchPacket) {
+                   hsa_kernel_dispatch_packet_t SubmittedDispatchPacket,
+                   const llvm::TargetInstrInfo *TII) {
   constexpr auto Timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                std::chrono::seconds{300})
                                .count();
@@ -295,9 +296,9 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
   for (auto opcode = 0; opcode <= llvm::AMDGPU::INSTRUCTION_LIST_END;
        ++opcode) {
     if (KernelHistogram[opcode] != 0) {
-      // std::string OpcodeName = TII -> getName(opcode).str();
+       std::string OpcodeName = TII->getName(opcode).str();
       llvm::outs() << llvm::formatv("  {0} = {1}\n",
-                                    opcode, // index
+                                    OpcodeName, // index
                                     KernelHistogram[opcode]);
     }
   }
@@ -356,10 +357,14 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           auto IsKernelInstrumented =
               isKernelInstrumented(*KernelSymbol, "OpcodeHistogram");
           LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
+          // Get the executable associated with this kernel
+          auto Exec = KernelSymbol->getExecutable();
+          LUTHIER_REPORT_FATAL_ON_ERROR(Exec.takeError());
+          auto LR = lift(*Exec);
+          LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
+          const auto *TII = LR->getMF(*KernelSymbol)->getSubtarget().getInstrInfo();
+
           if (!*IsKernelInstrumented) {
-            // Get the executable associated with this kernel
-            auto Exec = KernelSymbol->getExecutable();
-            LUTHIER_REPORT_FATAL_ON_ERROR(Exec.takeError());
             instrumentAllFunctionsOfExecutable(*Exec);
           }
 
@@ -375,12 +380,12 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket, "OpcodeHistogram"));
             ToBeSubmittedPackets->push_back(Packet);
             // zero the histogram
-            for (int i = 0; i < llvm::AMDGPU::INSTRUCTION_LIST_END; i++) {
-              KernelHistogram[i] = 0;
+            for (auto &Op : KernelHistogram) {
+              Op = 0;
             }
             std::thread(atKernelCompletion, DispatchPacket.completion_signal,
                         SignalValue, MustDestroySignalAfterLaunch,
-                        DispatchPacket)
+                        DispatchPacket, TII)
                 .detach();
           } else {
             ToBeSubmittedPackets->push_back(Packet);
