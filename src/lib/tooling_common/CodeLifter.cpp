@@ -924,8 +924,19 @@ llvm::Error CodeLifter::liftFunction(
         llvm_unreachable("Not yet implemented");
       }
     }
-    // TODO: Create a (fake) memory operand to keep the machine verifier happy
+    // Create a (fake) memory operand to keep the machine verifier happy
     // when encountering image instructions
+    if (llvm::SIInstrInfo::isImage(*Builder)) {
+      llvm::MachinePointerInfo PtrInfo =
+          llvm::MachinePointerInfo::getConstantPool(MF);
+      auto *MMO =
+          MF.getMachineMemOperand(PtrInfo,
+                                  MCInstInfo->get(Builder->getOpcode()).mayLoad()
+                                      ? llvm::MachineMemOperand::MOLoad
+                                      : llvm::MachineMemOperand::MOStore,
+                                  0, llvm::Align());
+      Builder->addMemOperand(MF, MMO);
+    }
 
     LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
     LLVM_DEBUG(llvm::dbgs() << "Final form of the instruction (not final if "
