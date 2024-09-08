@@ -41,7 +41,6 @@ using namespace luthier;
 //===----------------------------------------------------------------------===//
 
 /// Define an option category for the instruction count tool
-/* global control variables for this tool */
 llvm::cl::OptionCategory
     OpcodeHistogramToolOptionCategory("Opcode Histogram Tool Options");
 
@@ -84,24 +83,21 @@ static llvm::cl::opt<bool> DemangleKernelNames(
     llvm::cl::desc("Whether to demangle kernel names before printing"),
     llvm::cl::init(true), llvm::cl::NotHidden,
     llvm::cl::cat(OpcodeHistogramToolOptionCategory));
-/* kernel id counter, maintained in system memory */
-uint32_t KernelId = 0;
 
 __attribute__((
     managed)) uint64_t KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
 uint64_t GlobalHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
-/* total instruction counter, maintained in system memory, incremented by
- * "counter" every time a kernel completes  */
+/// Total number of instructions counted
 static uint64_t TotalNumInstructions = 0;
 
 /// Number of kernels launched so far
 static uint32_t NumKernelLaunched = 0;
 
 static bool ActiveRegion = true;
-/* a pthread mutex, used to prevent multiple kernels to run concurrently and
- * therefore to "corrupt" the counter variable */
+
+/// Mutex to protect the managed histogram
 std::mutex Mutex;
 
 MARK_LUTHIER_DEVICE_MODULE
@@ -109,8 +105,6 @@ MARK_LUTHIER_DEVICE_MODULE
 // Record OPCode Histogram
 LUTHIER_HOOK_ANNOTATE countOpcodeHistogramVector(bool CountWaveFrontLevel,
                                                  int OpcodeNumber) {
-  // Check the opcode is in the map or not, if not, add it to the map
-
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask =
       luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
@@ -141,12 +135,6 @@ LUTHIER_HOOK_ANNOTATE countOpcodeHistogramScalar(int OpcodeNumber) {
       luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
   // Overwrite the exec mask with one so that only a single thread is active
   luthier::writeReg(llvm::AMDGPU::EXEC, 1);
-  // Check the opcode is in the map or not, if not, add it to the map
-  //  if (InstrOpcodeToNumMap.find(OpcodeName) == InstrOpcodeToNumMap.end()) {
-  //      InstrOpcodeToNumMap[OpcodeName] = InstrOpcodeToNumMap.size();
-  //  }
-  //  //Get the opcode number
-  //  int OpcodeNumber = InstrOpcodeToNumMap[OpcodeName];
   //  Increment the counter for this opcode
   atomicAdd(&KernelHistogram[OpcodeNumber], 1);
   // Restore the exec mask
@@ -160,11 +148,10 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
   auto *CountWavefrontLevelConstVal = llvm::ConstantInt::getBool(
       *LR.getContext().getContext(), CountWavefrontLevel);
   unsigned int I = 0;
-  // const auto llvm::TargetInstrInfo *TII;
   for (auto &[_, MF] : LR.functions()) {
+    const auto &STI = MF->getSubtarget();
+    const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
     for (auto &MBB : *MF) {
-      const auto &STI = MF->getSubtarget();
-      const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
       for (auto &MI : MBB) {
         if (I >= InstrBeginInterval && I < InstrEndInterval) {
           std::string OpcodeName = TII->getName(MI.getOpcode()).str();
