@@ -420,7 +420,7 @@ void atFinalization(ApiEvtPhase Phase) {
                                     OpcodeName, // index
                                     Count);
     }
-
+    delete GlobalHistogram;
     llvm::outs() << "Total number of instructions counted: "
                  << TotalNumInstructions << "\n";
   }
