@@ -324,7 +324,8 @@ public:
     return make_range(global_begin(), global_end());
   }
 
-  const llvm::MachineFunction *getMF(const hsa::LoadedCodeObjectSymbol &Func) {
+  const llvm::MachineFunction *
+  getMF(const hsa::LoadedCodeObjectSymbol &Func) const {
     auto It = RelatedFunctions.find(&Func);
     if (It == RelatedFunctions.end())
       return nullptr;
@@ -332,7 +333,8 @@ public:
       return It->second;
   }
 
-  const llvm::GlobalVariable *getGV(const hsa::LoadedCodeObjectSymbol &GV) {
+  const llvm::GlobalVariable *
+  getGV(const hsa::LoadedCodeObjectSymbol &GV) const {
     auto It = RelatedGlobalVariables.find(&GV);
     if (It == RelatedGlobalVariables.end())
       return nullptr;
