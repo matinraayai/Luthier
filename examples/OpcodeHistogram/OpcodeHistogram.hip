@@ -87,7 +87,7 @@ static llvm::cl::opt<bool> DemangleKernelNames(
 __attribute__((
     managed)) uint64_t KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
-uint64_t GlobalHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
+static llvm::StringMap<uint64_t> *GlobalHistogram{nullptr};
 
 /// Total number of instructions counted
 static uint64_t TotalNumInstructions = 0;
@@ -235,9 +235,19 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
                                           : std::string(*KernelName);
 
   // Copy the histogram to the global histogram
+  uint64_t InstsCountedForThisKernel = 0;
   for (int i = 0; i < llvm::AMDGPU::INSTRUCTION_LIST_END; i++) {
-    GlobalHistogram[i] += KernelHistogram[i];
+    if (KernelHistogram[i] != 0) {
+      auto OpcodeName = TII->getName(i);
+      if (GlobalHistogram->contains(OpcodeName))
+        (*GlobalHistogram)[OpcodeName] += KernelHistogram[i];
+      else
+        GlobalHistogram->insert({OpcodeName, KernelHistogram[i]});
+      InstsCountedForThisKernel += KernelHistogram[i];
+    }
   }
+  TotalNumInstructions += InstsCountedForThisKernel;
+
   // Note: Grid size in HSA contains all the work items in the kernel. This
   // is different from the number of blocks (grid dim) in CUDA or HIP
   // For example, if a kernel is launched from HIP with 16 blocks, each with
@@ -245,15 +255,6 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
   // workgroup size of (64, 1, 1), since 1024 = 64 x 16.
   // As is evident from the example, workgroup size in HSA has the same meaning
   // as CUDA/HIP
-
-  uint64_t counter = 0;
-  for (auto opcode = 0; opcode <= llvm::AMDGPU::INSTRUCTION_LIST_END;
-       ++opcode) {
-    if (GlobalHistogram[opcode] != 0) {
-      counter += GlobalHistogram[opcode];
-    }
-  }
-  TotalNumInstructions += counter;
 
   llvm::outs() << llvm::formatv(
       "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) Workgroup Dims: "
@@ -264,7 +265,8 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
       SubmittedDispatchPacket.grid_size_z,
       SubmittedDispatchPacket.workgroup_size_x,
       SubmittedDispatchPacket.workgroup_size_y,
-      SubmittedDispatchPacket.workgroup_size_z, counter, TotalNumInstructions);
+      SubmittedDispatchPacket.workgroup_size_z, InstsCountedForThisKernel,
+      TotalNumInstructions);
 
   llvm::outs() << "Histogram for kernel " << KernelNameToBePrinted << ":\n";
   /*
@@ -283,7 +285,7 @@ atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
   for (auto opcode = 0; opcode <= llvm::AMDGPU::INSTRUCTION_LIST_END;
        ++opcode) {
     if (KernelHistogram[opcode] != 0) {
-       std::string OpcodeName = TII->getName(opcode).str();
+      std::string OpcodeName = TII->getName(opcode).str();
       llvm::outs() << llvm::formatv("  {0} = {1}\n",
                                     OpcodeName, // index
                                     KernelHistogram[opcode]);
@@ -349,7 +351,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           LUTHIER_REPORT_FATAL_ON_ERROR(Exec.takeError());
           auto LR = lift(*Exec);
           LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-          const auto *TII = LR->getMF(*KernelSymbol)->getSubtarget().getInstrInfo();
+          const auto *TII =
+              LR->getMF(*KernelSymbol)->getSubtarget().getInstrInfo();
 
           if (!*IsKernelInstrumented) {
             instrumentAllFunctionsOfExecutable(*Exec);
@@ -400,6 +403,8 @@ void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     llvm::outs() << "Opcode Histogram tool is launching.\n";
   } else {
+    // Allocate a new string map
+    GlobalHistogram = new llvm::StringMap<uint64_t>();
     // Set the callback for when the HSA API table is captured
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
     // Set the HSA API callback
@@ -409,6 +414,12 @@ void atToolInit(ApiEvtPhase Phase) {
 
 void atFinalization(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
+    llvm::outs() << "Instruction Opcode Results: \n";
+    for (const auto &[OpcodeName, Count] : *GlobalHistogram) {
+      llvm::outs() << llvm::formatv("  {0} = {1}\n",
+                                    OpcodeName, // index
+                                    Count);
+    }
 
     llvm::outs() << "Total number of instructions counted: "
                  << TotalNumInstructions << "\n";
