@@ -57,11 +57,31 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   auto &InstPointLiveRegs =
       getAnalysis<PhysicalRegAccessVirtualizationPass>().get32BitLiveInRegs(MF);
   auto *TII = MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
-  // Emit Value State Register Load prologue: ==================================
-  // Keep track of the first instruction of the hook
-  auto EntryInstruction = MF.front().begin();
   auto &StateValueLocation = HookStateValueLocation.StateValueLocation;
   auto &StateValueStorage = StateValueLocation.getSVS();
+  // We need to first determine if we need to even emit a prologue/epilogue for
+  // this hook; If the hooks makes use of the state value VGPR, or is
+  // using s[0:3], s32, and FS, then it requires a prologue/epilogue
+  // If any of the hooks require the presence of the state value register,
+  // a pre-kernel must be emitted in the LR
+  auto &MRI = MF.getRegInfo();
+  bool HookMakesUseOfStateValue{false};
+  if (MRI.isPhysRegUsed(HookStateValueLocation.StateValueVGPR))
+    HookMakesUseOfStateValue = true;
+
+  for (const auto &[PhysReg, SpillLaneID] : ValueRegisterSpillSlots) {
+    if (MRI.isPhysRegUsed(PhysReg))
+      HookMakesUseOfStateValue = true;
+  }
+
+  if (!HookMakesUseOfStateValue)
+    return false;
+
+  // Emit Value State Register Load prologue: ==================================
+
+  // Keep track of the first instruction of the hook
+  auto EntryInstruction = MF.front().begin();
+
   // If the state value is located in a VGPR, then there's no need to
   // emit anything
   //
@@ -134,7 +154,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64),
                   HookStateValueLocation.StateValueVGPR)
-        .addReg(TwoAGPRStorage->StorageAGPR);
+        .addReg(OneAGPRThreeSGPRStorage->StorageAGPR);
     Changed |= true;
   } else if (auto *ThreeSGPRStorage =
                  llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(
@@ -148,39 +168,37 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::S_XOR_B32), llvm::AMDGPU::FLAT_SCR_LO)
         .addReg(llvm::AMDGPU::FLAT_SCR_LO)
-        .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRLow);
+        .addReg(ThreeSGPRStorage->FlatScratchSGPRLow);
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::S_XOR_B32),
-                  OneAGPRThreeSGPRStorage->FlatScratchSGPRLow)
+                  ThreeSGPRStorage->FlatScratchSGPRLow)
         .addReg(llvm::AMDGPU::FLAT_SCR_LO)
-        .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRLow,
-                llvm::RegState::Kill);
+        .addReg(ThreeSGPRStorage->FlatScratchSGPRLow, llvm::RegState::Kill);
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::S_XOR_B32), llvm::AMDGPU::FLAT_SCR_LO)
         .addReg(llvm::AMDGPU::FLAT_SCR_LO)
-        .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRLow);
+        .addReg(ThreeSGPRStorage->FlatScratchSGPRLow);
 
     /// FS_HI Swap
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::S_XOR_B32), llvm::AMDGPU::FLAT_SCR_HI)
         .addReg(llvm::AMDGPU::FLAT_SCR_HI)
-        .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh);
+        .addReg(ThreeSGPRStorage->FlatScratchSGPRHigh);
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::S_XOR_B32),
-                  OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh)
+                  ThreeSGPRStorage->FlatScratchSGPRHigh)
         .addReg(llvm::AMDGPU::FLAT_SCR_HI)
-        .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh,
-                llvm::RegState::Kill);
+        .addReg(ThreeSGPRStorage->FlatScratchSGPRHigh, llvm::RegState::Kill);
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::S_XOR_B32), llvm::AMDGPU::FLAT_SCR_HI)
         .addReg(llvm::AMDGPU::FLAT_SCR_HI)
-        .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh);
+        .addReg(ThreeSGPRStorage->FlatScratchSGPRHigh);
     // Spill the VGPR that will hold the state value into the beginning of
     // the scratch
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(HookStateValueLocation.StateValueVGPR, llvm::RegState::Kill)
-        .addReg(OneAGPRThreeSGPRStorage->InstrumentationStackPointer)
+        .addReg(ThreeSGPRStorage->InstrumentationStackPointer)
         .addImm(0)
         .addImm(0);
 
@@ -188,7 +206,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR),
                   HookStateValueLocation.StateValueVGPR)
-        .addReg(OneAGPRThreeSGPRStorage->InstrumentationStackPointer)
+        .addReg(ThreeSGPRStorage->InstrumentationStackPointer)
         .addImm(4)
         .addImm(0);
     Changed |= true;
@@ -211,7 +229,6 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   // If the hook uses s[0:3], s32, and FLAT_SCRATCH_LO/HI,
   // then we need to signal the LR pre-kernel inserter that we need them +
   // Generate code to load it
-  auto &MRI = MF.getRegInfo();
 
   for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
     if (MRI.isPhysRegUsed(PhysReg)) {
@@ -314,42 +331,41 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
                       TII->get(llvm::AMDGPU::S_XOR_B32),
                       llvm::AMDGPU::FLAT_SCR_LO)
             .addReg(llvm::AMDGPU::FLAT_SCR_LO)
-            .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRLow);
+            .addReg(ThreeSGPRStorage->FlatScratchSGPRLow);
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::S_XOR_B32),
-                      OneAGPRThreeSGPRStorage->FlatScratchSGPRLow)
+                      ThreeSGPRStorage->FlatScratchSGPRLow)
             .addReg(llvm::AMDGPU::FLAT_SCR_LO)
-            .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRLow,
-                    llvm::RegState::Kill);
+            .addReg(ThreeSGPRStorage->FlatScratchSGPRLow, llvm::RegState::Kill);
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::S_XOR_B32),
                       llvm::AMDGPU::FLAT_SCR_LO)
             .addReg(llvm::AMDGPU::FLAT_SCR_LO)
-            .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRLow);
+            .addReg(ThreeSGPRStorage->FlatScratchSGPRLow);
 
         /// FS_HI Swap
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::S_XOR_B32),
                       llvm::AMDGPU::FLAT_SCR_HI)
             .addReg(llvm::AMDGPU::FLAT_SCR_HI)
-            .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh);
+            .addReg(ThreeSGPRStorage->FlatScratchSGPRHigh);
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::S_XOR_B32),
-                      OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh)
+                      ThreeSGPRStorage->FlatScratchSGPRHigh)
             .addReg(llvm::AMDGPU::FLAT_SCR_HI)
-            .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh,
+            .addReg(ThreeSGPRStorage->FlatScratchSGPRHigh,
                     llvm::RegState::Kill);
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::S_XOR_B32),
                       llvm::AMDGPU::FLAT_SCR_HI)
             .addReg(llvm::AMDGPU::FLAT_SCR_HI)
-            .addReg(OneAGPRThreeSGPRStorage->FlatScratchSGPRHigh);
+            .addReg(ThreeSGPRStorage->FlatScratchSGPRHigh);
         // Spill the VGPR that will hold the state value into the beginning of
         // the scratch
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR),
                       HookStateValueLocation.StateValueVGPR)
-            .addReg(OneAGPRThreeSGPRStorage->InstrumentationStackPointer)
+            .addReg(ThreeSGPRStorage->InstrumentationStackPointer)
             .addImm(0)
             .addImm(0);
       }
@@ -358,7 +374,6 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
   return Changed;
 }
-
 
 void HookPEIPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
   AU.setPreservesCFG();

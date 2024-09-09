@@ -70,7 +70,7 @@ static std::string getFSRemappingFile(const TargetMachine *TM) {
 
 namespace luthier {
 
-void addMachinePassesToTPC(llvm::TargetPassConfig &TPC) {
+void addMachinePassesToTPC(llvm::TargetPassConfig &TPC, HookPEIPass &PEIPass) {
   llvm::StringMap<llvm::cl::Option *> &Map = llvm::cl::getRegisteredOptions();
 
   const auto &EnableFSDiscriminator =
@@ -161,6 +161,7 @@ void addMachinePassesToTPC(llvm::TargetPassConfig &TPC) {
   // do so if it hasn't been disabled, substituted, or overridden.
   if (!TPC.isPassSubstitutedOrOverridden(&llvm::PrologEpilogCodeInserterID))
     TPC.addPass(llvm::createPrologEpilogInserterPass());
+  TPC.addPass(&PEIPass);
 
   /// Add passes that optimize machine instructions after register allocation.
   if (TPC.getOptLevel() != llvm::CodeGenOptLevel::None)

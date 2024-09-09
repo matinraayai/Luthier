@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_TPC_OVERRIDES_HPP
 #define LUTHIER_TOOLING_COMMON_TPC_OVERRIDES_HPP
+#include "tooling_common/HookPEIPass.hpp"
+
 
 namespace llvm {
 
@@ -30,8 +32,7 @@ class TargetPassConfig;
 
 namespace luthier {
 
-
-void addMachinePassesToTPC(llvm::TargetPassConfig &TPC);
+void addMachinePassesToTPC(llvm::TargetPassConfig &TPC, HookPEIPass &PEIPass);
 
 
 }

@@ -29,7 +29,7 @@
 
 namespace luthier {
 
-class HookPEIPass : llvm::MachineFunctionPass {
+class HookPEIPass : public llvm::MachineFunctionPass {
 
 private:
   /// The lifted representation being worked on
@@ -44,6 +44,9 @@ private:
   /// Physical registers that are not always in the Live-ins sets of the
   /// instrumentation points
   const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered;
+  /// Does the LR requires a pre-kernel to be emitted in the first place
+  bool
+
   /// Whether the pre-kernel must enable scratch/private segment buffer
   /// since one of the hooks requires it
   bool RequiresStackInPreKernel{false};
@@ -64,11 +67,11 @@ public:
 
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
 
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  [[nodiscard]] bool doesRequireStackInPreKernel() {
+    return RequiresStackInPreKernel;
+  }
 
-  void emitHookPrologue(
-      llvm::MachineFunction &MF,
-      llvm::SmallDenseSet<llvm::MCRegister, 4> &AccessedPhysicalRegs) const;
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 };
 
 } // namespace luthier

@@ -656,8 +656,6 @@ llvm::Error CodeLifter::liftFunction(
                // instructions (AKA instruction output operand), and
                // have their value populated by the Driver using the
                // Kernel Descriptor
-  llvm::SmallDenseSet<unsigned> Defines; // < Set of registers defined by
-                                         // instructions (output operands)
   llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
   MBBs.push_back(MBB);
   for (unsigned int InstIdx = 0; InstIdx < TargetFunction->size(); InstIdx++) {
@@ -719,20 +717,19 @@ llvm::Error CodeLifter::liftFunction(
       const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
       if (Op.isReg()) {
         LLVM_DEBUG(llvm::dbgs() << "Resolving reg operand.\n");
-        unsigned RegNum = Op.getReg();
+        unsigned RegNum = RealToPseudoRegisterMapTable(Op.getReg());
         const bool IsDef = OpIndex < MCID.getNumDefs();
         unsigned Flags = 0;
         const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
         if (IsDef && !OpInfo.isOptionalDef()) {
           Flags |= llvm::RegState::Define;
-          Defines.insert(RegNum);
-        } else if (!Defines.contains(RegNum)) {
-          LiveIns.insert(RegNum);
         }
-        LLVM_DEBUG(llvm::dbgs() << "Adding register ";
-                   Op.print(llvm::dbgs(), TargetInfo->getMCRegisterInfo());
-                   llvm::dbgs() << " with flags " << Flags << "\n";);
-        Builder.addReg(Op.getReg(), Flags);
+        LLVM_DEBUG(llvm::dbgs()
+                       << "Adding register "
+                       << llvm::printReg(RegNum,
+                                         MF.getSubtarget().getRegisterInfo())
+                       << " with flags " << Flags << "\n";);
+        Builder.addReg(RegNum, Flags);
       } else if (Op.isImm()) {
         LLVM_DEBUG(llvm::dbgs() << "Resolving an immediate operand.\n");
         // TODO: Resolve immediate load/store operands if they don't have
@@ -845,12 +842,12 @@ llvm::Error CodeLifter::liftFunction(
     if (llvm::SIInstrInfo::isImage(*Builder)) {
       llvm::MachinePointerInfo PtrInfo =
           llvm::MachinePointerInfo::getConstantPool(MF);
-      auto *MMO =
-          MF.getMachineMemOperand(PtrInfo,
-                                  MCInstInfo->get(Builder->getOpcode()).mayLoad()
-                                      ? llvm::MachineMemOperand::MOLoad
-                                      : llvm::MachineMemOperand::MOStore,
-                                  0, llvm::Align());
+      auto *MMO = MF.getMachineMemOperand(
+          PtrInfo,
+          MCInstInfo->get(Builder->getOpcode()).mayLoad()
+              ? llvm::MachineMemOperand::MOLoad
+              : llvm::MachineMemOperand::MOStore,
+          16, llvm::Align(8));
       Builder->addMemOperand(MF, MMO);
     }
 
