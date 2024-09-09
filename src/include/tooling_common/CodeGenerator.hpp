@@ -39,6 +39,8 @@ class LivePhysRegs;
 
 namespace luthier {
 
+struct PreKernelEmissionDescriptor;
+
 namespace hsa {
 
 class ISA;
@@ -124,8 +126,9 @@ private:
           std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
           &InlineAsmMIRMap);
 
-  std::pair<llvm::MachineModuleInfoWrapperPass *,
-            std::unique_ptr<llvm::legacy::PassManager>>
+  std::tuple<llvm::MachineModuleInfoWrapperPass *,
+             std::unique_ptr<llvm::legacy::PassManager>,
+             PreKernelEmissionDescriptor>
   runCodeGenPipeline(
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
           &MIToHookFuncMap,

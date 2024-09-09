@@ -121,11 +121,12 @@ LRStateValueLocations::LRStateValueLocations(
     const luthier::LiftedRepresentation &LR, hsa::LoadedCodeObject LCO,
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
     const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
-    const luthier::LRRegisterLiveness &RegLiveness)
+    const luthier::LRRegisterLiveness &RegLiveness,
+    PreKernelEmissionDescriptor &PKInfo)
     : LR(LR), LCO(std::move(LCO)), MIToHookMap(MIToHookMap),
       HooksAccessedPhysicalRegistersNotInLiveIns(
           HooksAccessedPhysicalRegistersNotInLiveIns),
-      RegLiveness(RegLiveness) {}
+      RegLiveness(RegLiveness), PKInfo(PKInfo) {}
 
 bool allocateUnusedRegister(
     llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
@@ -251,10 +252,11 @@ LRStateValueLocations::create(
     const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
     const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
-    const LRRegisterLiveness &RegLiveness) {
+    const LRRegisterLiveness &RegLiveness,
+    PreKernelEmissionDescriptor &PKInfo) {
   std::unique_ptr<LRStateValueLocations> Out(new LRStateValueLocations(
       LR, LCO, MIToHookMap, HooksAccessedPhysicalRegistersNotInLiveIns,
-      RegLiveness));
+      RegLiveness, PKInfo));
   LUTHIER_RETURN_ON_ERROR(Out->calculateStateValueLocations());
   return Out;
 }
@@ -311,7 +313,7 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
                     ->getInstructionIndex(InsertionPointMBB.front()),
                 StateValueFixedLocation}}});
     }
-    OnlyKernelNeedsPrologue = true;
+    PKInfo.OnlyKernelNeedsPreKernel = true;
   } else {
     // If not, we'll have to shuffle the value state reg and flat scratch
     // registers' locations around for each function involved

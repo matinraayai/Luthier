@@ -24,10 +24,13 @@
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
 #include "tooling_common/LRStateValueLocations.hpp"
+#include "tooling_common/PreKernelEmitter.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
+
+class PhysicalRegAccessVirtualizationPass;
 
 class HookPEIPass : public llvm::MachineFunctionPass {
 
@@ -44,32 +47,28 @@ private:
   /// Physical registers that are not always in the Live-ins sets of the
   /// instrumentation points
   const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered;
-  /// Does the LR requires a pre-kernel to be emitted in the first place
-  bool
 
-  /// Whether the pre-kernel must enable scratch/private segment buffer
-  /// since one of the hooks requires it
-  bool RequiresStackInPreKernel{false};
+  PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass;
+
+  PreKernelEmissionDescriptor &PKInfo;
 
 public:
   static char ID;
 
   HookPEIPass(const LiftedRepresentation &LR,
               const LRStateValueLocations &StateValueLocations,
+              PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass,
               const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
                   &HookFuncToInstPointMI,
               const LRRegisterLiveness &RegLiveness,
-              const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered);
+              const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered,
+              PreKernelEmissionDescriptor &PKInfo);
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Physical Register Access Virtualization Pass";
   }
 
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
-
-  [[nodiscard]] bool doesRequireStackInPreKernel() {
-    return RequiresStackInPreKernel;
-  }
 
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 };

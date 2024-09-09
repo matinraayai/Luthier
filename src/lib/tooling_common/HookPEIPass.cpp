@@ -19,10 +19,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "tooling_common/HookPEIPass.hpp"
+#include "tooling_common/IntrinsicMIRLoweringPass.hpp"
+#include "tooling_common/LRStateValueLocations.hpp"
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/Passes.h>
+#include <luthier/LiftedRepresentation.h>
 
 namespace luthier {
 
@@ -36,15 +39,18 @@ const static llvm::SmallDenseMap<llvm::MCRegister, unsigned int>
 char HookPEIPass::ID = 0;
 
 HookPEIPass::HookPEIPass(
-    const luthier::LiftedRepresentation &LR,
-    const luthier::LRStateValueLocations &StateValueLocations,
+    const LiftedRepresentation &LR,
+    const LRStateValueLocations &StateValueLocations,
+    PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass,
     const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
         &HookFuncToInstPointMI,
     const LRRegisterLiveness &RegLiveness,
-    const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered)
+    const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered,
+    PreKernelEmissionDescriptor &PKInfo)
     : LR(LR), StateValueLocations(StateValueLocations),
       HookFuncToInstPointMI(HookFuncToInstPointMI), RegLiveness(RegLiveness),
       PhysicalRegsNotTobeClobbered(PhysicalRegsNotTobeClobbered),
+      PKInfo(PKInfo), PhysRegVirtAccessPass(PhysRegVirtAccessPass),
       llvm::MachineFunctionPass(ID) {}
 
 bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
@@ -54,8 +60,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       StateValueLocations.getStateValueDescriptorOfHookInsertionPoint(
           *HookFuncToInstPointMI.at(&MF.getFunction()));
   // Get the liveness information for the hook
-  auto &InstPointLiveRegs =
-      getAnalysis<PhysicalRegAccessVirtualizationPass>().get32BitLiveInRegs(MF);
+  auto &InstPointLiveRegs = PhysRegVirtAccessPass.get32BitLiveInRegs(MF);
   auto *TII = MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
   auto &StateValueLocation = HookStateValueLocation.StateValueLocation;
   auto &StateValueStorage = StateValueLocation.getSVS();
@@ -105,7 +110,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   } else if (auto *OneAGPRThreeSGPRStorage =
                  llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(
                      &StateValueStorage)) {
-    RequiresStackInPreKernel = true;
+    PKInfo.EnableScratchAndStoreStackInfo = true;
     auto &EntryMBB = MF.front();
     // Swap the values between the Two flat scratch register pair and the
     // flat scratch register pair
@@ -159,7 +164,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   } else if (auto *ThreeSGPRStorage =
                  llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(
                      &StateValueStorage)) {
-    RequiresStackInPreKernel = true;
+    PKInfo.EnableScratchAndStoreStackInfo = true;
     auto &EntryMBB = MF.front();
     // Swap the values between the Two flat scratch register pair and the
     // flat scratch register pair
@@ -232,10 +237,10 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
   for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
     if (MRI.isPhysRegUsed(PhysReg)) {
-      RequiresStackInPreKernel = true;
+      PKInfo.EnableScratchAndStoreStackInfo = true;
     }
   }
-  if (RequiresStackInPreKernel) {
+  if (PKInfo.EnableScratchAndStoreStackInfo) {
     for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
       llvm::BuildMI(MF.front(), EntryInstruction, llvm::DebugLoc(),
                     TII->get(llvm::AMDGPU::V_READLANE_B32), PhysReg)
@@ -379,7 +384,6 @@ void HookPEIPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
   AU.setPreservesCFG();
   AU.addPreservedID(llvm::MachineLoopInfoID);
   AU.addPreserved<llvm::SlotIndexesWrapperPass>();
-  AU.addRequired<PhysicalRegAccessVirtualizationPass>();
   llvm::MachineFunctionPass::getAnalysisUsage(AU);
 }
 } // namespace luthier

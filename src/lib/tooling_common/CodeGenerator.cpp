@@ -74,6 +74,7 @@
 #include "hsa/LoadedCodeObject.hpp"
 #include "hsa/hsa.hpp"
 #include "tooling_common/CodeLifter.hpp"
+#include "tooling_common/PreKernelEmitter.hpp"
 #include "tooling_common/TargetManager.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
 #include "llvm/ADT/StringExtras.h"
@@ -313,8 +314,9 @@ void calculatePhysicalRegsAccessedByHooksNotToBeClobbered(
   }
 }
 
-std::pair<llvm::MachineModuleInfoWrapperPass *,
-          std::unique_ptr<llvm::legacy::PassManager>>
+std::tuple<llvm::MachineModuleInfoWrapperPass *,
+           std::unique_ptr<llvm::legacy::PassManager>,
+           PreKernelEmissionDescriptor>
 CodeGenerator::runCodeGenPipeline(
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
         &MIToHookFuncMap,
@@ -339,9 +341,11 @@ CodeGenerator::runCodeGenPipeline(
   calculatePhysicalRegsAccessedByHooksNotToBeClobbered(
       HookFuncToMIMap, ToBeLoweredIntrinsics, LRLiveRegs, *TM,
       PhysicalRegisterNotToClobber);
-
-  auto SVLocations = LRStateValueLocations::create(
-      LR, LCO, MIToHookFuncMap, PhysicalRegisterNotToClobber, LRLiveRegs);
+  // Store specs of the pre-kernel here
+  PreKernelEmissionDescriptor PKInfo;
+  auto SVLocations = LRStateValueLocations::create(LR, LCO, MIToHookFuncMap,
+                                                   PhysicalRegisterNotToClobber,
+                                                   LRLiveRegs, PKInfo);
   LUTHIER_REPORT_FATAL_ON_ERROR(SVLocations.takeError());
 
   // Create a new pass manager on the heap to have better control over its
@@ -363,26 +367,31 @@ CodeGenerator::runCodeGenPipeline(
   PM->add(IMMIWP);
 
   TPC->addISelPasses();
-  PM->add(new PhysicalRegAccessVirtualizationPass(
+  auto *PhysRegAccessPass = new PhysicalRegAccessVirtualizationPass(
       LR, PhysicalRegisterNotToClobber, **CG, **SVLocations, HookFuncToMIMap,
-      ToBeLoweredIntrinsics, LRLiveRegs));
+      ToBeLoweredIntrinsics, LRLiveRegs);
+  PM->add(PhysRegAccessPass);
   PM->add(new IntrinsicMIRLoweringPass(ToBeLoweredIntrinsics,
                                        IntrinsicsProcessors));
-  //  PM->add(new luthier::DefineLiveRegsAndAppStackUsagePass(MIToHookFuncMap,
-  //  LR));
-  luthier::addMachinePassesToTPC(*TPC);
+  auto *PEPass =
+      new HookPEIPass(LR, **SVLocations, *PhysRegAccessPass, HookFuncToMIMap,
+                      LRLiveRegs, PhysicalRegisterNotToClobber, PKInfo);
+
+  luthier::addMachinePassesToTPC(*TPC, *PEPass, *PM);
+  //  PM->add(PEPass);
   TPC->setInitialized();
 
   PM->run(M);
 
-  return {IMMIWP, std::move(PM)};
+  return {IMMIWP, std::move(PM), PKInfo};
 }
 
 llvm::Error patchLiftedRepresentation(
     const llvm::Module &IModule, const llvm::MachineModuleInfo &IMMI,
     llvm::Module &LRModule, llvm::MachineModuleInfo &LRMMI,
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-        &MIToHookFuncMap) {
+        &MIToHookFuncMap,
+    PreKernelEmissionDescriptor &PKInfo) {
   // A mapping between Global Variables in the instrumentation module and
   // their corresponding Global Variables in the instrumented code
   llvm::ValueToValueMapTy VMap;
@@ -854,7 +863,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
         IModule, TM, DummyAsmToIRLoweringInfoMap));
     // Run the code gen pipeline, while enforcing the stack and register
     // constraints
-    auto [MMIWP, PM] = runCodeGenPipeline(
+    auto [MMIWP, PM, PKInfo] = runCodeGenPipeline(
         MIToHookFuncMap, HookFuncToMIMap, DummyAsmToIRLoweringInfoMap, false,
         LR, hsa::LoadedCodeObject(LCO), &TM, IModule);
     LLVM_DEBUG(llvm::dbgs() << "The instrumentation Machine Code before being "
@@ -873,7 +882,7 @@ llvm::Error CodeGenerator::insertHooks(LiftedRepresentation &LR,
     // representation
     LUTHIER_RETURN_ON_ERROR(
         patchLiftedRepresentation(IModule, MMIWP->getMMI(), *LCOModule.first,
-                                  *LCOModule.second, MIToHookFuncMap));
+                                  *LCOModule.second, MIToHookFuncMap, PKInfo));
     // TODO: remove this once the move constructor for MMI makes it to master
     delete PM.release();
   };

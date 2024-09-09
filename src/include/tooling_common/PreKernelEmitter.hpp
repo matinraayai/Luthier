@@ -21,10 +21,13 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_PRE_KERNEL_DESCRIPTOR_HPP
 #define LUTHIER_TOOLING_COMMON_PRE_KERNEL_DESCRIPTOR_HPP
-#include <luthier/LiftedRepresentation.h>
-#include "tooling_common/LRStateValueLocations.hpp"
+#include <llvm/Support/Error.h>
 
 namespace luthier {
+
+class LRStateValueLocations;
+
+class LiftedRepresentation;
 
 /// \brief a struct which aggregates information about the pre-kernel's
 /// specifications
@@ -34,6 +37,9 @@ struct PreKernelEmissionDescriptor {
   /// VGPR, or use the stack in any shape or form
   bool DoesNeedPreKernel{false};
 
+  /// Only kernels need a prologue, device functions don't require it
+  bool OnlyKernelNeedsPreKernel{false};
+
   /// Whether or not the kernels require to enable scratch (if not already
   /// enabled) and the pre-kernel requires the stack information to be stored
   /// inside the state value register
@@ -41,7 +47,7 @@ struct PreKernelEmissionDescriptor {
 
   /// The maximum amount of scratch memory per work-item requested by the
   /// hooks
-  uint32_t AmountOfScratchRequested{0};
+  unsigned int AmountOfScratchRequested{0};
 };
 
 class PreKernelEmitter {

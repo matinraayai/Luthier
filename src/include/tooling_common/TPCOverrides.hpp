@@ -32,7 +32,8 @@ class TargetPassConfig;
 
 namespace luthier {
 
-void addMachinePassesToTPC(llvm::TargetPassConfig &TPC, HookPEIPass &PEIPass);
+void addMachinePassesToTPC(llvm::TargetPassConfig &TPC, HookPEIPass &PEIPass,
+                           llvm::legacy::PassManagerBase &PM);
 
 
 }

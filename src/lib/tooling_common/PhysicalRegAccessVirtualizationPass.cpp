@@ -322,7 +322,6 @@ void PhysicalRegAccessVirtualizationPass::getAnalysisUsage(
     llvm::AnalysisUsage &AU) const {
   AU.setPreservesCFG();
   AU.addPreservedID(llvm::MachineLoopInfoID);
-  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
   llvm::MachineFunctionPass::getAnalysisUsage(AU);
 }
 

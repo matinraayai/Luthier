@@ -19,12 +19,15 @@
 /// which calculates the location of the state value register at each slot index
 /// interval of a <tt>LiftedRepresentation</tt>.
 //===----------------------------------------------------------------------===//
+#ifndef LUTHIER_TOOLING_COMMON_LR_STATE_VALUE_LOCATIONS_HPP
+#define LUTHIER_TOOLING_COMMON_LR_STATE_VALUE_LOCATIONS_HPP
 #include "hsa/LoadedCodeObject.hpp"
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
+#include "tooling_common/PreKernelEmitter.hpp"
 
 namespace luthier {
 
@@ -234,6 +237,8 @@ private:
                     1>
       DeviceFunctions;
 
+  PreKernelEmissionDescriptor & PKInfo;
+
   /// A set of physical registers accessed by all hooks that weren't part
   /// of the hook insertion point's live-ins
   /// These are kept track of to ensure they don't get clobbered in
@@ -259,12 +264,6 @@ private:
   /// Mapping between the MIs of the target app getting instrumented and their
   /// hooks
   const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap;
-
-  /// Whether or not only the kernel of the \c LR needs a prologue or not
-  /// If true, then it means we don't need to emit instructions in the
-  /// instrumented kernel and instrumented device functions for moving
-  /// the value state register and the instrumentation flat scratch register
-  bool OnlyKernelNeedsPrologue{false};
 
   /// Contains a mapping between the hook insertion point's MI and a
   /// struct describing which VGPR will the state value be loaded into,
@@ -307,7 +306,8 @@ private:
       const luthier::LiftedRepresentation &LR, hsa::LoadedCodeObject LCO,
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
       const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
-      const luthier::LRRegisterLiveness &RegLiveness);
+      const luthier::LRRegisterLiveness &RegLiveness,
+      PreKernelEmissionDescriptor &PKInfo);
 
   llvm::Error calculateStateValueLocations();
 
@@ -316,7 +316,8 @@ public:
       const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
       const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
-      const LRRegisterLiveness &RegLiveness);
+      const LRRegisterLiveness &RegLiveness,
+      PreKernelEmissionDescriptor &PKInfo);
 
   const StateValueStorageSegment *
   getValueSegmentForInstr(llvm::MachineInstr &MI) const;
@@ -325,11 +326,9 @@ public:
   getStateValueDescriptorOfHookInsertionPoint(
       const llvm::MachineInstr &MI) const;
 
-  [[nodiscard]] bool doesKernelOnlyNeedPrologue() const {
-    return OnlyKernelNeedsPrologue;
-  }
-
   [[nodiscard]] hsa::LoadedCodeObject getLCO() const { return LCO; }
 };
 
 } // namespace luthier
+
+#endif

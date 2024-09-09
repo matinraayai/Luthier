@@ -122,11 +122,10 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 }
 
 void IntrinsicMIRLoweringPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.setPreservesCFG();
-  AU.addRequired<luthier::PhysicalRegAccessVirtualizationPass>();
-  AU.addPreserved<luthier::PhysicalRegAccessVirtualizationPass>();
-  AU.addPreservedID(llvm::MachineLoopInfoID);
-  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
+  AU.addRequiredID(luthier::PhysicalRegAccessVirtualizationPass::ID);
+  AU.setPreservesAll();
+//  AU.setPreservesCFG();
+//  AU.addPreservedID(llvm::MachineLoopInfoID);
   MachineFunctionPass::getAnalysisUsage(AU);
 };
 

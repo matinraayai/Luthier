@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PreKernelEmitter.hpp"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "tooling_common/LRStateValueLocations.hpp"
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
 
