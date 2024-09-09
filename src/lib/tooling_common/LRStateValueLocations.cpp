@@ -160,11 +160,14 @@ allocateUnusedRegister(llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
         llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
           auto &MRI = MF->getRegInfo();
           bool IsUnusedInMF = MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
-          llvm::outs() << MF->getSubtarget().getRegisterInfo()->getName(Reg) << "\n";
+          llvm::outs() << MF->getSubtarget().getRegisterInfo()->getName(Reg)
+                       << "\n";
           llvm::outs() << "Is allocatable: " << MRI.isAllocatable(Reg) << "\n";
-          llvm::outs() << "Is phys reg used: " << MRI.isPhysRegUsed(Reg) << "\n";
+          llvm::outs() << "Is phys reg used: " << MRI.isPhysRegUsed(Reg)
+                       << "\n";
           if (!AccessedPhysRegsNotInLiveIns.empty())
-            IsUnusedInMF = IsUnusedInMF && AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
+            IsUnusedInMF = IsUnusedInMF &&
+                           AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
           return IsUnusedInMF;
         });
     if (IsUnused) {
@@ -179,7 +182,7 @@ LRStateValueLocations::findFixedStateValueStorageLocation(
     llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions) const {
   // Tentative place to hold an SGPR pair for the instrumentation stack
   // flat scratch
-  llvm::SmallVector<llvm::MCRegister, 2> FSLocation{};
+  llvm::SmallVector<llvm::MCRegister, 3> FSLocation{};
 
   // Find the next VGPR available to hold the value state
   llvm::MCRegister ValueStateFixedLocation =
@@ -205,13 +208,13 @@ LRStateValueLocations::findFixedStateValueStorageLocation(
     // normal VGPRs
     Scavenged = allocateUnusedRegister(
         RelatedFunctions, &llvm::AMDGPU::SGPR_32RegClass,
-        HooksAccessedPhysicalRegistersNotInLiveIns, 2, FSLocation);
+        HooksAccessedPhysicalRegistersNotInLiveIns, 3, FSLocation);
     if (ValueStateFixedLocation != 0 && Scavenged)
-      return std::make_shared<AGPRWithTwoSGPRSValueStorage>(
-          ValueStateFixedLocation, FSLocation[0], FSLocation[1]);
-    else if (FSLocation.size() == 2) {
-      return std::make_shared<SpilledWithTwoSGPRsValueStorage>(FSLocation[0],
-                                                               FSLocation[1]);
+      return std::make_shared<AGPRWithThreeSGPRSValueStorage>(
+          ValueStateFixedLocation, FSLocation[0], FSLocation[1], FSLocation[2]);
+    else if (FSLocation.size() == 3) {
+      return std::make_shared<SpilledWithTwoSGPRsValueStorage>(
+          FSLocation[0], FSLocation[1], FSLocation[2]);
     } else
       return nullptr;
   } else {
@@ -273,32 +276,39 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
   // Try to find a fixed location to store the state value
   auto StateValueFixedLocation = findFixedStateValueStorageLocation(MFs);
 
-
   if (StateValueFixedLocation != nullptr) {
     for (const auto &MF : MFs) {
       auto &Segments = ValueStateRegAndFlatScratchIntervals.insert({MF, {}})
                            .first->getSecond();
-      Segments.emplace_back(
-          FunctionsSlotIndexes.at(&MF->getFunction())->getZeroIndex(),
-          FunctionsSlotIndexes.at(&MF->getFunction())->getLastIndex(),
-          StateValueFixedLocation);
+      for (const auto &MBB : *MF) {
+        Segments.emplace_back(FunctionsSlotIndexes.at(&MF->getFunction())
+                                  ->getInstructionIndex(MBB.front()),
+                              FunctionsSlotIndexes.at(&MF->getFunction())
+                                  ->getInstructionIndex(MBB.back()),
+                              StateValueFixedLocation);
+      }
     }
-    for (const auto &[HookMI, HookFunction] : MIToHookMap) {
-      auto *HookLiveRegs = RegLiveness.getLiveInPhysRegsOfMachineInstr(*HookMI);
+    for (const auto &[InsertionPointMI, HookFunction] : MIToHookMap) {
+      auto *HookLiveRegs =
+          RegLiveness.getLiveInPhysRegsOfMachineInstr(*InsertionPointMI);
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookLiveRegs != nullptr));
       auto [VGPRLocation, ClobbersAppReg] = findVGPRLocationForHook(
-          HookMI, *StateValueFixedLocation, *HookLiveRegs,
+          InsertionPointMI, *StateValueFixedLocation, *HookLiveRegs,
           HooksAccessedPhysicalRegistersNotInLiveIns);
       auto *InsertionPointFunction =
-          &HookMI->getParent()->getParent()->getFunction();
+          &InsertionPointMI->getParent()->getParent()->getFunction();
+
+      const auto &InsertionPointMBB = *InsertionPointMI->getParent();
 
       HookMIToValueStateInterval.insert(
-          {HookMI,
+          {InsertionPointMI,
            InsertionPointStateValueDescriptor{
                VGPRLocation,
                ClobbersAppReg,
-               {FunctionsSlotIndexes.at(InsertionPointFunction)->getZeroIndex(),
-                FunctionsSlotIndexes.at(InsertionPointFunction)->getLastIndex(),
+               {FunctionsSlotIndexes.at(InsertionPointFunction)
+                    ->getInstructionIndex(InsertionPointMBB.front()),
+                FunctionsSlotIndexes.at(InsertionPointFunction)
+                    ->getInstructionIndex(InsertionPointMBB.front()),
                 StateValueFixedLocation}}});
     }
     OnlyKernelNeedsPrologue = true;
@@ -372,7 +382,7 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
               MustRelocateStateValue = true;
           }
           if (auto *AGPRandSGPRSVS =
-                  llvm::dyn_cast<AGPRWithTwoSGPRSValueStorage>(SVS.get())) {
+                  llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(SVS.get())) {
             if (!InstrLiveRegs->available(MF->getRegInfo(),
                                           AGPRandSGPRSVS->FlatScratchSGPRLow) ||
                 !InstrLiveRegs->available(MF->getRegInfo(),
@@ -392,7 +402,9 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
           // for it;
           // Note that reg scavenging might conclude that the values remain
           // where they are, and that's okay
-          if (TryRelocatingValueStateReg || MustRelocateStateValue) {
+          // Also create a new interval if we reach the beginning of a MBB
+          if (MI.getIterator() == MBB.begin() || TryRelocatingValueStateReg ||
+              MustRelocateStateValue) {
             auto InstrIndex = FunctionsSlotIndexes.at(&MF->getFunction())
                                   ->getInstructionIndex(MI, true);
             Segments.emplace_back(CurrentIntervalBegin, InstrIndex, SVS);
@@ -410,7 +422,9 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
             }
             HookInsertionPointsInCurrentSegment.clear();
             CurrentIntervalBegin = InstrIndex;
+          }
 
+          if (TryRelocatingValueStateReg || MustRelocateStateValue) {
             bool WasRelocationSuccessful{false};
 
             // Find the next highest VGPR that is available
@@ -435,21 +449,24 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
                     TwoScavengedAGPRs[0], TwoScavengedAGPRs[1]);
                 WasRelocationSuccessful = true;
               } else {
-                llvm::SmallVector<llvm::MCRegister, 2> TwoScavengedSGPRs;
+                llvm::SmallVector<llvm::MCRegister, 3> ThreeScavengedSGPRs;
                 Scavenged = scavengeFreeRegister(
                     MRI, llvm::AMDGPU::SGPR_32RegClass,
                     HooksAccessedPhysicalRegistersNotInLiveIns, *InstrLiveRegs,
-                    2, TwoScavengedSGPRs);
+                    2, ThreeScavengedSGPRs);
                 if (!Scavenged)
                   WasRelocationSuccessful = false;
                 else {
                   if (TwoScavengedAGPRs.size() == 1) {
-                    SVS = std::make_shared<AGPRWithTwoSGPRSValueStorage>(
-                        TwoScavengedAGPRs[0], TwoScavengedSGPRs[0],
-                        TwoScavengedSGPRs[1]);
+                    SVS = std::make_shared<AGPRWithThreeSGPRSValueStorage>(
+                        TwoScavengedAGPRs[0], ThreeScavengedSGPRs[0],
+                        ThreeScavengedSGPRs[1],
+                        ThreeScavengedSGPRs[2]
+                        );
                   } else {
                     SVS = std::make_shared<SpilledWithTwoSGPRsValueStorage>(
-                        TwoScavengedSGPRs[0], TwoScavengedSGPRs[1]);
+                        ThreeScavengedSGPRs[0], ThreeScavengedSGPRs[1],
+                        ThreeScavengedSGPRs[2]);
                   }
                   WasRelocationSuccessful = true;
                 }

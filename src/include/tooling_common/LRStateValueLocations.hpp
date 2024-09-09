@@ -32,16 +32,23 @@ struct StateValueStorage
     : public std::enable_shared_from_this<StateValueStorage> {
 public:
   enum StateValueStorageKind {
-    SV_SINGLE_VGPR, /// The state value is in a free VGPR
-    SV_TWO_AGPRs,   /// The state value is in an AGPR, with a free AGPR to use
-                    /// as a temp register for spilling one live VGPR
-    SVS_SINGLE_AGPR_WITH_TWO_SGPRS, /// The state value is in an AGPR, with
-                                    /// two SGPRs holding the base address to
-                                    /// spill a live VGPR
-    SVS_SPILLED_WITH_TWO_SGPRS,     /// The state value is spilled onto the
-                                    /// instrumentation stack, and two SGPRs
-                                    /// holding the base address to spill a live
-                                    /// VGPR
+    SVS_SINGLE_VGPR, /// The state value is stored in a free VGPR
+    SVS_TWO_AGPRs,   /// The state value is stored in an AGPR, with a free AGPR
+                     /// to use as a temp storage for the app's VGPR when it
+                     /// spills
+    SVS_SINGLE_AGPR_WITH_THREE_SGPRS, /// The state value stored is in an AGPR,
+                                      /// with two SGPRs holding the
+                                      /// FLAT SCRATCH base address of the
+                                      /// kernel, and one SGPR holding the
+                                      /// instrumentation stack pointer; SGPRs
+                                      /// are used to spill an app VGPR
+                                      /// two SGPRs holding the base address to
+                                      /// spill a live VGPR
+    SVS_SPILLED_WITH_THREE_SGPRS,     /// The state value is spilled onto the
+                                      /// instrumentation stack, and two SGPRs
+                                      /// holding the flat scratch address and
+                                      /// a single SGPR for the instrumentation
+                                      /// stack pointer
   };
 
 private:
@@ -61,12 +68,14 @@ public:
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueStorage *S) {
-    return S->getKind() == SV_SINGLE_VGPR;
+    return S->getKind() == SVS_SINGLE_VGPR;
   }
 
   explicit VGPRValueStorage(llvm::MCRegister StorageVGPR)
-      : StorageVGPR(StorageVGPR), StateValueStorage(SV_SINGLE_VGPR){};
+      : StorageVGPR(StorageVGPR), StateValueStorage(SVS_SINGLE_VGPR){};
 
+  /// \return the register where the state value is stored; 0 means the
+  /// state value is spilled on the stack
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageVGPR;
   }
@@ -80,19 +89,19 @@ public:
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueStorage *S) {
-    return S->getKind() == SV_TWO_AGPRs;
+    return S->getKind() == SVS_TWO_AGPRs;
   }
 
   TwoAGPRValueStorage(llvm::MCRegister StorageAGPR, llvm::MCRegister TempAGPR)
       : StorageAGPR(StorageAGPR), TempAGPR(TempAGPR),
-        StateValueStorage(SV_TWO_AGPRs){};
+        StateValueStorage(SVS_TWO_AGPRs){};
 
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
   }
 };
 
-struct AGPRWithTwoSGPRSValueStorage : public StateValueStorage {
+struct AGPRWithThreeSGPRSValueStorage : public StateValueStorage {
 public:
   llvm::MCRegister StorageAGPR{};
 
@@ -100,17 +109,21 @@ public:
 
   llvm::MCRegister FlatScratchSGPRLow{};
 
+  llvm::MCRegister InstrumentationStackPointer{};
+
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueStorage *S) {
-    return S->getKind() == SVS_SINGLE_AGPR_WITH_TWO_SGPRS;
+    return S->getKind() == SVS_SINGLE_AGPR_WITH_THREE_SGPRS;
   }
 
-  AGPRWithTwoSGPRSValueStorage(llvm::MCRegister StorageAGPR,
-                               llvm::MCRegister FlatScratchSGPRHigh,
-                               llvm::MCRegister FlatScratchSGPRLow)
+  AGPRWithThreeSGPRSValueStorage(llvm::MCRegister StorageAGPR,
+                                 llvm::MCRegister FlatScratchSGPRHigh,
+                                 llvm::MCRegister FlatScratchSGPRLow,
+                                 llvm::MCRegister InstrumentationStackPointer)
       : StorageAGPR(StorageAGPR), FlatScratchSGPRHigh(FlatScratchSGPRHigh),
         FlatScratchSGPRLow(FlatScratchSGPRLow),
-        StateValueStorage(SVS_SINGLE_AGPR_WITH_TWO_SGPRS){};
+        InstrumentationStackPointer(InstrumentationStackPointer),
+        StateValueStorage(SVS_SINGLE_AGPR_WITH_THREE_SGPRS){};
 
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
@@ -123,20 +136,25 @@ public:
 
   llvm::MCRegister FlatScratchSGPRLow{};
 
+  llvm::MCRegister InstrumentationStackPointer{};
+
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueStorage *S) {
-    return S->getKind() == SVS_SPILLED_WITH_TWO_SGPRS;
+    return S->getKind() == SVS_SPILLED_WITH_THREE_SGPRS;
   }
 
   SpilledWithTwoSGPRsValueStorage(llvm::MCRegister FlatScratchSGPRHigh,
-                                  llvm::MCRegister FlatScratchSGPRLow)
+                                  llvm::MCRegister FlatScratchSGPRLow,
+                                  llvm::MCRegister InstrumentationStackPointer)
       : FlatScratchSGPRHigh(FlatScratchSGPRHigh),
         FlatScratchSGPRLow(FlatScratchSGPRLow),
-        StateValueStorage(SVS_SPILLED_WITH_TWO_SGPRS){};
+        InstrumentationStackPointer(InstrumentationStackPointer),
+        StateValueStorage(SVS_SPILLED_WITH_THREE_SGPRS){};
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 };
 
+/// \brief An interval inside the basic block
 struct StateValueStorageSegment {
 private:
   /// Start point of the interval (inclusive)
@@ -164,7 +182,7 @@ public:
   /// Return true if the given interval, [S, E), is covered by this segment.
   [[nodiscard]] bool containsInterval(llvm::SlotIndex S,
                                       llvm::SlotIndex E) const {
-    if (S < E)
+    if (S > E)
       llvm::report_fatal_error("Backwards interval");
     return (Start <= S && S < End) && (Start < E && E <= End);
   }
@@ -202,7 +220,7 @@ private:
   const hsa::LoadedCodeObject LCO;
 
   /// The reg liveness analysis of the \c LR
-  const LRRegisterLiveness & RegLiveness;
+  const LRRegisterLiveness &RegLiveness;
 
   /// The kernels of the loaded code object
   llvm::SmallVector<
@@ -294,11 +312,11 @@ private:
   llvm::Error calculateStateValueLocations();
 
 public:
-  static llvm::Expected<std::unique_ptr<LRStateValueLocations>>
-  create(const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
+  static llvm::Expected<std::unique_ptr<LRStateValueLocations>> create(
+      const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
       const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
-         const LRRegisterLiveness &RegLiveness);
+      const LRRegisterLiveness &RegLiveness);
 
   const StateValueStorageSegment *
   getValueSegmentForInstr(llvm::MachineInstr &MI) const;
@@ -311,9 +329,7 @@ public:
     return OnlyKernelNeedsPrologue;
   }
 
-  [[nodiscard]] hsa::LoadedCodeObject getLCO() const {
-    return LCO;
-  }
+  [[nodiscard]] hsa::LoadedCodeObject getLCO() const { return LCO; }
 };
 
 } // namespace luthier
