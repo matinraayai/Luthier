@@ -77,10 +77,15 @@ public:
 
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 
-  llvm::Register
+  [[nodiscard]] llvm::Register
   getMCRegLocationInMBB(llvm::MCRegister PhysReg,
                         const llvm::MachineBasicBlock &MBB) const {
     return PhysRegLocationPerMBB.at({PhysReg, &MBB});
+  }
+
+  const llvm::DenseSet<llvm::MCRegister> &
+  get32BitLiveInRegs(llvm::MachineFunction &MF) {
+    return PerHookLiveInRegs.at(&MF.getFunction());
   }
 };
 

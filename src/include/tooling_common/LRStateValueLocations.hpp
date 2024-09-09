@@ -130,7 +130,7 @@ public:
   }
 };
 
-struct SpilledWithTwoSGPRsValueStorage : public StateValueStorage {
+struct SpilledWithThreeSGPRsValueStorage : public StateValueStorage {
 public:
   llvm::MCRegister FlatScratchSGPRHigh{};
 
@@ -143,7 +143,7 @@ public:
     return S->getKind() == SVS_SPILLED_WITH_THREE_SGPRS;
   }
 
-  SpilledWithTwoSGPRsValueStorage(llvm::MCRegister FlatScratchSGPRHigh,
+  SpilledWithThreeSGPRsValueStorage(llvm::MCRegister FlatScratchSGPRHigh,
                                   llvm::MCRegister FlatScratchSGPRLow,
                                   llvm::MCRegister InstrumentationStackPointer)
       : FlatScratchSGPRHigh(FlatScratchSGPRHigh),

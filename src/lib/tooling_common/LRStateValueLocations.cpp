@@ -213,7 +213,7 @@ LRStateValueLocations::findFixedStateValueStorageLocation(
       return std::make_shared<AGPRWithThreeSGPRSValueStorage>(
           ValueStateFixedLocation, FSLocation[0], FSLocation[1], FSLocation[2]);
     else if (FSLocation.size() == 3) {
-      return std::make_shared<SpilledWithTwoSGPRsValueStorage>(
+      return std::make_shared<SpilledWithThreeSGPRsValueStorage>(
           FSLocation[0], FSLocation[1], FSLocation[2]);
     } else
       return nullptr;
@@ -369,7 +369,7 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
           // run out of SGPRs to keep the FS register, so we try to
           // see if we can move it back to a VGPR
           bool TryRelocatingValueStateReg =
-              llvm::isa<SpilledWithTwoSGPRsValueStorage>(SVS.get()) &&
+              llvm::isa<SpilledWithThreeSGPRsValueStorage>(SVS.get()) &&
               MIToHookMap.contains(&MI);
           bool MustRelocateStateValue =
               SVS->getStateValueStorageReg() != 0 &&
@@ -391,7 +391,7 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
           }
 
           if (auto *TwoSGPRSVS =
-                  llvm::dyn_cast<SpilledWithTwoSGPRsValueStorage>(SVS.get())) {
+                  llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(SVS.get())) {
             if (!InstrLiveRegs->available(MF->getRegInfo(),
                                           TwoSGPRSVS->FlatScratchSGPRLow) ||
                 !InstrLiveRegs->available(MF->getRegInfo(),
@@ -464,7 +464,7 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
                         ThreeScavengedSGPRs[2]
                         );
                   } else {
-                    SVS = std::make_shared<SpilledWithTwoSGPRsValueStorage>(
+                    SVS = std::make_shared<SpilledWithThreeSGPRsValueStorage>(
                         ThreeScavengedSGPRs[0], ThreeScavengedSGPRs[1],
                         ThreeScavengedSGPRs[2]);
                   }

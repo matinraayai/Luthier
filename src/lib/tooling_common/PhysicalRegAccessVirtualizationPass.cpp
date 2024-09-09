@@ -110,6 +110,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   // For each live-in register that is not used in the hooks, create a copy
   // to its equivalent virtual register in the entry basic block, and
   // a copy back in all the return blocks
+  // TODO: Map to the correct location of clobbered registers in case
+  // the state value is not in a VGPR
   llvm::DenseMap<llvm::MCRegister, llvm::Register> PhysToVirtRegMap;
   for (const auto &LiveIn : PerHookLiveInRegs[&MF.getFunction()]) {
     if (!AccessedPhysicalRegistersByHook.contains(LiveIn)) {
@@ -117,6 +119,38 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
       PhysToVirtRegMap.insert(
           {LiveIn, MRI.createVirtualRegister(PhysRegClass)});
     }
+  }
+  // Add the physical registers used for state value storage as live
+  auto &SVD = StateValueLocations.getStateValueDescriptorOfHookInsertionPoint(
+      *HookFuncToMIMap.at(&MF.getFunction()));
+
+  auto &SVS = SVD.StateValueLocation.getSVS();
+  if (auto *TwoAGPRSVS = llvm::dyn_cast<TwoAGPRValueStorage>(&SVS)) {
+    PhysToVirtRegMap.insert(
+        {TwoAGPRSVS->TempAGPR,
+         MRI.createVirtualRegister(&llvm::AMDGPU::AGPR_32RegClass)});
+  } else if (auto *OneAGPRThreeSGPRSVS =
+                 llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(&SVS)) {
+    PhysToVirtRegMap.insert(
+        {OneAGPRThreeSGPRSVS->FlatScratchSGPRHigh,
+         MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass)});
+    PhysToVirtRegMap.insert(
+        {OneAGPRThreeSGPRSVS->FlatScratchSGPRLow,
+         MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass)});
+    PhysToVirtRegMap.insert(
+        {OneAGPRThreeSGPRSVS->InstrumentationStackPointer,
+         MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass)});
+  } else if (auto *ThreeSGPRSVS =
+                 llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(&SVS)) {
+    PhysToVirtRegMap.insert(
+        {ThreeSGPRSVS->FlatScratchSGPRHigh,
+         MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass)});
+    PhysToVirtRegMap.insert(
+        {ThreeSGPRSVS->FlatScratchSGPRLow,
+         MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass)});
+    PhysToVirtRegMap.insert(
+        {ThreeSGPRSVS->InstrumentationStackPointer,
+         MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass)});
   }
 
   auto &EntryMBB = *MF.begin();
@@ -149,10 +183,11 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                         TII->get(llvm::AMDGPU::V_WRITELANE_B32),
                         SVDesc.StateValueVGPR)
               .addReg(VirtReg, llvm::RegState::Kill)
-              .addImm(ValueRegisterSpillSlots.at(PhysReg)).addReg(
-                  ValueRegisterSpillSlots.at(PhysReg));
+              .addImm(ValueRegisterSpillSlots.at(PhysReg))
+              .addReg(SVDesc.StateValueVGPR);
           if (!AddedStateValueAsImplicitOp) {
-            ReturnInst->addOperand(llvm::MachineOperand::CreateReg(ValueRegisterSpillSlots.at(PhysReg), false, true));
+            ReturnInst->addOperand(llvm::MachineOperand::CreateReg(
+                ValueRegisterSpillSlots.at(PhysReg), false, true));
             AddedStateValueAsImplicitOp = true;
           }
         } else {
@@ -160,7 +195,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                         TII->get(llvm::AMDGPU::COPY))
               .addReg(PhysReg, llvm::RegState::Define)
               .addReg(VirtReg, llvm::RegState::Kill);
-          ReturnInst->addOperand(llvm::MachineOperand::CreateReg(PhysReg, false, true));
+          ReturnInst->addOperand(
+              llvm::MachineOperand::CreateReg(PhysReg, false, true));
         }
       }
     }
@@ -168,8 +204,9 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
 
   llvm::outs() << "Before putting in the accessed physical regs:\n";
   MF.print(llvm::outs());
-  llvm::outs() << "Num physical regs accessed by hooks: " << AccessedPhysicalRegistersByHook.size() << "\n";
-  for (const auto &AccessedReg: AccessedPhysicalRegistersByHook) {
+  llvm::outs() << "Num physical regs accessed by hooks: "
+               << AccessedPhysicalRegistersByHook.size() << "\n";
+  for (const auto &AccessedReg : AccessedPhysicalRegistersByHook) {
     llvm::outs() << "accessed by hook: " << TRI->getName(AccessedReg) << "\n";
   }
 
@@ -200,7 +237,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
         SSAUpdater->Initialize(VirtReg);
         SSAUpdater->AddAvailableValue(CurrentMBB, VirtReg);
         PhysRegLocationPerMBB.insert({{AccessedPhysReg, CurrentMBB}, VirtReg});
-        llvm::outs() << "Added " << TRI->getName(AccessedPhysReg) << "," << printReg(VirtReg, TRI) << "\n";
+        llvm::outs() << "Added " << TRI->getName(AccessedPhysReg) << ","
+                     << printReg(VirtReg, TRI) << "\n";
         if (ValueRegisterSpillSlots.contains(AccessedPhysReg)) {
           if (!CurrentMBB->isLiveIn(SVDesc.StateValueVGPR))
             CurrentMBB->addLiveIn(SVDesc.StateValueVGPR);
@@ -222,11 +260,13 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
             MBBsThatNeedAccessToPhysicalRegs.at(CurrentMBB);
         for (const auto &PhysReg : PhysRegsAccessedByMBB) {
           llvm::Register VirtRegInBlock =
-              PhysRegValueSSAUpdaters[PhysReg]->GetValueInMiddleOfBlock(CurrentMBB);
+              PhysRegValueSSAUpdaters[PhysReg]->GetValueInMiddleOfBlock(
+                  CurrentMBB);
           PhysRegLocationPerMBB.insert({{PhysReg, CurrentMBB}, VirtRegInBlock});
           PhysRegValueSSAUpdaters[PhysReg]->AddAvailableValue(CurrentMBB,
-                                                          VirtRegInBlock);
-          llvm::outs() << "Added " <<TRI->getName(PhysReg) << "," << printReg(VirtRegInBlock, TRI)  << "\n";
+                                                              VirtRegInBlock);
+          llvm::outs() << "Added " << TRI->getName(PhysReg) << ","
+                       << printReg(VirtRegInBlock, TRI) << "\n";
         }
       }
     }
@@ -236,9 +276,10 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
       for (const auto &AccessedPhysReg : AccessedPhysicalRegistersByHook) {
         auto &PhysRegSSAUpdater = PhysRegValueSSAUpdaters[AccessedPhysReg];
         llvm::outs() << "Finishing " << TRI->getName(AccessedPhysReg) << "\n";
-        llvm::outs() << "Does it have value available? " << PhysRegSSAUpdater->HasValueForBlock(CurrentMBB) << "\n";
-            llvm::Register VirtReg = PhysRegSSAUpdater->GetValueAtEndOfBlock(
-            CurrentMBB);
+        llvm::outs() << "Does it have value available? "
+                     << PhysRegSSAUpdater->HasValueForBlock(CurrentMBB) << "\n";
+        llvm::Register VirtReg =
+            PhysRegSSAUpdater->GetValueAtEndOfBlock(CurrentMBB);
         if (ValueRegisterSpillSlots.contains(AccessedPhysReg)) {
           llvm::BuildMI(*CurrentMBB, ReturnInst, llvm::DebugLoc(),
                         TII->get(llvm::AMDGPU::V_WRITELANE_B32),
@@ -251,14 +292,16 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
               .addReg(AccessedPhysReg, llvm::RegState::Define)
               .addReg(VirtReg, llvm::RegState::Kill);
         }
-        ReturnInst->addOperand(llvm::MachineOperand::CreateReg(AccessedPhysReg, false, true));
+        ReturnInst->addOperand(
+            llvm::MachineOperand::CreateReg(AccessedPhysReg, false, true));
       }
     }
     // Add the successor blocks of the current block to the queue
-    for (auto It = CurrentMBB->succ_begin(), End = CurrentMBB->succ_end(); It != End;
-         ++It) {
+    for (auto It = CurrentMBB->succ_begin(), End = CurrentMBB->succ_end();
+         It != End; ++It) {
       if (!VisitedMBBs.contains(*It)) {
-        llvm::outs() << "Setting MBB " << (*It)->getNumber() << " to be visited.\n";
+        llvm::outs() << "Setting MBB " << (*It)->getNumber()
+                     << " to be visited.\n";
         ToBeVisitedMBBs.push(*It);
       }
     }
