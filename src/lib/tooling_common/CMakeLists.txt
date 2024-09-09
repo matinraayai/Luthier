@@ -29,6 +29,8 @@ add_library(LuthierToolingCommon STATIC
         LRRegisterLiveness.cpp
         IntrinsicMIRLoweringPass.cpp
         TPCOverrides.cpp
+        HookPEIPass.cpp
+        PreKernelEmitter.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
