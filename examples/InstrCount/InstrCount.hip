@@ -215,30 +215,33 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
 }
 
 static void
-instrumentAllFunctionsOfExecutable(const hsa::LoadedCodeObjectKernel &Kernel) {
+instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
   auto LR = lift(Kernel);
   LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
 
   LUTHIER_REPORT_FATAL_ON_ERROR(
       instrumentAndLoad(Kernel, *LR, instrumentationLoop, "instr_count"));
 
-  // Uncomment this part to print out the final assembly
-  //    llvm::SmallVector<
-  //        std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
-  //        SourceFiles;
-  //
-  //    auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
-  //    LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
-  //    LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
-  //        **InstrumentedLR, SourceFiles,
-  //        llvm::CodeGenFileType::AssemblyFile));
-  //
-  //    for (const auto &[LCO, SourceFile] : SourceFiles) {
-  //      llvm::outs() << "Instrumented code object for LCO "
-  //                   << llvm::format_hex(LCO.handle, 8) << "\n";
-  //      llvm::outs() << SourceFile;
-  //      llvm::outs() << "\n";
-  //    }
+//   Uncomment this part to print out the final assembly
+//      llvm::SmallVector<
+//          std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
+//          SourceFiles;
+//
+//      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
+//      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
+//      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions()) {
+//        MF->print(llvm::outs());
+//      }
+//      LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
+//          **InstrumentedLR, SourceFiles,
+//          llvm::CodeGenFileType::AssemblyFile));
+//
+//      for (const auto &[LCO, SourceFile] : SourceFiles) {
+//        llvm::outs() << "Instrumented code object for LCO "
+//                     << llvm::format_hex(LCO.handle, 8) << "\n";
+//        llvm::outs() << SourceFile;
+//        llvm::outs() << "\n";
+//      }
 }
 
 // TODO: Think of a way of integrating this as a callback inside luthier
@@ -300,8 +303,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                   DispatchPacket.completion_signal);
 
           if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval &&
-              !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
+              NumKernelLaunched < KernelEndInterval && !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
@@ -316,7 +318,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
             if (!*IsKernelInstrumented) {
 
-              instrumentAllFunctionsOfExecutable(*KernelSymbol);
+              instrumentAllFunctionsOfLR(*KernelSymbol);
 
               LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
                   DispatchPacket, "instr_count"));
