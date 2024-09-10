@@ -31,6 +31,7 @@
 #include "tooling_common/ToolExecutableLoader.hpp"
 #include "tooling_common/intrinsic/ReadReg.hpp"
 #include "tooling_common/intrinsic/WriteReg.hpp"
+#include "tooling_common/intrinsic/WriteExec.hpp"
 
 #include "luthier/luthier.h"
 #include "luthier/types.h"
@@ -212,6 +213,8 @@ Controller::Controller()
                         {readRegIRProcessor, readRegMIRProcessor});
   CG->registerIntrinsic("luthier::writeReg",
                         {writeRegIRProcessor, writeRegMIRProcessor});
+  CG->registerIntrinsic("luthier::writeExec",
+                        {writeExecIRProcessor, writeExecMIRProcessor});
 }
 
 Controller::~Controller() {
@@ -242,9 +245,9 @@ void Controller::init() {
 void Controller::finalize() {
   static std::once_flag Once{};
   std::call_once(Once, []() {
-    atFinalization(API_EVT_PHASE_BEFORE);
+    atToolFini(API_EVT_PHASE_BEFORE);
     delete C;
-    atFinalization(API_EVT_PHASE_AFTER);
+    atToolFini(API_EVT_PHASE_AFTER);
   });
 }
 

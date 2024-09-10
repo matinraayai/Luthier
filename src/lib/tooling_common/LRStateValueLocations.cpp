@@ -161,11 +161,11 @@ allocateUnusedRegister(llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
         llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
           auto &MRI = MF->getRegInfo();
           bool IsUnusedInMF = MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
-          llvm::outs() << MF->getSubtarget().getRegisterInfo()->getName(Reg)
-                       << "\n";
-          llvm::outs() << "Is allocatable: " << MRI.isAllocatable(Reg) << "\n";
-          llvm::outs() << "Is phys reg used: " << MRI.isPhysRegUsed(Reg)
-                       << "\n";
+//          llvm::outs() << MF->getSubtarget().getRegisterInfo()->getName(Reg)
+//                       << "\n";
+//          llvm::outs() << "Is allocatable: " << MRI.isAllocatable(Reg) << "\n";
+//          llvm::outs() << "Is phys reg used: " << MRI.isPhysRegUsed(Reg)
+//                       << "\n";
           if (!AccessedPhysRegsNotInLiveIns.empty())
             IsUnusedInMF = IsUnusedInMF &&
                            AccessedPhysRegsNotInLiveIns.available(MRI, Reg);

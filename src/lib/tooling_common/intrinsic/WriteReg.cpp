@@ -79,7 +79,6 @@ llvm::Error writeRegMIRProcessor(
   // Check if both the input value and the destination reg have the same size
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(InputRegSize == DestRegSize));
 
-
   if (DestRegSize > 32) {
     // Split the input reg into subregs, and set each subreg to replace the
     // virtual register value of the physical reg

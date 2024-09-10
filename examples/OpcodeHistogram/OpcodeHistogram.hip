@@ -75,7 +75,7 @@ static llvm::cl::opt<unsigned int> KernelEndInterval(
 static llvm::cl::opt<bool> CountWavefrontLevel(
     "count-wavefront-level",
     llvm::cl::desc("Count instructions at the wavefront level"),
-    llvm::cl::init(true), llvm::cl::NotHidden,
+    llvm::cl::init(false), llvm::cl::NotHidden,
     llvm::cl::cat(OpcodeHistogramToolOptionCategory));
 
 static llvm::cl::opt<bool> DemangleKernelNames(
@@ -106,8 +106,7 @@ MARK_LUTHIER_DEVICE_MODULE
 LUTHIER_HOOK_ANNOTATE countOpcodeHistogramVector(bool CountWaveFrontLevel,
                                                  int OpcodeNumber) {
   // Get the exec mask of the wavefront
-  unsigned long long int ExecMask =
-      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Get the position of the thread in the current wavefront (1-index)
   const uint32_t LaneId = __lane_id() + 1;
   // Get the first active thread id inside this wavefront
@@ -131,14 +130,13 @@ LUTHIER_EXPORT_HOOK_HANDLE(countOpcodeHistogramVector);
 
 LUTHIER_HOOK_ANNOTATE countOpcodeHistogramScalar(int OpcodeNumber) {
   // Get the exec mask of the wavefront
-  unsigned long long int ExecMask =
-      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Overwrite the exec mask with one so that only a single thread is active
-  luthier::writeReg(llvm::AMDGPU::EXEC, 1);
+  luthier::writeExec(1);
   //  Increment the counter for this opcode
   atomicAdd(&KernelHistogram[OpcodeNumber], 1);
   // Restore the exec mask
-  luthier::writeReg(llvm::AMDGPU::EXEC, ExecMask);
+  luthier::writeExec(ExecMask);
 }
 LUTHIER_EXPORT_HOOK_HANDLE(countOpcodeHistogramScalar);
 
@@ -412,7 +410,7 @@ void atToolInit(ApiEvtPhase Phase) {
   }
 }
 
-void atFinalization(ApiEvtPhase Phase) {
+void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     llvm::outs() << "Instruction Opcode Results: \n";
     for (const auto &[OpcodeName, Count] : *GlobalHistogram) {

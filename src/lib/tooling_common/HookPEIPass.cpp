@@ -221,7 +221,8 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   // then we need to spill it to the value register before the hook runs
   for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
     if (InstPointLiveRegs.contains(PhysReg) ||
-        PhysicalRegsNotTobeClobbered.contains(PhysReg)) {
+        (!PhysicalRegsNotTobeClobbered.empty() &&
+         PhysicalRegsNotTobeClobbered.contains(PhysReg))) {
       llvm::BuildMI(MF.front(), EntryInstruction, llvm::DebugLoc(),
                     TII->get(llvm::AMDGPU::V_WRITELANE_B32),
                     HookStateValueLocation.StateValueVGPR)
@@ -258,7 +259,8 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       // Restore s[0:3]/s32/FS of the app if saved in the prologue
       for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
         if (InstPointLiveRegs.contains(PhysReg) ||
-            PhysicalRegsNotTobeClobbered.contains(PhysReg)) {
+            !PhysicalRegsNotTobeClobbered.empty() &&
+                PhysicalRegsNotTobeClobbered.contains(PhysReg)) {
           llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                         TII->get(llvm::AMDGPU::V_READLANE_B32), PhysReg)
               .addReg(HookStateValueLocation.StateValueVGPR)

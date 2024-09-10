@@ -71,7 +71,7 @@ void atToolInit(ApiEvtPhase Phase);
 /// \note This function is required to be implemented by all Luthier tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
 /// or \c API_EVT_PHASE_AFTER when called after tool finalization
-void atFinalization(ApiEvtPhase Phase);
+void atToolFini(ApiEvtPhase Phase);
 
 //===----------------------------------------------------------------------===//
 // HSA/HIP callback functions

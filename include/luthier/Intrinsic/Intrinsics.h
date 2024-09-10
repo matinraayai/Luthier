@@ -87,6 +87,10 @@ LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val) {
   doNotOptimize(Val);
 }
 
+LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val) {
+  doNotOptimize(Val);
+}
+
 #endif
 
 } // namespace luthier

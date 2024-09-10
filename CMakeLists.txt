@@ -85,7 +85,8 @@ add_subdirectory(src)
 
 # Example Tools Configuration (if enabled) =============================================================================
 if (${LUTHIER_BUILD_EXAMPLES})
-    set(SUB_DIRS examples/KernelInstrument examples/CodeLifterDebugging examples/InstrCount examples/OpcodeHistogram)
+    set(SUB_DIRS examples/KernelInstrument examples/CodeLifterDebugging examples/InstrCount examples/OpcodeHistogram
+    examples/LDSAccessTrace)
     foreach (DIR ${SUB_DIRS})
         add_subdirectory(${DIR})
     endforeach (DIR)

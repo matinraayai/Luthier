@@ -115,8 +115,7 @@ MARK_LUTHIER_DEVICE_MODULE
 // TODO: Can the optimizations around atomic add be removed here?
 LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
   // Get the exec mask of the wavefront
-  unsigned long long int ExecMask =
-      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Get the position of the thread in the current wavefront (1-index)
   const uint32_t LaneId = __lane_id() + 1;
   // Get the first active thread id inside this wavefront
@@ -141,14 +140,14 @@ LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsVector);
 
 LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
   // Get the exec mask of the wavefront
-  unsigned long long int ExecMask =
-      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
+
   // Overwrite the exec mask with one so that only a single thread is active
-  luthier::writeReg(llvm::AMDGPU::EXEC, 1);
+  luthier::writeExec(1);
   // Increment the counter by 1
   atomicAdd(&Counter, 1);
   // Restore the exec mask
-  luthier::writeReg(llvm::AMDGPU::EXEC, ExecMask);
+  luthier::writeExec(ExecMask);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
@@ -411,7 +410,7 @@ void atToolInit(ApiEvtPhase Phase) {
   }
 }
 
-void atFinalization(ApiEvtPhase Phase) {
+void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     llvm::outs() << "Total number of instructions counted: "
                  << TotalNumInstructions << "\n";
