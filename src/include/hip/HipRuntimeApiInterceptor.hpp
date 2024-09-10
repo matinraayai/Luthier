@@ -43,7 +43,8 @@ class HipRuntimeApiInterceptor
 public:
   HipRuntimeApiInterceptor() = default;
   ~HipRuntimeApiInterceptor() {
-    *RuntimeApiTable = SavedRuntimeApiTable;
+    if (RuntimeApiTable != nullptr)
+      *RuntimeApiTable = SavedRuntimeApiTable;
     SavedRuntimeApiTable = {};
     Singleton<HipRuntimeApiInterceptor>::~Singleton();
   }
