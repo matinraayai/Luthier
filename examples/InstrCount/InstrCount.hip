@@ -214,12 +214,13 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
   return llvm::Error::success();
 }
 
-static void instrumentAllFunctionsOfExecutable(hsa_executable_t Exec) {
-  auto LR = lift(Exec);
+static void
+instrumentAllFunctionsOfExecutable(const hsa::LoadedCodeObjectKernel &Kernel) {
+  auto LR = lift(Kernel);
   LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
 
   LUTHIER_REPORT_FATAL_ON_ERROR(
-      instrumentAndLoad(Exec, *LR, instrumentationLoop, "instr_count"));
+      instrumentAndLoad(Kernel, *LR, instrumentationLoop, "instr_count"));
 
   // Uncomment this part to print out the final assembly
   //    llvm::SmallVector<
@@ -262,7 +263,6 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
     for (auto &Packet : AppPackets) {
       hsa_packet_type_t PacketType = Packet.getPacketType();
       auto &DispatchPacket = Packet.asKernelDispatch();
-      Mutex.lock();
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         if (Phase == luthier::API_EVT_PHASE_BEFORE) {
           /// If we are entering to a kernel launch:
@@ -298,61 +298,60 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           SignalValue =
               hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
                   DispatchPacket.completion_signal);
+
           if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval) {
+              NumKernelLaunched < KernelEndInterval &&
+              !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
           }
+          llvm::outs() << "Active region: " << ActiveRegion << "\n";
 
           if (ActiveRegion) {
+            llvm::outs() << "Kernel is being instrumented.\n";
+
             auto IsKernelInstrumented =
                 isKernelInstrumented(*KernelSymbol, "instr_count");
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
             if (!*IsKernelInstrumented) {
-              // Get the executable associated with this kernel
-              auto Exec = KernelSymbol->getExecutable();
-              LUTHIER_REPORT_FATAL_ON_ERROR(Exec.takeError());
 
-              instrumentAllFunctionsOfExecutable(*Exec);
+              instrumentAllFunctionsOfExecutable(*KernelSymbol);
 
               LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
                   DispatchPacket, "instr_count"));
-              ToBeSubmittedPackets->push_back(Packet);
               // Zero the counter
               Counter = 0;
             }
-          } else {
-            ToBeSubmittedPackets->push_back(Packet);
           }
         } else {
-          if (ActiveRegion) {
-            constexpr auto Timeout =
-                std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::seconds{300})
-                    .count();
-            auto CurrentSignalValue =
-                hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
-                    DispatchPacket.completion_signal, HSA_SIGNAL_CONDITION_LT,
-                    SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
-            if (CurrentSignalValue >= SignalValue)
+          Mutex.lock();
+          llvm::outs() << "Active region in the exit callback: " << ActiveRegion << "\n";
+          constexpr auto Timeout =
+              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  std::chrono::seconds{300})
+                  .count();
+          auto CurrentSignalValue =
+              hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
+                  DispatchPacket.completion_signal, HSA_SIGNAL_CONDITION_LT,
+                  SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
+          if (CurrentSignalValue >= SignalValue)
+            llvm::report_fatal_error(
+                llvm::formatv("Wait timeout reached for signal handle {0:x},"
+                              "Expected "
+                              "value: {1}, Actual Value: {2}",
+                              DispatchPacket.completion_signal.handle,
+                              CurrentSignalValue - 1, SignalValue));
+          if (MustDestroySignalAfterLaunch) {
+            if (hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
+                    DispatchPacket.completion_signal) != HSA_STATUS_SUCCESS) {
               llvm::report_fatal_error(
-                  llvm::formatv("Wait timeout reached for signal handle {0:x},"
-                                "Expected "
-                                "value: {1}, Actual Value: {2}",
-                                DispatchPacket.completion_signal.handle,
-                                CurrentSignalValue - 1, SignalValue));
-            //            if (MustDestroySignalAfterLaunch) {
-            //              if
-            //              (hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
-            //                      DispatchPacket.completion_signal) !=
-            //                      HSA_STATUS_SUCCESS) {
-            //                llvm::report_fatal_error(
-            //                    "Failed to destroy the completed kernel's
-            //                    signal");
-            //              }
-            //            }
-
+                  "Failed to destroy the completed kernel's"
+                  "signal");
+            }
+          }
+          if (ActiveRegion) {
+            llvm::outs() << "Kernel is being waited on\n";
             /// If we are exiting a kernel launch:
             /// 1. Wait on the signal of the kernel being launched
             /// 2. Get the number of wave fronts in the kernel
@@ -387,13 +386,12 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket.workgroup_size_z, Counter, TotalNumInstructions);
           }
           NumKernelLaunched++;
+          Mutex.unlock();
         }
-      } // If the packet is not of type kernel dispatch, then submit it as
-      // is
-      else {
-        ToBeSubmittedPackets->push_back(Packet);
       }
-      Mutex.unlock();
+      if (Phase == API_EVT_PHASE_BEFORE)
+        ToBeSubmittedPackets->push_back(Packet);
+
     }
   }
 }
