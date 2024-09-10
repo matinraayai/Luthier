@@ -1018,6 +1018,7 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
         liftFunction(KernelSymbol, LR, UsageMap, LR.GlobalValueMIUses));
 
     Populated.insert(&KernelSymbol);
+    UsageMap[&KernelSymbol] = true;
     bool WereAnySymbolsPopulatedDuringLoop{true};
     while (WereAnySymbolsPopulatedDuringLoop) {
       WereAnySymbolsPopulatedDuringLoop = false;
@@ -1036,28 +1037,16 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
         }
       }
     }
-    // Construct the callgraph; If the callgraph is non-deterministic for
-    // the LCO of the kernel, then lift all device functions not lifted
-    // in the previous step
-    auto CG = LRCallGraph::analyse(LR);
-    LUTHIER_RETURN_ON_ERROR(CG.takeError());
-    if (CG.get()->hasNonDeterministicCallGraph(
-            KernelSymbol.getLoadedCodeObject())) {
-      LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
-                     "Callgraph was not deterministic; Adding all device "
-                     "functions in LCO {0:x} to the Lifted Representation.\n",
-                     KernelSymbol.getLoadedCodeObject().handle));
-      for (auto &[S, WasUsed] : UsageMap) {
-        if (!Populated.contains(S)) {
-          if (auto *DeviceFunc =
-                  llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(S)) {
-            LUTHIER_RETURN_ON_ERROR(
-                liftFunction(*S, LR, UsageMap, LR.GlobalValueMIUses));
-            Populated.insert(S);
-          }
-        }
-      }
-    }
+
+//    for (auto &[S, WasUsed] : UsageMap) {
+//      if (!Populated.contains(S)) {
+//        if (llvm::isa<hsa::LoadedCodeObjectDeviceFunction>(S)) {
+//          LUTHIER_RETURN_ON_ERROR(
+//              liftFunction(*S, LR, UsageMap, LR.GlobalValueMIUses));
+//          Populated.insert(S);
+//        }
+//      }
+//    }
 
     // Get the list of used LCOs
     llvm::DenseSet<hsa::LoadedCodeObject> UsedLCOs;
@@ -1067,19 +1056,24 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
       }
     }
 
-    // Cleanup any unused LCOs or variables
-    for (const auto &LCO : UsedLCOs) {
-      LR.RelatedLCOs.erase(LCO.asHsaType());
-    }
+
     for (const auto &[S, WasUsed] : UsageMap) {
       if (!WasUsed) {
         if (S->getType() == hsa::LoadedCodeObjectSymbol::SK_VARIABLE ||
             S->getType() == hsa::LoadedCodeObjectSymbol::SK_EXTERNAL) {
+          LR.RelatedGlobalVariables[S]->eraseFromParent();
           LR.RelatedGlobalVariables.erase(S);
         } else {
+          auto &F = LR.RelatedFunctions[S]->getFunction();
+          LR.RelatedLCOs[S->getLoadedCodeObject()].second->deleteMachineFunctionFor(F);
+          F.eraseFromParent();
           LR.RelatedFunctions.erase(S);
         }
       }
+    }
+    // Cleanup any unused LCOs or variables
+    for (const auto &LCO : UsedLCOs) {
+      LR.RelatedLCOs.erase(LCO.asHsaType());
     }
   }
   return *LiftedKernelSymbols.at(&KernelSymbol);
