@@ -198,7 +198,7 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
   llvm::cantFail(Exec.getLoadedCodeObjects(LCOs));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOs.size() == 1));
-
+  bool FirstTimeInit = PerAgentModuleExecutables.empty();
   if (PerAgentModuleExecutables.empty()) {
     // Record the CUID of the module
     LUTHIER_RETURN_ON_ERROR(getCUIDOfLCO(LCOs[0]).moveInto(CUID));
@@ -230,7 +230,8 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
   for (const auto &GVSymbol : LCOGlobalVariables) {
     auto GVName = GVSymbol->getName();
     LUTHIER_RETURN_ON_ERROR(GVName.takeError());
-    GlobalVariables.push_back(std::string(*GVName));
+    if (FirstTimeInit)
+      GlobalVariables.push_back(std::string(*GVName));
     SymbolMap.insert(
         {*GVName, llvm::dyn_cast<hsa::LoadedCodeObjectVariable>(GVSymbol)});
   }
