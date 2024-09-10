@@ -26,6 +26,7 @@
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/Passes.h>
 #include <luthier/LiftedRepresentation.h>
+#include <llvm/CodeGen/MachineFrameInfo.h>
 
 namespace luthier {
 
@@ -216,6 +217,16 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         .addImm(0);
     Changed |= true;
   }
+
+  // If the hook has stack usage
+  // then we need to signal the LR pre-kernel inserter that we need them +
+  // Generate code to load it
+  auto &FrameInfo = MF.getFrameInfo();
+  //TODO: Make sure this is correct
+  if (FrameInfo.hasStackObjects() && FrameInfo.getStackSize() != 0) {
+    PKInfo.EnableScratchAndStoreStackInfo = true;
+  }
+
   // If the app has either s0, s1, s2, s3, s32, and FLAT_SCRATCH_LO/HI
   // live/we shouldn't clobber them,
   // then we need to spill it to the value register before the hook runs
@@ -231,16 +242,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
           .addReg(HookStateValueLocation.StateValueVGPR);
     }
   }
-  // If the hook uses s0, s1, s2, and s3 individually, then
-  // If the hook uses s[0:3], s32, and FLAT_SCRATCH_LO/HI,
-  // then we need to signal the LR pre-kernel inserter that we need them +
-  // Generate code to load it
 
-  for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
-    if (MRI.isPhysRegUsed(PhysReg)) {
-      PKInfo.EnableScratchAndStoreStackInfo = true;
-    }
-  }
   if (PKInfo.EnableScratchAndStoreStackInfo) {
     for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
       llvm::BuildMI(MF.front(), EntryInstruction, llvm::DebugLoc(),
