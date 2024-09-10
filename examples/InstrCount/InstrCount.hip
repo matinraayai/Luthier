@@ -104,6 +104,13 @@ static bool ActiveRegion = true;
 /// A Mutex, used to protect the Counter value and ActiveRegion
 std::mutex Mutex;
 
+static const luthier::hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{
+    nullptr};
+
+static bool MustDestroySignalAfterLaunch{false};
+
+static hsa_signal_value_t SignalValue{0};
+
 //===----------------------------------------------------------------------===//
 // Hook definitions
 //===----------------------------------------------------------------------===//
@@ -239,66 +246,7 @@ static void instrumentAllFunctionsOfExecutable(hsa_executable_t Exec) {
 static void
 atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
                    bool MustDestroyAfterWait,
-                   hsa_kernel_dispatch_packet_t SubmittedDispatchPacket) {
-  constexpr auto Timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                               std::chrono::seconds{300})
-                               .count();
-  auto SignalValue = hsa::getHsaApiTable().core_->hsa_signal_wait_scacquire_fn(
-      Signal, HSA_SIGNAL_CONDITION_LT, Value, Timeout, HSA_WAIT_STATE_ACTIVE);
-  if (SignalValue >= Value)
-    llvm::report_fatal_error(
-        llvm::formatv("Wait timeout reached for signal handle {0:x}, Expected "
-                      "value: {1}, Actual Value: {2}",
-                      Signal.handle, Value - 1, SignalValue));
-  if (MustDestroyAfterWait) {
-    if (hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(Signal) !=
-        HSA_STATUS_SUCCESS) {
-      llvm::report_fatal_error(
-          "Failed to destroy the completed kernel's signal");
-    }
-  }
-
-  /// If we are exiting a kernel launch:
-  /// 1. Wait on the signal of the kernel being launched
-  /// 2. Get the number of wave fronts in the kernel
-  /// 3. Print the counter for this kernel
-  /// 4. Release the lock
-
-  // Get the kernel that was launched
-
-  auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
-                          SubmittedDispatchPacket.kernel_object)
-                          ->getLoadedCodeObjectKernelSymbol();
-
-  LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
-
-  auto KernelName = KernelSymbol->getName();
-  LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
-  std::string KernelNameToBePrinted = DemangleKernelNames
-                                          ? llvm::demangle(*KernelName)
-                                          : std::string(*KernelName);
-  TotalNumInstructions += Counter;
-
-  // Note: Grid size in HSA contains all the work items in the kernel. This
-  // is different from the number of blocks (grid dim) in CUDA or HIP
-  // For example, if a kernel is launched from HIP with 16 blocks, each with
-  // 64 threads, this will be indicated as a grid size dim of (1024, 1, 1) and
-  // workgroup size of (64, 1, 1), since 1024 = 64 x 16.
-  // As is evident from the example, workgroup size in HSA has the same meaning
-  // as CUDA/HIP
-  llvm::outs() << llvm::formatv(
-      "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) Workgroup Dims: "
-      "({5}, {6}, {7}) Kernel Instruction "
-      "Count: {8}, Total Instructions counted so far: {9}\n",
-      NumKernelLaunched++, KernelNameToBePrinted,
-      SubmittedDispatchPacket.grid_size_x, SubmittedDispatchPacket.grid_size_y,
-      SubmittedDispatchPacket.grid_size_z,
-      SubmittedDispatchPacket.workgroup_size_x,
-      SubmittedDispatchPacket.workgroup_size_y,
-      SubmittedDispatchPacket.workgroup_size_z, Counter, TotalNumInstructions);
-
-  Mutex.unlock();
-}
+                   hsa_kernel_dispatch_packet_t SubmittedDispatchPacket) {}
 
 static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                      hsa::ApiEvtID ApiID) {
@@ -313,34 +261,36 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
     ToBeSubmittedPackets->clear();
     for (auto &Packet : AppPackets) {
       hsa_packet_type_t PacketType = Packet.getPacketType();
-      if (Phase == luthier::API_EVT_PHASE_BEFORE) {
-        if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
+      auto &DispatchPacket = Packet.asKernelDispatch();
+      Mutex.lock();
+      if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
+        if (Phase == luthier::API_EVT_PHASE_BEFORE) {
           /// If we are entering to a kernel launch:
           /// 1. Lock the mutex to prevent multiple kernels to run concurrently
           /// 2. Instrument the kernel if no already instrumented
           /// 3. Select whether the instrumented kernel will run or not
           /// 4. Reset the managed Counter variable
-          Mutex.lock();
-          auto &DispatchPacket = Packet.asKernelDispatch();
+
           // Get the kernel that is about to get launched
           auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                   DispatchPacket.kernel_object)
                                   ->getLoadedCodeObjectKernelSymbol();
 
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
+
+          KernelBeingInstrumented = &(*KernelSymbol);
+          llvm::outs() << "Kernel " << llvm::cantFail(KernelSymbol->getName())
+                       << "is being launched\n";
           // Get the packet's completion signal and its value
 
-          bool MustDestroySignalAfterLaunch = false;
-
-          hsa_signal_value_t SignalValue{0};
           // Create a signal if the application didn't create one for this
           // packet
           if (DispatchPacket.completion_signal.handle == 0) {
             if (hsa::getHsaApiTable().amd_ext_->hsa_amd_signal_create_fn(
                     SignalValue, 0, nullptr, 0,
                     &DispatchPacket.completion_signal) != HSA_STATUS_SUCCESS)
-              llvm::report_fatal_error(
-                  "Failed to create a signal for the dispatch packet.");
+              llvm::report_fatal_error("Failed to create a signal for the "
+                                       "dispatch packet.");
             MustDestroySignalAfterLaunch = true;
           } else {
             MustDestroySignalAfterLaunch = false;
@@ -348,18 +298,6 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           SignalValue =
               hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
                   DispatchPacket.completion_signal);
-
-          auto IsKernelInstrumented =
-              isKernelInstrumented(*KernelSymbol, "instr_count");
-          LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
-          if (!*IsKernelInstrumented) {
-            // Get the executable associated with this kernel
-            auto Exec = KernelSymbol->getExecutable();
-            LUTHIER_REPORT_FATAL_ON_ERROR(Exec.takeError());
-
-            instrumentAllFunctionsOfExecutable(*Exec);
-          }
-
           if (NumKernelLaunched >= KernelBeginInterval &&
               NumKernelLaunched < KernelEndInterval) {
             ActiveRegion = true;
@@ -368,28 +306,97 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           }
 
           if (ActiveRegion) {
-            LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
-                DispatchPacket, "instr_count"));
-            ToBeSubmittedPackets->push_back(Packet);
-            // Zero the counter
-            Counter = 0;
-            std::thread(atKernelCompletion, DispatchPacket.completion_signal,
-                        SignalValue, MustDestroySignalAfterLaunch,
-                        DispatchPacket)
-                .detach();
+            auto IsKernelInstrumented =
+                isKernelInstrumented(*KernelSymbol, "instr_count");
+            LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
+            if (!*IsKernelInstrumented) {
+              // Get the executable associated with this kernel
+              auto Exec = KernelSymbol->getExecutable();
+              LUTHIER_REPORT_FATAL_ON_ERROR(Exec.takeError());
+
+              instrumentAllFunctionsOfExecutable(*Exec);
+
+              LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
+                  DispatchPacket, "instr_count"));
+              ToBeSubmittedPackets->push_back(Packet);
+              // Zero the counter
+              Counter = 0;
+            }
           } else {
             ToBeSubmittedPackets->push_back(Packet);
           }
+        } else {
+          if (ActiveRegion) {
+            constexpr auto Timeout =
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::seconds{300})
+                    .count();
+            auto CurrentSignalValue =
+                hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
+                    DispatchPacket.completion_signal, HSA_SIGNAL_CONDITION_LT,
+                    SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
+            if (CurrentSignalValue >= SignalValue)
+              llvm::report_fatal_error(
+                  llvm::formatv("Wait timeout reached for signal handle {0:x},"
+                                "Expected "
+                                "value: {1}, Actual Value: {2}",
+                                DispatchPacket.completion_signal.handle,
+                                CurrentSignalValue - 1, SignalValue));
+            //            if (MustDestroySignalAfterLaunch) {
+            //              if
+            //              (hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
+            //                      DispatchPacket.completion_signal) !=
+            //                      HSA_STATUS_SUCCESS) {
+            //                llvm::report_fatal_error(
+            //                    "Failed to destroy the completed kernel's
+            //                    signal");
+            //              }
+            //            }
+
+            /// If we are exiting a kernel launch:
+            /// 1. Wait on the signal of the kernel being launched
+            /// 2. Get the number of wave fronts in the kernel
+            /// 3. Print the counter for this kernel
+            /// 4. Release the lock
+
+            // Get the kernel that was launched
+
+            auto KernelName = KernelBeingInstrumented->getName();
+            LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
+            std::string KernelNameToBePrinted =
+                DemangleKernelNames ? llvm::demangle(*KernelName)
+                                    : std::string(*KernelName);
+            TotalNumInstructions += Counter;
+
+            // Note: Grid size in HSA contains all the work items in the kernel.
+            // This is different from the number of blocks (grid dim) in CUDA or
+            // HIP For example, if a kernel is launched from HIP with 16 blocks,
+            // each with 64 threads, this will be indicated as a grid size dim
+            // of (1024, 1, 1) and workgroup size of (64, 1, 1), since 1024 = 64
+            // x 16. As is evident from the example, workgroup size in HSA has
+            // the same meaning as CUDA/HIP
+            llvm::outs() << llvm::formatv(
+                "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
+                "Workgroup Dims: "
+                "({5}, {6}, {7}) Kernel Instruction "
+                "Count: {8}, Total Instructions counted so far: {9}\n",
+                NumKernelLaunched, KernelNameToBePrinted,
+                DispatchPacket.grid_size_x, DispatchPacket.grid_size_y,
+                DispatchPacket.grid_size_z, DispatchPacket.workgroup_size_x,
+                DispatchPacket.workgroup_size_y,
+                DispatchPacket.workgroup_size_z, Counter, TotalNumInstructions);
+          }
+          NumKernelLaunched++;
         }
-        // If the packet is not of type kernel dispatch, then submit it as is
-        else {
-          ToBeSubmittedPackets->push_back(Packet);
-        }
+      } // If the packet is not of type kernel dispatch, then submit it as
+      // is
+      else {
+        ToBeSubmittedPackets->push_back(Packet);
       }
+      Mutex.unlock();
     }
   }
 }
-
 namespace luthier {
 
 static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
