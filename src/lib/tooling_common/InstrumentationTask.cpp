@@ -31,10 +31,6 @@ llvm::Error luthier::InstrumentationTask::insertHookBefore(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(SIM != nullptr));
   auto HookName = SIM->convertHookHandleToHookName(Hook);
   LUTHIER_RETURN_ON_ERROR(HookName.takeError());
-  // Check if the passed MI belongs to the LiftedRepresentation being
-  // worked on
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ARGUMENT_ERROR_CHECK(LR.getHSAInstr(MI) != nullptr));
   if (!HookInsertionTasks.contains(&MI)) {
     HookInsertionTasks.insert({&MI, {}});
   }
