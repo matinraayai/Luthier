@@ -46,15 +46,10 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         auto KernelName = KernelSymbol->getName();
         if (auto Err = KernelName.takeError())
           llvm::report_fatal_error(std::move(Err), true);
-        // Skip kernels coming from rocclr; The image store instructions
-        // don't pass the machine verifier check because of missing mem operands
-        // TODO: Remove this once the image instruction issue is resolved
-        if (KernelName->starts_with("__amd"))
-          return;
 
         auto Exec = llvm::cantFail(KernelSymbol->getExecutable());
         if (!PrintedExecutables.contains(Exec)) {
-          auto LiftedExecutable = luthier::lift(Exec);
+          auto LiftedExecutable = luthier::lift(*KernelSymbol);
           if (auto Err = LiftedExecutable.takeError())
             llvm::report_fatal_error(std::move(Err), true);
 
@@ -110,7 +105,7 @@ void atToolInit(ApiEvtPhase Phase) {
   }
 }
 
-void atFinalization(ApiEvtPhase Phase) {
+void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     llvm::outs() << "Luthier Code Lifter Debug Tool is terminating!\n";
   }
