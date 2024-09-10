@@ -338,22 +338,24 @@ llvm::Error
 ExecutableBackedObjectsCache::invalidateExecutableOnExecutableDestroy(
     const Executable &Exec) {
   std::lock_guard Lock(CacheMutex);
-  // Get all the LCOs in the executable
-  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
-
-  // Iterate over all LCOs
-  for (const auto &LCO : LCOs) {
-    // Get all LCO symbols
-    llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *> Symbols;
-    LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
-
-    for (const auto &Symbol : Symbols) {
-      LUTHIER_RETURN_ON_ERROR(LCOSymbolCache.invalidateOnDestruction(*Symbol));
-    }
-    // Finally, invalidate the LCO
-    LUTHIER_RETURN_ON_ERROR(LCOCache.invalidateOnDestruction(LCO));
-  }
+  // TODO: Fix issue with invalidating cache
+//  // Get all the LCOs in the executable
+//  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
+//  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
+//
+//  // Iterate over all LCOs
+//  for (const auto &LCO : LCOs) {
+//
+//    // Get all LCO symbols
+//    llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *> Symbols;
+//    LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
+//
+//    for (const auto &Symbol : Symbols) {
+//      llvm::consumeError(LCOSymbolCache.invalidateOnDestruction(*Symbol));
+//    }
+//    // Finally, invalidate the LCO
+//    LUTHIER_RETURN_ON_ERROR(LCOCache.invalidateOnDestruction(LCO));
+//  }
   return llvm::Error::success();
 }
 
