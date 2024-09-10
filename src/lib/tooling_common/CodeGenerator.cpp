@@ -625,11 +625,11 @@ llvm::Error patchLiftedRepresentation(
       } else
         InsertionPoint = DstMBB->end();
       if (MBB.isEntryBlock()) {
-        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
-            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
-            /*NoImplicit=*/true);
-        DstMBB->insert(InsertionPoint, DstMI);
-        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
+//        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
+//            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+//            /*NoImplicit=*/true);
+//        DstMBB->insert(InsertionPoint, DstMI);
+//        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
       }
       for (auto &SrcMI : MBB.instrs()) {
         auto *PreInstrSymbol = SrcMI.getPreInstrSymbol();
@@ -676,11 +676,11 @@ llvm::Error patchLiftedRepresentation(
         }
       }
       if (MBB.isReturnBlock() || (MBB.isEntryBlock() && HookMF.size() == 1)) {
-        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
-            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
-            /*NoImplicit=*/true);
-        DstMBB->insert(InsertionPoint, DstMI);
-        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
+//        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
+//            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+//            /*NoImplicit=*/true);
+//        DstMBB->insert(InsertionPoint, DstMI);
+//        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
       }
       if (NumReturnBlocksInHook > 1 && MBB.isReturnBlock()) {
         TII->insertUnconditionalBranch(*DstMBB, HookLastReturnMBBDest,
