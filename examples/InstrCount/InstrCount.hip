@@ -223,7 +223,7 @@ static void
 instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
   auto LR = lift(Kernel);
   LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-  llvm::outs() << "Before instrumentation: \n";
+//  llvm::outs() << "Before instrumentation: \n";
 //  for (const auto &[FuncSymbol, MF] : LR->functions()) {
 //    MF->print(llvm::outs());
 //  }
@@ -236,12 +236,12 @@ instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
 //          std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
 //          SourceFiles;
 //
-      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
-      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
-      llvm::outs() << "after instrumentation\n";
-      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions()) {
-        MF->print(llvm::outs());
-      }
+//      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
+//      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
+//      llvm::outs() << "after instrumentation\n";
+//      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions()) {
+//        MF->print(llvm::outs());
+//      }
 //      LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
 //          **InstrumentedLR, SourceFiles,
 //          llvm::CodeGenFileType::AssemblyFile));
