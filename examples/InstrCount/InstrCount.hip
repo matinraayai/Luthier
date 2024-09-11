@@ -121,6 +121,8 @@ MARK_LUTHIER_DEVICE_MODULE
 
 // TODO: Can the optimizations around atomic add be removed here?
 LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
+
+  unsigned long long int VCC = luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Get the position of the thread in the current wavefront (1-index)
@@ -141,11 +143,13 @@ LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
       atomicAdd(&Counter, NumActiveThreads);
     }
   }
+  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsVector);
 
 LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
+  unsigned long long int VCC = luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
 
@@ -155,6 +159,7 @@ LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
   atomicAdd(&Counter, 1);
   // Restore the exec mask
   luthier::writeExec(ExecMask);
+  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
@@ -218,6 +223,10 @@ static void
 instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
   auto LR = lift(Kernel);
   LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
+  llvm::outs() << "Before instrumentation: \n";
+//  for (const auto &[FuncSymbol, MF] : LR->functions()) {
+//    MF->print(llvm::outs());
+//  }
 
   LUTHIER_REPORT_FATAL_ON_ERROR(
       instrumentAndLoad(Kernel, *LR, instrumentationLoop, "instr_count"));
@@ -227,11 +236,12 @@ instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
 //          std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
 //          SourceFiles;
 //
-//      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
-//      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
-//      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions()) {
-//        MF->print(llvm::outs());
-//      }
+      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
+      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
+      llvm::outs() << "after instrumentation\n";
+      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions()) {
+        MF->print(llvm::outs());
+      }
 //      LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
 //          **InstrumentedLR, SourceFiles,
 //          llvm::CodeGenFileType::AssemblyFile));
