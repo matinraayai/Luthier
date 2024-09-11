@@ -37,6 +37,13 @@ const static llvm::SmallDenseMap<llvm::MCRegister, unsigned int>
         {llvm::AMDGPU::SGPR32, 4},     {llvm::AMDGPU::FLAT_SCR_LO, 5},
         {llvm::AMDGPU::FLAT_SCR_HI, 6}};
 
+const static llvm::SmallDenseMap<llvm::MCRegister, unsigned int>
+    ValueRegisterInstrumentationSlots{
+        {llvm::AMDGPU::SGPR0, 7},       {llvm::AMDGPU::SGPR1, 8},
+        {llvm::AMDGPU::SGPR2, 9},       {llvm::AMDGPU::SGPR3, 10},
+        {llvm::AMDGPU::SGPR32, 11},     {llvm::AMDGPU::FLAT_SCR_LO, 12},
+        {llvm::AMDGPU::FLAT_SCR_HI, 13}};
+
 char HookPEIPass::ID = 0;
 
 HookPEIPass::HookPEIPass(
@@ -244,7 +251,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   }
 
   if (PKInfo.EnableScratchAndStoreStackInfo) {
-    for (const auto &[PhysReg, SpillLane] : ValueRegisterSpillSlots) {
+    for (const auto &[PhysReg, SpillLane] : ValueRegisterInstrumentationSlots) {
       llvm::BuildMI(MF.front(), EntryInstruction, llvm::DebugLoc(),
                     TII->get(llvm::AMDGPU::V_READLANE_B32), PhysReg)
           .addReg(HookStateValueLocation.StateValueVGPR)
@@ -267,6 +274,8 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
                         TII->get(llvm::AMDGPU::V_READLANE_B32), PhysReg)
               .addReg(HookStateValueLocation.StateValueVGPR)
               .addImm(SpillLane);
+          FirstTermInst->addOperand(
+              llvm::MachineOperand::CreateReg(PhysReg, false, true));
         }
       }
       // Restore the app's state
@@ -380,7 +389,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       }
     }
   }
-
+  MF.print(llvm::outs());
   return Changed;
 }
 
