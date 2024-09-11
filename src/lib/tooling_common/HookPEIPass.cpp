@@ -389,7 +389,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       }
     }
   }
-  MF.print(llvm::outs());
+//  MF.print(llvm::outs());
   return Changed;
 }
 

@@ -103,10 +103,10 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         // Take the
         if (!ToBeOverwrittenRegs.empty()) {
           for (const auto &[PhysReg, VirtReg] : ToBeOverwrittenRegs) {
-            llvm::outs() << "PhysReg: " << MF.getSubtarget().getRegisterInfo()->getName(PhysReg) << ", virt reg: << " << llvm::printReg(VirtReg, MF.getSubtarget().getRegisterInfo()) << "\n";
-            llvm::outs() << "What will be replaced? " << llvm::printReg(PhysRegAccessor(PhysReg), MF.getSubtarget().getRegisterInfo()) << "\n";
+//            llvm::outs() << "PhysReg: " << MF.getSubtarget().getRegisterInfo()->getName(PhysReg) << ", virt reg: << " << llvm::printReg(VirtReg, MF.getSubtarget().getRegisterInfo()) << "\n";
+//            llvm::outs() << "What will be replaced? " << llvm::printReg(PhysRegAccessor(PhysReg), MF.getSubtarget().getRegisterInfo()) << "\n";
             for (auto &Use : MRI.use_operands(PhysRegAccessor(PhysReg))) {
-              Use.getParent()->print(llvm::outs());
+//              Use.getParent()->print(llvm::outs());
               Use.setReg(VirtReg);
             }
             OverwrittenPhysRegs.insert_or_assign(PhysReg, VirtReg);
