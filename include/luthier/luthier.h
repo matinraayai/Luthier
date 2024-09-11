@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_H
 #define LUTHIER_H
+#define HIP_ENABLE_WARP_SYNC_BUILTINS
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
 
