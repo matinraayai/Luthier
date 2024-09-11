@@ -254,14 +254,6 @@ instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
 //      }
 }
 
-// TODO: Think of a way of integrating this as a callback inside luthier
-// This function is spawned as a thread to wait on kernel launches to be
-// completed
-static void
-atKernelCompletion(hsa_signal_t Signal, hsa_signal_value_t Value,
-                   bool MustDestroyAfterWait,
-                   hsa_kernel_dispatch_packet_t SubmittedDispatchPacket) {}
-
 static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                      hsa::ApiEvtID ApiID) {
   if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
@@ -278,6 +270,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
       auto &DispatchPacket = Packet.asKernelDispatch();
       if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         if (Phase == luthier::API_EVT_PHASE_BEFORE) {
+          Mutex.lock();
           /// If we are entering to a kernel launch:
           /// 1. Lock the mutex to prevent multiple kernels to run concurrently
           /// 2. Instrument the kernel if no already instrumented
@@ -292,8 +285,14 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
 
           KernelBeingInstrumented = &(*KernelSymbol);
-          llvm::outs() << "Kernel " << llvm::cantFail(KernelSymbol->getName())
-                       << "is being launched\n";
+
+          auto KernelName = KernelSymbol->getName();
+          LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
+          std::string KernelNameToBePrinted =
+              DemangleKernelNames ? llvm::demangle(*KernelName)
+                                  : std::string(*KernelName);
+          llvm::outs() << "Kernel " << KernelNameToBePrinted
+                       << " is being launched\n";
           // Get the packet's completion signal and its value
 
           // Create a signal if the application didn't create one for this
@@ -337,7 +336,6 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             }
           }
         } else {
-          Mutex.lock();
           llvm::outs() << "Active region in the exit callback: " << ActiveRegion << "\n";
           constexpr auto Timeout =
               std::chrono::duration_cast<std::chrono::nanoseconds>(
