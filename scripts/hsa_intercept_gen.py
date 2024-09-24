@@ -214,6 +214,14 @@ luthier::hsa::HsaRuntimeInterceptor
 void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                  uint64_t UserPktIndex, void *Data, 
                                  hsa_amd_queue_intercept_packet_writer Writer) {{
+  // This part handles the case where Luthier has been finalized, but there are 
+  // still intercept queues in HIP trying to dispatch packets. Basically tells the
+  // queue callbacks not to bother using the HSA Runtime interceptor, 
+  // because it has been destroyed already
+  if (!luthier::hsa::HsaRuntimeInterceptor::isInitialized()) {{
+    Writer(Packets, PktCount);
+    return;
+  }}
   auto *Queue = reinterpret_cast<amd_queue_t*>(Data);
   auto &HsaInterceptor = luthier::hsa::HsaRuntimeInterceptor::instance();
   HsaInterceptor.freezeRuntimeApiTable();

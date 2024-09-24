@@ -64,6 +64,10 @@ public:
       llvm::report_fatal_error("Singleton is not initialized");
     return *Instance;
   }
+
+  static inline bool isInitialized() {
+    return Instance != nullptr;
+  }
 };
 
 #ifdef __clang__
