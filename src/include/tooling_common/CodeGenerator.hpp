@@ -47,6 +47,21 @@ class ISA;
 
 } // namespace hsa
 
+/// \brief Singleton in charge of generating instrumentation code
+/// \details <tt>CodeGenerator</tt> performs the following tasks:
+/// 1. Creates calls to hooks inside an "instrumentation <tt>llvm::Module</tt>.\n
+/// 2. Run the IR optimization pipeline on the instrumentation module. \n
+/// 3. Run the IR lowering functions of Luthier intrinsics. \n
+/// 4. Run a modified version of the LLVM CodeGen pipeline on the
+/// instrumentation module, which involves: a) running normal ISEL,
+/// b) calling MIR lowering functions on intrinsics, c) virtualizing access to
+/// physical registers, and expressing register constraints in MIR, d)
+/// a custom frame lowering after register allocation and lowering of stack
+/// operands inside instrumentation Module functions.
+/// 5. Keep track of how each intrinsic is lowered; There are a set of
+/// intrinsics built-in for Luthier (e.g. <tt>readReg</tt>) and there are a set
+/// of intrinsics which a tool writer can register by describing how they
+/// are lowered.
 class CodeGenerator : public Singleton<CodeGenerator> {
 private:
   /// Holds information regarding how to lower Luthier intrinsics
@@ -149,37 +164,6 @@ private:
   llvm::Error insertHooks(LiftedRepresentation &LR,
                           const InstrumentationTask &Tasks);
 };
-
-///// \brief Aggregates the app's live registers at each hook insertion point,
-///// as well as physical registers read by the hook itself, and creates def/uses
-///// for them in appropriate places. If the target app uses the stack, creates
-///// a stack operand as well as appropriate defs/uses.
-///// TODO: Make this pass work with dynamic stack usage
-//class DefineLiveRegsAndAppStackUsagePass : public llvm::MachineFunctionPass {
-//public:
-//  static char ID;
-//  typedef llvm::DenseMap<llvm::Function *, llvm::LivePhysRegs *>
-//      hook_live_regs_map_t;
-//
-//private:
-//  hook_live_regs_map_t HookLiveRegs;
-//
-//  llvm::DenseMap<llvm::Function *, size_t> StaticSizedHooksToStackSize;
-//
-//public:
-//  llvm::StringRef getPassName() const override {
-//    return "Define Live Regs and Stack Usage Pass";
-//  }
-//
-//  explicit DefineLiveRegsAndAppStackUsagePass(
-//      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-//          &MIToHookFuncMap,
-//      const LiftedRepresentation &LR);
-//
-//  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
-//
-//  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
-//};
 
 } // namespace luthier
 
