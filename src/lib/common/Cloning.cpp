@@ -199,8 +199,8 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
 
   // Construct the destination machine function
   auto DstMF = std::make_unique<llvm::MachineFunction>(
-      DestF, SrcMF->getTarget(), SrcMF->getSubtarget(),
-      SrcMF->getFunctionNumber(), DestMMI);
+      DestF, SrcMF->getTarget(), SrcMF->getSubtarget(), SrcMF->getContext(),
+      SrcMF->getFunctionNumber());
   llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
       Src2DstMBB;
 
@@ -269,7 +269,7 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
 
     // Copy register allocation hints.
     const auto &Hints = SrcMRI->getRegAllocationHints(Reg);
-    for (llvm::Register PrefReg : Hints.second)
+    for (llvm::Register PrefReg : Hints->second)
       DstMRI->addRegAllocationHint(NewReg, PrefReg);
   }
 

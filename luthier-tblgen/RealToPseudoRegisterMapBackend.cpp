@@ -32,7 +32,7 @@ unsigned RealToPseudoRegisterMapEmitter::emitTable(llvm::raw_ostream &OS) {
   llvm::StringRef Namespace = Target.getRegNamespace();
   OS << "static constexpr uint16_t RealToPseudoRegisterMapTable[] {\n0,\n";
   for (const auto &NumberedReg : NumberedRegisters) {
-    llvm::Record *SIReg = NumberedReg.TheDef;
+    const llvm::Record *SIReg = NumberedReg.TheDef;
     llvm::StringRef RegName = SIReg->getName();
     std::string PseudoRegName(RegName);
 

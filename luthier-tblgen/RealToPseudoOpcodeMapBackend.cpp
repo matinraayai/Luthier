@@ -37,7 +37,7 @@ RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
   llvm::StringRef Namespace = Target.getInstNamespace();
   OS << "static constexpr uint16_t RealToPseudoOpcodeMapTable[] {\n";
   for (const auto &NumberedInst : NumberedInstructions) {
-    llvm::Record *SIInst = NumberedInst->TheDef;
+    const llvm::Record *SIInst = NumberedInst->TheDef;
     llvm::StringRef PseudoInstName;
     bool IsReal =
         SIInst->getValue("isPseudo")->getValue()->getAsUnquotedString() == "0";
