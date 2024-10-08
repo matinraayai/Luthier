@@ -47,10 +47,13 @@ class ISA;
 
 } // namespace hsa
 
-/// \brief Singleton in charge of generating instrumentation code
+/// \brief Singleton in charge of generating instrumented machine code
 /// \details <tt>CodeGenerator</tt> performs the following tasks:
-/// 1. Creates calls to hooks inside an "instrumentation <tt>llvm::Module</tt>.\n
-/// 2. Run the IR optimization pipeline on the instrumentation module. \n
+/// 1. Create calls to hooks inside an instrumentation
+/// <tt>llvm::Module</tt> (<tt>IModule</tt>), creating a collection of
+/// instrumentation <tt>llvm::Function</tts> inside the <tt>IModule</tt>. \n
+/// 2. Run the IR optimization pipeline on the instrumentation module to
+/// optimize the instrumentation functions. \n
 /// 3. Run the IR lowering functions of Luthier intrinsics. \n
 /// 4. Run a modified version of the LLVM CodeGen pipeline on the
 /// instrumentation module, which involves: a) running normal ISEL,
@@ -71,7 +74,8 @@ public:
   /// Register a Luthier intrinsic with the <tt>CodeGenerator</tt> and provide a
   /// way to lower it to Machine IR
   /// \param Name the demangled function name of the intrinsic, without the
-  /// template arguments
+  /// template arguments but with the namespace(s) its binding is defined
+  /// (e.g. <tt>"luthier::readReg"</tt>)
   /// \param Processor the \c IntrinsicProcessor describing how to lower the
   /// Luthier intrinsic
   void registerIntrinsic(llvm::StringRef Name, IntrinsicProcessor Processor) {
@@ -81,7 +85,7 @@ public:
   /// Instruments the passed \p LR by first cloning it and then
   /// applying the \p Mutator onto its contents
   /// \param LR the \c LiftedRepresentation about to be instrumented
-  /// \param Mutator
+  /// \param Mutator a function that can modify the lifted representation
   /// \return a new \c LiftedRepresentation containing the instrumented code,
   /// or an \c llvm::Error in case an issue was encountered during the process
   llvm::Expected<std::unique_ptr<LiftedRepresentation>>
@@ -124,6 +128,39 @@ public:
                               llvm::SmallVectorImpl<uint8_t> &Out);
 
 private:
+  /// Applies the instrumentation task \p Task to the lifted representation
+  /// of \p LR \n
+  /// The \p Task is created and populated by the mutator function
+  /// in <tt>CodeGenerator::instrument</tt>
+  /// \param [in] Task the \c InstrumentationTask applied to the \p LR which
+  /// contains a set of hook calls that will be injected before a set of
+  /// <tt>llvm::MachineInstr</tt>s of the target application
+  /// \param [in, out] LR the \c LiftedRepresentation being instrumented
+  /// \return an \c llvm::Error indicating if any issues where encountered
+  /// during the process
+  llvm::Error applyInstrumentationTask(const InstrumentationTask &Task,
+                                       LiftedRepresentation &LR);
+
+  /// Generates an instrumentation \c llvm::Function containing the
+  /// code that will be injected before the \p MI in the target
+  /// application; The instrumentation function is a series of calls to
+  /// the hooks with the arguments, in the order they are specified by
+  /// \p HookInvocationSpecs
+  /// \param IModule the instrumentation \c llvm::Module that will encapsulate
+  /// the generated instrumentation function
+  /// \param HookInvocationSpecs A list of hooks to be called inside the
+  /// instrumentation function, as well as their arguments
+  /// \param MI the
+  /// \return a reference to a newly-created \c llvm::Function (with no
+  /// arguments and return value) which contains the LLVM IR of the payload
+  /// to be injected before the target application's \p MI
+  static llvm::Expected<llvm::Function &>
+  generateIFunctionForInjectionBeforeApplicationMI(
+      llvm::Module &IModule,
+      llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor>
+          HookInvocationSpecs,
+      const llvm::MachineInstr &MI);
+
   /// Finds <tt>llvm::Function</tt>s marked as intrinsics inside the
   /// \p InstModule and applies the IR processor function to their
   /// <tt>llvm::User</tt>s
@@ -156,13 +193,6 @@ private:
       const luthier::hsa::LoadedCodeObject &LCO, llvm::GCNTargetMachine *TM,
       llvm::Module &M);
 
-  static llvm::Expected<llvm::Function &> generateHookIR(
-      const llvm::MachineInstr &MI,
-      llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor> HookSpecs,
-      const llvm::GCNTargetMachine &TM, llvm::Module &IModule);
-
-  llvm::Error insertHooks(LiftedRepresentation &LR,
-                          const InstrumentationTask &Tasks);
 };
 
 } // namespace luthier
