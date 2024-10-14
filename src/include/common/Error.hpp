@@ -25,8 +25,8 @@
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormatVariadic.h>
 
-#include <luthier/types.h>
 #include <luthier/ErrorCheck.h>
+#include <luthier/types.h>
 
 /// Workaround for GCC or other compilers that don't have this macro built-in
 /// Source:
@@ -39,73 +39,47 @@
 
 namespace luthier {
 
-class InvalidArgument : public llvm::ErrorInfo<InvalidArgument> {
+/// \brief Error used to indicate issues encountered in Luthier code not
+/// related to any other ROCm library
+class LuthierError : public llvm::ErrorInfo<LuthierError> {
 public:
-  static char ID;       ///< ID of the Error
-  std::string FileName; ///< Name of the file the error was encountered
-  const int LineNumber; ///< Line number of the file the error was encountered
-  std::string FunctionName; ///< Name of the function its argument was invalid
-  std::string Expr;         ///< Expression that failed
+  static char ID;             ///< ID of the Error
+  const std::string FileName; ///< Name of the file the error was encountered
+  const int LineNumber;       ///< Line number of the file the error was
+                              ///< encountered
+  const std::string ErrorMsg; ///< Message describing the error
 
-  InvalidArgument(llvm::StringRef FileName, int LineNumber,
-                  llvm::StringRef FunctionName, llvm::StringRef Expr)
-      : FileName(FileName), LineNumber(LineNumber), FunctionName(FunctionName),
-        Expr(Expr) {}
+  LuthierError(llvm::StringRef FileName, int LineNumber,
+               llvm::StringRef ErrorMsg)
+      : FileName(FileName), LineNumber(LineNumber), ErrorMsg(ErrorMsg) {}
 
-  static llvm::Error invalidArgumentCheck(llvm::StringRef FileName,
-                                          int LineNumber,
-                                          llvm::StringRef FunctionName,
-                                          bool Expr, llvm::StringRef ExprStr);
-
-  void log(llvm::raw_ostream &OS) const override {
-    OS << "File " << FileName << ", " << "line: " << LineNumber << ": ";
-    OS << "Invalid argument passed to function " << FunctionName << "; ";
-    OS << "Failed argument check: " << Expr;
-  }
-
-  std::error_code convertToErrorCode() const override {
-    llvm_unreachable("Not implemented");
-  }
-};
-
-#define LUTHIER_ARGUMENT_ERROR_CHECK(Expr)                                     \
-  luthier::InvalidArgument::invalidArgumentCheck(                              \
-      __FILE_NAME__, __LINE__, __PRETTY_FUNCTION__, Expr, #Expr)
-
-class AssertionError : public llvm::ErrorInfo<AssertionError> {
-public:
-  static char ID;       ///< ID of the Error
-  std::string FileName; ///< Name of the file the error was encountered
-  const int LineNumber; ///< Line number of the file the error was encountered
-  std::string Expr;     ///< Expression that failed
-
-  AssertionError(llvm::StringRef FileName, int LineNumber, llvm::StringRef Expr)
-      : FileName(FileName), LineNumber(LineNumber), Expr(Expr) {}
-
-  static llvm::Error assertionCheck(llvm::StringRef FileName, int LineNumber,
-                                    bool Expr, llvm::StringRef ExprStr);
+  static llvm::Error luthierErrorCheck(llvm::StringRef FileName, int LineNumber,
+                                       bool Expr, llvm::StringRef ErrorMsg);
 
   void log(llvm::raw_ostream &OS) const override {
     OS << "File " << FileName << ", line: " << LineNumber << ": ";
-    OS << "Failed assertion: " << Expr;
+    OS << ErrorMsg << "\n";
   }
 
-  std::error_code convertToErrorCode() const override {
+  [[nodiscard]] std::error_code convertToErrorCode() const override {
     llvm_unreachable("Not implemented");
   }
 };
 
-#define LUTHIER_ASSERTION(Expr)                                                \
-  luthier::AssertionError::assertionCheck(__FILE_NAME__, __LINE__, Expr, #Expr)
+#define LUTHIER_CREATE_ERROR(Msg)                                              \
+  llvm::make_error<luthier::LuthierError>(__FILE_NAME__, __LINE__, Msg)
 
-/// \brief Describes errors caused by the COMGR library
+#define LUTHIER_ERROR_CHECK(Expr, Msg)                                         \
+  luthier::LuthierError::luthierErrorCheck(__FILE_NAME__, __LINE__, Expr, Msg)
+
+/// \brief Describes errors caused by calls to the COMGR library
 class ComgrError : public llvm::ErrorInfo<ComgrError> {
 public:
-  static char ID;         ///< ID of the Error
-  std::string FileName;   ///< Name of the file the error was encountered
-  const int LineNumber;   ///< Line number of the file the error was encountered
-  std::string Expression; ///< Expression that caused the error
-  amd_comgr_status_t Error; ///< Encapsulated COMGR error
+  static char ID;             ///< ID of the Error
+  const std::string FileName; ///< Name of the file the error was encountered
+  const int LineNumber; ///< Line number of the file the error was encountered
+  const std::string Expression;   ///< Expression that caused the error
+  const amd_comgr_status_t Error; ///< Encapsulated COMGR error
 
   /// Public constructor for COMGR Error
   /// \note This constructor is not meant to be called directly; Use the
@@ -113,11 +87,11 @@ public:
   /// \c LUTHIER_COMGR_SUCCESS_CHECK instead;
   /// \param FileName name of the file the error occurred; Meant to be populated
   /// with the \c __FILE_NAME__ macro
-  /// \param LineNumber LineNumber line number of the code; Meant to be populated
-  /// with the \c __LINE_NUMBER__ macro
+  /// \param LineNumber LineNumber line number of the code; Meant to be
+  /// populated with the \c __LINE_NUMBER__ macro
   /// \param Error the COMGR error code that occurred
-  /// \param Expression the expression which failed; Meant to be the stringify-ed
-  /// version of the input expression
+  /// \param Expression the expression which failed; Meant to be the
+  /// stringify-ed version of the input expression
   ComgrError(llvm::StringRef FileName, int LineNumber, amd_comgr_status_t Error,
              llvm::StringRef Expression)
       : FileName(FileName), LineNumber(LineNumber), Expression(Expression),
@@ -152,8 +126,8 @@ public:
     OS << "File " << FileName << ", line: " << LineNumber << ": ";
     OS << "COMGR call in expression " << Expression
        << " failed with error code ";
-    OS << Error << ". Additional info about the error according to COMGR: ";
-    OS << ErrorMsg;
+    OS << Error << ". info about the error according to COMGR: ";
+    OS << ErrorMsg << "\n";
   }
 
   [[nodiscard]] std::error_code convertToErrorCode() const override {
@@ -172,11 +146,11 @@ public:
 /// the \c hsa namespace objects
 class HsaError : public llvm::ErrorInfo<HsaError> {
 public:
-  static char ID;         ///< ID of the Error
-  std::string FileName;   ///< Name of the file the error was encountered
-  const int LineNumber;   ///< Line number of the file the error was encountered
-  std::string Expression; ///< Call that caused the error
-  hsa_status_t Error;     ///< Encapsulated HSA error
+  static char ID;             ///< ID of the Error
+  const std::string FileName; ///< Name of the file the error was encountered
+  const int LineNumber; ///< Line number of the file the error was encountered
+  const std::string Expression; ///< Call that caused the error
+  const hsa_status_t Error;     ///< Encapsulated HSA error
 
   /// Public constructor for HSA Error
   /// \note This constructor is not meant to be called directly; Use the
@@ -187,8 +161,8 @@ public:
   /// \param LineNumber line number of the code; Meant to be populated with the
   /// \c __LINE_NUMBER__ macro
   /// \param Error the HSA error code that occurred
-  /// \param Expression the expression which failed; Meant to be the stringify-ed
-  /// version of the input expression
+  /// \param Expression the expression which failed; Meant to be the
+  /// stringify-ed version of the input expression
   HsaError(llvm::StringRef FileName, int LineNumber, hsa_status_t Error,
            llvm::StringRef Expression)
       : FileName(FileName), LineNumber(LineNumber), Expression(Expression),
@@ -202,8 +176,8 @@ public:
   /// \note This function is not meant to be called directly; Use the
   /// error checking macros \p LUTHIER_HSA_ERROR_CHECK and
   /// \c LUTHIER_HSA_SUCCESS_CHECK instead
-  /// \param FileName  name of the file the error occurred; Meant to be populated
-  /// with the \c __FILE_NAME__ macro
+  /// \param FileName  name of the file the error occurred; Meant to be
+  /// populated with the \c __FILE_NAME__ macro
   /// \param LineNumber line number of the code; Meant to be populated with the
   /// \c __LINE_NUMBER__ macro
   /// \param Expr the expression which is meant to be checked
@@ -222,7 +196,7 @@ public:
     OS << "File " << FileName << ", line: " << LineNumber << ": ";
     OS << "HSA call in expression " << Expression << " failed with error code ";
     OS << Error << ". Additional info about the error according to HSA: ";
-    OS << ErrorMsg;
+    OS << ErrorMsg << "\n";
   }
 
   [[nodiscard]] std::error_code convertToErrorCode() const override {

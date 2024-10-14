@@ -19,23 +19,13 @@
 //===----------------------------------------------------------------------===//
 #include <common/Error.hpp>
 
-char luthier::InvalidArgument::ID = 0;
+char luthier::LuthierError::ID = 0;
 
-llvm::Error luthier::InvalidArgument::invalidArgumentCheck(
-    llvm::StringRef FileName, int LineNumber, llvm::StringRef FunctionName,
-    bool Expr, llvm::StringRef ExprStr) {
-  return (!Expr) ? llvm::make_error<InvalidArgument>(FileName, LineNumber,
-                                                     FunctionName, ExprStr)
-                 : llvm::Error::success();
-}
-
-char luthier::AssertionError::ID = 0;
-
-llvm::Error luthier::AssertionError::assertionCheck(llvm::StringRef FileName,
-                                                    int LineNumber, bool Expr,
-                                                    llvm::StringRef ExprStr) {
+llvm::Error luthier::LuthierError::luthierErrorCheck(llvm::StringRef FileName,
+                                                     int LineNumber, bool Expr,
+                                                     llvm::StringRef ErrorMsg) {
   return (!Expr)
-             ? llvm::make_error<AssertionError>(FileName, LineNumber, ExprStr)
+             ? llvm::make_error<LuthierError>(FileName, LineNumber, ErrorMsg)
              : llvm::Error::success();
 }
 
