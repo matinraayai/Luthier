@@ -194,7 +194,12 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
   // Find the destination function entry in the value map
   auto &SrcF = SrcMF->getFunction();
   auto DestFMapEntry = VMap.find(&SrcF);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(DestFMapEntry != VMap.end()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      DestFMapEntry != VMap.end(),
+      llvm::formatv("Failed to find the corresponding value for function {0} "
+                    "in the cloned value map.",
+                    SrcF.getName())
+          .str()));
   llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
 
   // Construct the destination machine function
@@ -335,7 +340,12 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
           }
         } else if (DstMO.isGlobal()) {
           auto GVEntry = VMap.find(DstMO.getGlobal());
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(GVEntry != VMap.end()));
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+              GVEntry != VMap.end(),
+              llvm::formatv("Failed to find the corresponding value for {0} "
+                            "in the cloned value map.",
+                            DstMO.getGlobal()->getName())
+                  .str()));
           auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
           DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
         }
@@ -386,8 +396,8 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
 
   DstMRI->freezeReservedRegs();
 
-//  bool Verified = DstMF->verify(nullptr, "", /*AbortOnError=*/true);
-//  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Verified));
+  //  bool Verified = DstMF->verify(nullptr, "", /*AbortOnError=*/true);
+  //  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Verified));
   return DstMF;
 }
 
@@ -397,9 +407,19 @@ llvm::Error cloneMMI(
     llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> *SrcToDstMIMap) {
   for (const llvm::Function &SrcF : SrcModule) {
     llvm::MachineFunction *SrcMF = SrcMMI.getMachineFunction(SrcF);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(SrcMF != nullptr));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        SrcMF != nullptr,
+        llvm::formatv("Failed to find the Machine Function associated with "
+                      "Function {0} inside the MMI during cloning.",
+                      SrcF.getName())
+            .str()));
     auto DestFMapEntry = VMap.find(&SrcF);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(DestFMapEntry != VMap.end()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        DestFMapEntry != VMap.end(),
+        llvm::formatv("Failed to find the corresponding value for function {0} "
+                      "in the cloned value map.",
+                      SrcF.getName())
+            .str()));
     llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
     auto DestMF = cloneMF(SrcMF, VMap, DestMMI, SrcToDstMIMap);
     LUTHIER_RETURN_ON_ERROR(DestMF.takeError());
