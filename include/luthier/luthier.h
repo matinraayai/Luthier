@@ -27,12 +27,12 @@
 #include <luthier/InstrumentationTask.h>
 #include <luthier/Intrinsic/Intrinsics.h>
 #include <luthier/LiftedRepresentation.h>
+#include <luthier/hip/TraceApi.h>
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/KernelDescriptor.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
 #include <luthier/hsa/TraceApi.h>
-#include <luthier/hip/TraceApi.h>
 #include <luthier/types.h>
 
 namespace luthier {
