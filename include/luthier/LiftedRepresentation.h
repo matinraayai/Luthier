@@ -80,10 +80,12 @@ class LiftedRepresentation {
   friend luthier::CodeLifter;
 
 private:
-  /// Target Machine provides hardware description of the target
-  /// It is shared among the <tt>LiftedRepresentation</tt>s of the
-  /// same lifted primitive and protected by ThreadSafeContext's lock
-  std::shared_ptr<llvm::GCNTargetMachine> TM;
+  /// This is a mapping between the LCO and the \c llvm::GCNTargetMachine used
+  /// for its \c llvm::MachineModuleInfo
+  /// It also acts as all the TM's storage
+  llvm::SmallDenseMap<hsa_loaded_code_object_t,
+                      std::unique_ptr<llvm::GCNTargetMachine>, 1>
+      TMs{};
 
   /// A thread-safe context that owns all the thread-safe modules;
   /// Each LiftedRepresentation is given its own context to allow for
@@ -95,10 +97,11 @@ private:
 
   /// \brief primary storage of the Module and the Machine Module Info of the
   /// lifted loaded code objects
-  llvm::SmallDenseMap<hsa_loaded_code_object_t,
-                      std::pair<llvm::orc::ThreadSafeModule,
-                                llvm::MachineModuleInfoWrapperPass *>,
-                      1>
+  llvm::SmallDenseMap<
+      hsa_loaded_code_object_t,
+      std::pair<std::unique_ptr<llvm::Module>,
+                std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
+      1>
       Modules{};
 
   /// \brief Mapping between an \c hsa_loaded_code_object_t and the
@@ -114,7 +117,7 @@ private:
   /// hsa_executable_t almost always contains a single
   /// <tt>hsa_loaded_code_object_t</tt>
   llvm::SmallDenseMap<hsa_loaded_code_object_t,
-                      std::pair<llvm::Module *, llvm::MachineModuleInfo *>, 1>
+                      std::pair<llvm::Module &, llvm::MachineModuleInfo &>, 1>
       RelatedLCOs{};
 
   /// Mapping between an \c hsa_executable_symbol_t (of type kernel and
@@ -155,41 +158,19 @@ public:
   /// Disallowed assignment operation
   LiftedRepresentation &operator=(const LiftedRepresentation &) = delete;
 
-  /// \return a reference to the thread-safe \c LLVMContext of this object
-  llvm::orc::ThreadSafeContext &getContext() { return Context; }
+  /// \return a reference to the \c LLVMContext of this Lifted Representation
+  llvm::LLVMContext &getContext() { return *Context.getContext(); }
 
-  /// \return a const reference to the the thread-safe \c LLVMContext of this
-  /// object
-  [[nodiscard]] const llvm::orc::ThreadSafeContext &getContext() const {
-    return Context;
+  /// \return a const reference to the \c LLVMContext of this
+  /// Lifted Representation
+  [[nodiscard]] const llvm::LLVMContext &getContext() const {
+    return *Context.getContext();
   }
 
   /// \return a scoped lock protecting the Context and the TargetMachine of this
   /// \c LiftedRepresentation
   llvm::orc::ThreadSafeContext::Lock getLock() const {
-    return getContext().getLock();
-  }
-
-  /// Const \c llvm::TargetMachine accessor
-  /// \tparam TMT a base type of the \c llvm::GCNTargetMachine; Since
-  /// \c llvm::GCNTargetMachine is not part of the public LLVM interface,
-  /// this getter casts it to an \c llvm::LLVMTargetMachine or an
-  /// \c llvm::TargetMachine instead for tool-facing functionality
-  /// \return this <tt>LiftedRepresentation</tt>'s \c llvm::TargetMachine
-  template <typename TMT> const TMT &getTargetMachine() const {
-    static_assert(std::is_base_of_v<TMT, llvm::GCNTargetMachine> == true);
-    return *reinterpret_cast<const TMT *>(TM.get());
-  }
-
-  /// Non-const \c llvm::TargetMachine accessor
-  /// \tparam TMT a base type of the \c llvm::GCNTargetMachine; Since
-  /// \c llvm::GCNTargetMachine is not part of the public LLVM interface,
-  /// this getter casts it to an \c llvm::LLVMTargetMachine or an
-  /// \c llvm::TargetMachine instead for tool-facing functionality
-  /// \return this <tt>LiftedRepresentation</tt>'s \c llvm::TargetMachine
-  template <typename TMT> TMT &getTargetMachine() {
-    static_assert(std::is_base_of_v<TMT, llvm::GCNTargetMachine> == true);
-    return *reinterpret_cast<TMT *>(TM.get());
+    return Context.getLock();
   }
 
   /// Module iterator
@@ -304,21 +285,44 @@ public:
     return make_range(global_begin(), global_end());
   }
 
-  /// \return the \c llvm::Module and \c llvm::MachineModuleInfo of the
-  /// lifted \p LCO if \p LCO is included in the Lifted Representation;
-  /// Otherwise, returns <tt>{nullptr, nullptr}</tt>
-  [[nodiscard]] std::pair<llvm::Module *, llvm::MachineModuleInfo *>
-  getModuleAndMMI(hsa_loaded_code_object_t LCO) const {
-    auto It = RelatedLCOs.find(LCO);
-    if (It == RelatedLCOs.end())
-      return {nullptr, nullptr};
+  /// \return the \c llvm::Module of the lifted \p LCO if \p LCO is
+  /// included in the Lifted Representation;
+  /// Otherwise, returns <tt>nullptr</tt>
+  [[nodiscard]] llvm::Module *getModule(hsa_loaded_code_object_t LCO) const {
+    auto It = Modules.find(LCO);
+    if (It == Modules.end())
+      return nullptr;
     else
-      return It->second;
+      return It->second.first.get();
+  }
+
+  /// \return the \c llvm::MachineModuleInfo of the
+  /// lifted \p LCO if \p LCO is included in the Lifted Representation;
+  /// Otherwise, returns <tt>nullptr</tt>
+  [[nodiscard]] llvm::MachineModuleInfo *
+  getMMI(hsa_loaded_code_object_t LCO) const {
+    auto It = Modules.find(LCO);
+    if (It == Modules.end())
+      return nullptr;
+    else
+      return &It->second.second->getMMI();
+  }
+
+  /// \return the \c llvm::GCNTargetMachine used to construct the
+  /// \c llvm::MachineModuleInfo of the \p LCO if \p LCO is included
+  /// in the Lifted Representation; Otherwise, returns <tt>nullptr</tt>
+  [[nodiscard]] llvm::GCNTargetMachine *
+  getTM(hsa_loaded_code_object_t LCO) const {
+    auto It = TMs.find(LCO);
+    if (It == TMs.end()) {
+      return nullptr;
+    } else
+      return It->second.get();
   }
 
   /// \return the \c llvm::MachineFunction associated with \p Func if exists;
   /// \c nullptr otherwise
-  const llvm::MachineFunction *
+  [[nodiscard]] const llvm::MachineFunction *
   getMF(const hsa::LoadedCodeObjectSymbol &Func) const {
     auto It = RelatedFunctions.find(&Func);
     if (It == RelatedFunctions.end())
@@ -329,7 +333,7 @@ public:
 
   /// \return the \c llvm::GlobalVariable associated with \p GV if exists;
   /// \c nullptr otherwise
-  const llvm::GlobalVariable *
+  [[nodiscard]] const llvm::GlobalVariable *
   getGV(const hsa::LoadedCodeObjectSymbol &GV) const {
     auto It = RelatedGlobalVariables.find(&GV);
     if (It == RelatedGlobalVariables.end())
