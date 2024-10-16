@@ -15,9 +15,9 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains useful macros to check for \c llvm::Error in Luthier.
+/// This file contains useful macros to check for <tt>llvm::Error</tt>s
+/// in Luthier.
 //===----------------------------------------------------------------------===//
-
 #ifndef LUTHIER_ERROR_CHECK_H
 #define LUTHIER_ERROR_CHECK_H
 
@@ -35,7 +35,7 @@
 #define LUTHIER_RETURN_ON_ERROR(Error)                                         \
   do {                                                                         \
     if (Error) {                                                               \
-      return (Error);                                                          \
+      return std::move(Error);                                                 \
     }                                                                          \
   } while (0)
 
