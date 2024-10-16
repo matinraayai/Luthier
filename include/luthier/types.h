@@ -35,10 +35,16 @@ constexpr const char *HookHandlePrefix = STRINGIFY_DELAY(HOOK_HANDLE_PREFIX);
 constexpr const char *ReservedManagedVar =
     STRINGIFY_DELAY(RESERVED_MANAGED_VAR);
 
+/// All hooks in Luthier tools must have this attribute
 #define LUTHIER_HOOK_ATTRIBUTE "luthier_hook"
 
 /// All bindings to Luthier intrinsics must have this attribute
 #define LUTHIER_INTRINSIC_ATTRIBUTE "luthier_intrinsic"
+
+/// All injected payload functions during instrumentation (i.e. functions that
+/// their machine code will be inserted before an instrumentation point) must
+/// have this attribute
+#define LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE "luthier_injected_payload"
 
 #undef STRINGIFY_DELAY
 
