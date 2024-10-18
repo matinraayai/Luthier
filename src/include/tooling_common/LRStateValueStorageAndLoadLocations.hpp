@@ -283,7 +283,7 @@ public:
 /// \brief describes where the state value storage will be loaded for use
 /// by an injection payload, as well as where the state value array is stored
 /// at the instrumentation point
-struct InstPointSVSLoadPlan {
+struct InstPointSVALoadPlan {
   /// The VGPR where the state value will be loaded into
   llvm::MCRegister StateValueVGPR{};
   /// Where the state value is located before being loaded into the VGPR
@@ -330,7 +330,9 @@ private:
   /// "as correct as possible" view of the kernel
   /// In practice, this set should only become populated in very rare
   /// scenarios, as tools are more interested in registers that are live
-  /// at each instruction
+  /// at each instruction \n
+  /// The analysis will make sure not to use any of these registers when
+  /// selecting storage and load locations for the state value array
   const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns;
 
   /// Slot index tracking for each machine instruction of each function in \c LR
@@ -343,7 +345,7 @@ private:
   /// function inside in the \c LR
   llvm::SmallDenseMap<llvm::MachineFunction *,
                       llvm::SmallVector<StateValueStorageSegment>>
-      ValueStateRegAndFlatScratchIntervals{};
+      StateValueStorageIntervals{};
 
   /// Mapping between the MIs of the target app getting instrumented and their
   /// injected payload functions
@@ -353,65 +355,96 @@ private:
   /// Contains a mapping between the instrumentation point MIs of the
   /// \c and the plan to load the state value array from its storage to
   /// the target VGPR to be used by the injected payload function
-  llvm::DenseMap<const llvm::MachineInstr *, InstPointSVSLoadPlan>
+  llvm::DenseMap<const llvm::MachineInstr *, InstPointSVALoadPlan>
       InstPointSVSLoadPlans{};
 
-  /// \brief Tries to find a fixed location to store the instrumentation value
-  /// register in a VPGR or an AGPR, as well as an SGPR pair to store the flat
-  /// address pointing to the beginning of the instrumentation private segment
-  /// \details The order of searching for these fixed locations is as follows:
-  /// 1. Find an unused VGPR. This is the ideal scenario, as an unused VGPR has
-  /// enough space to accommodate the prologue/epilogue of an instrumentation
-  /// hook. No additional code needs to be inserted inside the kernel itself
-  /// for managing the value register, and the flat scratch register will be
-  /// 0\n
+  /// \brief Tries to find a fixed location for storing the state value array
+  /// \details The order of searching for the storage location is as follows:
+  /// 1. Find an unused VGPR. This is the ideal scenario, as no further action
+  /// is required in the prologue/epilogue of an injected payload to load/store
+  /// the state value array\n
   /// 2. If no unused VGPRs are found, then this routine will find the next
   /// unused AGPR. This usually comes at no cost to the occupancy, as the app
   /// will get the same amount of AGPRs as it gets VGPRs. In gfx90A-, since
   /// AGPRs cannot be used directly by vector instructions and have to be moved
-  /// to a VGPR, it is likely that a single VGPR must be spilled to accommodate
-  /// this issue. For this scenario, an unused SGPR pair must also be found to
-  /// hold the address of the instrumentation's private segment. No other
-  /// action is necessary by the value manager except generating
-  /// prologue/epilogue code.\n
-  /// 3. If no unused V/AGPRs are found in the kernel, then as a last resort,
-  /// this function tries to find an unused SGPR pair for the instrumentation
-  /// scratch address to be stored. In this scenario, besides emitting prologue
-  /// /epiloge code, the value manager must also emit code in the kernel that
-  /// moves the state value register around or spill it
-  ///
+  /// to a VGPR, a single application VGPR must be spilled. Preference is
+  /// given to finding another free AGPR to act as a spill slot. If no other
+  /// free AGPR is found, then three free SGPRs must be found to spill the
+  /// app's VGPR into an emergency spill slot in the instrumentation stack.\n
+  /// 3. If no unused V/AGPRs are found in the kernel or a free AGPR is found
+  /// but allocation of the spill registers is unsuccessful on gfx90A-,
+  /// then as a last resort, this function tries to find three free SGPRs
+  /// that can be used to spill an app's VGPR onto the stack, and load the
+  /// state value array from the stack
   /// TODO: This function must take an argument indicating whether the tool
   /// writer wants to respect the original kernel's granulated register usage
   /// or not.
   [[nodiscard]] std::shared_ptr<StateValueArrayStorage>
-  findFixedStateValueStorageLocation(
+  findFixedStateValueArrayStorage(
       llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions) const;
 
+  /// Constructor
+  /// \param LR the \c LiftedRepresentation being analyzed
+  /// \param LCO the \c hsa::LoadedCodeObject in \p LR being analyzed
+  /// \param InstPointToInjectedPayloadMap mapping between instrumentation
+  /// points inside the \p LR and their injected payload \c llvm::Function
+  /// \param AccessedPhysicalRegistersNotInLiveIns set of physical registers
+  /// accessed in injected payloads that aren't live at the time of access
+  /// \param RegLiveness register liveness analysis for the \p LR
+  /// \param PKInfo reference to the pre-kernel emission descriptor
   LRStateValueStorageAndLoadLocations(
       const luthier::LiftedRepresentation &LR, hsa::LoadedCodeObject LCO,
-      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
-      const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
-      const luthier::LRRegisterLiveness &RegLiveness,
-      PreKernelEmissionDescriptor &PKInfo);
-
-  llvm::Error calculateStateValueLocations();
-
-public:
-  static llvm::Expected<std::unique_ptr<LRStateValueStorageAndLoadLocations>>
-  create(
-      const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
-      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
-      const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
+      const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+          &InstPointToInjectedPayloadMap,
+      const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
       const LRRegisterLiveness &RegLiveness,
       PreKernelEmissionDescriptor &PKInfo);
 
-  const StateValueStorageSegment *
-  getValueSegmentForInstr(llvm::MachineInstr &MI) const;
+  /// calculates the storage and load locations of the state value array
+  /// \return an \c llvm::Error indication the success of failure of the
+  /// operation
+  llvm::Error calculateStateValueArrayStorageAndLoadLocations();
 
-  [[nodiscard]] const InstPointSVSLoadPlan &
-  getStateValueDescriptorOfHookInsertionPoint(
-      const llvm::MachineInstr &MI) const;
+public:
+  /// Factory method for creating and running the state value array storage
+  /// and load location analysis
+  /// \param LR the \c LiftedRepresentation being analyzed
+  /// \param LCO the \c hsa::LoadedCodeObject in \p LR being analyzed
+  /// \param InstPointToInjectedPayloadMap mapping between instrumentation
+  /// points inside the \p LR and their injected payload \c llvm::Function
+  /// \param AccessedPhysicalRegistersNotInLiveIns set of physical registers
+  /// accessed in injected payloads that aren't live at the time of access
+  /// \param RegLiveness register liveness analysis for the \p LR
+  /// \param PKInfo reference to the pre-kernel emission descriptor
+  /// \return an \c llvm::Error indicating whether or not the analysis was
+  /// successful at allocating storage and load locations for the state value
+  /// array
+  static llvm::Expected<std::unique_ptr<LRStateValueStorageAndLoadLocations>>
+  create(const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
+         const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+             &InstPointToInjectedPayloadMap,
+         const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+         const LRRegisterLiveness &RegLiveness,
+         PreKernelEmissionDescriptor &PKInfo);
 
+  /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
+  /// analysis, returns the state value array storage of every instruction
+  /// interval inside the \p MBB
+  /// \param MBB a basic block that belongs to the \c LiftedRepresentation
+  /// of this analysis
+  /// \return the state value array storage of every instruction
+  /// interval inside the \p MBB or an empty \c llvm::ArrayRef if the \p MBB
+  /// is not part of the \c LiftedRepresentation being analyzed
+  [[nodiscard]] llvm::ArrayRef<StateValueStorageSegment>
+  getStorageIntervalsOfBasicBlock(const llvm::MachineBasicBlock &MBB) const;
+
+  /// \return state value array load plan associated with instrumentation
+  /// point \p MI or \c nullptr if the passed \p MI is not an instrumentation
+  /// point
+  [[nodiscard]] const InstPointSVALoadPlan *
+  getStateValueArrayLoadPlanForInstPoint(const llvm::MachineInstr &MI) const;
+
+  /// \return the loaded code object of the \c LiftedRepresentation
   [[nodiscard]] hsa::LoadedCodeObject getLCO() const { return LCO; }
 };
 
