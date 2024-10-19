@@ -18,7 +18,7 @@
 /// This file describes Luthier's Instrumentation Module, which contains
 /// an LLVM bitcode buffer as well as static variables loaded onto each GPU
 /// device. The lifetime of an Instrumentation Module is managed by the
-/// <tt>ToolExecutableManager</tt>.
+/// <tt>ToolExecutableLoader</tt>.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
 #define LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
@@ -29,9 +29,9 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/Support/Error.h>
+#include <luthier/hsa/LoadedCodeObjectVariable.h>
 #include <optional>
 #include <string>
-#include <luthier/hsa/LoadedCodeObjectVariable.h>
 
 namespace luthier {
 
@@ -57,21 +57,7 @@ protected:
   /// Modules
   friend ToolExecutableLoader;
 
-  /// A map where indicates the "compatible" bitcode for each \c hsa::GpuAgent
-  /// Compatible means that: \n
-  /// 1. The bitcode has a compatible ISA with the target agent
-  /// 2. The instrumentation module ensures that the external global variables
-  /// of this module are loaded on the agent \n
-  /// This map does not own the underlying bitcode buffer; If the module needs
-  /// to take control of the buffer's lifetime it needs to save it in another
-  /// field \n
-  /// The instrumentation IR remains in bitcode format until the
-  /// \c CodeGenerator asks for a copy of it in its \c llvm::LLVMContext
-  /// to allow independent, parallelization-friendly compilation
-  llvm::SmallDenseMap<hsa::GpuAgent, llvm::ArrayRef<char>, 2>
-      PerAgentBitcodeBufferMap{};
-
-  explicit InstrumentationModule(ModuleKind Kind) : Kind(Kind){};
+  explicit InstrumentationModule(ModuleKind Kind) : Kind(Kind) {};
 
   /// Compile Unit ID of the Module. This is an identifier generated
   /// by Clang to create a correspondence between the host and the device code.
@@ -83,37 +69,52 @@ private:
 
 protected:
   /// List of static symbols without the agent information
-  llvm::SmallVector<std::string> GlobalVariables{};
+  llvm::SmallVector<std::string, 4> GlobalVariables{};
 
 public:
-  ModuleKind getKind() const { return Kind; }
+  [[nodiscard]] ModuleKind getKind() const { return Kind; }
 
-  /// Reads the bitcode of this InstrumentationModule for the given \p ISA
-  /// into a new \c llvm::orc::ThreadSafeModule backed by the
-  /// passed \p Ctx \n
-  /// The Context is locked during the process
-  /// \param Ctx a thread-safe context to back the returned Module
-  /// \return a thread-safe Module, or an \c llvm::Error if any problem was
-  /// encountered during the process
-  llvm::Expected<llvm::orc::ThreadSafeModule>
-  readBitcodeIntoContext(llvm::orc::ThreadSafeContext &Ctx,
-                         const hsa::GpuAgent &Agent) const;
+  /// Global Variable names iteration functions
 
-  const llvm::SmallVector<std::string> &getGlobalVariableNames() const {
-    return GlobalVariables;
+  using const_gv_names_iterator = decltype(GlobalVariables)::const_iterator;
+
+  [[nodiscard]] const_gv_names_iterator gv_names_begin() const {
+    return GlobalVariables.begin();
   }
+
+  [[nodiscard]] const_gv_names_iterator gv_names_end() const {
+    return GlobalVariables.end();
+  }
+
+  [[nodiscard]] llvm::iterator_range<const_gv_names_iterator> gv_names() const {
+    return llvm::make_range(gv_names_begin(), gv_names_end());
+  }
+
+  [[nodiscard]] bool gv_names_empty() const { return GlobalVariables.empty(); }
+
+  [[nodiscard]] size_t gv_names_size() const { return GlobalVariables.size(); }
+
+  /// Reads the bitcode of this InstrumentationModule into a new
+  /// \c llvm::Module backed by the \p Ctx
+  /// \param Ctx an \c LLVMContext to back the returned Module
+  /// \return an \c llvm::Module, or an \c llvm::Error if any problem was
+  /// encountered during the process
+  virtual llvm::Expected<std::unique_ptr<llvm::Module>>
+  readBitcodeIntoContext(llvm::LLVMContext &Ctx,
+                         const hsa::GpuAgent &Agent) const = 0;
 
   /// Returns the loaded address of the global variable on the given \p Agent if
   /// already loaded, or \c std::nullopt if it is not loaded at the time of
   /// the query \n
-  /// This is generally used when loading an instrumented executable
+  /// Mostly used when loading an instrumented executable
   /// \param GVName the name of the global variable queried
   /// \param Agent The \c hsa::GpuAgent to look for the global variable variable
+  /// on
   /// \return A \c luthier::address_t if the variable was located on the \p
   /// Agent, an \c std::nullopt if not loaded, or an \c llvm::Error if an issue
   /// was encountered
   /// \sa luthier::hsa::Executable::defineExternalAgentGlobalVariable
-  virtual llvm::Expected<std::optional<luthier::address_t>>
+  [[nodiscard]] virtual llvm::Expected<std::optional<luthier::address_t>>
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
                                   const hsa::GpuAgent &Agent) const = 0;
 };
@@ -129,12 +130,11 @@ public:
 /// tool.\n
 /// For now we anticipate that only a single Luthier tool will be loaded at any
 /// given time; i.e. we don't think there is a case to instrument an already
-/// instrumented GPU device code; Therefore we assume only a single static
-/// HIP FAT binary will be loaded at any given time. \c ToolExecutableManager
+/// instrumented GPU device code. \c ToolExecutableManager
 /// enforces this by keeping a single instance of this variable, as
 /// well as keeping its constructor private to itself. \n
 /// Furthermore, If two or more Luthier tools are loaded then
-/// \c StaticInstrumentationModule will detect this by checking the compile unit
+/// \c StaticInstrumentationModule will detect it by checking the compile unit
 /// ID of each executable passed to it.\n
 /// For each GPU Agent, the HIP runtime extracts an ISA-compatible
 /// code object from the static FAT binary and loads it into a single
@@ -147,9 +147,10 @@ public:
 /// hsa::ExecutableSymbol on the loaded \c hsa::GpuAgent. On subsequent
 /// executable loads, it only updates the global variable list. It should be
 /// clear by now that \c StaticInstrumentationModule does not do any GPU memory
-/// management and relies solely on HIP.\n A similar mechanism is in place to
-/// detect unloading of the instrumentation module's executables; As they get
-/// destroyed, the affected \c hsa::ExecutableSymbols get invalidated as well.\n
+/// management and relies solely on HIP for loading.\n A similar mechanism is in
+/// place to detect unloading of the instrumentation module's executables; As
+/// they get destroyed, the affected \c hsa::ExecutableSymbols get invalidated
+/// as well.\n
 /// \c StaticInstrumentationModule also gets notified of the kernel shadow host
 /// pointers of each hook, and converts them to the correct hook name to
 /// be found in the module later on.
@@ -159,7 +160,15 @@ class StaticInstrumentationModule final : public InstrumentationModule {
 private:
   friend ToolExecutableLoader;
   /// Private default constructor only accessible by \c ToolExecutableManager
-  StaticInstrumentationModule() : InstrumentationModule(MK_Static){};
+  StaticInstrumentationModule() : InstrumentationModule(MK_Static) {};
+
+  /// Mutex to protect the contents of the static instrumentation module as
+  /// it gets updated
+  mutable std::shared_mutex Mutex;
+
+  /// A mapping between the bitcode extracted from the each \c hsa::GpuAgent
+  llvm::SmallDenseMap<hsa::GpuAgent, llvm::ArrayRef<char>, 8>
+      PerAgentBitcodeBufferMap{};
 
   /// Each static HIP module gets loaded on each device as a single HSA
   /// executable \n
@@ -183,8 +192,8 @@ private:
   llvm::DenseMap<const void *, llvm::StringRef> HookHandleMap{};
 
   /// Registers this executable into the static Instrumentation Module \n
-  /// On first invocation this function extracts the bitcode in the ELF of \p
-  /// Exec 's LCO, and creates a list of global variables, as well as their
+  /// On first invocation this function extracts the bitcode in the ELF of
+  /// \p Exec, and creates a list of global variables, as well as their
   /// \c hsa::ExecutableSymbol on the device the executable was loaded on \n
   /// On subsequent calls it only updates the global variable list for the
   /// new device \n
@@ -210,22 +219,31 @@ private:
   /// \return an \c llvm::Error if any issue was encountered during the process
   llvm::Error unregisterExecutable(const hsa::Executable &Exec);
 
+  /// Same as \c getLCOGlobalVariableOnAgent except with no lock
+  [[nodiscard]] llvm::Expected<const hsa::LoadedCodeObjectVariable *>
+  getLCOGlobalVariableOnAgentNoLock(llvm::StringRef GVName,
+                                    const hsa::GpuAgent &Agent) const;
+
 public:
-  llvm::Expected<std::optional<luthier::address_t>>
+  [[nodiscard]] llvm::Expected<std::optional<luthier::address_t>>
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
                                   const hsa::GpuAgent &Agent) const override;
 
-  /// Same as \c
-  /// luthier::StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent,
-  /// except it returns the ExecutableSymbols of the variables
+  [[nodiscard]] llvm::Expected<std::unique_ptr<llvm::Module>>
+  readBitcodeIntoContext(llvm::LLVMContext &Ctx,
+                         const hsa::GpuAgent &Agent) const override;
+
+  /// Same as <tt>getGlobalVariablesLoadedOnAgent</tt>,
+  /// except it returns the ExecutableSymbol of the variables
   /// Use this function only if \c getGlobalVariablesLoadedOnAgent does not
   /// provide sufficient information.
   /// \param Agent The \c hsa::GpuAgent where a copy (executable) of this module
   /// is loaded
   /// \return a const reference to the mapping between variable names and their
   /// Executable Symbols, or an \c llvm::Error if an issue is encountered
-  llvm::Expected<const llvm::StringMap<const hsa::LoadedCodeObjectVariable *> &>
-  getGlobalHsaVariablesOnAgent(hsa::GpuAgent &Agent);
+  [[nodiscard]] llvm::Expected<const hsa::LoadedCodeObjectVariable *>
+  getLCOGlobalVariableOnAgent(llvm::StringRef GVName,
+                              const hsa::GpuAgent &Agent) const;
 
   /// Converts the shadow host pointer \p Handle to the name of the hook it
   /// represents

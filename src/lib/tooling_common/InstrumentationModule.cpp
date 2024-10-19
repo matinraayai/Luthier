@@ -17,15 +17,16 @@
 /// \file
 /// This file implements Luthier's Instrumentation Module and its variants.
 //===----------------------------------------------------------------------===//
+#include "tooling_common/InstrumentationModule.hpp"
 #include "hsa/Executable.hpp"
 #include "hsa/ExecutableSymbol.hpp"
 #include "hsa/LoadedCodeObject.hpp"
-#include "tooling_common/InstrumentationModule.hpp"
 #include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Support/TimeProfiler.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instrumentation-module"
@@ -37,6 +38,7 @@
 namespace luthier {
 
 static constexpr const char *HipCUIDPrefix = "__hip_cuid_";
+static constexpr const char *BCSectionName = ".llvmbc";
 
 /// Finds the ".llvmbc" section of the <tt>LCO</tt>'s host storage ELF
 /// \param LCO the \c hsa::LoadedCodeObject containing the bitcode
@@ -48,132 +50,22 @@ getBitcodeBufferOfLCO(const hsa::LoadedCodeObject &LCO) {
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
   // Find the ".llvmbc" section of the ELF
-  bool FoundBitcodeSection{false};
   for (const llvm::object::SectionRef &Section : StorageELF->sections()) {
     auto SectionName = Section.getName();
     LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
-    if (*SectionName == ".llvmbc") {
+    if (*SectionName == BCSectionName) {
       auto SectionContents = Section.getContents();
       LUTHIER_RETURN_ON_ERROR(SectionContents.takeError());
       return llvm::ArrayRef(SectionContents->data(), SectionContents->size());
     }
   }
-  return LUTHIER_ASSERTION(FoundBitcodeSection);
+  return LUTHIER_CREATE_ERROR(
+      "Failed to find the bitcode section of LCO {0:x}.", LCO.hsaHandle());
 }
 
-/// Returns groups the set of annotated values in \p M into instrumentation
-/// hooks and intrinsics of instrumentation hooks \n
-/// \note This function should get updated as Luthier's programming model
-/// gets updated as well
-/// \param [in] M Module to inspect
-/// \param [out] Hooks a list of hook functions found in \p M
-/// \param [out] Intrinsics a list of intrinsics found in \p M
-/// \return any \c llvm::Error encountered during the process
-static llvm::Error
-getAnnotatedValues(const llvm::Module &M,
-                   llvm::SmallVectorImpl<llvm::Function *> &Hooks,
-                   llvm::SmallVectorImpl<llvm::Function *> &Intrinsics) {
-  const llvm::GlobalVariable *V =
-      M.getGlobalVariable("llvm.global.annotations");
-  const llvm::ConstantArray *CA = cast<llvm::ConstantArray>(V->getOperand(0));
-  for (llvm::Value *Op : CA->operands()) {
-    auto *CS = cast<llvm::ConstantStruct>(Op);
-    // The first field of the struct contains a pointer to the annotated
-    // variable.
-    llvm::Value *AnnotatedVal = CS->getOperand(0)->stripPointerCasts();
-    if (auto *Func = llvm::dyn_cast<llvm::Function>(AnnotatedVal)) {
-      // The second field contains a pointer to a global annotation string.
-      auto *GV =
-          cast<llvm::GlobalVariable>(CS->getOperand(1)->stripPointerCasts());
-      llvm::StringRef Content;
-      llvm::getConstantStringInfo(GV, Content);
-      if (Content == LUTHIER_HOOK_ATTRIBUTE) {
-        Hooks.push_back(Func);
-        LLVM_DEBUG(llvm::dbgs() << "Found hook " << Func->getName() << ".\n");
-      } else if (Content == LUTHIER_INTRINSIC_ATTRIBUTE) {
-        Intrinsics.push_back(Func);
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Found intrinsic " << Func->getName() << ".\n");
-      }
-    };
-  }
-  return llvm::Error::success();
-}
-
-llvm::Error preprocessAndSaveModuleToStream(
-    llvm::Module &Module, llvm::SmallVector<std::string> &StaticVariables,
-    std::string &CUID, llvm::SmallVector<char> &BitcodeOut) {
-  // Extract all the hooks
-  llvm::SmallVector<llvm::Function *, 4> Hooks;
-  llvm::SmallVector<llvm::Function *, 4> Intrinsics;
-  LUTHIER_RETURN_ON_ERROR(getAnnotatedValues(Module, Hooks, Intrinsics));
-
-  // Remove the annotations variable from the Module now that it is processed
-  auto AnnotationGV = Module.getGlobalVariable("llvm.global.annotations");
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(AnnotationGV != nullptr));
-  AnnotationGV->dropAllReferences();
-  AnnotationGV->eraseFromParent();
-
-  // Remove the llvm.used and llvm.compiler.use variable list
-  for (const auto &VarName : {"llvm.compiler.used", "llvm.used"}) {
-    auto LLVMUsedVar = Module.getGlobalVariable(VarName);
-    if (LLVMUsedVar != nullptr) {
-      LLVMUsedVar->dropAllReferences();
-      LLVMUsedVar->eraseFromParent();
-    }
-  }
-
-  // Give each Hook function a "hook" attribute
-  for (auto &Hook : Hooks) {
-    Hook->addFnAttr(LUTHIER_HOOK_ATTRIBUTE);
-    Hook->addFnAttr(llvm::Attribute::AlwaysInline);
-  }
-
-  // Remove the body of each intrinsic function and make them extern
-  for (auto &Intrinsic : Intrinsics) {
-    Intrinsic->deleteBody();
-    Intrinsic->addFnAttr(LUTHIER_INTRINSIC_ATTRIBUTE);
-  }
-
-  // Remove all kernels that are meant to serve as a host handle
-  for (auto &F : llvm::make_early_inc_range(Module.functions())) {
-
-    if (F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
-      F.dropAllReferences();
-      F.eraseFromParent();
-    }
-  }
-
-  // Convert all global variables to extern, remove any managed variable
-  // initializers
-  // Remove any unnecessary variables (e.g. "llvm.metadata")
-  // Extract the CUID for identification
-  for (auto &GV : llvm::make_early_inc_range(Module.globals())) {
-    auto GVName = GV.getName();
-    if (GVName.ends_with(".managed") || GVName == luthier::ReservedManagedVar ||
-        GV.getSection() == "llvm.metadata") {
-      GV.dropAllReferences();
-      GV.eraseFromParent();
-    } else if (GVName.starts_with(HipCUIDPrefix)) {
-      CUID = GVName.substr(strlen(HipCUIDPrefix));
-    } else {
-      GV.setInitializer(nullptr);
-      GV.setLinkage(llvm::GlobalValue::ExternalLinkage);
-      GV.setVisibility(llvm::GlobalValue::DefaultVisibility);
-      GV.setDSOLocal(false);
-      StaticVariables.push_back(std::string(GVName));
-    }
-  }
-
-  // Save the modified module as a bitcode
-  // When the CodeGenerator asks for a copy of this Module, it should be
-  // copied over to the target app's LLVMContext
-  llvm::raw_svector_ostream OS(BitcodeOut);
-  llvm::WriteBitcodeToFile(Module, OS);
-  return llvm::Error::success();
-}
-
-llvm::Expected<llvm::StringRef> getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
+/// \return the CUID of the \p LCO
+static llvm::Expected<llvm::StringRef>
+getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
   llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> Variables;
   LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(Variables));
   for (const auto &Var : Variables) {
@@ -183,21 +75,46 @@ llvm::Expected<llvm::StringRef> getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
       return VarName->substr(strlen(HipCUIDPrefix));
     }
   }
-  llvm_unreachable("Could not find a CUID for the LCO");
+  return LUTHIER_CREATE_ERROR("Could not find a CUID for the LCO {0:x}.",
+                              LCO.hsaHandle());
 }
 
 //===----------------------------------------------------------------------===//
 // Instrumentation Module Implementation
 //===----------------------------------------------------------------------===//
 
+llvm::Expected<std::unique_ptr<llvm::Module>>
+StaticInstrumentationModule::readBitcodeIntoContext(
+    llvm::LLVMContext &Ctx, const hsa::GpuAgent &Agent) const {
+  llvm::TimeTraceScope Scope("Static Module LLVM Bitcode Loading");
+  std::shared_lock Lock(Mutex);
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ERROR_CHECK(PerAgentBitcodeBufferMap.contains(Agent),
+                          "Failed to find the static instrumentation module "
+                          "bitcode for agent {0:x}",
+                          Agent.hsaHandle()));
+  auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(
+      llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent)), "", false);
+  return llvm::parseBitcodeFile(*BCBuffer, Ctx);
+}
+
+//===----------------------------------------------------------------------===//
+// Static Instrumentation Module Implementation
+//===----------------------------------------------------------------------===//
+
 llvm::Error
 StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
+  std::unique_lock Lock(Mutex);
   // Since static instrumentation modules are generated with HIP, we can
   // safely assume each Executable has a single LCO for now. Here we assert this
   // is indeed the case
   llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
   llvm::cantFail(Exec.getLoadedCodeObjects(LCOs));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOs.size() == 1));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOs.size() == 1,
+      "The Luthier instrumentation module executable should only have a "
+      "single LCO; Number of LCOs found inside the executable: {0}.",
+      LCOs.size()));
   bool FirstTimeInit = PerAgentModuleExecutables.empty();
   if (PerAgentModuleExecutables.empty()) {
     // Record the CUID of the module
@@ -206,18 +123,29 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
     // Ensure the CUID of the Executable and the Module match
     auto ExecCUID = getCUIDOfLCO(LCOs[0]);
     LUTHIER_RETURN_ON_ERROR(ExecCUID.takeError());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(*ExecCUID == CUID));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(*ExecCUID == CUID,
+                            "Error registering the executable {0:x} with the "
+                            "static instrumentation module; The executable "
+                            "CUID {1} does not match the CUID of module {2}.",
+                            Exec.hsaHandle(), *ExecCUID, CUID));
   }
   // Ensure this executable's agent doesn't already have another copy of this
   // executable loaded on it, then insert its information into the map
   auto Agent = LCOs[0].getAgent();
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(!PerAgentModuleExecutables.contains(*Agent)));
+      LUTHIER_ERROR_CHECK(!PerAgentModuleExecutables.contains(*Agent),
+                          "Agent {0:x} already has an instrumentation module "
+                          "executable associated with it.",
+                          Agent->hsaHandle()));
   PerAgentModuleExecutables.insert({*Agent, Exec});
   // Record the LCO's bitcode buffer for instrumentation use on its agent
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(!PerAgentBitcodeBufferMap.contains(*Agent)));
+      LUTHIER_ERROR_CHECK(!PerAgentBitcodeBufferMap.contains(*Agent),
+                          "Agent {0:x} already has a static instrumentation "
+                          "module bitcode associated with it.",
+                          Agent->hsaHandle()));
   auto BitcodeBuffer = getBitcodeBufferOfLCO(LCOs[0]);
   LUTHIER_RETURN_ON_ERROR(BitcodeBuffer.takeError());
   PerAgentBitcodeBufferMap.insert({*Agent, *BitcodeBuffer});
@@ -241,6 +169,7 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
 
 llvm::Error
 StaticInstrumentationModule::unregisterExecutable(const hsa::Executable &Exec) {
+  std::unique_lock Lock(Mutex);
   llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
   LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
   // There's only a single LCO in HIP FAT binaries. Get its agent.
@@ -260,18 +189,41 @@ StaticInstrumentationModule::unregisterExecutable(const hsa::Executable &Exec) {
   return llvm::Error::success();
 }
 
-llvm::Expected<const llvm::StringMap<const hsa::LoadedCodeObjectVariable *> &>
-StaticInstrumentationModule::getGlobalHsaVariablesOnAgent(
-    hsa::GpuAgent &Agent) {
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(PerAgentGlobalVariables.contains(Agent)));
-  return PerAgentGlobalVariables.at(Agent);
+llvm::Expected<const hsa::LoadedCodeObjectVariable *>
+StaticInstrumentationModule::getLCOGlobalVariableOnAgentNoLock(
+    llvm::StringRef GVName, const hsa::GpuAgent &Agent) const {
+  auto VariableSymbolMapIt = PerAgentGlobalVariables.find(Agent);
+
+  if (VariableSymbolMapIt != PerAgentGlobalVariables.end()) {
+    auto VariableSymbolIt = VariableSymbolMapIt->second.find(GVName);
+    // Ensure the variable name is indeed in the map
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        VariableSymbolIt != VariableSymbolMapIt->second.end(),
+        "Failed to find the symbol associated with global variable {0} on "
+        "agent {1:x}",
+        GVName, Agent.hsaHandle()));
+    return VariableSymbolIt->second;
+  } else {
+    // If the agent is not in the map, then it probably wasn't loaded on the
+    // device
+    return nullptr;
+  }
+}
+
+llvm::Expected<const hsa::LoadedCodeObjectVariable *>
+StaticInstrumentationModule::getLCOGlobalVariableOnAgent(
+    llvm::StringRef GVName, const hsa::GpuAgent &Agent) const {
+  std::shared_lock Lock(Mutex);
+  return getLCOGlobalVariableOnAgentNoLock(GVName, Agent);
 }
 
 llvm::Expected<llvm::StringRef>
 StaticInstrumentationModule::convertHookHandleToHookName(
     const void *Handle) const {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookHandleMap.contains(Handle)));
+  std::shared_lock Lock(Mutex);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      HookHandleMap.contains(Handle),
+      "Failed to find the hook name for handle {0:x}.", Handle));
   return HookHandleMap.at(Handle);
 }
 
@@ -293,35 +245,13 @@ StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
 llvm::Expected<std::optional<luthier::address_t>>
 StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
     llvm::StringRef GVName, const hsa::GpuAgent &Agent) const {
-  auto VariableSymbolMapIt = PerAgentGlobalVariables.find(Agent);
-
-  if (VariableSymbolMapIt != PerAgentGlobalVariables.end()) {
-    auto VariableSymbolIt = VariableSymbolMapIt->second.find(GVName);
-    // Ensure the variable name is indeed in the map
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-        VariableSymbolIt != VariableSymbolMapIt->second.end()));
-    auto VariableSymbol = VariableSymbolIt->second;
-    LUTHIER_RETURN_ON_MOVE_INTO_FAIL(luthier::address_t, VariableAddress,
-                                     VariableSymbol->getLoadedSymbolAddress());
-    return VariableAddress;
-  } else {
-    // If the agent is not in the map, then it probably wasn't loaded on the
-    // device
+  std::shared_lock Lock(Mutex);
+  auto GVSymbol = getLCOGlobalVariableOnAgentNoLock(GVName, Agent);
+  LUTHIER_RETURN_ON_ERROR(GVSymbol.takeError());
+  if (*GVSymbol == nullptr) {
     return std::nullopt;
-  }
-}
-
-llvm::Expected<llvm::orc::ThreadSafeModule>
-InstrumentationModule::readBitcodeIntoContext(
-    llvm::orc::ThreadSafeContext &Ctx, const hsa::GpuAgent &Agent) const {
-  auto Lock = Ctx.getLock();
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(PerAgentBitcodeBufferMap.contains(Agent)));
-  auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent)), "", false);
-  auto Module = llvm::parseBitcodeFile(*BCBuffer, *Ctx.getContext());
-  LUTHIER_RETURN_ON_ERROR(Module.takeError());
-  return llvm::orc::ThreadSafeModule(std::move(*Module), Ctx);
+  } else
+    return (*GVSymbol)->getLoadedSymbolAddress();
 }
 
 } // namespace luthier
