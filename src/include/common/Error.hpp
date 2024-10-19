@@ -53,8 +53,21 @@ public:
                llvm::StringRef ErrorMsg)
       : FileName(FileName), LineNumber(LineNumber), ErrorMsg(ErrorMsg) {}
 
+  template <typename... Ts>
+  LuthierError(llvm::StringRef FileName, int LineNumber, char const *Fmt,
+               const Ts &...Vals)
+      : FileName(FileName), LineNumber(LineNumber),
+        ErrorMsg(llvm::formatv(Fmt, Vals...).str()) {}
+
   static llvm::Error luthierErrorCheck(llvm::StringRef FileName, int LineNumber,
                                        bool Expr, llvm::StringRef ErrorMsg);
+
+  template <typename... Ts>
+  static llvm::Error luthierErrorCheck(llvm::StringRef FileName, int LineNumber,
+                                       bool Expr, char const *Fmt,
+                                       const Ts &...Vals) {
+    return luthierErrorCheck(FileName, LineNumber, Expr, Fmt, Vals...);
+  }
 
   void log(llvm::raw_ostream &OS) const override {
     OS << "File " << FileName << ", line: " << LineNumber << ": ";
@@ -66,11 +79,12 @@ public:
   }
 };
 
-#define LUTHIER_CREATE_ERROR(Msg)                                              \
-  llvm::make_error<luthier::LuthierError>(__FILE_NAME__, __LINE__, Msg)
+#define LUTHIER_CREATE_ERROR(...)                                              \
+  llvm::make_error<luthier::LuthierError>(__FILE_NAME__, __LINE__, __VA_ARGS__)
 
-#define LUTHIER_ERROR_CHECK(Expr, Msg)                                         \
-  luthier::LuthierError::luthierErrorCheck(__FILE_NAME__, __LINE__, Expr, Msg)
+#define LUTHIER_ERROR_CHECK(Expr, ...)                                         \
+  luthier::LuthierError::luthierErrorCheck(__FILE_NAME__, __LINE__, Expr,      \
+                                           __VA_ARGS__)
 
 /// \brief Describes errors caused by calls to the COMGR library
 class ComgrError : public llvm::ErrorInfo<ComgrError> {
