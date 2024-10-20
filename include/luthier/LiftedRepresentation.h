@@ -207,10 +207,10 @@ public:
   [[nodiscard]] bool module_empty() const { return Modules.empty(); };
 
   llvm::iterator_range<module_iterator> modules() {
-    return make_range(module_begin(), module_end());
+    return llvm::make_range(module_begin(), module_end());
   }
   [[nodiscard]] llvm::iterator_range<const_module_iterator> modules() const {
-    return make_range(module_begin(), module_end());
+    return llvm::make_range(module_begin(), module_end());
   }
 
   /// LCO iteration
@@ -225,11 +225,11 @@ public:
   [[nodiscard]] bool empty() const { return RelatedLCOs.empty(); }
 
   llvm::iterator_range<iterator> loaded_code_objects() {
-    return make_range(begin(), end());
+    return llvm::make_range(begin(), end());
   }
   [[nodiscard]] llvm::iterator_range<const_iterator>
   loaded_code_objects() const {
-    return make_range(begin(), end());
+    return llvm::make_range(begin(), end());
   }
 
   /// Function iteration
@@ -252,11 +252,11 @@ public:
   };
 
   llvm::iterator_range<function_iterator> functions() {
-    return make_range(function_begin(), function_end());
+    return llvm::make_range(function_begin(), function_end());
   }
   [[nodiscard]] llvm::iterator_range<const_function_iterator>
   functions() const {
-    return make_range(function_begin(), function_end());
+    return llvm::make_range(function_begin(), function_end());
   }
 
   /// Global Variable iteration
@@ -279,10 +279,10 @@ public:
   };
 
   llvm::iterator_range<global_iterator> globals() {
-    return make_range(global_begin(), global_end());
+    return llvm::make_range(global_begin(), global_end());
   }
   [[nodiscard]] llvm::iterator_range<const_global_iterator> globals() const {
-    return make_range(global_begin(), global_end());
+    return llvm::make_range(global_begin(), global_end());
   }
 
   /// \return the \c llvm::Module of the lifted \p LCO if \p LCO is

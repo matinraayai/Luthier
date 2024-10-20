@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LR_REGISTER_LIVENESS_H
 #define LUTHIER_LR_REGISTER_LIVENESS_H
+#include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineInstr.h>
@@ -34,10 +35,9 @@ private:
   const LiftedRepresentation &LR;
 
   /// A mapping between an \c llvm::MachineInstr and the set of physical
-  /// registers that are live before it is executed \n
-  /// This mapping is only valid before any LLVM pass is run over the MMIs;
-  /// After that pointers of each machine instruction gets changed by the
-  /// underlying allocator, and this map becomes invalid
+  /// registers that are live right before it\n
+  /// This mapping is only valid before any LLVM pass is run over the Modules
+  /// and MMIs of the \c LR
   llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
       MachineInstrLivenessMap{};
 
