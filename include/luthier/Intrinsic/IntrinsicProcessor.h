@@ -145,7 +145,10 @@ struct IntrinsicIRLoweringInfo {
 private:
   /// Name of the intrinsic; Used by \c luthier::CodeGenerator for keeping
   /// track of the lowering operation at the MIR stage
-  std::string IntrinsicName;
+  std::string IntrinsicName{};
+  /// The inline assembly that serves as a place holder for the intrinsic
+  /// until after instruction selection; Used by \c luthier::CodeGenerator
+  const llvm::InlineAsm *PlaceHolderInlineAsm{nullptr};
   /// How the output value (if present) must be lowered to a
   /// \c llvm::Register
   IntrinsicValueLoweringInfo OutValue{nullptr, ""};
@@ -157,7 +160,7 @@ private:
   llvm::Any Data{};
 
   /// A set of physical registers that needs to be accessed by this intrinsic
-  llvm::SmallDenseSet<llvm::MCRegister, 1> AccessedPhysicalRegisters{};
+  llvm::SmallDenseSet<llvm::MCRegister, 4> AccessedPhysicalRegisters{};
 
   /// A set of kernel arguments that needs to be accessed by this intrinsic
   llvm::SmallDenseSet<KernelArgumentType, 4> AccessedKernelArguments{};
@@ -172,6 +175,16 @@ public:
   /// \returns the name of the intrinsic being lowered
   [[nodiscard]] llvm::StringRef getIntrinsicName() const {
     return IntrinsicName;
+  }
+
+  /// Sets the inline assembly placeholder instruction
+  void setPlaceHolderInlineAsm(llvm::InlineAsm &IA) {
+    this->PlaceHolderInlineAsm = &IA;
+  }
+
+  /// Gets the inline assembly placeholder instruction
+  [[nodiscard]] const llvm::InlineAsm &getPlaceHolderInlineAsm() const {
+    return *this->PlaceHolderInlineAsm;
   }
 
   /// Sets the inline asm constraint to \p Constraint for the given
@@ -213,20 +226,64 @@ public:
     AccessedPhysicalRegisters.insert(PhysReg);
   }
 
-  [[nodiscard]] const llvm::SmallDenseSet<llvm::MCRegister, 1> &
-  getAccessedPhysicalRegisters() const {
-    return AccessedPhysicalRegisters;
+  /// Iterators/Query functions for the physical registers accessed by the
+  /// intrinsic
+
+  using const_accessed_phys_regs_iterator =
+      decltype(AccessedPhysicalRegisters)::ConstIterator;
+
+  [[nodiscard]] llvm::iterator_range<const_accessed_phys_regs_iterator>
+  accessed_phys_regs() const {
+    return llvm::make_range(accessed_phys_regs_begin(),
+                            accessed_phys_regs_end());
   }
 
-  const llvm::SmallDenseSet<KernelArgumentType, 4> &
-  getRequestedKernelArgument() const {
-    return AccessedKernelArguments;
+  [[nodiscard]] const_accessed_phys_regs_iterator
+  accessed_phys_regs_begin() const {
+    return AccessedPhysicalRegisters.begin();
+  }
+
+  [[nodiscard]] const_accessed_phys_regs_iterator
+  accessed_phys_regs_end() const {
+    return AccessedPhysicalRegisters.end();
+  }
+
+  [[nodiscard]] bool accessed_phys_regs_empty() const {
+    return AccessedPhysicalRegisters.empty();
+  }
+
+  [[nodiscard]] size_t accessed_phys_regs_size() const {
+    return AccessedPhysicalRegisters.size();
   }
 
   /// Asks the code generator to ensure access to the \p KernArg during
   /// the MIR lowering stage
   void requestAccessToKernelArgument(KernelArgumentType KernArg) {
     AccessedKernelArguments.insert(KernArg);
+  }
+
+  /// Iterators/Query functions for the kernel arguments accessed by the
+  /// intrinsic
+
+  using const_accessed_kernargs_iterator =
+      decltype(AccessedKernelArguments)::ConstIterator;
+
+  [[nodiscard]] const_accessed_kernargs_iterator
+  accessed_kernargs_begin() const {
+    return AccessedKernelArguments.begin();
+  }
+
+  [[nodiscard]] const_accessed_kernargs_iterator
+  accessed_kernargs_end() const {
+    return AccessedKernelArguments.end();
+  }
+
+  [[nodiscard]] bool accessed_kernargs_empty() const {
+    return AccessedKernelArguments.empty();
+  }
+
+  [[nodiscard]] size_t accessed_kernargs_size() const {
+    return AccessedKernelArguments.size();
   }
 };
 
