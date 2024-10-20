@@ -18,8 +18,8 @@
 /// This file describes the HSA kernel descriptor, a POD struct in addition to
 /// some convenience methods.
 //===----------------------------------------------------------------------===//
-#ifndef KERNEL_DESCRIPTOR_HPP
-#define KERNEL_DESCRIPTOR_HPP
+#ifndef LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
+#define LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
 #include "luthier/types.h"
 #include <cstdint>
 #include <llvm/Support/Error.h>
