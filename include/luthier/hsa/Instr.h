@@ -25,11 +25,11 @@
 #define LUTHIER_HSA_INSTR_H
 #include <llvm/MC/MCInst.h>
 #include <llvm/Support/Error.h>
-
-#include <luthier/hsa/LoadedCodeObjectSymbol.h>
 #include <luthier/types.h>
 
 namespace luthier::hsa {
+
+class LoadedCodeObjectSymbol;
 
 /// \brief represents an instruction that was disassembled by inspecting the
 /// contents of a \c LoadedCodeObjectSymbol of type \c SK_KERNEL or
@@ -37,8 +37,8 @@ namespace luthier::hsa {
 /// \details \c Instr is created when calling \c luthier::disassemble or
 /// <tt>luthier::lift</tt> on a function symbol. When a symbol is disassembled,
 /// Luthier internally creates instances of this class to hold the disassembled
-/// instructions and caches them until the \c hsa_executable_t backing the symbol
-/// is destroyed by the HSA runtime.
+/// instructions and caches them until the \c hsa_executable_t backing the
+/// symbol is destroyed by the HSA runtime.
 class Instr {
 private:
   /// The MC representation of the instruction
@@ -49,28 +49,36 @@ private:
   const LoadedCodeObjectSymbol &Symbol;
   /// Size of the instruction
   const size_t Size;
-
-  // TODO: add DWARF information
+  // TODO: add DWARF information when DWARF parsing is implemented in the
+  // code lifter
 
 public:
   /// Deleted default constructor
   Instr() = delete;
+
   /// Constructor
   /// \param Inst \c MCInst of the instruction
-  /// \param Symbol a kernel or a device function this instruction belongs to
+  /// \param Kernel the kernel this instruction belongs to
   /// \param Address the device address this instruction is loaded on
   /// \param Size size of the instruction in bytes
-  Instr(llvm::MCInst Inst, const LoadedCodeObjectSymbol &Symbol,
-        address_t Address,
-        size_t Size);
+  Instr(llvm::MCInst Inst, const LoadedCodeObjectKernel &Kernel,
+        address_t Address, size_t Size);
 
-  /// \return the symbol of the instruction
+  /// Constructor
+  /// \param Inst \c MCInst of the instruction
+  /// \param DeviceFunction the device function this instruction belongs to
+  /// \param Address the device address this instruction is loaded on
+  /// \param Size size of the instruction in bytes
+  Instr(llvm::MCInst Inst, const LoadedCodeObjectDeviceFunction &DeviceFunction,
+        address_t Address, size_t Size);
+
+  /// \return the device function/kernel that this instruction belongs to
   [[nodiscard]] const LoadedCodeObjectSymbol &getLoadedCodeObjectSymbol() const;
 
   /// \return the MC representation of the instruction
   [[nodiscard]] llvm::MCInst getMCInst() const;
 
-  /// \return the address of this instruction loaded on the device
+  /// \return the loaded address of this instruction on the device
   /// \note the \c hsa_agent_t of the instruction can be queried from the
   /// this instruction's backing symbol
   [[nodiscard]] address_t getLoadedDeviceAddress() const;

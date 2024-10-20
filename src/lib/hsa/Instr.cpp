@@ -17,19 +17,22 @@
 /// \file
 /// This file implements the \c luthier::hsa::Instr class.
 //===----------------------------------------------------------------------===//
-#include "common/Error.hpp"
+#include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
+#include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include <luthier/hsa/Instr.h>
 
 namespace luthier::hsa {
 
-Instr::Instr(llvm::MCInst Inst, const LoadedCodeObjectSymbol &Symbol,
+Instr::Instr(llvm::MCInst Inst, const LoadedCodeObjectKernel &Kernel,
              address_t Address, size_t Size)
-    : Inst(std::move(Inst)), Symbol(Symbol), LoadedDeviceAddress(Address),
-      Size(Size) {
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ASSERTION(
-      Symbol.getType() == LoadedCodeObjectSymbol::SK_KERNEL ||
-      Symbol.getType() == LoadedCodeObjectSymbol::SK_DEVICE_FUNCTION));
-}
+    : Inst(std::move(Inst)), Symbol(Kernel), LoadedDeviceAddress(Address),
+      Size(Size) {}
+
+Instr::Instr(llvm::MCInst Inst,
+             const LoadedCodeObjectDeviceFunction &DeviceFunction,
+             address_t Address, size_t Size)
+    : Inst(std::move(Inst)), Symbol(DeviceFunction),
+      LoadedDeviceAddress(Address), Size(Size) {}
 
 const LoadedCodeObjectSymbol &Instr::getLoadedCodeObjectSymbol() const {
   return Symbol;
