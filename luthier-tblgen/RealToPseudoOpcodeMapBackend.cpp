@@ -29,8 +29,7 @@
 
 namespace luthier {
 
-unsigned
-RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
+unsigned RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
   llvm::ArrayRef<const llvm::CodeGenInstruction *> NumberedInstructions =
       Target.getInstructionsByEnumValue();
 
@@ -70,7 +69,7 @@ RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
 }
 
 void RealToPseudoOpcodeMapEmitter::emitIndexing(llvm::raw_ostream &OS,
-                                                 unsigned TableSize) {
+                                                unsigned TableSize) {
   OS << llvm::formatv("  if (Opcode > {0})\n", TableSize);
   OS << "    return -1;\n";
   OS << "  else\n";
@@ -94,7 +93,8 @@ void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   emitMapFuncBody(OS, TableSize);
 }
 
-void emitRealToPseudoOpcodeTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS) {
+void emitRealToPseudoOpcodeTable(llvm::raw_ostream &OS,
+                                 const llvm::RecordKeeper &Records) {
   llvm::CodeGenTarget Target(Records);
   OS << "#ifndef GET_REAL_TO_PSEUDO_OPCODE_MAP\n";
   OS << "#define GET_REAL_TO_PSEUDO_OPCODE_MAP\n";

@@ -78,8 +78,8 @@ void RealToPseudoRegisterMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   emitMapFuncBody(OS, TableSize);
 }
 
-void emitRealToPseudoRegisterTable(llvm::RecordKeeper &Records,
-                                   llvm::raw_ostream &OS) {
+void emitRealToPseudoRegisterTable(llvm::raw_ostream &OS,
+                                   const llvm::RecordKeeper &Records) {
   llvm::CodeGenTarget Target(Records);
   OS << "#ifndef GET_REAL_TO_PSEUDO_REG_NUM_MAP\n";
   OS << "#define GET_REAL_TO_PSEUDO_REG_NUM_MAP\n";

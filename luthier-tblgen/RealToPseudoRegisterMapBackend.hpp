@@ -52,7 +52,7 @@ private:
   void emitMapFuncBody(llvm::raw_ostream &OS, unsigned TableSize);
 
 public:
-  RealToPseudoRegisterMapEmitter(llvm::CodeGenTarget &Target)
+  explicit RealToPseudoRegisterMapEmitter(llvm::CodeGenTarget &Target)
       : Target(Target) {}
 
   /// Emits the real to pseudo table and the function to query it
@@ -65,8 +65,8 @@ public:
 /// \c SIMCInstr class
 /// \param Records Records parsed by the tablegen parser
 /// \param OS Output stream of the emitted file
-void emitRealToPseudoRegisterTable(llvm::RecordKeeper &Records,
-                                   llvm::raw_ostream &OS);
+void emitRealToPseudoRegisterTable(llvm::raw_ostream &OS,
+                                   const llvm::RecordKeeper &Records);
 } // namespace luthier
 
 #endif

@@ -39,7 +39,7 @@ private:
 
   /// A mapping between the pseudo inst string opcode and the SI Pseudo
   /// instruction
-  llvm::StringMap<llvm::Record *> PseudoInsts;
+  llvm::StringMap<const llvm::Record *> PseudoInsts;
 
   /// Emits the indexing portion of the query function; This is different from
   /// the way \c InstrMap emission in vanilla tablegen works; Instead it uses
@@ -47,7 +47,7 @@ private:
   /// entry inside the map
   /// \param OS Output stream for the emitted file
   /// \param TableSize Size of the table
-  void emitIndexing(llvm::raw_ostream &OS, unsigned TableSize);
+  static void emitIndexing(llvm::raw_ostream &OS, unsigned TableSize);
 
   /// Emits the table mapping the instruction opcode to its pseudo variant
   /// \param OS Output stream for the emitted file
@@ -62,7 +62,7 @@ private:
 
 public:
   RealToPseudoOpcodeMapEmitter(llvm::CodeGenTarget &Target,
-                               llvm::RecordKeeper &Records)
+                               const llvm::RecordKeeper &Records)
       : Target(Target) {
     auto SIInsts = Records.getAllDerivedDefinitions("SIMCInstr");
     for (auto SIInst : SIInsts) {
@@ -86,8 +86,8 @@ public:
 /// \c SIMCInstr class
 /// \param Records Records parsed by the tablegen parser
 /// \param OS Output stream of the emitted file
-void emitRealToPseudoOpcodeTable(llvm::RecordKeeper &Records,
-                                 llvm::raw_ostream &OS);
+void emitRealToPseudoOpcodeTable(llvm::raw_ostream &OS,
+                                 const llvm::RecordKeeper &Records);
 } // namespace luthier
 
 #endif

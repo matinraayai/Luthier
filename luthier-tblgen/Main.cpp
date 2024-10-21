@@ -40,11 +40,11 @@ llvm::cl::opt<bool> GenerateSiRealToPseudoRegEnum(
 
 namespace luthier {
 
-bool TableGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
+bool tableGenMain(llvm::raw_ostream &OS, const llvm::RecordKeeper &Records) {
   if (GenerateSiRealToPseudoOpcode)
-    emitRealToPseudoOpcodeTable(Records, OS);
+    emitRealToPseudoOpcodeTable(OS, Records);
   if (GenerateSiRealToPseudoRegEnum) {
-    emitRealToPseudoRegisterTable(Records, OS);
+    emitRealToPseudoRegisterTable(OS, Records);
   }
   return false;
 }
@@ -53,5 +53,5 @@ bool TableGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
 
 int main(int argc, char *argv[]) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
-  return TableGenMain(argv[0], &luthier::TableGenMain);
+  return TableGenMain(argv[0], luthier::tableGenMain);
 }
