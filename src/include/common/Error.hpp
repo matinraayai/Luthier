@@ -66,7 +66,9 @@ public:
   static llvm::Error luthierErrorCheck(llvm::StringRef FileName, int LineNumber,
                                        bool Expr, char const *Fmt,
                                        const Ts &...Vals) {
-    return luthierErrorCheck(FileName, LineNumber, Expr, Fmt, Vals...);
+    return (!Expr) ? llvm::make_error<LuthierError>(FileName, LineNumber, Fmt,
+                                                    Vals...)
+                   : llvm::Error::success();
   }
 
   void log(llvm::raw_ostream &OS) const override {
