@@ -226,6 +226,13 @@ PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass(
   // overlap between registers so that no additional pseudo instructions
   // would be required to express sub/super register relation and to update
   // sub/super registers when it is written to
+
+  LLVM_DEBUG(
+      llvm::dbgs()
+          << "Physical Register Access Virtualization Pass's constructor; "
+             "Gathering all 32-bit live-in sub registers of each "
+             "instrumentation points that need to be preserved.\n";);
+
   for (const auto &[InjectedPayload, InstPointMI] :
        InjectedPayloadToInjectionPointMap) {
 
@@ -246,6 +253,13 @@ PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass(
         "Failed to find the physical live-in regs for machine instruction {0} "
         "inside the lifted representation.",
         *InstPointMI));
+
+    LLVM_DEBUG(
+        llvm::dbgs()
+            << "Adding the function level live-ins of instrumentation point ";
+        InstPointMI->print(llvm::dbgs(), true, false, false, false);
+        llvm::dbgs() << ".\n";);
+
     add32BitRegsOfLivePhysRegsToDenseSet(*MILivePhysRegs, InstPointTRI,
                                          InjectedPayloadLiveInRegs);
 
@@ -253,10 +267,19 @@ PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass(
     // add the Live-in regs for all the call sites that potentially target it
     if (InstPointMF->getFunction().getCallingConv() !=
         llvm::CallingConv::AMDGPU_KERNEL) {
+
+      LLVM_DEBUG(llvm::dbgs()
+                     << "Instrumentation point is inside a non-kernel "
+                        "function; Adding its call point live-ins as well.\n";);
+
       // If the callgraph is not deterministic, find all call instructions
       // and add their live-ins to hook live regs
       if (CG.hasNonDeterministicCallGraph(
               StateValueLocations.getLCO().asHsaType())) {
+        LLVM_DEBUG(
+            llvm::dbgs()
+                << "Lifted representation doesn't have a deterministic call "
+                   "graph; Adding the live-ins of all call instructions.\n";);
         auto LCO = StateValueLocations.getLCO();
         for (const auto &[LRFuncSymbol, LRMF] : LR.functions()) {
           if (LRFuncSymbol->getLoadedCodeObject() == LCO) {
@@ -280,6 +303,10 @@ PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass(
           }
         }
       } else {
+        LLVM_DEBUG(
+            llvm::dbgs()
+                << "Lifted representation has a deterministic call graph; "
+                   "Adding the call instruction live-ins.\n";);
         for (const auto &[CallMI, Parent] :
              CG.getCallGraphNode(InstPointMF).CalleeFunctions) {
           auto *CallMILivePhysRegs =
@@ -291,6 +318,8 @@ PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass(
         }
       }
     }
+    LLVM_DEBUG(llvm::dbgs() << "Adding physical registers accessed by hooks "
+                               "that are not in the live-ins.\n");
     // Add the physical registers accessed by all the hooks that are not
     // also live-ins
     add32BitRegsOfLivePhysRegsToDenseSet(AccessedPhysicalRegs, InstPointTRI,
@@ -305,7 +334,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   // If the function being processed is not an injected payload (i.e a device
   // function getting called inside a hook) it cannot access physical registers
   // (it should have been checked by the code generator), so skip it
-  if (!MF.getFunction().hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) ||
+  if (!MF.getFunction().hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
       !MF.getFunction().hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
 
     LLVM_DEBUG(
@@ -338,9 +367,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
       if (MI.isInlineAsm()) {
         llvm::Expected<unsigned int> IntrinsicIdx =
             CodeGenerator::getInlineAsmIntrinsicPlaceHolderIdx(MI);
-        if (IntrinsicIdx) {
-          MF.getContext().reportError({},
-                                      llvm::toString(IntrinsicIdx.takeError()));
+        if (auto Err = IntrinsicIdx.takeError()) {
+          MF.getContext().reportError({}, llvm::toString(std::move(Err)));
           return false;
         }
 
@@ -382,10 +410,6 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   // we start inserting moves to virtual registers, and materializing access
   // to them when
   auto *TII = MF.getSubtarget().getInstrInfo();
-
-  const auto &SVALoadPlan =
-      StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
-          *HookFuncToMIMap.at(&MF.getFunction()));
 
   // For each live-in register that is not used in the hooks, create a copy
   // to its equivalent virtual register in the entry basic block, and
@@ -447,9 +471,9 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
     }
   }
 
-  auto *SVLoadPlan = StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
+  auto *SVALoadPlan = StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
       *HookFuncToMIMap.at(&MF.getFunction()));
-  if (!SVLoadPlan) {
+  if (!SVALoadPlan) {
     MF.getContext().reportError(
         {},
         llvm::formatv(
@@ -630,7 +654,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
         LLVM_DEBUG(llvm::dbgs()
                        << "Created virtual register "
                        << llvm::printReg(VirtReg, TRI)
-                       << "in entry block for physical register "
+                       << " in entry block for physical register "
                        << llvm::printReg(AccessedPhysReg, TRI) << ".\n";);
         // Initialize and add the virtual register to the ssa updater
         SSAUpdater->Initialize(VirtReg);
@@ -716,9 +740,10 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
           auto Builder =
               llvm::BuildMI(*CurrentMBB, ReturnInst, llvm::DebugLoc(),
                             TII->get(llvm::AMDGPU::V_WRITELANE_B32),
-                            ValueRegisterSpillSlots.at(AccessedPhysReg))
+                            SVALoadPlan->StateValueArrayLoadVGPR)
                   .addReg(VirtReg, llvm::RegState::Kill)
-                  .addImm(ValueRegisterSpillSlots.at(AccessedPhysReg));
+                  .addImm(ValueRegisterSpillSlots.at(AccessedPhysReg))
+                  .addReg(SVALoadPlan->StateValueArrayLoadVGPR);
           LLVM_DEBUG(llvm::dbgs()
                          << "Adding virt reg to phys reg copy instruction "
                          << Builder << "\n";);
