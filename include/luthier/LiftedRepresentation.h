@@ -29,14 +29,11 @@
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
+#include <AMDGPUTargetMachine.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <luthier/hsa/DenseMapInfo.h>
 #include <luthier/hsa/Instr.h>
-
-namespace llvm {
-class GCNTargetMachine;
-} // namespace llvm
 
 namespace luthier {
 
