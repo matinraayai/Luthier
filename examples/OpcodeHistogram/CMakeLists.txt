@@ -30,4 +30,4 @@ set(LUTHIER_BC_EMBED_PLUGIN_PATH "" CACHE STRING "Path to the Luthier compiler p
 
 set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -fpass-plugin=${LUTHIER_BC_EMBED_PLUGIN_PATH}")
 
-target_link_libraries(OpcodeHistogram PUBLIC LuthierTooling hip::host hip::device)
+target_link_libraries(OpcodeHistogram PUBLIC LuthierTooling LLVMDemangle hip::host hip::device)
