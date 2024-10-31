@@ -18,15 +18,18 @@
 /// This file implements Luthier's Hook Prologue and Epilogue insertion pass.
 //===----------------------------------------------------------------------===//
 
-#include "tooling_common/HookPEIPass.hpp"
+#include "tooling_common/InjectedPayloadPEIPass.hpp"
 #include "tooling_common/IntrinsicMIRLoweringPass.hpp"
-#include "tooling_common/LRStateValueLocations.hpp"
+#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
 #include <GCNSubtarget.h>
+#include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/Passes.h>
 #include <luthier/LiftedRepresentation.h>
-#include <llvm/CodeGen/MachineFrameInfo.h>
+
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-injected-payload-pei-pass"
 
 namespace luthier {
 
@@ -44,11 +47,11 @@ const static llvm::SmallDenseMap<llvm::MCRegister, unsigned int>
         {llvm::AMDGPU::SGPR32, 11},     {llvm::AMDGPU::FLAT_SCR_LO, 12},
         {llvm::AMDGPU::FLAT_SCR_HI, 13}};
 
-char HookPEIPass::ID = 0;
+char InjectedPayloadPEIPass::ID = 0;
 
-HookPEIPass::HookPEIPass(
+InjectedPayloadPEIPass::InjectedPayloadPEIPass(
     const LiftedRepresentation &LR,
-    const LRStateValueLocations &StateValueLocations,
+    const LRStateValueStorageAndLoadLocations &StateValueLocations,
     PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass,
     const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
         &HookFuncToInstPointMI,
@@ -61,43 +64,88 @@ HookPEIPass::HookPEIPass(
       PKInfo(PKInfo), PhysRegVirtAccessPass(PhysRegVirtAccessPass),
       llvm::MachineFunctionPass(ID) {}
 
-bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
+bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
+
+  LLVM_DEBUG(llvm::dbgs() << "Running the injected payload prologue/epilogue "
+                             "insertion pass.\n";
+             llvm::dbgs()
+             << "Contents of the function before adding prologue/epilogue:\n";
+             MF.print(llvm::dbgs()););
+
+  // If the function being processed is not an injected payload (i.e a device
+  // function getting called inside a hook) it does not require the custom
+  // prologue/epilogue insertion pass so skip it.
+  if (!MF.getFunction().hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
+      !MF.getFunction().hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+
+    LLVM_DEBUG(
+        llvm::dbgs()
+            << "Function " << MF.getName()
+            << " is not a hook or an injected payload. skipping it....";);
+
+    return false;
+  }
+
   bool Changed{false};
   // Get the state value location for this hook
-  auto &HookStateValueLocation =
-      StateValueLocations.getStateValueDescriptorOfHookInsertionPoint(
+  auto &StateValueLoadPlan =
+      *StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
           *HookFuncToInstPointMI.at(&MF.getFunction()));
   // Get the liveness information for the hook
   auto &InstPointLiveRegs = PhysRegVirtAccessPass.get32BitLiveInRegs(MF);
   auto *TII = MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
-  auto &StateValueLocation = HookStateValueLocation.StateValueLocation;
-  auto &StateValueStorage = StateValueLocation.getSVS();
+  auto &StateValueStorage = StateValueLoadPlan.StateValueStorageLocation;
   // We need to first determine if we need to even emit a prologue/epilogue for
-  // this hook; If the hooks makes use of the state value VGPR, or is
-  // using s[0:3], s32, and FS, then it requires a prologue/epilogue
+  // this hook; If the hooks makes use of the state value VGPR
+  // (reads from it/writes to it), or is using s[0:3], s32, and FS, then it
+  // requires a prologue/epilogue
   // If any of the hooks require the presence of the state value register,
   // a pre-kernel must be emitted in the LR
   auto &MRI = MF.getRegInfo();
-  bool HookMakesUseOfStateValue{false};
-  if (MRI.isPhysRegUsed(HookStateValueLocation.StateValueVGPR))
-    HookMakesUseOfStateValue = true;
-
-  for (const auto &[PhysReg, SpillLaneID] : ValueRegisterSpillSlots) {
-    if (MRI.isPhysRegUsed(PhysReg))
-      HookMakesUseOfStateValue = true;
+  bool HookMakesUseOfStateValueArray{false};
+  // Loop over the uses of the state value array load VGPR, and find one that's
+  // not the implicit use in the last return instruction
+  for (const llvm::MachineInstr &StateValueUse :
+       MRI.reg_instructions(StateValueLoadPlan.StateValueArrayLoadVGPR)) {
+    if (!StateValueUse.isReturn() &&
+        !StateValueUse.hasRegisterImplicitUseOperand(
+            StateValueLoadPlan.StateValueArrayLoadVGPR)) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+              << "Found an explicit use of the state value array VGPR.\n";);
+      HookMakesUseOfStateValueArray = true;
+      break;
+    }
   }
 
-  if (!HookMakesUseOfStateValue)
+  for (const auto &[PhysReg, SpillLaneID] : ValueRegisterSpillSlots) {
+    if (MRI.isPhysRegUsed(PhysReg)) {
+      HookMakesUseOfStateValueArray = true;
+      LLVM_DEBUG(auto *TRI = MF.getSubtarget().getRegisterInfo();
+                 llvm::dbgs()
+                 << "Found a use of a state value array spill slot. Register "
+                 << llvm::printReg(PhysReg, TRI) << " in spill slot "
+                 << SpillLaneID << ".\n";);
+      break;
+    }
+  }
+
+  if (!HookMakesUseOfStateValueArray) {
+    LLVM_DEBUG(llvm::dbgs()
+                   << "Hook doesn't make use of the state value array load "
+                      "VGPR. Skipping "
+                      "emission of prologue and epiloge for this function.\n";);
     return false;
+  }
 
-  // Emit Value State Register Load prologue: ==================================
+  // Emit State Value Load prologue: ===========================================
 
-  // Keep track of the first instruction of the hook
+  // Keep track of the first instruction of the injected payload
   auto EntryInstruction = MF.front().begin();
 
   // If the state value is located in a VGPR, then there's no need to
   // emit anything
-  //
+
   // If the state value is located in an AGPR with a temp AGPR to spare,
   // we only need to do a couple of moves in the beginning and at the end
   // between where the state value will be located and the AGPRs
@@ -108,11 +156,12 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::V_ACCVGPR_WRITE_B32_e64),
                   TwoAGPRStorage->TempAGPR)
-        .addReg(HookStateValueLocation.StateValueVGPR, llvm::RegState::Kill);
+        .addReg(StateValueLoadPlan.StateValueArrayLoadVGPR,
+                llvm::RegState::Kill);
     // Read the state value into the VGPR
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64),
-                  HookStateValueLocation.StateValueVGPR)
+                  StateValueLoadPlan.StateValueArrayLoadVGPR)
         .addReg(TwoAGPRStorage->StorageAGPR);
     Changed |= true;
   } else if (auto *OneAGPRThreeSGPRStorage =
@@ -158,15 +207,16 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     // the scratch
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-        .addReg(HookStateValueLocation.StateValueVGPR, llvm::RegState::Kill)
-        .addReg(OneAGPRThreeSGPRStorage->InstrumentationStackPointer)
+        .addReg(StateValueLoadPlan.StateValueArrayLoadVGPR,
+                llvm::RegState::Kill)
+        .addReg(OneAGPRThreeSGPRStorage->EmergencyVGPRSpillSlotOffset)
         .addImm(0)
         .addImm(0);
 
     // Move the value state from the storage AGPR to the destination VGPR
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64),
-                  HookStateValueLocation.StateValueVGPR)
+                  StateValueLoadPlan.StateValueArrayLoadVGPR)
         .addReg(OneAGPRThreeSGPRStorage->StorageAGPR);
     Changed |= true;
   } else if (auto *ThreeSGPRStorage =
@@ -210,16 +260,17 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     // the scratch
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-        .addReg(HookStateValueLocation.StateValueVGPR, llvm::RegState::Kill)
-        .addReg(ThreeSGPRStorage->InstrumentationStackPointer)
+        .addReg(StateValueLoadPlan.StateValueArrayLoadVGPR,
+                llvm::RegState::Kill)
+        .addReg(ThreeSGPRStorage->EmergencyVGPRSpillSlotOffset)
         .addImm(0)
         .addImm(0);
 
     // Move the value state from the storage AGPR to the destination VGPR
     llvm::BuildMI(EntryMBB, EntryInstruction, llvm::DebugLoc(),
                   TII->get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR),
-                  HookStateValueLocation.StateValueVGPR)
-        .addReg(ThreeSGPRStorage->InstrumentationStackPointer)
+                  StateValueLoadPlan.StateValueArrayLoadVGPR)
+        .addReg(ThreeSGPRStorage->EmergencyVGPRSpillSlotOffset)
         .addImm(4)
         .addImm(0);
     Changed |= true;
@@ -229,7 +280,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   // then we need to signal the LR pre-kernel inserter that we need them +
   // Generate code to load it
   auto &FrameInfo = MF.getFrameInfo();
-  //TODO: Make sure this is correct
+  // TODO: Make sure this is correct
   if (FrameInfo.hasStackObjects() && FrameInfo.getStackSize() != 0) {
     PKInfo.EnableScratchAndStoreStackInfo = true;
   }
@@ -243,10 +294,10 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
          PhysicalRegsNotTobeClobbered.contains(PhysReg))) {
       llvm::BuildMI(MF.front(), EntryInstruction, llvm::DebugLoc(),
                     TII->get(llvm::AMDGPU::V_WRITELANE_B32),
-                    HookStateValueLocation.StateValueVGPR)
+                    StateValueLoadPlan.StateValueArrayLoadVGPR)
           .addReg(PhysReg, llvm::RegState::Kill)
           .addImm(SpillLane)
-          .addReg(HookStateValueLocation.StateValueVGPR);
+          .addReg(StateValueLoadPlan.StateValueArrayLoadVGPR);
     }
   }
 
@@ -254,7 +305,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     for (const auto &[PhysReg, SpillLane] : ValueRegisterInstrumentationSlots) {
       llvm::BuildMI(MF.front(), EntryInstruction, llvm::DebugLoc(),
                     TII->get(llvm::AMDGPU::V_READLANE_B32), PhysReg)
-          .addReg(HookStateValueLocation.StateValueVGPR)
+          .addReg(StateValueLoadPlan.StateValueArrayLoadVGPR)
           .addImm(SpillLane);
     }
   }
@@ -272,7 +323,7 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
                 PhysicalRegsNotTobeClobbered.contains(PhysReg)) {
           llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                         TII->get(llvm::AMDGPU::V_READLANE_B32), PhysReg)
-              .addReg(HookStateValueLocation.StateValueVGPR)
+              .addReg(StateValueLoadPlan.StateValueArrayLoadVGPR)
               .addImm(SpillLane);
           FirstTermInst->addOperand(
               llvm::MachineOperand::CreateReg(PhysReg, false, true));
@@ -285,11 +336,11 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::V_ACCVGPR_WRITE_B32_e64),
                       TwoAGPRStorage->StorageAGPR)
-            .addReg(HookStateValueLocation.StateValueVGPR);
+            .addReg(StateValueLoadPlan.StateValueArrayLoadVGPR);
         // Restore the app's VGPR from the temp AGPR
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64),
-                      HookStateValueLocation.StateValueVGPR)
+                      StateValueLoadPlan.StateValueArrayLoadVGPR)
             .addReg(TwoAGPRStorage->TempAGPR, llvm::RegState::Kill);
 
       } else if (auto *OneAGPRThreeSGPRStorage =
@@ -336,8 +387,8 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         // Load the VGPR that was spilled to hold the state value VGPR
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR),
-                      HookStateValueLocation.StateValueVGPR)
-            .addReg(OneAGPRThreeSGPRStorage->InstrumentationStackPointer)
+                      StateValueLoadPlan.StateValueArrayLoadVGPR)
+            .addReg(OneAGPRThreeSGPRStorage->EmergencyVGPRSpillSlotOffset)
             .addImm(0)
             .addImm(0);
       } else if (auto *ThreeSGPRStorage =
@@ -382,18 +433,23 @@ bool HookPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         // the scratch
         llvm::BuildMI(MBB, FirstTermInst, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR),
-                      HookStateValueLocation.StateValueVGPR)
-            .addReg(ThreeSGPRStorage->InstrumentationStackPointer)
+                      StateValueLoadPlan.StateValueArrayLoadVGPR)
+            .addReg(ThreeSGPRStorage->EmergencyVGPRSpillSlotOffset)
             .addImm(0)
             .addImm(0);
       }
     }
   }
-//  MF.print(llvm::outs());
+
+  LLVM_DEBUG(
+      llvm::dbgs()
+          << "Machine function contents after inserting prologue/epilogue:\n";
+      MF.print(llvm::dbgs()););
+
   return Changed;
 }
 
-void HookPEIPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
+void InjectedPayloadPEIPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
   AU.setPreservesCFG();
   AU.addPreservedID(llvm::MachineLoopInfoID);
   AU.addPreserved<llvm::SlotIndexesWrapperPass>();
