@@ -34,7 +34,7 @@ hsa::LoadedCodeObjectSymbol::LoadedCodeObjectSymbol(
     hsa::LoadedCodeObjectSymbol::SymbolKind Kind,
     std::optional<hsa_executable_symbol_t> ExecutableSymbol)
     : BackingLCO(LCO), Symbol(Symbol), Kind(Kind),
-      ExecutableSymbol(ExecutableSymbol){};
+      ExecutableSymbol(ExecutableSymbol) {};
 
 llvm::Expected<const hsa::LoadedCodeObjectSymbol &>
 luthier::hsa::LoadedCodeObjectSymbol::fromExecutableSymbol(
@@ -42,8 +42,9 @@ luthier::hsa::LoadedCodeObjectSymbol::fromExecutableSymbol(
   auto &LCOSymbolCache =
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectSymbolCache();
   std::lock_guard Lock(LCOSymbolCache.CacheMutex);
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(LCOSymbolCache.ExecToLCOSymbolMap.contains(Symbol)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOSymbolCache.ExecToLCOSymbolMap.contains(Symbol),
+      "Failed to find the cached entry for symbol {0:x}.", Symbol.handle));
   return *LCOSymbolCache.ExecToLCOSymbolMap.at(Symbol);
 }
 
@@ -85,10 +86,10 @@ hsa::LoadedCodeObjectSymbol::getLoadedSymbolAddress() const {
   auto SymbolElfAddress = Symbol.getAddress();
   LUTHIER_RETURN_ON_ERROR(SymbolElfAddress.takeError());
 
-  auto SymbolLMA = getSymbolLMA(StorageELF->getELFFile(), Symbol);
-  LUTHIER_RETURN_ON_ERROR(SymbolLMA.takeError());
+  auto SymbolLMO = getLoadedMemoryOffset(StorageELF->getELFFile(), Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolLMO.takeError());
 
-  return reinterpret_cast<luthier::address_t>(*SymbolLMA +
+  return reinterpret_cast<luthier::address_t>(*SymbolLMO +
                                               LoadedMemory->data());
 }
 

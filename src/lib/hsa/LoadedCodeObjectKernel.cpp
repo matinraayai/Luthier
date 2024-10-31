@@ -49,7 +49,11 @@ LoadedCodeObjectKernel::create(hsa_loaded_code_object_t LCO,
   auto ExecSymbol =
       Exec->getExecutableSymbolByName(*NameWithKDSuffixed, *Agent);
   LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ExecSymbol->has_value()));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ERROR_CHECK(ExecSymbol->has_value(),
+                          "Failed to query the HSA executable symbol of kernel "
+                          "{0} from its executable using its name.",
+                          *NameWithKDSuffixed));
 
   return std::unique_ptr<LoadedCodeObjectKernel>(new LoadedCodeObjectKernel(
       LCO, KFuncSymbol, KDSymbol, Metadata, ExecSymbol.get()->asHsaType()));
