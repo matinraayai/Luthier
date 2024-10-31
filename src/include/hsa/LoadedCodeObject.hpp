@@ -58,8 +58,8 @@ class ISA;
 /// allows for querying these segments via the
 /// \c hsa_ven_amd_loader_query_segment_descriptors function. As of right now,
 /// Luthier does not use this information to locate the load address of the
-/// symbols, and instead relies on the \c luthier::getSymbolLMA and
-/// \c luthier::getSectionLMA functions to calculate the load address.
+/// symbols, and instead relies on the \c luthier::getLoadedMemoryOffset function
+/// to calculate the load address.
 ///
 /// \note This wrapper relies on cached functionality as described by the
 /// \c hsa::ExecutableBackedCachable interface and backed by the \c
