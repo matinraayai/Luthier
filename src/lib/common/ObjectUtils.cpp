@@ -31,24 +31,35 @@
 
 #include "common/Error.hpp"
 
+#undef DEBUG_TYPE
+
+#define DEBUG_TYPE "luthier-object-utils"
+
 using namespace llvm;
 
 using namespace llvm::object;
 
 using namespace llvm::msgpack;
 
-llvm::Error
+static llvm::Error
 parseVersionMDOptional(MapDocNode &Map, llvm::StringRef Key,
                        std::optional<luthier::hsa::md::Version> &Out) {
   auto VersionMD = Map.find(Key);
   if (VersionMD != Map.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VersionMD->second.isArray()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        VersionMD->second.isArray(),
+        "Version metadata was found but it is not an array metadata."));
     auto VersionMDAsArray = VersionMD->second.getArray();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VersionMDAsArray.size() == 2));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(VersionMDAsArray.size() == 2, ""));
     auto MajorVersionMD = VersionMDAsArray[0];
     auto MinorVersionMD = VersionMDAsArray[1];
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MajorVersionMD.isScalar()));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MinorVersionMD.isScalar()));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(MajorVersionMD.isScalar(),
+                            "The major number of the metadata is not scalar."));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(MinorVersionMD.isScalar(),
+                            "The minor number of the metadata is not scalar."));
     Out = {MajorVersionMD.getUInt(), MinorVersionMD.getUInt()};
   }
   return llvm::Error::success();
@@ -57,7 +68,7 @@ parseVersionMDOptional(MapDocNode &Map, llvm::StringRef Key,
 llvm::Error parseVersionMDRequired(MapDocNode &Map, llvm::StringRef Key,
                                    luthier::hsa::md::Version &Out) {
   auto VersionMD = Map.find(Key);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VersionMD->second.isArray()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(VersionMD->second.isArray(), ""));
   auto VersionMDAsArray = VersionMD->second.getArray();
   Out = {VersionMDAsArray[0].getUInt(), VersionMDAsArray[1].getUInt()};
   return llvm::Error::success();
@@ -67,7 +78,7 @@ llvm::Error parseStringMDOptional(MapDocNode &Map, llvm::StringRef Key,
                                   std::optional<std::string> &Out) {
   auto NodeMD = Map.find(Key);
   if (NodeMD != Map.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isString(), ""));
     Out = NodeMD->second.getString();
   }
   return llvm::Error::success();
@@ -76,8 +87,8 @@ llvm::Error parseStringMDOptional(MapDocNode &Map, llvm::StringRef Key,
 llvm::Error parseStringMDRequired(MapDocNode &Map, llvm::StringRef Key,
                                   std::string &Out) {
   auto NodeMD = Map.find(Key);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isString()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD != Map.end(), ""));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isString(), ""));
   Out = NodeMD->second.getString();
   return llvm::Error::success();
 }
@@ -149,7 +160,8 @@ llvm::Error parseEnumMDOptional(MapDocNode &Map, llvm::StringRef Key,
   std::optional<std::string> EnumString;
   LUTHIER_RETURN_ON_ERROR(parseStringMDOptional(Map, Key, EnumString));
   if (EnumString.has_value()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(*EnumString)));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(EnumMap.contains(*EnumString), ""));
     Out = EnumMap.at(*EnumString);
   }
   return llvm::Error::success();
@@ -160,7 +172,8 @@ llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
                                 const llvm::StringMap<ET> &EnumMap, ET &Out) {
   std::string EnumString;
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EnumMap.contains(EnumString)));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ERROR_CHECK(EnumMap.contains(EnumString), ""));
   Out = EnumMap.at(EnumString);
   return llvm::Error::success();
 }
@@ -169,18 +182,18 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
                                 std::optional<hsa_dim3_t> &Out) {
   auto NodeMD = Map.find(Key);
   if (NodeMD != Map.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isArray()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isArray(), ""));
     auto NodeMDAsArray = NodeMD->second.getArray();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMDAsArray.size() == 3));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMDAsArray.size() == 3, ""));
 
     auto XMD = NodeMDAsArray[0];
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(XMD.isScalar()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(XMD.isScalar(), ""));
 
     auto YMD = NodeMDAsArray[1];
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(YMD.isScalar()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(YMD.isScalar(), ""));
 
     auto ZMD = NodeMDAsArray[2];
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ZMD.isScalar()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(ZMD.isScalar(), ""));
 
     Out = {static_cast<uint32_t>(XMD.getUInt()),
            static_cast<uint32_t>(YMD.getUInt()),
@@ -192,19 +205,19 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
 llvm::Error parseDim3MDRequired(MapDocNode &Map, llvm::StringRef Key,
                                 dim3 &Out) {
   auto NodeMD = Map.find(Key);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isArray()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD != Map.end(), ""));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isArray(), ""));
   auto NodeMDAsArray = NodeMD->second.getArray();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMDAsArray.size() == 3));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMDAsArray.size() == 3, ""));
 
   auto XMD = NodeMDAsArray[0];
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(XMD.isScalar()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(XMD.isScalar(), ""));
 
   auto YMD = NodeMDAsArray[1];
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(YMD.isScalar()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(YMD.isScalar(), ""));
 
   auto ZMD = NodeMDAsArray[2];
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ZMD.isScalar()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(ZMD.isScalar(), ""));
 
   Out = {static_cast<uint32_t>(XMD.getUInt()),
          static_cast<uint32_t>(YMD.getUInt()),
@@ -217,7 +230,7 @@ llvm::Error parseUIntMDOptional(MapDocNode &Map, llvm::StringRef Key,
                                 std::optional<T> &Out) {
   auto NodeMD = Map.find(Key);
   if (NodeMD != Map.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isScalar(), ""));
     Out = static_cast<T>(NodeMD->second.getUInt());
   }
   return llvm::Error::success();
@@ -226,8 +239,8 @@ llvm::Error parseUIntMDOptional(MapDocNode &Map, llvm::StringRef Key,
 template <typename T>
 llvm::Error parseUIntMDRequired(MapDocNode &Map, llvm::StringRef Key, T &Out) {
   auto NodeMD = Map.find(Key);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD != Map.end(), ""));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isScalar(), ""));
   Out = static_cast<T>(NodeMD->second.getUInt());
   return llvm::Error::success();
 }
@@ -236,7 +249,7 @@ llvm::Error parseBoolMDOptional(MapDocNode &Map, llvm::StringRef Key,
                                 bool &Out) {
   auto NodeMD = Map.find(Key);
   if (NodeMD != Map.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isScalar(), ""));
     Out = NodeMD->second.getBool();
   }
   return llvm::Error::success();
@@ -245,8 +258,8 @@ llvm::Error parseBoolMDOptional(MapDocNode &Map, llvm::StringRef Key,
 llvm::Error parseBoolMDRequired(MapDocNode &Map, llvm::StringRef Key,
                                 bool &Out) {
   auto NodeMD = Map.find(Key);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD != Map.end()));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(NodeMD->second.isScalar()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD != Map.end(), ""));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isScalar(), ""));
   Out = NodeMD->second.getBool();
   return llvm::Error::success();
 }
@@ -283,7 +296,7 @@ getSymbolFromGnuHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
       continue;
 
     LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(SymTab[I].st_name < StrTab.size()));
+        LUTHIER_ERROR_CHECK(SymTab[I].st_name < StrTab.size(), ""));
 
     if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
       return Elf.toSymbolRef(Sec, I);
@@ -307,9 +320,9 @@ getSymbolFromSysVHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
   llvm::ArrayRef<typename ELFT::Word> Chain = HashTab.chains();
   for (typename ELFT::Word I = Bucket[Hash % NBucket];
        I != llvm::ELF::STN_UNDEF; I = Chain[I]) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(I < SymTab.size()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(I < SymTab.size(), ""));
     LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(SymTab[I].st_name < StrTab.size()));
+        LUTHIER_ERROR_CHECK(SymTab[I].st_name < StrTab.size(), ""));
 
     if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
       return Elf.toSymbolRef(Sec, I);
@@ -322,8 +335,9 @@ llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
 hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
            const typename ELFT::Shdr *Sec, llvm::StringRef SymbolName) {
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ARGUMENT_ERROR_CHECK(Sec->sh_type == llvm::ELF::SHT_HASH ||
-                                   Sec->sh_type == llvm::ELF::SHT_GNU_HASH));
+      LUTHIER_ERROR_CHECK(Sec->sh_type == llvm::ELF::SHT_HASH ||
+                              Sec->sh_type == llvm::ELF::SHT_GNU_HASH,
+                          ""));
 
   auto &ElfFile = Elf.getELFFile();
 
@@ -348,15 +362,17 @@ hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
   if (Sec->sh_type == llvm::ELF::SHT_GNU_HASH) {
     const auto *HashTab = reinterpret_cast<const typename ELFT::GnuHash *>(
         ElfFile.base() + Sec->sh_offset);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Sec->sh_offset + Sec->sh_size <
-                                              ElfFile.getBufSize()));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        Sec->sh_offset + Sec->sh_size < ElfFile.getBufSize(), ""));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
         Sec->sh_size >= sizeof(typename ELFT::GnuHash) &&
-        Sec->sh_size >= sizeof(typename ELFT::GnuHash) +
-                            sizeof(typename ELFT::Word) * HashTab->maskwords +
-                            sizeof(typename ELFT::Word) * HashTab->nbuckets +
-                            sizeof(typename ELFT::Word) *
-                                (SymTab.size() - HashTab->symndx)));
+            Sec->sh_size >=
+                sizeof(typename ELFT::GnuHash) +
+                    sizeof(typename ELFT::Word) * HashTab->maskwords +
+                    sizeof(typename ELFT::Word) * HashTab->nbuckets +
+                    sizeof(typename ELFT::Word) *
+                        (SymTab.size() - HashTab->symndx),
+        ""));
     return getSymbolFromGnuHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
                                            *HashTab, SymTab, StrTab);
   }
@@ -366,13 +382,14 @@ hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
   if (Sec->sh_type == llvm::ELF::SHT_HASH) {
     const auto *HashTab = reinterpret_cast<const typename ELFT::Hash *>(
         ElfFile.base() + Sec->sh_offset);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Sec->sh_offset + Sec->sh_size <
-                                              ElfFile.getBufSize()));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        Sec->sh_offset + Sec->sh_size < ElfFile.getBufSize(), ""));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
         Sec->sh_size >= sizeof(typename ELFT::Hash) &&
-        Sec->sh_size >= sizeof(typename ELFT::Hash) +
-                            sizeof(typename ELFT::Word) * HashTab->nbucket +
-                            sizeof(typename ELFT::Word) * HashTab->nchain));
+            Sec->sh_size >= sizeof(typename ELFT::Hash) +
+                                sizeof(typename ELFT::Word) * HashTab->nbucket +
+                                sizeof(typename ELFT::Word) * HashTab->nchain,
+        ""));
     return getSymbolFromSysVHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
                                             *HashTab, SymTab, StrTab);
   }
@@ -382,19 +399,66 @@ hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
 
 namespace luthier {
 
+Expected<std::unique_ptr<ELF64LEObjectFile>>
+parseAMDGCNObjectFile(llvm::StringRef ELF) {
+  std::unique_ptr<MemoryBuffer> Buffer =
+      MemoryBuffer::getMemBuffer(ELF, "", false);
+  Expected<std::unique_ptr<ObjectFile>> ObjectFile =
+      ObjectFile::createELFObjectFile(*Buffer);
+  LUTHIER_RETURN_ON_ERROR(ObjectFile.takeError());
+  return unique_dyn_cast<ELF64LEObjectFile>(std::move(*ObjectFile));
+}
+
+Expected<std::unique_ptr<ELF64LEObjectFile>>
+parseAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF) {
+  return parseAMDGCNObjectFile(toStringRef(ELF));
+}
+
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-lookupSymbolByName(const luthier::AMDGCNObjectFile &ELF,
+lookupSymbolByName(const luthier::AMDGCNObjectFile &ObjectFile,
                    llvm::StringRef SymbolName) {
-  for (auto Section = llvm::object::elf_section_iterator(ELF.section_begin());
-       Section != llvm::object::elf_section_iterator(ELF.section_end());
+  for (auto Section =
+           llvm::object::elf_section_iterator(ObjectFile.section_begin());
+       Section != llvm::object::elf_section_iterator(ObjectFile.section_end());
        ++Section) {
-    auto SectionAsSHdr = ELF.getSection(Section->getRawDataRefImpl());
+    auto SectionAsSHdr = ObjectFile.getSection(Section->getRawDataRefImpl());
     if ((SectionAsSHdr->sh_type == llvm::ELF::SHT_HASH) ||
         (SectionAsSHdr->sh_type == llvm::ELF::SHT_GNU_HASH)) {
-      return hashLookup(ELF, SectionAsSHdr, SymbolName);
+      return hashLookup(ObjectFile, SectionAsSHdr, SymbolName);
     }
   }
-  llvm_unreachable("Symbol hash table was not found");
+  return LUTHIER_CREATE_ERROR(
+      "ELF object does not have a hash table for its symbols.");
+}
+
+/// Returns the <tt>Sec</tt>'s loaded memory offset from the <tt>ELF</tt>'s
+/// loaded base
+/// \note Function was adapted from LLVM's object library
+/// \tparam ELFT type of ELF used
+/// \param ELF the Object file being queried
+/// \param Sec the ELF's section being queried
+/// \return on success, the loaded offset of \p Sec with respect to the
+/// ELF's load base; an \c llvm::Error on failure
+llvm::Expected<uint64_t>
+getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
+                      const llvm::object::ELFSectionRef &Sec) {
+  auto PhdrRange = ELF.program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+
+  // Search for a PT_LOAD segment containing the requested section. Use this
+  // segment's p_addr to calculate the section's LMA.
+  for (const auto &Phdr : *PhdrRange)
+    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
+        (llvm::object::isSectionInSegment<llvm::object::ELF64LE>(
+            Phdr,
+            *llvm::cast<
+                 const llvm::object::ELFObjectFile<llvm::object::ELF64LE>>(
+                 Sec.getObject())
+                 ->getSection(Sec.getRawDataRefImpl()))))
+      return Sec.getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
+
+  // Return section's VMA if it isn't in a PT_LOAD segment.
+  return Sec.getAddress();
 }
 
 llvm::Error parseArgMD(llvm::msgpack::MapDocNode &KernelMetaNode,
@@ -468,10 +532,10 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
 
   auto ArgsMD = KernelMetaNode.find(hsa::md::Kernel::Key::Args);
   if (ArgsMD != KernelMetaNode.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ArgsMD->second.isArray()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(ArgsMD->second.isArray(), ""));
     Out.Args.emplace();
     for (auto &ArgMD : ArgsMD->second.getArray()) {
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ArgMD.isMap()));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(ArgMD.isMap(), ""));
       Out.Args->emplace_back();
       LUTHIER_RETURN_ON_ERROR(parseArgMD(ArgMD.getMap(), Out.Args->back()));
     }
@@ -559,11 +623,85 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
   return llvm::Error::success();
 }
 
-llvm::Expected<luthier::hsa::md::Metadata>
-parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
+llvm::Expected<
+    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
+getELFObjectFileISA(const luthier::AMDGCNObjectFile &Obj) {
+  llvm::Triple TT = Obj.makeTriple();
+  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      CPU.has_value(), "Failed to get the CPU name of the object file."));
+  llvm::SubtargetFeatures Features;
+  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
+  return std::make_tuple(TT, *CPU, Features);
+}
+
+/// Returns the <tt>Sym</tt>'s loaded memory offset from the <tt>ELF</tt>'s
+/// loaded base
+/// \note Function was adapted from LLVM's object library
+/// \tparam ELFT type of ELF used
+/// \param ELF the Object file being queried
+/// \param Sym the ELF's symbol being queried
+/// \return on success, the loaded offset of the \c Sym with respect to the
+/// ELF's load base; an \c llvm::Error on failure
+llvm::Expected<uint64_t>
+getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
+                      const llvm::object::ELFSymbolRef &Sym) {
+  auto PhdrRange = ELF.program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+
+  auto SymbolSection = Sym.getSection();
+  LUTHIER_RETURN_ON_ERROR(SymbolSection.takeError());
+
+  auto SymbolAddress = Sym.getAddress();
+  LUTHIER_RETURN_ON_ERROR(SymbolAddress.takeError());
+
+  // Search for a PT_LOAD segment containing the requested section. Use this
+  // segment's p_addr to calculate the section's LMA.
+  for (const typename llvm::object::ELF64LE::Phdr &Phdr : *PhdrRange)
+    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
+        (llvm::object::isSectionInSegment<llvm::object::ELF64LE>(
+            Phdr,
+            *llvm::cast<
+                 const llvm::object::ELFObjectFile<llvm::object::ELF64LE>>(
+                 Sym.getObject())
+                 ->getSection(SymbolSection.get()->getRawDataRefImpl()))))
+      return *SymbolAddress - Phdr.p_vaddr + Phdr.p_paddr;
+
+  // Return section's VMA if it isn't in a PT_LOAD segment.
+  return *SymbolAddress;
+}
+
+/// Parses the msgpack document inside the \p Note section or program header
+/// into the given \p Doc
+/// \note this only supports code objects V2+
+/// \tparam ELFT type of the ELF
+/// \param Note
+/// \param NoteDescString
+/// \param Doc
+/// \return
+
+bool parseNoteSection(const typename llvm::object::ELF64LE::Note &Note,
+                      llvm::msgpack::Document &Doc) {
+  if (((Note.getName() == "AMD" || Note.getName() == "AMDGPU") &&
+       Note.getType() == llvm::ELF::NT_AMD_PAL_METADATA) ||
+      (Note.getName() == "AMDGPU" &&
+       Note.getType() == llvm::ELF::NT_AMDGPU_METADATA)) {
+    return Doc.readFromBlob(Note.getDescAsStringRef(4), false);
+  } else
+    return false;
+}
+
+/// Reads the \c llvm::msgpack::Document obtained by parsing the note section
+/// of \p Obj into a \c hsa::md::Metadata structure for easier access
+/// to the document's metadata fields
+/// \param Obj the \c luthier::AMDGCNObjectFile to be inspected
+/// \return on success, the \c hsa::md::Metadata of the document, or an
+/// \c llvm::Error describing the issue encountered during the process
+static llvm::Expected<luthier::hsa::md::Metadata>
+parseMetaDoc(llvm::msgpack::Document &KernelMetaDataDoc) {
   luthier::hsa::md::Metadata Out;
-  auto MetaDataRoot = KernelMetaNode.getRoot();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(MetaDataRoot.isMap()));
+  auto MetaDataRoot = KernelMetaDataDoc.getRoot();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(MetaDataRoot.isMap(), ""));
   auto RootMap = MetaDataRoot.getMap();
 
   LUTHIER_RETURN_ON_ERROR(
@@ -571,84 +709,82 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaNode) {
 
   bool IsV2 = Out.Version.Minor == 0;
   // We don't support Code Object V2
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!IsV2));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      !IsV2, "Parsing of Code Object V2 metadata is not supported."));
 
   auto PrintfMD = RootMap.find(hsa::md::Key::Printf);
   if (PrintfMD != RootMap.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(PrintfMD->second.isArray()));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(PrintfMD->second.isArray(), ""));
     Out.Printf.emplace();
     for (const auto &P : PrintfMD->second.getArray()) {
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(P.isString()));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(P.isString(), ""));
       Out.Printf->emplace_back(P.getString());
     }
   }
 
   auto KernelsMD = RootMap.find(hsa::md::Key::Kernels);
   if (KernelsMD != RootMap.end()) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelsMD->second.isArray()));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(KernelsMD->second.isArray(), ""));
     auto KernelsMDAsArray = KernelsMD->second.getArray();
     Out.Kernels.reserve(KernelsMDAsArray.size());
     for (auto &KernelMD : KernelsMDAsArray) {
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(KernelMD.isMap()));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(KernelMD.isMap(), ""));
 
       auto KernelMDAsMap = KernelMD.getMap();
       auto SymbolMD = KernelMDAsMap.find(hsa::md::Kernel::Key::Symbol);
       LUTHIER_RETURN_ON_ERROR(
-          LUTHIER_ASSERTION(SymbolMD != KernelMDAsMap.end()));
+          LUTHIER_ERROR_CHECK(SymbolMD != KernelMDAsMap.end(), ""));
       Out.Kernels.emplace_back();
       LUTHIER_RETURN_ON_ERROR(parseKernelMD(KernelMDAsMap, Out.Kernels.back()));
     }
   }
+  LLVM_DEBUG(llvm::dbgs() << "Number of kernels parsed from the metadata: "
+                          << Out.Kernels.size() << "\n";);
   return Out;
 }
 
-Expected<std::unique_ptr<ELF64LEObjectFile>>
-parseAMDGCNObjectFile(llvm::StringRef ELF) {
-  std::unique_ptr<MemoryBuffer> Buffer =
-      MemoryBuffer::getMemBuffer(ELF, "", false);
-  Expected<std::unique_ptr<ObjectFile>> ObjectFile =
-      ObjectFile::createELFObjectFile(*Buffer);
-  LUTHIER_RETURN_ON_ERROR(ObjectFile.takeError());
-  return unique_dyn_cast<ELF64LEObjectFile>(std::move(*ObjectFile));
-}
-
-Expected<std::unique_ptr<ELF64LEObjectFile>>
-getAMDGCNObjectFile(ArrayRef<uint8_t> ELF) {
-  return parseAMDGCNObjectFile(toStringRef(ELF));
-}
-
-template <class ELFT>
-static std::optional<Expected<typename ELFT::Phdr>>
-getNotesFromProgramHeader(const ELFObjectFile<ELFT> *obj) {
-  const ELFFile<ELFT> &ELFFile = obj->getELFFile();
-
-  auto programHeadersOrError = ELFFile.program_headers();
-  LUTHIER_RETURN_ON_ERROR(programHeadersOrError.takeError());
-
-  for (const auto &pHdr : *programHeadersOrError) {
-    if (pHdr.p_type == llvm::ELF::PT_NOTE) {
-      return pHdr;
+llvm::Expected<hsa::md::Metadata>
+parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj) {
+  // First try to find the note program header and parse it
+  llvm::msgpack::Document Doc;
+  const auto &ELFFile = Obj.getELFFile();
+  auto ProgramHeaders = ELFFile.program_headers();
+  LUTHIER_RETURN_ON_ERROR(ProgramHeaders.takeError());
+  for (const auto &Phdr : *ProgramHeaders) {
+    if (Phdr.p_type == llvm::ELF::PT_NOTE) {
+      llvm::Error Err = llvm::Error::success();
+      for (const auto &Note : ELFFile.notes(Phdr, Err)) {
+        if (parseNoteSection(Note, Doc)) {
+          LLVM_DEBUG(llvm::dbgs() << "Parsed metadata in YAML:\n";
+                     Doc.toYAML(llvm::dbgs()); llvm::dbgs() << "\n";);
+          return parseMetaDoc(Doc);
+        }
+      }
+      LUTHIER_RETURN_ON_ERROR(Err);
     }
   }
-  return std::nullopt;
-}
+  // Try to find the note section and parse it
+  auto Sections = ELFFile.sections();
+  LUTHIER_RETURN_ON_ERROR(Sections.takeError());
 
-template <class ELFT>
-static std::optional<Expected<typename ELFT::Shdr>>
-getNotesFromSectionHeader(const ELFObjectFile<ELFT> *Obj) {
-  const ELFFile<ELFT> &ELFFile = Obj->getELFFile();
-
-  auto sectionsOrError = ELFFile.sections();
-  if (errorToBool(sectionsOrError.takeError())) {
-    return sectionsOrError.takeError();
+  for (const auto &Shdr : *Sections) {
+    if (Shdr.sh_type == llvm::ELF::SHT_NOTE) {
+      llvm::Error Err = llvm::Error::success();
+      for (const auto &Note : ELFFile.notes(Shdr, Err)) {
+        if (parseNoteSection(Note, Doc)) {
+          LLVM_DEBUG(llvm::dbgs() << "Parsed metadata in YAML:\n";
+                     Doc.toYAML(llvm::dbgs()); llvm::dbgs() << "\n";);
+          return parseMetaDoc(Doc);
+        }
+      }
+      LUTHIER_RETURN_ON_ERROR(Err);
+    }
   }
 
-  for (const auto &sHdr : *sectionsOrError) {
-    if (sHdr.sh_type == llvm::ELF::SHT_NOTE)
-      return sHdr;
-  }
-
-  return std::nullopt;
+  return LUTHIER_CREATE_ERROR(
+      "Failed to find the note section to parse its metadata.");
 }
 
 } // namespace luthier

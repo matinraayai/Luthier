@@ -63,6 +63,8 @@ namespace luthier {
 /// all ELF object files encountered by Luthier are of this type.
 typedef llvm::object::ELF64LEObjectFile AMDGCNObjectFile;
 
+typedef llvm::object::ELFFile<llvm::object::ELF64LE> AMDGCNELFFile;
+
 /// Parses the ELF file pointed to by \p Elf into a \c AMDGCNObjectFile.
 /// \param ELF \c llvm::StringRef encompassing the ELF file in memory
 /// \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
@@ -75,162 +77,44 @@ parseAMDGCNObjectFile(llvm::StringRef ELF);
 /// \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
 /// parsing, an \c llvm::Error on failure
 llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
-getAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF);
+parseAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF);
 
 /// Looks up a symbol by its name in the given \p Elf from its symbol hash
 /// table
-/// \param ELF the ELF object being queried
+/// \note Function was adapted from LLVM's OpenMP library
+/// \param ObjectFile the ELF object being queried
 /// \param SymbolName Name of the symbol being looked up
 /// \return an \c llvm::object::ELFSymbolRef if the Symbol was found,
 /// an \c std::nullopt if the symbol was not found, and \c llvm::Error if
 /// any issue was encountered during the process
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-lookupSymbolByName(const luthier::AMDGCNObjectFile &ELF,
+lookupSymbolByName(const luthier::AMDGCNObjectFile &ObjectFile,
                    llvm::StringRef SymbolName);
 
-/// Returns the <tt>Sec</tt>'s loaded memory offset from the <tt>ELF</tt>'s
-/// loaded base
-/// \tparam ELFT type of ELF used
-/// \param ELF the Object file being queried
-/// \param Sec the ELF's section
-/// \return on success, the loaded offset of the section with respect to the
-/// ELF's load base; an \c llvm::Error on failure
-template <class ELFT>
-llvm::Expected<uint64_t> getSectionLMA(const llvm::object::ELFFile<ELFT> &ELF,
-                                       const llvm::object::ELFSectionRef &Sec) {
-  auto PhdrRange = ELF.program_headers();
-  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+llvm::Expected<uint64_t>
+getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
+                      const llvm::object::ELFSectionRef &Sec);
 
-  // Search for a PT_LOAD segment containing the requested section. Use this
-  // segment's p_addr to calculate the section's LMA.
-  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
-    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
-        (llvm::object::isSectionInSegment<ELFT>(
-            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
-                       Sec.getObject())
-                       ->getSection(Sec.getRawDataRefImpl()))))
-      return Sec.getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
+llvm::Expected<uint64_t>
+getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
+                      const llvm::object::ELFSymbolRef &Sym);
 
-  // Return section's VMA if it isn't in a PT_LOAD segment.
-  return Sec.getAddress();
-}
-
-template <class ELFT>
-llvm::Expected<uint64_t> getSymbolLMA(const llvm::object::ELFFile<ELFT> &Obj,
-                                      const llvm::object::ELFSymbolRef &Sym) {
-  auto PhdrRange = Obj.program_headers();
-  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
-
-  auto SymbolSection = Sym.getSection();
-  LUTHIER_RETURN_ON_ERROR(SymbolSection.takeError());
-
-  auto SymbolAddress = Sym.getAddress();
-  LUTHIER_RETURN_ON_ERROR(SymbolAddress.takeError());
-
-  // Search for a PT_LOAD segment containing the requested section. Use this
-  // segment's p_addr to calculate the section's LMA.
-  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
-    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
-        (llvm::object::isSectionInSegment<ELFT>(
-            Phdr, *llvm::cast<const llvm::object::ELFObjectFile<ELFT>>(
-                       Sym.getObject())
-                       ->getSection(SymbolSection.get()->getRawDataRefImpl()))))
-      return *SymbolAddress - Phdr.p_vaddr + Phdr.p_paddr;
-
-  // Return section's VMA if it isn't in a PT_LOAD segment.
-  return *SymbolAddress;
-}
-
-template <typename ELFT>
+/// Finds the ISA string components of the given \p Obj file
+/// \param Obj AMD GCN object file being queried
+/// \return an \c std::tuple with the first element being the target triple,
+/// the second element being the CPU name, and the last element being the
+/// feature string
 llvm::Expected<
     std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
-getELFObjectFileISA(const llvm::object::ELFObjectFile<ELFT> &Obj) {
-  llvm::Triple TT = Obj.makeTriple();
-  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CPU.has_value()));
-  llvm::SubtargetFeatures Features;
-  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
-  return std::make_tuple(TT, *CPU, Features);
-}
+getELFObjectFileISA(const luthier::AMDGCNObjectFile &Obj);
 
+/// Parses the note section of \p Obj into a \c hsa::md::Metadata structure
+/// for easier access to the document's metadata fields
+/// \param Obj the \c luthier::AMDGCNObjectFile to be inspected
+/// \return on success, the \c hsa::md::Metadata of the document, or an
+/// \c llvm::Error describing the issue encountered during the process
 llvm::Expected<hsa::md::Metadata>
-parseMetaDoc(llvm::msgpack::Document &KernelMetaNode);
-
-template <class ELFT>
-static bool
-processNote(const typename ELFT::Note &Note, const std::string &NoteDescString,
-            llvm::msgpack::Document &Doc, llvm::msgpack::DocNode &Root) {
-
-  if (Note.getName() == "AMD" &&
-      Note.getType() == llvm::ELF::NT_AMD_HSA_METADATA) {
-    if (!Root.isEmpty()) {
-      return false;
-    }
-    if (!Doc.fromYAML(NoteDescString)) {
-      return false;
-    }
-    return true;
-  }
-  if (((Note.getName() == "AMD" || Note.getName() == "AMDGPU") &&
-       Note.getType() == llvm::ELF::NT_AMD_PAL_METADATA) ||
-      (Note.getName() == "AMDGPU" &&
-       Note.getType() == llvm::ELF::NT_AMDGPU_METADATA)) {
-    if (!Doc.readFromBlob(NoteDescString, false)) {
-      return false;
-    }
-    return true;
-  }
-  return false;
-}
-
-template <typename ELFT>
-llvm::Expected<hsa::md::Metadata>
-parseNoteMetaData(const llvm::object::ELFObjectFile<ELFT> &Obj) {
-  bool Found = false;
-  llvm::msgpack::Document Doc;
-  auto &Root = Doc.getRoot();
-  const llvm::object::ELFFile<ELFT> &ELFFile = Obj.getELFFile();
-  auto ProgramHeaders = ELFFile.program_headers();
-  std::string DescString;
-  LUTHIER_RETURN_ON_ERROR(ProgramHeaders.takeError());
-  for (const auto &Phdr : *ProgramHeaders) {
-    if (Phdr.p_type == llvm::ELF::PT_NOTE) {
-      llvm::Error Err = llvm::Error::success();
-      for (const auto &Note : ELFFile.notes(Phdr, Err)) {
-        DescString = Note.getDescAsStringRef(4);
-        if (processNote<ELFT>(Note, DescString, Doc, Root)) {
-          Found = true;
-        }
-      }
-      LUTHIER_RETURN_ON_ERROR(Err);
-    }
-  }
-  if (Found) {
-    return parseMetaDoc(Doc);
-  }
-
-  auto Sections = ELFFile.sections();
-  LUTHIER_RETURN_ON_ERROR(Sections.takeError());
-
-  for (const auto &Shdr : *Sections) {
-    if (Shdr.sh_type != llvm::ELF::SHT_NOTE) {
-      continue;
-    }
-    llvm::Error Err = llvm::Error::success();
-    for (const auto &Note : ELFFile.notes(Shdr, Err)) {
-      DescString = Note.getDescAsStringRef(4);
-      if (processNote<ELFT>(Note, DescString, Doc, Root)) {
-        Found = true;
-      }
-    }
-    LUTHIER_RETURN_ON_ERROR(Err);
-  }
-
-  if (Found)
-    return parseMetaDoc(Doc);
-  else
-    return LUTHIER_ASSERTION(Found);
-}
+parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj);
 
 } // namespace luthier
 
