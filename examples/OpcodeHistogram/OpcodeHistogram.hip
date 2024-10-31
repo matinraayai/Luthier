@@ -157,8 +157,8 @@ LUTHIER_EXPORT_HOOK_HANDLE(countOpcodeHistogramScalar);
 static llvm::Error instrumentationLoop(InstrumentationTask &IT,
                                        LiftedRepresentation &LR) {
   // Create a constant bool indicating the CountWavefrontLevel value
-  auto *CountWavefrontLevelConstVal = llvm::ConstantInt::getBool(
-      *LR.getContext().getContext(), CountWavefrontLevel);
+  auto *CountWavefrontLevelConstVal =
+      llvm::ConstantInt::getBool(LR.getContext(), CountWavefrontLevel);
   unsigned int I = 0;
   for (auto &[_, MF] : LR.functions()) {
     const auto &STI = MF->getSubtarget();
@@ -169,7 +169,7 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
           std::string OpcodeName = TII->getName(MI.getOpcode()).str();
           // Get the opcode number, llvm const int
           auto *OpcodeNumber = llvm::ConstantInt::get(
-              llvm::Type::getInt32Ty(*LR.getContext().getContext()),
+              llvm::Type::getInt32Ty(LR.getContext()),
               MI.getOpcode(), false);
           bool IsScalar =
               llvm::SIInstrInfo::isSOP1(MI) || llvm::SIInstrInfo::isSOP2(MI) ||
@@ -279,8 +279,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 
               auto LR = lift(*KernelSymbol);
               LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-              TII =
-                  LR->getMF(*KernelSymbol)->getSubtarget().getInstrInfo();
+              TII = LR->getMF(*KernelSymbol)->getSubtarget().getInstrInfo();
 
               instrumentAllFunctionsOfLR(*KernelSymbol);
 

@@ -18,28 +18,90 @@
 /// This file implements a sample kernel instrumentation tool.
 //===----------------------------------------------------------------------===//
 #include <luthier/luthier.h>
+// undef ICMP_NE macro that was ill-defined in HIP headers
+#undef ICMP_NE
+#include <GCNSubtarget.h>
+#include <llvm/Support/FormatVariadic.h>
+#include <mutex>
 
-#define GET_REGINFO_ENUM
-#include "AMDGPUGenRegisterInfo.inc"
-
-#define GET_INSTRINFO_ENUM
-#define GET_INSTRINFO_OPERAND_ENUM
-#include "AMDGPUGenInstrInfo.inc"
+// #define GET_REGINFO_ENUM
+// #include "AMDGPUGenRegisterInfo.inc"
+//
+// #define GET_INSTRINFO_ENUM
+// #define GET_INSTRINFO_OPERAND_ENUM
+// #include "AMDGPUGenInstrInfo.inc"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-kernel-instrument-tool"
 
+// template <typename Integral = uint64_t>
+// constexpr Integral
+// bit_mask (int first, int last)
+//{
+//   dbgapi_assert (last >= first && "invalid argument");
+//   size_t num_bits = last - first + 1;
+//   return ((num_bits >= sizeof (Integral) * 8)
+//               ? ~Integral{ 0 } /* num_bits exceed the size of Integral */
+//               : ((Integral{ 1 } << num_bits) - 1))
+//          << first;
+// }
+//
+// static __device__ constexpr uint32_t ttmp11_wave_in_group_mask = bit_mask (0,
+// 5); static __device__ constexpr int ttmp11_wave_in_group_shift = 0;
+
 using namespace luthier;
-// TODO: write the instruction counter tool
+
+static std::mutex Mutex;
 
 MARK_LUTHIER_DEVICE_MODULE
 
-__attribute__((managed)) uint64_t GlobalCounter = 20;
+__attribute__((managed)) uint64_t WaveID = 0;
 
-LUTHIER_HOOK_ANNOTATE instrumentationHook() {
-  GlobalCounter = __builtin_amdgcn_wavefrontsize();
-  //  GlobalCounter = readReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5);
-};
+__attribute__((managed)) hsa_dim3_t GroupIDs{0, 0, 0};
+
+__attribute__((managed)) uint64_t PositionInGroup{0};
+
+LUTHIER_HOOK_ANNOTATE instrumentationHook(long RegVal) {
+  //  uint32_t MyArray[20];
+  //  for (int i = 0; i < 20; i++) {
+  //    MyArray[i] = i;
+  //  }
+  //  for (int i = 0; i < 20; i++) {
+  //    PositionInGroup += MyArray[i];
+  //  }
+  //   writeReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5, 5);
+  if (RegVal > 5)
+    PositionInGroup = RegVal;
+  else
+    WaveID = RegVal + 4;
+  //    writeReg<uint32_t>(llvm::AMDGPU::SGPR10, RegVal);
+  //    PositionInGroup = 5;
+  //   uint32_t MyReg = readReg<uint32_t>(llvm::AMDGPU::SGPR4);
+  //   int MyVal;
+  //   if (MyReg > 5) {
+  //     MyVal = MyReg;
+  //   }
+  //   else if (MyReg == 2)
+  //     MyVal = readReg<uint32_t>(llvm::AMDGPU::SGPR4);
+  //   else
+  //     MyVal = readReg<uint32_t>(llvm::AMDGPU::SGPR4);;
+  ////   PositionInGroup = readReg<uint32_t>(llvm::AMDGPU::SGPR5);
+  //   PositionInGroup = MyVal + 5;
+
+  //  uint32_t idy = readReg<uint32_t>(llvm::AMDGPU::TTMP9);
+  //  uint32_t v0 =  readReg<uint32_t>(llvm::AMDGPU::VGPR0);
+  //  uint32_t v1 = readReg<uint32_t>(llvm::AMDGPU::SRC_POPS_EXITING_WAVE_ID);
+  //  uint32_t groupPos =
+  //      (readReg<uint32_t>(llvm::AMDGPU::TTMP11) & 63) >> 0;
+  //  if (idx == 4 && v0 == 31) {
+  //    WaveID = readReg<uint64_t>(llvm::AMDGPU::TTMP4_TTMP5);
+  //    GroupIDs.x = readReg<uint32_t>(llvm::AMDGPU::TTMP8);
+  //    GroupIDs.y = readReg<uint32_t>(llvm::AMDGPU::TTMP9);
+  //    GroupIDs.z = readReg<uint32_t>(llvm::AMDGPU::TTMP10);
+  ////    PositionInGroup = (readReg<uint32_t>(llvm::AMDGPU::TTMP11) & 63);
+  //    PositionInGroup = v1;
+  //  }
+}
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
 
@@ -60,7 +122,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         if (auto Err = KernelSymbol.takeError())
           llvm::report_fatal_error(std::move(Err), true);
         if (!llvm::cantFail(
-                isKernelInstrumented(*KernelSymbol, "kernel instrument"))) {
+                isKernelInstrumented(*KernelSymbol, "instrumented"))) {
           auto Exec = llvm::cantFail(KernelSymbol->getExecutable());
 
           auto LiftedKernel = luthier::lift(Exec);
@@ -77,7 +139,8 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                       auto &MBB = MF->front();
                       if (auto Err = IT.insertHookBefore(
                               *MBB.begin()->getNextNode(),
-                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook))) {
+                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
+                              {llvm::AMDGPU::SGPR4_SGPR5})) {
                         return Err;
                       }
                     }
@@ -120,15 +183,22 @@ void atToolInit(ApiEvtPhase Phase) {
   }
 }
 
-void atFinalization(ApiEvtPhase Phase) {
+void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
-    llvm::outs() << "Counter Value: " << GlobalCounter << "\n";
-    llvm::outs() << "Pointer of counter at host: "
-                 << llvm::to_address(&GlobalCounter) << "\n";
-    llvm::outs() << "Reserved variable address: "
-                 << llvm::to_address(
-                        reinterpret_cast<uint64_t *>(&__luthier_reserved))
-                 << "\n";
+    llvm::outs() << llvm::formatv("WaveID: {0}\n", WaveID);
+    llvm::outs() << llvm::formatv("Group ID: ({0}, {1}, {2})\n", GroupIDs.z,
+                                  GroupIDs.y, GroupIDs.x);
+    llvm::outs() << llvm::formatv("Position in Group: {0:x}\n",
+                                  PositionInGroup);
+    //    llvm::outs() << llvm::formatv("Counter 4 Value: {0:x}\n",
+    //    GlobalCounter4); llvm::outs() << llvm::formatv("Counter 5 Value:
+    //    {0:x}\n", GlobalCounter5); llvm::outs() << "Pointer of counter at
+    //    host: "
+    //                 << llvm::to_address(&GlobalCounter) << "\n";
+    //    llvm::outs() << "Reserved variable address: "
+    //                 << llvm::to_address(
+    //                        reinterpret_cast<uint64_t *>(&__luthier_reserved))
+    //                 << "\n";
     llvm::outs() << "Kernel Instrument Tool is terminating!\n";
   }
 }

@@ -145,7 +145,7 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
   for (auto &[_, MF] : LR.functions()) {
     const auto &STI = MF->getSubtarget<llvm::GCNSubtarget>();
     const auto *TII = STI.getInstrInfo();
-    auto &Ctx = *LR.getContext().getContext();
+    auto &Ctx = LR.getContext();
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
         if (I >= InstrBeginInterval && I < InstrEndInterval) {

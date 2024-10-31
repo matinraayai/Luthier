@@ -30,7 +30,8 @@ static llvm::DenseSet<hsa_executable_t> PrintedExecutables;
 
 static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                      luthier::ApiEvtPhase Phase, luthier::hsa::ApiEvtID ApiID) {
-  if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
+  if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit &&
+      Phase == API_EVT_PHASE_AFTER) {
     LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
     auto Packets = CBData->hsa_queue_packet_submit.packets;
     for (auto &Packet : *Packets) {
@@ -87,7 +88,9 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
 }
 
 static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
+  llvm::outs() << "in hsa api callback;\n";
   if (Phase == API_EVT_PHASE_AFTER) {
+    llvm::outs() << "after phase\n";
     if (auto Err = luthier::hsa::enableHsaApiEvtIDCallback(
             hsa::HSA_API_EVT_ID_hsa_queue_packet_submit))
       llvm::report_fatal_error(std::move(Err), true);
