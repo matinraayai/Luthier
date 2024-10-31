@@ -17,7 +17,7 @@
 /// \file
 /// This file implements the State Value Location Intervals Pass.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/LRStateValueLocations.hpp"
+#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include "common/Error.hpp"
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
@@ -30,30 +30,31 @@
 namespace luthier {
 
 /// Scavenges \p NumRegs registers with class \p RC available in \p MRI
-/// Availability means the register is available in \p MRI that is not in
-/// \p AccessedPhysicalRegsNotInLiveIns and not in \p LiveInRegs
+/// Availability means a register is allocatable and not in \p MRI and
+/// is not in \p AccessedPhysicalRegsNotInLiveIns and not in \p LiveInRegs
 /// \param [in] MRI the \c llvm::MachineRegisterInfo of the function being
 /// scavenged
 /// \param [in] RC the \c llvm::TargetRegisterClass of the register(s) to be
 //// scavenged
 /// \param [in] AccessedPhysicalRegsNotInLiveIns a set of physical registers
-/// that are accessed by hooks (i.e. read from/written to) but are not part of
-/// the Live-in registers in the hook insertion points (e.g. if the tool
-/// wants to track the value of a register)
+/// that are accessed by injected payloads of the instrumentation module but
+/// at the point of access are not part of the Live-in registers of the
+/// instrumentation points
 /// \param [in] LiveInRegs a set of physical registers that are live at the
-/// instruction where the register scavenging is taking place
+/// app instruction where the register scavenging is taking place
 /// \param [in] NumRegs the number of registers to be scavenged
 /// \param [out] ScavengedRegs the registers scavenged by the function
 /// \return \c true if the function has succeeded in scavenging the number of
 /// requested registers, \c false otherwise
-bool scavengeFreeRegister(
-    llvm::MachineRegisterInfo &MRI, const llvm::TargetRegisterClass &RC,
-    const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
-    const llvm::LivePhysRegs &LiveInRegs, int NumRegs,
-    llvm::SmallVectorImpl<llvm::MCRegister> &ScavengedRegs) {
+static bool
+scavengeFreeRegister(llvm::MachineRegisterInfo &MRI,
+                     const llvm::TargetRegisterClass &RC,
+                     const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
+                     const llvm::LivePhysRegs &LiveInRegs, int NumRegs,
+                     llvm::SmallVectorImpl<llvm::MCRegister> &ScavengedRegs) {
   int NumRegsFound = 0;
   for (llvm::MCRegister Reg : reverse(RC)) {
-    if (MRI.isAllocatable(Reg) &&
+    if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
         AccessedPhysicalRegsNotInLiveIns.available(MRI, Reg) &&
         LiveInRegs.available(MRI, Reg)) {
       ScavengedRegs.push_back(Reg);
@@ -65,13 +66,27 @@ bool scavengeFreeRegister(
   return false;
 }
 
-llvm::MCRegister
+/// Scavenges \p NumRegs registers with class \p RC available in \p MRI
+/// Availability means a register is allocatable and not used in \p MRI and
+/// is not in \p AccessedPhysicalRegsNotInLiveIns and not in \p LiveInRegs
+/// \param MRI the \c llvm::MachineRegisterInfo of the function being
+/// scavenged
+/// \param RC the \c llvm::TargetRegisterClass of the register to be
+//// scavenged
+/// \param AccessedPhysicalRegsNotInLiveIns a set of physical registers
+/// that are accessed by injected payloads of the instrumentation module but
+/// at the point of access are not part of the Live-in registers of the
+/// instrumentation points
+/// \param LiveInRegs a set of physical registers that are live at the
+/// app instruction where the register scavenging is taking place
+/// \return the scavenged register if successful, or zero otherwise
+static llvm::MCRegister
 scavengeFreeRegister(const llvm::MachineRegisterInfo &MRI,
                      const llvm::TargetRegisterClass &RC,
                      const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
                      const llvm::LivePhysRegs &LiveInRegs) {
   for (llvm::MCRegister Reg : reverse(RC)) {
-    if (MRI.isAllocatable(Reg) &&
+    if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
         AccessedPhysicalRegsNotInLiveIns.available(MRI, Reg) &&
         LiveInRegs.available(MRI, Reg)) {
       return Reg;
@@ -80,29 +95,108 @@ scavengeFreeRegister(const llvm::MachineRegisterInfo &MRI,
   return {};
 }
 
-std::pair<llvm::MCRegister, bool> findVGPRLocationForHook(
-    const llvm::MachineInstr *HookMI, StateValueStorage &SVS,
-    const llvm::LivePhysRegs &HookLiveRegs,
+/// Scavenges \p NumRegs register of class \p RC that are unused across
+/// all \p RelatedFunctions and are not in \p AccessedPhysRegsNotInLiveIns
+/// \param [in] Functions the functions being scavenged for a free register
+/// \param [in] RC the register class of the registers being scavenged
+/// \param [in] AccessedPhysRegsNotInLiveIns a set of physical registers
+/// accessed by the injected payloads that are not in the live-in set of their
+/// injected payload at the point of access
+/// \param [in] NumRegs number of registers to be scavenged
+/// \param [out] Regs the set of registers that were scavenged
+/// \return \c true if the function was able to scavenge the requested number
+/// of registers, \c false otherwise
+static bool
+scavengeFreeRegister(llvm::ArrayRef<llvm::MachineFunction *> Functions,
+                     const llvm::TargetRegisterClass *RC,
+                     const llvm::LivePhysRegs &AccessedPhysRegsNotInLiveIns,
+                     unsigned int NumRegs,
+                     llvm::SmallVectorImpl<llvm::MCRegister> &Regs) {
+  unsigned int NumRegFound = 0;
+
+  for (llvm::MCRegister Reg : *RC) {
+    bool IsUnused = llvm::all_of(Functions, [&](llvm::MachineFunction *MF) {
+      auto &MRI = MF->getRegInfo();
+      return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
+             AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
+    });
+    if (IsUnused) {
+      Regs.push_back(Reg);
+      NumRegFound++;
+      if (NumRegFound == NumRegs)
+        return true;
+    }
+  }
+  return false;
+}
+
+llvm::MCRegister
+scavengeFreeRegister(llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
+                     const llvm::TargetRegisterClass *RC,
+                     const llvm::LivePhysRegs &AccessedPhysRegsNotInLiveIns) {
+  for (llvm::MCRegister Reg : *RC) {
+    bool IsUnused =
+        llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
+          auto &MRI = MF->getRegInfo();
+          bool IsUnusedInMF = MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
+          //          llvm::outs() <<
+          //          MF->getSubtarget().getRegisterInfo()->getName(Reg)
+          //                       << "\n";
+          //          llvm::outs() << "Is allocatable: " <<
+          //          MRI.isAllocatable(Reg) << "\n"; llvm::outs() << "Is phys
+          //          reg used: " << MRI.isPhysRegUsed(Reg)
+          //                       << "\n";
+          if (!AccessedPhysRegsNotInLiveIns.empty())
+            IsUnusedInMF = IsUnusedInMF &&
+                           AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
+          return IsUnusedInMF;
+        });
+    if (IsUnused) {
+      return Reg;
+    }
+  }
+  return {};
+}
+
+/// Selects a VGPR to load the state value array into for use for the
+/// injected payload of \p InstPoint
+/// \param InstPoint instrumentation point for which we are selecting a VGPR
+/// to load the state value array into
+/// \param SVS the state value array storage at the location of \p InstPoint
+/// \param InstPointLiveRegs a set of physical registers that are live before
+/// the \p InstPoint
+/// \param AccessedPhysicalRegsNotInLiveIns a set of physical registers
+/// accessed in injected payloads that aren't in the live-ins set of their
+/// instrumentation point at the point of access
+/// \return a pair, with the first element indicating the VGPR selected, and
+/// the second element indicating whether the selected VGPR will clobber a
+/// live register of the app and needs preserving
+static std::pair<llvm::MCRegister, bool>
+selectVGPRLoadLocationForInjectedPayload(
+    const llvm::MachineInstr &InstPoint, StateValueArrayStorage &SVS,
+    const llvm::LivePhysRegs &InstPointLiveRegs,
     const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns) {
-  bool IsStateValueInVGPR = llvm::isa<VGPRValueStorage>(&SVS);
-  // Find a VGPR location to load the state value if not already in a VGPR
+  bool IsStateValueInVGPR = llvm::isa<VGPRStateValueArrayStorage>(&SVS);
   llvm::MCRegister VGPRLocation{0};
   bool ClobbersAppRegister{false};
+  // if the state value array already in a VGPR, then select the same VGPR
+  // to be the load destination
   if (IsStateValueInVGPR)
-    VGPRLocation = llvm::dyn_cast<VGPRValueStorage>(&SVS)->StorageVGPR;
+    VGPRLocation =
+        llvm::dyn_cast<VGPRStateValueArrayStorage>(&SVS)->StorageVGPR;
   else {
-    auto *InstrumentedMF = HookMI->getParent()->getParent();
+    auto &InstrumentedMF = *InstPoint.getParent()->getParent();
     // Scavenge a dead VGPR to hold the state value
     VGPRLocation = scavengeFreeRegister(
-        InstrumentedMF->getRegInfo(), llvm::AMDGPU::VGPR_32RegClass,
-        AccessedPhysicalRegsNotInLiveIns, HookLiveRegs);
+        InstrumentedMF.getRegInfo(), llvm::AMDGPU::VGPR_32RegClass,
+        AccessedPhysicalRegsNotInLiveIns, InstPointLiveRegs);
     // If a dead VGPR is not scavenged, then pick one that's not in
     // accessed Physical registers of the hook
     if (VGPRLocation == 0) {
       ClobbersAppRegister = true;
-      auto &InstrumentedMFRI = InstrumentedMF->getRegInfo();
+      auto &InstrumentedMFRI = InstrumentedMF.getRegInfo();
       for (llvm::MCRegister Reg : llvm::AMDGPU::VGPR_32RegClass) {
-        if (InstrumentedMFRI.isAllocatable(Reg) &&
+        if (InstrumentedMFRI.isPhysRegUsed(Reg) &&
             AccessedPhysicalRegsNotInLiveIns.available(InstrumentedMFRI, Reg)) {
           VGPRLocation = Reg;
           break;
@@ -117,85 +211,36 @@ std::pair<llvm::MCRegister, bool> findVGPRLocationForHook(
   return {VGPRLocation, ClobbersAppRegister};
 }
 
-LRStateValueLocations::LRStateValueLocations(
+LRStateValueStorageAndLoadLocations::LRStateValueStorageAndLoadLocations(
     const luthier::LiftedRepresentation &LR, hsa::LoadedCodeObject LCO,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
-    const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+        &InstPointToInjectedPayloadMap,
+    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
     const luthier::LRRegisterLiveness &RegLiveness,
     PreKernelEmissionDescriptor &PKInfo)
-    : LR(LR), LCO(std::move(LCO)), MIToHookMap(MIToHookMap),
-      HooksAccessedPhysicalRegistersNotInLiveIns(
-          HooksAccessedPhysicalRegistersNotInLiveIns),
+    : LR(LR), LCO(std::move(LCO)),
+      InstPointToInjectedPayloadMap(InstPointToInjectedPayloadMap),
+      AccessedPhysicalRegistersNotInLiveIns(
+          AccessedPhysicalRegistersNotInLiveIns),
       RegLiveness(RegLiveness), PKInfo(PKInfo) {}
 
-bool allocateUnusedRegister(
-    llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
-    const llvm::TargetRegisterClass *RC,
-    const llvm::LivePhysRegs &PhysicalRegsUsed, unsigned int NumRegs,
-    llvm::SmallVectorImpl<llvm::MCRegister> &Regs) {
-  unsigned int NumRegFound = 0;
-
-  for (llvm::MCRegister Reg : *RC) {
-    bool IsUnused =
-        llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
-          auto &MRI = MF->getRegInfo();
-          return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
-                 PhysicalRegsUsed.available(MRI, Reg);
-        });
-    if (IsUnused) {
-      Regs.push_back(Reg);
-      NumRegFound++;
-      if (NumRegFound == NumRegs)
-        return true;
-    }
-  }
-  return false;
-}
-
-llvm::MCRegister
-allocateUnusedRegister(llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
-                       const llvm::TargetRegisterClass *RC,
-                       const llvm::LivePhysRegs &AccessedPhysRegsNotInLiveIns) {
-  for (llvm::MCRegister Reg : *RC) {
-    bool IsUnused =
-        llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
-          auto &MRI = MF->getRegInfo();
-          bool IsUnusedInMF = MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
-//          llvm::outs() << MF->getSubtarget().getRegisterInfo()->getName(Reg)
-//                       << "\n";
-//          llvm::outs() << "Is allocatable: " << MRI.isAllocatable(Reg) << "\n";
-//          llvm::outs() << "Is phys reg used: " << MRI.isPhysRegUsed(Reg)
-//                       << "\n";
-          if (!AccessedPhysRegsNotInLiveIns.empty())
-            IsUnusedInMF = IsUnusedInMF &&
-                           AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
-          return IsUnusedInMF;
-        });
-    if (IsUnused) {
-      return Reg;
-    }
-  }
-  return {};
-}
-
-std::shared_ptr<StateValueStorage>
-LRStateValueLocations::findFixedStateValueStorageLocation(
+std::shared_ptr<StateValueArrayStorage>
+LRStateValueStorageAndLoadLocations::findFixedStateValueArrayStorage(
     llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions) const {
-  // Tentative place to hold an SGPR pair for the instrumentation stack
-  // flat scratch
+  // Tentative place to hold three SGPRs for emergency spill
   llvm::SmallVector<llvm::MCRegister, 3> FSLocation{};
 
   // Find the next VGPR available to hold the value state
   llvm::MCRegister ValueStateFixedLocation =
-      allocateUnusedRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
-                             HooksAccessedPhysicalRegistersNotInLiveIns);
+      scavengeFreeRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
+                           AccessedPhysicalRegistersNotInLiveIns);
   // If not find two free AGPRs; one to hold the value state, the other as
   // a temp register
   if (ValueStateFixedLocation == 0) {
     llvm::SmallVector<llvm::MCRegister, 2> ScavengedAGPRs;
-    bool Scavenged = allocateUnusedRegister(
+    bool Scavenged = scavengeFreeRegister(
         RelatedFunctions, &llvm::AMDGPU::AGPR_32RegClass,
-        HooksAccessedPhysicalRegistersNotInLiveIns, 2, ScavengedAGPRs);
+        AccessedPhysicalRegistersNotInLiveIns, 2, ScavengedAGPRs);
     if (Scavenged)
       return std::make_shared<TwoAGPRValueStorage>(ScavengedAGPRs[0],
                                                    ScavengedAGPRs[1]);
@@ -207,9 +252,9 @@ LRStateValueLocations::findFixedStateValueStorageLocation(
     // stack in case of an emergency spill of a VGPR to read back the AGPR
     // This shouldn't be necessary in GFX90A+ where AGPRs can be used as
     // normal VGPRs
-    Scavenged = allocateUnusedRegister(
+    Scavenged = scavengeFreeRegister(
         RelatedFunctions, &llvm::AMDGPU::SGPR_32RegClass,
-        HooksAccessedPhysicalRegistersNotInLiveIns, 3, FSLocation);
+        AccessedPhysicalRegistersNotInLiveIns, 3, FSLocation);
     if (ValueStateFixedLocation != 0 && Scavenged)
       return std::make_shared<AGPRWithThreeSGPRSValueStorage>(
           ValueStateFixedLocation, FSLocation[0], FSLocation[1], FSLocation[2]);
@@ -219,49 +264,51 @@ LRStateValueLocations::findFixedStateValueStorageLocation(
     } else
       return nullptr;
   } else {
-    return std::make_shared<VGPRValueStorage>(ValueStateFixedLocation);
+    return std::make_shared<VGPRStateValueArrayStorage>(
+        ValueStateFixedLocation);
   }
 }
 
-const StateValueStorageSegment *
-LRStateValueLocations::getValueSegmentForInstr(llvm::MachineInstr &MI) const {
-  auto *MF = MI.getParent()->getParent();
-  if (!ValueStateRegAndFlatScratchIntervals.contains(MF))
-    return nullptr;
-  if (!FunctionsSlotIndexes.contains(&MF->getFunction())) {
-    return nullptr;
-  }
-  auto &Segments = ValueStateRegAndFlatScratchIntervals.at(MF);
-  auto MISlot = FunctionsSlotIndexes.at(&MF->getFunction())
-                    ->getInstructionIndex(MI, false);
-  for (auto &Segment : Segments) {
-    if (Segment.contains(MISlot))
-      return &Segment;
-  }
-  return nullptr;
+llvm::ArrayRef<StateValueStorageSegment>
+LRStateValueStorageAndLoadLocations::getStorageIntervalsOfBasicBlock(
+    const llvm::MachineBasicBlock &MBB) const {
+  auto *MF = MBB.getParent();
+  auto It = StateValueStorageIntervals.find(MF);
+  if (It == StateValueStorageIntervals.end())
+    return {};
+  else
+    return It->second;
 }
 
-const InsertionPointStateValueDescriptor &
-LRStateValueLocations::getStateValueDescriptorOfHookInsertionPoint(
+const InstPointSVALoadPlan *
+LRStateValueStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
     const llvm::MachineInstr &MI) const {
-  return HookMIToValueStateInterval.at(&MI);
+  auto It = InstPointSVSLoadPlans.find(&MI);
+  if (It == InstPointSVSLoadPlans.end())
+    return nullptr;
+  else
+    return &It->second;
 }
 
-llvm::Expected<std::unique_ptr<LRStateValueLocations>>
-LRStateValueLocations::create(
+llvm::Expected<std::unique_ptr<LRStateValueStorageAndLoadLocations>>
+LRStateValueStorageAndLoadLocations::create(
     const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *> &MIToHookMap,
-    const llvm::LivePhysRegs &HooksAccessedPhysicalRegistersNotInLiveIns,
+    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
+        &InstPointToInjectedPayloadMap,
+    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
     const LRRegisterLiveness &RegLiveness,
     PreKernelEmissionDescriptor &PKInfo) {
-  std::unique_ptr<LRStateValueLocations> Out(new LRStateValueLocations(
-      LR, LCO, MIToHookMap, HooksAccessedPhysicalRegistersNotInLiveIns,
-      RegLiveness, PKInfo));
-  LUTHIER_RETURN_ON_ERROR(Out->calculateStateValueLocations());
+  std::unique_ptr<LRStateValueStorageAndLoadLocations> Out(
+      new LRStateValueStorageAndLoadLocations(
+          LR, LCO, InstPointToInjectedPayloadMap,
+          AccessedPhysicalRegistersNotInLiveIns, RegLiveness, PKInfo));
+  LUTHIER_RETURN_ON_ERROR(
+      Out->calculateStateValueArrayStorageAndLoadLocations());
   return Out;
 }
 
-llvm::Error LRStateValueLocations::calculateStateValueLocations() {
+llvm::Error LRStateValueStorageAndLoadLocations::
+    calculateStateValueArrayStorageAndLoadLocations() {
   // Populate the slot indexes for each instruction of both kernels and
   // device functions in the LCO being processed
   llvm::SmallVector<llvm::MachineFunction *, 4> MFs;
@@ -276,12 +323,14 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
     }
   }
   // Try to find a fixed location to store the state value
-  auto StateValueFixedLocation = findFixedStateValueStorageLocation(MFs);
+  auto StateValueFixedLocation = findFixedStateValueArrayStorage(MFs);
 
   if (StateValueFixedLocation != nullptr) {
+    // If a fixed location was found, then all MBB intervals inside all MFs
+    // will get the fixed state value location
     for (const auto &MF : MFs) {
-      auto &Segments = ValueStateRegAndFlatScratchIntervals.insert({MF, {}})
-                           .first->getSecond();
+      auto &Segments =
+          StateValueStorageIntervals.insert({MF, {}}).first->getSecond();
       for (const auto &MBB : *MF) {
         Segments.emplace_back(FunctionsSlotIndexes.at(&MF->getFunction())
                                   ->getInstructionIndex(MBB.front()),
@@ -290,28 +339,23 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
                               StateValueFixedLocation);
       }
     }
-    for (const auto &[InsertionPointMI, HookFunction] : MIToHookMap) {
+    for (const auto &[InsertionPointMI, HookFunction] :
+         InstPointToInjectedPayloadMap) {
       auto *HookLiveRegs =
           RegLiveness.getLiveInPhysRegsOfMachineInstr(*InsertionPointMI);
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookLiveRegs != nullptr));
-      auto [VGPRLocation, ClobbersAppReg] = findVGPRLocationForHook(
-          InsertionPointMI, *StateValueFixedLocation, *HookLiveRegs,
-          HooksAccessedPhysicalRegistersNotInLiveIns);
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(HookLiveRegs != nullptr, ""));
+      auto [VGPRLocation, ClobbersAppReg] =
+          selectVGPRLoadLocationForInjectedPayload(
+              *InsertionPointMI, *StateValueFixedLocation, *HookLiveRegs,
+              AccessedPhysicalRegistersNotInLiveIns);
       auto *InsertionPointFunction =
           &InsertionPointMI->getParent()->getParent()->getFunction();
 
       const auto &InsertionPointMBB = *InsertionPointMI->getParent();
 
-      HookMIToValueStateInterval.insert(
-          {InsertionPointMI,
-           InsertionPointStateValueDescriptor{
-               VGPRLocation,
-               ClobbersAppReg,
-               {FunctionsSlotIndexes.at(InsertionPointFunction)
-                    ->getInstructionIndex(InsertionPointMBB.front()),
-                FunctionsSlotIndexes.at(InsertionPointFunction)
-                    ->getInstructionIndex(InsertionPointMBB.front()),
-                StateValueFixedLocation}}});
+      InstPointSVSLoadPlans.insert(
+          {InsertionPointMI, InstPointSVALoadPlan{VGPRLocation, ClobbersAppReg,
+                                                  *StateValueFixedLocation}});
     }
     PKInfo.OnlyKernelNeedsPreKernel = true;
   } else {
@@ -328,16 +372,19 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
 
       auto FirstMILiveIns =
           RegLiveness.getLiveInPhysRegsOfMachineInstr(*MF->begin()->begin());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(FirstMILiveIns != nullptr));
+      LUTHIER_RETURN_ON_ERROR(
+          LUTHIER_ERROR_CHECK(FirstMILiveIns != nullptr, ""));
 
       // The current location of the state value register
-      std::shared_ptr<StateValueStorage> SVS =
-          std::make_shared<VGPRValueStorage>(scavengeFreeRegister(
+      std::shared_ptr<StateValueArrayStorage> SVS =
+          std::make_shared<VGPRStateValueArrayStorage>(scavengeFreeRegister(
               MRI, llvm::AMDGPU::VGPR_32RegClass,
-              HooksAccessedPhysicalRegistersNotInLiveIns, *FirstMILiveIns));
+              AccessedPhysicalRegistersNotInLiveIns, *FirstMILiveIns));
 
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-          llvm::dyn_cast<VGPRValueStorage>(SVS.get())->StorageVGPR != 0));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          llvm::dyn_cast<VGPRStateValueArrayStorage>(SVS.get())->StorageVGPR !=
+              0,
+          ""));
 
       // llvm::SlotIndex is used to create intervals that keep track of the
       // locations of the value state/flat scratch registers
@@ -345,17 +392,18 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
       llvm::SlotIndex CurrentIntervalBegin =
           FunctionsSlotIndexes.at(&MF->getFunction())->getZeroIndex();
       // Create a segment for the current interval
-      auto &Segments = ValueStateRegAndFlatScratchIntervals.insert({MF, {}})
-                           .first->getSecond();
+      auto &Segments =
+          StateValueStorageIntervals.insert({MF, {}}).first->getSecond();
       // A set of hook insertion points that fall into the current interval
       llvm::SmallDenseSet<const llvm::MachineInstr *, 4>
           HookInsertionPointsInCurrentSegment{};
       for (const auto &MBB : *MF) {
         for (const auto &MI : MBB) {
-          if (MIToHookMap.contains(&MI))
+          if (InstPointToInjectedPayloadMap.contains(&MI))
             HookInsertionPointsInCurrentSegment.insert(&MI);
           auto *InstrLiveRegs = RegLiveness.getLiveInPhysRegsOfMachineInstr(MI);
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(InstrLiveRegs != nullptr));
+          LUTHIER_RETURN_ON_ERROR(
+              LUTHIER_ERROR_CHECK(InstrLiveRegs != nullptr, ""));
           // Q: Do we have to relocate the state value register?
           // A:
           // 1. If we have spilled the state value reg and this instruction
@@ -372,7 +420,7 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
           // see if we can move it back to a VGPR
           bool TryRelocatingValueStateReg =
               llvm::isa<SpilledWithThreeSGPRsValueStorage>(SVS.get()) &&
-              MIToHookMap.contains(&MI);
+              InstPointToInjectedPayloadMap.contains(&MI);
           bool MustRelocateStateValue =
               SVS->getStateValueStorageReg() != 0 &&
               !InstrLiveRegs->available(MF->getRegInfo(),
@@ -393,7 +441,8 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
           }
 
           if (auto *TwoSGPRSVS =
-                  llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(SVS.get())) {
+                  llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(
+                      SVS.get())) {
             if (!InstrLiveRegs->available(MF->getRegInfo(),
                                           TwoSGPRSVS->FlatScratchSGPRLow) ||
                 !InstrLiveRegs->available(MF->getRegInfo(),
@@ -413,14 +462,12 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
             for (const auto &HookMI : HookInsertionPointsInCurrentSegment) {
               auto *HookLiveRegs =
                   RegLiveness.getLiveInPhysRegsOfMachineInstr(*HookMI);
-              auto [HookSVGPR, ClobbersAppReg] = findVGPRLocationForHook(
-                  HookMI, *StateValueFixedLocation, *HookLiveRegs,
-                  HooksAccessedPhysicalRegistersNotInLiveIns);
-              HookMIToValueStateInterval.insert(
-                  {HookMI,
-                   {HookSVGPR,
-                    ClobbersAppReg,
-                    {CurrentIntervalBegin, InstrIndex, SVS}}});
+              auto [HookSVGPR, ClobbersAppReg] =
+                  selectVGPRLoadLocationForInjectedPayload(
+                      *HookMI, *SVS, *HookLiveRegs,
+                      AccessedPhysicalRegistersNotInLiveIns);
+              InstPointSVSLoadPlans.insert(
+                  {HookMI, {HookSVGPR, ClobbersAppReg, *SVS}});
             }
             HookInsertionPointsInCurrentSegment.clear();
             CurrentIntervalBegin = InstrIndex;
@@ -433,19 +480,20 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
             // TODO: Limit this to the amount user requests
             llvm::MCRegister StateValueRegStorage = scavengeFreeRegister(
                 MRI, llvm::AMDGPU::VGPR_32RegClass,
-                HooksAccessedPhysicalRegistersNotInLiveIns, *InstrLiveRegs);
+                AccessedPhysicalRegistersNotInLiveIns, *InstrLiveRegs);
 
             bool Scavenged = StateValueRegStorage != 0;
             // If we weren't able to scavenge a VGPR, scavenge an AGPR
             if (Scavenged) {
-              SVS = std::make_shared<VGPRValueStorage>(StateValueRegStorage);
+              SVS = std::make_shared<VGPRStateValueArrayStorage>(
+                  StateValueRegStorage);
               WasRelocationSuccessful = true;
             } else {
               llvm::SmallVector<llvm::MCRegister, 2> TwoScavengedAGPRs;
-              Scavenged = scavengeFreeRegister(
-                  MRI, llvm::AMDGPU::AGPR_32RegClass,
-                  HooksAccessedPhysicalRegistersNotInLiveIns, *InstrLiveRegs, 2,
-                  TwoScavengedAGPRs);
+              Scavenged =
+                  scavengeFreeRegister(MRI, llvm::AMDGPU::AGPR_32RegClass,
+                                       AccessedPhysicalRegistersNotInLiveIns,
+                                       *InstrLiveRegs, 2, TwoScavengedAGPRs);
               if (Scavenged) {
                 SVS = std::make_shared<TwoAGPRValueStorage>(
                     TwoScavengedAGPRs[0], TwoScavengedAGPRs[1]);
@@ -454,17 +502,15 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
                 llvm::SmallVector<llvm::MCRegister, 3> ThreeScavengedSGPRs;
                 Scavenged = scavengeFreeRegister(
                     MRI, llvm::AMDGPU::SGPR_32RegClass,
-                    HooksAccessedPhysicalRegistersNotInLiveIns, *InstrLiveRegs,
-                    2, ThreeScavengedSGPRs);
+                    AccessedPhysicalRegistersNotInLiveIns, *InstrLiveRegs, 3,
+                    ThreeScavengedSGPRs);
                 if (!Scavenged)
                   WasRelocationSuccessful = false;
                 else {
                   if (TwoScavengedAGPRs.size() == 1) {
                     SVS = std::make_shared<AGPRWithThreeSGPRSValueStorage>(
                         TwoScavengedAGPRs[0], ThreeScavengedSGPRs[0],
-                        ThreeScavengedSGPRs[1],
-                        ThreeScavengedSGPRs[2]
-                        );
+                        ThreeScavengedSGPRs[1], ThreeScavengedSGPRs[2]);
                   } else {
                     SVS = std::make_shared<SpilledWithThreeSGPRsValueStorage>(
                         ThreeScavengedSGPRs[0], ThreeScavengedSGPRs[1],
@@ -474,8 +520,8 @@ llvm::Error LRStateValueLocations::calculateStateValueLocations() {
                 }
               }
             }
-            LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(WasRelocationSuccessful ||
-                                                      !MustRelocateStateValue));
+            LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+                WasRelocationSuccessful || !MustRelocateStateValue, ""));
           }
         }
       }

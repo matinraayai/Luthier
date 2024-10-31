@@ -285,9 +285,12 @@ public:
 /// at the instrumentation point
 struct InstPointSVALoadPlan {
   /// The VGPR where the state value will be loaded into
-  llvm::MCRegister StateValueVGPR{};
+  llvm::MCRegister StateValueArrayLoadVGPR{};
+  /// Whether or not the state value array load VGPR will clobber the app's
+  /// live VGPR and must be stored somewhere
+  bool LoadDestClobbersAppVGPR{};
   /// Where the state value is located before being loaded into the VGPR
-  StateValueStorageSegment StateValueLocation;
+  StateValueArrayStorage &StateValueStorageLocation;
 };
 
 /// \brief an analysis on a \c LiftedRepresentation that determines where the
