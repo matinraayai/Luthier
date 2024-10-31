@@ -48,7 +48,10 @@ public:
   HsaRuntimeInterceptor() = default;
 
   ~HsaRuntimeInterceptor() {
-    uninstallApiTables();
+    //  TODO: Should we even uninstall the wrappers for clean up?
+    //  Commented out for now since sometimes entries of the api table end up
+    //  being null pointers
+    //    uninstallApiTables();
     AmdTable = {};
     Singleton<HsaRuntimeInterceptor>::~Singleton();
   }
