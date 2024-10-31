@@ -30,8 +30,8 @@
 #include "tooling_common/TargetManager.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
 #include "tooling_common/intrinsic/ReadReg.hpp"
-#include "tooling_common/intrinsic/WriteReg.hpp"
 #include "tooling_common/intrinsic/WriteExec.hpp"
+#include "tooling_common/intrinsic/WriteReg.hpp"
 
 #include "luthier/luthier.h"
 #include "luthier/types.h"
@@ -85,8 +85,7 @@ void internalApiCallback(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                                       .cacheExecutableOnExecutableFreeze(Exec));
     // Check if the executable belongs to the tool and not the app
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        ToolExecutableLoader::instance().registerIfLuthierToolExecutable(
-            Exec));
+        ToolExecutableLoader::instance().registerIfLuthierToolExecutable(Exec));
   }
   if (Phase == API_EVT_PHASE_AFTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_load_agent_code_object) {
@@ -127,10 +126,11 @@ static void parseEnvVariableArgs() {
       ->setValue(llvm::cl::BOU_FALSE, true);
 
   auto Argv = "";
-  LUTHIER_REPORT_FATAL_ON_ERROR(
-      LUTHIER_ASSERTION(llvm::cl::ParseCommandLineOptions(
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+      llvm::cl::ParseCommandLineOptions(
           0, &Argv, "Luthier, An AMD GPU Dynamic Binary Instrumentation Tool",
-          &llvm::errs(), "LUTHIER_ARGS")));
+          &llvm::errs(), "LUTHIER_ARGS"),
+      "Failed to parse the command line arguments"));
 }
 
 static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
