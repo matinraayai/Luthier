@@ -468,18 +468,20 @@ f"""static void switch_{hsa_function_name}_wrapper(HsaApiTable *RuntimeApiTable,
     # Generate enable/disable wrapper functions for the interceptor
     enable_disable_funcs = f"""
 llvm::Error luthier::hsa::HsaRuntimeInterceptor::enableUserCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "User callback cannot be enabled when "
+                                                                               "HSA interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
   if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {{
     if (Status != FROZEN)
       HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, true);
     else {{
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!HsaWrapperInstallationCheckFunctionsMap[Op](RuntimeApiTable)));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(HsaWrapperInstallationCheckFunctionsMap[Op](RuntimeApiTable), "Function wrapper for Op {0} is not installed.", Op));
     }};
   }};
   EnabledUserOps.insert(Op);
@@ -487,13 +489,15 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::enableUserCallback(ApiEvtID Op)
 }}
 
 llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableUserCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "User callback cannot be disabled when "
+                                                                               "HSA interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
   EnabledUserOps.erase(Op);
   if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit && !EnabledUserOps.contains(Op))
     HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, false);
@@ -501,18 +505,20 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableUserCallback(ApiEvtID Op
 }}
 
 llvm::Error luthier::hsa::HsaRuntimeInterceptor::enableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be enabled when "
+                                                                               "HSA interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
   if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {{
     if (Status != FROZEN)
       HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, true);
     else {{
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!HsaWrapperInstallationCheckFunctionsMap[Op](RuntimeApiTable)));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(HsaWrapperInstallationCheckFunctionsMap[Op](RuntimeApiTable), "Function wrapper for Op {0} is not installed.", Op));
     }};
   }};
   EnabledInternalOps.insert(Op);
@@ -520,13 +526,15 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::enableInternalCallback(ApiEvtID
 }}
 
 llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be disabled when "
+                                                                               "HSA interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
   EnabledInternalOps.erase(Op);
   if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit && !EnabledUserOps.contains(Op))
     HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, false);

@@ -324,32 +324,36 @@ def generate_wrapper_enable_disable_functions(api_name,
     # Generate enable/disable callback functions for the interceptor
     enable_disable_funcs = f"""
 llvm::Error luthier::hip::{interceptor_name}::enableUserCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "User callback cannot be enabled when "
+                                                                               "{interceptor_name} interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
   unsigned int OpIdx = static_cast<unsigned int>(Op) - 
                        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST);
   if (Status != FROZEN)
     Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, true);
   else {{
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!Hip{api_name}WrapperInstallationCheckFunctionsMap[OpIdx](RuntimeApiTable)));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Hip{api_name}WrapperInstallationCheckFunctionsMap[OpIdx](RuntimeApiTable), "Wrapper for Op {0} is not installed.", Op));
   }};
   EnabledUserOps.insert(Op);
   return llvm::Error::success();
 }}
 
 llvm::Error luthier::hip::{interceptor_name}::disableUserCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "User callback cannot be disabled when "
+                                                                               "{interceptor_name} interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
   EnabledUserOps.erase(Op);
   if (Status != FROZEN && !EnabledInternalOps.contains(Op)) {{
     unsigned int OpIdx = static_cast<unsigned int>(Op) - 
@@ -361,32 +365,36 @@ llvm::Error luthier::hip::{interceptor_name}::disableUserCallback(ApiEvtID Op) {
 }}
 
 llvm::Error luthier::hip::{interceptor_name}::enableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be enabled when "
+                                                                               "{interceptor_name} interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
   unsigned int OpIdx = static_cast<unsigned int>(Op) - 
                        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST);
   if (Status != FROZEN)
     Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, true);
   else {{
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!Hip{api_name}WrapperInstallationCheckFunctionsMap[OpIdx](RuntimeApiTable)));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Hip{api_name}WrapperInstallationCheckFunctionsMap[OpIdx](RuntimeApiTable), "Wrapper for Op {0} is not installed.", Op));
   }};
   EnabledInternalOps.insert(Op);
   return llvm::Error::success();
 }}
 
 llvm::Error luthier::hip::{interceptor_name}::disableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Status != WAITING_FOR_API_TABLE));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be disabled when "
+                                                                               "{interceptor_name} interceptor is waiting " 
+                                                                               "for the API table to be captured."));
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op))); 
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ARGUMENT_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op)));
+     LUTHIER_ERROR_CHECK(
+        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
   EnabledInternalOps.erase(Op);
   if (Status != FROZEN && !EnabledInternalOps.contains(Op)) {{
     unsigned int OpIdx = static_cast<unsigned int>(Op) - 
