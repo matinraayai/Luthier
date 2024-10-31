@@ -10,7 +10,7 @@
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific languae governing permissions and
+// See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
@@ -48,7 +48,7 @@ hsa::ExecutableBackedObjectsCache::LoadedCodeObjectCache::cacheOnCreation(
                                            LCO.hsaHandle()););
   auto StorageMemory = LCO.getStorageMemory();
   LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
-  auto StorageELF = getAMDGCNObjectFile(*StorageMemory);
+  auto StorageELF = parseAMDGCNObjectFile(*StorageMemory);
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
   auto &CachedELF =
       *(StorageELFOfLCOs.insert({LCO.asHsaType(), std::move(*StorageELF)})
@@ -132,6 +132,9 @@ hsa::ExecutableBackedObjectsCache::LoadedCodeObjectCache::cacheOnCreation(
 
   // Construct the kernel symbols and cache them
   for (auto &KernelMD : LCOCachedMetaData.Kernels) {
+
+    LLVM_DEBUG(llvm::dbgs() << "Creating the kernel symbols.\n";);
+
     auto &NameWithKDAtTheEnd = KernelMD.Symbol;
     llvm::StringRef NameWithoutKD =
         llvm::StringRef(NameWithKDAtTheEnd)
@@ -139,11 +142,17 @@ hsa::ExecutableBackedObjectsCache::LoadedCodeObjectCache::cacheOnCreation(
     // Find the KD symbol
     auto KDSymbolIter = KDSymbolsOfThisLCO.find(NameWithKDAtTheEnd);
     LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(KDSymbolIter != KDSymbolsOfThisLCO.end()));
+        LUTHIER_ERROR_CHECK(KDSymbolIter != KDSymbolsOfThisLCO.end(),
+                            "Failed to find kernel {0} inside the list of "
+                            "kernel descriptor symbols of LCO {1:x}.",
+                            NameWithKDAtTheEnd, LCO.hsaHandle()));
     // Find the kernel function symbol
     auto KFuncSymbolIter = FuncSymbolsOfThisLCO.find(NameWithoutKD);
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ASSERTION(KFuncSymbolIter != FuncSymbolsOfThisLCO.end()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        KFuncSymbolIter != FuncSymbolsOfThisLCO.end(),
+        "Failed to find kernel function {0} inside the function "
+        "symbols of LCO {1:x}.",
+        NameWithoutKD, LCO.hsaHandle()));
 
     // Construct the Kernel LCO Symbol
     auto KernelSymbol =
@@ -230,7 +239,8 @@ llvm::Error ExecutableBackedObjectsCache::LoadedCodeObjectSymbolCache::
           llvm::dyn_cast<LoadedCodeObjectKernel>(&Symbol)) {
     auto KDAddress = KernelSymbol->getKernelDescriptor();
     LUTHIER_RETURN_ON_ERROR(KDAddress.takeError());
-    LoadedAddressToSymbolMap.erase(reinterpret_cast<luthier::address_t>(*KDAddress));
+    LoadedAddressToSymbolMap.erase(
+        reinterpret_cast<luthier::address_t>(*KDAddress));
   }
   // Invalidate the LCO symbol afterward
   LoadedLCOSymbols.erase(&Symbol);
@@ -253,15 +263,38 @@ ExecutableBackedObjectsCache::LoadedCodeObjectSymbolCache::cacheOnDeviceLoad(
   // Record the loaded address of the symbol, and cache it
   auto SymbolLoadedAddress = Symbol.getLoadedSymbolAddress();
   LUTHIER_RETURN_ON_ERROR(SymbolLoadedAddress.takeError());
+
+  LLVM_DEBUG(
+
+      auto SymbolName = Symbol.getName();
+      LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+
+      llvm::dbgs() << llvm::formatv(
+          "Recording symbol {0}'s address loaded at {1:x}. Symbol kind: {2}.\n",
+          *SymbolName, *SymbolLoadedAddress, Symbol.getType());
+
+  );
+
   LoadedAddressToSymbolMap.insert(
-      {reinterpret_cast<luthier::address_t>(*SymbolLoadedAddress),
-       &Symbol});
+      {reinterpret_cast<luthier::address_t>(*SymbolLoadedAddress), &Symbol});
   // If the symbol is a kernel, cache the address of the kernel descriptor
   // as well
   if (const auto *KernelSymbol =
           llvm::dyn_cast<LoadedCodeObjectKernel>(&Symbol)) {
     auto KDAddress = KernelSymbol->getKernelDescriptor();
     LUTHIER_RETURN_ON_ERROR(KDAddress.takeError());
+
+    LLVM_DEBUG(
+
+        auto SymbolName = Symbol.getName();
+        LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+
+        llvm::dbgs() << llvm::formatv(
+            "Recording symbol {0} KD loaded at address {1:x}.\n", *SymbolName,
+            *KDAddress);
+
+    );
+
     LoadedAddressToSymbolMap.insert(
         {reinterpret_cast<luthier::address_t>(*KDAddress), &Symbol});
   }
@@ -309,8 +342,10 @@ llvm::Error ExecutableBackedObjectsCache::cacheExecutableOnExecutableFreeze(
   // Check if executable is indeed frozen
   auto State = Exec.getState();
   LUTHIER_RETURN_ON_ERROR(State.takeError());
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(*State == HSA_EXECUTABLE_STATE_FROZEN));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      *State == HSA_EXECUTABLE_STATE_FROZEN,
+      "Cannot cache the unfrozen executable {0:x}.",
+                    Exec.hsaHandle()));
   // Get a list of the executable's loaded code objects
   llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
   LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
@@ -339,23 +374,23 @@ ExecutableBackedObjectsCache::invalidateExecutableOnExecutableDestroy(
     const Executable &Exec) {
   std::lock_guard Lock(CacheMutex);
   // TODO: Fix issue with invalidating cache
-//  // Get all the LCOs in the executable
-//  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-//  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
-//
-//  // Iterate over all LCOs
-//  for (const auto &LCO : LCOs) {
-//
-//    // Get all LCO symbols
-//    llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *> Symbols;
-//    LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
-//
-//    for (const auto &Symbol : Symbols) {
-//      llvm::consumeError(LCOSymbolCache.invalidateOnDestruction(*Symbol));
-//    }
-//    // Finally, invalidate the LCO
-//    LUTHIER_RETURN_ON_ERROR(LCOCache.invalidateOnDestruction(LCO));
-//  }
+  //  // Get all the LCOs in the executable
+  //  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
+  //  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
+  //
+  //  // Iterate over all LCOs
+  //  for (const auto &LCO : LCOs) {
+  //
+  //    // Get all LCO symbols
+  //    llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *> Symbols;
+  //    LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
+  //
+  //    for (const auto &Symbol : Symbols) {
+  //      llvm::consumeError(LCOSymbolCache.invalidateOnDestruction(*Symbol));
+  //    }
+  //    // Finally, invalidate the LCO
+  //    LUTHIER_RETURN_ON_ERROR(LCOCache.invalidateOnDestruction(LCO));
+  //  }
   return llvm::Error::success();
 }
 
