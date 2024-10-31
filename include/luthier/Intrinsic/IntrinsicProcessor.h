@@ -39,6 +39,8 @@ namespace llvm {
 
 class MachineFunction;
 
+class MachineInstr;
+
 class TargetRegisterInfo;
 
 class TargetInstrInfo;
@@ -273,8 +275,7 @@ public:
     return AccessedKernelArguments.begin();
   }
 
-  [[nodiscard]] const_accessed_kernargs_iterator
-  accessed_kernargs_end() const {
+  [[nodiscard]] const_accessed_kernargs_iterator accessed_kernargs_end() const {
     return AccessedKernelArguments.end();
   }
 
@@ -322,6 +323,16 @@ struct IntrinsicProcessor {
   IntrinsicIRProcessorFunc IRProcessor{};
   IntrinsicMIRProcessorFunc MIRProcessor{};
 };
+
+/// If the passed MI is an inline assembly instruction and a place holder
+/// for a Luthier intrinsic, returns the unique index associated with it
+/// \param MI the \c llvm::MachineInstr being inspected
+/// \return the unique index in the MI's inline assembly string, -1 if
+/// \p MI is not an inline assembly or its inline assembly string is empty,
+/// or an \c llvm::Error if its assembly string fails to convert to an
+/// unsigned int
+llvm::Expected<unsigned int>
+getIntrinsicInlineAsmPlaceHolderIdx(const llvm::MachineInstr &MI);
 
 /// Builds a \c llvm::CallInst invoking the intrinsic indicated by
 /// \p IntrinsicName at the instruction position indicated by the \p Builder
