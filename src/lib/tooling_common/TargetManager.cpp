@@ -81,26 +81,37 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
     std::string Error;
 
     auto Target = llvm::TargetRegistry::lookupTarget(TT->normalize(), Error);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Target));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        Target,
+        "Failed to lookup target {0} in LLVM. Reason according to LLVM: {1}.",
+        TT->normalize(), Error));
 
     auto MRI = Target->createMCRegInfo(TT->getTriple());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MRI));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        MRI, "Failed to create machine register info for {0}.",
+        TT->getTriple()));
 
     auto TargetOptions = new llvm::TargetOptions();
 
     TargetOptions->MCOptions.AsmVerbose = true;
 
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(TargetOptions));
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(TargetOptions, "Failed to create target options."));
 
     auto MAI = Target->createMCAsmInfo(*MRI, TT->getTriple(),
                                        TargetOptions->MCOptions);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MAI));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        MAI,
+        "Failed to create MCAsmInfo from target {0} for Target Triple {1}.",
+        Target, TT->getTriple()));
 
     auto MII = Target->createMCInstrInfo();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MII));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        MII, "Failed to create MCInstrInfo from target {0}", Target));
 
     auto MIA = Target->createMCInstrAnalysis(MII);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MIA));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        MIA, "Failed to create MCInstrAnalysis for target {0}.", Target));
 
     auto CPU = Isa.getGPUName();
     LUTHIER_RETURN_ON_ERROR(CPU.takeError());
@@ -110,11 +121,17 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
 
     auto STI = Target->createMCSubtargetInfo(TT->getTriple(), *CPU,
                                              FeatureString->getString());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(STI));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        STI,
+        "Failed to create MCSubTargetInfo from target {0} "
+        "for triple {1}, CPU {2}, with feature string {3}",
+        Target, TT->getTriple(), *CPU, FeatureString->getString()));
 
     auto IP = Target->createMCInstPrinter(
         llvm::Triple(*TT), MAI->getAssemblerDialect(), *MAI, *MII, *MRI);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(IP));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        IP, "Failed to create MCInstPrinter from Target {0} for Triple {1}.",
+        Target, TT->getTriple()));
 
     Info->second.Target = Target;
     Info->second.MRI = MRI;
@@ -134,7 +151,10 @@ TargetManager::createTargetMachine(
   LUTHIER_RETURN_ON_ERROR(TT.takeError());
   std::string Error;
   auto Target = llvm::TargetRegistry::lookupTarget(TT->normalize(), Error);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Target));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      Target,
+      "Failed to get target {0} from LLVM. Error according to LLVM: {1}.",
+      TT->normalize(), Error));
   auto CPU = ISA.getGPUName();
   LUTHIER_RETURN_ON_ERROR(CPU.takeError());
 
