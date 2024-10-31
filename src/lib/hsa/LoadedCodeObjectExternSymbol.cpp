@@ -28,9 +28,8 @@
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
-LoadedCodeObjectExternSymbol::create(
-    hsa_loaded_code_object_t LCO,
-    llvm::object::ELFSymbolRef ExternSymbol) {
+LoadedCodeObjectExternSymbol::create(hsa_loaded_code_object_t LCO,
+                                     llvm::object::ELFSymbolRef ExternSymbol) {
   hsa::LoadedCodeObject LCOWrapper(LCO);
   // Get the executable symbol associated with this external symbol
   auto Exec = LCOWrapper.getExecutable();
@@ -44,7 +43,11 @@ LoadedCodeObjectExternSymbol::create(
 
   auto ExecSymbol = Exec->getExecutableSymbolByName(*Name, *Agent);
   LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(ExecSymbol->has_value()));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_ERROR_CHECK(ExecSymbol->has_value(),
+                          "Failed to locate the external symbol {0} in its "
+                          "executable using its name",
+                          *Name));
 
   return std::unique_ptr<LoadedCodeObjectExternSymbol>(
       new LoadedCodeObjectExternSymbol(LCO, ExternSymbol,
