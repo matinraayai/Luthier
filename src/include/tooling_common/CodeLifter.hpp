@@ -54,6 +54,9 @@
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-code-lifter"
+
 namespace luthier {
 
 /// \brief A singleton class in charge of: \n
@@ -84,8 +87,8 @@ class CodeLifter : public Singleton<CodeLifter> {
   //===--------------------------------------------------------------------===//
 
 private:
-  /// Mutex to protect all cached items
-  std::shared_mutex CacheMutex{};
+  /// Mutex to protect fields of the code lifter
+  std::recursive_mutex CacheMutex{};
 
 public:
   /// Invoked by the \c Controller in the internal HSA callback to notify
@@ -110,11 +113,11 @@ private:
     std::unique_ptr<llvm::MCContext> Context;
     std::unique_ptr<llvm::MCDisassembler> DisAsm;
 
-    DisassemblyInfo() : Context(nullptr), DisAsm(nullptr){};
+    DisassemblyInfo() : Context(nullptr), DisAsm(nullptr) {};
 
     DisassemblyInfo(std::unique_ptr<llvm::MCContext> Context,
                     std::unique_ptr<llvm::MCDisassembler> DisAsm)
-        : Context(std::move(Context)), DisAsm(std::move(DisAsm)){};
+        : Context(std::move(Context)), DisAsm(std::move(DisAsm)) {};
   };
 
   /// Contains the cached \c DisassemblyInfo for each \c hsa::ISA
@@ -136,23 +139,99 @@ private:
   /// Entries get invalidated once the executable associated with the symbols
   /// get destroyed.
   llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *,
-                 std::unique_ptr<std::vector<hsa::Instr>>>
+                 std::unique_ptr<llvm::SmallVector<hsa::Instr>>>
       MCDisassembledSymbols{};
 
+  /// The corrected version of LLVM's evaluate branch
+  /// TODO: Merge this fix to upstream LLVM
+  static bool evaluateBranch(const llvm::MCInst &Inst, uint64_t Addr,
+                             uint64_t Size, uint64_t &Target);
+
 public:
-  /// Disassembles the content of the given \p hsa::ExecutableSymbol and returns
-  /// a reference to a \p std::vector<hsa::Instr>\n
+  /// Disassembles the contents of the function-type \p Symbol and returns
+  /// a reference to its disassembled array of <tt>hsa::Instr</tt>s\n
   /// Does not perform any symbolization or control flow analysis\n
   /// The \c hsa::ISA of the backing \c hsa::LoadedCodeObject will be used to
   /// disassemble the \p Symbol\n
   /// The results of this operation gets cached on the first invocation
-  /// \param Symbol the \p hsa::ExecutableSymbol to be disassembled. Must be of
+  /// \tparam ST type of the loaded code object symbol; Must be of
   /// type \p KERNEL or \p DEVICE_FUNCTION
-  /// \return on success, a const reference to the cached
-  /// \c std::vector<hsa::Instr>. On failure, an \p llvm::Error
+  /// \param Symbol the symbol to be disassembled
+  /// \return on success, a const reference to the cached disassembled
+  /// instructions; On failure, an \p llvm::Error
   /// \sa hsa::Instr
-  llvm::Expected<const std::vector<hsa::Instr> &>
-  disassemble(const hsa::LoadedCodeObjectSymbol &Symbol);
+  template <typename ST,
+            typename = std::enable_if<
+                std::is_same_v<ST, hsa::LoadedCodeObjectDeviceFunction> ||
+                std::is_same_v<ST, hsa::LoadedCodeObjectKernel>>>
+  llvm::Expected<llvm::ArrayRef<hsa::Instr>> disassemble(const ST &Symbol) {
+    std::lock_guard Lock(CacheMutex);
+    if (!MCDisassembledSymbols.contains(&Symbol)) {
+      // Get the ISA associated with the Symbol
+      auto LCO = hsa::LoadedCodeObject(Symbol.getLoadedCodeObject());
+      auto ISA = LCO.getISA();
+      LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+      // Locate the loaded contents of the symbol on the host
+      auto MachineCodeOnDevice = Symbol.getLoadedSymbolContents();
+      LUTHIER_RETURN_ON_ERROR(MachineCodeOnDevice.takeError());
+      auto MachineCodeOnHost =
+          hsa::convertToHostEquivalent(*MachineCodeOnDevice);
+      LUTHIER_RETURN_ON_ERROR(MachineCodeOnHost.takeError());
+
+      auto InstructionsAndAddresses = disassemble(*ISA, *MachineCodeOnHost);
+      LUTHIER_RETURN_ON_ERROR(InstructionsAndAddresses.takeError());
+      auto [Instructions, Addresses] = *InstructionsAndAddresses;
+
+      auto &Out =
+          MCDisassembledSymbols
+              .insert(
+                  {&Symbol, std::make_unique<llvm::SmallVector<hsa::Instr>>()})
+              .first->getSecond();
+      Out->reserve(Instructions.size());
+
+      auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
+      LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
+
+      auto MII = TargetInfo->getMCInstrInfo();
+
+      auto BaseLoadedAddress =
+          reinterpret_cast<luthier::address_t>(MachineCodeOnDevice->data());
+
+      luthier::address_t PrevInstAddress = BaseLoadedAddress;
+
+      for (unsigned int I = 0; I < Instructions.size(); ++I) {
+        auto &Inst = Instructions[I];
+        auto Address = Addresses[I] + BaseLoadedAddress;
+        auto Size = Address - PrevInstAddress;
+        if (MII->get(Inst.getOpcode()).isBranch()) {
+          LLVM_DEBUG(
+
+              llvm::dbgs() << "Instruction ";
+              Inst.dump_pretty(llvm::dbgs(), TargetInfo->getMCInstPrinter(),
+                               " ", TargetInfo->getMCRegisterInfo());
+              llvm::dbgs() << llvm::formatv(
+                  " at idx {0}, address {1:x}, size {2} is a branch; "
+                  "Evaluating its target.\n",
+                  I, Address, Size);
+
+          );
+          luthier::address_t Target;
+          if (evaluateBranch(Inst, Address, Size, Target)) {
+            LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                           "Evaluated address {0:x} as the branch target.\n",
+                           Target););
+            addDirectBranchTargetAddress(LCO, Target);
+          } else {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "Failed to evaluate the branch target.\n");
+          }
+        }
+        PrevInstAddress = Address;
+        Out->push_back(hsa::Instr(Inst, Symbol, Address, Size));
+      }
+    }
+    return *MCDisassembledSymbols.at(&Symbol);
+  }
 
   /// Disassembles the machine code encapsulated by \p code for the given \p ISA
   /// \param ISA the \p hsa::Isa of the \p Code
@@ -320,7 +399,7 @@ public:
   llvm::Expected<const LiftedRepresentation &>
   lift(const hsa::LoadedCodeObjectKernel &KernelSymbol);
 
-  /// Returns the \c LiftedRepresentation<hsa_executable_t> associated
+  /// Returns the \c LiftedRepresentation associated
   /// with the given \p Exec\n
   /// The representation gets cached on the first invocation
   /// \param Exec an \c hsa::Executable
@@ -336,5 +415,7 @@ public:
 };
 
 } // namespace luthier
+
+#undef DEBUG_TYPE
 
 #endif
