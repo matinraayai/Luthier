@@ -22,7 +22,6 @@
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
 #include <tooling_common/PhysicalRegAccessVirtualizationPass.hpp>
 
 namespace luthier {
@@ -41,11 +40,11 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
     for (auto &MI : llvm::make_early_inc_range(MBB)) {
       if (MI.isInlineAsm()) {
-        // The Asm string is of type symbol
-        auto IntrinsicIdxAsString =
-            MI.getOperand(llvm::InlineAsm::MIOp_AsmString).getSymbolName();
-        // TODO: catch the exception
-        unsigned int IntrinsicIdx = std::stoul(IntrinsicIdxAsString);
+        auto IntrinsicIdx = getIntrinsicInlineAsmPlaceHolderIdx(MI);
+        if (auto Err = IntrinsicIdx.takeError()) {
+          MF.getContext().reportError({}, llvm::toString(std::move(Err)));
+          return false;
+        };
         llvm::SmallVector<std::pair<llvm::InlineAsm::Flag, llvm::Register>, 4>
             ArgVec;
         for (unsigned I = llvm::InlineAsm::MIOp_FirstOperand,
@@ -76,13 +75,21 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         auto PhysRegAccessor = [&](llvm::MCRegister Reg) {
           if (OverwrittenPhysRegs.contains(Reg))
             return OverwrittenPhysRegs[Reg];
-          else
-            return RegAccessVirtualizer.getMCRegLocationInMBB(Reg, MBB);
+          else {
+            auto Out = RegAccessVirtualizer.getMCRegLocationInMBB(Reg, MBB);
+            if (!Out) {
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_CREATE_ERROR(
+                  "Failed to find the virtual register associated with "
+                  "register {0} in MBB {1}.",
+                  llvm::printReg(Reg, MF.getSubtarget().getRegisterInfo()), MBB.getName()));
+            }
+            return Out;
+          }
         };
 
         llvm::DenseMap<llvm::MCRegister, llvm::Register> ToBeOverwrittenRegs;
 
-        auto &IRLoweringInfo = MIRLoweringMap[IntrinsicIdx].second;
+        auto &IRLoweringInfo = ToBeLoweredIntrinsics[*IntrinsicIdx];
 
         auto IRProcessor =
             IntrinsicsProcessors.find(IRLoweringInfo.getIntrinsicName());
@@ -95,7 +102,7 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
                 PhysRegAccessor, ToBeOverwrittenRegs)) {
           MF.getFunction().getContext().emitError(
               "Failed to lower the intrinsic; Error message: " +
-              toString(std::move(Err)));
+              llvm::toString(std::move(Err)));
         }
         // Remove the dummy inline assembly
         MI.eraseFromParent();
@@ -103,10 +110,15 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         // Take the
         if (!ToBeOverwrittenRegs.empty()) {
           for (const auto &[PhysReg, VirtReg] : ToBeOverwrittenRegs) {
-//            llvm::outs() << "PhysReg: " << MF.getSubtarget().getRegisterInfo()->getName(PhysReg) << ", virt reg: << " << llvm::printReg(VirtReg, MF.getSubtarget().getRegisterInfo()) << "\n";
-//            llvm::outs() << "What will be replaced? " << llvm::printReg(PhysRegAccessor(PhysReg), MF.getSubtarget().getRegisterInfo()) << "\n";
+            //            llvm::outs() << "PhysReg: " <<
+            //            MF.getSubtarget().getRegisterInfo()->getName(PhysReg)
+            //            << ", virt reg: << " << llvm::printReg(VirtReg,
+            //            MF.getSubtarget().getRegisterInfo()) << "\n";
+            //            llvm::outs() << "What will be replaced? " <<
+            //            llvm::printReg(PhysRegAccessor(PhysReg),
+            //            MF.getSubtarget().getRegisterInfo()) << "\n";
             for (auto &Use : MRI.use_operands(PhysRegAccessor(PhysReg))) {
-//              Use.getParent()->print(llvm::outs());
+              //              Use.getParent()->print(llvm::outs());
               Use.setReg(VirtReg);
             }
             OverwrittenPhysRegs.insert_or_assign(PhysReg, VirtReg);
@@ -115,17 +127,20 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       }
     }
   }
-//  // Update the used physical defs without defines to keep the machine verifier
-//  // happy
-//  llvm::addLiveIns(MF.front(), InsertedPhysRegs);
+  //  // Update the used physical defs without defines to keep the machine
+  //  verifier
+  //  // happy
+  //  llvm::addLiveIns(MF.front(), InsertedPhysRegs);
   return Changed;
 }
 
 void IntrinsicMIRLoweringPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
+  /// Needs the physical register virtualization pass to provide access to
+  /// the holding virtual registers
   AU.addRequiredID(luthier::PhysicalRegAccessVirtualizationPass::ID);
   AU.setPreservesAll();
-//  AU.setPreservesCFG();
-//  AU.addPreservedID(llvm::MachineLoopInfoID);
+  //  AU.setPreservesCFG();
+  //  AU.addPreservedID(llvm::MachineLoopInfoID);
   MachineFunctionPass::getAnalysisUsage(AU);
 };
 

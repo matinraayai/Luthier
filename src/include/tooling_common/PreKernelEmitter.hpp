@@ -25,7 +25,7 @@
 
 namespace luthier {
 
-class LRStateValueLocations;
+class LRStateValueStorageAndLoadLocations;
 
 class LiftedRepresentation;
 
@@ -54,13 +54,14 @@ class PreKernelEmitter {
 private:
   LiftedRepresentation &LR;
 
-  LRStateValueLocations & SVLocations;
+  LRStateValueStorageAndLoadLocations & SVLocations;
 
   PreKernelEmissionDescriptor PKInfo;
 
 public:
   explicit PreKernelEmitter(PreKernelEmissionDescriptor Info,
-                            LiftedRepresentation &LR, LRStateValueLocations &SVLocs)
+                            LiftedRepresentation &LR,
+                            LRStateValueStorageAndLoadLocations &SVLocs)
       : PKInfo(Info), LR(LR), SVLocations(SVLocs) {};
 
   llvm::Error emitPreKernel();

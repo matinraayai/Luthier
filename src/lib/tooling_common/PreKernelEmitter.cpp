@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PreKernelEmitter.hpp"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "tooling_common/LRStateValueLocations.hpp"
+#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
 
@@ -82,7 +82,8 @@ llvm::Error PreKernelEmitter::emitPreKernel() {
               llvm::CallingConv::AMDGPU_KERNEL &&
           FuncSymbol->getLoadedCodeObject() == LCO) {
         auto EntryInstr = MF->begin()->begin();
-        auto *EntryInstrSVS = SVLocations.getValueSegmentForInstr(*EntryInstr);
+        auto &EntryInstrSVS =
+            SVLocations.getStorageIntervalsOfBasicBlock(*MF->begin())[0];
 
         if (PKInfo.EnableScratchAndStoreStackInfo) {
           auto &MFI = *MF->getInfo<llvm::SIMachineFunctionInfo>();
@@ -121,7 +122,7 @@ llvm::Error PreKernelEmitter::emitPreKernel() {
 
           // Emit the pre-kernel: ==============================================
           llvm::MCRegister ValueStateLocation =
-              EntryInstrSVS->getSVS().getStateValueStorageReg();
+              EntryInstrSVS.getSVS().getStateValueStorageReg();
 
           // First make a copy of S0 and S1/ FS_lo FS_hi in the state value
           // register
