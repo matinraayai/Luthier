@@ -23,6 +23,7 @@
 
 #include "tooling_common/TPCOverrides.hpp"
 
+#include "tooling_common/HookPEIPass.hpp"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -35,7 +36,6 @@
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include "AMDGPUGenInstrInfo.inc"
@@ -49,10 +49,6 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/MC/MCAsmBackend.h"
-#include "llvm/MC/MCInstrDesc.h"
-#include "llvm/MC/MCParser/MCAsmLexer.h"
-#include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include <SIMachineFunctionInfo.h>
@@ -74,10 +70,6 @@
 #define DEBUG_TYPE "luthier-code-generator"
 
 namespace luthier {
-
-/// All injected payload <tt>llvm::Function</tt>s must have this attribute
-static constexpr const char *InjectedPayloadAttribute =
-    "luthier_injected_payload";
 
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
@@ -153,8 +145,10 @@ CodeGenerator::generateInjectedPayloadForApplicationMI(
   // it will be injected before, as well as the number of the MI's MBB
   std::string IFuncName;
   llvm::raw_string_ostream NameOS(IFuncName);
-  NameOS << "MI: " << ApplicationMI
-         << ", MMB ID: " << ApplicationMI.getParent()->getNumber();
+  NameOS << "MI: ";
+  // This is verbose to avoid adding a new line here.
+  ApplicationMI.print(NameOS, true, false, false, false);
+  NameOS << ", MMB ID: " << ApplicationMI.getParent()->getNumber();
   auto *InjectedPayload = llvm::Function::Create(
       FunctionType, llvm::GlobalValue::ExternalLinkage, IFuncName, IModule);
   // The instrumentation function has the C-Calling convention
@@ -164,7 +158,7 @@ CodeGenerator::generateInjectedPayloadForApplicationMI(
   InjectedPayload->addFnAttr(llvm::Attribute::Naked);
   // Set an attribute indicating that this is the top-level function for an
   // injected payload
-  InjectedPayload->addFnAttr(InjectedPayloadAttribute);
+  InjectedPayload->addFnAttr(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE);
 
   LLVM_DEBUG(
 
@@ -185,7 +179,10 @@ CodeGenerator::generateInjectedPayloadForApplicationMI(
   for (const auto &HookInvSpec : HookInvocationSpecs) {
     // Find the hook function inside the instrumentation module
     auto HookFunc = IModule.getFunction(HookInvSpec.HookName);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(HookFunc != nullptr));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        HookFunc != nullptr,
+        "Failed to find hook {0} inside the instrumentation module.",
+        HookInvSpec.HookName));
     // Construct the operands of the hook call
     llvm::SmallVector<llvm::Value *, 4> Operands;
     for (const auto &[Idx, Op] : llvm::enumerate(HookInvSpec.Args)) {
@@ -194,7 +191,8 @@ CodeGenerator::generateInjectedPayloadForApplicationMI(
         // into a value, then pass it to the hook
         auto ReadRegVal = insertCallToIntrinsic(
             *HookFunc->getParent(), Builder, "luthier::readReg",
-            *HookFunc->getArg(Idx)->getType(), std::get<llvm::MCRegister>(Op).id());
+            *HookFunc->getArg(Idx)->getType(),
+            std::get<llvm::MCRegister>(Op).id());
         Operands.push_back(ReadRegVal);
       } else {
         // Otherwise it's a constant, we can just pass it directly
@@ -211,7 +209,7 @@ CodeGenerator::generateInjectedPayloadForApplicationMI(
 }
 
 /// Runs the IR optimization pipeline on the \p IModule
-/// \param IModule The instrumentation module being optimized
+/// \param IModule The instrumentation module to be optimized
 /// \param TM The \c llvm::TargetMachine of the \p IModule used to
 /// schedule passes related to the AMDGPU backend
 static void runIROptimizationPipelineOnIModule(llvm::Module &IModule,
@@ -248,105 +246,126 @@ static void runIROptimizationPipelineOnIModule(llvm::Module &IModule,
   // fails at any point?
 }
 
-void calculatePhysicalRegsAccessedByHooksNotToBeClobbered(
+/// Returns a set of physical registers used by the intrinsics the are
+/// not in the live-in sets of the injected payload \n
+/// These registers will not be clobbered by any of the injected payload
+/// functions and are set to be preserved
+/// \param [in] InjectedPayloadToInjectionPointMap Mapping between the
+/// \c llvm::Function of the injected payload to its target insertion point
+/// inside the instrumented application
+/// \param [in] IntrinsicIRLoweringInfoMap A set of intrinsic IR lowering infos
+/// inside the instrumentation \c llvm::Module
+/// \param [in] LRLiveRegs The \c LRRegisterLiveness of the LR, which provides
+/// the set of live physical registers before each instruction inside the LR
+/// \pararm [in] TM The Target Machine
+/// \param [out] Out A set of physical registers accessed by intrinsics
+/// inside the instrumentation module that are not in the live-in set of their
+/// instrumentation point
+/// \returns an \c llvm::Error indicating the success or failure of the
+/// operation
+static llvm::Error getAccessedPhysicalRegistersNotInLiveIns(
     const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-        &HookFuncToMIMap,
-    const llvm::ArrayRef<std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
-        ToBeLoweredIntrinsics,
+        &InjectedPayloadToInjectionPointMap,
+    const llvm::ArrayRef<IntrinsicIRLoweringInfo> IntrinsicIRLoweringInfoMap,
     const LRRegisterLiveness &LRLiveRegs, const llvm::GCNTargetMachine &TM,
     llvm::LivePhysRegs &Out) {
-  // This function does not require the hook insertion tasks to be passed,
-  // since passing arguments is done using luthier::readReg
-  for (const auto &[Func, LoweringInfo] : ToBeLoweredIntrinsics) {
-    if (Func->hasFnAttribute(InjectedPayloadAttribute)) {
-      for (const auto &UsedPhysReg :
-           LoweringInfo.getAccessedPhysicalRegisters()) {
-        auto *MIInsertionPoint = HookFuncToMIMap.at(Func);
-        if (!LRLiveRegs.getLiveInPhysRegsOfMachineInstr(*MIInsertionPoint)
-                 ->contains(UsedPhysReg)) {
-          if (Out.empty())
-            Out.init(*TM.getSubtargetImpl(*Func)->getRegisterInfo());
-          Out.addReg(UsedPhysReg);
+  for (const auto &LoweringInfo : IntrinsicIRLoweringInfoMap) {
+    auto &PlaceHolderInlineAsm = LoweringInfo.getPlaceHolderInlineAsm();
+    // Check if the Placeholder inline assembly has only one user
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(PlaceHolderInlineAsm.hasOneUser(),
+                            "Expected a single user for a Luthier intrinsic "
+                            "place holder inline assembly."));
+    for (const auto &User : PlaceHolderInlineAsm.users()) {
+      if (auto *InlineAsmCallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
+        auto IntrinsicUserFunction = InlineAsmCallInst->getFunction();
+        if (IntrinsicUserFunction->hasFnAttribute(
+                LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+          for (const auto &UsedPhysReg : LoweringInfo.accessed_phys_regs()) {
+            auto *MIInsertionPoint =
+                InjectedPayloadToInjectionPointMap.at(IntrinsicUserFunction);
+            if (!LRLiveRegs.getLiveInPhysRegsOfMachineInstr(*MIInsertionPoint)
+                     ->contains(UsedPhysReg)) {
+              if (Out.empty())
+                Out.init(*TM.getSubtargetImpl(*IntrinsicUserFunction)
+                              ->getRegisterInfo());
+              Out.addReg(UsedPhysReg);
+            }
+          }
         }
-      }
+      } else
+        return LUTHIER_CREATE_ERROR("Found user of intrinsic inline assembly "
+                                    "place holder that's not a call function; "
+                                    "Place holder: {0}, User: {1}",
+                                    PlaceHolderInlineAsm, User);
     }
   }
+  return llvm::Error::success();
 }
 
-std::tuple<llvm::MachineModuleInfoWrapperPass *,
-           std::unique_ptr<llvm::legacy::PassManager>,
-           PreKernelEmissionDescriptor>
-CodeGenerator::runCodeGenPipeline(
+llvm::Error CodeGenerator::runModifiedCodeGenPipelineOnIModule(
+    llvm::Module &IModule, const LiftedRepresentation &LR,
+    const hsa::LoadedCodeObject &LCO, const LRRegisterLiveness &LRLiveRegs,
+    const LRCallGraph &CG,
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-        &MIToHookFuncMap,
+        &InstPointToInjectedPayloadMap,
     const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-        &HookFuncToMIMap,
-    const llvm::SmallVectorImpl<
-        std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
-        &ToBeLoweredIntrinsics,
-    bool DisableVerify, const LiftedRepresentation &LR,
-    const hsa::LoadedCodeObject &LCO, llvm::GCNTargetMachine *TM,
-    llvm::Module &M) {
-  // Calculate the live registers at every point of the LR
-  LRRegisterLiveness LRLiveRegs(LR);
-  {
-    llvm::TimeTraceScope Scope("Liveness Analysis Computation");
-    LRLiveRegs.recomputeLiveIns();
-  }
-
-  // Analyze the call graph
-  auto CG = LRCallGraph::analyse(LR);
-  LUTHIER_REPORT_FATAL_ON_ERROR(CG.takeError());
-
+        &InjectedPayloadToInstPointMap,
+    const llvm::SmallVectorImpl<IntrinsicIRLoweringInfo>
+        &IntrinsicIRLoweringInfoVec,
+    llvm::legacy::PassManager &PM, llvm::GCNTargetMachine &TM,
+    llvm::MachineModuleInfoWrapperPass &IMMIWP,
+    PreKernelEmissionDescriptor PKInfo, bool DisableVerify) {
   // Calculate all the physical registers accessed by the instrumentation
-  // logic that are not live at hook points
-  llvm::LivePhysRegs PhysicalRegisterNotToClobber;
-  calculatePhysicalRegsAccessedByHooksNotToBeClobbered(
-      HookFuncToMIMap, ToBeLoweredIntrinsics, LRLiveRegs, *TM,
-      PhysicalRegisterNotToClobber);
-  // Store specs of the pre-kernel here
-  PreKernelEmissionDescriptor PKInfo;
-  auto SVLocations = LRStateValueLocations::create(LR, LCO, MIToHookFuncMap,
-                                                   PhysicalRegisterNotToClobber,
-                                                   LRLiveRegs, PKInfo);
+  // logic that are not live at their access points
+  llvm::LivePhysRegs AccessedPhysRegsNotInLiveIns(
+      *TM.getSubtargetImpl(*IModule.functions().begin())->getRegisterInfo());
+
+  LUTHIER_RETURN_ON_ERROR(getAccessedPhysicalRegistersNotInLiveIns(
+      InjectedPayloadToInstPointMap, IntrinsicIRLoweringInfoVec, LRLiveRegs, TM,
+      AccessedPhysRegsNotInLiveIns));
+
+  auto SVLocations = LRStateValueStorageAndLoadLocations::create(
+      LR, LCO, InstPointToInjectedPayloadMap, AccessedPhysRegsNotInLiveIns,
+      LRLiveRegs, PKInfo);
+
   LUTHIER_REPORT_FATAL_ON_ERROR(SVLocations.takeError());
 
-  // Create a new pass manager on the heap to have better control over its
-  // lifetime and the lifetime of the MMIWP
-  auto PM = std::make_unique<llvm::legacy::PassManager>();
+  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(IModule.getTargetTriple()));
 
-  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M.getTargetTriple()));
+  PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
 
-  PM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
-
-  auto *TPC = TM->createPassConfig(*PM);
+  auto *TPC = TM.createPassConfig(PM);
 
   TPC->setDisableVerify(DisableVerify);
 
-  PM->add(TPC);
+  PM.add(TPC);
 
-  auto IMMIWP = new llvm::MachineModuleInfoWrapperPass(TM);
-
-  PM->add(IMMIWP);
+  PM.add(&IMMIWP);
 
   TPC->addISelPasses();
   auto *PhysRegAccessPass = new PhysicalRegAccessVirtualizationPass(
-      LR, PhysicalRegisterNotToClobber, **CG, **SVLocations, HookFuncToMIMap,
-      ToBeLoweredIntrinsics, LRLiveRegs);
-  PM->add(PhysRegAccessPass);
-  PM->add(new IntrinsicMIRLoweringPass(ToBeLoweredIntrinsics,
-                                       IntrinsicsProcessors));
-  auto *PEPass =
-      new HookPEIPass(LR, **SVLocations, *PhysRegAccessPass, HookFuncToMIMap,
-                      LRLiveRegs, PhysicalRegisterNotToClobber, PKInfo);
+      LR, AccessedPhysRegsNotInLiveIns, CG, **SVLocations,
+      InjectedPayloadToInstPointMap, IntrinsicIRLoweringInfoVec, LRLiveRegs);
+  PM.add(PhysRegAccessPass);
+  PM.add(new IntrinsicMIRLoweringPass(IntrinsicIRLoweringInfoVec,
+                                      IntrinsicsProcessors));
+  auto *PEPass = new HookPEIPass(LR, **SVLocations, *PhysRegAccessPass,
+                                 InjectedPayloadToInstPointMap, LRLiveRegs,
+                                 AccessedPhysRegsNotInLiveIns, PKInfo);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      !TPC->isPassSubstitutedOrOverridden(&llvm::PrologEpilogCodeInserterID),
+      "The PEI pass should not be overridden."));
+  TPC->insertPass(&llvm::PrologEpilogCodeInserterID, PEPass);
+  TPC->addMachinePasses();
 
-  luthier::addMachinePassesToTPC(*TPC, *PEPass, *PM);
-  //  PM->add(PEPass);
   TPC->setInitialized();
 
-  PM->run(M);
+  PM.run(IModule);
 
-  return {IMMIWP, std::move(PM), PKInfo};
+  return LUTHIER_ERROR_CHECK(
+      !IMMIWP.getMMI().getContext().hadError(),
+      "The CodeGen pipeline encountered an error during its execution.");
 }
 
 llvm::Error patchLiftedRepresentation(
@@ -631,7 +650,11 @@ llvm::Error patchLiftedRepresentation(
             }
           } else if (DstMO.isGlobal()) {
             auto GVEntry = VMap.find(DstMO.getGlobal());
-            LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(GVEntry != VMap.end()));
+            LUTHIER_RETURN_ON_ERROR(
+                LUTHIER_ERROR_CHECK(GVEntry != VMap.end(),
+                                    "Failed to find global variable {0} inside "
+                                    "the representation being patched.",
+                                    DstMO.getGlobal()));
             auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
             DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
           }
@@ -655,16 +678,17 @@ llvm::Error patchLiftedRepresentation(
   return llvm::Error::success();
 }
 
-llvm::Error
-CodeGenerator::printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
-                             llvm::MachineModuleInfoWrapperPass *MMIWP,
-                             llvm::SmallVectorImpl<char> &CompiledObjectFile,
-                             llvm::CodeGenFileType FileType) {
-  llvm::TimeTraceScope scope("LLVM Assembly Printing");
+llvm::Error CodeGenerator::printAssembly(
+    llvm::Module &Module, llvm::GCNTargetMachine &TM,
+    std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
+    llvm::SmallVectorImpl<char> &CompiledObjectFile,
+    llvm::CodeGenFileType FileType) {
+  llvm::TimeTraceScope Scope("LLVM Assembly Printing");
   // Argument error checking
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ARGUMENT_ERROR_CHECK(FileType != llvm::CodeGenFileType::Null));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(MMIWP != nullptr));
+      LUTHIER_ERROR_CHECK(FileType != llvm::CodeGenFileType::Null,
+                          "Cannot pass file type Null to print assembly."));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(MMIWP != nullptr, ""));
 
   auto &MMI = MMIWP->getMMI();
   // Create the legacy pass manager with minimal passes to print the
@@ -679,16 +703,18 @@ CodeGenerator::printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
   TPC->setDisableVerify(true);
   TPC->setInitialized();
   PM.add(TPC);
-  // Add the MMI Wrapper pass
-  PM.add(MMIWP);
+  // Add the MMI Wrapper pass, while Releasing the ownership of the unique
+  // pointer over MMIWP to avoid freeing MMIWP multiple times
+  PM.add(MMIWP.release());
   // Add the resource usage analysis, which is in charge of calculating the
   // kernel descriptor and the metadata fields
   PM.add(new llvm::AMDGPUResourceUsageAnalysis());
 
   // Finally, add the Assembly printer pass
   llvm::raw_svector_ostream ObjectFileOS(CompiledObjectFile);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(!TM.addAsmPrinter(
-      PM, ObjectFileOS, nullptr, FileType, MMI.getContext())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      !TM.addAsmPrinter(PM, ObjectFileOS, nullptr, FileType, MMI.getContext()),
+      "Failed to add the assembly printer pass to the pass manager."));
 
   // Run the passes on the module to print the assembly
   PM.run(Module);
@@ -697,9 +723,11 @@ CodeGenerator::printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
 
 llvm::Error CodeGenerator::processIModuleIntrinsicUsersAtIRLevel(
     llvm::Module &IModule, const llvm::GCNTargetMachine &TM,
-    llvm::SmallVectorImpl<std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
-        &InlineAsmMIRMap) {
-  int NextIntrinsicIdx = 0;
+    llvm::SmallVectorImpl<IntrinsicIRLoweringInfo> &IntrinsicLoweringInfoVec) {
+  // Iterate over all functions and find the ones marked as a Luthier
+  // intrinsic
+  // Do an early increment on the range since we will remove the intrinsic
+  // function once we have processed all its users
   for (auto &F : llvm::make_early_inc_range(IModule.functions())) {
     if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE)) {
       // Find the processor for this intrinsic
@@ -707,8 +735,10 @@ llvm::Error CodeGenerator::processIModuleIntrinsicUsersAtIRLevel(
           F.getFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE).getValueAsString();
       // Ensure the processor is indeed registered with the Code Generator
       auto It = IntrinsicsProcessors.find(IntrinsicName);
-      LUTHIER_RETURN_ON_ERROR(
-          LUTHIER_ASSERTION(It != IntrinsicsProcessors.end()));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          It != IntrinsicsProcessors.end(),
+          "Intrinsic {0} is not registered with the code generator.",
+          IntrinsicName));
 
       LLVM_DEBUG(
 
@@ -721,16 +751,29 @@ llvm::Error CodeGenerator::processIModuleIntrinsicUsersAtIRLevel(
       );
 
       // Iterate over all users of the intrinsic
+      // Early increment the loop range since we will replace and delete the
+      // user in the process
       for (auto *User : llvm::make_early_inc_range(F.users())) {
-        LLVM_DEBUG(llvm::dbgs() << "User being processed: \n";
-                   User->print(llvm::dbgs()););
+        LLVM_DEBUG(
+
+            llvm::dbgs() << "User being processed: \n";
+            User->print(llvm::dbgs());
+
+        );
+
         // Ensure the user is a Call instruction; Anything other usage is
         // illegal
         auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User);
-        LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(CallInst != nullptr));
+        LUTHIER_RETURN_ON_ERROR(
+            LUTHIER_ERROR_CHECK(CallInst != nullptr,
+                                "Found a user of intrinsic {0} which is not a "
+                                "call instruction: {1}.",
+                                IntrinsicName, *User));
+        // Call the IR processor of the intrinsic on the user
         auto IRLoweringInfo = It->second.IRProcessor(F, *CallInst, TM);
         LUTHIER_RETURN_ON_ERROR(IRLoweringInfo.takeError());
-        IRLoweringInfo->setIntrinsicName(IntrinsicName);
+        // Set up the input/output value constraints
+
         // Add the output operand constraint, if the output is not void
         auto ReturnValInfo = IRLoweringInfo->getReturnValueInfo();
         std::string Constraint;
@@ -746,35 +789,63 @@ llvm::Error CodeGenerator::processIModuleIntrinsicUsersAtIRLevel(
           ArgValues.push_back(const_cast<llvm::Value *>(ArgInfo.Val));
           Constraint += ReturnValInfo.Constraint;
         }
-        auto *AsmCallInst = llvm::CallInst::Create(
-            llvm::InlineAsm::get(
-                llvm::FunctionType::get(ReturnValInfo.Val->getType(), ArgTypes,
-                                        false),
-                llvm::to_string(NextIntrinsicIdx), Constraint, true),
-            ArgValues);
-        AsmCallInst->insertBefore(*CallInst->getParent(),
-                                  CallInst->getIterator());
-        CallInst->replaceAllUsesWith(AsmCallInst);
-        // transfer debug info from the original invoke to the inline assembly
-        AsmCallInst->setDebugLoc(CallInst->getDebugLoc());
+        // Now that we have created the input/output argument constraints,
+        // create a call to a placeholder inline assembly instruction in the
+        // place of the user
+        auto *PlaceHolderInlineAsm = llvm::InlineAsm::get(
+            llvm::FunctionType::get(ReturnValInfo.Val->getType(), ArgTypes,
+                                    false),
+            llvm::to_string(IntrinsicLoweringInfoVec.size()), Constraint, true);
+        auto *InlineAsmPlaceholderCall =
+            llvm::CallInst::Create(PlaceHolderInlineAsm, ArgValues);
+        InlineAsmPlaceholderCall->insertBefore(*CallInst->getParent(),
+                                               CallInst->getIterator());
+        // Replace all occurrences of the user with the inline assembly
+        // placeholder
+        CallInst->replaceAllUsesWith(InlineAsmPlaceholderCall);
+        // Transfer debug info of the original use to the inline assembly
+        // placeholder
+        InlineAsmPlaceholderCall->setDebugLoc(CallInst->getDebugLoc());
+        // Remove the original user from its parent function
         CallInst->eraseFromParent();
-        auto *ParentFunction = AsmCallInst->getParent()->getParent();
-        // If the function using the intrinsic is not a hook (i.e a device
-        // function called from a hook), check if it's not requesting access to
-        // a physical register
-        if (!ParentFunction->hasFnAttribute(InjectedPayloadAttribute)) {
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-              IRLoweringInfo->getAccessedPhysicalRegisters().empty()));
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(
-              IRLoweringInfo->getRequestedKernelArgument().empty()));
+        auto *ParentFunction =
+            InlineAsmPlaceholderCall->getParent()->getParent();
+        // If the function using the intrinsic is not an injected payload and a
+        // hook (i.e a device function called from a hook), check if it's not
+        // requesting access to a physical register or a kernel argument
+        if (!ParentFunction->hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
+            !ParentFunction->hasFnAttribute(
+                LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+              IRLoweringInfo->accessed_phys_regs_empty(),
+              "Intrinsic {0} used in function {1} requested access to physical "
+              "registers, which is not allowed.",
+              IntrinsicName, ParentFunction->getName()));
+          LUTHIER_RETURN_ON_ERROR(
+              LUTHIER_ERROR_CHECK(IRLoweringInfo->accessed_kernargs_empty(),
+                                  "Intrinsic {0} used in non-hook function {1} "
+                                  "requested access to kernel arguments"
+                                  " , which is not allowed.",
+                                  IntrinsicName, ParentFunction->getName()));
         }
-        LLVM_DEBUG(llvm::dbgs()
-                       << "Use's inline assembly after IR processing: \n";
-                   AsmCallInst->print(llvm::dbgs()););
-        InlineAsmMIRMap.emplace_back(std::make_pair(
-            AsmCallInst->getFunction(), std::move(*IRLoweringInfo)));
-        NextIntrinsicIdx++;
+
+        // Record the name of the intrinsic as well as the inline assembly
+        // placeholder instruction used to keep track of it inside the
+        // Module/MMI
+        IRLoweringInfo->setIntrinsicName(IntrinsicName);
+        IRLoweringInfo->setPlaceHolderInlineAsm(*PlaceHolderInlineAsm);
+
+        LLVM_DEBUG(
+
+            llvm::dbgs() << "Use's inline assembly after IR processing: \n";
+            InlineAsmPlaceholderCall->print(llvm::dbgs());
+
+        );
+        // Finally, push back the IR lowering info of the intrinsic that
+        // we just processed
+        IntrinsicLoweringInfoVec.emplace_back(*IRLoweringInfo);
       }
+      // Remove the intrinsic function once all its users has been processed
       F.dropAllReferences();
       F.eraseFromParent();
     }
@@ -790,23 +861,31 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
     return llvm::Error::success();
   // Acquire the Lifted Representation's lock
   auto Lock = LR.getLock();
+  // Calculate the live registers at every point of the LR before generating
+  // code
+  LRRegisterLiveness LRLiveRegs(LR);
+  LRLiveRegs.recomputeLiveIns();
+
+  // Analyze the call graph
+  auto CG = LRCallGraph::analyse(LR);
+  LUTHIER_REPORT_FATAL_ON_ERROR(CG.takeError());
+
   // Each LCO will get its own copy of the instrumented module
-  for (auto &[LCO, LCOModule] : LR) {
-    hsa::LoadedCodeObject LCOWrapper(LCO);
-    auto Agent = LCOWrapper.getAgent();
+  for (auto &[LCOHandle, LCOModule] : LR) {
+    hsa::LoadedCodeObject LCO(LCOHandle);
+    auto Agent = LCO.getAgent();
     LUTHIER_RETURN_ON_ERROR(Agent.takeError());
     // Load the bitcode of the instrumentation module into the
     // Lifted Representation's context
-    auto *ProfilingEntry =
-        llvm::timeTraceProfilerBegin("LLVM Bitcode Loading", "");
-    auto IModuleTS =
-        Task.getModule().readBitcodeIntoContext(LR.getContext(), *Agent);
-    llvm::timeTraceProfilerEnd(ProfilingEntry);
-    LUTHIER_RETURN_ON_ERROR(IModuleTS.takeError());
-    auto &IModule = *IModuleTS->getModuleUnlocked();
+    std::unique_ptr<llvm::Module> IModule;
+    LUTHIER_RETURN_ON_ERROR(Task.getModule()
+                                .readBitcodeIntoContext(LR.getContext(), *Agent)
+                                .moveInto(IModule));
+
     LLVM_DEBUG(llvm::dbgs() << "Instrumentation Module Contents: \n";
-               IModule.print(llvm::dbgs(), nullptr););
-    auto &TM = LR.getTargetMachine<llvm::GCNTargetMachine>();
+               IModule->print(llvm::dbgs(), nullptr););
+
+    auto &TM = *LR.getTM(LCOHandle);
     // Now that everything has been created we can start inserting hooks
     LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
                             << Task.getHookInsertionTasks().size() << "\n");
@@ -820,66 +899,82 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
         InjectedPayloadToAppMIMap;
     // Generate and populate the injected payload functions in the
     // instrumentation module and keep track of them inside the map
-    ProfilingEntry = llvm::timeTraceProfilerBegin(
+    llvm::TimeTraceProfilerEntry *ProfilingEntry = llvm::timeTraceProfilerBegin(
         "Instrumentation Module IR Generation", "");
-    for (const auto &[ApplicationMI, HookSpecs] : Task.getHookInsertionTasks()) {
+    for (const auto &[ApplicationMI, HookSpecs] :
+         Task.getHookInsertionTasks()) {
       // Generate the Hooks for each MI
-      auto HookFunc =
-          generateInjectedPayloadForApplicationMI(IModule, HookSpecs, *ApplicationMI);
+      auto HookFunc = generateInjectedPayloadForApplicationMI(
+          *IModule, HookSpecs, *ApplicationMI);
       LUTHIER_RETURN_ON_ERROR(HookFunc.takeError());
       AppMIToInjectedPayloadMap.insert({ApplicationMI, &(*HookFunc)});
       InjectedPayloadToAppMIMap.insert({&(*HookFunc), ApplicationMI});
     }
     llvm::timeTraceProfilerEnd(ProfilingEntry);
-    LLVM_DEBUG(llvm::dbgs()
-               << "Instrumentation Module After Hooks Inserted:\n");
-    LLVM_DEBUG(IModule.print(llvm::dbgs(), nullptr));
-    // With the Hook IR generated, we put it through the normal IR optimization
+
+    LLVM_DEBUG(
+
+        llvm::dbgs() << "Instrumentation Module After Generation of Injected "
+                        "Payload Functions:\n";
+        IModule->print(llvm::dbgs(), nullptr);
+
+    );
+
+    // With the  IR generated, we put it through the normal IR optimization
     // pipeline
-    runIROptimizationPipelineOnIModule(IModule, TM);
+    runIROptimizationPipelineOnIModule(*IModule, TM);
 
     LLVM_DEBUG(
 
         llvm::dbgs() << "Instrumentation Module after IR optimization:\n";
-        IModule.print(llvm::dbgs(), nullptr)
+        IModule->print(llvm::dbgs(), nullptr)
 
     );
 
     ProfilingEntry = llvm::timeTraceProfilerBegin(
         "Instrumentation Module MIR CodeGen Optimization", "");
-    // Replace all Luthier intrinsics with dummy inline assembly and correct
-    // arguments
-    llvm::SmallVector<std::pair<llvm::Function *, IntrinsicIRLoweringInfo>, 4>
-        DummyAsmToIRLoweringInfoMap;
+    // Replace all uses of Luthier intrinsics with placeholder
+    // inline assembly and setup their argument register constraints
+    llvm::SmallVector<IntrinsicIRLoweringInfo, 4> IntrinsicIRLoweringInfoVec;
     LUTHIER_RETURN_ON_ERROR(processIModuleIntrinsicUsersAtIRLevel(
-        IModule, TM, DummyAsmToIRLoweringInfoMap));
-    // Run the code gen pipeline, while enforcing the stack and register
-    // constraints
-    auto [MMIWP, PM, PKInfo] = runCodeGenPipeline(
-        AppMIToInjectedPayloadMap, InjectedPayloadToAppMIMap, DummyAsmToIRLoweringInfoMap, false,
-        LR, hsa::LoadedCodeObject(LCO), &TM, IModule);
+        *IModule, TM, IntrinsicIRLoweringInfoVec));
+    // Run the modified version of the CodeGen pipeline, which should enforce
+    // the stack and register requirements as well as ensuring access to
+    // the application's physical registers and its kernel arguments
+    PreKernelEmissionDescriptor PKInfo;
+    // Create a new pass manager on the heap to have better control over its
+    // lifetime and the lifetime of the MMIWP
+    auto PM = new llvm::legacy::PassManager();
+
+    auto *MMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
+
+    LUTHIER_RETURN_ON_ERROR(runModifiedCodeGenPipelineOnIModule(
+        *IModule, LR, LCO, LRLiveRegs, **CG, AppMIToInjectedPayloadMap,
+        InjectedPayloadToAppMIMap, IntrinsicIRLoweringInfoVec, *PM, TM, *MMIWP,
+        PKInfo, false));
+
+    llvm::timeTraceProfilerEnd(ProfilingEntry);
+
     LLVM_DEBUG(llvm::dbgs() << "The instrumentation Machine Code before being "
                                "patched into the Lifted Representation:\n";
                llvm::dbgs() << "Location of instr. MMI in memory: "
                             << &MMIWP->getMMI() << "\n";
                llvm::dbgs() << "Location of instr. Module in memory: "
                             << MMIWP->getMMI().getModule() << "\n";
-               for (const auto &F : IModule) {
+               for (const auto &F : *IModule) {
                  if (auto MF = MMIWP->getMMI().getMachineFunction(F)) {
                    MF->print(llvm::dbgs());
                  }
-               });
-    llvm::timeTraceProfilerEnd(ProfilingEntry);
+               };);
 
     // Finally, patch in the generated machine code into the lifted
     // representation
-    LUTHIER_RETURN_ON_ERROR(
-        patchLiftedRepresentation(IModule, MMIWP->getMMI(), *LCOModule.first,
-                                  *LCOModule.second,
+    LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
+        *IModule, MMIWP->getMMI(), LCOModule.first, LCOModule.second,
         AppMIToInjectedPayloadMap, PKInfo));
 
     // TODO: remove this once the move constructor for MMI makes it to master
-    delete PM.release();
+    delete PM;
   };
   return llvm::Error::success();
 }
@@ -908,10 +1003,10 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
 
       llvm::dbgs() << "Final instrumented Lifted Representation Code:\n";
       for (const auto &[LCO, LCOModule] : *ClonedLR) {
-        for (const auto &F : *LCOModule.first) {
+        for (const auto &F : LCOModule.first) {
           llvm::dbgs() << "Function name in the LLVM Module: " << F.getName()
                        << "\n";
-          if (auto MF = LCOModule.second->getMachineFunction(F)) {
+          if (auto MF = LCOModule.second.getMachineFunction(F)) {
             llvm::dbgs() << "Location of the Machine Function in memory: " << MF
                          << "\n";
             MF->print(llvm::dbgs());
@@ -923,4 +1018,29 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
 
   return std::move(ClonedLR);
 }
+
+llvm::Expected<unsigned int> CodeGenerator::getInlineAsmIntrinsicPlaceHolderIdx(
+    const llvm::MachineInstr &MI) {
+  if (MI.isInlineAsm()) {
+    auto IntrinsicIdxAsString =
+        MI.getOperand(llvm::InlineAsm::MIOp_AsmString).getSymbolName();
+    // Empty inline assembly instructions can be skipped
+    if (llvm::StringRef(IntrinsicIdxAsString).empty())
+      return -1;
+    try {
+      // std::stoul throws exceptions and needs to be converted
+      unsigned int IntrinsicIdx = std::stoul(IntrinsicIdxAsString);
+      return IntrinsicIdx;
+    } catch (const std::exception &Exception) {
+      return LUTHIER_CREATE_ERROR(
+          "Caught an exception when getting the intrinsic index of the "
+          "inline assembly instruction "
+          "{0}. The exception: {1}.",
+          IntrinsicIdxAsString, Exception.what());
+    }
+  } else {
+    return -1;
+  }
+}
+
 } // namespace luthier
