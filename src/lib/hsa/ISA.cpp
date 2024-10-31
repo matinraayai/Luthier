@@ -67,7 +67,10 @@ llvm::Expected<std::string> ISA::getName() const {
 inline llvm::Error parseIsaName(llvm::StringRef IsaName,
                                 llvm::SmallVectorImpl<llvm::StringRef> &Out) {
   IsaName.split(Out, '-', 4);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Out.size() == 5));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      Out.size() == 5,
+      "Failed to split the passed ISA name {0} into 5 different fields.",
+      IsaName));
   return llvm::Error::success();
 }
 
