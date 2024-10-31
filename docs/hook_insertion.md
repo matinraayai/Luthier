@@ -18,10 +18,10 @@ the tool device code and embedd it in all the HSA code objects in the tool's FAT
 
 During execution, the HIP runtime parses the HIP FAT binary of the tool and loads the necessary tool code object(s) via
 ROCr as usual. Luthier can then easily access the embedded LLVM bitcode of the tool code object by inspecting its
-storage ELF without requiring a dedicated loader. The `ToolExecutableManager` in Luthier is tasked with loading the bitcode
+storage ELF without requiring a dedicated loader. The `ToolExecutableLoader` in Luthier is tasked with loading the bitcode
 into an `llvm::Module`. As the embedded bitcode is un-optimized, it needs to first go through IR-level optimizations 
 . The optimized IR will be the starting point for generating instrumented code. The LLVM Module is cached by
-the `ToolExecutableManager` for future usage and is destroyed once the tool loaded code object's HSA executable is
+the `ToolExecutableLoader` for future usage and is destroyed once the tool loaded code object's HSA executable is
 destroyed.
 
 It's important to emphasize that Luthier **does not** use the instrumentation functions already compiled by HIP, nor

@@ -122,7 +122,8 @@ MARK_LUTHIER_DEVICE_MODULE
 // TODO: Can the optimizations around atomic add be removed here?
 LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
 
-  unsigned long long int VCC = luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
+//  unsigned long long int VCC =
+//      luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Get the position of the thread in the current wavefront (1-index)
@@ -143,13 +144,14 @@ LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
       atomicAdd(&Counter, NumActiveThreads);
     }
   }
-  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
+//  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsVector);
 
 LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
-  unsigned long long int VCC = luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
+//  unsigned long long int VCC =
+//      luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
 
@@ -159,7 +161,7 @@ LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
   atomicAdd(&Counter, 1);
   // Restore the exec mask
   luthier::writeExec(ExecMask);
-  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
+//  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
@@ -189,8 +191,8 @@ LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
 static llvm::Error instrumentationLoop(InstrumentationTask &IT,
                                        LiftedRepresentation &LR) {
   // Create a constant bool indicating the CountWavefrontLevel value
-  auto *CountWavefrontLevelConstVal = llvm::ConstantInt::getBool(
-      *LR.getContext().getContext(), CountWavefrontLevel);
+  auto *CountWavefrontLevelConstVal =
+      llvm::ConstantInt::getBool(LR.getContext(), CountWavefrontLevel);
   unsigned int I = 0;
   for (auto &[_, MF] : LR.functions()) {
     for (auto &MBB : *MF) {
@@ -223,35 +225,36 @@ static void
 instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
   auto LR = lift(Kernel);
   LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-//  llvm::outs() << "Before instrumentation: \n";
-//  for (const auto &[FuncSymbol, MF] : LR->functions()) {
-//    MF->print(llvm::outs());
-//  }
+  //  llvm::outs() << "Before instrumentation: \n";
+  //  for (const auto &[FuncSymbol, MF] : LR->functions()) {
+  //    MF->print(llvm::outs());
+  //  }
 
   LUTHIER_REPORT_FATAL_ON_ERROR(
       instrumentAndLoad(Kernel, *LR, instrumentationLoop, "instr_count"));
 
-//   Uncomment this part to print out the final assembly
-//      llvm::SmallVector<
-//          std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
-//          SourceFiles;
-//
-//      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
-//      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
-//      llvm::outs() << "after instrumentation\n";
-//      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions()) {
-//        MF->print(llvm::outs());
-//      }
-//      LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
-//          **InstrumentedLR, SourceFiles,
-//          llvm::CodeGenFileType::AssemblyFile));
-//
-//      for (const auto &[LCO, SourceFile] : SourceFiles) {
-//        llvm::outs() << "Instrumented code object for LCO "
-//                     << llvm::format_hex(LCO.handle, 8) << "\n";
-//        llvm::outs() << SourceFile;
-//        llvm::outs() << "\n";
-//      }
+  //   Uncomment this part to print out the final assembly
+  //      llvm::SmallVector<
+  //          std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>,
+  //          1> SourceFiles;
+  //
+  //      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
+  //      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
+  //      llvm::outs() << "after instrumentation\n";
+  //      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions())
+  //      {
+  //        MF->print(llvm::outs());
+  //      }
+  //      LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
+  //          **InstrumentedLR, SourceFiles,
+  //          llvm::CodeGenFileType::AssemblyFile));
+  //
+  //      for (const auto &[LCO, SourceFile] : SourceFiles) {
+  //        llvm::outs() << "Instrumented code object for LCO "
+  //                     << llvm::format_hex(LCO.handle, 8) << "\n";
+  //        llvm::outs() << SourceFile;
+  //        llvm::outs() << "\n";
+  //      }
 }
 
 static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
@@ -288,9 +291,9 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 
           auto KernelName = KernelSymbol->getName();
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
-          std::string KernelNameToBePrinted =
-              DemangleKernelNames ? llvm::demangle(*KernelName)
-                                  : std::string(*KernelName);
+          std::string KernelNameToBePrinted = DemangleKernelNames
+                                                  ? llvm::demangle(*KernelName)
+                                                  : std::string(*KernelName);
           llvm::outs() << "Kernel " << KernelNameToBePrinted
                        << " is being launched\n";
           // Get the packet's completion signal and its value
@@ -312,7 +315,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                   DispatchPacket.completion_signal);
 
           if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval && !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
+              NumKernelLaunched < KernelEndInterval &&
+              !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
@@ -336,7 +340,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             }
           }
         } else {
-          llvm::outs() << "Active region in the exit callback: " << ActiveRegion << "\n";
+          llvm::outs() << "Active region in the exit callback: " << ActiveRegion
+                       << "\n";
           constexpr auto Timeout =
               std::chrono::duration_cast<std::chrono::nanoseconds>(
                   std::chrono::seconds{300})
@@ -401,7 +406,6 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
       }
       if (Phase == API_EVT_PHASE_BEFORE)
         ToBeSubmittedPackets->push_back(Packet);
-
     }
   }
 }
