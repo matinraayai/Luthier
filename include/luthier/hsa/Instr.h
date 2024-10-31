@@ -31,6 +31,10 @@ namespace luthier::hsa {
 
 class LoadedCodeObjectSymbol;
 
+class LoadedCodeObjectKernel;
+
+class LoadedCodeObjectDeviceFunction;
+
 /// \brief represents an instruction that was disassembled by inspecting the
 /// contents of a \c LoadedCodeObjectSymbol of type \c SK_KERNEL or
 /// \c SK_DEVICE_FUNCTION loaded on device memory
