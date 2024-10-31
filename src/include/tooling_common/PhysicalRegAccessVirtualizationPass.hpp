@@ -23,7 +23,7 @@
 #include "luthier/LRCallgraph.h"
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
-#include "tooling_common/LRStateValueLocations.hpp"
+#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
 
@@ -34,22 +34,22 @@ class PhysicalRegAccessVirtualizationPass : public llvm::MachineFunctionPass {
 private:
   /// The Lifted Representation being processed
   const LiftedRepresentation &LR;
-  /// The State value locations selected for \c LR
-  const LRStateValueLocations &StateValueLocations;
+  /// The State value storage and load locations selected for \c LR
+  const LRStateValueStorageAndLoadLocations &StateValueLocations;
   /// Register liveness information
   const LRRegisterLiveness &RegLiveness;
   /// LR Callgraph
   const LRCallGraph &CG;
-  /// Set of physical registers accessed by all the hooks that are
-  /// not in the live-ins
-  const llvm::LivePhysRegs &AccessedPhysicalRegs;
+  /// Set of physical registers accessed by any injected payloads that are not
+  /// in the live-in register set of their insertion point
+  const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns;
   /// A mapping between the hooks and their physical 32-bit live-in registers
   llvm::DenseMap<llvm::Function *, llvm::DenseSet<llvm::MCRegister>>
-      PerHookLiveInRegs{};
+      InjectedPayloadToPhysicalLiveInRegsMap{};
   const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *> &HookFuncToMIMap;
-  /// A mapping between the inline assembly instruction place holder indices
-  /// and their IR lowering info
-  llvm::ArrayRef<std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
+  /// A list containing all the IR lowering info of lowered intrinsic calls
+  /// The index is the lowered intrinsic call ID and
+  llvm::ArrayRef<IntrinsicIRLoweringInfo>
       InlineAsmPlaceHolderToIRLoweringInfoMap;
 
   llvm::DenseMap<std::pair<llvm::MCRegister, const llvm::MachineBasicBlock *>,
@@ -62,10 +62,10 @@ public:
   PhysicalRegAccessVirtualizationPass(
       const LiftedRepresentation &LR,
       const llvm::LivePhysRegs &AccessedPhysicalRegs, const LRCallGraph &CG,
-      const LRStateValueLocations &StateValueLocations,
+      const LRStateValueStorageAndLoadLocations &StateValueLocations,
       const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-          &HookFuncToInstPointMI,
-      llvm::ArrayRef<std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
+          &InjectedPayloadToInjectionPointMap,
+      llvm::ArrayRef<IntrinsicIRLoweringInfo>
           InlineAsmPlaceHolderToIRLoweringInfoMap,
       const LRRegisterLiveness &RegLiveness);
 
@@ -79,13 +79,11 @@ public:
 
   [[nodiscard]] llvm::Register
   getMCRegLocationInMBB(llvm::MCRegister PhysReg,
-                        const llvm::MachineBasicBlock &MBB) const {
-    return PhysRegLocationPerMBB.at({PhysReg, &MBB});
-  }
+                        const llvm::MachineBasicBlock &MBB) const;
 
   const llvm::DenseSet<llvm::MCRegister> &
   get32BitLiveInRegs(llvm::MachineFunction &MF) {
-    return PerHookLiveInRegs.at(&MF.getFunction());
+    return InjectedPayloadToPhysicalLiveInRegsMap.at(&MF.getFunction());
   }
 };
 

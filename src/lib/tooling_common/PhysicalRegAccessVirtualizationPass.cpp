@@ -132,6 +132,13 @@ add32BitRegsOfLivePhysRegsToDenseSet(const llvm::LivePhysRegs &LiveRegs,
                    << "Inspecting " << llvm::printReg(LiveReg, &TRI)
                    << " to be added to the set of 32-bit live registers.\n";);
 
+    // Skip the Exec mask, because it is preserved automatically by the function
+    // call
+    if (TRI.regsOverlap(LiveReg, llvm::AMDGPU::EXEC)) {
+      LLVM_DEBUG(llvm::dbgs() << "Skipping execute mask register.\n");
+      continue;
+    }
+
     // Get the live register's class and its size
     auto *PhysRegClass = TRI.getPhysRegBaseClass(LiveReg);
     if (PhysRegClass == nullptr) {
