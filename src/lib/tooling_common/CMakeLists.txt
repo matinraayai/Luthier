@@ -22,16 +22,15 @@ add_library(LuthierToolingCommon STATIC
         InstrumentationModule.cpp
         intrinsic/ReadReg.cpp
         intrinsic/WriteReg.cpp
-#        InstrumentationStateValueManager.cpp
         PhysicalRegAccessVirtualizationPass.cpp
-        LRStateValueLocations.cpp
+        LRStateValueStorageAndLoadLocations.cpp
         LRCallGraph.cpp
         LRRegisterLiveness.cpp
         IntrinsicMIRLoweringPass.cpp
-        TPCOverrides.cpp
-        HookPEIPass.cpp
+        InjectedPayloadPEIPass.cpp
         PreKernelEmitter.cpp
         intrinsic/WriteExec.cpp
+        intrinsic/IntrinsicProcessor.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
@@ -53,4 +52,4 @@ target_link_libraries(LuthierToolingCommon PUBLIC LuthierCommon LuthierHip Luthi
         hsa-runtime64::hsa-runtime64 LLVMAMDGPUCodeGen LLVMAMDGPUDesc
         LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA LLVMAMDGPUUtils LLVMAsmPrinter LLVMCodeGen
         LLVMAMDGPUAsmParser LLVMCodeGenTypes LLVMCore LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject LLVMPasses
-        LLVMSupport LLVMTarget LLVMTargetParser)
+        LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis)
