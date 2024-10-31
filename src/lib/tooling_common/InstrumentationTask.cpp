@@ -28,7 +28,8 @@ llvm::Error luthier::InstrumentationTask::insertHookBefore(
     llvm::MachineInstr &MI, const void *Hook,
     llvm::ArrayRef<std::variant<llvm::Constant *, llvm::MCRegister>> Args) {
   const auto *SIM = llvm::dyn_cast<StaticInstrumentationModule>(&IM);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ARGUMENT_ERROR_CHECK(SIM != nullptr));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      SIM != nullptr, "Instrumentation module is not static."));
   auto HookName = SIM->convertHookHandleToHookName(Hook);
   LUTHIER_RETURN_ON_ERROR(HookName.takeError());
   if (!HookInsertionTasks.contains(&MI)) {
@@ -43,6 +44,6 @@ llvm::Error luthier::InstrumentationTask::insertHookBefore(
 
 InstrumentationTask::InstrumentationTask(LiftedRepresentation &LR)
     : LR(LR),
-      IM(ToolExecutableLoader::instance().getStaticInstrumentationModule()){};
+      IM(ToolExecutableLoader::instance().getStaticInstrumentationModule()) {};
 
 } // namespace luthier

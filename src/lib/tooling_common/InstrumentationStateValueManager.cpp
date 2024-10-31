@@ -374,7 +374,7 @@ llvm::Error InstrumentationStateValueManager::insertPrologue() {
     auto &PrologueMachineFunction = createEmptyMachineFunction(
         Module, MMI, llvm::formatv("PrologueFor{0}", MF->getName()).str());
     auto *EntryValSeg = getValueSegmentForInstr(*MF, *MF->begin()->begin());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(EntryValSeg != nullptr));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(EntryValSeg != nullptr, ""));
     // The VGPR we will store the value register in the first instruction
     llvm::MCRegister ValRegisterLocationOnEntry =
         EntryValSeg->getValueRegisterLocation();
