@@ -18,6 +18,7 @@
 /// This file implements Luthier's Physical Reg Access Virtualization Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
+#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/LiftedRepresentation.h"
 #include "tooling_common/CodeGenerator.hpp"
 #include <GCNSubtarget.h>
@@ -373,7 +374,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
     for (const auto &MI : MBB) {
       if (MI.isInlineAsm()) {
         llvm::Expected<unsigned int> IntrinsicIdx =
-            CodeGenerator::getInlineAsmIntrinsicPlaceHolderIdx(MI);
+            getIntrinsicInlineAsmPlaceHolderIdx(MI);
         if (auto Err = IntrinsicIdx.takeError()) {
           MF.getContext().reportError({}, llvm::toString(std::move(Err)));
           return false;
@@ -478,8 +479,9 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
     }
   }
 
-  auto *SVALoadPlan = StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
-      *HookFuncToMIMap.at(&MF.getFunction()));
+  auto *SVALoadPlan =
+      StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
+          *HookFuncToMIMap.at(&MF.getFunction()));
   if (!SVALoadPlan) {
     MF.getContext().reportError(
         {},
