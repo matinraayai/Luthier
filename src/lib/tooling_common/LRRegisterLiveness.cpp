@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>
+#include <llvm/Support/TimeProfiler.h>
 #include <luthier/LRRegisterLiveness.h>
 #include <luthier/LiftedRepresentation.h>
 
@@ -80,8 +81,7 @@ static bool recomputeLiveIns(
   LLVM_DEBUG(auto TRI = MBB.getParent()->getSubtarget().getRegisterInfo();
              llvm::dbgs() << "Old live-in registers for MBB "
                           << MBB.getFullName() << "\n";
-             for (auto &LiveInPhysReg
-                  : MBB.getLiveIns()) {
+             for (auto &LiveInPhysReg : MBB.getLiveIns()) {
                llvm::dbgs()
                    << printReg(llvm::Register(LiveInPhysReg.PhysReg), TRI)
                    << "\n";
@@ -117,6 +117,7 @@ static void fullyComputeLiveInsOfLiftedMF(
 }
 
 void LRRegisterLiveness::recomputeLiveIns() {
+  llvm::TimeTraceScope Scope("Liveness Analysis Computation");
   for (const auto &[FuncSymbol, MF] : LR.functions()) {
     luthier::fullyComputeLiveInsOfLiftedMF(*MF, MachineInstrLivenessMap);
   }
