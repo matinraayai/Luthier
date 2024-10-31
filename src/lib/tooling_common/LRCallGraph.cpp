@@ -168,13 +168,13 @@ llvm::Error LRCallGraph::analyse() {
       CallInstrToCalleeMap;
   for (const auto &[FuncSymbol, MF] : LR.functions()) {
     auto LCO = FuncSymbol->getLoadedCodeObject();
-    auto [M, MMI] = LR.getModuleAndMMI(LCO);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(MMI != nullptr));
+    auto &M = *LR.getModule(LCO);
+    auto &MMI = *LR.getMMI(LCO);
 
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
         if (MI.isCall()) {
-          llvm::MachineFunction *CalleeMF = findCalleeMFOfCallInst(MI, *MMI);
+          llvm::MachineFunction *CalleeMF = findCalleeMFOfCallInst(MI, MMI);
           CallInstrToCalleeMap.insert({&MI, CalleeMF});
           LLVM_DEBUG(if (CalleeMF != nullptr) llvm::dbgs()
                          << "Found MI at: " << &MI
