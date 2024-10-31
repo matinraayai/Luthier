@@ -63,7 +63,8 @@ LoadedCodeObject::getStorageELF() const {
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ASSERTION(LCOCache.StorageELFOfLCOs.contains(asHsaType())));
+      LUTHIER_ERROR_CHECK(LCOCache.StorageELFOfLCOs.contains(asHsaType()),
+                          "LCO {0:x} is not cached.", hsaHandle()));
   return *LCOCache.StorageELFOfLCOs.at(asHsaType());
 }
 
@@ -115,7 +116,8 @@ llvm::Expected<ISA> LoadedCodeObject::getISA() const {
   auto &LCOCache =
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
   return ISA(LCOCache.ISAOfLCOs.at(asHsaType()));
 }
 
@@ -124,7 +126,8 @@ LoadedCodeObject::getMetadata() const {
   auto &LCOCache =
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
   return LCOCache.MetadataOfLCOs.at(this->asHsaType());
 }
 
@@ -135,7 +138,8 @@ llvm::Error LoadedCodeObject::getKernelSymbols(
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
 
   // Ensure this LCO is cached before doing anything
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
   // Retrieve kernel symbol names associated with this LCO
   const auto &KernelSymbolsOfThisLCO =
       LCOCache.KernelSymbolsOfLCOs.at(asHsaType());
@@ -154,7 +158,8 @@ llvm::Error LoadedCodeObject::getVariableSymbols(
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
   // Ensure this LCO is cached before doing anything
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
   // Retrieve variable symbols associated with this LCO
   const auto &VariableSymbolsOfThisLCO =
       LCOCache.VariableSymbolsOfLCOs.at(asHsaType());
@@ -171,7 +176,8 @@ llvm::Error LoadedCodeObject::getDeviceFunctionSymbols(
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
   // Ensure this LCO is cached before doing anything
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
   const auto &DeviceFuncSymbolsOfThisLCO =
       LCOCache.DeviceFuncSymbolsOfLCOs.at(asHsaType());
 
@@ -188,7 +194,8 @@ llvm::Error LoadedCodeObject::getExternalSymbols(
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
   // Ensure this LCO is cached before doing anything
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
   const auto &ExternSymbolsOfThisLCO =
       LCOCache.ExternSymbolsOfLCOs.at(asHsaType());
 
@@ -205,7 +212,8 @@ llvm::Error LoadedCodeObject::getLoadedCodeObjectSymbols(
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
   // Ensure this LCO is cached before doing anything
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
   // Retrieve symbol information associated with this LCO
   const auto &KernelDescSymbolsOfThisLCO =
       LCOCache.KernelSymbolsOfLCOs.at(asHsaType());
@@ -230,7 +238,8 @@ LoadedCodeObject::getLoadedCodeObjectSymbolByName(llvm::StringRef Name) const {
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
   // Ensure this LCO is cached before doing anything
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(LCOCache.isCached(*this)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
 
   const auto &KernelSymbolsOfThisLCO =
       LCOCache.KernelSymbolsOfLCOs.at(asHsaType());
