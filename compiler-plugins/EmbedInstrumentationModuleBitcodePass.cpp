@@ -155,12 +155,15 @@ EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
     // TODO: remove the always inline attribute once Hooks support the anyreg
     // calling convention
     Hook->addFnAttr(HookAttribute);
+    Hook->removeFnAttr(llvm::Attribute::OptimizeNone);
+    Hook->removeFnAttr(llvm::Attribute::NoInline);
     Hook->addFnAttr(llvm::Attribute::AlwaysInline);
   }
   // Remove the body of each intrinsic function and make them extern
   // Also demangle the name and format it similar to LLVM intrinsics
   for (auto Intrinsic : Intrinsics) {
     Intrinsic->deleteBody();
+    Intrinsic->setComdat(nullptr);
     llvm::StringRef MangledIntrinsicName = Intrinsic->getName();
     // Format the intrinsic name
     std::string FormattedIntrinsicName;
