@@ -21,9 +21,7 @@
 
 #include <memory>
 
-#include "tooling_common/TPCOverrides.hpp"
-
-#include "tooling_common/HookPEIPass.hpp"
+#include "tooling_common/InjectedPayloadPEIPass.hpp"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -350,9 +348,9 @@ llvm::Error CodeGenerator::runModifiedCodeGenPipelineOnIModule(
   PM.add(PhysRegAccessPass);
   PM.add(new IntrinsicMIRLoweringPass(IntrinsicIRLoweringInfoVec,
                                       IntrinsicsProcessors));
-  auto *PEPass = new HookPEIPass(LR, **SVLocations, *PhysRegAccessPass,
-                                 InjectedPayloadToInstPointMap, LRLiveRegs,
-                                 AccessedPhysRegsNotInLiveIns, PKInfo);
+  auto *PEPass = new InjectedPayloadPEIPass(
+      LR, **SVLocations, *PhysRegAccessPass, InjectedPayloadToInstPointMap,
+      LRLiveRegs, AccessedPhysRegsNotInLiveIns, PKInfo);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
       !TPC->isPassSubstitutedOrOverridden(&llvm::PrologEpilogCodeInserterID),
       "The PEI pass should not be overridden."));
@@ -368,11 +366,11 @@ llvm::Error CodeGenerator::runModifiedCodeGenPipelineOnIModule(
       "The CodeGen pipeline encountered an error during its execution.");
 }
 
-llvm::Error patchLiftedRepresentation(
+static llvm::Error patchLiftedRepresentation(
     const llvm::Module &IModule, const llvm::MachineModuleInfo &IMMI,
-    llvm::Module &LRModule, llvm::MachineModuleInfo &LRMMI,
+    llvm::Module &LRModule,
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-        &MIToHookFuncMap,
+        &InstPointToInjectedPayloadMap,
     PreKernelEmissionDescriptor &PKInfo) {
   llvm::TimeTraceScope Scope("Lifted Representation Patching");
   // A mapping between Global Variables in the instrumentation module and
@@ -388,13 +386,14 @@ llvm::Error patchLiftedRepresentation(
     NewGV->copyAttributesFrom(&GV);
     VMap[&GV] = NewGV;
   }
-  for (const auto &[InsertionPointMI, HookF] : MIToHookFuncMap) {
+  for (const auto &[InsertionPointMI, InjectedPayloadFunc] :
+       InstPointToInjectedPayloadMap) {
     // A mapping between a machine basic block in the instrumentation MMI
     // and its destination in the patched instrumented code
     llvm::DenseMap<const llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
         MBBMap;
 
-    const auto &HookMF = *IMMI.getMachineFunction(*HookF);
+    const auto &HookMF = *IMMI.getMachineFunction(*InjectedPayloadFunc);
     auto &InsertionPointMBB = *InsertionPointMI->getParent();
     auto &ToBeInstrumentedMF = *InsertionPointMBB.getParent();
 
@@ -969,9 +968,9 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
 
     // Finally, patch in the generated machine code into the lifted
     // representation
-    LUTHIER_RETURN_ON_ERROR(patchLiftedRepresentation(
-        *IModule, MMIWP->getMMI(), LCOModule.first, LCOModule.second,
-        AppMIToInjectedPayloadMap, PKInfo));
+    LUTHIER_RETURN_ON_ERROR(
+        patchLiftedRepresentation(*IModule, MMIWP->getMMI(), LCOModule.first,
+                                  AppMIToInjectedPayloadMap, PKInfo));
 
     // TODO: remove this once the move constructor for MMI makes it to master
     delete PM;
@@ -1017,30 +1016,6 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
   );
 
   return std::move(ClonedLR);
-}
-
-llvm::Expected<unsigned int> CodeGenerator::getInlineAsmIntrinsicPlaceHolderIdx(
-    const llvm::MachineInstr &MI) {
-  if (MI.isInlineAsm()) {
-    auto IntrinsicIdxAsString =
-        MI.getOperand(llvm::InlineAsm::MIOp_AsmString).getSymbolName();
-    // Empty inline assembly instructions can be skipped
-    if (llvm::StringRef(IntrinsicIdxAsString).empty())
-      return -1;
-    try {
-      // std::stoul throws exceptions and needs to be converted
-      unsigned int IntrinsicIdx = std::stoul(IntrinsicIdxAsString);
-      return IntrinsicIdx;
-    } catch (const std::exception &Exception) {
-      return LUTHIER_CREATE_ERROR(
-          "Caught an exception when getting the intrinsic index of the "
-          "inline assembly instruction "
-          "{0}. The exception: {1}.",
-          IntrinsicIdxAsString, Exception.what());
-    }
-  } else {
-    return -1;
-  }
 }
 
 } // namespace luthier

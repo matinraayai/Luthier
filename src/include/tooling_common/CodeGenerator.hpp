@@ -41,6 +41,10 @@ namespace luthier {
 
 struct PreKernelEmissionDescriptor;
 
+class LRRegisterLiveness;
+
+class LRCallGraph;
+
 namespace hsa {
 
 class ISA;
@@ -111,7 +115,7 @@ public:
   /// process
   static llvm::Error
   printAssembly(llvm::Module &Module, llvm::GCNTargetMachine &TM,
-                llvm::MachineModuleInfoWrapperPass *MMIWP,
+                std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
                 llvm::SmallVectorImpl<char> &CompiledObjectFile,
                 llvm::CodeGenFileType FileType);
 
@@ -143,56 +147,82 @@ private:
 
   /// Generates an instrumentation \c llvm::Function containing the
   /// code that will be injected before the \p MI in the target
-  /// application; The instrumentation function is a series of calls to
+  /// application; The injected payload function is a series of calls to
   /// the hooks with the arguments, in the order they are specified by
   /// \p HookInvocationSpecs
   /// \param IModule the instrumentation \c llvm::Module that will encapsulate
-  /// the generated instrumentation function
+  /// the generated injected payload function
   /// \param HookInvocationSpecs A list of hooks to be called inside the
-  /// instrumentation function, as well as their arguments
-  /// \param MI the
+  /// injected payload, as well as their arguments
+  /// \param ApplicationMI the \c llvm::MachineInstr inside the application
+  /// that will get instrumented with the injected payload's contents
   /// \return a reference to a newly-created \c llvm::Function (with no
   /// arguments and return value) which contains the LLVM IR of the payload
   /// to be injected before the target application's \p MI
   static llvm::Expected<llvm::Function &>
-  generateIFunctionForInjectionBeforeApplicationMI(
+  generateInjectedPayloadForApplicationMI(
       llvm::Module &IModule,
       llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor>
           HookInvocationSpecs,
-      const llvm::MachineInstr &MI);
+      const llvm::MachineInstr &ApplicationMI);
 
   /// Finds <tt>llvm::Function</tt>s marked as intrinsics inside the
-  /// \p InstModule and applies the IR processor function to their
-  /// <tt>llvm::User</tt>s
-  /// \param [in, out] Module the instrumentation \c llvm::Module containing
-  /// hook logic IR
-  /// \param [in] TM the \c llvm::TargetMachine of the code generation process
-  /// \param [out] InlineAsmMIRMap a map which keeps track of the unique dummy
-  /// inline assembly instruction strings inserted inside the IR as well as
-  /// their \c IntrinsicValueLoweringInfo used later in the MIR processing stage
+  /// \p IModule, applies the IR processor function to their
+  /// <tt>llvm::User</tt>s, and returns the saved information regarding
+  /// the IR lowering stage in \p IntrinsicLoweringInfoVec
+  /// \param [in, out] IModule the instrumentation \c llvm::Module containing
+  /// the instrumentation logic
+  /// \param [in] TM the \c llvm::TargetMachine of the code generation process;
+  /// Mainly passed to the IR Lowering processors of all intrinsics
+  /// \param [out] IntrinsicLoweringInfoVec a vector which keeps track of the
+  /// \c IntrinsicIRLoweringInfo of each intrinsic use lowered. The index of
+  /// the lowering info inside the vector is the number assigned in its dummy
+  /// inline assembly instruction string
   /// \return \c llvm::Error describing the success or failure of the
   /// operation
-  llvm::Error processInstModuleIntrinsicsAtIRLevel(
-      llvm::Module &Module, const llvm::GCNTargetMachine &TM,
-      llvm::SmallVectorImpl<
-          std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
-          &InlineAsmMIRMap);
+  llvm::Error processIModuleIntrinsicUsersAtIRLevel(
+      llvm::Module &IModule, const llvm::GCNTargetMachine &TM,
+      llvm::SmallVectorImpl<IntrinsicIRLoweringInfo> &IntrinsicLoweringInfoVec);
 
-  std::tuple<llvm::MachineModuleInfoWrapperPass *,
-             std::unique_ptr<llvm::legacy::PassManager>,
-             PreKernelEmissionDescriptor>
-  runCodeGenPipeline(
+  /// Applies the custom CodeGen pipeline to the \p IModule
+  /// \param [in] IModule the instrumentation module being worked on
+  /// \param [in] LR the \c LiftedRepresentation being worked on
+  /// \param [in] LCO the \c hsa::LoadedCodeObject of \p LR currently being
+  /// worked on
+  /// \param [in] LRLiveRegs the live register analysis of \p LR providing the
+  /// set of live registers at each machine instruction inside \p LR
+  /// \param [in] CG the call graph analysis for the \p LR
+  /// \param [in] InstPointToInjectedPayloadMap Mapping between instrumentation
+  /// points inside the \p LR to their injected payload function inside
+  /// the instrumentation module
+  /// \param [in] InjectedPayloadToInstPointMap Inverse mapping of
+  /// \p InstPointToInjectedPayloadMap
+  /// \param [in] IntrinsicIRLoweringInfoVec Set of intrinsics that need to be
+  /// lowered across the \p IModule
+  /// \param [out] PM a legacy pass manager to use for running the CodeGen
+  /// pipeline, should be empty
+  /// \param [in] TM the \c llvm::GCNTargetMachine being targeted
+  /// \param [out] IMMIWP a \c llvm::MachineModuleInfoWrapperPass where the
+  /// final machine code of \p IModule will be stored into
+  /// \param [out] PKInfo the pre-kernel emission info which will be used to
+  ///
+  /// \param DisableVerify whether to disable running machine verification
+  /// passe right after each pass or not
+  /// \return an \c llvm::Error indicating the success of failure of the
+  /// operation
+  llvm::Error runModifiedCodeGenPipelineOnIModule(
+      llvm::Module &IModule, const LiftedRepresentation &LR,
+      const hsa::LoadedCodeObject &LCO, const LRRegisterLiveness &LRLiveRegs,
+      const LRCallGraph &CG,
       const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-          &MIToHookFuncMap,
+          &InstPointToInjectedPayloadMap,
       const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-          &HookFuncToMIMap,
-      const llvm::SmallVectorImpl<
-          std::pair<llvm::Function *, IntrinsicIRLoweringInfo>>
-          &ToBeLoweredIntrinsics,
-      bool DisableVerify, const LiftedRepresentation &LR,
-      const luthier::hsa::LoadedCodeObject &LCO, llvm::GCNTargetMachine *TM,
-      llvm::Module &M);
-
+          &InjectedPayloadToInstPointMap,
+      const llvm::SmallVectorImpl<IntrinsicIRLoweringInfo>
+          &IntrinsicIRLoweringInfoVec,
+      llvm::legacy::PassManager &PM, llvm::GCNTargetMachine &TM,
+      llvm::MachineModuleInfoWrapperPass &IMMIWP,
+      PreKernelEmissionDescriptor PKInfo, bool DisableVerify);
 };
 
 } // namespace luthier
