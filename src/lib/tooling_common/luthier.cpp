@@ -72,8 +72,13 @@ llvm::Error disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
 
 } // namespace hsa
 
-llvm::Expected<const std::vector<hsa::Instr> &>
-disassemble(const hsa::LoadedCodeObjectSymbol &Func) {
+llvm::Expected<llvm::ArrayRef<hsa::Instr>>
+disassemble(const hsa::LoadedCodeObjectKernel &Kernel) {
+  return luthier::CodeLifter::instance().disassemble(Kernel);
+}
+
+llvm::Expected<llvm::ArrayRef<hsa::Instr>>
+disassemble(const hsa::LoadedCodeObjectDeviceFunction &Func) {
   return luthier::CodeLifter::instance().disassemble(Func);
 }
 
@@ -101,14 +106,13 @@ llvm::Error printLiftedRepresentation(
         std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>>
         &CompiledObjectFiles,
     llvm::CodeGenFileType FileType) {
-  auto Lock = LR.getContext().getLock();
+  auto Lock = LR.getLock();
   CompiledObjectFiles.reserve(LR.size());
-  for (auto &[LCO, LCOModule] : LR.modules()) {
-    auto &[TSM, MMIWP] = LCOModule;
+  for (auto &[LCO, ModuleAndMMIWP] : LR.modules()) {
+    auto &[Module, MMIWP] = ModuleAndMMIWP;
     llvm::SmallVector<char, 0> ObjectFile;
     LUTHIER_RETURN_ON_ERROR(CodeGenerator::printAssembly(
-        *TSM.getModuleUnlocked(), LR.getTargetMachine<llvm::GCNTargetMachine>(),
-        MMIWP, ObjectFile, FileType));
+        *Module, *LR.getTM(LCO), MMIWP, ObjectFile, FileType));
     CompiledObjectFiles.emplace_back(LCO, ObjectFile);
   }
   return llvm::Error::success();
@@ -150,16 +154,15 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
   llvm::StringMap<const void *> ExternVariables;
   // set of static variables used in the original kernel itself
   for (const auto &[Symbol, GV] : LR.globals()) {
-    ExternVariables.insert(
-        {llvm::cantFail(Symbol->getName()),
-         reinterpret_cast<const void *>(
-             llvm::cantFail(Symbol->getLoadedSymbolAddress()))});
+    ExternVariables.insert({llvm::cantFail(Symbol->getName()),
+                            reinterpret_cast<const void *>(llvm::cantFail(
+                                Symbol->getLoadedSymbolAddress()))});
   }
   auto &TEM = ToolExecutableLoader::instance();
   const auto &SIM = TEM.getStaticInstrumentationModule();
   auto Agent = llvm::cantFail(Kernel.getAgent());
   // Set of static variables used in the instrumentation module
-  for (const auto &GVName : SIM.getGlobalVariableNames()) {
+  for (const auto &GVName : SIM.gv_names()) {
     auto VarAddress =
         SIM.getGlobalVariablesLoadedOnAgent(GVName, hsa::GpuAgent(Agent));
     LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
@@ -219,11 +222,15 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
   auto &TEM = ToolExecutableLoader::instance();
   const auto &SIM = TEM.getStaticInstrumentationModule();
   // Set of static variables used in the instrumentation module
-  for (const auto &GVName : SIM.getGlobalVariableNames()) {
+  for (const auto &GVName : SIM.gv_names()) {
     for (const auto &Agent : Agents) {
       auto VarAddress = SIM.getGlobalVariablesLoadedOnAgent(GVName, Agent);
       LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(VarAddress->has_value()));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          VarAddress->has_value(),
+          "Failed to get the global variable associated with {0} "
+          "on agent {1:x}.",
+          GVName, Agent.hsaHandle()));
       ExternVariables.emplace_back(Agent, GVName,
                                    reinterpret_cast<void *>(**VarAddress));
     }
@@ -242,11 +249,13 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
   auto *Symbol = llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(
       luthier::hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
           Packet.kernel_object));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Symbol != nullptr));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      Symbol != nullptr, "Failed to locate the kernel symbol of the dispatch "
+                         "packet from its kernel_object field."));
 
   auto InstrumentedKernel =
       luthier::ToolExecutableLoader::instance().getInstrumentedKernel(*Symbol,
-                                                                       Preset);
+                                                                      Preset);
   LUTHIER_RETURN_ON_ERROR(InstrumentedKernel.takeError());
   auto InstrumentedKD = InstrumentedKernel->getKernelDescriptor();
 

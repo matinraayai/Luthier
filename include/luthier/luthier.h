@@ -165,19 +165,29 @@ const HipCompilerDispatchTable &getSavedCompilerTable();
 //  Inspection API
 //===----------------------------------------------------------------------===//
 
-/// Disassembles the Func into a list of <tt>hsa::Instr</tt>.\n
-/// Disassembly only occurs when this function is called on the function for the
-/// first time. Subsequent calls will use a result cached internally.\n
-/// This function is provided for convenience; For instrumentation,
-/// use <tt>lift</tt>.
-/// \param Func the \c hsa::LoadedCodeObjectSymbol of type
-/// \c hsa::LoadedCodeObjectSymbol::SK_KERNEL or
-/// \c hsa::LoadedCodeObjectSymbol::SK_DEVICE_FUNCTION to be disassembled
-/// \return a <tt>const</tt> reference to an internally cached vector of
+/// Disassembles the \p Kernel into a list of <tt>hsa::Instr</tt>\n
+/// Disassembly only occurs on the first time this function is invoked on
+/// \p Kernel. Subsequent calls will use a result cached internally\n
+/// \note This function only provides a raw LLVM MC view of the instructions;
+/// For instrumentation, use <tt>lift</tt>
+/// \param Kernel the kernel symbol to be disassembled
+/// \return an \c llvm::ArrayRef to an internally cached vector of
 /// <tt>hsa::Instr</tt>s, or an \c llvm::Error if an issue was encountered
-/// during the process.
-llvm::Expected<const std::vector<hsa::Instr> &>
-disassemble(const hsa::LoadedCodeObjectSymbol &Func);
+/// during the process
+llvm::Expected<llvm::ArrayRef<hsa::Instr>>
+disassemble(const hsa::LoadedCodeObjectKernel &Kernel);
+
+/// Disassembles the \p Func into a list of <tt>hsa::Instr</tt>.\n
+/// Disassembly only occurs on the first time this function is invoked on
+/// \p Func. Subsequent calls will use a result cached internally.\n
+/// \note This function only provides a raw LLVM MC view of the instructions;
+/// For instrumentation, use <tt>lift</tt>
+/// \param Func the device function to be disassembled
+/// \return an \c llvm::ArrayRef to an internally cached vector of
+/// <tt>hsa::Instr</tt>s, or an \c llvm::Error if an issue was encountered
+/// during the process
+llvm::Expected<llvm::ArrayRef<hsa::Instr>>
+disassemble(const hsa::LoadedCodeObjectDeviceFunction &Func);
 
 /// Lifts the given \p Kernel and return a reference to its
 /// <tt>LiftedRepresentation</tt>.\n
