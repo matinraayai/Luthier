@@ -324,7 +324,7 @@ private:
   /// Reference to the pre-kernel emission descriptor, in case we need to
   /// signal a need for setting up the state value array before the
   /// kerenl starts
-  PreKernelEmissionDescriptor &PKInfo;
+  FunctionPreambleDescriptor &PKInfo;
 
   /// A set of physical registers accessed by all injected payloads that
   /// weren't part of their insertion point's live-ins
@@ -401,7 +401,7 @@ private:
           &InstPointToInjectedPayloadMap,
       const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
       const LRRegisterLiveness &RegLiveness,
-      PreKernelEmissionDescriptor &PKInfo);
+      FunctionPreambleDescriptor &PKInfo);
 
   /// calculates the storage and load locations of the state value array
   /// \return an \c llvm::Error indication the success of failure of the
@@ -428,7 +428,7 @@ public:
              &InstPointToInjectedPayloadMap,
          const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
          const LRRegisterLiveness &RegLiveness,
-         PreKernelEmissionDescriptor &PKInfo);
+         FunctionPreambleDescriptor &PKInfo);
 
   /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
   /// analysis, returns the state value array storage of every instruction

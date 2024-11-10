@@ -217,7 +217,7 @@ LRStateValueStorageAndLoadLocations::LRStateValueStorageAndLoadLocations(
         &InstPointToInjectedPayloadMap,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
     const luthier::LRRegisterLiveness &RegLiveness,
-    PreKernelEmissionDescriptor &PKInfo)
+    FunctionPreambleDescriptor &PKInfo)
     : LR(LR), LCO(std::move(LCO)),
       InstPointToInjectedPayloadMap(InstPointToInjectedPayloadMap),
       AccessedPhysicalRegistersNotInLiveIns(
@@ -296,8 +296,7 @@ LRStateValueStorageAndLoadLocations::create(
     const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
         &InstPointToInjectedPayloadMap,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
-    const LRRegisterLiveness &RegLiveness,
-    PreKernelEmissionDescriptor &PKInfo) {
+    const LRRegisterLiveness &RegLiveness, FunctionPreambleDescriptor &PKInfo) {
   std::unique_ptr<LRStateValueStorageAndLoadLocations> Out(
       new LRStateValueStorageAndLoadLocations(
           LR, LCO, InstPointToInjectedPayloadMap,
