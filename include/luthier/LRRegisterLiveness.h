@@ -15,9 +15,9 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the \c LRRegisterLiveness class, which analyzes the
-/// the liveness of each \c llvm::MachineInstr of a \c LiftedRepresentation
-/// at a function level.
+/// This file describes the \c LRRegisterLiveness class, which calculates the
+/// register live-in sets for each \c llvm::MachineInstr of a
+/// \c LiftedRepresentation at a machine function level.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LR_REGISTER_LIVENESS_H
 #define LUTHIER_LR_REGISTER_LIVENESS_H
@@ -38,7 +38,8 @@ private:
   /// registers that are live right before it\n
   /// This mapping is only valid before any LLVM pass is run over the Modules
   /// and MMIs of the \c LR
-  llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
+  llvm::DenseMap<const llvm::MachineInstr *,
+                 std::unique_ptr<llvm::LivePhysRegs>>
       MachineInstrLivenessMap{};
 
 public:

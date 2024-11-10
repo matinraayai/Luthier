@@ -33,8 +33,8 @@ LRRegisterLiveness::LRRegisterLiveness(const luthier::LiftedRepresentation &LR)
 
 static void computeLiveIns(
     llvm::LivePhysRegs &LiveRegs, const llvm::MachineBasicBlock &MBB,
-    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
-        &PerMILiveIns) {
+    llvm::DenseMap<const llvm::MachineInstr *,
+                   std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
   const llvm::MachineFunction &MF = *MBB.getParent();
   const llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
   const llvm::TargetRegisterInfo &TRI = *MRI.getTargetRegisterInfo();
@@ -59,8 +59,8 @@ static void computeLiveIns(
 
 std::vector<llvm::MachineBasicBlock::RegisterMaskPair> computeAndAddLiveIns(
     llvm::LivePhysRegs &LiveRegs, llvm::MachineBasicBlock &MBB,
-    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
-        &PerMILiveIns) {
+    llvm::DenseMap<const llvm::MachineInstr *,
+                   std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
   luthier::computeLiveIns(LiveRegs, MBB, PerMILiveIns);
   std::vector<llvm::MachineBasicBlock::RegisterMaskPair> OldLiveIns;
   // Clear out the live-ins before adding the new ones
@@ -75,8 +75,8 @@ std::vector<llvm::MachineBasicBlock::RegisterMaskPair> computeAndAddLiveIns(
 /// any changes were made.
 static bool recomputeLiveIns(
     llvm::MachineBasicBlock &MBB,
-    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
-        &PerMILiveIns) {
+    llvm::DenseMap<const llvm::MachineInstr *,
+                   std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
   llvm::LivePhysRegs LPR;
   LLVM_DEBUG(auto TRI = MBB.getParent()->getSubtarget().getRegisterInfo();
              llvm::dbgs() << "Old live-in registers for MBB "
@@ -104,8 +104,8 @@ static bool recomputeLiveIns(
 /// each \c llvm::MachineInstr
 static void fullyComputeLiveInsOfLiftedMF(
     llvm::MachineFunction &MF,
-    llvm::DenseMap<llvm::MachineInstr *, std::unique_ptr<llvm::LivePhysRegs>>
-        &PerMILiveIns) {
+    llvm::DenseMap<const llvm::MachineInstr *,
+                   std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
   while (true) {
     bool AnyChange = false;
     for (auto &MBB : MF)
