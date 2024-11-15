@@ -31,6 +31,8 @@ add_library(LuthierToolingCommon STATIC
         PreKernelEmitter.cpp
         intrinsic/WriteExec.cpp
         intrinsic/IntrinsicProcessor.cpp
+        StateValueArraySpecs.cpp
+        VectorCFG.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run

@@ -2,6 +2,7 @@ add_library(LuthierCommon STATIC
         Cloning.cpp
         Error.cpp
         ObjectUtils.cpp
+        CodeGenHelpers.cpp
 )
 
 target_include_directories(LuthierCommon PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})
