@@ -23,6 +23,76 @@
 
 namespace luthier {
 
+static const llvm::DenseMap<StateValueArrayStorage::StorageKind, int>
+    NumVGPRsUsedBySVS{
+        {StateValueArrayStorage::SVS_SINGLE_VGPR, 1},
+        {StateValueArrayStorage::SVS_ONE_AGPR_post_gfx908, 0},
+        {StateValueArrayStorage::SVS_TWO_AGPRs_pre_gfx908, 0},
+        {StateValueArrayStorage::SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908,
+         0},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs, 0},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_ONE_SGPR_architected_fs, 0}};
+
+static const llvm::DenseMap<StateValueArrayStorage::StorageKind, int>
+    NumAGPRsUsedBySVS{
+        {StateValueArrayStorage::SVS_SINGLE_VGPR, 0},
+        {StateValueArrayStorage::SVS_ONE_AGPR_post_gfx908, 1},
+        {StateValueArrayStorage::SVS_TWO_AGPRs_pre_gfx908, 2},
+        {StateValueArrayStorage::SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908,
+         1},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs, 0},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_ONE_SGPR_architected_fs, 0}};
+
+static const llvm::DenseMap<StateValueArrayStorage::StorageKind, int>
+    NumSGPRsUsedBySVS{
+        {StateValueArrayStorage::SVS_SINGLE_VGPR, 0},
+        {StateValueArrayStorage::SVS_ONE_AGPR_post_gfx908, 0},
+        {StateValueArrayStorage::SVS_TWO_AGPRs_pre_gfx908, 0},
+        {StateValueArrayStorage::SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908,
+         3},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs, 3},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_ONE_SGPR_architected_fs, 1}};
+
+int StateValueArrayStorage::getNumVGPRsUsed(
+    StateValueArrayStorage::StorageKind Kind) {
+  return NumVGPRsUsedBySVS.at(Kind);
+}
+
+int StateValueArrayStorage::getNumAGPRsUsed(
+    StateValueArrayStorage::StorageKind Kind) {
+  return NumAGPRsUsedBySVS.at(Kind);
+}
+
+int StateValueArrayStorage::getNumSGPRsUsed(
+    StateValueArrayStorage::StorageKind Kind) {
+  return NumSGPRsUsedBySVS.at(Kind);
+}
+
+static const llvm::DenseMap<StateValueArrayStorage::StorageKind,
+                            std::function<bool(const llvm::GCNSubtarget &)>>
+    StorageSTCompatibility{
+        {StateValueArrayStorage::SVS_SINGLE_VGPR,
+         [](const llvm::GCNSubtarget &) { return true; }},
+        {StateValueArrayStorage::SVS_ONE_AGPR_post_gfx908,
+         [](const llvm::GCNSubtarget &ST) { return ST.hasGFX90AInsts(); }},
+        {StateValueArrayStorage::SVS_TWO_AGPRs_pre_gfx908,
+         [](const llvm::GCNSubtarget &ST) { return !ST.hasGFX90AInsts(); }},
+        {StateValueArrayStorage::SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908,
+         [](const llvm::GCNSubtarget &ST) { return !ST.hasGFX90AInsts(); }},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs,
+         [](const llvm::GCNSubtarget &ST) {
+           return !ST.flatScratchIsArchitected();
+         }},
+        {StateValueArrayStorage::SVS_SPILLED_WITH_ONE_SGPR_architected_fs,
+         [](const llvm::GCNSubtarget &ST) {
+           return ST.flatScratchIsArchitected();
+         }}};
+
+bool StateValueArrayStorage::isSupportedOnSubTarget(
+    StateValueArrayStorage::StorageKind Kind, const llvm::GCNSubtarget &ST) {
+  return StorageSTCompatibility.at(Kind)(ST);
+}
+
 /// Swaps the value between \p ScrSGPR and \p DestSGPR by inserting 3
 /// <tt>S_XOR_B32</tt>s before \p InsertionPoint
 static void buildSGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
@@ -104,6 +174,11 @@ static void createSCCSafeSequenceOfMIs(
   }
 }
 
+bool SingleAGPRStateValueArrayStorage::isSupportedOnSubTarget(
+    const llvm::GCNSubtarget &ST) const {
+  return ST.hasGFX90AInsts();
+}
+
 void TwoAGPRValueStorage::emitCodeToLoadSVA(llvm::MachineInstr &MI,
                                             llvm::MCRegister DestVGPR) const {
   createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -168,6 +243,11 @@ void TwoAGPRValueStorage::emitCodeToStoreSVA(llvm::MachineInstr &MI,
   });
 }
 
+bool TwoAGPRValueStorage::isSupportedOnSubTarget(
+    const llvm::GCNSubtarget &ST) const {
+  return !ST.hasGFX90AInsts();
+}
+
 void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
   createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -182,7 +262,7 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(DestVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(0)
+        .addImm(-8)
         .addImm(0);
     /// Restore the state value array from the storage AGPR to the dest VGPR
     /// in the active lanes
@@ -198,7 +278,7 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(DestVGPR, llvm::RegState::Kill)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(0)
+        .addImm(-8)
         .addImm(0);
     /// Restore the state value array from the storage AGPR to the dest VPGR
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
@@ -208,6 +288,10 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
         .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    // Wait on the memory operation to complete
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(0);
   });
 }
 
@@ -225,7 +309,7 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(SrcVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(4)
+        .addImm(-4)
         .addImm(0);
     /// Restore the app VGPR from the storage AGPR in the active lanes
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
@@ -241,7 +325,7 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(SrcVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(4)
+        .addImm(-4)
         .addImm(0);
     /// Restore the app VGPR from the storage AGPR in the inactive lanes
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
@@ -251,7 +335,16 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
         .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    // Wait on the memory operation to complete
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(0);
   });
+}
+
+bool AGPRWithThreeSGPRSValueStorage::isSupportedOnSubTarget(
+    const llvm::GCNSubtarget &ST) const {
+  return !ST.hasGFX90AInsts();
 }
 
 void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
@@ -268,14 +361,14 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(DestVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(0)
+        .addImm(-8)
         .addImm(0);
     /// Restore the state value array from its fixed storage to the dest VGPR
     /// in the active lanes
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(4)
+        .addImm(-4)
         .addImm(0);
     // Flip the exec mask
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
@@ -286,19 +379,23 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(DestVGPR, llvm::RegState::Kill)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(0)
+        .addImm(-8)
         .addImm(0);
     /// Restore the state value array from its fixed storage to the dest VGPR
     /// in the active lanes
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(4)
+        .addImm(-4)
         .addImm(0);
     // Flip the exec mask to its original value
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
         .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    // Wait on the memory operation to complete
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(0);
   });
 }
 
@@ -316,14 +413,14 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToStoreSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(SrcVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(4)
+        .addImm(-8)
         .addImm(0);
     /// Restore the app VGPR from its fixed storage to the src VGPR
     /// in the active lanes
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), SrcVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(0)
+        .addImm(-4)
         .addImm(0);
     // Flip the exec mask
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
@@ -335,20 +432,147 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToStoreSVA(
                   TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
         .addReg(SrcVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(4)
+        .addImm(-8)
         .addImm(0);
     /// Restore the app VGPR from its fixed storage to the src VGPR
     /// in the inactive lanes
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), SrcVGPR)
         .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(0)
+        .addImm(-4)
         .addImm(0);
     // Flip the exec mask to its original value
     llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
                   TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
         .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    // Wait on the memory operation to complete
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(0);
   });
+}
+
+bool SpilledWithThreeSGPRsValueStorage::isSupportedOnSubTarget(
+    const llvm::GCNSubtarget &ST) const {
+  return !ST.flatScratchIsArchitected();
+}
+
+void SpilledWithOneSGPRsValueStorage::emitCodeToLoadSVA(
+    llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
+  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+                                     const llvm::TargetInstrInfo &TII) {
+    /// Spill the DestVGPR to the emergency spill slot in the active lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+        .addReg(DestVGPR)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-8)
+        .addImm(0);
+    /// Restore the state value array from its fixed storage to the dest VGPR
+    /// in the active lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-4)
+        .addImm(0);
+    // Flip the exec mask
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
+        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    /// Spill the DestVGPR to the emergency spill slot in the active lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+        .addReg(DestVGPR, llvm::RegState::Kill)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-8)
+        .addImm(0);
+    /// Restore the state value array from its fixed storage to the dest VGPR
+    /// in the active lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-4)
+        .addImm(0);
+    // Flip the exec mask to its original value
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
+        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    // Wait on the memory operation to complete
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(0);
+  });
+}
+void SpilledWithOneSGPRsValueStorage::emitCodeToStoreSVA(
+    llvm::MachineInstr &MI, llvm::MCRegister SrcVGPR) const {
+  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+                                     const llvm::TargetInstrInfo &TII) {
+    /// Spill the Src to the emergency spill slot in the active lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+        .addReg(SrcVGPR)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-8)
+        .addImm(0);
+    /// Restore the app VGPR from its fixed storage to the src VGPR
+    /// in the active lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), SrcVGPR)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-4)
+        .addImm(0);
+    // Flip the exec mask
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
+        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+
+    /// Spill the Src to the emergency spill slot in the inactive lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+        .addReg(SrcVGPR)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-8)
+        .addImm(0);
+    /// Restore the app VGPR from its fixed storage to the src VGPR
+    /// in the inactive lanes
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), SrcVGPR)
+        .addReg(EmergencyVGPRSpillSlotOffset)
+        .addImm(-4)
+        .addImm(0);
+    // Flip the exec mask to its original value
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
+        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    // Wait on the memory operation to complete
+    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
+                  TII.get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(0);
+  });
+}
+
+bool SpilledWithOneSGPRsValueStorage::isSupportedOnSubTarget(
+    const llvm::GCNSubtarget &ST) const {
+  return ST.flatScratchIsArchitected();
+}
+
+void getSupportedSVAStorageList(
+    const llvm::GCNSubtarget &ST,
+    llvm::SmallVectorImpl<StateValueArrayStorage::StorageKind>
+        &SupportedStorageKinds) {
+  /// Single VGPR storage is always supported and the most preferred
+  SupportedStorageKinds.push_back(StateValueArrayStorage::SVS_SINGLE_VGPR);
+  /// Other storage types are listed here based on preference
+  for (auto SK :
+       {StateValueArrayStorage::SVS_SINGLE_VGPR,
+        StateValueArrayStorage::SVS_ONE_AGPR_post_gfx908,
+        StateValueArrayStorage::SVS_TWO_AGPRs_pre_gfx908,
+        StateValueArrayStorage::SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908,
+        StateValueArrayStorage::SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs,
+        StateValueArrayStorage::SVS_SPILLED_WITH_ONE_SGPR_architected_fs}) {
+    if (StateValueArrayStorage::isSupportedOnSubTarget(SK, ST))
+      SupportedStorageKinds.push_back(SK);
+  };
 }
 
 } // namespace luthier

@@ -28,6 +28,10 @@
 #include "tooling_common/PreKernelEmitter.hpp"
 #include <llvm/CodeGen/SlotIndexes.h>
 
+namespace llvm {
+class GCNSubtarget;
+}
+
 namespace luthier {
 
 /// \brief Contains information on the scheme used for storing with a way to
@@ -35,7 +39,7 @@ namespace luthier {
 struct StateValueArrayStorage
     : public std::enable_shared_from_this<StateValueArrayStorage> {
 public:
-  enum SchemeKind {
+  enum StorageKind {
     SVS_SINGLE_VGPR,          /// The state value array is stored in a
                               /// free VGPR
     SVS_ONE_AGPR_post_gfx908, /// The state value array is stored in a free
@@ -65,29 +69,38 @@ public:
                                                  /// support using an AGPR
                                                  /// directly as a vector
                                                  /// operand
-    SVS_SPILLED_WITH_THREE_SGPRS, /// The state value array is spilled into
-                                  /// the emergency spill slot in the
-                                  /// instrumentation private segment. Two
-                                  /// SGPRs hold the thread's flat scratch
-                                  /// base and a single SGPR points to the
-                                  /// beginning of the instrumentation
-                                  /// private segment AKA the emergency app
-                                  /// VGPR spill slot
+    SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs,    /// The state value array is
+                                                 /// spilled into the emergency
+                                                 /// spill slot in the
+                                                 /// instrumentation private
+                                                 /// segment. Two SGPRs hold the
+    /// thread's flat scratch base and
+    /// a single SGPR points to the
+    /// beginning of the
+    /// instrumentation private
+    /// segment AKA the emergency app
+    /// VGPR spill slot
+    SVS_SPILLED_WITH_ONE_SGPR_architected_fs /// Same as \c
+                                             /// SVS_SPILLED_WITH_THREE_SGPRS
+                                             /// except for targets with
+                                             /// architected FS which does not
+                                             /// require a copy of wave's FS to
+                                             /// be stored
   };
 
 private:
   /// Kind of scheme used to store and load the state value array
-  const SchemeKind Kind;
+  const StorageKind Kind;
 
 public:
   /// \returns the scheme kind used for storing and loading the state value
   /// array
-  SchemeKind getScheme() const { return Kind; }
+  StorageKind getScheme() const { return Kind; }
 
   /// Constructor
   /// \param Scheme kind of storage and load scheme used for the state value
   /// array
-  explicit StateValueArrayStorage(SchemeKind Scheme) : Kind(Scheme) {};
+  explicit StateValueArrayStorage(StorageKind Scheme) : Kind(Scheme) {};
 
   /// \return if the state value array is stored in a V/AGPR, returns the
   /// the \c llvm::MCRegister associated with it; Otherwise, returns zero
@@ -106,6 +119,29 @@ public:
   /// from \p SrcVGPR to the storage
   virtual void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                                   llvm::MCRegister SrcVGPR) const = 0;
+
+  static int getNumVGPRsUsed(StorageKind Kind);
+
+  /// \return the number of VGPRs used by this storage
+  int getNumVGPRsUsed() const { return getNumVGPRsUsed(Kind); };
+
+  static int getNumAGPRsUsed(StorageKind Kind);
+
+  /// \return the number of AGPRs used by this storage
+  int getNumAGPRsUsed() const { return getNumAGPRsUsed(Kind); };
+
+  static int getNumSGPRsUsed(StorageKind Kind);
+
+  /// \return the number of SGPRs used by this storage
+  int getNumSGPRsUsed() const { return getNumSGPRsUsed(Kind); };
+
+  static bool isSupportedOnSubTarget(StorageKind Kind,
+                                     const llvm::GCNSubtarget &ST);
+
+  /// \return \c true if \p ST supports using this storage
+  bool isSupportedOnSubTarget(const llvm::GCNSubtarget &ST) const {
+    return isSupportedOnSubTarget(Kind, ST);
+  }
 };
 
 /// \brief describes the state value array when stored in a free VGPR
@@ -134,6 +170,7 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
+
 };
 
 /// \brief describes the state value array when stored in a Single free AGPR for
@@ -159,11 +196,11 @@ public:
 
   bool requiresLoadAndStoreBeforeUse() override { return false; }
 
-  virtual void emitCodeToLoadSVA(llvm::MachineInstr &MI,
-                                 llvm::MCRegister DestVGPR) const override {};
+  void emitCodeToLoadSVA(llvm::MachineInstr &MI,
+                         llvm::MCRegister DestVGPR) const override {};
 
-  virtual void emitCodeToStoreSVA(llvm::MachineInstr &MI,
-                                  llvm::MCRegister SrcVGPR) const override {};
+  void emitCodeToStoreSVA(llvm::MachineInstr &MI,
+                          llvm::MCRegister SrcVGPR) const override {};
 };
 
 /// \brief describes the state value array when stored in a single AGPR,
@@ -261,7 +298,7 @@ public:
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SPILLED_WITH_THREE_SGPRS;
+    return S->getScheme() == SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs;
   }
 
   SpilledWithThreeSGPRsValueStorage(
@@ -270,7 +307,7 @@ public:
       : FlatScratchSGPRHigh(FlatScratchSGPRHigh),
         FlatScratchSGPRLow(FlatScratchSGPRLow),
         EmergencyVGPRSpillSlotOffset(EmergencyVGPRSpillSlotOffset),
-        StateValueArrayStorage(SVS_SPILLED_WITH_THREE_SGPRS) {};
+        StateValueArrayStorage(SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs) {};
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
@@ -282,6 +319,46 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 };
+
+/// \brief State value array storage scheme for targets with architected
+/// FS, where the SVA is spilled in the thread's emergency SVA spill slot in
+/// the instrumentation's private segment, and only one SGPR is used with FS
+/// to spill an app's VGPR to the instrumentation's private segment before
+/// loading the state value array in its place
+struct SpilledWithOneSGPRsValueStorage : public StateValueArrayStorage {
+public:
+  /// An SGPR holding the offset of the instrumentation private segment's
+  /// emergency VGPR spill slot from the thread's flat scratch address
+  llvm::MCRegister EmergencyVGPRSpillSlotOffset{};
+
+  /// method for providing LLVM RTTI
+  [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
+    return S->getScheme() == SVS_SPILLED_WITH_ONE_SGPR_architected_fs;
+  }
+
+  explicit SpilledWithOneSGPRsValueStorage(
+      llvm::MCRegister EmergencyVGPRSpillSlotOffset)
+      : EmergencyVGPRSpillSlotOffset(EmergencyVGPRSpillSlotOffset),
+        StateValueArrayStorage(SVS_SPILLED_WITH_ONE_SGPR_architected_fs) {};
+
+  llvm::MCRegister getStateValueStorageReg() const override { return {}; }
+
+  bool requiresLoadAndStoreBeforeUse() override { return true; }
+
+  void emitCodeToLoadSVA(llvm::MachineInstr &MI,
+                         llvm::MCRegister DestVGPR) const override;
+
+  void emitCodeToStoreSVA(llvm::MachineInstr &MI,
+                          llvm::MCRegister SrcVGPR) const override;
+};
+
+/// \returns the set of storage <tt>SchemeKind</tt>s
+/// that are supported on the <tt>ST</tt>. The ordering of schemes indicates
+/// their preference, with lower-indexed storage kinds being preferred more
+void getSupportedSVAStorageList(
+    const llvm::GCNSubtarget &ST,
+    llvm::SmallVectorImpl<StateValueArrayStorage::StorageKind>
+        &SupportedStorageKinds);
 
 } // namespace luthier
 
