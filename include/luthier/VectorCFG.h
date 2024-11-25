@@ -27,6 +27,8 @@ namespace llvm {
 class MachineInstr;
 
 class MachineFunction;
+
+class LivePhysRegs;
 } // namespace llvm
 
 namespace luthier {
@@ -54,6 +56,10 @@ private:
   /// Set of successor blocks
   llvm::SmallDenseSet<const VectorMBB *, 2> Successors{};
 
+  typedef std::vector<llvm::MachineBasicBlock::RegisterMaskPair> LiveInVector;
+
+  std::vector<llvm::MachineBasicBlock::RegisterMaskPair> LiveIns;
+
 public:
   /// Disallowed copy construction
   VectorMBB(const VectorMBB &) = delete;
@@ -70,7 +76,7 @@ public:
             const llvm::MachineInstr &EndMI)
       : CFG(CFG), Instructions({BeginMI, *EndMI.getNextNode()}) {};
 
-  const VectorCFG &getParent() { return CFG; };
+  [[nodiscard]] const VectorCFG &getParent() const { return CFG; };
 
   [[nodiscard]] llvm::MachineBasicBlock::const_iterator begin() const {
     return Instructions.begin();
@@ -95,20 +101,80 @@ public:
     Successors.insert(&MBB);
     MBB.Predecessors.insert(this);
   }
+
+  [[nodiscard]] auto predecessors() const {
+    return llvm::make_range(Predecessors.begin(), Predecessors.end());
+  }
+
+  [[nodiscard]] auto successors() const {
+    return llvm::make_range(Successors.begin(), Successors.end());
+  }
+
+  void addLiveIn(llvm::MCRegister PhysReg,
+                 llvm::LaneBitmask LaneMask = llvm::LaneBitmask::getAll());
+
+  void clearLiveIns(
+      std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &OldLiveIns);
+
+  void sortUniqueLiveIns();
+
+  [[nodiscard]] const std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &
+  getLiveIns() const {
+    return LiveIns;
+  }
+
+  llvm::iterator_range<LiveInVector::iterator> liveins() {
+    return llvm::make_range(LiveIns.begin(), LiveIns.end());
+  }
+
+  [[nodiscard]] llvm::iterator_range<LiveInVector::const_iterator>
+  liveins() const {
+    return llvm::make_range(LiveIns.begin(), LiveIns.end());
+  }
 };
 
 class VectorCFG {
 private:
-  llvm::SmallVector<std::unique_ptr<VectorMBB>, 0> MBBs;
+  typedef llvm::SmallVector<std::unique_ptr<VectorMBB>, 0> MBBVector;
 
-  VectorCFG() = default;
+  MBBVector MBBs;
+
+  const llvm::MachineFunction &MF;
+
+  explicit VectorCFG(const llvm::MachineFunction &MF) : MF(MF) {};
 
   VectorMBB &createVectorMBB();
 
 public:
+  using iterator = MBBVector::iterator;
+
+  using const_iterator = MBBVector::const_iterator;
+
+  iterator begin() { return MBBs.begin(); }
+
+  [[nodiscard]] const_iterator begin() const { return MBBs.begin(); }
+
+  iterator end() { return MBBs.end(); }
+
+  [[nodiscard]] const_iterator end() const { return MBBs.end(); }
+
+  [[nodiscard]] const llvm::MachineFunction &getMF() const { return MF; }
+
   static std::unique_ptr<VectorCFG>
   getVectorCFG(const llvm::MachineFunction &MF);
 };
+
+/// Re-implementation of \c llvm::LivePhysRegs::addLiveOutsNoPristines for
+/// \c VectorMBB
+/// \param VecMBB
+void addBlockLiveIns(llvm::LivePhysRegs &LPR, const VectorMBB &VecMBB);
+
+void addLiveInsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB);
+
+void addLiveIns(VectorMBB &MBB, const llvm::LivePhysRegs &LiveRegs);
+
+
+void addLiveOutsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB);
 
 } // namespace luthier
 

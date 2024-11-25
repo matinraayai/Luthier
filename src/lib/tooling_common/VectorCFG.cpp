@@ -20,6 +20,7 @@
 #include "luthier/CodeGenHelpers.h"
 #include <SIInstrInfo.h>
 #include <llvm/ADT/DenseSet.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFunction.h>
 
 namespace luthier {
@@ -30,13 +31,43 @@ void VectorMBB::setInstRange(llvm::MachineBasicBlock::const_iterator Begin,
   Instructions = {Begin, End};
 }
 
+void VectorMBB::addLiveIn(llvm::MCRegister PhysReg,
+                          llvm::LaneBitmask LaneMask) {
+  LiveIns.emplace_back(PhysReg, LaneMask);
+}
+
+void VectorMBB::clearLiveIns(
+    std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &OldLiveIns) {
+  std::swap(LiveIns, OldLiveIns);
+}
+
+void VectorMBB::sortUniqueLiveIns() {
+  llvm::sort(LiveIns, [](const llvm::MachineBasicBlock::RegisterMaskPair &LI0,
+                         const llvm::MachineBasicBlock::RegisterMaskPair &LI1) {
+    return LI0.PhysReg < LI1.PhysReg;
+  });
+  // Liveins are sorted by physreg now we can merge their lanemasks.
+  LiveInVector::const_iterator I = LiveIns.begin();
+  LiveInVector::const_iterator J;
+  auto Out = LiveIns.begin();
+  for (; I != LiveIns.end(); ++Out, I = J) {
+    llvm::MCRegister PhysReg = I->PhysReg;
+    llvm::LaneBitmask LaneMask = I->LaneMask;
+    for (J = std::next(I); J != LiveIns.end() && J->PhysReg == PhysReg; ++J)
+      LaneMask |= J->LaneMask;
+    Out->PhysReg = PhysReg;
+    Out->LaneMask = LaneMask;
+  }
+  LiveIns.erase(Out, LiveIns.end());
+}
+
 VectorMBB &VectorCFG::createVectorMBB() {
   return *MBBs.emplace_back(std::make_unique<VectorMBB>(*this));
 }
 
 std::unique_ptr<VectorCFG>
 VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
-  auto Out = std::unique_ptr<VectorCFG>(new VectorCFG());
+  auto Out = std::unique_ptr<VectorCFG>(new VectorCFG(MF));
   // Create an empty VectorMBB as the entry point for the Vector CFG
   auto &EntryVectorMBB = Out->createVectorMBB();
 
@@ -165,6 +196,51 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
   }
 
   return std::move(Out);
+}
+
+void addLiveInsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB) {
+  addBlockLiveIns(LPR, MBB);
+}
+
+void addLiveOutsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB) {
+  // To get the live-outs we simply merge the live-ins of all successors.
+  for (const VectorMBB *Succ : MBB.successors())
+    addBlockLiveIns(LPR, *Succ);
+}
+
+void addBlockLiveIns(llvm::LivePhysRegs &LPR, const VectorMBB &VecMBB) {
+  for (const auto &LI : VecMBB.liveins()) {
+    llvm::MCPhysReg Reg = LI.PhysReg;
+    llvm::LaneBitmask Mask = LI.LaneMask;
+    auto *TRI = VecMBB.getParent().getMF().getSubtarget().getRegisterInfo();
+    llvm::MCSubRegIndexIterator S(Reg, TRI);
+    assert(Mask.any() && "Invalid livein mask");
+    if (Mask.all() || !S.isValid()) {
+      LPR.addReg(Reg);
+      continue;
+    }
+    for (; S.isValid(); ++S) {
+      unsigned SI = S.getSubRegIndex();
+      if ((Mask & TRI->getSubRegIndexLaneMask(SI)).any())
+        LPR.addReg(S.getSubReg());
+    }
+  }
+}
+
+void addLiveIns(VectorMBB &MBB, const llvm::LivePhysRegs &LiveRegs) {
+  const auto &MF = MBB.getParent().getMF();
+  const auto &MRI = MF.getRegInfo();
+  const auto &TRI = *MRI.getTargetRegisterInfo();
+  for (llvm::MCPhysReg Reg : LiveRegs) {
+    if (MRI.isReserved(Reg))
+      continue;
+    // Skip the register if we are about to add one of its super registers.
+    if (any_of(TRI.superregs(Reg), [&](llvm::MCPhysReg SReg) {
+          return LiveRegs.contains(SReg) && !MRI.isReserved(SReg);
+        }))
+      continue;
+    MBB.addLiveIn(Reg);
+  }
 }
 
 } // namespace luthier
