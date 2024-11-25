@@ -42,15 +42,13 @@ private:
   /// Mapping between a hook and its instrumentation point MI in the LR
   const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
       HookFuncToInstPointMI;
-  /// LiveReg analysis for the LR
-  const LRRegisterLiveness &RegLiveness;
   /// Physical registers that are not always in the Live-ins sets of the
   /// instrumentation points
   const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered;
 
   PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass;
 
-  PreKernelEmissionDescriptor &PKInfo;
+  FunctionPreambleDescriptor &PKInfo;
 
 public:
   static char ID;
@@ -61,9 +59,8 @@ public:
       PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass,
       const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
           &HookFuncToInstPointMI,
-      const LRRegisterLiveness &RegLiveness,
       const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered,
-      PreKernelEmissionDescriptor &PKInfo);
+      FunctionPreambleDescriptor &PKInfo);
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Injected Payload Prologue Epilogue Insertion Pass";
