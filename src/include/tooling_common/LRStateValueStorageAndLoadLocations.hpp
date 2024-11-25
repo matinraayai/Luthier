@@ -26,210 +26,12 @@
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
 #include "tooling_common/PreKernelEmitter.hpp"
+#include "tooling_common/StateValueArrayStorage.hpp"
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 
 namespace luthier {
-
-/// \brief Contains information on the scheme used for storing with a way to
-/// load the state value array into its destination VGPR
-struct StateValueArrayStorage
-    : public std::enable_shared_from_this<StateValueArrayStorage> {
-public:
-  enum SchemeKind {
-    SVS_SINGLE_VGPR,          /// The state value array is stored in a
-                              /// free VGPR
-    SVS_ONE_AGPR_post_gfx908, /// The state value array is stored in a free
-                              /// AGPR, and the target supports using AGPR as
-                              /// an operand in vector instructions
-    SVS_TWO_AGPRs_pre_gfx908, /// The state value array is stored in an
-                              /// AGPR, with a free AGPR to use as a temp
-                              /// spill slot for the app's VGPR. Only
-                              /// applicable for pre-gfx908, since they don't
-                              /// support using AGPRs as operands for vector
-                              /// instructions
-    SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908, /// The state value array
-                                                 /// is stored in in an AGPR,
-                                                 /// with two SGPRs holding
-                                                 /// the FLAT SCRATCH base
-                                                 /// address of the thread,
-                                                 /// and one SGPR
-                                                 /// holding the pointer to
-                                                 /// the VGPR emergency spill
-                                                 /// slot at the beginning of
-                                                 /// the instrumentation
-                                                 /// private segment. SGPRs
-                                                 /// are used to spill an app
-                                                 /// VGPR for the state value
-                                                 /// array to be loaded into.
-                                                 /// For targets that don't
-                                                 /// support using an AGPR
-                                                 /// directly as a vector
-                                                 /// operand
-    SVS_SPILLED_WITH_THREE_SGPRS, /// The state value array is spilled into
-                                  /// the emergency spill slot in the
-                                  /// instrumentation private segment. Two
-                                  /// SGPRs hold the thread's flat scratch
-                                  /// base and a single SGPR points to the
-                                  /// beginning of the instrumentation
-                                  /// private segment AKA the emergency app
-                                  /// VGPR spill slot
-  };
-
-private:
-  /// Kind of scheme used to store and load the state value array
-  const SchemeKind Kind;
-
-public:
-  /// \returns the scheme kind used for storing and loading the state value
-  /// array
-  SchemeKind getScheme() const { return Kind; }
-
-  /// Constructor
-  /// \param Scheme kind of storage and load scheme used for the state value
-  /// array
-  explicit StateValueArrayStorage(SchemeKind Scheme) : Kind(Scheme) {};
-
-  /// \return if the state value array is stored in a V/AGPR, returns the
-  /// the \c llvm::MCRegister associated with it; Otherwise, returns zero
-  virtual llvm::MCRegister getStateValueStorageReg() const = 0;
-};
-
-/// \brief describes the state value array when stored in a VGPR
-struct VGPRStateValueArrayStorage : public StateValueArrayStorage {
-public:
-  llvm::MCRegister StorageVGPR{};
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SINGLE_VGPR;
-  }
-
-  /// Constructor
-  /// \param StorageVGPR the VGPR where the state value array is stored
-  explicit VGPRStateValueArrayStorage(llvm::MCRegister StorageVGPR)
-      : StorageVGPR(StorageVGPR), StateValueArrayStorage(SVS_SINGLE_VGPR) {};
-
-  llvm::MCRegister getStateValueStorageReg() const override {
-    return StorageVGPR;
-  }
-};
-
-/// \brief describes the state value array when stored in a Single AGPR for
-/// targets that support using AGPRs as a vector instruction operand
-struct SingleAGPRStateValueArrayStorage : public StateValueArrayStorage {
-public:
-  llvm::MCRegister StorageAGPR{};
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SINGLE_VGPR;
-  }
-
-  /// Constructor
-  /// \param StorageAGPR the AGPR where the state value array is stored
-  explicit SingleAGPRStateValueArrayStorage(llvm::MCRegister StorageAGPR)
-      : StorageAGPR(StorageAGPR),
-        StateValueArrayStorage(SVS_ONE_AGPR_post_gfx908) {};
-
-  llvm::MCRegister getStateValueStorageReg() const override {
-    return StorageAGPR;
-  }
-};
-
-/// \brief describes the state value array when stored in a single AGPR,
-/// with a free AGPR for spilling an app VGPR. Only applicable to targets
-/// that don't support AGPRs as operands to vector instructions
-struct TwoAGPRValueStorage : public StateValueArrayStorage {
-public:
-  /// Where the state value is stored
-  llvm::MCRegister StorageAGPR{};
-  /// A free AGPR used for spilling an application VGPR
-  llvm::MCRegister TempAGPR{};
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_TWO_AGPRs_pre_gfx908;
-  }
-
-  /// Constructor
-  TwoAGPRValueStorage(llvm::MCRegister StorageAGPR, llvm::MCRegister TempAGPR)
-      : StorageAGPR(StorageAGPR), TempAGPR(TempAGPR),
-        StateValueArrayStorage(SVS_TWO_AGPRs_pre_gfx908) {};
-
-  llvm::MCRegister getStateValueStorageReg() const override {
-    return StorageAGPR;
-  }
-};
-
-/// \brief Describes the state value storage scheme where a single AGPR is used
-/// to store the state value array, with two SGPRs holding the base address of
-/// the wave's flat scratch address, and another SGPR pointing to the
-/// instrumentation private segment's emergency VGPR spill slot.
-/// Only applicable to targets that don't support using AGPRs as an operand
-/// to vector instructions
-struct AGPRWithThreeSGPRSValueStorage : public StateValueArrayStorage {
-public:
-  /// Where the state value is stored
-  llvm::MCRegister StorageAGPR{};
-  /// Upper 32-bit address of the thread's flat scratch address
-  llvm::MCRegister FlatScratchSGPRHigh{};
-  /// Lower 32-bit address of the thread's flat scratch address
-  llvm::MCRegister FlatScratchSGPRLow{};
-  /// An SGPR holding the offset of the instrumentation private segment's
-  /// emergency VGPR spill slot from the thread's flat scratch address
-  llvm::MCRegister EmergencyVGPRSpillSlotOffset{};
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908;
-  }
-
-  AGPRWithThreeSGPRSValueStorage(llvm::MCRegister StorageAGPR,
-                                 llvm::MCRegister FlatScratchSGPRHigh,
-                                 llvm::MCRegister FlatScratchSGPRLow,
-                                 llvm::MCRegister EmergencyVGPRSpillSlotOffset)
-      : StorageAGPR(StorageAGPR), FlatScratchSGPRHigh(FlatScratchSGPRHigh),
-        FlatScratchSGPRLow(FlatScratchSGPRLow),
-        EmergencyVGPRSpillSlotOffset(EmergencyVGPRSpillSlotOffset),
-        StateValueArrayStorage(SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908) {};
-
-  llvm::MCRegister getStateValueStorageReg() const override {
-    return StorageAGPR;
-  }
-};
-
-/// \brief State value array storage scheme where the SVA is spilled in
-/// the thread's emergency SVA spill slot in the instrumentation's private
-/// segment, and three SGPRs used to spill an app's VGPR to the
-/// instrumentation's private segment before loading the state value array
-/// in its place
-struct SpilledWithThreeSGPRsValueStorage : public StateValueArrayStorage {
-public:
-  /// Upper 32-bit address of the thread's flat scratch address
-  llvm::MCRegister FlatScratchSGPRHigh{};
-  /// Lower 32-bit address of the thread's flat scratch address
-  llvm::MCRegister FlatScratchSGPRLow{};
-  /// An SGPR holding the offset of the instrumentation private segment's
-  /// emergency VGPR spill slot from the thread's flat scratch address
-  llvm::MCRegister EmergencyVGPRSpillSlotOffset{};
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SPILLED_WITH_THREE_SGPRS;
-  }
-
-  SpilledWithThreeSGPRsValueStorage(
-      llvm::MCRegister FlatScratchSGPRHigh, llvm::MCRegister FlatScratchSGPRLow,
-      llvm::MCRegister EmergencyVGPRSpillSlotOffset)
-      : FlatScratchSGPRHigh(FlatScratchSGPRHigh),
-        FlatScratchSGPRLow(FlatScratchSGPRLow),
-        EmergencyVGPRSpillSlotOffset(EmergencyVGPRSpillSlotOffset),
-        StateValueArrayStorage(SVS_SPILLED_WITH_THREE_SGPRS) {};
-
-  llvm::MCRegister getStateValueStorageReg() const override { return {}; }
-};
 
 /// \brief Where the state value array is stored in an interval inside a
 /// machine basic block
@@ -384,7 +186,9 @@ private:
   /// or not.
   [[nodiscard]] std::shared_ptr<StateValueArrayStorage>
   findFixedStateValueArrayStorage(
-      llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions) const;
+      llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
+      llvm::ArrayRef<StateValueArrayStorage::StorageKind> SupportedStorage,
+      int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage) const;
 
   /// Constructor
   /// \param LR the \c LiftedRepresentation being analyzed

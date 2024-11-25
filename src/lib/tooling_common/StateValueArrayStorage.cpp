@@ -93,6 +93,52 @@ bool StateValueArrayStorage::isSupportedOnSubTarget(
   return StorageSTCompatibility.at(Kind)(ST);
 }
 
+llvm::Expected<std::unique_ptr<StateValueArrayStorage>>
+StateValueArrayStorage::createSVAStorage(
+    llvm::ArrayRef<llvm::MCRegister> VGPRs,
+    llvm::ArrayRef<llvm::MCRegister> AGPRs,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    StateValueArrayStorage::StorageKind Scheme) {
+  switch (Scheme) {
+  case SVS_SINGLE_VGPR:
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        VGPRs.size() >= 1,
+        "Insufficient number of VGPRs for single VGPR SVA storage."));
+    return std::make_unique<VGPRStateValueArrayStorage>(VGPRs[0]);
+  case SVS_ONE_AGPR_post_gfx908:
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        AGPRs.size() >= 1,
+        "Insufficient number of AGPRs for single AGPR SVA storage."));
+    return std::make_unique<SingleAGPRStateValueArrayStorage>(AGPRs[0]);
+  case SVS_TWO_AGPRs_pre_gfx908:
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        AGPRs.size() >= 2,
+        "Insufficient number of AGPRs for two AGPR SVA storage."));
+    return std::make_unique<TwoAGPRValueStorage>(AGPRs[0], AGPRs[1]);
+  case SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908:
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        AGPRs.size() >= 1, "Insufficient number of AGPRs for single AGPR with "
+                           "three SGPR SVA storage."));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        SGPRs.size() >= 3, "Insufficient number of AGPRs for single AGPR with "
+                           "three SGPR SVA storage."));
+    return std::make_unique<AGPRWithThreeSGPRSValueStorage>(AGPRs[0], SGPRs[0],
+                                                            SGPRs[1], SGPRs[2]);
+  case SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs:
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        SGPRs.size() >= 3, "Insufficient number of AGPRs for spilled with "
+                           "three SGPR SVA storage."));
+    return std::make_unique<SpilledWithThreeSGPRsValueStorage>(
+        SGPRs[0], SGPRs[1], SGPRs[2]);
+  case SVS_SPILLED_WITH_ONE_SGPR_architected_fs:
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        SGPRs.size() >= 1, "Insufficient number of SGPRs for spilled with "
+                           "single SGPR SVA storage."));
+    return std::make_unique<SpilledWithOneSGPRsValueStorage>(SGPRs[0]);
+  }
+  llvm_unreachable("Invalid SVA storage Enum value.");
+}
+
 /// Swaps the value between \p ScrSGPR and \p DestSGPR by inserting 3
 /// <tt>S_XOR_B32</tt>s before \p InsertionPoint
 static void buildSGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
@@ -174,11 +220,6 @@ static void createSCCSafeSequenceOfMIs(
   }
 }
 
-bool SingleAGPRStateValueArrayStorage::isSupportedOnSubTarget(
-    const llvm::GCNSubtarget &ST) const {
-  return ST.hasGFX90AInsts();
-}
-
 void TwoAGPRValueStorage::emitCodeToLoadSVA(llvm::MachineInstr &MI,
                                             llvm::MCRegister DestVGPR) const {
   createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -241,11 +282,6 @@ void TwoAGPRValueStorage::emitCodeToStoreSVA(llvm::MachineInstr &MI,
                   TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
         .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
   });
-}
-
-bool TwoAGPRValueStorage::isSupportedOnSubTarget(
-    const llvm::GCNSubtarget &ST) const {
-  return !ST.hasGFX90AInsts();
 }
 
 void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
@@ -340,11 +376,6 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
                   TII.get(llvm::AMDGPU::S_WAITCNT))
         .addImm(0);
   });
-}
-
-bool AGPRWithThreeSGPRSValueStorage::isSupportedOnSubTarget(
-    const llvm::GCNSubtarget &ST) const {
-  return !ST.hasGFX90AInsts();
 }
 
 void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
@@ -452,11 +483,6 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToStoreSVA(
   });
 }
 
-bool SpilledWithThreeSGPRsValueStorage::isSupportedOnSubTarget(
-    const llvm::GCNSubtarget &ST) const {
-  return !ST.flatScratchIsArchitected();
-}
-
 void SpilledWithOneSGPRsValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
   createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -549,11 +575,6 @@ void SpilledWithOneSGPRsValueStorage::emitCodeToStoreSVA(
                   TII.get(llvm::AMDGPU::S_WAITCNT))
         .addImm(0);
   });
-}
-
-bool SpilledWithOneSGPRsValueStorage::isSupportedOnSubTarget(
-    const llvm::GCNSubtarget &ST) const {
-  return ST.flatScratchIsArchitected();
 }
 
 void getSupportedSVAStorageList(

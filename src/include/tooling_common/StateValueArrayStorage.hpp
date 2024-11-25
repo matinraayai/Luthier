@@ -102,6 +102,14 @@ public:
   /// array
   explicit StateValueArrayStorage(StorageKind Scheme) : Kind(Scheme) {};
 
+  virtual ~StateValueArrayStorage() = default;
+
+  static llvm::Expected<std::unique_ptr<StateValueArrayStorage>>
+  createSVAStorage(llvm::ArrayRef<llvm::MCRegister> VGPRs,
+                   llvm::ArrayRef<llvm::MCRegister> AGPRs,
+                   llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                   StateValueArrayStorage::StorageKind Scheme);
+
   /// \return if the state value array is stored in a V/AGPR, returns the
   /// the \c llvm::MCRegister associated with it; Otherwise, returns zero
   virtual llvm::MCRegister getStateValueStorageReg() const = 0;
@@ -119,6 +127,9 @@ public:
   /// from \p SrcVGPR to the storage
   virtual void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                                   llvm::MCRegister SrcVGPR) const = 0;
+
+  virtual void getAllStorageRegisters(
+      llvm::SmallVectorImpl<llvm::MCRegister>& Regs) const = 0;
 
   static int getNumVGPRsUsed(StorageKind Kind);
 
@@ -171,6 +182,10 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
 
+  void getAllStorageRegisters(
+      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
+    Regs.push_back(StorageVGPR);
+  }
 };
 
 /// \brief describes the state value array when stored in a Single free AGPR for
@@ -201,6 +216,11 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
+
+  void getAllStorageRegisters(
+      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
+    Regs.push_back(StorageAGPR);
+  }
 };
 
 /// \brief describes the state value array when stored in a single AGPR,
@@ -234,6 +254,12 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
+
+  void getAllStorageRegisters(
+      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
+    Regs.push_back(StorageAGPR);
+    Regs.push_back(TempAGPR);
+  }
 };
 
 /// \brief Describes the state value storage scheme where a single AGPR is used
@@ -279,6 +305,14 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
+
+  void getAllStorageRegisters(
+      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
+    Regs.push_back(StorageAGPR);
+    Regs.push_back(FlatScratchSGPRHigh);
+    Regs.push_back(FlatScratchSGPRLow);
+    Regs.push_back(EmergencyVGPRSpillSlotOffset);
+  }
 };
 
 /// \brief State value array storage scheme where the SVA is spilled in
@@ -318,6 +352,13 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
+
+  void getAllStorageRegisters(
+      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
+    Regs.push_back(FlatScratchSGPRHigh);
+    Regs.push_back(FlatScratchSGPRLow);
+    Regs.push_back(EmergencyVGPRSpillSlotOffset);
+  }
 };
 
 /// \brief State value array storage scheme for targets with architected
@@ -350,6 +391,11 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
+
+  void getAllStorageRegisters(
+      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
+    Regs.push_back(EmergencyVGPRSpillSlotOffset);
+  }
 };
 
 /// \returns the set of storage <tt>SchemeKind</tt>s
