@@ -25,6 +25,7 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineInstr.h>
+#include <luthier/VectorCFG.h>
 
 namespace luthier {
 
@@ -32,6 +33,8 @@ class LiftedRepresentation;
 
 class LRRegisterLiveness {
 private:
+  llvm::DenseMap<llvm::MachineFunction*, std::unique_ptr<VectorCFG>> VecCFG;
+
   const LiftedRepresentation &LR;
 
   /// A mapping between an \c llvm::MachineInstr and the set of physical
