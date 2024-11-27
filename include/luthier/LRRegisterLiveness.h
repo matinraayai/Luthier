@@ -25,6 +25,8 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineInstr.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/IR/PassManager.h>
 #include <luthier/VectorCFG.h>
 
 namespace luthier {
@@ -33,9 +35,8 @@ class LiftedRepresentation;
 
 class LRRegisterLiveness {
 private:
-  llvm::DenseMap<llvm::MachineFunction*, std::unique_ptr<VectorCFG>> VecCFG;
-
-  const LiftedRepresentation &LR;
+  llvm::DenseMap<const llvm::MachineFunction *, std::unique_ptr<VectorCFG>>
+      VecCFG;
 
   /// A mapping between an \c llvm::MachineInstr and the set of physical
   /// registers that are live right before it\n
@@ -46,7 +47,7 @@ private:
       MachineInstrLivenessMap{};
 
 public:
-  explicit LRRegisterLiveness(const LiftedRepresentation &LR);
+  LRRegisterLiveness() = default;
 
   /// \returns the set of physical registers that are live before executing
   /// the instruction \p MI
@@ -64,8 +65,34 @@ public:
   /// Representation
   /// This includes both the instructions lifted from the code objects, and
   /// the ones manually injected by the tool writer
-  void recomputeLiveIns();
+  void recomputeLiveIns(const llvm::Module &M,
+                        const llvm::MachineModuleInfo &MMI);
 };
+
+class LRRegLivenessAnalysis
+    : public llvm::AnalysisInfoMixin<LRRegLivenessAnalysis> {
+private:
+  friend AnalysisInfoMixin<LRRegLivenessAnalysis>;
+
+  static llvm::AnalysisKey Key;
+
+  LRRegisterLiveness RegLiveness{};
+
+public:
+  using Result = LRRegisterLiveness &;
+
+  LRRegLivenessAnalysis() = default;
+
+  /// Run the analysis pass that would
+  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
+
+  /// Never invalidate the results
+  bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
+                  llvm::ModuleAnalysisManager::Invalidator &) {
+    return false;
+  }
+};
+
 } // namespace luthier
 
 #endif

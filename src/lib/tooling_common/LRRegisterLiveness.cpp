@@ -17,6 +17,7 @@
 /// \file
 /// This file implements the \c LRRegisterLiveness class.
 //===----------------------------------------------------------------------===//
+#include "common/Error.hpp"
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Support/TimeProfiler.h>
@@ -177,14 +178,8 @@ static void recomputeLiveIns(
   }
 }
 
-LRRegisterLiveness::LRRegisterLiveness(const luthier::LiftedRepresentation &LR)
-    : LR(LR) {
-  for (const auto &[FuncSymbol, MF] : LR.functions()) {
-    VecCFG.insert({MF, VectorCFG::getVectorCFG(*MF)});
-  }
-}
-
-void LRRegisterLiveness::recomputeLiveIns() {
+void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
+                                          const llvm::MachineModuleInfo &MMI) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
   llvm::DenseMap<const llvm::MachineInstr *,
                  std::unique_ptr<llvm::LivePhysRegs>>
@@ -192,7 +187,11 @@ void LRRegisterLiveness::recomputeLiveIns() {
   llvm::DenseMap<const llvm::MachineInstr *,
                  std::unique_ptr<llvm::LivePhysRegs>>
       VCFGLiveIns;
-  for (const auto &[FuncSymbol, MF] : LR.functions()) {
+  for (const auto &F : M) {
+    auto *MF = MMI.getMachineFunction(F);
+    if (!MF)
+      continue;
+    VecCFG.insert({MF, VectorCFG::getVectorCFG(*MF)});
     luthier::recomputeLiveIns(*MF, MFLiveIns);
     luthier::recomputeLiveIns(*VecCFG[MF], VCFGLiveIns);
     const auto &TRI = *MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
@@ -218,4 +217,12 @@ void LRRegisterLiveness::recomputeLiveIns() {
   }
 }
 
+llvm::AnalysisKey LRRegLivenessAnalysis::Key;
+
+LRRegLivenessAnalysis::Result
+LRRegLivenessAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
+  auto &MMI = MAM.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI();
+  RegLiveness.recomputeLiveIns(M, MMI);
+  return RegLiveness;
+}
 } // namespace luthier
