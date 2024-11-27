@@ -18,9 +18,10 @@
 /// This file implements the \c LRCallgraph class.
 //===----------------------------------------------------------------------===//
 #include "hsa/LoadedCodeObject.hpp"
+#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/CodeGen/MachineRegisterInfo.h>
 #include <luthier/LRCallgraph.h>
 #include <luthier/LiftedRepresentation.h>
-#include <llvm/CodeGen/MachineRegisterInfo.h>
 
 #undef DEBUG_TYPE
 
@@ -37,7 +38,7 @@ namespace luthier {
 /// values inside its own basic block
 static llvm::MachineFunction *
 findCalleeMFOfCallInst(const llvm::MachineInstr &CallMI,
-                       llvm::MachineModuleInfo &MMI) {
+                       const llvm::MachineModuleInfo &MMI) {
   if (!CallMI.isCall())
     return nullptr;
   auto Callee = CallMI.getOperand(0);
@@ -129,10 +130,11 @@ findCalleeMFOfCallInst(const llvm::MachineInstr &CallMI,
 }
 
 void constructCallGraph(
-    const llvm::DenseMap<const llvm::MachineInstr *, const llvm::MachineFunction *>
+    const llvm::DenseMap<const llvm::MachineInstr *,
+                         const llvm::MachineFunction *>
         &CalledInstrToCalleeFuncMap,
-    llvm::DenseMap<const llvm::MachineFunction *, std::unique_ptr<CallGraphNode>>
-        &CallGraph) {
+    llvm::DenseMap<const llvm::MachineFunction *,
+                   std::unique_ptr<CallGraphNode>> &CallGraph) {
   for (const auto &[MI, CalleeMF] : CalledInstrToCalleeFuncMap) {
     const auto CallerMF = MI->getParent()->getParent();
     CallGraphNode *CallerNode;
@@ -156,20 +158,17 @@ void constructCallGraph(
   }
 }
 
-llvm::Error LRCallGraph::analyse() {
-  // Populate the non-deterministic callgraph analysis field
-  for (const auto &[LCO, ModuleAndMMI] : LR.loaded_code_objects()) {
-    HasNonDeterministicCallGraph.insert({LCO, false});
-  }
+llvm::Error LRCallGraph::analyse(const llvm::Module &M,
+                                 const llvm::MachineModuleInfo &MMI) {
 
   // Iterate over the functions of LR, and recover the target of all call
   // instruction
   llvm::DenseMap<const llvm::MachineInstr *, const llvm::MachineFunction *>
       CallInstrToCalleeMap;
-  for (const auto &[FuncSymbol, MF] : LR.functions()) {
-    auto LCO = FuncSymbol->getLoadedCodeObject();
-    auto &M = *LR.getModule(LCO);
-    auto &MMI = *LR.getMMI(LCO);
+  for (const auto &F : M) {
+    auto *MF = MMI.getMachineFunction(F);
+    if (!MF)
+      continue;
 
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
@@ -183,7 +182,7 @@ llvm::Error LRCallGraph::analyse() {
                      else llvm::dbgs()
                      << "MI at : " << &MI << "has an unknown call target.\n";);
           if (CalleeMF == nullptr)
-            HasNonDeterministicCallGraph[LCO] = true;
+            HasNonDeterministicCallGraph = true;
         }
       }
     }
@@ -193,11 +192,12 @@ llvm::Error LRCallGraph::analyse() {
   return llvm::Error::success();
 }
 
-llvm::Expected<std::unique_ptr<LRCallGraph>>
-LRCallGraph::analyse(const LiftedRepresentation &LR) {
-  std::unique_ptr<LRCallGraph> CG(new LRCallGraph(LR));
-  LUTHIER_RETURN_ON_ERROR(CG->analyse());
-  return std::move(CG);
-}
+llvm::AnalysisKey LRCallGraphAnalysis::Key;
 
+LRCallGraph &LRCallGraphAnalysis::run(llvm::Module &M,
+                                      llvm::ModuleAnalysisManager &MAM) {
+  LUTHIER_REPORT_FATAL_ON_ERROR(CG.analyse(
+      M, MAM.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI()));
+  return CG;
+}
 } // namespace luthier

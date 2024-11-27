@@ -23,6 +23,8 @@
 #define LUTHIER_LR_CALLGRAPH_H
 #include <hsa/hsa.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/IR/PassManager.h>
 #include <luthier/hsa/DenseMapInfo.h>
 
 namespace luthier {
@@ -49,9 +51,6 @@ struct CallGraphNode {
 /// <tt>hsa_loaded_code_object</tt>s in a \c LiftedRepresentation
 class LRCallGraph {
 private:
-  /// The \c LiftedRepresentation being worked on
-  const LiftedRepresentation &LR;
-
   /// A map which keeps track of the \c CallGraphNode of each
   /// \c llvm::MachineFunction in the lifted representation; It is
   /// constructed by determining the target of all call instructions of the
@@ -61,18 +60,14 @@ private:
 
   /// Whether code lifter analysis was able to find the target of all
   /// call instructions in the LCO or not
-  llvm::SmallDenseMap<hsa_loaded_code_object_t, bool, 1>
-      HasNonDeterministicCallGraph{};
-
-  explicit LRCallGraph(const LiftedRepresentation &LR) : LR(LR){};
-
-  /// Performs the callgraph analysis
-  llvm::Error analyse();
+  bool HasNonDeterministicCallGraph{false};
 
 public:
-  /// Factory method
-  static llvm::Expected<std::unique_ptr<LRCallGraph>>
-  analyse(const LiftedRepresentation &LR);
+  LRCallGraph() = default;
+
+  /// Performs the callgraph analysis
+  llvm::Error analyse(const llvm::Module &M,
+                      const llvm::MachineModuleInfo &MMI);
 
   /// \return the \c CallGraphNode associated with the \p MF
   const CallGraphNode &getCallGraphNode(llvm::MachineFunction *MF) const {
@@ -82,8 +77,32 @@ public:
   /// \return \c true if callgraph analysis was able to determine the target
   /// of all call instructions in the \p LCO, \c false otherwise
   [[nodiscard]] bool
-  hasNonDeterministicCallGraph(hsa_loaded_code_object_t LCO) const {
-    return HasNonDeterministicCallGraph.at(LCO);
+  hasNonDeterministicCallGraph() const {
+    return HasNonDeterministicCallGraph;
+  }
+};
+
+class LRCallGraphAnalysis
+    : public llvm::AnalysisInfoMixin<LRCallGraphAnalysis> {
+private:
+  friend llvm::AnalysisInfoMixin<LRCallGraphAnalysis>;
+
+  static llvm::AnalysisKey Key;
+
+  LRCallGraph CG{};
+
+public:
+  using Result = LRCallGraph &;
+
+  LRCallGraphAnalysis() = default;
+
+  /// Run the analysis pass that would
+  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
+
+  /// Never invalidate the results
+  bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
+                  llvm::ModuleAnalysisManager::Invalidator &) {
+    return false;
   }
 };
 

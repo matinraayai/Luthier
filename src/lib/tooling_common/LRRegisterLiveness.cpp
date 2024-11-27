@@ -181,6 +181,7 @@ static void recomputeLiveIns(
 void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
                                           const llvm::MachineModuleInfo &MMI) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
+  LLVM_DEBUG(llvm::dbgs() << "Recomputing LR Register Liveness analysis.\n");
   llvm::DenseMap<const llvm::MachineInstr *,
                  std::unique_ptr<llvm::LivePhysRegs>>
       MFLiveIns;

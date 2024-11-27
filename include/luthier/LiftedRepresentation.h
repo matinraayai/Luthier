@@ -24,12 +24,12 @@
 
 #ifndef LUTHIER_LIFTED_REPRESENTATION_H
 #define LUTHIER_LIFTED_REPRESENTATION_H
+#include <AMDGPUTargetMachine.h>
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
-#include <AMDGPUTargetMachine.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <luthier/hsa/DenseMapInfo.h>
