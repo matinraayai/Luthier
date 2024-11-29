@@ -1100,65 +1100,44 @@ void SingleAGPRStateValueArrayStorage::emitCodeToSwitchSVS(
 
 void TwoAGPRValueStorage::emitCodeToLoadSVA(llvm::MachineInstr &MI,
                                             llvm::MCRegister DestVGPR) const {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
-    // Spill the Dest VGPR in the active lanes to the temp AGPR
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_WRITE_B32_e64), TempAGPR)
-        .addReg(DestVGPR);
-    // Copy the state value from AGPR to the dest VGPR in the active lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), DestVGPR)
-        .addReg(StorageAGPR);
-    // Flip the exec mask
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
-    // Spill the Dest VGPR in the remaining non-active lanes to the temp
-    // AGPR
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_WRITE_B32_e64), TempAGPR)
-        .addReg(DestVGPR);
-    // Copy the state value from AGPR to the dest VGPR in the non-active
-    // lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), DestVGPR)
-        .addReg(StorageAGPR, llvm::RegState::Kill);
-    // Flip the exec mask to its original value
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
-  });
+  (void)createSCCSafeSequenceOfMIs(
+      MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+              const llvm::TargetInstrInfo &TII) {
+        // Spill the Dest VGPR in the active lanes to the temp AGPR
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), DestVGPR, TempAGPR);
+        // Copy the state value from AGPR to the dest VGPR in the active lanes
+        emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), StorageAGPR, DestVGPR,
+                               false);
+        // Flip the exec mask
+        emitExecMaskFlip(InsertionPointMBB.end());
+        // Spill the Dest VGPR in the remaining non-active lanes to the temp
+        // AGPR
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), DestVGPR, TempAGPR);
+        // Copy the state value from AGPR to the dest VGPR in the active lanes
+        emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), StorageAGPR, DestVGPR,
+                               true);
+        // Flip the exec mask to its original value
+        emitExecMaskFlip(InsertionPointMBB.end());
+      });
 }
 
 void TwoAGPRValueStorage::emitCodeToStoreSVA(llvm::MachineInstr &MI,
                                              llvm::MCRegister SrcVGPR) const {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
+  (void)createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock
+                                               &InsertionPointMBB,
+                                           const llvm::TargetInstrInfo &TII) {
     // Spill the Src VGPR in the active lanes to the storage AGPR
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_WRITE_B32_e64), StorageAGPR)
-        .addReg(SrcVGPR);
+    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR, true);
     // Restore the temp AGPR contents into the src VGPR in the active lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), SrcVGPR)
-        .addReg(TempAGPR);
+    emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), TempAGPR, SrcVGPR, false);
     // Flip the exec mask
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    emitExecMaskFlip(InsertionPointMBB.end());
     // Spill the Src VGPR in the inactive lanes to the storage AGPR
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_WRITE_B32_e64), StorageAGPR)
-        .addReg(SrcVGPR);
-    // Restore the temp AGPR contents into the src VGPR in inactive laness
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), SrcVGPR)
-        .addReg(TempAGPR, llvm::RegState::Kill);
+    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR, true);
+    // Restore the temp AGPR contents into the src VGPR in the active lanes
+    emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), TempAGPR, SrcVGPR, true);
     // Flip the exec mask to its original value
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    emitExecMaskFlip(InsertionPointMBB.end());
   });
 }
 
@@ -1182,96 +1161,68 @@ void TwoAGPRValueStorage::emitCodeToSwitchSVS(
 
 void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
-    /// FS swap
-    emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_LO,
-                 FlatScratchSGPRLow);
-    emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
-                 FlatScratchSGPRHigh);
-    /// Spill the DestVGPR to the emergency spill slot in the active lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-        .addReg(DestVGPR)
-        .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(-8)
-        .addImm(0);
-    /// Restore the state value array from the storage AGPR to the dest VGPR
-    /// in the active lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), DestVGPR)
-        .addReg(StorageAGPR);
-    // Flip the exec mask
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
-    /// Spill the DestVGPR to the emergency spill slot in the active lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-        .addReg(DestVGPR, llvm::RegState::Kill)
-        .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(-8)
-        .addImm(0);
-    /// Restore the state value array from the storage AGPR to the dest VPGR
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), DestVGPR)
-        .addReg(StorageAGPR);
-    // Flip the exec mask to its original value
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
-    // Wait on the memory operation to complete
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_WAITCNT))
-        .addImm(0);
-  });
+  auto NextIPoint = createSCCSafeSequenceOfMIs(
+      MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+              const llvm::TargetInstrInfo &TII) {
+        /// FS swap
+        emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_LO,
+                     FlatScratchSGPRLow);
+        emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
+                     FlatScratchSGPRHigh);
+        /// Spill the DestVGPR to the emergency spill slot in the active lanes
+        emitStoreToEmergencyVGPRScratchSpillLocation(
+            InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, DestVGPR,
+            true);
+        /// Restore the state value array from the storage AGPR to the dest VGPR
+        /// in the active lanes
+        emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), StorageAGPR, DestVGPR,
+                               false);
+        // Flip the exec mask
+        emitExecMaskFlip(InsertionPointMBB.end());
+        /// Spill the DestVGPR to the emergency spill slot in the active lanes
+        emitStoreToEmergencyVGPRScratchSpillLocation(
+            InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, DestVGPR,
+            true);
+        /// Restore the state value array from the storage AGPR to the dest VGPR
+        /// in the active lanes
+        emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), StorageAGPR, DestVGPR,
+                               true);
+        // Flip the exec mask to its original value
+        emitExecMaskFlip(InsertionPointMBB.end());
+      });
+  // Wait on the memory operation to complete
+  emitWaitCnt(NextIPoint);
 }
 
 void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
     llvm::MachineInstr &MI, llvm::MCRegister SrcVGPR) const {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+  auto NextIPoint = createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
                                      const llvm::TargetInstrInfo &TII) {
     /// FS swap
     emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_LO,
                  FlatScratchSGPRLow);
     emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
                  FlatScratchSGPRHigh);
-    /// Spill the Src VGPR to the emergency spill slot in the active lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-        .addReg(SrcVGPR)
-        .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(-4)
-        .addImm(0);
-    /// Restore the app VGPR from the storage AGPR in the active lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), SrcVGPR)
-        .addReg(StorageAGPR);
-    // Flip the exec mask
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
+    /// Move the SVS from the SrcVGPR to the storage AGPR
+    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR, true);
 
-    /// Spill the Src to the emergency spill slot in the inactive lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-        .addReg(SrcVGPR)
-        .addReg(EmergencyVGPRSpillSlotOffset)
-        .addImm(-4)
-        .addImm(0);
-    /// Restore the app VGPR from the storage AGPR in the inactive lanes
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_ACCVGPR_READ_B32_e64), SrcVGPR)
-        .addReg(StorageAGPR);
+    /// Load the app VGPR to the SrcVGPR
+    emitLoadFromEmergencyVGPRScratchSpillLocation(
+        InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, SrcVGPR);
+    // Flip the exec mask
+    emitExecMaskFlip(InsertionPointMBB.end());
+
+    /// Move the SVS from the SrcVGPR to the storage AGPR in the inactive lanes
+    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR, true);
+
+    /// Load the app VGPR to the SrcVGPR
+    emitLoadFromEmergencyVGPRScratchSpillLocation(
+        InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, SrcVGPR);
     // Flip the exec mask to its original value
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_NOT_B64), llvm::AMDGPU::EXEC)
-        .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Kill);
-    // Wait on the memory operation to complete
-    llvm::BuildMI(InsertionPointMBB, InsertionPointMBB.end(), llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::S_WAITCNT))
-        .addImm(0);
+    emitExecMaskFlip(InsertionPointMBB.end());
   });
+  // Wait on the memory operation to complete
+  emitWaitCnt(NextIPoint);
 }
 void AGPRWithThreeSGPRSValueStorage::emitCodeToSwitchSVS(
     llvm::MachineInstr &MI, StateValueArrayStorage &TargetSVS) const {
