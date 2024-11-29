@@ -25,7 +25,7 @@
 #include "luthier/LiftedRepresentation.h"
 #include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
-#include "tooling_common/PreKernelEmitter.hpp"
+#include "tooling_common/PrePostAmbleEmitter.hpp"
 #include <llvm/CodeGen/SlotIndexes.h>
 
 namespace llvm {
@@ -128,8 +128,13 @@ public:
   virtual void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                                   llvm::MCRegister SrcVGPR) const = 0;
 
+  /// Emit a set of instructions after \p MI that moves \c this
+  /// the \p TargetSVS
+  virtual void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
+                           StateValueArrayStorage &TargetSVS) const = 0;
+
   virtual void getAllStorageRegisters(
-      llvm::SmallVectorImpl<llvm::MCRegister>& Regs) const = 0;
+      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const = 0;
 
   static int getNumVGPRsUsed(StorageKind Kind);
 
@@ -182,6 +187,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
 
+  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
+                           StateValueArrayStorage &TargetSVS) const override;
+
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(StorageVGPR);
@@ -216,6 +224,9 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
+
+  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
+                           StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -254,6 +265,9 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
+
+  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
+                           StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -306,6 +320,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
+  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
+                           StateValueArrayStorage &TargetSVS) const override;
+
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(StorageAGPR);
@@ -353,6 +370,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
+  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
+                           StateValueArrayStorage &TargetSVS) const override;
+
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(FlatScratchSGPRHigh);
@@ -391,6 +411,9 @@ public:
 
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
+
+  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
+                           StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
