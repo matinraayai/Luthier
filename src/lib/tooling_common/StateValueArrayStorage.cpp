@@ -148,82 +148,85 @@ StateValueArrayStorage::createSVAStorage(
 static void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                                 const VGPRStateValueArrayStorage &SrcSVS,
                                 const VGPRStateValueArrayStorage &TargetSVS) {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
-    // Do a move on the active lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageVGPR, false);
-    // Flip the exec mask
-    emitExecMaskFlip(InsertionPointMBB.end());
-    // Do a move on the inactive lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageVGPR, true);
-    // Flip the exec mask back
-    emitExecMaskFlip(InsertionPointMBB.end());
-  });
+  (void)createSCCSafeSequenceOfMIs(
+      MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+              const llvm::TargetInstrInfo &TII) {
+        // Do a move on the active lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageVGPR, false);
+        // Flip the exec mask
+        emitExecMaskFlip(InsertionPointMBB.end());
+        // Do a move on the inactive lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageVGPR, true);
+        // Flip the exec mask back
+        emitExecMaskFlip(InsertionPointMBB.end());
+      });
 }
 
 static void
 emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const SingleAGPRStateValueArrayStorage &TargetSVS) {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
-    // Do a move on the active lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageAGPR, false);
-    // Flip the exec mask
-    emitExecMaskFlip(InsertionPointMBB.end());
-    // Do a move on the inactive lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageAGPR, true);
-    // Flip the exec mask back
-    emitExecMaskFlip(InsertionPointMBB.end());
-  });
+  (void)createSCCSafeSequenceOfMIs(
+      MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+              const llvm::TargetInstrInfo &TII) {
+        // Do a move on the active lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageAGPR, false);
+        // Flip the exec mask
+        emitExecMaskFlip(InsertionPointMBB.end());
+        // Do a move on the inactive lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageAGPR, true);
+        // Flip the exec mask back
+        emitExecMaskFlip(InsertionPointMBB.end());
+      });
 }
 
 static void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                                 const VGPRStateValueArrayStorage &SrcSVS,
                                 const TwoAGPRValueStorage &TargetSVS) {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
-    // Do a move on the active lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageAGPR, false);
-    // Flip the exec mask
-    emitExecMaskFlip(InsertionPointMBB.end());
-    // Do a move on the inactive lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageAGPR, true);
-    // Flip the exec mask back
-    emitExecMaskFlip(InsertionPointMBB.end());
-  });
+  (void)createSCCSafeSequenceOfMIs(
+      MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+              const llvm::TargetInstrInfo &TII) {
+        // Do a move on the active lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageAGPR, false);
+        // Flip the exec mask
+        emitExecMaskFlip(InsertionPointMBB.end());
+        // Do a move on the inactive lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageAGPR, true);
+        // Flip the exec mask back
+        emitExecMaskFlip(InsertionPointMBB.end());
+      });
 }
 
 static void
 emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const AGPRWithThreeSGPRSValueStorage &TargetSVS) {
-  createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
-    // Do a move on the active lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageAGPR, false);
-    // Flip the exec mask
-    emitExecMaskFlip(InsertionPointMBB.end());
-    // Do a move on the inactive lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
-                           TargetSVS.StorageAGPR, true);
-    // Flip the exec mask back
-    emitExecMaskFlip(InsertionPointMBB.end());
-  });
+  (void)createSCCSafeSequenceOfMIs(
+      MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+              const llvm::TargetInstrInfo &TII) {
+        // Do a move on the active lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageAGPR, false);
+        // Flip the exec mask
+        emitExecMaskFlip(InsertionPointMBB.end());
+        // Do a move on the inactive lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcSVS.StorageVGPR,
+                               TargetSVS.StorageAGPR, true);
+        // Flip the exec mask back
+        emitExecMaskFlip(InsertionPointMBB.end());
+      });
 }
 
 static void
 emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const SpilledWithThreeSGPRsValueStorage &TargetSVS) {
-  const auto &TII = *MI.getMF()->getSubtarget().getInstrInfo();
   // Read FS_lo, FS_hi and SGPR32 into their storage SGPRs
   for (const auto &[PhysReg, SVSSaveSGPR] :
        {std::pair{llvm::AMDGPU::FLAT_SCR_HI, TargetSVS.FlatScratchSGPRHigh},
@@ -242,7 +245,6 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         // spill the SVA
         emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
                      TargetSVS.FlatScratchSGPRHigh);
-
         emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_LO,
                      TargetSVS.FlatScratchSGPRLow);
         // Spill the SVA on the active lanes
@@ -271,7 +273,6 @@ static void
 emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const SpilledWithOneSGPRsValueStorage &TargetSVS) {
-  const auto &TII = *MI.getMF()->getSubtarget().getInstrInfo();
   // Store the instrumentation stack pointer
   auto StoreSlot = stateValueArray::getInstrumentationStackFrameLaneIdStoreSlot(
       llvm::AMDGPU::SGPR32);
@@ -380,7 +381,6 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         // swap the FS Hi and FS Lo of the app back to its correct place
         emitSGPRSwap(InsertionPointMBB.end(), TargetSVS.FlatScratchSGPRHigh,
                      llvm::AMDGPU::FLAT_SCR_HI);
-
         emitSGPRSwap(InsertionPointMBB.end(), TargetSVS.FlatScratchSGPRLow,
                      llvm::AMDGPU::FLAT_SCR_LO);
       });
@@ -392,7 +392,6 @@ static void
 emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                     const SingleAGPRStateValueArrayStorage &SrcSVS,
                     const SpilledWithOneSGPRsValueStorage &TargetSVS) {
-  const auto &TII = *MI.getMF()->getSubtarget().getInstrInfo();
   // Move the instrumentation stack pointer to its destination
   auto StoreSlot = stateValueArray::getInstrumentationStackFrameLaneIdStoreSlot(
       llvm::AMDGPU::SGPR32);
@@ -740,6 +739,7 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), TargetSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0, true);
+        emitWaitCnt(InsertionPointMBB.end());
         // Read the SrcSVS AGPR to V0
         emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), SrcSVS.StorageAGPR,
                                llvm::AMDGPU::VGPR0, false);
@@ -747,6 +747,7 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitStoreToEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), TargetSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0, true);
+        emitWaitCnt(InsertionPointMBB.end());
         // Restore V0's original value
         emitLoadFromEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), TargetSVS.EmergencyVGPRSpillSlotOffset,
@@ -757,6 +758,7 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), TargetSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0, true);
+        emitWaitCnt(InsertionPointMBB.end());
         // Read the SrcSVS AGPR to V0
         emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), SrcSVS.StorageAGPR,
                                llvm::AMDGPU::VGPR0, false);
@@ -764,6 +766,7 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitStoreToEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), TargetSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0, true);
+        emitWaitCnt(InsertionPointMBB.end());
         // Restore V0's original value
         emitLoadFromEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), TargetSVS.EmergencyVGPRSpillSlotOffset,
@@ -885,6 +888,7 @@ static void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitLoadFromEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), SrcSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0);
+        emitWaitCnt(InsertionPointMBB.end());
         // Move V0 to the target AGPR storage
         emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), llvm::AMDGPU::VGPR0,
                                TargetSVS.StorageAGPR, true);
@@ -900,6 +904,7 @@ static void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitLoadFromEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), SrcSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0);
+        emitWaitCnt(InsertionPointMBB.end());
         // Move V0 to the target AGPR storage
         emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), llvm::AMDGPU::VGPR0,
                                TargetSVS.StorageAGPR, true);
@@ -938,10 +943,12 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), SrcSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0, true);
+        emitWaitCnt(InsertionPointMBB.end());
         // Load the SVS to V0
         emitLoadFromEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), SrcSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0);
+        emitWaitCnt(InsertionPointMBB.end());
         // Move V0 to the target AGPR storage
         emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), llvm::AMDGPU::VGPR0,
                                TargetSVS.StorageAGPR, true);
@@ -955,10 +962,12 @@ emitCodeToSwitchSVS(llvm::MachineInstr &MI,
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), SrcSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0, true);
+        emitWaitCnt(InsertionPointMBB.end());
         // Load the SVS to V0
         emitLoadFromEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), SrcSVS.EmergencyVGPRSpillSlotOffset,
             llvm::AMDGPU::VGPR0);
+        emitWaitCnt(InsertionPointMBB.end());
         // Move V0 to the target AGPR storage
         emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), llvm::AMDGPU::VGPR0,
                                TargetSVS.StorageAGPR, true);
