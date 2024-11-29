@@ -1,4 +1,4 @@
-//===-- LiftedRepresentationAnalysis.cpp ----------------------------------===//
+//===-- WrapperAnalysisPasses.cpp -----------------------------------------===//
 // Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,18 +15,23 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements Luthier's Lifted Representation Analysis pass.
+/// This file implements a set of analysis passes that wrap around data
+/// structures commonly used by the instrumentation passes in Luthier.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/LiftedRepresentationAnalysis.hpp"
+#include "tooling_common/WrapperAnalysisPasses.hpp"
 
 namespace luthier {
 
+llvm::AnalysisKey IntrinsicsProcessorsAnalysis::Key;
+
+llvm::AnalysisKey IntrinsicIRLoweringInfoMapAnalysis::Key;
+
+llvm::AnalysisKey TargetAppModuleAndMAMAnalysis::Key;
+
 llvm::AnalysisKey LiftedRepresentationAnalysis::Key;
 
-LiftedRepresentationAnalysis::Result
-LiftedRepresentationAnalysis::run(llvm::Module &M,
-                                  llvm::ModuleAnalysisManager &) {
-  return LR;
-}
+llvm::AnalysisKey LoadedCodeObjectAnalysis::Key;
+
+llvm::AnalysisKey IModulePMAnalysis::Key;
 
 } // namespace luthier
