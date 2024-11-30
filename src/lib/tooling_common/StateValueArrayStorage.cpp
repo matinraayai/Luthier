@@ -1080,6 +1080,13 @@ void VGPRStateValueArrayStorage::emitCodeToSwitchSVS(
   llvm_unreachable("Invalid SVS passed.");
 }
 
+bool VGPRStateValueArrayStorage::operator==(StateValueArrayStorage &LHS) const {
+  if (auto *LHSCast = llvm::dyn_cast<VGPRStateValueArrayStorage>(&LHS)) {
+    return this->StorageVGPR == LHSCast->StorageVGPR;
+  } else
+    return false;
+}
+
 void SingleAGPRStateValueArrayStorage::emitCodeToSwitchSVS(
     llvm::MachineInstr &MI, StateValueArrayStorage &TargetSVS) const {
   if (auto *TargetVgprStorage =
@@ -1096,6 +1103,13 @@ void SingleAGPRStateValueArrayStorage::emitCodeToSwitchSVS(
     luthier::emitCodeToSwitchSVS(MI, *this, *TargetSgprStorage);
   }
   llvm_unreachable("Invalid SVS passed.");
+}
+bool SingleAGPRStateValueArrayStorage::operator==(
+    StateValueArrayStorage &LHS) const {
+  if (auto *LHSCast = llvm::dyn_cast<SingleAGPRStateValueArrayStorage>(&LHS)) {
+    return this->StorageAGPR == LHSCast->StorageAGPR;
+  } else
+    return false;
 }
 
 void TwoAGPRValueStorage::emitCodeToLoadSVA(llvm::MachineInstr &MI,
@@ -1159,6 +1173,14 @@ void TwoAGPRValueStorage::emitCodeToSwitchSVS(
   llvm_unreachable("Invalid SVS passed.");
 }
 
+bool TwoAGPRValueStorage::operator==(StateValueArrayStorage &LHS) const {
+  if (auto *LHSCast = llvm::dyn_cast<TwoAGPRValueStorage>(&LHS)) {
+    return (this->StorageAGPR == LHSCast->StorageAGPR) &&
+           (this->TempAGPR == LHSCast->TempAGPR);
+  } else
+    return false;
+}
+
 void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
@@ -1196,31 +1218,35 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
 
 void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
     llvm::MachineInstr &MI, llvm::MCRegister SrcVGPR) const {
-  auto NextIPoint = createSCCSafeSequenceOfMIs(MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
-                                     const llvm::TargetInstrInfo &TII) {
-    /// FS swap
-    emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_LO,
-                 FlatScratchSGPRLow);
-    emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
-                 FlatScratchSGPRHigh);
-    /// Move the SVS from the SrcVGPR to the storage AGPR
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR, true);
+  auto NextIPoint = createSCCSafeSequenceOfMIs(
+      MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
+              const llvm::TargetInstrInfo &TII) {
+        /// FS swap
+        emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_LO,
+                     FlatScratchSGPRLow);
+        emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
+                     FlatScratchSGPRHigh);
+        /// Move the SVS from the SrcVGPR to the storage AGPR
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR,
+                               true);
 
-    /// Load the app VGPR to the SrcVGPR
-    emitLoadFromEmergencyVGPRScratchSpillLocation(
-        InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, SrcVGPR);
-    // Flip the exec mask
-    emitExecMaskFlip(InsertionPointMBB.end());
+        /// Load the app VGPR to the SrcVGPR
+        emitLoadFromEmergencyVGPRScratchSpillLocation(
+            InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, SrcVGPR);
+        // Flip the exec mask
+        emitExecMaskFlip(InsertionPointMBB.end());
 
-    /// Move the SVS from the SrcVGPR to the storage AGPR in the inactive lanes
-    emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR, true);
+        /// Move the SVS from the SrcVGPR to the storage AGPR in the inactive
+        /// lanes
+        emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR,
+                               true);
 
-    /// Load the app VGPR to the SrcVGPR
-    emitLoadFromEmergencyVGPRScratchSpillLocation(
-        InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, SrcVGPR);
-    // Flip the exec mask to its original value
-    emitExecMaskFlip(InsertionPointMBB.end());
-  });
+        /// Load the app VGPR to the SrcVGPR
+        emitLoadFromEmergencyVGPRScratchSpillLocation(
+            InsertionPointMBB.end(), EmergencyVGPRSpillSlotOffset, SrcVGPR);
+        // Flip the exec mask to its original value
+        emitExecMaskFlip(InsertionPointMBB.end());
+      });
   // Wait on the memory operation to complete
   emitWaitCnt(NextIPoint);
 }
@@ -1240,6 +1266,18 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToSwitchSVS(
     luthier::emitCodeToSwitchSVS(MI, *this, *Target3SgprStorage);
   }
   llvm_unreachable("Invalid SVS passed.");
+}
+
+bool AGPRWithThreeSGPRSValueStorage::operator==(
+    StateValueArrayStorage &LHS) const {
+  if (auto *LHSCast = llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(&LHS)) {
+    return (this->StorageAGPR == LHSCast->StorageAGPR) &&
+           (this->EmergencyVGPRSpillSlotOffset ==
+            LHSCast->EmergencyVGPRSpillSlotOffset) &&
+           (this->FlatScratchSGPRHigh == LHSCast->FlatScratchSGPRHigh) &&
+           (this->FlatScratchSGPRLow == LHSCast->FlatScratchSGPRLow);
+  } else
+    return false;
 }
 
 void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
@@ -1330,6 +1368,17 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToSwitchSVS(
   llvm_unreachable("Invalid SVS passed.");
 }
 
+bool SpilledWithThreeSGPRsValueStorage::operator==(
+    StateValueArrayStorage &LHS) const {
+  if (auto *LHSCast = llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(&LHS)) {
+    return (this->EmergencyVGPRSpillSlotOffset ==
+            LHSCast->EmergencyVGPRSpillSlotOffset) &&
+           (this->FlatScratchSGPRHigh == LHSCast->FlatScratchSGPRHigh) &&
+           (this->FlatScratchSGPRLow == LHSCast->FlatScratchSGPRLow);
+  } else
+    return false;
+}
+
 void SpilledWithOneSGPRsValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
@@ -1399,6 +1448,14 @@ void SpilledWithOneSGPRsValueStorage::emitCodeToSwitchSVS(
     luthier::emitCodeToSwitchSVS(MI, *this, *TargetSgprStorage);
   }
   llvm_unreachable("Invalid SVS passed.");
+}
+bool SpilledWithOneSGPRsValueStorage::operator==(
+    StateValueArrayStorage &LHS) const {
+  if (auto *LHSCast = llvm::dyn_cast<SpilledWithOneSGPRsValueStorage>(&LHS)) {
+    return (this->EmergencyVGPRSpillSlotOffset ==
+            LHSCast->EmergencyVGPRSpillSlotOffset);
+  } else
+    return false;
 }
 
 void getSupportedSVAStorageList(

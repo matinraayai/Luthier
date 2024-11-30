@@ -133,6 +133,8 @@ public:
   virtual void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
                            StateValueArrayStorage &TargetSVS) const = 0;
 
+  virtual bool operator==(StateValueArrayStorage& LHS) const = 0;
+
   virtual void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const = 0;
 
@@ -179,6 +181,8 @@ public:
     return StorageVGPR;
   }
 
+  bool operator==(StateValueArrayStorage& LHS) const override;
+
   bool requiresLoadAndStoreBeforeUse() override { return false; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
@@ -216,6 +220,8 @@ public:
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
   }
+
+  bool operator==(StateValueArrayStorage& LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return false; }
 
@@ -257,6 +263,8 @@ public:
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
   }
+
+  bool operator==(StateValueArrayStorage& LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
@@ -312,6 +320,8 @@ public:
     return StorageAGPR;
   }
 
+  bool operator==(StateValueArrayStorage& LHS) const override;
+
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
@@ -362,6 +372,8 @@ public:
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
+  bool operator==(StateValueArrayStorage& LHS) const override;
+
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
@@ -403,6 +415,8 @@ public:
         StateValueArrayStorage(SVS_SPILLED_WITH_ONE_SGPR_architected_fs) {};
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
+
+  bool operator==(StateValueArrayStorage& LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
