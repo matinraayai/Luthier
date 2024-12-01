@@ -1,4 +1,4 @@
-//===-- PreKernelEmitter.cpp ----------------------------------------------===//
+//===-- PrePostAmbleEmitter.hpp -------------------------------------------===//
 // Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,45 +15,18 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the Pre-kernel emitter.
+/// This file implements the Pre and post amble emitter, as well as the
+/// \c FunctionPreambleDescriptor and its analysis pass.
 //===----------------------------------------------------------------------===//
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
+#include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
+#include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
 
 namespace luthier {
-
-/// A set of \c LiftedKernelArgumentManager::KernelArgumentType that have
-/// a \c llvm::AMDGPUFunctionArgInfo::PreloadedValue equivalent (i.e.
-/// can/must be preloaded into register values)
-static const llvm::SmallDenseMap<KernelArgumentType,
-                                 llvm::AMDGPUFunctionArgInfo::PreloadedValue>
-    ToLLVMRegArgMap{
-        {PRIVATE_SEGMENT_BUFFER,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::PRIVATE_SEGMENT_BUFFER},
-        {DISPATCH_PTR,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::DISPATCH_PTR},
-        {QUEUE_PTR, llvm::AMDGPUFunctionArgInfo::PreloadedValue::QUEUE_PTR},
-        {KERNARG_SEGMENT_PTR,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::KERNARG_SEGMENT_PTR},
-        {DISPATCH_ID, llvm::AMDGPUFunctionArgInfo::PreloadedValue::DISPATCH_ID},
-        {FLAT_SCRATCH,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::FLAT_SCRATCH_INIT},
-        {PRIVATE_SEGMENT_SIZE,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::PRIVATE_SEGMENT_SIZE},
-        {PRIVATE_SEGMENT_WAVE_BYTE_OFFSET,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::
-             PRIVATE_SEGMENT_WAVE_BYTE_OFFSET},
-        {WORK_ITEM_X,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::WORKITEM_ID_X},
-        {WORK_ITEM_Y,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::WORKITEM_ID_Y},
-        {WORK_ITEM_Z,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::WORKITEM_ID_Z},
-    };
 
 static llvm::MCRegister
 getArgReg(const llvm::MachineFunction &MF,
@@ -166,26 +139,22 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
   // register
   auto SGPR0SpillSlot =
       stateValueArray::getFrameSpillSlotLaneId(llvm::AMDGPU::SGPR0);
-  LUTHIER_RETURN_ON_ERROR(SGPR0SpillSlot.takeError());
 
   auto SGPR1SpillSlot =
       stateValueArray::getFrameSpillSlotLaneId(llvm::AMDGPU::SGPR1);
-  LUTHIER_RETURN_ON_ERROR(SGPR1SpillSlot.takeError());
 
   auto SGPRFlatScrLoSpillSlot =
       stateValueArray::getFrameSpillSlotLaneId(llvm::AMDGPU::FLAT_SCR_LO);
-  LUTHIER_RETURN_ON_ERROR(SGPRFlatScrLoSpillSlot.takeError());
 
   auto SGPRFlatScrHiSpillSlot =
       stateValueArray::getFrameSpillSlotLaneId(llvm::AMDGPU::FLAT_SCR_HI);
-  LUTHIER_RETURN_ON_ERROR(SGPRFlatScrHiSpillSlot.takeError());
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
       .addReg(MFI.getPreloadedReg(
                   llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
               0, llvm::AMDGPU::sub0)
-      .addImm(*SGPR0SpillSlot)
+      .addImm(SGPR0SpillSlot)
       .addReg(SVSStorageVGPR);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
@@ -193,7 +162,7 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
       .addReg(MFI.getPreloadedReg(
                   llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
               0, llvm::AMDGPU::sub1)
-      .addImm(*SGPR1SpillSlot)
+      .addImm(SGPR1SpillSlot)
       .addReg(SVSStorageVGPR);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
@@ -201,7 +170,7 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
       .addReg(
           MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
           0, llvm::AMDGPU::sub0)
-      .addImm(*SGPRFlatScrLoSpillSlot)
+      .addImm(SGPRFlatScrLoSpillSlot)
       .addReg(SVSStorageVGPR);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
@@ -209,7 +178,7 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
       .addReg(
           MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
           0, llvm::AMDGPU::sub1)
-      .addImm(*SGPRFlatScrHiSpillSlot)
+      .addImm(SGPRFlatScrHiSpillSlot)
       .addReg(SVSStorageVGPR);
 
   // Add the PSWO to SGPR0/its carry to SGPR1
@@ -283,12 +252,12 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_READLANE_B32), llvm::AMDGPU::SGPR0)
       .addReg(SVSStorageVGPR)
-      .addImm(*SGPR0SpillSlot);
+      .addImm(SGPR0SpillSlot);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_READLANE_B32), llvm::AMDGPU::SGPR1)
       .addReg(SVSStorageVGPR)
-      .addImm(*SGPR1SpillSlot);
+      .addImm(SGPR1SpillSlot);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_READLANE_B32))
@@ -296,7 +265,7 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
           MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
           llvm::RegState::Define, llvm::AMDGPU::sub0)
       .addReg(SVSStorageVGPR)
-      .addImm(*SGPRFlatScrLoSpillSlot);
+      .addImm(SGPRFlatScrLoSpillSlot);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_READLANE_B32))
@@ -304,7 +273,7 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
           MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
           llvm::RegState::Define, llvm::AMDGPU::sub1)
       .addReg(SVSStorageVGPR)
-      .addImm(*SGPRFlatScrHiSpillSlot);
+      .addImm(SGPRFlatScrHiSpillSlot);
 
   return llvm::Error::success();
 }
@@ -377,10 +346,35 @@ static void emitCodeToReturnSGPRArgsToOriginalPlace(
   }
 }
 
-llvm::Error PrePostAmbleEmitter::emit() {
+llvm::AnalysisKey FunctionPreambleDescriptorAnalysis::Key;
+
+FunctionPreambleDescriptorAnalysis::Result
+FunctionPreambleDescriptorAnalysis::run(
+    llvm::Module &TargetModule, llvm::ModuleAnalysisManager &TargetMAM) {
+
+  return {TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
+              ->getMMI(),
+          TargetModule};
+}
+
+llvm::PreservedAnalyses
+PrePostAmbleEmitter::run(llvm::Module &TargetModule,
+                         llvm::ModuleAnalysisManager &TargetMAM) {
+  const auto &PKInfo =
+      *TargetMAM.getCachedResult<FunctionPreambleDescriptorAnalysis>(
+          TargetModule);
+
+  auto &LR =
+      TargetMAM.getResult<LiftedRepresentationAnalysis>(TargetModule).getLR();
+
+  auto LCO = TargetMAM.getResult<LoadedCodeObjectAnalysis>(TargetModule);
+
+  auto &SVLocations =
+      *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
+          TargetModule);
+
   // First we need to figure out if we need to set up the state value array
   // at all
-  auto LCO = SVLocations.getLCO();
 
   bool MustSetupSVA = doesLRRequireSVA(LR, LCO, PKInfo);
 
@@ -391,8 +385,7 @@ llvm::Error PrePostAmbleEmitter::emit() {
           FuncSymbol->getLoadedCodeObject() == LCO) {
         auto &SVAInfo = PKInfo.Kernels.at(MF);
         auto EntryInstr = MF->begin()->begin();
-        auto &EntryInstrSVS =
-            SVLocations.getStorageIntervalsOfBasicBlock(*MF->begin())[0];
+        auto &EntryInstrSVS = SVLocations.getStorageIntervals(MF->front())[0];
         auto &MFI = *MF->getInfo<llvm::SIMachineFunctionInfo>();
         auto &TRI = *MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
         auto *TII = MF->getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
@@ -443,10 +436,13 @@ llvm::Error PrePostAmbleEmitter::emit() {
         // If stack access was requested, then emit code to save it into
         // the SVS storage V/AGPR
         if (RequiresAccessToScratch) {
-          LUTHIER_RETURN_ON_ERROR(emitCodeToSetupScratch(
-              *EntryInstr, SVSStorageReg,
-              llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(FuncSymbol)
-                  ->getKernelMetadata()));
+          if (auto Err = emitCodeToSetupScratch(
+                  *EntryInstr, SVSStorageReg,
+                  llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(FuncSymbol)
+                      ->getKernelMetadata())) {
+            TargetModule.getContext().emitError(toString(std::move(Err)));
+            return llvm::PreservedAnalyses::all();
+          }
         }
         // Emit code to store the rest of the requested SGPR kernel arguments
         for (const auto &[KernArg, PreloadValue] :
@@ -459,29 +455,126 @@ llvm::Error PrePostAmbleEmitter::emit() {
             auto StoreSlotBegin =
                 stateValueArray::getKernelArgumentLaneIdStoreSlotBeginForWave64(
                     KernArg);
-            LUTHIER_RETURN_ON_ERROR(StoreSlotBegin.takeError());
+            if (auto Err = StoreSlotBegin.takeError()) {
+              TargetModule.getContext().emitError(toString(std::move(Err)));
+              return llvm::PreservedAnalyses::all();
+            }
             auto StoreSlotSize =
                 stateValueArray::getKernelArgumentStoreSlotSizeForWave64(
                     KernArg);
-            LUTHIER_RETURN_ON_ERROR(StoreSlotSize.takeError());
-            LUTHIER_RETURN_ON_ERROR(emitCodeToStoreSGPRKernelArg(
-                *EntryInstr, getArgReg(*MF, PreloadValue), SVSStorageReg,
-                *StoreSlotBegin, *StoreSlotSize,
-                OriginalSGPRArgLocs.contains(PreloadValue)));
+            if (auto Err = StoreSlotSize.takeError()) {
+              TargetModule.getContext().emitError(toString(std::move(Err)));
+              return llvm::PreservedAnalyses::all();
+            }
+            if (auto Err = emitCodeToStoreSGPRKernelArg(
+                    *EntryInstr, getArgReg(*MF, PreloadValue), SVSStorageReg,
+                    *StoreSlotBegin, *StoreSlotSize,
+                    OriginalSGPRArgLocs.contains(PreloadValue))) {
+              TargetModule.getContext().emitError(toString(std::move(Err)));
+              return llvm::PreservedAnalyses::all();
+            }
           }
         }
         // Put every SGPR argument back in its place
         emitCodeToReturnSGPRArgsToOriginalPlace(OriginalSGPRArgLocs,
                                                 *EntryInstr);
       }
+
+      auto &SlotIndexes =
+          TargetMAM.getCachedResult<MMISlotIndexesAnalysis>(TargetModule)
+              ->at(*MF);
+
+      // Now we need to emit code that juggles the SVS between different
+      // storage schemes
+      const auto &TII = *MF->getSubtarget().getInstrInfo();
+      for (auto &MBB : *MF) {
+        const auto MBBIntervals = SVLocations.getStorageIntervals(MBB);
+        for (unsigned int I = 0; I < MBBIntervals.size() - 1; I++) {
+          auto &CurMBBInterval = MBBIntervals[I];
+          auto &NextMBBInterval = MBBIntervals[I + 1];
+          if (CurMBBInterval.getSVS() != NextMBBInterval.getSVS()) {
+            auto InsertionMI =
+                SlotIndexes.getInstructionFromIndex(NextMBBInterval.begin());
+            CurMBBInterval.getSVS().emitCodeToSwitchSVS(
+                *InsertionMI, NextMBBInterval.getSVS());
+          }
+        }
+        // Analyze the branch at the end of this block (if exists)
+        llvm::MachineBasicBlock *TBB;
+        llvm::MachineBasicBlock *FBB;
+        llvm::MachineBasicBlock *NewTBB{nullptr};
+        llvm::MachineBasicBlock *NewFBB{nullptr};
+        llvm::SmallVector<llvm::MachineOperand, 4> Cond;
+        bool Fail = TII.analyzeBranch(MBB, TBB, FBB, Cond, false);
+        if (Fail)
+          TargetModule.getContext().emitError("Failed to analyze the branch.");
+
+        llvm::SmallVector<
+            std::pair<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>, 4>
+            OldToNewSuccessorsList;
+        for (llvm::MachineBasicBlock *SuccessorMBB : MBB.successors()) {
+          auto &SuccessorIntervalBegin =
+              SVLocations.getStorageIntervals(*SuccessorMBB).front();
+          // If the successor and the end of this MBB don't have the same
+          // storage, we need to emit switch code in between them
+          if (SuccessorIntervalBegin.getSVS() != MBBIntervals.back().getSVS()) {
+            if (TBB == SuccessorMBB) {
+              // Create a new basic block and insert it at the end
+              NewTBB = MF->CreateMachineBasicBlock();
+              MF->insert(MF->end(), NewTBB);
+              // Insert an unconditional branch to the old FBB
+              TII.insertUnconditionalBranch(*NewTBB, TBB, llvm::DebugLoc());
+              NewTBB->addSuccessor(TBB);
+              // Emit the SVS switch code before the branch
+              MBBIntervals.back().getSVS().emitCodeToSwitchSVS(
+                  NewTBB->front(), SuccessorIntervalBegin.getSVS());
+              OldToNewSuccessorsList.emplace_back(TBB, NewTBB);
+            } else if (FBB == SuccessorMBB) {
+              // Create a new basic block and insert it at the end
+              NewFBB = MF->CreateMachineBasicBlock();
+              MF->insert(MF->end(), NewFBB);
+              // Insert an unconditional branch to the old FBB
+              TII.insertUnconditionalBranch(*NewFBB, FBB, llvm::DebugLoc());
+              NewFBB->addSuccessor(FBB);
+              // Emit the SVS switch code before the branch
+              MBBIntervals.back().getSVS().emitCodeToSwitchSVS(
+                  NewFBB->front(), SuccessorIntervalBegin.getSVS());
+              OldToNewSuccessorsList.emplace_back(TBB, NewTBB);
+            } else {
+              // This is a fallthrough block; We insert the SVS code inside
+              // an MBB between the two blocks
+              llvm::MachineBasicBlock *NewFallthrough =
+                  MF->CreateMachineBasicBlock();
+              MF->insert(MBB.getNextNode()->getIterator(), NewFallthrough);
+              NewFallthrough->addSuccessor(SuccessorMBB);
+              OldToNewSuccessorsList.emplace_back(SuccessorMBB, NewFallthrough);
+            }
+          }
+        }
+        // Insert the new branch if needed
+        if (FBB != nullptr || TBB != nullptr) {
+          auto DebugLoc = MBB.getFirstInstrTerminator()->getDebugLoc();
+          TII.removeBranch(MBB);
+          TII.insertBranch(MBB, NewTBB, NewFBB, Cond, DebugLoc);
+          for (const auto &[OldSuccessor, NewSuccessor] :
+               OldToNewSuccessorsList) {
+            MBB.removeSuccessor(OldSuccessor);
+            MBB.addSuccessor(NewSuccessor);
+          }
+        }
+      }
     }
   }
-  return llvm::Error::success();
+  return llvm::PreservedAnalyses::all();
 }
 
-FunctionPreambleDescriptor::FunctionPreambleDescriptor(LiftedRepresentation &LR)
-    : LR(LR) {
-  for (const auto &[FuncSymbol, MF] : LR.functions()) {
+FunctionPreambleDescriptor::FunctionPreambleDescriptor(
+    const llvm::MachineModuleInfo &TargetMMI,
+    const llvm::Module &TargetModule) {
+  for (const auto &F : TargetModule) {
+    auto *MF = TargetMMI.getMachineFunction(F);
+    if (!MF)
+      continue;
     if (MF->getFunction().getCallingConv() ==
         llvm::CallingConv::AMDGPU_KERNEL) {
       Kernels.insert({MF, {}});

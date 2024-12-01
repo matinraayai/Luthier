@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LR_REGISTER_LIVENESS_H
 #define LUTHIER_LR_REGISTER_LIVENESS_H
+#include "LRCallgraph.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -66,7 +67,14 @@ public:
   /// This includes both the instructions lifted from the code objects, and
   /// the ones manually injected by the tool writer
   void recomputeLiveIns(const llvm::Module &M,
-                        const llvm::MachineModuleInfo &MMI);
+                        const llvm::MachineModuleInfo &MMI,
+                        const LRCallGraph &CG);
+
+  /// Never invalidate the results
+  bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
+                  llvm::ModuleAnalysisManager::Invalidator &) {
+    return false;
+  }
 };
 
 class LRRegLivenessAnalysis
@@ -76,21 +84,13 @@ private:
 
   static llvm::AnalysisKey Key;
 
-  LRRegisterLiveness RegLiveness{};
-
 public:
-  using Result = LRRegisterLiveness &;
+  using Result = LRRegisterLiveness;
 
   LRRegLivenessAnalysis() = default;
 
   /// Run the analysis pass that would
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
-
-  /// Never invalidate the results
-  bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-                  llvm::ModuleAnalysisManager::Invalidator &) {
-    return false;
-  }
 };
 
 } // namespace luthier

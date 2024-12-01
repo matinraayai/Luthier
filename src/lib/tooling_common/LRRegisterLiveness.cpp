@@ -179,7 +179,8 @@ static void recomputeLiveIns(
 }
 
 void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
-                                          const llvm::MachineModuleInfo &MMI) {
+                                          const llvm::MachineModuleInfo &MMI,
+                                          const LRCallGraph &CG) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
   LLVM_DEBUG(llvm::dbgs() << "Recomputing LR Register Liveness analysis.\n");
   llvm::DenseMap<const llvm::MachineInstr *,
@@ -194,7 +195,7 @@ void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
       continue;
     VecCFG.insert({MF, VectorCFG::getVectorCFG(*MF)});
     luthier::recomputeLiveIns(*MF, MFLiveIns);
-    luthier::recomputeLiveIns(*VecCFG[MF], VCFGLiveIns);
+    //    luthier::recomputeLiveIns(*VecCFG[MF], VCFGLiveIns);
     const auto &TRI = *MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
     const auto &MRI = MF->getRegInfo();
     for (const auto &MBB : *MF) {
@@ -206,24 +207,29 @@ void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
             MachineInstrLivenessMap[const_cast<llvm::MachineInstr *>(&MI)];
         MILivePhysRegs->init(TRI);
         for (const auto &LivePhysReg : *MFLiveIns[&MI]) {
-          if (!TRI.isVGPR(MRI, LivePhysReg) && !TRI.isAGPR(MRI, LivePhysReg))
-            MILivePhysRegs->addReg(LivePhysReg);
+          //          if (!TRI.isVGPR(MRI, LivePhysReg) && !TRI.isAGPR(MRI,
+          //          LivePhysReg))
+          MILivePhysRegs->addReg(LivePhysReg);
         }
-        for (const auto &LivePhysReg : *VCFGLiveIns[&MI]) {
-          if (TRI.isVGPR(MRI, LivePhysReg) || TRI.isAGPR(MRI, LivePhysReg))
-            MILivePhysRegs->addReg(LivePhysReg);
-        }
+        //        for (const auto &LivePhysReg : *VCFGLiveIns[&MI]) {
+        //          if (TRI.isVGPR(MRI, LivePhysReg) || TRI.isAGPR(MRI,
+        //          LivePhysReg))
+        //            MILivePhysRegs->addReg(LivePhysReg);
       }
     }
   }
+  // After computing the per-function live-ins, we need to update the liveness
+  // information of the call sites
 }
 
 llvm::AnalysisKey LRRegLivenessAnalysis::Key;
 
 LRRegLivenessAnalysis::Result
 LRRegLivenessAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-  auto &MMI = MAM.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI();
-  RegLiveness.recomputeLiveIns(M, MMI);
+  auto &MMI = MAM.getResult<llvm::MachineModuleAnalysis>(M).getMMI();
+  LRRegisterLiveness RegLiveness;
+  RegLiveness.recomputeLiveIns(M, MMI, MAM.getResult<LRCallGraphAnalysis>(M));
   return RegLiveness;
 }
+
 } // namespace luthier

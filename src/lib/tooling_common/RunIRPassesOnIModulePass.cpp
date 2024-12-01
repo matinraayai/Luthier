@@ -18,8 +18,9 @@
 /// This file implements the <tt>RunIRPassesOnIModulePass</tt>.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/RunIRPassesOnIModulePass.hpp"
-#include "tooling_common/InstrumentationModuleIRGeneratorPass.hpp"
-#include "tooling_common/ProcessIntrinsicUsersAtIRLevelPass.hpp"
+#include "tooling_common/IModuleIRGeneratorPass.hpp"
+#include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
+#include "tooling_common/ProcessIntrinsicsAtIRLevelPass.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/Passes/OptimizationLevel.h>
@@ -56,13 +57,17 @@ RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
   {
     llvm::TimeTraceScope Scope("Instrumentation Module IR Optimization");
     // Add the Intrinsic Lowering Info analysis pass
-    IMAM.registerPass([&]() { return IntrinsicLoweringInfoAnalysis(); });
+    IMAM.registerPass([&]() { return IntrinsicIRLoweringInfoMapAnalysis(); });
     // Add the Intrinsic processors Map analysis pass
     IMAM.registerPass(
-        [&]() { return IntrinsicProcessorAnalysis(IntrinsicProcessors); });
+        [&]() { return IntrinsicsProcessorsAnalysis(IntrinsicProcessors); });
+    // Add the analysis that accumulates the physical registers accessed that
+    // are not in live-ins sets
+    IMAM.registerPass([&]() { return PhysRegsNotInLiveInsAnalysis(); });
     // Add the Target app's MAM as an analysis pass
-    IMAM.registerPass(
-        [&]() { return TargetAppMAMAnalysis(TargetAppMAM, TargetAppM); });
+    IMAM.registerPass([&]() {
+      return TargetAppModuleAndMAMAnalysis(TargetAppMAM, TargetAppM);
+    });
     // Add the analysis for holding the instrumentation point to injected
     // payload mapping
     IMAM.registerPass([&]() { return InjectedPayloadAndInstPointAnalysis(); });
@@ -74,11 +79,11 @@ RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
     PB.registerLoopAnalyses(LAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, IMAM);
     // Add the pass that generates the IR for the instrumentation module
-    IMPM.addPass(InstrumentationModuleIRGeneratorPass(Task));
+    IMPM.addPass(IModuleIRGeneratorPass(Task));
     // Add the IR optimization pipeline
     IMPM.addPass(PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3));
     // Add the Intrinsic Processing IR stage pass
-    IMPM.addPass(ProcessIntrinsicUsersAtIRLevelPass(TM));
+    IMPM.addPass(ProcessIntrinsicsAtIRLevelPass(TM));
     // Run the scheduled IR passes
     IMPM.run(IModule, IMAM);
   }

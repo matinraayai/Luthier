@@ -17,22 +17,32 @@ add_library(LuthierToolingCommon STATIC
         InstrumentationTask.cpp
         luthier.cpp
         TargetManager.cpp
-        ToolExecutableManager.cpp
+        ToolExecutableLoader.cpp
         LiftedRepresentation.cpp
         InstrumentationModule.cpp
         intrinsic/ReadReg.cpp
         intrinsic/WriteReg.cpp
         PhysicalRegAccessVirtualizationPass.cpp
-        LRStateValueStorageAndLoadLocations.cpp
+        SVStorageAndLoadLocations.cpp
         LRCallGraph.cpp
         LRRegisterLiveness.cpp
         IntrinsicMIRLoweringPass.cpp
         InjectedPayloadPEIPass.cpp
-        PreKernelEmitter.cpp
+        PrePostAmbleEmitter.cpp
         intrinsic/WriteExec.cpp
         intrinsic/IntrinsicProcessor.cpp
         StateValueArraySpecs.cpp
         VectorCFG.cpp
+        StateValueArrayStorage.cpp
+        IModuleIRGeneratorPass.cpp
+        RunIRPassesOnIModulePass.cpp
+        MMISlotIndexesAnalysis.cpp
+        ProcessIntrinsicsAtIRLevelPass.cpp
+        PhysRegsNotInLiveInsAnalysis.cpp
+        WrapperAnalysisPasses.cpp
+        RunMIRPassesOnIModulePass.cpp
+        PatchLiftedRepresentationPass.cpp
+        MIRConvenience.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
