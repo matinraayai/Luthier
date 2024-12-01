@@ -224,6 +224,8 @@ private:
 
   static llvm::AnalysisKey Key;
 
+  llvm::Module &IModule;
+
   llvm::ModulePassManager &IPM;
 
   llvm::ModuleAnalysisManager &IMAM;
@@ -238,18 +240,23 @@ public:
   class Result {
     friend class IModulePMAnalysis;
 
+    llvm::Module &IModule;
     llvm::ModulePassManager &IPM;
     llvm::ModuleAnalysisManager &IMAM;
     llvm::LoopAnalysisManager &ILAM;
     llvm::FunctionAnalysisManager &IFAM;
     llvm::CGSCCAnalysisManager &ICGAM;
 
-    Result(llvm::ModulePassManager &IPM, llvm::ModuleAnalysisManager &IMAM,
-           llvm::LoopAnalysisManager &ILAM, llvm::FunctionAnalysisManager &IFAM,
+    Result(llvm::Module &IModule, llvm::ModulePassManager &IPM,
+           llvm::ModuleAnalysisManager &IMAM, llvm::LoopAnalysisManager &ILAM,
+           llvm::FunctionAnalysisManager &IFAM,
            llvm::CGSCCAnalysisManager &ICGAM)
-        : IPM(IPM), IMAM(IMAM), ILAM(ILAM), IFAM(IFAM), ICGAM(ICGAM) {};
+        : IModule(IModule), IPM(IPM), IMAM(IMAM), ILAM(ILAM), IFAM(IFAM),
+          ICGAM(ICGAM) {};
 
   public:
+    [[nodiscard]] llvm::Module &getModule() const { return IModule; }
+
     [[nodiscard]] llvm::ModulePassManager &getPM() const { return IPM; }
 
     [[nodiscard]] llvm::ModuleAnalysisManager &getMAM() const { return IMAM; }
@@ -267,16 +274,31 @@ public:
     }
   };
 
-  IModulePMAnalysis(llvm::ModulePassManager &IPM,
+  IModulePMAnalysis(llvm::Module &IModule, llvm::ModulePassManager &IPM,
                     llvm::ModuleAnalysisManager &IMAM,
                     llvm::LoopAnalysisManager &ILAM,
                     llvm::FunctionAnalysisManager &IFAM,
                     llvm::CGSCCAnalysisManager &ICGAM)
-      : IPM(IPM), IMAM(IMAM), ILAM(ILAM), IFAM(IFAM), ICGAM(ICGAM) {};
+      : IModule(IModule), IPM(IPM), IMAM(IMAM), ILAM(ILAM), IFAM(IFAM),
+        ICGAM(ICGAM) {};
 
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
-    return {IPM, IMAM, ILAM, IFAM, ICGAM};
+    return {IModule, IPM, IMAM, ILAM, IFAM, ICGAM};
   }
+};
+
+/// \brief a legacy immutable pass that provides the instrumentation module's
+/// \c llvm::ModueAnalysisManager to the legacy code gen passes
+class IModuleMAMWrapperPass : public llvm::ImmutablePass {
+private:
+  llvm::ModuleAnalysisManager &IMAM;
+
+public:
+  static char ID;
+
+  explicit IModuleMAMWrapperPass(llvm::ModuleAnalysisManager *IMAM = nullptr);
+
+  [[nodiscard]] llvm::ModuleAnalysisManager &getMAM() const { return IMAM; }
 };
 
 } // namespace luthier

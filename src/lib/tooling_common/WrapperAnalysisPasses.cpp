@@ -34,4 +34,29 @@ llvm::AnalysisKey LoadedCodeObjectAnalysis::Key;
 
 llvm::AnalysisKey IModulePMAnalysis::Key;
 
+static void *
+initializeIModuleMAMWrapperPassPassOnce(llvm::PassRegistry &Registry) {
+  auto *PI = new llvm::PassInfo(
+      "imam-wraper-pass", "Instrumentation Module MAM Wrapper Pass",
+      (void *)&IModulePMAnalysis::ID,
+      llvm::PassInfo::NormalCtor_t(llvm::callDefaultCtor<IModulePMAnalysis>),
+      false, true);
+  Registry.registerPass(*PI, true);
+  return PI;
+}
+
+static llvm::once_flag InitializeIModulePMAnalysisPassFlag;
+void initializeIModulePMAnalysisPass(llvm::PassRegistry &Registry) {
+  llvm::call_once(InitializeIModulePMAnalysisPassFlag,
+                  initializeIModuleMAMWrapperPassPassOnce, std::ref(Registry));
+}
+
+char IModuleMAMWrapperPass::ID;
+
+IModuleMAMWrapperPass::IModuleMAMWrapperPass(llvm::ModuleAnalysisManager *IMAM)
+    : llvm::ImmutablePass(ID), IMAM(*IMAM) {
+  initializeIModuleMAMWrapperPassPassOnce(
+      *llvm::PassRegistry::getPassRegistry());
+}
+
 } // namespace luthier
