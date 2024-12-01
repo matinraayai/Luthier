@@ -21,10 +21,12 @@
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
 #include "tooling_common/IntrinsicMIRLoweringPass.hpp"
 #include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
+#include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
+#include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
-#include <llvm/CodeGen/MachineFrameInfo.h>
+#include <llvm/CodeGen/MachineDominators.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/Passes.h>
 #include <luthier/LiftedRepresentation.h>
@@ -36,19 +38,9 @@ namespace luthier {
 
 char InjectedPayloadPEIPass::ID = 0;
 
-InjectedPayloadPEIPass::InjectedPayloadPEIPass(
-    const LiftedRepresentation &LR,
-    const LRStateValueStorageAndLoadLocations &StateValueLocations,
-    PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass,
-    const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-        &HookFuncToInstPointMI,
-    const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered,
-    FunctionPreambleDescriptor &PKInfo)
-    : LR(LR), StateValueLocations(StateValueLocations),
-      HookFuncToInstPointMI(HookFuncToInstPointMI),
-      PhysicalRegsNotTobeClobbered(PhysicalRegsNotTobeClobbered),
-      PKInfo(PKInfo), PhysRegVirtAccessPass(PhysRegVirtAccessPass),
-      llvm::MachineFunctionPass(ID) {}
+//static llvm::RegisterPass<InjectedPayloadPEIPass>
+//    X("injected-payload-pei", "Injected Payload PEI Pass",
+//      true /* Only looks at CFG */, false /* Analysis Pass */);
 
 bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
@@ -72,11 +64,39 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     return false;
   }
 
+  auto &IModule = const_cast<llvm::Module &>(
+      *getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI().getModule());
+
+  auto &IMAM = getAnalysis<IModuleMAMWrapperPass>().getMAM();
+
+  const auto &IPIP =
+      *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+
+  auto &TargetModule =
+      IMAM.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule)
+          ->getTargetAppModule();
+  auto &TargetMAM = IMAM.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule)
+                        ->getTargetAppMAM();
+
+  const auto &StateValueLocations =
+      *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
+          TargetModule);
+
+  auto &PKInfo =
+      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule);
+
+  const auto &PhysicalRegsNotTobeClobbered =
+      IMAM.getCachedResult<PhysRegsNotInLiveInsAnalysis>(IModule)
+          ->getPhysRegsNotInLiveIns();
+
+  const auto &PhysRegVirtAccessPass =
+      getAnalysis<PhysicalRegAccessVirtualizationPass>();
+
   bool Changed{false};
   // Get the state value location for this hook
   auto &StateValueLoadPlan =
       *StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
-          *HookFuncToInstPointMI.at(&MF.getFunction()));
+          *IPIP.at(MF.getFunction()));
   // Get the liveness information for the hook
   auto &InstPointLiveRegs = PhysRegVirtAccessPass.get32BitLiveInRegs(MF);
   auto *TII = MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
@@ -87,7 +107,7 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   // requires a prologue/epilogue
   // If any of the hooks require the presence of the state value register,
   // a pre-kernel must be emitted in the LR
-  auto &MRI = MF.getRegInfo();
+  const auto &MRI = MF.getRegInfo();
   bool HookMakesUseOfStateValueArray{false};
   // Loop over the uses of the state value array load VGPR, and find one that's
   // not the implicit use in the last return instruction
@@ -224,9 +244,11 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 }
 
 void InjectedPayloadPEIPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.setPreservesCFG();
-  AU.addPreservedID(llvm::MachineLoopInfoID);
-  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
+//  AU.setPreservesAll();
+  AU.addRequired<IModuleMAMWrapperPass>();
+  AU.addRequired<PhysicalRegAccessVirtualizationPass>();
+//  AU.addPreservedID(llvm::MachineLoopInfoID);
+//  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
   llvm::MachineFunctionPass::getAnalysisUsage(AU);
 }
 } // namespace luthier
