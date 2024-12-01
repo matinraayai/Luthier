@@ -96,7 +96,7 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       *StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
           *IPIP.at(MF.getFunction()));
   // Get the liveness information for the hook
-  auto &InstPointLiveRegs = PhysRegVirtAccessPass.get32BitLiveInRegs(MF);
+  auto &InstPointLiveRegs = PhysRegVirtAccessPass.get32BitLiveInRegs();
   auto *TII = MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
   auto &StateValueStorage = StateValueLoadPlan.StateValueStorageLocation;
   // We need to first determine if we need to even emit a prologue/epilogue for

@@ -27,7 +27,7 @@ namespace luthier {
 
 void VectorMBB::setInstRange(llvm::MachineBasicBlock::const_iterator Begin,
                              llvm::MachineBasicBlock::const_iterator End) {
-  assert(Begin->getParent() == End->getParent());
+//  assert(Begin->getParent() == End->getParent());
   Instructions = {Begin, End};
 }
 
@@ -158,12 +158,13 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
         CurrentTakenBlock = &NewCurrentTakenBlock;
       }
       // Add the current instruction to the current taken block
+      auto NextIterator = MI.getNextNode() != nullptr ? MI.getNextNode()->getIterator() : MI.getParent()->end();
       if (CurrentTakenBlock->empty())
         CurrentTakenBlock->setInstRange(MI.getIterator(),
-                                        MI.getNextNode()->getIterator());
+                                        NextIterator);
       else
         CurrentTakenBlock->setInstRange(CurrentTakenBlock->begin(),
-                                        MI.getNextNode()->getIterator());
+                                        NextIterator);
     }
     // Connect the current taken block to the exit taken block of the current
     // MBB

@@ -17,9 +17,13 @@
 /// \file
 /// This file implements the State Value Location Intervals Pass.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include "common/Error.hpp"
+#include "tooling_common/IModuleIRGeneratorPass.hpp"
+#include "tooling_common/MMISlotIndexesAnalysis.hpp"
+#include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
+#include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "tooling_common/StateValueArrayStorage.hpp"
+#include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
@@ -213,24 +217,32 @@ selectVGPRLoadLocationForInjectedPayload(
   return {AVGPRLocation, ClobbersAppRegister};
 }
 
-LRStateValueStorageAndLoadLocations::LRStateValueStorageAndLoadLocations(
-    const luthier::LiftedRepresentation &LR, hsa::LoadedCodeObject LCO,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-        &InstPointToInjectedPayloadMap,
-    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
-    const luthier::LRRegisterLiveness &RegLiveness,
-    FunctionPreambleDescriptor &PKInfo)
-    : LR(LR), LCO(std::move(LCO)),
-      InstPointToInjectedPayloadMap(InstPointToInjectedPayloadMap),
-      AccessedPhysicalRegistersNotInLiveIns(
-          AccessedPhysicalRegistersNotInLiveIns),
-      RegLiveness(RegLiveness), PKInfo(PKInfo) {}
-
-std::shared_ptr<StateValueArrayStorage>
-LRStateValueStorageAndLoadLocations::findFixedStateValueArrayStorage(
+/// \brief Tries to find a fixed location for storing the state value array
+/// \details The order of searching for the storage location is as follows:
+/// 1. Find an unused VGPR. This is the ideal scenario, as no further action
+/// is required in the prologue/epilogue of an injected payload to load/store
+/// the state value array\n
+/// 2. If no unused VGPRs are found, then this routine will find the next
+/// unused AGPR. This usually comes at no cost to the occupancy, as the app
+/// will get the same amount of AGPRs as it gets VGPRs. In gfx90A-, since
+/// AGPRs cannot be used directly by vector instructions and have to be moved
+/// to a VGPR, a single application VGPR must be spilled. Preference is
+/// given to finding another free AGPR to act as a spill slot. If no other
+/// free AGPR is found, then three free SGPRs must be found to spill the
+/// app's VGPR into an emergency spill slot in the instrumentation stack.\n
+/// 3. If no unused V/AGPRs are found in the kernel or a free AGPR is found
+/// but allocation of the spill registers is unsuccessful on gfx90A-,
+/// then as a last resort, this function tries to find three free SGPRs
+/// that can be used to spill an app's VGPR onto the stack, and load the
+/// state value array from the stack
+/// TODO: This function must take an argument indicating whether the tool
+/// writer wants to respect the original kernel's granulated register usage
+/// or not.
+static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
     llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
     llvm::ArrayRef<StateValueArrayStorage::StorageKind> SupportedStorage,
-    int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage) const {
+    int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage,
+    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
   // Find the next VGPR available to hold the value state array
   llvm::MCRegister StateValueArrayFixedVGPRLocation =
       scavengeFreeRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
@@ -309,7 +321,7 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
     // Scavenge the maximum number of SGPRs used by all storage schemes
     scavengeFreeRegister(MRI, llvm::AMDGPU::SGPR_32RegClass,
                          AccessedPhysicalRegistersNotInLiveIns, MILiveIns,
-                         MaxAGPRsUsedByAllStorage, SGPRsScavenged);
+                         MaxSGPRsUsedByAllStorage, SGPRsScavenged);
 
     LLVM_DEBUG(
 
@@ -348,10 +360,9 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
 }
 
 llvm::ArrayRef<StateValueStorageSegment>
-LRStateValueStorageAndLoadLocations::getStorageIntervalsOfBasicBlock(
+SVStorageAndLoadLocations::getStorageIntervals(
     const llvm::MachineBasicBlock &MBB) const {
-  auto *MF = MBB.getParent();
-  auto It = StateValueStorageIntervals.find(MF);
+  auto It = StateValueStorageIntervals.find(&MBB);
   if (It == StateValueStorageIntervals.end())
     return {};
   else
@@ -359,7 +370,7 @@ LRStateValueStorageAndLoadLocations::getStorageIntervalsOfBasicBlock(
 }
 
 const InstPointSVALoadPlan *
-LRStateValueStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
+SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
     const llvm::MachineInstr &MI) const {
   auto It = InstPointSVSLoadPlans.find(&MI);
   if (It == InstPointSVSLoadPlans.end())
@@ -368,38 +379,19 @@ LRStateValueStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
     return &It->second;
 }
 
-llvm::Expected<std::unique_ptr<LRStateValueStorageAndLoadLocations>>
-LRStateValueStorageAndLoadLocations::create(
-    const LiftedRepresentation &LR, const hsa::LoadedCodeObject &LCO,
-    const llvm::DenseMap<llvm::MachineInstr *, llvm::Function *>
-        &InstPointToInjectedPayloadMap,
-    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
-    const LRRegisterLiveness &RegLiveness, FunctionPreambleDescriptor &PKInfo) {
-  std::unique_ptr<LRStateValueStorageAndLoadLocations> Out(
-      new LRStateValueStorageAndLoadLocations(
-          LR, LCO, InstPointToInjectedPayloadMap,
-          AccessedPhysicalRegistersNotInLiveIns, RegLiveness, PKInfo));
-  LUTHIER_RETURN_ON_ERROR(
-      Out->calculateStateValueArrayStorageAndLoadLocations());
-  return Out;
-}
-
-llvm::Error LRStateValueStorageAndLoadLocations::
-    calculateStateValueArrayStorageAndLoadLocations() {
-  // Populate the slot indexes for each instruction of both kernels and
-  // device functions in the LCO being processed
-  // TODO: Maybe move slot indexes calculations to its own analysis pass?
+llvm::Error SVStorageAndLoadLocations::calculate(
+    const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
+    const MMISlotIndexesAnalysis::Result &SlotIndexes,
+    const LRRegisterLiveness &RegLiveness,
+    const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
+    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
   llvm::SmallVector<llvm::MachineFunction *, 4> MFs;
-  for (const auto &[FuncSymbol, MF] : LR.functions()) {
-    if (FuncSymbol->getLoadedCodeObject() == LCO) {
-      auto &SlotIndexes = FunctionsSlotIndexes
-                              .insert({&MF->getFunction(),
-                                       std::unique_ptr<llvm::SlotIndexes>()})
-                              .first->getSecond();
-      SlotIndexes = std::make_unique<llvm::SlotIndexes>(*MF);
+  for (const auto &F : TargetM) {
+    if (auto *MF = TargetMMI.getMachineFunction(F)) {
       MFs.push_back(MF);
     }
   }
+
   // Early exit if no MF is present in the LCO of LR
   if (MFs.empty())
     return llvm::Error::success();
@@ -431,7 +423,7 @@ llvm::Error LRStateValueStorageAndLoadLocations::
   // Try to find a fixed location to store the state value array
   auto StateValueFixedLocation = findFixedStateValueArrayStorage(
       MFs, SupportedStorage, MaxNumAGPRsUsedByAllStorage,
-      MaxNumSGPRsUsedByAllStorage);
+      MaxNumSGPRsUsedByAllStorage, AccessedPhysicalRegistersNotInLiveIns);
 
   if (StateValueFixedLocation != nullptr) {
     // If a fixed location was found, then all MBB intervals inside all MFs
@@ -440,22 +432,21 @@ llvm::Error LRStateValueStorageAndLoadLocations::
     // preamble code to any device functions involved inside the lifted
     // representation
     for (const auto &MF : MFs) {
-      auto &Segments =
-          StateValueStorageIntervals.insert({MF, {}}).first->getSecond();
       for (const auto &MBB : *MF) {
-        Segments.emplace_back(FunctionsSlotIndexes.at(&MF->getFunction())
-                                  ->getInstructionIndex(MBB.front()),
-                              FunctionsSlotIndexes.at(&MF->getFunction())
-                                  ->getInstructionIndex(MBB.back()),
+        auto &Segments =
+            StateValueStorageIntervals
+                .insert({&MBB, llvm::SmallVector<StateValueStorageSegment>{}})
+                .first->getSecond();
+        Segments.emplace_back(SlotIndexes.at(*MF).getMBBStartIdx(&MBB),
+                              SlotIndexes.at(*MF).getMBBEndIdx(&MBB),
                               StateValueFixedLocation);
       }
       if (MF->getFunction().getCallingConv() !=
           llvm::CallingConv::AMDGPU_KERNEL) {
-        PKInfo.DeviceFunctions[MF] = false;
+        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = false;
       }
     }
-    for (const auto &[InsertionPointMI, HookFunction] :
-         InstPointToInjectedPayloadMap) {
+    for (const auto &[InsertionPointMI, HookFunction] : IPIP.mi_payload()) {
       auto *HookLiveRegs =
           RegLiveness.getLiveInPhysRegsOfMachineInstr(*InsertionPointMI);
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
@@ -466,10 +457,6 @@ llvm::Error LRStateValueStorageAndLoadLocations::
           selectVGPRLoadLocationForInjectedPayload(
               *InsertionPointMI, *StateValueFixedLocation, *HookLiveRegs,
               AccessedPhysicalRegistersNotInLiveIns, true);
-      auto *InsertionPointFunction =
-          &InsertionPointMI->getParent()->getParent()->getFunction();
-
-      const auto &InsertionPointMBB = *InsertionPointMI->getParent();
 
       InstPointSVSLoadPlans.insert(
           {InsertionPointMI, InstPointSVALoadPlan{VGPRLocation, ClobbersAppReg,
@@ -479,6 +466,10 @@ llvm::Error LRStateValueStorageAndLoadLocations::
     // If not, we'll have to shuffle between possible state value array storage
     // schemes
     for (const auto &MF : MFs) {
+      if (MF->getFunction().getCallingConv() ==
+          llvm::CallingConv::AMDGPU_KERNEL) {
+        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = true;
+      }
       auto &MRI = MF->getRegInfo();
       // Pick the highest numbered VGPR not accessed by the Hooks
       // to hold the value state
@@ -505,18 +496,23 @@ llvm::Error LRStateValueStorageAndLoadLocations::
           "Failed to get a state value array storage for MI {0}.",
           *MF->begin()->begin()));
 
-      // Marks the beginning of the current interval we are in this loop
-      llvm::SlotIndex CurrentIntervalBegin =
-          FunctionsSlotIndexes.at(&MF->getFunction())->getZeroIndex();
-      // Create a segment for the current interval
-      auto &Segments =
-          StateValueStorageIntervals.insert({MF, {}}).first->getSecond();
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          llvm::isa<VGPRStateValueArrayStorage>(SVS.get()) ||
+              llvm::isa<SingleAGPRStateValueArrayStorage>(SVS.get()),
+          "The entry SVS must be stored in a VGPR or an AGPR."));
+
       // A set of hook insertion points that fall into the current interval
       llvm::SmallDenseSet<const llvm::MachineInstr *, 4>
           HookInsertionPointsInCurrentSegment{};
       for (const auto &MBB : *MF) {
+        // Marks the beginning of the current interval we are in this loop
+        llvm::SlotIndex CurrentIntervalBegin =
+            SlotIndexes.at(*MF).getMBBStartIdx(&MBB);
+
+        auto &CurrentMBBSegments =
+            StateValueStorageIntervals.insert({&MBB, {}}).first->getSecond();
         for (const auto &MI : MBB) {
-          if (InstPointToInjectedPayloadMap.contains(&MI))
+          if (IPIP.contains(MI))
             HookInsertionPointsInCurrentSegment.insert(&MI);
           auto *InstrLiveRegs = RegLiveness.getLiveInPhysRegsOfMachineInstr(MI);
           LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
@@ -531,8 +527,7 @@ llvm::Error LRStateValueStorageAndLoadLocations::
           // the SVS.
           // - Otherwise, we keep the SVS in its place.
           bool TryRelocatingValueStateReg =
-              SVS->getStateValueStorageReg() == 0 &&
-              InstPointToInjectedPayloadMap.contains(&MI);
+              SVS->getStateValueStorageReg() == 0 && IPIP.contains(MI);
           llvm::SmallVector<llvm::MCRegister, 4> SVSRegs;
           SVS->getAllStorageRegisters(SVSRegs);
           bool MustRelocateStateValue =
@@ -546,10 +541,11 @@ llvm::Error LRStateValueStorageAndLoadLocations::
           // Also create a new interval if we reach the end of a MBB
           if (&MI == &MBB.back() || TryRelocatingValueStateReg ||
               MustRelocateStateValue) {
-            auto InstrIndex = FunctionsSlotIndexes.at(&MF->getFunction())
-                                  ->getInstructionIndex(MI, true)
-                                  .getNextIndex();
-            Segments.emplace_back(CurrentIntervalBegin, InstrIndex, SVS);
+            auto NextIndex = &MI == &MBB.back()
+                                 ? SlotIndexes.at(*MF).getMBBEndIdx(&MBB)
+                                 : SlotIndexes.at(*MF).getInstructionIndex(MI);
+            CurrentMBBSegments.emplace_back(CurrentIntervalBegin, NextIndex,
+                                            SVS);
             for (const auto &HookMI : HookInsertionPointsInCurrentSegment) {
               auto *HookLiveRegs =
                   RegLiveness.getLiveInPhysRegsOfMachineInstr(*HookMI);
@@ -561,7 +557,7 @@ llvm::Error LRStateValueStorageAndLoadLocations::
                   {HookMI, {HookSVGPR, ClobbersAppReg, *SVS}});
             }
             HookInsertionPointsInCurrentSegment.clear();
-            CurrentIntervalBegin = InstrIndex;
+            CurrentIntervalBegin = NextIndex;
           }
           if (TryRelocatingValueStateReg || MustRelocateStateValue) {
             SVS = findStateValueArrayStorageAtMI(
@@ -578,4 +574,28 @@ llvm::Error LRStateValueStorageAndLoadLocations::
   return llvm::Error::success();
 }
 
+llvm::AnalysisKey LRStateValueStorageAndLoadLocationsAnalysis::Key;
+
+LRStateValueStorageAndLoadLocationsAnalysis::Result
+LRStateValueStorageAndLoadLocationsAnalysis::run(
+    llvm::Module &TargetModule, llvm::ModuleAnalysisManager &TargetMAM) {
+  SVStorageAndLoadLocations Out;
+  auto &IModuleAndPMRes = TargetMAM.getResult<IModulePMAnalysis>(TargetModule);
+  auto &IModule = IModuleAndPMRes.getModule();
+  auto &IMAM = IModuleAndPMRes.getMAM();
+
+  auto Err = Out.calculate(
+      TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
+          ->getMMI(),
+      TargetModule, TargetMAM.getResult<MMISlotIndexesAnalysis>(TargetModule),
+      *TargetMAM.getCachedResult<LRRegLivenessAnalysis>(TargetModule),
+      *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule),
+      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule),
+      IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
+          .getPhysRegsNotInLiveIns());
+  if (Err)
+    TargetModule.getContext().emitError(toString(std::move(Err)));
+
+  return Out;
+}
 } // namespace luthier

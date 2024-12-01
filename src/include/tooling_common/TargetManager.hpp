@@ -19,8 +19,8 @@
 /// initializing and finalizing the LLVM library, as well as creating
 /// target description objects for each ISA.
 //===----------------------------------------------------------------------===//
-#ifndef TARGET_MANAGER_HPP
-#define TARGET_MANAGER_HPP
+#ifndef LUTHIER_TOOLING_COMMON_TARGET_MANAGER_HPP
+#define LUTHIER_TOOLING_COMMON_TARGET_MANAGER_HPP
 #include <llvm/Target/TargetOptions.h>
 
 #include <memory>
