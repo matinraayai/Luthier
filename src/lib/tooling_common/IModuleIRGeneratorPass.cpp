@@ -15,12 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements InstrumentationModuleIRGeneratorPass.
+/// This file implements the Instrumentation Module IR Generator Pass.
 //===----------------------------------------------------------------------===//
+#include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "common/Error.hpp"
 #include "luthier/InstrumentationTask.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "tooling_common/InstrumentationModuleIRGeneratorPass.hpp"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
@@ -32,7 +32,15 @@
 
 namespace luthier {
 
-llvm::Expected<llvm::Function &> generateInjectedPayloadForApplicationMI(
+llvm::AnalysisKey InjectedPayloadAndInstPointAnalysis::Key;
+
+InjectedPayloadAndInstPointAnalysis::Result
+InjectedPayloadAndInstPointAnalysis::run(llvm::Module &M,
+                                         llvm::ModuleAnalysisManager &) {
+  return {};
+}
+
+static llvm::Expected<llvm::Function &> generateInjectedPayloadForApplicationMI(
     llvm::Module &IModule,
     llvm::ArrayRef<InstrumentationTask::hook_invocation_descriptor>
         HookInvocationSpecs,
@@ -109,10 +117,11 @@ llvm::Expected<llvm::Function &> generateInjectedPayloadForApplicationMI(
   return *InjectedPayload;
 }
 
-InstrumentationModuleIRGeneratorPass::Result
-InstrumentationModuleIRGeneratorPass::run(llvm::Module &M,
-                                          llvm::ModuleAnalysisManager &) {
-  InjectedPayloadAndInstPoint IPIP;
+llvm::PreservedAnalyses
+IModuleIRGeneratorPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
+  LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
+                          << Task.getHookInsertionTasks().size() << "\n");
+  auto &IPIP = MAM.getResult<InjectedPayloadAndInstPointAnalysis>(M);
   llvm::TimeTraceScope Scope("Instrumentation Module IR Generation");
   // Generate and populate the injected payload functions in the
   // instrumentation module and keep track of them inside the map
@@ -122,11 +131,10 @@ InstrumentationModuleIRGeneratorPass::run(llvm::Module &M,
         generateInjectedPayloadForApplicationMI(M, HookSpecs, *ApplicationMI);
     if (auto Err = HookFunc.takeError()) {
       M.getContext().emitError(llvm::toString(std::move(Err)));
-      return IPIP;
+      return llvm::PreservedAnalyses::all();
     }
     IPIP.addEntry(*ApplicationMI, *HookFunc);
   }
-  return IPIP;
+  return llvm::PreservedAnalyses::all();
 }
-
 } // namespace luthier
