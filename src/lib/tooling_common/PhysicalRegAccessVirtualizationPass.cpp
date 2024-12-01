@@ -19,8 +19,9 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "luthier/LiftedRepresentation.h"
-#include "tooling_common/CodeGenerator.hpp"
+#include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
+#include "tooling_common/StateValueArraySpecs.hpp"
+#include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -38,21 +39,9 @@ namespace luthier {
 
 char PhysicalRegAccessVirtualizationPass::ID = 0;
 
-// TODO: is it possible to replace these maps with a templated function instead?
-
-const static llvm::SmallDenseMap<llvm::MCRegister, unsigned int, 8>
-    ValueRegisterSpillSlots{
-        {llvm::AMDGPU::SGPR0, 0},      {llvm::AMDGPU::SGPR1, 1},
-        {llvm::AMDGPU::SGPR2, 2},      {llvm::AMDGPU::SGPR3, 3},
-        {llvm::AMDGPU::SGPR32, 4},     {llvm::AMDGPU::FLAT_SCR_LO, 5},
-        {llvm::AMDGPU::FLAT_SCR_HI, 6}};
-
-const static llvm::SmallDenseMap<llvm::MCRegister, unsigned int, 8>
-    ValueRegisterInstrumentationSlots{
-        {llvm::AMDGPU::SGPR0, 7},       {llvm::AMDGPU::SGPR1, 8},
-        {llvm::AMDGPU::SGPR2, 9},       {llvm::AMDGPU::SGPR3, 10},
-        {llvm::AMDGPU::SGPR32, 11},     {llvm::AMDGPU::FLAT_SCR_LO, 12},
-        {llvm::AMDGPU::FLAT_SCR_HI, 13}};
+static llvm::RegisterPass<PhysicalRegAccessVirtualizationPass>
+    X("phys-virtualization", "Physical Register Access Virtualization Pass",
+      true /* Only looks at CFG */, false /* Analysis Pass */);
 
 static void
 get32BitSubRegsOfPhysReg(llvm::MCRegister Register,
@@ -190,21 +179,11 @@ add32BitRegsOfLivePhysRegsToDenseSet(const llvm::LivePhysRegs &LiveRegs,
   }
 }
 
-PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass(
-    const LiftedRepresentation &LR,
-    const llvm::LivePhysRegs &AccessedPhysicalRegs, const LRCallGraph &CG,
-    const LRStateValueStorageAndLoadLocations &StateValueLocations,
-    const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-        &InjectedPayloadToInjectionPointMap,
-    llvm::ArrayRef<IntrinsicIRLoweringInfo>
-        InlineAsmPlaceHolderToIRLoweringInfoMap,
-    const LRRegisterLiveness &RegLiveness)
-    : LR(LR), AccessedPhysicalRegsNotInLiveIns(AccessedPhysicalRegs),
-      StateValueLocations(StateValueLocations), RegLiveness(RegLiveness),
-      CG(CG), HookFuncToMIMap(InjectedPayloadToInjectionPointMap),
-      InlineAsmPlaceHolderToIRLoweringInfoMap(
-          InlineAsmPlaceHolderToIRLoweringInfoMap),
-      llvm::MachineFunctionPass(ID) {
+PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass()
+    : llvm::MachineFunctionPass(ID) {}
+
+bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
+    llvm::MachineFunction &MF) {
   // Here, we finalize the set of live physical regs before each instrumentation
   // point that needs to be preserved.
   // The final live regs set include:
@@ -241,102 +220,118 @@ PhysicalRegAccessVirtualizationPass::PhysicalRegAccessVirtualizationPass(
              "Gathering all 32-bit live-in sub registers of each "
              "instrumentation points that need to be preserved.\n";);
 
-  for (const auto &[InjectedPayload, InstPointMI] :
-       InjectedPayloadToInjectionPointMap) {
+  auto &IModule = const_cast<llvm::Module &>(
+      *getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI().getModule());
 
-    auto *InstPointMBB = InstPointMI->getParent();
-    auto *InstPointMF = InstPointMBB->getParent();
-    auto &InstPointMRI = InstPointMF->getRegInfo();
-    auto &InstPointTRI =
-        *InstPointMF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
-    auto &InjectedPayloadLiveInRegs =
-        InjectedPayloadToPhysicalLiveInRegsMap.insert({InjectedPayload, {}})
-            .first->getSecond();
-    // Get the originally calculated live-in registers at the function level
-    // and add them to the final set
-    auto *MILivePhysRegs =
-        RegLiveness.getLiveInPhysRegsOfMachineInstr(*InstPointMI);
-    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
-        MILivePhysRegs != nullptr,
-        "Failed to find the physical live-in regs for machine instruction {0} "
-        "inside the lifted representation.",
-        *InstPointMI));
+  auto &IMAM = getAnalysis<IModuleMAMWrapperPass>().getMAM();
 
-    LLVM_DEBUG(
-        llvm::dbgs()
-            << "Adding the function level live-ins of instrumentation point ";
-        InstPointMI->print(llvm::dbgs(), true, false, false, false);
-        llvm::dbgs() << ".\n";);
+  auto &TargetMAndModule =
+      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
 
-    add32BitRegsOfLivePhysRegsToDenseSet(*MILivePhysRegs, InstPointTRI,
-                                         InjectedPayloadLiveInRegs);
+  auto &TargetModule = TargetMAndModule.getTargetAppModule();
 
-    // If the MI being instrumented belongs to a device function, then
-    // add the Live-in regs for all the call sites that potentially target it
-    if (InstPointMF->getFunction().getCallingConv() !=
-        llvm::CallingConv::AMDGPU_KERNEL) {
+  auto &TargetMAM = TargetMAndModule.getTargetAppMAM();
 
-      LLVM_DEBUG(llvm::dbgs()
-                     << "Instrumentation point is inside a non-kernel "
-                        "function; Adding its call point live-ins as well.\n";);
+  auto &IPIP =
+      *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
-      // If the callgraph is not deterministic, find all call instructions
-      // and add their live-ins to hook live regs
-      if (CG.hasNonDeterministicCallGraph(
-              StateValueLocations.getLCO().asHsaType())) {
-        LLVM_DEBUG(
-            llvm::dbgs()
-                << "Lifted representation doesn't have a deterministic call "
-                   "graph; Adding the live-ins of all call instructions.\n";);
-        auto LCO = StateValueLocations.getLCO();
-        for (const auto &[LRFuncSymbol, LRMF] : LR.functions()) {
-          if (LRFuncSymbol->getLoadedCodeObject() == LCO) {
-            for (const auto &LRMBB : *LRMF) {
-              for (const auto &LRMI : LRMBB) {
-                if (LRMI.isCall()) {
-                  auto *LRMILivePhysRegs =
-                      RegLiveness.getLiveInPhysRegsOfMachineInstr(LRMI);
-                  LUTHIER_REPORT_FATAL_ON_ERROR(
-                      LUTHIER_ERROR_CHECK(LRMILivePhysRegs != nullptr,
-                                          "Failed to find the physical live-in "
-                                          "regs for machine instruction {0} "
-                                          "inside the lifted representation.",
-                                          LRMI));
-                  add32BitRegsOfLivePhysRegsToDenseSet(
-                      *LRMILivePhysRegs, InstPointTRI,
-                      InjectedPayloadLiveInRegs);
-                }
+  auto &RegLiveness = TargetMAM.getResult<LRRegLivenessAnalysis>(TargetModule);
+
+  const auto &CG = TargetMAM.getResult<LRCallGraphAnalysis>(TargetModule);
+
+  const auto &AccessedPhysicalRegs =
+      IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
+          .getPhysRegsNotInLiveIns();
+
+  auto InstPointMI = IPIP.at(MF.getFunction());
+
+  auto *InstPointMBB = InstPointMI->getParent();
+  auto *InstPointMF = InstPointMBB->getParent();
+  auto &InstPointMRI = InstPointMF->getRegInfo();
+  auto &InstPointTRI =
+      *InstPointMF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
+  // Get the originally calculated live-in registers at the function level
+  // and add them to the final set
+  auto *MILivePhysRegs =
+      RegLiveness.getLiveInPhysRegsOfMachineInstr(*InstPointMI);
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+      MILivePhysRegs != nullptr,
+      "Failed to find the physical live-in regs for machine instruction {0} "
+      "inside the lifted representation.",
+      *InstPointMI));
+
+  LLVM_DEBUG(
+      llvm::dbgs()
+          << "Adding the function level live-ins of instrumentation point ";
+      InstPointMI->print(llvm::dbgs(), true, false, false, false);
+      llvm::dbgs() << ".\n";);
+
+  add32BitRegsOfLivePhysRegsToDenseSet(*MILivePhysRegs, InstPointTRI,
+                                       PhysicalLiveInsForInjectedPayload);
+
+  // If the MI being instrumented belongs to a device function, then
+  // add the Live-in regs for all the call sites that potentially target it
+  if (InstPointMF->getFunction().getCallingConv() !=
+      llvm::CallingConv::AMDGPU_KERNEL) {
+
+    LLVM_DEBUG(llvm::dbgs()
+                   << "Instrumentation point is inside a non-kernel "
+                      "function; Adding its call point live-ins as well.\n";);
+
+    // If the callgraph is not deterministic, find all call instructions
+    // and add their live-ins to hook live regs
+    if (CG.hasNonDeterministicCallGraph()) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+              << "Lifted representation doesn't have a deterministic call "
+                 "graph; Adding the live-ins of all call instructions.\n";);
+      auto &TargetMMI =
+          TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule)
+              .getMMI();
+
+      for (const auto &TargetF : TargetModule) {
+        if (auto *TargetMF = TargetMMI.getMachineFunction(TargetF)) {
+          for (const auto &LRMBB : *TargetMF) {
+            for (const auto &LRMI : LRMBB) {
+              if (LRMI.isCall()) {
+                auto *LRMILivePhysRegs =
+                    RegLiveness.getLiveInPhysRegsOfMachineInstr(LRMI);
+                LUTHIER_REPORT_FATAL_ON_ERROR(
+                    LUTHIER_ERROR_CHECK(LRMILivePhysRegs != nullptr,
+                                        "Failed to find the physical live-in "
+                                        "regs for machine instruction {0} "
+                                        "inside the lifted representation.",
+                                        LRMI));
+                add32BitRegsOfLivePhysRegsToDenseSet(
+                    *LRMILivePhysRegs, InstPointTRI,
+                    PhysicalLiveInsForInjectedPayload);
               }
             }
           }
         }
-      } else {
-        LLVM_DEBUG(
-            llvm::dbgs()
-                << "Lifted representation has a deterministic call graph; "
-                   "Adding the call instruction live-ins.\n";);
-        for (const auto &[CallMI, Parent] :
-             CG.getCallGraphNode(InstPointMF).CalleeFunctions) {
-          auto *CallMILivePhysRegs =
-              RegLiveness.getLiveInPhysRegsOfMachineInstr(*CallMI);
-          LUTHIER_REPORT_FATAL_ON_ERROR(
-              LUTHIER_ERROR_CHECK(CallMILivePhysRegs != nullptr, ""));
-          add32BitRegsOfLivePhysRegsToDenseSet(
-              *CallMILivePhysRegs, InstPointTRI, InjectedPayloadLiveInRegs);
-        }
+      }
+    } else {
+      LLVM_DEBUG(llvm::dbgs()
+                     << "Lifted representation has a deterministic call graph; "
+                        "Adding the call instruction live-ins.\n";);
+      for (const auto &[CallMI, Parent] :
+           CG.getCallGraphNode(InstPointMF).CalleeFunctions) {
+        auto *CallMILivePhysRegs =
+            RegLiveness.getLiveInPhysRegsOfMachineInstr(*CallMI);
+        LUTHIER_REPORT_FATAL_ON_ERROR(
+            LUTHIER_ERROR_CHECK(CallMILivePhysRegs != nullptr, ""));
+        add32BitRegsOfLivePhysRegsToDenseSet(*CallMILivePhysRegs, InstPointTRI,
+                                             PhysicalLiveInsForInjectedPayload);
       }
     }
-    LLVM_DEBUG(llvm::dbgs() << "Adding physical registers accessed by hooks "
-                               "that are not in the live-ins.\n");
-    // Add the physical registers accessed by all the hooks that are not
-    // also live-ins
-    add32BitRegsOfLivePhysRegsToDenseSet(AccessedPhysicalRegs, InstPointTRI,
-                                         InjectedPayloadLiveInRegs);
   }
-}
+  LLVM_DEBUG(llvm::dbgs() << "Adding physical registers accessed by hooks "
+                             "that are not in the live-ins.\n");
+  // Add the physical registers accessed by all the hooks that are not
+  // also live-ins
+  add32BitRegsOfLivePhysRegsToDenseSet(AccessedPhysicalRegs, InstPointTRI,
+                                       PhysicalLiveInsForInjectedPayload);
 
-bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
-    llvm::MachineFunction &MF) {
   bool Changed{false};
 
   // If the function being processed is not an injected payload (i.e a device
@@ -363,6 +358,10 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   // The set of all physical registers accessed by the current MF being
   // processed
   llvm::SmallDenseSet<llvm::MCRegister, 4> AllPhysRegsAccessedByAllIntrinsics;
+
+  const auto &InlineAsmPlaceHolderToIRLoweringInfoMap =
+      IMAM.getCachedResult<IntrinsicIRLoweringInfoMapAnalysis>(IModule)
+          ->getLoweringInfo();
 
   // Iterate over the MIs in the Hook function, find placeholder inline asms,
   // and get their lowering info
@@ -426,10 +425,9 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   // the state value is not in a VGPR
   llvm::DenseMap<llvm::MCRegister, llvm::Register>
       PreservedPhysRegToVirtRegStorageMap;
-  for (const auto &LiveIn :
-       InjectedPayloadToPhysicalLiveInRegsMap[&MF.getFunction()]) {
+  for (const auto &LiveIn : PhysicalLiveInsForInjectedPayload) {
     if (!AllPhysRegsAccessedByAllIntrinsics.contains(LiveIn) &&
-        !ValueRegisterSpillSlots.contains(LiveIn)) {
+        !stateValueArray::isFrameSpillSlot(LiveIn)) {
 
       LLVM_DEBUG(llvm::dbgs()
                  << "Live-in register " << llvm::printReg(LiveIn, TRI)
@@ -479,15 +477,19 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
     }
   }
 
+  const auto &StateValueLocations =
+      TargetMAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(
+          TargetModule);
+
   auto *SVALoadPlan =
       StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
-          *HookFuncToMIMap.at(&MF.getFunction()));
+          *IPIP.at(MF.getFunction()));
   if (!SVALoadPlan) {
     MF.getContext().reportError(
         {},
         llvm::formatv(
             "Could not find the state value load plan for Machine Instr {0}.",
-            *HookFuncToMIMap.at(&MF.getFunction())));
+            *IPIP.at(MF.getFunction())));
     return false;
   }
 
@@ -518,7 +520,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
     // register; The prologue/epilogue inserter will then emit a copy
     // from the actual physical register to the appropriate spill lane of the
     // state value array
-    if (ValueRegisterSpillSlots.contains(PreservedPhysReg)) {
+    if (stateValueArray::isFrameSpillSlot(PreservedPhysReg)) {
       LLVM_DEBUG(llvm::dbgs()
                      << "Register " << llvm::printReg(PreservedPhysReg, TRI)
                      << " comes from the state value array spill slot.\n";);
@@ -526,7 +528,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                                    TII->get(llvm::AMDGPU::V_READLANE_B32),
                                    PreservedRegVirtRegStorage)
                          .addReg(SVALoadPlan->StateValueArrayLoadVGPR)
-                         .addImm(ValueRegisterSpillSlots.at(PreservedPhysReg));
+                         .addImm(stateValueArray::getFrameSpillSlotLaneId(
+                             PreservedPhysReg));
       LLVM_DEBUG(llvm::dbgs() << "Adding phys to reg copy instruction "
                               << Builder << "\n";);
     } else {
@@ -563,19 +566,19 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
           SVALoadPlan->StateValueArrayLoadVGPR, false, true));
       for (const auto &[PreservedPhysReg, PhysRegVirtStorage] :
            PreservedPhysRegToVirtRegStorageMap) {
-        if (ValueRegisterSpillSlots.contains(PreservedPhysReg)) {
+        if (stateValueArray::isFrameSpillSlot(PreservedPhysReg)) {
           // If the preserved reg is in the spill slots, then emit a write lane
           // instruction to put it back in the state value array
           LLVM_DEBUG(llvm::dbgs()
                          << "Register " << llvm::printReg(PreservedPhysReg, TRI)
                          << " comes from the state value array spill slot.\n";);
-          auto Builder =
-              llvm::BuildMI(MBB, ReturnInst, llvm::DebugLoc(),
-                            TII->get(llvm::AMDGPU::V_WRITELANE_B32),
-                            SVALoadPlan->StateValueArrayLoadVGPR)
-                  .addReg(PhysRegVirtStorage, llvm::RegState::Kill)
-                  .addImm(ValueRegisterSpillSlots.at(PreservedPhysReg))
-                  .addReg(SVALoadPlan->StateValueArrayLoadVGPR);
+          auto Builder = llvm::BuildMI(MBB, ReturnInst, llvm::DebugLoc(),
+                                       TII->get(llvm::AMDGPU::V_WRITELANE_B32),
+                                       SVALoadPlan->StateValueArrayLoadVGPR)
+                             .addReg(PhysRegVirtStorage, llvm::RegState::Kill)
+                             .addImm(stateValueArray::getFrameSpillSlotLaneId(
+                                 PreservedPhysReg))
+                             .addReg(SVALoadPlan->StateValueArrayLoadVGPR);
           LLVM_DEBUG(llvm::dbgs() << "Adding reg to phys copy instruction "
                                   << Builder << "\n";);
           // Add the preserved physical reg to the list of implicit operands
@@ -673,14 +676,14 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
         PhysRegLocationPerMBB.insert({{AccessedPhysReg, CurrentMBB}, VirtReg});
         // If the register has to be loaded from the spill slot in the state
         // value array, create a read lane instruction for it
-        if (ValueRegisterSpillSlots.contains(AccessedPhysReg)) {
+        if (stateValueArray::isFrameSpillSlot(AccessedPhysReg)) {
           LLVM_DEBUG(llvm::dbgs() << "The accessed physical register is in the "
                                      "state value array spill slot.\n";);
           auto Builder =
               llvm::BuildMI(*CurrentMBB, CurrentMBB->begin(), llvm::DebugLoc(),
                             TII->get(llvm::AMDGPU::V_READLANE_B32), VirtReg)
                   .addReg(SVALoadPlan->StateValueArrayLoadVGPR)
-                  .addImm(ValueRegisterSpillSlots.at(AccessedPhysReg));
+                  .addImm(stateValueArray::getFrameSpillSlotLaneId(AccessedPhysReg));
           LLVM_DEBUG(llvm::dbgs() << "Adding phys to reg copy instruction "
                                   << Builder << "\n";);
         } else {
@@ -742,7 +745,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                        << " as the final storage for the physical register "
                        << llvm::printReg(AccessedPhysReg, TRI) << ".\n";);
 
-        if (ValueRegisterSpillSlots.contains(AccessedPhysReg)) {
+        if (stateValueArray::isFrameSpillSlot(AccessedPhysReg)) {
           LLVM_DEBUG(llvm::dbgs()
                          << "The physical register has to be stored back "
                             "in the state value array.\n";);
@@ -751,7 +754,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                             TII->get(llvm::AMDGPU::V_WRITELANE_B32),
                             SVALoadPlan->StateValueArrayLoadVGPR)
                   .addReg(VirtReg, llvm::RegState::Kill)
-                  .addImm(ValueRegisterSpillSlots.at(AccessedPhysReg))
+                  .addImm(stateValueArray::getFrameSpillSlotLaneId(AccessedPhysReg))
                   .addReg(SVALoadPlan->StateValueArrayLoadVGPR);
           LLVM_DEBUG(llvm::dbgs()
                          << "Adding virt reg to phys reg copy instruction "
@@ -805,6 +808,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
 void PhysicalRegAccessVirtualizationPass::getAnalysisUsage(
     llvm::AnalysisUsage &AU) const {
   AU.setPreservesCFG();
+  AU.addRequired<IModuleMAMWrapperPass>();
   AU.addPreservedID(llvm::MachineLoopInfoID);
   llvm::MachineFunctionPass::getAnalysisUsage(AU);
 }

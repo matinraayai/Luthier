@@ -20,11 +20,14 @@
 /// an instrumented application, and providing access to them to the MIR
 /// processing stage of Luthier intrinsics.
 //===----------------------------------------------------------------------===//
+#ifndef LUTHIER_TOOLING_COMMON_PHYSICAL_REG_ACCESS_VIRTUALIZATION_PASS_HPP
+#define LUTHIER_TOOLING_COMMON_PHYSICAL_REG_ACCESS_VIRTUALIZATION_PASS_HPP
 #include "luthier/LRCallgraph.h"
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
-#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
+#include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
+#include <llvm/IR/PassManager.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
@@ -32,25 +35,8 @@ namespace luthier {
 class PhysicalRegAccessVirtualizationPass : public llvm::MachineFunctionPass {
 
 private:
-  /// The Lifted Representation being processed
-  const LiftedRepresentation &LR;
-  /// The State value storage and load locations selected for \c LR
-  const LRStateValueStorageAndLoadLocations &StateValueLocations;
-  /// Register liveness information
-  const LRRegisterLiveness &RegLiveness;
-  /// LR Callgraph
-  const LRCallGraph &CG;
-  /// Set of physical registers accessed by any injected payloads that are not
-  /// in the live-in register set of their insertion point
-  const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns;
   /// A mapping between the hooks and their physical 32-bit live-in registers
-  llvm::DenseMap<llvm::Function *, llvm::DenseSet<llvm::MCRegister>>
-      InjectedPayloadToPhysicalLiveInRegsMap{};
-  const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *> &HookFuncToMIMap;
-  /// A list containing all the IR lowering info of lowered intrinsic calls
-  /// The index is the lowered intrinsic call ID and
-  llvm::ArrayRef<IntrinsicIRLoweringInfo>
-      InlineAsmPlaceHolderToIRLoweringInfoMap;
+  llvm::DenseSet<llvm::MCRegister> PhysicalLiveInsForInjectedPayload{};
 
   llvm::DenseMap<std::pair<llvm::MCRegister, const llvm::MachineBasicBlock *>,
                  llvm::Register>
@@ -59,15 +45,7 @@ private:
 public:
   static char ID;
 
-  PhysicalRegAccessVirtualizationPass(
-      const LiftedRepresentation &LR,
-      const llvm::LivePhysRegs &AccessedPhysicalRegs, const LRCallGraph &CG,
-      const LRStateValueStorageAndLoadLocations &StateValueLocations,
-      const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-          &InjectedPayloadToInjectionPointMap,
-      llvm::ArrayRef<IntrinsicIRLoweringInfo>
-          InlineAsmPlaceHolderToIRLoweringInfoMap,
-      const LRRegisterLiveness &RegLiveness);
+  explicit PhysicalRegAccessVirtualizationPass();
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Physical Register Access Virtualization Pass";
@@ -81,10 +59,12 @@ public:
   getMCRegLocationInMBB(llvm::MCRegister PhysReg,
                         const llvm::MachineBasicBlock &MBB) const;
 
-  const llvm::DenseSet<llvm::MCRegister> &
-  get32BitLiveInRegs(llvm::MachineFunction &MF) {
-    return InjectedPayloadToPhysicalLiveInRegsMap.at(&MF.getFunction());
+  [[nodiscard]] const llvm::DenseSet<llvm::MCRegister> &
+  get32BitLiveInRegs() const {
+    return PhysicalLiveInsForInjectedPayload;
   }
 };
 
 } // namespace luthier
+
+#endif
