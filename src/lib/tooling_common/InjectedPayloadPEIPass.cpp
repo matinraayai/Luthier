@@ -1,4 +1,4 @@
-//===-- HookPEIPass.cpp ---------------------------------------------------===//
+//===-- InjectedPayloadPEIPass.cpp ----------------------------------------===//
 // Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements Luthier's Hook Prologue and Epilogue insertion pass.
+/// This file implements Luthier's Injected Payload Prologue and Epilogue
+/// insertion pass.
 //===----------------------------------------------------------------------===//
 
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
 #include "tooling_common/IntrinsicMIRLoweringPass.hpp"
 #include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
-#include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
@@ -38,9 +38,9 @@ namespace luthier {
 
 char InjectedPayloadPEIPass::ID = 0;
 
-//static llvm::RegisterPass<InjectedPayloadPEIPass>
-//    X("injected-payload-pei", "Injected Payload PEI Pass",
-//      true /* Only looks at CFG */, false /* Analysis Pass */);
+static llvm::RegisterPass<InjectedPayloadPEIPass>
+    X("injected-payload-pei", "Injected Payload PEI Pass",
+      true /* Only looks at CFG */, false /* Analysis Pass */);
 
 bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
@@ -89,8 +89,6 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       IMAM.getCachedResult<PhysRegsNotInLiveInsAnalysis>(IModule)
           ->getPhysRegsNotInLiveIns();
 
-  const auto &PhysRegVirtAccessPass =
-      getAnalysis<PhysicalRegAccessVirtualizationPass>();
 
   bool Changed{false};
   // Get the state value location for this hook
@@ -244,11 +242,8 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 }
 
 void InjectedPayloadPEIPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-//  AU.setPreservesAll();
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<PhysicalRegAccessVirtualizationPass>();
-//  AU.addPreservedID(llvm::MachineLoopInfoID);
-//  AU.addPreserved<llvm::SlotIndexesWrapperPass>();
+  AU.setPreservesAll();
+  AU.addRequiredID(IModuleMAMWrapperPass::ID);
   llvm::MachineFunctionPass::getAnalysisUsage(AU);
 }
 } // namespace luthier

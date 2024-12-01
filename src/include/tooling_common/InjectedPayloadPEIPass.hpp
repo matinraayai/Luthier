@@ -15,17 +15,20 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's Hook Prologue and Epilogue insertion pass,
-/// which replaces the normal prologues and epilogues inserted by the CodeGen
-/// pipeline.
+/// This file describes Luthier's Injected Payload Prologue and Epilogue
+/// insertion pass, which replaces the normal prologues and epilogues insertion
+/// by the CodeGen pipeline.
 //===----------------------------------------------------------------------===//
-
+#ifndef LUTHIER_TOOLING_COMMON_INJECTED_PAYLOAD_PEI_PASS_HPP
+#define LUTHIER_TOOLING_COMMON_INJECTED_PAYLOAD_PEI_PASS_HPP
 #include "luthier/LRCallgraph.h"
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
 #include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
-#include "tooling_common/PreKernelEmitter.hpp"
+#include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
+#include "tooling_common/PrePostAmbleEmitter.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
+#include <llvm/IR/PassManager.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
@@ -33,34 +36,16 @@ namespace luthier {
 class PhysicalRegAccessVirtualizationPass;
 
 class InjectedPayloadPEIPass : public llvm::MachineFunctionPass {
-
 private:
-  /// The lifted representation being worked on
-  const LiftedRepresentation &LR;
-  /// Calculated locations of the state value for the current module
-  const LRStateValueStorageAndLoadLocations &StateValueLocations;
-  /// Mapping between a hook and its instrumentation point MI in the LR
-  const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-      HookFuncToInstPointMI;
-  /// Physical registers that are not always in the Live-ins sets of the
-  /// instrumentation points
-  const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered;
-
   PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass;
-
-  FunctionPreambleDescriptor &PKInfo;
 
 public:
   static char ID;
 
-  InjectedPayloadPEIPass(
-      const LiftedRepresentation &LR,
-      const LRStateValueStorageAndLoadLocations &StateValueLocations,
-      PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass,
-      const llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
-          &HookFuncToInstPointMI,
-      const llvm::LivePhysRegs &PhysicalRegsNotTobeClobbered,
-      FunctionPreambleDescriptor &PKInfo);
+  explicit InjectedPayloadPEIPass(
+      PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass)
+      : llvm::MachineFunctionPass(ID),
+        PhysRegVirtAccessPass(PhysRegVirtAccessPass) {};
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Injected Payload Prologue Epilogue Insertion Pass";
@@ -72,3 +57,5 @@ public:
 };
 
 } // namespace luthier
+
+#endif
