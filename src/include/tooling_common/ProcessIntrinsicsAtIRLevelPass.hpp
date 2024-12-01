@@ -1,4 +1,4 @@
-//===-- ProcessIntrinsicUsersAtIRLevelPass.hpp ----------------------------===//
+//===-- ProcessIntrinsicsAtIRLevelPass.hpp --------------------------------===//
 // Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,26 +15,30 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the <tt>ProcessIntrinsicUsersAtIRLevelPass</tt>,
-/// in charge of running the IR processing stage of Luthier intrinsics.
+/// This file describes the <tt>ProcessIntrinsicsAtIRLevelPass</tt>,
+/// in charge of running the IR processing stage of Luthier intrinsics in
+/// the instrumentation module.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_PROCESS_INTRINSIC_USERS_AT_IR_LEVEL_PASS_HPP
-#define LUTHIER_TOOLING_COMMON_PROCESS_INTRINSIC_USERS_AT_IR_LEVEL_PASS_HPP
+#ifndef LUTHIER_TOOLING_COMMON_PROCESS_INTRINSICS_AT_IR_LEVEL_PASS_HPP
+#define LUTHIER_TOOLING_COMMON_PROCESS_INTRINSICS_AT_IR_LEVEL_PASS_HPP
 #include <GCNSubtarget.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
-class ProcessIntrinsicUsersAtIRLevelPass
-    : public llvm::PassInfoMixin<ProcessIntrinsicUsersAtIRLevelPass> {
+/// \brief A pass that applies the IR processing stage of intrinsics
+/// inside the instrumentation module
+class ProcessIntrinsicsAtIRLevelPass
+    : public llvm::PassInfoMixin<ProcessIntrinsicsAtIRLevelPass> {
 private:
   const llvm::GCNTargetMachine &TM;
 
 public:
-  explicit ProcessIntrinsicUsersAtIRLevelPass(const llvm::GCNTargetMachine &TM)
+  explicit ProcessIntrinsicsAtIRLevelPass(const llvm::GCNTargetMachine &TM)
       : TM(TM) {};
 
-  llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &);
+  llvm::PreservedAnalyses run(llvm::Module &IModule,
+                              llvm::ModuleAnalysisManager &IMAM);
 };
 
 } // namespace luthier

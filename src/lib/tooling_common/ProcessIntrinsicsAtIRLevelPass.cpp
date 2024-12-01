@@ -15,31 +15,32 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the <tt>ProcessIntrinsicUsersAtIRLevelPass</tt>.
+/// This file implements the <tt>ProcessIntrinsicsAtIRLevelPass</tt>.
 //===----------------------------------------------------------------------===//
 
-#include "tooling_common/ProcessIntrinsicUsersAtIRLevelPass.hpp"
+#include "tooling_common/ProcessIntrinsicsAtIRLevelPass.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/ScopedPrinter.h>
 
 #undef DEBUG_TYPE
 
-#define DEBUG_TYPE "luthier-ir-intrinsic-processor"
+#define DEBUG_TYPE "luthier-process-intrinsics-at-ir-level-pass"
 
-llvm::PreservedAnalyses luthier::ProcessIntrinsicUsersAtIRLevelPass::run(
-    llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
+llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
+    llvm::Module &IModule, llvm::ModuleAnalysisManager &IMAM) {
   auto &IntrinsicLoweringInfoVec =
-      MAM.getResult<IntrinsicLoweringInfoAnalysis>(M).getLoweringInfo();
+      IMAM.getResult<IntrinsicIRLoweringInfoMapAnalysis>(IModule)
+          .getLoweringInfo();
 
   const auto &IntrinsicsProcessors =
-      MAM.getResult<IntrinsicProcessorAnalysis>(M).getProcessors();
+      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule).getProcessors();
 
   // Iterate over all functions and find the ones marked as a Luthier
   // intrinsic
   // Do an early increment on the range since we will remove the intrinsic
   // function once we have processed all its users
-  for (auto &F : llvm::make_early_inc_range(M.functions())) {
+  for (auto &F : llvm::make_early_inc_range(IModule.functions())) {
     if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE)) {
       // Find the processor for this intrinsic
       auto IntrinsicName =
@@ -47,8 +48,9 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicUsersAtIRLevelPass::run(
       // Ensure the processor is indeed registered with the Code Generator
       auto It = IntrinsicsProcessors.find(IntrinsicName);
       if (It == IntrinsicsProcessors.end()) {
-        M.getContext().emitError("Intrinsic" + llvm::Twine(IntrinsicName) +
-                                 "is not registered with the code generator.");
+        IModule.getContext().emitError(
+            "Intrinsic" + llvm::Twine(IntrinsicName) +
+            "is not registered with the code generator.");
         return llvm::PreservedAnalyses::all();
       }
 
@@ -78,7 +80,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicUsersAtIRLevelPass::run(
         auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User);
 
         if (CallInst == nullptr) {
-          M.getContext().emitError(
+          IModule.getContext().emitError(
               llvm::formatv("Found a user of intrinsic {0} which is not a "
                             "call instruction: {1}.",
                             IntrinsicName, *User));
@@ -87,7 +89,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicUsersAtIRLevelPass::run(
         // Call the IR processor of the intrinsic on the user
         auto IRLoweringInfo = It->second.IRProcessor(F, *CallInst, TM);
         if (auto Err = IRLoweringInfo.takeError()) {
-          M.getContext().emitError(toString(std::move(Err)));
+          IModule.getContext().emitError(toString(std::move(Err)));
         }
 
         // Set up the input/output value constraints
@@ -135,7 +137,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicUsersAtIRLevelPass::run(
             !ParentFunction->hasFnAttribute(
                 LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
           if (!IRLoweringInfo->accessed_phys_regs_empty()) {
-            M.getContext().emitError(
+            IModule.getContext().emitError(
                 llvm::formatv("Intrinsic {0} used in function {1} requested "
                               "access to physical "
                               "registers, which is not allowed.",
@@ -144,7 +146,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicUsersAtIRLevelPass::run(
           }
 
           if (!IRLoweringInfo->accessed_kernargs_empty()) {
-            M.getContext().emitError(
+            IModule.getContext().emitError(
                 llvm::formatv("Intrinsic {0} used in non-hook function {1} "
                               "requested access to kernel arguments"
                               " , which is not allowed.",
