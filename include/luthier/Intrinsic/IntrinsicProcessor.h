@@ -74,45 +74,63 @@ namespace luthier {
 /// or spill them to the top of the instrumentation stack's buffer to be
 /// loaded when necessary
 enum KernelArgumentType {
-  PRIVATE_SEGMENT_BUFFER = 0,
-  ALWAYS_IN_SGPR_BEGIN = PRIVATE_SEGMENT_BUFFER,
+  /// Kernel's private segment buffer
+  KERNEL_PRIVATE_SEGMENT_BUFFER = 0,
+  /// Enum marking the beginning of kernel arguments always passed on SGPRs
+  ALWAYS_IN_SGPR_BEGIN = KERNEL_PRIVATE_SEGMENT_BUFFER,
+  /// 64-bit address of the kernel's argument buffer
   KERNARG_SEGMENT_PTR = 1,
-  DISPATCH_ID = 2,
-  FLAT_SCRATCH_INIT = 3,
-  PRIVATE_SEGMENT_WAVE_BYTE_OFFSET = 4,
+  /// 32-bit offset from the beginning of the kernel's argument buffer where
+  /// the kernel's hidden arguments starts
+  HIDDEN_KERNARG_OFFSET = 2,
+  /// 32-bit offset from the beginning of the kernel's argument buffer where
+  /// the instrumentation-passed (i.e. user) argument buffer starts
+  USER_KERNARG_OFFSET = 3,
+  /// 64-bit Dispatch ID of the kernel
+  DISPATCH_ID = 4,
+  /// 64-bit flat scratch base address of the wavefront
+  FLAT_SCRATCH = 5,
+  /// 32-bit private segment wave offset
+  PRIVATE_SEGMENT_WAVE_BYTE_OFFSET = 6,
+  /// Enum marking the end of kernel arguments always passed on SGPRs
   ALWAYS_IN_SGPR_END = PRIVATE_SEGMENT_WAVE_BYTE_OFFSET,
-  DISPATCH_PTR = 5,
+  /// 64-bit address of the dispatch packet of the kernel being executed
+  DISPATCH_PTR = 7,
+  /// Enum marking the beginning of kernel arguments that can either be passed
+  /// on SGPRs or hidden kernel arguments
   EITHER_IN_SGPR_OR_HIDDEN_BEGIN = DISPATCH_PTR,
-  QUEUE_PTR = 6,
-  PRIVATE_SEGMENT_SIZE = 7,
+  /// 64-bit address of the HSA queue used to launch the kernel
+  QUEUE_PTR = 8,
+  ///
+  PRIVATE_SEGMENT_SIZE = 9,
   EITHER_IN_SGPR_OR_HIDDEN_END = PRIVATE_SEGMENT_SIZE,
-  GLOBAL_OFFSET_X = 8,
+  GLOBAL_OFFSET_X = 10,
   HIDDEN_BEGIN = GLOBAL_OFFSET_X,
-  GLOBAL_OFFSET_Y = 9,
-  GLOBAL_OFFSET_Z = 10,
-  PRINT_BUFFER = 11,
-  HOSTCALL_BUFFER = 12,
-  DEFAULT_QUEUE = 12,
-  COMPLETION_ACTION = 13,
-  MULTIGRID_SYNC = 14,
-  BLOCK_COUNT_X = 15,
-  BLOCK_COUNT_Y = 16,
-  BLOCK_COUNT_Z = 17,
-  GROUP_SIZE_X = 18,
-  GROUP_SIZE_Y = 19,
-  GROUP_SIZE_Z = 20,
-  REMAINDER_X = 21,
-  REMAINDER_Y = 22,
-  REMAINDER_Z = 23,
-  GRID_DIMS = 24,
-  HEAP_V1 = 25,
-  DYNAMIC_LDS_SIZE = 26,
-  PRIVATE_BASE = 27,
-  SHARED_BASE = 28,
+  GLOBAL_OFFSET_Y = 11,
+  GLOBAL_OFFSET_Z = 12,
+  PRINT_BUFFER = 13,
+  HOSTCALL_BUFFER = 14,
+  DEFAULT_QUEUE = 15,
+  COMPLETION_ACTION = 16,
+  MULTIGRID_SYNC = 17,
+  BLOCK_COUNT_X = 18,
+  BLOCK_COUNT_Y = 18,
+  BLOCK_COUNT_Z = 19,
+  GROUP_SIZE_X = 20,
+  GROUP_SIZE_Y = 21,
+  GROUP_SIZE_Z = 22,
+  REMAINDER_X = 23,
+  REMAINDER_Y = 24,
+  REMAINDER_Z = 25,
+  GRID_DIMS = 26,
+  HEAP_V1 = 27,
+  DYNAMIC_LDS_SIZE = 28,
+  PRIVATE_BASE = 29,
+  SHARED_BASE = 30,
   HIDDEN_END = SHARED_BASE,
-  WORK_ITEM_X = 29,
-  WORK_ITEM_Y = 30,
-  WORK_ITEM_Z = 31
+  WORK_ITEM_X = 31,
+  WORK_ITEM_Y = 32,
+  WORK_ITEM_Z = 33
 };
 
 /// \brief Contains information about the values used/defined by
