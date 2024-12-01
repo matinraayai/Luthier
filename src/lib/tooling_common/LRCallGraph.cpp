@@ -194,10 +194,13 @@ llvm::Error LRCallGraph::analyse(const llvm::Module &M,
 
 llvm::AnalysisKey LRCallGraphAnalysis::Key;
 
-LRCallGraph &LRCallGraphAnalysis::run(llvm::Module &M,
-                                      llvm::ModuleAnalysisManager &MAM) {
-  LUTHIER_REPORT_FATAL_ON_ERROR(CG.analyse(
-      M, MAM.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI()));
-  return CG;
+LRCallGraph LRCallGraphAnalysis::run(llvm::Module &M,
+                                     llvm::ModuleAnalysisManager &MAM) {
+  LRCallGraph Out;
+  if (auto Err = Out.analyse(
+          M, MAM.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI())) {
+    M.getContext().emitError(toString(std::move(Err)));
+  }
+  return Out;
 }
 } // namespace luthier

@@ -76,9 +76,15 @@ public:
 
   /// \return \c true if callgraph analysis was able to determine the target
   /// of all call instructions in the \p LCO, \c false otherwise
-  [[nodiscard]] bool
-  hasNonDeterministicCallGraph() const {
+  [[nodiscard]] bool hasNonDeterministicCallGraph() const {
     return HasNonDeterministicCallGraph;
+  }
+
+  /// Never invalidate the results
+  __attribute__((used)) bool
+  invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
+             llvm::ModuleAnalysisManager::Invalidator &) {
+    return false;
   }
 };
 
@@ -89,21 +95,13 @@ private:
 
   static llvm::AnalysisKey Key;
 
-  LRCallGraph CG{};
-
 public:
-  using Result = LRCallGraph &;
+  using Result = LRCallGraph;
 
   LRCallGraphAnalysis() = default;
 
   /// Run the analysis pass that would
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
-
-  /// Never invalidate the results
-  bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-                  llvm::ModuleAnalysisManager::Invalidator &) {
-    return false;
-  }
 };
 
 } // namespace luthier
