@@ -19,30 +19,20 @@
 /// converting inline assembly place holder instructions with a sequence of
 /// Machine Instructions.
 //===----------------------------------------------------------------------===//
+#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_MIR_LOWERING_PASS_HPP
+#define LUTHIER_TOOLING_COMMON_INTRINSIC_MIR_LOWERING_PASS_HPP
+#include "tooling_common/PrePostAmbleEmitter.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
+#include <llvm/IR/PassManager.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
 
 class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {
-private:
-  /// List of intrinsics to be lowered by this pass; The index stored in the
-  /// inline assembly string of each intrinsic can be used to find the
-  /// associated \c IntrinsicIRLoweringInfo
-  const llvm::ArrayRef<IntrinsicIRLoweringInfo> ToBeLoweredIntrinsics;
-  /// A mapping between the intrinsic name and its processor functions;
-  /// It is supplied by the \c CodeGenerator
-  const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors;
-
 public:
   static char ID;
 
-  explicit IntrinsicMIRLoweringPass(
-      llvm::ArrayRef<IntrinsicIRLoweringInfo> MIRLoweringMap,
-      const llvm::StringMap<IntrinsicProcessor> &IntrinsicsProcessors)
-      : ToBeLoweredIntrinsics(MIRLoweringMap),
-        IntrinsicsProcessors(IntrinsicsProcessors),
-        llvm::MachineFunctionPass(ID) {};
+  explicit IntrinsicMIRLoweringPass() : llvm::MachineFunctionPass(ID) {};
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Intrinsic MIR Lowering";
@@ -54,3 +44,5 @@ public:
 };
 
 } // namespace luthier
+
+#endif
