@@ -18,8 +18,8 @@
 /// This file describes different storages for the state value array.
 //===----------------------------------------------------------------------===//
 
-#ifndef LUTHIER_TOOLING_COMMON_STATE_VALUE_STATE_VALUE_ARRAY_STORAGE_HPP
-#define LUTHIER_TOOLING_COMMON_STATE_VALUE_STATE_VALUE_ARRAY_STORAGE_HPP
+#ifndef LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_STORAGE_HPP
+#define LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_STORAGE_HPP
 #include "hsa/LoadedCodeObject.hpp"
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
@@ -130,10 +130,15 @@ public:
 
   /// Emit a set of instructions after \p MI that moves \c this
   /// the \p TargetSVS
-  virtual void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
-                           StateValueArrayStorage &TargetSVS) const = 0;
+  virtual void
+  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
+                      const StateValueArrayStorage &TargetSVS) const = 0;
 
-  virtual bool operator==(StateValueArrayStorage& LHS) const = 0;
+  virtual bool operator==(const StateValueArrayStorage &LHS) const = 0;
+
+  bool operator!=(const StateValueArrayStorage &LHS) const {
+    return !operator==(LHS);
+  }
 
   virtual void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const = 0;
@@ -181,7 +186,7 @@ public:
     return StorageVGPR;
   }
 
-  bool operator==(StateValueArrayStorage& LHS) const override;
+  bool operator==(const StateValueArrayStorage &LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return false; }
 
@@ -191,8 +196,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
 
-  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
-                           StateValueArrayStorage &TargetSVS) const override;
+  void
+  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
+                      const StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -221,7 +227,7 @@ public:
     return StorageAGPR;
   }
 
-  bool operator==(StateValueArrayStorage& LHS) const override;
+  bool operator==(const StateValueArrayStorage &LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return false; }
 
@@ -231,8 +237,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
 
-  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
-                           StateValueArrayStorage &TargetSVS) const override;
+  void
+  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
+                      const StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -264,7 +271,7 @@ public:
     return StorageAGPR;
   }
 
-  bool operator==(StateValueArrayStorage& LHS) const override;
+  bool operator==(const StateValueArrayStorage &LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
@@ -274,8 +281,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
-                           StateValueArrayStorage &TargetSVS) const override;
+  void
+  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
+                      const StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -320,7 +328,7 @@ public:
     return StorageAGPR;
   }
 
-  bool operator==(StateValueArrayStorage& LHS) const override;
+  bool operator==(const StateValueArrayStorage &LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
@@ -330,8 +338,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
-                           StateValueArrayStorage &TargetSVS) const override;
+  void
+  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
+                      const StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -372,7 +381,7 @@ public:
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
-  bool operator==(StateValueArrayStorage& LHS) const override;
+  bool operator==(const StateValueArrayStorage &LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
@@ -382,8 +391,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
-                           StateValueArrayStorage &TargetSVS) const override;
+  void
+  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
+                      const StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -416,7 +426,7 @@ public:
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
-  bool operator==(StateValueArrayStorage& LHS) const override;
+  bool operator==(const StateValueArrayStorage &LHS) const override;
 
   bool requiresLoadAndStoreBeforeUse() override { return true; }
 
@@ -426,8 +436,9 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void emitCodeToSwitchSVS(llvm::MachineInstr &MI,
-                           StateValueArrayStorage &TargetSVS) const override;
+  void
+  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
+                      const StateValueArrayStorage &TargetSVS) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
