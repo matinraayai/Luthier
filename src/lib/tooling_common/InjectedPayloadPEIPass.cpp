@@ -21,8 +21,8 @@
 
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
 #include "tooling_common/IntrinsicMIRLoweringPass.hpp"
-#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
+#include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>

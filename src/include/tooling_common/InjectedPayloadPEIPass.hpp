@@ -24,9 +24,9 @@
 #include "luthier/LRCallgraph.h"
 #include "luthier/LRRegisterLiveness.h"
 #include "luthier/LiftedRepresentation.h"
-#include "tooling_common/LRStateValueStorageAndLoadLocations.hpp"
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
+#include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/IR/PassManager.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>

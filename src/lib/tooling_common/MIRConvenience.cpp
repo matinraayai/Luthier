@@ -188,8 +188,7 @@ void emitLoadFromEmergencyVGPRScratchSpillLocation(
     llvm::MCRegister DestVGPR) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
   llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR),
-                DestVGPR)
+                TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
       .addReg(StackPtr)
       .addImm(-8)
       .addImm(0);
@@ -212,12 +211,12 @@ void emitLoadFromEmergencySVSScratchSpillLocation(
     llvm::MCRegister DestVGPR) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
   llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR),
-                DestVGPR)
+                TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
       .addReg(StackPtr)
       .addImm(-4)
       .addImm(0);
 }
+
 void emitStoreToEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource) {
@@ -227,6 +226,13 @@ void emitStoreToEmergencySVSScratchSpillLocation(
       .addReg(SrcVGPR, KillSource ? llvm::RegState::Kill : 0)
       .addReg(StackPtr)
       .addImm(-4)
+      .addImm(0);
+}
+
+void emitWaitCnt(llvm::MachineBasicBlock::iterator MI) {
+  const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
+  llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
+                TII.get(llvm::AMDGPU::S_WAITCNT))
       .addImm(0);
 }
 

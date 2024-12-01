@@ -98,6 +98,8 @@ void emitStoreToEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
+void emitWaitCnt(llvm::MachineBasicBlock::iterator MI);
+
 } // namespace luthier
 
 #endif
