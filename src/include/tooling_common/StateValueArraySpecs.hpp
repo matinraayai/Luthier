@@ -30,14 +30,22 @@ namespace luthier::stateValueArray {
 /// \c false otherwise
 bool isFrameSpillSlot(llvm::MCRegister Reg);
 
+llvm::iterator_range<
+    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
+getFrameSpillSlots();
+
 /// \param Reg SGPRs that clobber the frame of an AMD GPU device function with
 /// the C-calling convention, i.e. s0, s1, s2, s3, s32, s33, FS_LO, and FS_HI
 /// \return the lane ID in the state value array where the SGPR is spilled, or
 /// 255 if the register doesn't get clobbered by a device function's stack frame
-llvm::Expected<unsigned short> getFrameSpillSlotLaneId(llvm::MCRegister Reg);
+unsigned short getFrameSpillSlotLaneId(llvm::MCRegister Reg);
 
-llvm::Expected<unsigned short>
+unsigned short
 getInstrumentationStackFrameLaneIdStoreSlot(llvm::MCRegister Reg);
+
+llvm::iterator_range<
+    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
+getFrameStoreSlots();
 
 llvm::Expected<unsigned short>
 getKernelArgumentLaneIdStoreSlotBeginForWave64(KernelArgumentType Arg);

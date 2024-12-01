@@ -56,82 +56,59 @@ const static llvm::SmallDenseMap<KernelArgumentType, std::pair<short, short>,
         {HIDDEN_KERNARG_OFFSET, {17, 1}},
         {USER_KERNARG_OFFSET, {18, 1}},
         {DISPATCH_ID, {19, 2}},
-        {FLAT_SCRATCH_INIT, {21, 2}},
-        {PRIVATE_SEGMENT_WAVE_BYTE_OFFSET, {23, 1}},
-        {DISPATCH_PTR, {24, 2}},
-        {QUEUE_PTR, {26, 2}},
-        {PRIVATE_SEGMENT_SIZE, {28, 1}},
-        {GLOBAL_OFFSET_X, {29, 1}},
-        {GLOBAL_OFFSET_Y, {30, 1}},
-        {GLOBAL_OFFSET_Z, {31, 1}},
-        {PRINT_BUFFER, {32, 2}},
-        {HOSTCALL_BUFFER, {34, 2}},
-        {DEFAULT_QUEUE, {36, 2}},
-        {COMPLETION_ACTION, {38, 2}},
-        {MULTIGRID_SYNC, {40, 2}},
-        {BLOCK_COUNT_X, {42, 1}},
-        {BLOCK_COUNT_Y, {43, 1}},
-        {BLOCK_COUNT_Z, {44, 1}},
-        {GROUP_SIZE_X, {45, 1}},
-        {GROUP_SIZE_Y, {46, 1}},
-        {GROUP_SIZE_Z, {47, 1}},
-        {REMAINDER_X, {48, 1}},
-        {REMAINDER_Y, {49, 1}},
-        {REMAINDER_Z, {50, 1}},
-        {HEAP_V1, {51, 1}},
-        {DYNAMIC_LDS_SIZE, {52, 1}},
-        {PRIVATE_BASE, {53, 2}},
-        {SHARED_BASE, {55, 2}}};
+        {PRIVATE_SEGMENT_WAVE_BYTE_OFFSET, {21, 1}},
+        {DISPATCH_PTR, {22, 2}},
+        {QUEUE_PTR, {24, 2}},
+        {PRIVATE_SEGMENT_SIZE, {26, 1}},
+        {GLOBAL_OFFSET_X, {27, 1}},
+        {GLOBAL_OFFSET_Y, {28, 1}},
+        {GLOBAL_OFFSET_Z, {29, 1}},
+        {PRINT_BUFFER, {30, 2}},
+        {HOSTCALL_BUFFER, {32, 2}},
+        {DEFAULT_QUEUE, {34, 2}},
+        {COMPLETION_ACTION, {36, 2}},
+        {MULTIGRID_SYNC, {38, 2}},
+        {BLOCK_COUNT_X, {40, 1}},
+        {BLOCK_COUNT_Y, {41, 1}},
+        {BLOCK_COUNT_Z, {42, 1}},
+        {GROUP_SIZE_X, {43, 1}},
+        {GROUP_SIZE_Y, {44, 1}},
+        {GROUP_SIZE_Z, {45, 1}},
+        {REMAINDER_X, {46, 1}},
+        {REMAINDER_Y, {47, 1}},
+        {REMAINDER_Z, {58, 1}},
+        {HEAP_V1, {49, 1}},
+        {DYNAMIC_LDS_SIZE, {50, 1}},
+        {PRIVATE_BASE, {51, 2}},
+        {SHARED_BASE, {53, 2}}};
 
 // TODO: Add wave32 state value array
 
-/// A set of \c LiftedKernelArgumentManager::KernelArgumentType that have
-/// a \c llvm::AMDGPUFunctionArgInfo::PreloadedValue equivalent (i.e.
-/// can/must be preloaded into register values)
-static const llvm::SmallDenseMap<KernelArgumentType,
-                                 llvm::AMDGPUFunctionArgInfo::PreloadedValue>
-    ToLLVMRegArgMap{
-        {PRIVATE_SEGMENT_BUFFER,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::PRIVATE_SEGMENT_BUFFER},
-        {DISPATCH_PTR,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::DISPATCH_PTR},
-        {QUEUE_PTR, llvm::AMDGPUFunctionArgInfo::PreloadedValue::QUEUE_PTR},
-        {KERNARG_SEGMENT_PTR,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::KERNARG_SEGMENT_PTR},
-        {DISPATCH_ID, llvm::AMDGPUFunctionArgInfo::PreloadedValue::DISPATCH_ID},
-        {FLAT_SCRATCH_INIT,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::FLAT_SCRATCH_INIT},
-        {PRIVATE_SEGMENT_SIZE,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::PRIVATE_SEGMENT_SIZE},
-        {PRIVATE_SEGMENT_WAVE_BYTE_OFFSET,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::
-             PRIVATE_SEGMENT_WAVE_BYTE_OFFSET},
-        {WORK_ITEM_X,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::WORKITEM_ID_X},
-        {WORK_ITEM_Y,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::WORKITEM_ID_Y},
-        {WORK_ITEM_Z,
-         llvm::AMDGPUFunctionArgInfo::PreloadedValue::WORKITEM_ID_Z},
-    };
 
 bool isFrameSpillSlot(llvm::MCRegister Reg) {
   return FrameSpillSlots.contains(Reg);
 }
 
-llvm::Expected<unsigned short> getFrameSpillSlotLaneId(llvm::MCRegister Reg) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      FrameSpillSlots.contains(Reg),
-      "MC Reg {0} is not in the state value array frame spill slots.",
-      llvm::printReg(Reg)));
+llvm::iterator_range<
+    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
+getFrameSpillSlots() {
+  return llvm::make_range(FrameSpillSlots.begin(), FrameSpillSlots.end());
+}
+
+unsigned short getFrameSpillSlotLaneId(llvm::MCRegister Reg) {
   return FrameSpillSlots.at(Reg);
 }
 
-llvm::Expected<unsigned short>
+unsigned short
 getInstrumentationStackFrameLaneIdStoreSlot(llvm::MCRegister Reg) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      InstrumentationStackFrameStoreSlots.contains(Reg),
-      "MC Reg {0} is not in the state value array frame store slots."));
   return InstrumentationStackFrameStoreSlots.at(Reg);
+}
+
+llvm::iterator_range<
+    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
+getFrameStoreSlots() {
+  return llvm::make_range(InstrumentationStackFrameStoreSlots.begin(),
+                          InstrumentationStackFrameStoreSlots.end());
 }
 
 llvm::Expected<unsigned short>
