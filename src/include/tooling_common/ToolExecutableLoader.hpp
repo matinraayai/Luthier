@@ -21,8 +21,8 @@
 /// and loading instrumented kernels into a dispatch packet when the tool
 /// requests it.
 //===----------------------------------------------------------------------===//
-#ifndef TOOL_EXECUTABLE_LOADER_HPP
-#define TOOL_EXECUTABLE_LOADER_HPP
+#ifndef LUTHIER_TOOLING_COMMON_TOOL_EXECUTABLE_LOADER_HPP
+#define LUTHIER_TOOLING_COMMON_TOOL_EXECUTABLE_LOADER_HPP
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
