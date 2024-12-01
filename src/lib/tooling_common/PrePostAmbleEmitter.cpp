@@ -397,7 +397,7 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
         bool RequiresAccessToScratch =
             SVAInfo.RequiresScratchAndStackSetup ||
             SVAInfo.RequestedKernelArguments.contains(
-                KERNEL_PRIVATE_SEGMENT_BUFFER) ||
+                WAVEFRONT_PRIVATE_SEGMENT_BUFFER) ||
             SVAInfo.RequestedKernelArguments.contains(FLAT_SCRATCH);
         // If SVA requires access to scratch, then we have to enable it
         if (RequiresAccessToScratch) {

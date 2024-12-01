@@ -322,6 +322,79 @@ CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
   return llvm::Error::success();
 }
 
+static llvm::Type *
+processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
+                         llvm::LLVMContext &Ctx) {
+  llvm::Type *ParamType = llvm::Type::getIntNTy(Ctx, ArgMD.Size);
+  // Used when the argument kind is global buffer or dynamic shared pointer
+  unsigned int AddressSpace = ArgMD.AddressSpace.has_value()
+                                  ? *ArgMD.AddressSpace
+                                  : llvm::AMDGPUAS::GLOBAL_ADDRESS;
+  unsigned int PointeeAlign =
+      ArgMD.PointeeAlign.has_value() ? *ArgMD.PointeeAlign : 0;
+  switch (ArgMD.ValueKind) {
+  case hsa::md::ValueKind::ByValue:
+    break;
+  case hsa::md::ValueKind::GlobalBuffer:
+    // Convert the argument to a pointer
+    ParamType = llvm::PointerType::get(ParamType, AddressSpace);
+    break;
+  default:
+    llvm_unreachable("Not implemented");
+  }
+  return ParamType;
+}
+
+void processHiddenKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
+                            llvm::Function &F, llvm::SIMachineFunctionInfo &MFI,
+                            const llvm::SIRegisterInfo &TRI) {
+  switch (ArgMD.ValueKind) {
+  case hsa::md::ValueKind::HiddenGlobalOffsetX:
+  case hsa::md::ValueKind::HiddenGlobalOffsetY:
+  case hsa::md::ValueKind::HiddenGlobalOffsetZ:
+  case hsa::md::ValueKind::HiddenBlockCountX:
+  case hsa::md::ValueKind::HiddenBlockCountY:
+  case hsa::md::ValueKind::HiddenBlockCountZ:
+  case hsa::md::ValueKind::HiddenRemainderX:
+  case hsa::md::ValueKind::HiddenRemainderY:
+  case hsa::md::ValueKind::HiddenRemainderZ:
+  case hsa::md::ValueKind::HiddenNone:
+  case hsa::md::ValueKind::HiddenGroupSizeX:
+  case hsa::md::ValueKind::HiddenGroupSizeY:
+  case hsa::md::ValueKind::HiddenGroupSizeZ:
+  case hsa::md::ValueKind::HiddenGridDims:
+  case hsa::md::ValueKind::HiddenPrivateBase:
+  case hsa::md::ValueKind::HiddenSharedBase:
+    break;
+  case hsa::md::ValueKind::HiddenPrintfBuffer:
+    F.getParent()->getOrInsertNamedMetadata("llvm.printf.fmts");
+    break;
+  case hsa::md::ValueKind::HiddenHostcallBuffer:
+    F.removeFnAttr("amdgpu-no-hostcall-ptr");
+    break;
+  case hsa::md::ValueKind::HiddenDefaultQueue:
+    F.removeFnAttr("amdgpu-no-default-queue");
+    break;
+  case hsa::md::ValueKind::HiddenCompletionAction:
+    F.removeFnAttr("amdgpu-no-completion-action");
+    break;
+  case hsa::md::ValueKind::HiddenMultiGridSyncArg:
+    F.removeFnAttr("amdgpu-no-multigrid-sync-arg");
+    break;
+  case hsa::md::ValueKind::HiddenHeapV1:
+    F.removeFnAttr("amdgpu-no-heap-ptr");
+    break;
+  case hsa::md::ValueKind::HiddenDynamicLDSSize:
+    MFI.setUsesDynamicLDS(true);
+    break;
+  case hsa::md::ValueKind::HiddenQueuePtr:
+    MFI.addQueuePtr(TRI);
+    break;
+  default:
+    return;
+  }
+}
+
 llvm::Error
 CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
                                   const hsa::LoadedCodeObjectKernel &Kernel,
@@ -339,26 +412,21 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   // Create the Kernel's FunctionType with appropriate kernel Arguments
   // (if any)
   llvm::SmallVector<llvm::Type *> Params;
+  unsigned int ExplicitArgsOffset = 0;
+  unsigned int ImplicitArgsOffset = 0;
   if (KernelMD.Args.has_value()) {
     // Reserve the number of arguments in the Params vector
     Params.reserve(KernelMD.Args->size());
     // For now, we only rely on required argument metadata
     // This should be updated as new cases are encountered
     for (const auto &ArgMD : *KernelMD.Args) {
-      LLVM_DEBUG(llvm::dbgs() << "Argument size: " << ArgMD.Size << "\n");
-      llvm::Type *ParamType =
-          llvm::Type::getIntNTy(Module.getContext(), ArgMD.Size);
-      // if argument is not passed by value, then it's probably a pointer
-      if (ArgMD.ValueKind != hsa::md::ValueKind::ByValue) {
-        // AddressSpace is most likely global, but we check it anyway if
-        // it's given
-        unsigned int AddressSpace = ArgMD.AddressSpace.has_value()
-                                        ? *ArgMD.AddressSpace
-                                        : llvm::AMDGPUAS::GLOBAL_ADDRESS;
-        // Convert the argument to a pointer
-        ParamType = llvm::PointerType::get(ParamType, AddressSpace);
+      if (ArgMD.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin)
+        break;
+      else {
+        Params.push_back(processExplicitKernelArg(ArgMD, Module.getContext()));
+        if (ArgMD.Offset > ExplicitArgsOffset)
+          ExplicitArgsOffset = ArgMD.Offset;
       }
-      Params.push_back(ParamType);
     }
   }
 
@@ -423,8 +491,6 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   }
 
   // TODO: Check the args metadata to set this correctly
-  F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
-
   // TODO: Set the rest of the attributes
   //    llvm::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload <<
   //    "\n";
@@ -461,6 +527,32 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   if (Rsrc2.EnableSgprPrivateSegmentWaveByteOffset == 1) {
     MFI->addPrivateSegmentWaveByteOffset();
   }
+
+  // Process the hidden args now that MFI and MF has been created
+  if (KernelMD.Args.has_value()) {
+    // Add absence of all hidden arguments; As we iterate over all the
+    // hidden arguments, we get rid of them if we detect their presence
+    F->addFnAttr("amdgpu-no-hostcall-ptr");
+    F->addFnAttr("amdgpu-no-default-queue");
+    F->addFnAttr("amdgpu-no-completion-action");
+    F->addFnAttr("amdgpu-no-multigrid-sync-arg");
+    F->addFnAttr("amdgpu-no-heap-ptr");
+    for (const auto &ArgMD : *KernelMD.Args) {
+      if (ArgMD.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin &&
+          ArgMD.ValueKind <= hsa::md::ValueKind::HiddenArgKindEnd) {
+        processHiddenKernelArg(
+            ArgMD, *F, *MFI,
+            *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo());
+        if (ArgMD.Offset > ImplicitArgsOffset)
+          ImplicitArgsOffset = ArgMD.Offset;
+      }
+    }
+  }
+
+  // Number of implicit arg bytes is the difference between the last hidden
+  // arg offset and the last explicit arg offset
+  F->addFnAttr("amdgpu-implicitarg-num-bytes",
+               llvm::to_string(ImplicitArgsOffset - ExplicitArgsOffset));
 
   LR.RelatedFunctions.insert({&Kernel, &MF});
 

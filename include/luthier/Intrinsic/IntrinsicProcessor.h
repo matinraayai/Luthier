@@ -74,10 +74,10 @@ namespace luthier {
 /// or spill them to the top of the instrumentation stack's buffer to be
 /// loaded when necessary
 enum KernelArgumentType {
-  /// Kernel's private segment buffer
-  KERNEL_PRIVATE_SEGMENT_BUFFER = 0,
+  /// Wavefront's private segment buffer
+  WAVEFRONT_PRIVATE_SEGMENT_BUFFER = 0,
   /// Enum marking the beginning of kernel arguments always passed on SGPRs
-  ALWAYS_IN_SGPR_BEGIN = KERNEL_PRIVATE_SEGMENT_BUFFER,
+  ALWAYS_IN_SGPR_BEGIN = WAVEFRONT_PRIVATE_SEGMENT_BUFFER,
   /// 64-bit address of the kernel's argument buffer
   KERNARG_SEGMENT_PTR = 1,
   /// 32-bit offset from the beginning of the kernel's argument buffer where
@@ -101,36 +101,42 @@ enum KernelArgumentType {
   EITHER_IN_SGPR_OR_HIDDEN_BEGIN = DISPATCH_PTR,
   /// 64-bit address of the HSA queue used to launch the kernel
   QUEUE_PTR = 8,
-  ///
-  PRIVATE_SEGMENT_SIZE = 9,
-  EITHER_IN_SGPR_OR_HIDDEN_END = PRIVATE_SEGMENT_SIZE,
-  GLOBAL_OFFSET_X = 10,
-  HIDDEN_BEGIN = GLOBAL_OFFSET_X,
-  GLOBAL_OFFSET_Y = 11,
-  GLOBAL_OFFSET_Z = 12,
-  PRINT_BUFFER = 13,
-  HOSTCALL_BUFFER = 14,
-  DEFAULT_QUEUE = 15,
-  COMPLETION_ACTION = 16,
-  MULTIGRID_SYNC = 17,
-  BLOCK_COUNT_X = 18,
-  BLOCK_COUNT_Y = 18,
-  BLOCK_COUNT_Z = 19,
-  GROUP_SIZE_X = 20,
-  GROUP_SIZE_Y = 21,
-  GROUP_SIZE_Z = 22,
-  REMAINDER_X = 23,
-  REMAINDER_Y = 24,
-  REMAINDER_Z = 25,
-  GRID_DIMS = 26,
-  HEAP_V1 = 27,
-  DYNAMIC_LDS_SIZE = 28,
-  PRIVATE_BASE = 29,
-  SHARED_BASE = 30,
+  /// Size of a work-item's private segment
+  WORK_ITEM_PRIVATE_SEGMENT_SIZE = 9,
+  /// Enum marking the end of kernel arguments that are either passed on the
+  /// SGPRs or hidden kernel arguments
+  EITHER_IN_SGPR_OR_HIDDEN_END = WORK_ITEM_PRIVATE_SEGMENT_SIZE,
+  /// Dispatch workgroup work-item count for the x dimension
+  BLOCK_COUNT_X = 10,
+  /// Enum marking the beginning of hidden-only kernel arguments
+  HIDDEN_BEGIN = BLOCK_COUNT_X,
+  /// Dispatch workgroup work-item count for the y dimension
+  BLOCK_COUNT_Y = 11,
+  /// Dispatch workgroup work-item count for the z dimension
+  BLOCK_COUNT_Z = 12,
+  GROUP_SIZE_X = 13,
+  GROUP_SIZE_Y = 14,
+  GROUP_SIZE_Z = 15,
+  REMAINDER_X = 16,
+  REMAINDER_Y = 17,
+  REMAINDER_Z = 18,
+  GLOBAL_OFFSET_X = 19,
+  GLOBAL_OFFSET_Y = 20,
+  GLOBAL_OFFSET_Z = 21,
+  PRINT_BUFFER = 22,
+  HOSTCALL_BUFFER = 23,
+  DEFAULT_QUEUE = 24,
+  COMPLETION_ACTION = 25,
+  MULTIGRID_SYNC = 26,
+  GRID_DIMS = 27,
+  HEAP_V1 = 28,
+  DYNAMIC_LDS_SIZE = 29,
+  PRIVATE_BASE = 30,
+  SHARED_BASE = 31,
   HIDDEN_END = SHARED_BASE,
-  WORK_ITEM_X = 31,
-  WORK_ITEM_Y = 32,
-  WORK_ITEM_Z = 33
+  WORK_ITEM_X = 32,
+  WORK_ITEM_Y = 33,
+  WORK_ITEM_Z = 34
 };
 
 /// \brief Contains information about the values used/defined by

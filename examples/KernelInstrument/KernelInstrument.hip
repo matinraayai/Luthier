@@ -69,7 +69,7 @@ LUTHIER_HOOK_ANNOTATE instrumentationHook(long RegVal) {
   //  for (int i = 0; i < 20; i++) {
   //    PositionInGroup += MyArray[i];
   //  }
-  //   writeReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5, 5);
+//     writeReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5, 5);
   if (RegVal > 5)
     PositionInGroup = RegVal;
   else
