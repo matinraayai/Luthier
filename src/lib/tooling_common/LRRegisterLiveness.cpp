@@ -48,7 +48,7 @@ static void computeLiveIns(
       (void)PerMILiveIns.insert(
           {const_cast<llvm::MachineInstr *>(&MI),
            std::move(std::make_unique<llvm::LivePhysRegs>())});
-    auto &MILivePhysRegs = PerMILiveIns[const_cast<llvm::MachineInstr *>(&MI)];
+    auto &MILivePhysRegs = PerMILiveIns[&MI];
     MILivePhysRegs->init(TRI);
     for (const auto &LivePhysReg : LiveRegs) {
       MILivePhysRegs->addReg(LivePhysReg);
@@ -77,21 +77,34 @@ static bool recomputeLiveIns(
     llvm::DenseMap<const llvm::MachineInstr *,
                    std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
   llvm::LivePhysRegs LPR;
-  LLVM_DEBUG(
-
-      auto TRI = MBB.getParent()->getSubtarget().getRegisterInfo();
-      llvm::dbgs() << "Old live-in registers for MBB " << MBB.getFullName()
-                   << "\n";
-      for (auto &LiveInPhysReg : MBB.getLiveIns()) {
-        llvm::dbgs() << printReg(llvm::Register(LiveInPhysReg.PhysReg), TRI)
-                     << "\n";
-      });
+  LLVM_DEBUG(llvm::dbgs() << "Recalculating Live-in registers for MBB "
+                          << MBB.getFullName() << "\n";);
 
   auto OldLiveIns = luthier::computeAndAddLiveIns(LPR, MBB, PerMILiveIns);
   MBB.sortUniqueLiveIns();
 
   const std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &NewLiveIns =
       MBB.getLiveIns();
+
+  LLVM_DEBUG(auto TRI = MBB.getParent()->getSubtarget().getRegisterInfo();
+             llvm::dbgs() << "Old Live-ins: ["; llvm::interleave(
+                 OldLiveIns.begin(), OldLiveIns.end(),
+                 [&](const llvm::MachineBasicBlock::RegisterMaskPair &Vec) {
+                   llvm::dbgs() << printReg(llvm::Register(Vec.PhysReg), TRI);
+                 },
+                 [&]() { llvm::dbgs() << ", "; });
+             llvm::dbgs() << "]\n";
+
+             llvm::dbgs() << "New Live-ins: ["; llvm::interleave(
+                 NewLiveIns.begin(), NewLiveIns.end(),
+                 [&](const llvm::MachineBasicBlock::RegisterMaskPair &Vec) {
+                   llvm::dbgs() << printReg(llvm::Register(Vec.PhysReg), TRI);
+                 },
+                 [&]() { llvm::dbgs() << ", "; });
+             llvm::dbgs() << "]\n";
+
+  );
+
   return OldLiveIns != NewLiveIns;
 }
 
@@ -107,7 +120,8 @@ static void recomputeLiveIns(
   while (true) {
     bool AnyChange = false;
     for (auto &MBB : MF)
-      AnyChange = luthier::recomputeLiveIns(MBB, PerMILiveIns);
+      if (luthier::recomputeLiveIns(MBB, PerMILiveIns))
+        AnyChange = true;
     if (!AnyChange)
       return;
   }
@@ -127,7 +141,7 @@ static void computeLiveIns(
       (void)PerMILiveIns.insert(
           {const_cast<llvm::MachineInstr *>(&MI),
            std::move(std::make_unique<llvm::LivePhysRegs>())});
-    auto &MILivePhysRegs = PerMILiveIns[const_cast<llvm::MachineInstr *>(&MI)];
+    auto &MILivePhysRegs = PerMILiveIns[&MI];
     MILivePhysRegs->init(TRI);
     for (const auto &LivePhysReg : LiveRegs) {
       MILivePhysRegs->addReg(LivePhysReg);
@@ -149,74 +163,77 @@ std::vector<llvm::MachineBasicBlock::RegisterMaskPair> computeAndAddLiveIns(
   return OldLiveIns;
 }
 
-/// Convenience function for recomputing live-in's for a MBB
-/// \return \c true if any changes were made.
-static bool recomputeLiveIns(
-    VectorMBB &VectorMBB,
-    llvm::DenseMap<const llvm::MachineInstr *,
-                   std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
-  llvm::LivePhysRegs LPR;
+///// Convenience function for recomputing live-in's for a MBB
+///// \return \c true if any changes were made.
+ static bool recomputeLiveIns(
+     VectorMBB &VectorMBB,
+     llvm::DenseMap<const llvm::MachineInstr *,
+                    std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
+   llvm::LivePhysRegs LPR;
 
-  auto OldLiveIns = luthier::computeAndAddLiveIns(LPR, VectorMBB, PerMILiveIns);
-  VectorMBB.sortUniqueLiveIns();
+   auto OldLiveIns = luthier::computeAndAddLiveIns(LPR, VectorMBB,
+   PerMILiveIns); VectorMBB.sortUniqueLiveIns();
 
-  const std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &NewLiveIns =
-      VectorMBB.getLiveIns();
-  return OldLiveIns != NewLiveIns;
-}
+   const std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &NewLiveIns =
+       VectorMBB.getLiveIns();
+   return OldLiveIns != NewLiveIns;
+ }
 
-static void recomputeLiveIns(
-    VectorCFG &CFG,
-    llvm::DenseMap<const llvm::MachineInstr *,
-                   std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
-  while (true) {
-    bool AnyChange = false;
-    for (auto &MBB : CFG)
-      AnyChange = luthier::recomputeLiveIns(*MBB, PerMILiveIns);
-    if (!AnyChange)
-      return;
-  }
-}
+ static void recomputeLiveIns(
+     VectorCFG &CFG,
+     llvm::DenseMap<const llvm::MachineInstr *,
+                    std::unique_ptr<llvm::LivePhysRegs>> &PerMILiveIns) {
+   while (true) {
+     bool AnyChange = false;
+     for (auto &MBB : CFG)
+       if (luthier::recomputeLiveIns(*MBB, PerMILiveIns))
+         AnyChange = true;
+     if (!AnyChange)
+       return;
+   }
+ }
 
 void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
                                           const llvm::MachineModuleInfo &MMI,
                                           const LRCallGraph &CG) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
   LLVM_DEBUG(llvm::dbgs() << "Recomputing LR Register Liveness analysis.\n");
-  llvm::DenseMap<const llvm::MachineInstr *,
-                 std::unique_ptr<llvm::LivePhysRegs>>
-      MFLiveIns;
-  llvm::DenseMap<const llvm::MachineInstr *,
-                 std::unique_ptr<llvm::LivePhysRegs>>
-      VCFGLiveIns;
+  //  llvm::DenseMap<const llvm::MachineInstr *,
+  //                 std::unique_ptr<llvm::LivePhysRegs>>
+  //      MFLiveIns;
+  //  llvm::DenseMap<const llvm::MachineInstr *,
+  //                 std::unique_ptr<llvm::LivePhysRegs>>
+  //      VCFGLiveIns;
   for (const auto &F : M) {
     auto *MF = MMI.getMachineFunction(F);
     if (!MF)
       continue;
-    VecCFG.insert({MF, VectorCFG::getVectorCFG(*MF)});
-    luthier::recomputeLiveIns(*MF, MFLiveIns);
+//    VecCFG.insert({MF, VectorCFG::getVectorCFG(*MF)});
+    luthier::recomputeLiveIns(*MF, MachineInstrLivenessMap);
     //    luthier::recomputeLiveIns(*VecCFG[MF], VCFGLiveIns);
-    const auto &TRI = *MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
-    const auto &MRI = MF->getRegInfo();
-    for (const auto &MBB : *MF) {
-      for (const auto &MI : MBB) {
-        (void)MachineInstrLivenessMap.insert(
-            {const_cast<llvm::MachineInstr *>(&MI),
-             std::move(std::make_unique<llvm::LivePhysRegs>())});
-        auto &MILivePhysRegs =
-            MachineInstrLivenessMap[const_cast<llvm::MachineInstr *>(&MI)];
-        MILivePhysRegs->init(TRI);
-        for (const auto &LivePhysReg : *MFLiveIns[&MI]) {
-          //          if (!TRI.isVGPR(MRI, LivePhysReg) && !TRI.isAGPR(MRI,
-          //          LivePhysReg))
-          MILivePhysRegs->addReg(LivePhysReg);
-        }
-        //        for (const auto &LivePhysReg : *VCFGLiveIns[&MI]) {
-        //          if (TRI.isVGPR(MRI, LivePhysReg) || TRI.isAGPR(MRI,
-        //          LivePhysReg))
-        //            MILivePhysRegs->addReg(LivePhysReg);
-      }
-    }
+    //    const auto &TRI =
+    //    *MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo(); const auto
+    //    &MRI = MF->getRegInfo(); for (const auto &MBB : *MF) {
+    //      for (const auto &MI : MBB) {
+    //        (void)MachineInstrLivenessMap.insert(
+    //            {const_cast<llvm::MachineInstr *>(&MI),
+    //             std::move(std::make_unique<llvm::LivePhysRegs>())});
+    //        auto &MILivePhysRegs =
+    //            MachineInstrLivenessMap[const_cast<llvm::MachineInstr
+    //            *>(&MI)];
+    //        MILivePhysRegs->init(TRI);
+    //        for (const auto &LivePhysReg : *MFLiveIns[&MI]) {
+    //          //          if (!TRI.isVGPR(MRI, LivePhysReg) &&
+    //          !TRI.isAGPR(MRI,
+    //          //          LivePhysReg))
+    //          MILivePhysRegs->addReg(LivePhysReg);
+    //        }
+    //        //        for (const auto &LivePhysReg : *VCFGLiveIns[&MI]) {
+    //        //          if (TRI.isVGPR(MRI, LivePhysReg) || TRI.isAGPR(MRI,
+    //        //          LivePhysReg))
+    //        //            MILivePhysRegs->addReg(LivePhysReg);
+    //      }
+    //    }
   }
   // After computing the per-function live-ins, we need to update the liveness
   // information of the call sites
