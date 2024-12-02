@@ -89,7 +89,6 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
       IMAM.getCachedResult<PhysRegsNotInLiveInsAnalysis>(IModule)
           ->getPhysRegsNotInLiveIns();
 
-
   bool Changed{false};
   // Get the state value location for this hook
   auto &StateValueLoadPlan =
@@ -99,6 +98,10 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   auto &InstPointLiveRegs = PhysRegVirtAccessPass.get32BitLiveInRegs();
   auto *TII = MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
   auto &StateValueStorage = StateValueLoadPlan.StateValueStorageLocation;
+
+  // Target Machine function which this injected payload will be patched into
+  auto TargetMF = IPIP.at(MF.getFunction())->getMF();
+
   // We need to first determine if we need to even emit a prologue/epilogue for
   // this hook; If the hooks makes use of the state value VGPR
   // (reads from it/writes to it), or is using s[0:3], s32, and FS, then it
@@ -157,10 +160,14 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   // to FS
   if (StateValueStorage.getStateValueStorageReg() == 0) {
     RequiresAccessToStack = true;
-    if (MF.getFunction().getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL)
-      PKInfo.Kernels[&MF].RequiresScratchAndStackSetup = true;
-    else
-      PKInfo.DeviceFunctions[&MF].RequiresScratchAndStackSetup = true;
+    if (TargetMF->getFunction().getCallingConv() ==
+        llvm::CallingConv::AMDGPU_KERNEL) {
+      PKInfo.Kernels[TargetMF]
+          .RequiresScratchAndStackSetup = true;
+      llvm::outs() << "Pre-kernel is set to: "
+                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup << "\n";
+    } else
+      PKInfo.DeviceFunctions[TargetMF].RequiresScratchAndStackSetup = true;
   }
 
   // If the hook has stack usage
@@ -169,11 +176,16 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   auto &FrameInfo = MF.getFrameInfo();
   // TODO: Make sure this is correct
   if (FrameInfo.hasStackObjects() && FrameInfo.getStackSize() != 0) {
+    LLVM_DEBUG(llvm::dbgs() << "Found a use of stack.\n";);
     RequiresAccessToStack = true;
-    if (MF.getFunction().getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL)
-      PKInfo.Kernels[&MF].RequiresScratchAndStackSetup = true;
-    else
-      PKInfo.DeviceFunctions[&MF].RequiresScratchAndStackSetup = true;
+    if (TargetMF->getFunction().getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
+      PKInfo.Kernels[TargetMF]
+          .RequiresScratchAndStackSetup = true;
+      llvm::outs() << "Pre-kernel is set to: "
+                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup << "\n";
+    } else
+      PKInfo.DeviceFunctions[TargetMF]
+          .RequiresScratchAndStackSetup = true;
   }
 
   // If the app has either s0, s1, s2, s3, s32, and FLAT_SCRATCH_LO/HI
