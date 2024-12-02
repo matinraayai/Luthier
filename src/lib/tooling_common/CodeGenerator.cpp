@@ -227,11 +227,11 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
     // Add the MIR pipeline for the instrumentation module
     TargetMPM.addPass(
         RunMIRPassesOnIModulePass(TM, *IModule, *IMMIWP, *LegacyIPM));
+    // Add the kernel pre-amble emission pass
+    TargetMPM.addPass(PrePostAmbleEmitter());
     // Add the lifted representation patching pass
     TargetMPM.addPass(
         PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI()));
-    // Add the kernel pre-amble emission pass
-    TargetMPM.addPass(PrePostAmbleEmitter());
 
     TargetMPM.run(LCOModule.first, TargetMAM);
     // TODO: remove this once the new MMI makes it to LLVM master
