@@ -18,13 +18,16 @@
 /// This file implements the Pre and post amble emitter, as well as the
 /// \c FunctionPreambleDescriptor and its analysis pass.
 //===----------------------------------------------------------------------===//
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
+#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
+
+#undef DEBUG_TYPE
+#define DEBUG_TYPE "luthier-pre-post-amble-emitter"
 
 namespace luthier {
 
@@ -77,7 +80,9 @@ getSGPRArgumentPositions(const llvm::MachineFunction &MF) {
       llvm::AMDGPUFunctionArgInfo::PreloadedValue::WORKITEM_ID_Z};
 
   for (const auto &PreloadVal : SGPRArgs) {
-    SGPRKernelArguments.insert({PreloadVal, getArgReg(MF, PreloadVal)});
+    auto Reg = getArgReg(MF, PreloadVal);
+    if (Reg)
+      SGPRKernelArguments.insert({PreloadVal, Reg});
   }
   return SGPRKernelArguments;
 }
@@ -134,6 +139,7 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
                        const hsa::md::Kernel::Metadata &KernelMD) {
   auto &MF = *EntryInstr.getMF();
   const auto &TII = *MF.getSubtarget().getInstrInfo();
+  const auto &TRI = *MF.getSubtarget().getRegisterInfo();
   auto &MFI = *MF.getInfo<llvm::SIMachineFunctionInfo>();
   // First make a copy of S0 and S1/ FS_lo FS_hi in the state value
   // register
@@ -151,76 +157,90 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-      .addReg(MFI.getPreloadedReg(
-                  llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-              0, llvm::AMDGPU::sub0)
+      .addReg(TRI.getSubReg(
+          MFI.getPreloadedReg(
+              llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
+          llvm::AMDGPU::sub0))
       .addImm(SGPR0SpillSlot)
       .addReg(SVSStorageVGPR);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-      .addReg(MFI.getPreloadedReg(
-                  llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-              0, llvm::AMDGPU::sub1)
+      .addReg(TRI.getSubReg(
+          MFI.getPreloadedReg(
+              llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
+          llvm::AMDGPU::sub1))
       .addImm(SGPR1SpillSlot)
       .addReg(SVSStorageVGPR);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-      .addReg(
+      .addReg(TRI.getSubReg(
           MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          0, llvm::AMDGPU::sub0)
+          llvm::AMDGPU::sub0))
       .addImm(SGPRFlatScrLoSpillSlot)
       .addReg(SVSStorageVGPR);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-      .addReg(
+      .addReg(TRI.getSubReg(
           MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          0, llvm::AMDGPU::sub1)
+          llvm::AMDGPU::sub1))
       .addImm(SGPRFlatScrHiSpillSlot)
       .addReg(SVSStorageVGPR);
 
   // Add the PSWO to SGPR0/its carry to SGPR1
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::S_ADD_U32))
-      .addReg(MFI.getPreloadedReg(
-                  llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-              llvm::RegState::Define, llvm::AMDGPU::sub0)
-      .addReg(MFI.getPreloadedReg(
-                  llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-              llvm::RegState::Kill, llvm::AMDGPU::sub0)
+      .addReg(TRI.getSubReg(
+                  MFI.getPreloadedReg(
+                      llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
+                  llvm::AMDGPU::sub0),
+              llvm::RegState::Define)
+      .addReg(TRI.getSubReg(
+                  MFI.getPreloadedReg(
+                      llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
+                  llvm::AMDGPU::sub0),
+              llvm::RegState::Kill)
       .addReg(MFI.getPreloadedReg(
           llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET));
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::S_ADDC_U32))
-      .addReg(MFI.getPreloadedReg(
-                  llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-              llvm::RegState::Define, llvm::AMDGPU::sub1)
-      .addReg(MFI.getPreloadedReg(
-                  llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-              llvm::RegState::Kill, llvm::AMDGPU::sub1)
+      .addReg(TRI.getSubReg(
+                  MFI.getPreloadedReg(
+                      llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
+                  llvm::AMDGPU::sub1),
+              llvm::RegState::Define)
+      .addReg(TRI.getSubReg(
+                  MFI.getPreloadedReg(
+                      llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
+                  llvm::AMDGPU::sub1),
+              llvm::RegState::Kill)
       .addImm(0);
   // Add the PSWO to FS_init_lo/its carry to FS_init_hi
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::S_ADD_U32))
-      .addReg(
-          MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          llvm::RegState::Define, llvm::AMDGPU::sub0)
-      .addReg(
-          MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          llvm::RegState::Kill, llvm::AMDGPU::sub0)
+      .addReg(TRI.getSubReg(MFI.getPreloadedReg(
+                                llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
+                            llvm::AMDGPU::sub0),
+              llvm::RegState::Define)
+      .addReg(TRI.getSubReg(MFI.getPreloadedReg(
+                                llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
+                            llvm::AMDGPU::sub0),
+              llvm::RegState::Kill)
       .addReg(MFI.getPreloadedReg(
           llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET));
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::S_ADDC_U32))
-      .addReg(
-          MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          llvm::RegState::Define, llvm::AMDGPU::sub1)
-      .addReg(
-          MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          llvm::RegState::Kill, llvm::AMDGPU::sub1)
+      .addReg(TRI.getSubReg(MFI.getPreloadedReg(
+                                llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
+                            llvm::AMDGPU::sub1),
+              llvm::RegState::Define)
+      .addReg(TRI.getSubReg(MFI.getPreloadedReg(
+                                llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
+                            llvm::AMDGPU::sub1),
+              llvm::RegState::Kill)
       .addImm(0);
 
   unsigned int InstrumentationStackStart{0};
@@ -261,17 +281,19 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_READLANE_B32))
-      .addReg(
-          MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          llvm::RegState::Define, llvm::AMDGPU::sub0)
+      .addReg(TRI.getSubReg(MFI.getPreloadedReg(
+                                llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
+                            llvm::AMDGPU::sub0),
+              llvm::RegState::Define)
       .addReg(SVSStorageVGPR)
       .addImm(SGPRFlatScrLoSpillSlot);
 
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_READLANE_B32))
-      .addReg(
-          MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-          llvm::RegState::Define, llvm::AMDGPU::sub1)
+      .addReg(TRI.getSubReg(MFI.getPreloadedReg(
+                                llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
+                            llvm::AMDGPU::sub1),
+              llvm::RegState::Define)
       .addReg(SVSStorageVGPR)
       .addImm(SGPRFlatScrHiSpillSlot);
 
@@ -306,7 +328,8 @@ emitCodeToStoreSGPRKernelArg(llvm::MachineInstr &InsertionPoint,
       auto SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(i);
       llvm::BuildMI(InsertionPointMBB, InsertionPoint, llvm::DebugLoc(),
                     TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSVGPR)
-          .addReg(SrcSGPR, KillAfterUse ? llvm::RegState::Kill : 0, SubIdx)
+          .addReg(TRI.getSubReg(SrcSGPR, SubIdx),
+                  KillAfterUse ? llvm::RegState::Kill : 0)
           .addImm(SpillSlotStart)
           .addReg(SVSVGPR);
     }
@@ -339,8 +362,10 @@ static void emitCodeToReturnSGPRArgsToOriginalPlace(
         auto SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(i, 2);
         llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(),
                       TII.get(llvm::AMDGPU::S_MOV_B64))
-            .addReg(OriginalArgReg, llvm::RegState::Define, SubIdx)
-            .addReg(getArgReg(MF, KernArg), llvm::RegState::Kill, SubIdx);
+            .addReg(TRI.getSubReg(OriginalArgReg, SubIdx),
+                    llvm::RegState::Define)
+            .addReg(TRI.getSubReg(getArgReg(MF, KernArg), SubIdx),
+                    llvm::RegState::Kill);
       }
     }
   }
@@ -379,6 +404,7 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
   bool MustSetupSVA = doesLRRequireSVA(LR, LCO, PKInfo);
 
   if (MustSetupSVA) {
+    LLVM_DEBUG(llvm::dbgs() << "Have to setup the SVA.\n");
     for (auto &[FuncSymbol, MF] : LR.functions()) {
       if (MF->getFunction().getCallingConv() ==
               llvm::CallingConv::AMDGPU_KERNEL &&
@@ -393,6 +419,22 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
         // Get the original position of all the reg arguments before they
         // are changed
         auto OriginalSGPRArgLocs = getSGPRArgumentPositions(*MF);
+
+        LLVM_DEBUG(
+            llvm::dbgs() << "Original Positions of the kernel args:\n";
+            llvm::dbgs() << "[ "; llvm::interleave(
+                OriginalSGPRArgLocs.begin(), OriginalSGPRArgLocs.end(),
+                [&](std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue,
+                              llvm::MCRegister>
+                        Args) {
+                  llvm::dbgs() << Args.first << ": "
+                               << llvm::printReg(Args.second, &TRI);
+                },
+                [&]() { llvm::dbgs() << ", "; });
+            llvm::dbgs() << "]\n";
+
+        );
+
         // Check if the SVA requires access to scratch or stack
         bool RequiresAccessToScratch =
             SVAInfo.RequiresScratchAndStackSetup ||
@@ -507,8 +549,7 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
         llvm::SmallVector<llvm::MachineOperand, 4> Cond;
         bool Fail = TII.analyzeBranch(MBB, TBB, FBB, Cond, false);
         if (Fail)
-          TargetModule.getContext().emitError("Failed to analyze the branch.");
-
+          continue;
         llvm::SmallVector<
             std::pair<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>, 4>
             OldToNewSuccessorsList;
@@ -552,7 +593,8 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
           }
         }
         // Insert the new branch if needed
-        if (FBB != nullptr || TBB != nullptr) {
+        if ((NewFBB != nullptr && FBB != nullptr) ||
+            (NewTBB != nullptr && TBB != nullptr)) {
           auto DebugLoc = MBB.getFirstInstrTerminator()->getDebugLoc();
           TII.removeBranch(MBB);
           TII.insertBranch(MBB, NewTBB, NewFBB, Cond, DebugLoc);
