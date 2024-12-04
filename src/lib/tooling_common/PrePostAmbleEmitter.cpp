@@ -253,10 +253,6 @@ emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
   llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::S_MOV_B32), llvm::AMDGPU::SGPR32)
       .addImm(InstrumentationStackStart);
-  // Set s33 to be zero
-  llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                TII.get(llvm::AMDGPU::S_MOV_B32), llvm::AMDGPU::SGPR33)
-      .addImm(0);
 
   // Store frame registers in their slots
   for (const auto &[PhysReg, StoreSlot] :
@@ -346,26 +342,29 @@ static void emitCodeToReturnSGPRArgsToOriginalPlace(
   const auto &TRI = *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
   const auto &TII = *MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
   for (const auto &[KernArg, OriginalArgReg] : OriginalKernelArguments) {
+    llvm::MCRegister ModifiedArgReg = getArgReg(MF, KernArg);
     size_t Size =
         TRI.getRegSizeInBits(*TRI.getPhysRegBaseClass(OriginalArgReg));
-    if (Size == 32) {
-      llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(),
-                    TII.get(llvm::AMDGPU::S_MOV_B32), OriginalArgReg)
-          .addReg(getArgReg(MF, KernArg), llvm::RegState::Kill);
-    } else if (Size == 64) {
-      llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(),
-                    TII.get(llvm::AMDGPU::S_MOV_B64), OriginalArgReg)
-          .addReg(getArgReg(MF, KernArg), llvm::RegState::Kill);
-    } else {
-      size_t NumChannels = Size / 32;
-      for (int i = 0; i < NumChannels / 2; i++) {
-        auto SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(i, 2);
+    if (OriginalArgReg != ModifiedArgReg) {
+      if (Size == 32) {
         llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::S_MOV_B64))
-            .addReg(TRI.getSubReg(OriginalArgReg, SubIdx),
-                    llvm::RegState::Define)
-            .addReg(TRI.getSubReg(getArgReg(MF, KernArg), SubIdx),
-                    llvm::RegState::Kill);
+                      TII.get(llvm::AMDGPU::S_MOV_B32), OriginalArgReg)
+            .addReg(ModifiedArgReg, llvm::RegState::Kill);
+      } else if (Size == 64) {
+        llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::S_MOV_B64), OriginalArgReg)
+            .addReg(ModifiedArgReg, llvm::RegState::Kill);
+      } else {
+        size_t NumChannels = Size / 32;
+        for (int i = 0; i < NumChannels / 2; i++) {
+          auto SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(i, 2);
+          llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_MOV_B64))
+              .addReg(TRI.getSubReg(OriginalArgReg, SubIdx),
+                      llvm::RegState::Define)
+              .addReg(TRI.getSubReg(ModifiedArgReg, SubIdx),
+                      llvm::RegState::Kill);
+        }
       }
     }
   }
