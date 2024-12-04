@@ -37,7 +37,7 @@ llvm::AnalysisKey IModulePMAnalysis::Key;
 static void *
 initializeIModuleMAMWrapperPassPassOnce(llvm::PassRegistry &Registry) {
   auto *PI = new llvm::PassInfo(
-      "imam-wraper-pass", "Instrumentation Module MAM Wrapper Pass",
+      "imam-wrapper-pass", "Instrumentation Module MAM Wrapper Pass",
       (void *)&IModulePMAnalysis::ID,
       llvm::PassInfo::NormalCtor_t(llvm::callDefaultCtor<IModulePMAnalysis>),
       false, true);
@@ -45,17 +45,17 @@ initializeIModuleMAMWrapperPassPassOnce(llvm::PassRegistry &Registry) {
   return PI;
 }
 
-static llvm::once_flag InitializeIModulePMAnalysisPassFlag;
+static std::once_flag InitializeIModulePMAnalysisPassFlag;
 void initializeIModulePMAnalysisPass(llvm::PassRegistry &Registry) {
-  llvm::call_once(InitializeIModulePMAnalysisPassFlag,
-                  initializeIModuleMAMWrapperPassPassOnce, std::ref(Registry));
+  std::call_once(InitializeIModulePMAnalysisPassFlag,
+                 initializeIModuleMAMWrapperPassPassOnce, std::ref(Registry));
 }
 
 char IModuleMAMWrapperPass::ID;
 
 IModuleMAMWrapperPass::IModuleMAMWrapperPass(llvm::ModuleAnalysisManager *IMAM)
     : llvm::ImmutablePass(ID), IMAM(*IMAM) {
-  initializeIModuleMAMWrapperPassPassOnce(
+  initializeIModulePMAnalysisPass(
       *llvm::PassRegistry::getPassRegistry());
 }
 
