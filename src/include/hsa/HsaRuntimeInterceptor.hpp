@@ -48,10 +48,8 @@ public:
   HsaRuntimeInterceptor() = default;
 
   ~HsaRuntimeInterceptor() {
-    //  TODO: Should we even uninstall the wrappers for clean up?
-    //  Commented out for now since sometimes entries of the api table end up
-    //  being null pointers
-    //    uninstallApiTables();
+    //  TODO: Check the timing correctness of uninstalling API tables
+    uninstallApiTables();
     AmdTable = {};
     Singleton<HsaRuntimeInterceptor>::~Singleton();
   }
@@ -65,10 +63,16 @@ public:
   }
 
   void uninstallApiTables() {
-    *RuntimeApiTable->core_ = SavedRuntimeApiTable.core;
-    *RuntimeApiTable->amd_ext_ = SavedRuntimeApiTable.amd_ext;
-    *RuntimeApiTable->finalizer_ext_ = SavedRuntimeApiTable.finalizer_ext;
-    *RuntimeApiTable->image_ext_ = SavedRuntimeApiTable.image_ext;
+    if (RuntimeApiTable) {
+      if (RuntimeApiTable->core_)
+        *RuntimeApiTable->core_ = SavedRuntimeApiTable.core;
+      if (RuntimeApiTable->amd_ext_)
+        *RuntimeApiTable->amd_ext_ = SavedRuntimeApiTable.amd_ext;
+      if (RuntimeApiTable->finalizer_ext_)
+        *RuntimeApiTable->finalizer_ext_ = SavedRuntimeApiTable.finalizer_ext;
+      if (RuntimeApiTable->image_ext_)
+        *RuntimeApiTable->image_ext_ = SavedRuntimeApiTable.image_ext;
+    }
   }
 
   llvm::Error enableUserCallback(ApiEvtID Op);
