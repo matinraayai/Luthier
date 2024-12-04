@@ -192,7 +192,7 @@ void rocprofilerFinalize(void *Data){
         // TODO: place this somewhere else
         //   luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
         //       API_EVT_PHASE_BEFORE);
-        //   luthier::hsa::Interceptor::instance().uninstallApiTables();
+//           luthier::hsa::HsaRuntimeInterceptor::instance().uninstallApiTables();
         //   luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
         //       API_EVT_PHASE_AFTER);
         LUTHIER_LOG_FUNCTION_CALL_END}

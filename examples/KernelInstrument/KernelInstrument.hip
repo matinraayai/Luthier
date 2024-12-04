@@ -62,18 +62,18 @@ __attribute__((managed)) hsa_dim3_t GroupIDs{0, 0, 0};
 __attribute__((managed)) uint64_t PositionInGroup{0};
 
 LUTHIER_HOOK_ANNOTATE instrumentationHook(long RegVal) {
-  //  uint32_t MyArray[20];
-  //  for (int i = 0; i < 20; i++) {
-  //    MyArray[i] = i;
-  //  }
-  //  for (int i = 0; i < 20; i++) {
-  //    PositionInGroup += MyArray[i];
-  //  }
+    uint32_t MyArray[20];
+    for (int i = 0; i < 20; i++) {
+      MyArray[i] = i;
+    }
+    for (int i = 0; i < 20; i++) {
+      atomicAdd(&PositionInGroup, MyArray[i]);
+    }
 //     writeReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5, 5);
-  if (RegVal > 5)
-    PositionInGroup = RegVal;
-  else
-    WaveID = RegVal + 4;
+//  if (RegVal > 5)
+//    PositionInGroup += RegVal;
+//  else
+//    WaveID = RegVal + 4;
   //    writeReg<uint32_t>(llvm::AMDGPU::SGPR10, RegVal);
   //    PositionInGroup = 5;
   //   uint32_t MyReg = readReg<uint32_t>(llvm::AMDGPU::SGPR4);
@@ -138,7 +138,7 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
                     for (auto &[Func, MF] : LR.functions()) {
                       auto &MBB = MF->front();
                       if (auto Err = IT.insertHookBefore(
-                              *MBB.begin()->getNextNode(),
+                              *MBB.begin()->getNextNode()->getNextNode()->getNextNode(),
                               LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
                               {llvm::AMDGPU::SGPR4_SGPR5})) {
                         return Err;
@@ -188,7 +188,7 @@ void atToolFini(ApiEvtPhase Phase) {
     llvm::outs() << llvm::formatv("WaveID: {0}\n", WaveID);
     llvm::outs() << llvm::formatv("Group ID: ({0}, {1}, {2})\n", GroupIDs.z,
                                   GroupIDs.y, GroupIDs.x);
-    llvm::outs() << llvm::formatv("Position in Group: {0:x}\n",
+    llvm::outs() << llvm::formatv("Position in Group: {0}\n",
                                   PositionInGroup);
     //    llvm::outs() << llvm::formatv("Counter 4 Value: {0:x}\n",
     //    GlobalCounter4); llvm::outs() << llvm::formatv("Counter 5 Value:
