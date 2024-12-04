@@ -46,6 +46,9 @@ private:
   /// CFG that manages the memory of this \c VectorMBB
   const VectorCFG &CFG;
 
+  /// Basic block name
+  std::string Name;
+
   /// The range of instructions in the block
   llvm::iterator_range<llvm::MachineBasicBlock::const_iterator> Instructions{
       {}, {}};
@@ -67,14 +70,17 @@ public:
   /// Disallowed assignment operation
   VectorMBB &operator=(const VectorMBB &) = delete;
 
-  explicit VectorMBB(const VectorCFG &CFG) : CFG(CFG) {};
-
-  VectorMBB(const VectorCFG &CFG, const llvm::MachineInstr &BeginMI)
-      : CFG(CFG), Instructions({BeginMI, *BeginMI.getNextNode()}) {};
+  VectorMBB(const VectorCFG &CFG, llvm::StringRef Name)
+      : CFG(CFG), Name(Name) {};
 
   VectorMBB(const VectorCFG &CFG, const llvm::MachineInstr &BeginMI,
-            const llvm::MachineInstr &EndMI)
-      : CFG(CFG), Instructions({BeginMI, *EndMI.getNextNode()}) {};
+            llvm::StringRef Name)
+      : CFG(CFG), Instructions({BeginMI, *BeginMI.getNextNode()}),
+        Name(Name) {};
+
+  VectorMBB(const VectorCFG &CFG, const llvm::MachineInstr &BeginMI,
+            const llvm::MachineInstr &EndMI, llvm::StringRef Name)
+      : CFG(CFG), Instructions({BeginMI, *EndMI.getNextNode()}), Name(Name) {};
 
   [[nodiscard]] const VectorCFG &getParent() const { return CFG; };
 
@@ -85,6 +91,8 @@ public:
   [[nodiscard]] llvm::MachineBasicBlock::const_iterator end() const {
     return Instructions.end();
   }
+
+  [[nodiscard]] llvm::StringRef getNum() const { return Name; }
 
   /// Makes the MBB point to a new range of instructions in a single MBB
   void setInstRange(llvm::MachineBasicBlock::const_iterator Begin,
@@ -131,7 +139,32 @@ public:
   liveins() const {
     return llvm::make_range(LiveIns.begin(), LiveIns.end());
   }
+
+  void print(llvm::raw_ostream &OS) const;
 };
+
+//class ScalarMBB {
+//private:
+//  /// The MIR basic block this wraps around
+//  const llvm::MachineBasicBlock &ParentMBB;
+//  /// The CFG this scalar MBB belongs to
+//  VectorCFG &ParentCFG;
+//  /// MBB Vector typedef
+//  typedef llvm::SmallVector<std::unique_ptr<VectorMBB>, 0> MBBVector;
+//  MBBVector MBBs;
+//
+//  /// The entry taken Vector MBB
+//  VectorMBB *EntryTakenMBB;
+//  /// The entry not taken Vector MBB
+//  VectorMBB *EntryNotTakenMBB;
+//  /// The exit taken Vector MBB
+//  VectorMBB *ExitTakenMBB;
+//  /// The exit not taken Vector MBB
+//  VectorMBB *ExitNotTakenMBB;
+//
+//public:
+//  ScalarMBB(const llvm::MachineBasicBlock &ParentMBB, VectorCFG &ParentCFG);
+//};
 
 class VectorCFG {
 private:
@@ -160,6 +193,8 @@ public:
 
   [[nodiscard]] const llvm::MachineFunction &getMF() const { return MF; }
 
+  void print(llvm::raw_ostream &OS) const;
+
   static std::unique_ptr<VectorCFG>
   getVectorCFG(const llvm::MachineFunction &MF);
 };
@@ -169,10 +204,7 @@ public:
 /// \param VecMBB
 void addBlockLiveIns(llvm::LivePhysRegs &LPR, const VectorMBB &VecMBB);
 
-void addLiveInsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB);
-
 void addLiveIns(VectorMBB &MBB, const llvm::LivePhysRegs &LiveRegs);
-
 
 void addLiveOutsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB);
 

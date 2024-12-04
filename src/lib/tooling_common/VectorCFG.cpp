@@ -22,12 +22,12 @@
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/Support/FormatVariadic.h>
 
 namespace luthier {
 
 void VectorMBB::setInstRange(llvm::MachineBasicBlock::const_iterator Begin,
                              llvm::MachineBasicBlock::const_iterator End) {
-//  assert(Begin->getParent() == End->getParent());
   Instructions = {Begin, End};
 }
 
@@ -61,8 +61,34 @@ void VectorMBB::sortUniqueLiveIns() {
   LiveIns.erase(Out, LiveIns.end());
 }
 
+void VectorMBB::print(llvm::raw_ostream &OS) const {
+  const auto &ST = this->getParent().getMF().getSubtarget();
+  const auto TII = ST.getInstrInfo();
+  const auto TRI = ST.getRegisterInfo();
+  OS << "Vector MBB " << Name << "\n";
+  OS << "Live-ins:[";
+  llvm::interleave(
+      LiveIns.begin(), LiveIns.end(),
+      [&](const llvm::MachineBasicBlock::RegisterMaskPair &Vec) {
+        OS << printReg(llvm::Register(Vec.PhysReg), TRI);
+      },
+      [&]() { OS << ", "; });
+  OS << "]\n";
+  OS << "Contents:\n";
+  for (const auto &MI : *this) {
+    MI.print(OS, true, false, false, true, TII);
+  }
+  OS << "Successors: [";
+  llvm::interleave(
+      Successors.begin(), Successors.end(),
+      [&](const VectorMBB *MBB) { OS << "MBB " << MBB->getNum(); },
+      [&]() { OS << ", "; });
+  OS << "]\n";
+}
+
 VectorMBB &VectorCFG::createVectorMBB() {
-  return *MBBs.emplace_back(std::make_unique<VectorMBB>(*this));
+  return *MBBs.emplace_back(std::make_unique<VectorMBB>(
+      *this, llvm::formatv("{0}", MBBs.size()).str()));
 }
 
 std::unique_ptr<VectorCFG>
@@ -122,10 +148,12 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
       bool WritesExecMask = MI.modifiesRegister(
           llvm::AMDGPU::EXEC, MF.getSubtarget().getRegisterInfo());
       bool IsFormerMIScalar =
-          MI.getPrevNode() &&
+          MI.getPrevNode() != nullptr &&
           (isScalar(*MI.getPrevNode()) || isLaneAccess(*MI.getPrevNode()));
-
+      llvm::outs() << "=================\n";
+      llvm::outs() << MI << "\n";
       if (IsVector && (WritesExecMask || IsFormerMIScalar)) {
+        llvm::outs() << "Split point detected\n";
         // If the current instruction is a vector inst, and if it writes
         // to the exec mask or if the last instruction was a scalar inst,
         // then we need to do a "split": Create a new VectorMBB to
@@ -143,7 +171,8 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
         else
           CurrentTakenBlock->setInstRange(CurrentTakenBlock->begin(),
                                           MI.getIterator());
-      } else if (!IsVector) {
+      } else if (!IsVector && !IsFormerMIScalar) {
+        llvm::outs() << "join point detected\n";
         // Otherwise, if we observe a scalar instruction, we have to do a "join"
         // operation: Create a new VectorMBB to replace the current taken block,
         // and make it the successor of the current taken block. Also make
@@ -158,13 +187,15 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
         CurrentTakenBlock = &NewCurrentTakenBlock;
       }
       // Add the current instruction to the current taken block
-      auto NextIterator = MI.getNextNode() != nullptr ? MI.getNextNode()->getIterator() : MI.getParent()->end();
+      auto NextIterator = MI.getNextNode() != nullptr
+                              ? MI.getNextNode()->getIterator()
+                              : MI.getParent()->end();
       if (CurrentTakenBlock->empty())
-        CurrentTakenBlock->setInstRange(MI.getIterator(),
-                                        NextIterator);
+        CurrentTakenBlock->setInstRange(MI.getIterator(), NextIterator);
       else
         CurrentTakenBlock->setInstRange(CurrentTakenBlock->begin(),
                                         NextIterator);
+      Out->print(llvm::outs());
     }
     // Connect the current taken block to the exit taken block of the current
     // MBB
@@ -198,9 +229,11 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
 
   return std::move(Out);
 }
-
-void addLiveInsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB) {
-  addBlockLiveIns(LPR, MBB);
+void VectorCFG::print(llvm::raw_ostream &OS) const {
+  OS << "Vector CFG for Machine Function " << MF.getName() << ":\n";
+  for (const auto &MBB : *this) {
+    MBB->print(OS);
+  }
 }
 
 void addLiveOutsNoPristines(llvm::LivePhysRegs &LPR, const VectorMBB &MBB) {
@@ -244,4 +277,11 @@ void addLiveIns(VectorMBB &MBB, const llvm::LivePhysRegs &LiveRegs) {
   }
 }
 
+// ScalarMBB::ScalarMBB(const llvm::MachineBasicBlock &ParentMBB,
+//                      VectorCFG &ParentCFG, VectorMBB &EntryTakenMBB,
+//                      VectorMBB &EntryNotTakenMBB, VectorMBB &ExitTakenMBB,
+//                      VectorMBB &ExitNotTakenMBB)
+//     : ParentCFG(ParentCFG), ParentMBB(ParentMBB) {
+//
+// }
 } // namespace luthier
