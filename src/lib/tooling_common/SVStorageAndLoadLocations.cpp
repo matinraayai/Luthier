@@ -17,11 +17,11 @@
 /// \file
 /// This file implements the State Value Location Intervals Pass.
 //===----------------------------------------------------------------------===//
+#include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "common/Error.hpp"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "tooling_common/MMISlotIndexesAnalysis.hpp"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
-#include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "tooling_common/StateValueArrayStorage.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
@@ -120,14 +120,29 @@ scavengeFreeRegister(llvm::ArrayRef<llvm::MachineFunction *> Functions,
   for (llvm::MCRegister Reg : *RC) {
     bool IsUnused = llvm::all_of(Functions, [&](llvm::MachineFunction *MF) {
       auto &MRI = MF->getRegInfo();
+
+      LLVM_DEBUG(auto TRI = MF->getSubtarget().getRegisterInfo();
+                 llvm::dbgs() << "Trying to scavenged register "
+                              << llvm::printReg(Reg, TRI) << "...\n";
+                 llvm::dbgs()
+                 << "Is reg allocatable? " << MRI.isAllocatable(Reg) << ".\n";
+                 llvm::dbgs()
+                 << "Is not used? " << !MRI.isPhysRegUsed(Reg) << ".\n";
+                 llvm::dbgs()
+                 << "Is not in accessed phys regs not in live-ins? "
+                 << AccessedPhysRegsNotInLiveIns.available(MRI, Reg) << ".\n";);
+
       return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
              AccessedPhysRegsNotInLiveIns.available(MRI, Reg);
     });
     if (IsUnused) {
       Regs.push_back(Reg);
       NumRegFound++;
-      if (NumRegFound == NumRegs)
+      if (NumRegFound == NumRegs) {
+        LLVM_DEBUG(llvm::dbgs() << "Found " << NumRegFound
+                                << " registers; Scavenging was a success!\n";);
         return;
+      }
     }
   }
 }
@@ -191,7 +206,8 @@ selectVGPRLoadLocationForInjectedPayload(
       AVGPRLocation = scavengeFreeRegister(
           InstrumentedMF.getRegInfo(), llvm::AMDGPU::VGPR_32RegClass,
           AccessedPhysicalRegsNotInLiveIns, InstPointLiveRegs);
-      // Scavenge a dead AGPR to hold the state value array if no VGPR is found
+      // Scavenge a dead AGPR to hold the state value array if no VGPR is
+      // found
       if (AVGPRLocation == 0)
         AVGPRLocation = scavengeFreeRegister(
             InstrumentedMF.getRegInfo(), llvm::AMDGPU::AGPR_32RegClass,
@@ -247,8 +263,9 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
   llvm::MCRegister StateValueArrayFixedVGPRLocation =
       scavengeFreeRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
                            AccessedPhysicalRegistersNotInLiveIns);
-  // If we failed to find a free VGPR, we then have to scavenge for all possible
-  // SGPRs and AGPRs that can be used in storing the state value array
+  // If we failed to find a free VGPR, we then have to scavenge for all
+  // possible SGPRs and AGPRs that can be used in storing the state value
+  // array
   if (StateValueArrayFixedVGPRLocation == 0) {
     llvm::SmallVector<llvm::MCRegister, 3> SGPRsScavenged;
     llvm::SmallVector<llvm::MCRegister, 2> AGPRsScavenged;
@@ -277,12 +294,19 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
     for (const auto &StorageScheme : SupportedStorage) {
       if (StorageScheme == StateValueArrayStorage::SVS_SINGLE_VGPR)
         continue;
+      LLVM_DEBUG(llvm::dbgs() << "Evaluating fixed " << StorageScheme
+                              << " storage scheme.\n";);
       int NumAGPRsUsedByStorage =
           StateValueArrayStorage::getNumAGPRsUsed(StorageScheme);
       int NumSGPRsUsedByStorage =
           StateValueArrayStorage::getNumSGPRsUsed(StorageScheme);
-      if (NumSGPRsUsedByStorage < SGPRsScavenged.size() &&
-          NumAGPRsUsedByStorage < AGPRsScavenged.size()) {
+      LLVM_DEBUG(llvm::dbgs() << "Number of ARGPs required by the scheme: "
+                              << NumAGPRsUsedByStorage << "\n";
+                 llvm::dbgs() << "Number of SGPRs required by the scheme: "
+                              << NumSGPRsUsedByStorage << "\n";);
+      if (NumSGPRsUsedByStorage <= SGPRsScavenged.size() &&
+          NumAGPRsUsedByStorage <= AGPRsScavenged.size()) {
+        LLVM_DEBUG(llvm::dbgs() << "Found a suitable fixed storage scheme!\n";);
         auto Out = StateValueArrayStorage::createSVAStorage(
             {}, AGPRsScavenged, SGPRsScavenged, StorageScheme);
         if (Out.takeError()) {
@@ -308,8 +332,9 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
   llvm::MCRegister StateValueArrayVGPRLocation =
       scavengeFreeRegister(MRI, llvm::AMDGPU::VGPR_32RegClass,
                            AccessedPhysicalRegistersNotInLiveIns, MILiveIns);
-  // If we failed to find a free VGPR, we then have to scavenge for all possible
-  // SGPRs and AGPRs that can be used in storing the state value array
+  // If we failed to find a free VGPR, we then have to scavenge for all
+  // possible SGPRs and AGPRs that can be used in storing the state value
+  // array
   if (StateValueArrayVGPRLocation == 0) {
     llvm::SmallVector<llvm::MCRegister, 3> SGPRsScavenged;
     llvm::SmallVector<llvm::MCRegister, 2> AGPRsScavenged;
@@ -341,8 +366,8 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
           StateValueArrayStorage::getNumAGPRsUsed(StorageScheme);
       int NumSGPRsUsedByStorage =
           StateValueArrayStorage::getNumSGPRsUsed(StorageScheme);
-      if (NumSGPRsUsedByStorage < SGPRsScavenged.size() &&
-          NumAGPRsUsedByStorage < AGPRsScavenged.size()) {
+      if (NumSGPRsUsedByStorage <= SGPRsScavenged.size() &&
+          NumAGPRsUsedByStorage <= AGPRsScavenged.size()) {
         auto Out = StateValueArrayStorage::createSVAStorage(
             {}, AGPRsScavenged, SGPRsScavenged, StorageScheme);
         if (Out.takeError()) {
@@ -463,8 +488,8 @@ llvm::Error SVStorageAndLoadLocations::calculate(
                                                   *StateValueFixedLocation}});
     }
   } else {
-    // If not, we'll have to shuffle between possible state value array storage
-    // schemes
+    // If not, we'll have to shuffle between possible state value array
+    // storage schemes
     for (const auto &MF : MFs) {
       if (MF->getFunction().getCallingConv() ==
           llvm::CallingConv::AMDGPU_KERNEL) {
