@@ -112,10 +112,8 @@ bool CodeLifter::evaluateBranch(const llvm::MCInst &Inst, uint64_t Addr,
   if (!Inst.getOperand(0).isImm())
     return false;
   int64_t Imm = Inst.getOperand(0).getImm();
-  // Our branches take a simm16, but we need two extra bits to account for
-  // the factor of 4.
-  llvm::APInt SignedOffset(18, Imm * 4, true);
-  Target = (SignedOffset.sext(64) + Addr + 4).getZExtValue();
+  // Our branches take a simm16.
+  Target = llvm::SignExtend64<16>(Imm) * 4 + Addr + 4;
   return true;
 }
 
@@ -1206,6 +1204,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     LUTHIER_RETURN_ON_ERROR(ISA.takeError());
     auto DestTM = TargetManager::instance().createTargetMachine(*ISA);
     LUTHIER_RETURN_ON_ERROR(DestTM.takeError());
+    DestModule->setDataLayout(DestTM->get()->createDataLayout());
     auto DestMMIWP =
         std::make_unique<llvm::MachineModuleInfoWrapperPass>(DestTM->get());
     LUTHIER_RETURN_ON_ERROR(cloneMMI(SrcMMI, SrcModule, VMap,

@@ -26,6 +26,7 @@
 #include <llvm/CodeGen/MachineRegisterInfo.h>
 #include <llvm/CodeGen/PseudoSourceValueManager.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
+#include <llvm/Target/TargetMachine.h>
 
 namespace luthier {
 
@@ -204,8 +205,8 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
 
   // Construct the destination machine function
   auto DstMF = std::make_unique<llvm::MachineFunction>(
-      DestF, SrcMF->getTarget(), SrcMF->getSubtarget(), SrcMF->getContext(),
-      SrcMF->getFunctionNumber());
+      DestF, DestMMI.getTarget(), *DestMMI.getTarget().getSubtargetImpl(DestF),
+      DestMMI.getContext(), SrcMF->getFunctionNumber());
   llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
       Src2DstMBB;
 
