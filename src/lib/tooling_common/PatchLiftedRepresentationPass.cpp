@@ -32,6 +32,10 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <ranges>
 
+#undef DEBUG_TYPE
+
+#define DEBUG_TYPE "luthier-patch-lr"
+
 namespace luthier {
 
 static void cloneFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
@@ -182,6 +186,8 @@ PatchLiftedRepresentationPass::decidePatchingMethod(
       // of branch we need to do to reach the injected payloads at the
       // end of the function
       if (Out.at(TargetMF) == OUTLINE) {
+        LLVM_DEBUG(llvm::dbgs() << "Have to outline MF " << TargetMF->getName()
+                                << "\n";);
         // Take into account the s_branches we need to insert during outlining
         MFBeginningOffset += IPIP.size() * 4;
         if (MFBeginningOffset > (1 << 19)) {
@@ -192,6 +198,353 @@ PatchLiftedRepresentationPass::decidePatchingMethod(
     }
   }
   return Out;
+}
+
+void inlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
+                           llvm::MachineInstr &InsertionPointMI,
+                           llvm::DenseMap<const llvm::MachineBasicBlock *,
+                                          llvm::MachineBasicBlock *> &MBBMap,
+                           const llvm::ValueToValueMapTy &VMap) {
+  auto &InsertionPointMBB = *InsertionPointMI.getParent();
+  auto &ToBeInstrumentedMF = *InsertionPointMI.getMF();
+  // Number of return blocks in the hook
+  unsigned int NumReturnBlocksInHook{0};
+  // The last return block of the Hook function
+  const llvm::MachineBasicBlock *HookLastReturnMBB{nullptr};
+  // The target block in the instrumented function which the last return
+  // block of the hook will be prepended to if NumReturnBlocksInHook is 1
+  // Otherwise, it is the successor of all the return blocks in the hook
+  llvm::MachineBasicBlock *HookLastReturnMBBDest{nullptr};
+
+  // Find the last return block of the Hook function + count the number
+  // of the return blocks in the hook
+  for (const auto &MBB : std::ranges::reverse_view(InjectedPayloadMF)) {
+    if (MBB.isReturnBlock() && HookLastReturnMBB == nullptr) {
+      HookLastReturnMBB = &MBB;
+      NumReturnBlocksInHook++;
+    }
+  }
+  if (HookLastReturnMBB == nullptr)
+    llvm_unreachable("No return block found inside the hook");
+
+  if (InjectedPayloadMF.size() > 1) {
+    // If there's multiple blocks inside the hook, and the insertion point
+    // is not the beginning of the instrumented basic block, then split
+    // the insertion point MBB right before the insertion MI, the
+    // destination of the last return block of the hook will be the
+    // newly-created block
+    if (InsertionPointMI.getIterator() != InsertionPointMBB.begin())
+      HookLastReturnMBBDest =
+          InsertionPointMBB.splitAt(*InsertionPointMI.getPrevNode());
+    else
+      HookLastReturnMBBDest = &InsertionPointMBB;
+    if (NumReturnBlocksInHook == 1)
+      MBBMap.insert({HookLastReturnMBB, HookLastReturnMBBDest});
+    // If number of return blocks is greater than 1 (very unlikely) we
+    // will create a block for it in the next loop
+  }
+  for (const auto &HookMBB : InjectedPayloadMF) {
+    // Special handling of the entry block
+    if (HookMBB.isEntryBlock()) {
+      // If the Insertion Point is not before the very first instruction,
+      // then the Insertion Point MBB will be where the content of the
+      // entry block will be appended to
+      if (InsertionPointMI.getIterator() != InsertionPointMBB.begin()) {
+        MBBMap.insert({&HookMBB, &InsertionPointMBB});
+      }
+      // If the insertion point is right before the very first instruction
+      // of the block, then it should be appended to the return block of
+      // the hook instead, unless the hook has only a single basic block
+      else if (InjectedPayloadMF.size() == 1) {
+        // If there's only a single basic block in the instrumentation
+        // function, then the insertion point MBB will be where the hook's
+        // first (and last) MBB appends to
+        MBBMap.insert({&InjectedPayloadMF.front(), &InsertionPointMBB});
+      } else {
+        // Otherwise, create a new basic block for the entry block of the
+        // hook, and Make all the pred blocks of the Insertion point MBB
+        // to point to this newly created block instead
+        auto *NewEntryBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
+        ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
+                                  NewEntryBlock);
+        // First add the NewEntryBlock as a pred to all
+        // InsertionPointMBB's preds
+        llvm::SmallVector<llvm::MachineBasicBlock *, 2> PredMBBs;
+        for (auto It = InsertionPointMBB.pred_begin();
+             It != InsertionPointMBB.pred_end(); ++It) {
+          auto PredMBB = *It;
+          PredMBB->addSuccessor(NewEntryBlock);
+          PredMBBs.push_back(PredMBB);
+        }
+        // Remove the insertion point mbb from the PredMBB's successor
+        // list
+        for (auto &PredMBB : PredMBBs) {
+          PredMBB->removeSuccessor(&InsertionPointMBB);
+        }
+        // Add the insertion point MBB as the successor of this block
+        NewEntryBlock->addSuccessor(&InsertionPointMBB);
+        //
+        MBBMap.insert({&InjectedPayloadMF.front(), NewEntryBlock});
+      }
+    }
+    // Special handling for the return blocks
+    else if (HookMBB.isReturnBlock()) {
+      // If this is not the last return block, or there's more than one
+      // return block, then we have to create a new block for it in the
+      // target function
+      if (NumReturnBlocksInHook > 1 || &HookMBB != HookLastReturnMBB) {
+        auto *TargetReturnBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
+        ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
+                                  TargetReturnBlock);
+        MBBMap.insert({&HookMBB, TargetReturnBlock});
+      }
+    } else {
+      // Otherwise, we only need to create a new basic block in the
+      // instrumented code and just copy its contents over
+      auto *NewHookMBB = ToBeInstrumentedMF.CreateMachineBasicBlock();
+      ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
+                                NewHookMBB);
+      MBBMap.insert({&HookMBB, NewHookMBB});
+    }
+  }
+
+  // Link blocks
+  for (auto &MBB : InjectedPayloadMF) {
+    auto *DstMBB = MBBMap[&MBB];
+    for (auto It = MBB.succ_begin(), IterEnd = MBB.succ_end(); It != IterEnd;
+         ++It) {
+      auto *SrcSuccMBB = *It;
+      auto *DstSuccMBB = MBBMap[SrcSuccMBB];
+      if (!DstMBB->isSuccessor(DstSuccMBB))
+        DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
+    }
+    if (MBB.isReturnBlock() && NumReturnBlocksInHook > 1) {
+      // Add the LastHookMBBDest as a successor to the return block
+      // if there's more than one return block in the hook
+      if (!DstMBB->isSuccessor(HookLastReturnMBBDest))
+        DstMBB->addSuccessor(HookLastReturnMBBDest);
+    }
+  }
+  // Finally, clone the instructions into the new MBBs
+  const llvm::TargetSubtargetInfo &STI = ToBeInstrumentedMF.getSubtarget();
+  const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
+  const llvm::TargetRegisterInfo *TRI = STI.getRegisterInfo();
+  auto &TargetMFMRI = ToBeInstrumentedMF.getRegInfo();
+
+  llvm::DenseSet<const uint32_t *> ConstRegisterMasks;
+
+  // Track predefined/named regmasks which we ignore.
+  for (const uint32_t *Mask : TRI->getRegMasks())
+    ConstRegisterMasks.insert(Mask);
+  for (const auto &MBB : InjectedPayloadMF) {
+    auto *DstMBB = MBBMap[&MBB];
+    llvm::MachineBasicBlock::iterator InsertionPoint;
+    if (MBB.isReturnBlock() && NumReturnBlocksInHook == 1) {
+      InsertionPoint = DstMBB->begin();
+    } else if (MBB.isEntryBlock() && InjectedPayloadMF.size() == 1) {
+      InsertionPoint = InsertionPointMI.getIterator();
+    } else
+      InsertionPoint = DstMBB->end();
+    if (MBB.isEntryBlock()) {
+      //        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
+      //            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+      //            /*NoImplicit=*/true);
+      //        DstMBB->insert(InsertionPoint, DstMI);
+      //        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
+    }
+    for (auto &SrcMI : MBB.instrs()) {
+      if (MBB.isReturnBlock() && SrcMI.isTerminator()) {
+        break;
+      }
+      // Don't clone the bundle headers
+      if (SrcMI.isBundle())
+        continue;
+      const auto &MCID = TII->get(SrcMI.getOpcode());
+      // TODO: Properly import the debug location
+      auto *DstMI =
+          ToBeInstrumentedMF.CreateMachineInstr(MCID, llvm::DebugLoc(),
+                                                /*NoImplicit=*/true);
+      DstMI->setFlags(SrcMI.getFlags());
+      DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
+      DstMBB->insert(InsertionPoint, DstMI);
+      for (auto &SrcMO : SrcMI.operands()) {
+        llvm::MachineOperand DstMO(SrcMO);
+        DstMO.clearParent();
+
+        // Update MBB.
+        if (DstMO.isMBB())
+          DstMO.setMBB(MBBMap[DstMO.getMBB()]);
+        else if (DstMO.isRegMask()) {
+          TargetMFMRI.addPhysRegsUsedFromRegMask(DstMO.getRegMask());
+
+          if (!ConstRegisterMasks.count(DstMO.getRegMask())) {
+            uint32_t *DstMask = ToBeInstrumentedMF.allocateRegMask();
+            std::memcpy(DstMask, SrcMO.getRegMask(),
+                        sizeof(*DstMask) * llvm::MachineOperand::getRegMaskSize(
+                                               TRI->getNumRegs()));
+            DstMO.setRegMask(DstMask);
+          }
+        } else if (DstMO.isGlobal()) {
+          auto GVEntry = VMap.find(DstMO.getGlobal());
+          if (GVEntry == VMap.end()) {
+            ToBeInstrumentedMF.getFunction()
+                .getParent()
+                ->getContext()
+                .emitError(
+                    llvm::formatv("Failed to find global variable {0} inside "
+                                  "the representation being patched.",
+                                  DstMO.getGlobal()));
+          }
+          auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
+          DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
+        }
+
+        DstMI->addOperand(DstMO);
+      }
+    }
+    if (MBB.isReturnBlock() ||
+        (MBB.isEntryBlock() && InjectedPayloadMF.size() == 1)) {
+      //        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
+      //            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+      //            /*NoImplicit=*/true);
+      //        DstMBB->insert(InsertionPoint, DstMI);
+      //        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
+    }
+    if (NumReturnBlocksInHook > 1 && MBB.isReturnBlock()) {
+      TII->insertUnconditionalBranch(*DstMBB, HookLastReturnMBBDest,
+                                     llvm::DebugLoc());
+    }
+  }
+}
+
+void outlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
+                            llvm::MachineInstr &InsertionPointMI,
+                            llvm::DenseMap<const llvm::MachineBasicBlock *,
+                                           llvm::MachineBasicBlock *> &MBBMap,
+                            const llvm::ValueToValueMapTy &VMap) {
+  auto &InsertionPointMBB = *InsertionPointMI.getParent();
+  auto &ToBeInstrumentedMF = *InsertionPointMI.getMF();
+  // The MBB that will jump to the beginning of the injected payload
+  llvm::MachineBasicBlock *JumpFromBlock{nullptr};
+  // The MBB that the injected payload return blocks will jump to
+  llvm::MachineBasicBlock *JumpToBlock{nullptr};
+
+  // Split the insertion point MBB right before the insertion point MI;
+  // if the MI is the first instruction in the MBB, then create a new block
+  // and insert it before the insertion point MBB
+  if (InsertionPointMI == InsertionPointMBB.begin()) {
+    JumpFromBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
+    ToBeInstrumentedMF.insert(InsertionPointMBB.getIterator(), JumpFromBlock);
+    // All the predecessors of InsertionPointMBB now become the JumpFromBlock's
+    // predecessors
+    for (auto &Pred :
+         llvm::make_early_inc_range(InsertionPointMBB.predecessors())) {
+      Pred->addSuccessor(JumpFromBlock);
+      Pred->removeSuccessor(&InsertionPointMBB);
+    }
+  } else {
+    JumpFromBlock = InsertionPointMBB.splitAt(*InsertionPointMI.getPrevNode());
+  }
+  // InsertionPointMBB will become the jump to block
+  JumpToBlock = &InsertionPointMBB;
+
+  for (const auto &InjectedPayloadMBB : InjectedPayloadMF) {
+    // Create MBBs at the end of the function
+    auto *NewBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
+    ToBeInstrumentedMF.push_back(NewBlock);
+    MBBMap.insert({&InjectedPayloadMBB, NewBlock});
+    // If this is the entry block of the injected payload then it is
+    // the jump from block's direct successor
+    if (InjectedPayloadMBB.isEntryBlock()) {
+      JumpFromBlock->addSuccessor(NewBlock);
+    }
+    // If this is a return block of the injected payload then it is the jump to
+    // block's predecessor
+    if (InjectedPayloadMBB.isReturnBlock()) {
+      NewBlock->addSuccessor(JumpToBlock);
+    }
+  }
+
+  // Link blocks
+  for (auto &InjectedPayloadMBB : InjectedPayloadMF) {
+    auto *DstMBB = MBBMap[&InjectedPayloadMBB];
+    for (const auto &IPSucc : InjectedPayloadMBB.successors()) {
+      auto *DstSuccMBB = MBBMap[IPSucc];
+      if (!DstMBB->isSuccessor(DstSuccMBB))
+        DstMBB->addSuccessor(DstSuccMBB);
+    }
+  }
+  // Finally, clone the instructions into the new MBBs
+  const llvm::TargetSubtargetInfo &STI = ToBeInstrumentedMF.getSubtarget();
+  const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
+  const llvm::TargetRegisterInfo *TRI = STI.getRegisterInfo();
+  auto &TargetMFMRI = ToBeInstrumentedMF.getRegInfo();
+
+  llvm::DenseSet<const uint32_t *> ConstRegisterMasks;
+
+  // Track predefined/named regmasks which we ignore.
+  for (const uint32_t *Mask : TRI->getRegMasks())
+    ConstRegisterMasks.insert(Mask);
+  for (const auto &MBB : InjectedPayloadMF) {
+    auto *DstMBB = MBBMap[&MBB];
+    llvm::MachineBasicBlock::iterator InsertionPoint = DstMBB->end();
+    [&]() {
+      for (auto &SrcMI : MBB.instrs()) {
+        if (MBB.isReturnBlock() && SrcMI.isTerminator()) {
+          break;
+        }
+        // Don't clone the bundle headers
+        if (SrcMI.isBundle())
+          continue;
+        const auto &MCID = TII->get(SrcMI.getOpcode());
+        // TODO: Properly import the debug location
+        auto *DstMI =
+            ToBeInstrumentedMF.CreateMachineInstr(MCID, llvm::DebugLoc(),
+                                                  /*NoImplicit=*/true);
+        DstMI->setFlags(SrcMI.getFlags());
+        DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
+        DstMBB->insert(InsertionPoint, DstMI);
+        for (auto &SrcMO : SrcMI.operands()) {
+          llvm::MachineOperand DstMO(SrcMO);
+          DstMO.clearParent();
+
+          // Update MBB.
+          if (DstMO.isMBB())
+            DstMO.setMBB(MBBMap[DstMO.getMBB()]);
+          else if (DstMO.isRegMask()) {
+            TargetMFMRI.addPhysRegsUsedFromRegMask(DstMO.getRegMask());
+
+            if (!ConstRegisterMasks.count(DstMO.getRegMask())) {
+              uint32_t *DstMask = ToBeInstrumentedMF.allocateRegMask();
+              std::memcpy(
+                  DstMask, SrcMO.getRegMask(),
+                  sizeof(*DstMask) *
+                      llvm::MachineOperand::getRegMaskSize(TRI->getNumRegs()));
+              DstMO.setRegMask(DstMask);
+            }
+          } else if (DstMO.isGlobal()) {
+            auto GVEntry = VMap.find(DstMO.getGlobal());
+            if (GVEntry == VMap.end()) {
+              ToBeInstrumentedMF.getFunction()
+                  .getParent()
+                  ->getContext()
+                  .emitError(
+                      llvm::formatv("Failed to find global variable {0} inside "
+                                    "the representation being patched.",
+                                    DstMO.getGlobal()));
+            }
+            auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
+            DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
+          }
+
+          DstMI->addOperand(DstMO);
+        }
+      }
+    }();
+    if (MBB.isReturnBlock()) {
+      TII->insertUnconditionalBranch(*DstMBB, JumpToBlock, llvm::DebugLoc());
+    }
+  }
 }
 
 llvm::PreservedAnalyses
@@ -238,213 +591,11 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
     cloneFrameInfo(InjectedPayloadMF, ToBeInstrumentedMF);
 
     // Clone the MBBs
-
-    // Number of return blocks in the hook
-    unsigned int NumReturnBlocksInHook{0};
-    // The last return block of the Hook function
-    const llvm::MachineBasicBlock *HookLastReturnMBB{nullptr};
-    // The target block in the instrumented function which the last return
-    // block of the hook will be prepended to if NumReturnBlocksInHook is 1
-    // Otherwise, it is the successor of all the return blocks in the hook
-    llvm::MachineBasicBlock *HookLastReturnMBBDest{nullptr};
-
-    // Find the last return block of the Hook function + count the number
-    // of the return blocks in the hook
-    for (const auto &MBB : std::ranges::reverse_view(InjectedPayloadMF)) {
-      if (MBB.isReturnBlock() && HookLastReturnMBB == nullptr) {
-        HookLastReturnMBB = &MBB;
-        NumReturnBlocksInHook++;
-      }
-    }
-    if (HookLastReturnMBB == nullptr)
-      llvm_unreachable("No return block found inside the hook");
-
-    if (InjectedPayloadMF.size() > 1) {
-      // If there's multiple blocks inside the hook, and the insertion point
-      // is not the beginning of the instrumented basic block, then split
-      // the insertion point MBB right before the insertion MI, the
-      // destination of the last return block of the hook will be the
-      // newly-created block
-      if (InsertionPointMI->getIterator() != InsertionPointMBB.begin())
-        HookLastReturnMBBDest =
-            InsertionPointMBB.splitAt(*InsertionPointMI->getPrevNode());
-      else
-        HookLastReturnMBBDest = &InsertionPointMBB;
-      if (NumReturnBlocksInHook == 1)
-        MBBMap.insert({HookLastReturnMBB, HookLastReturnMBBDest});
-      // If number of return blocks is greater than 1 (very unlikely) we
-      // will create a block for it in the next loop
-    }
-    for (const auto &HookMBB : InjectedPayloadMF) {
-      // Special handling of the entry block
-      if (HookMBB.isEntryBlock()) {
-        // If the Insertion Point is not before the very first instruction,
-        // then the Insertion Point MBB will be where the content of the
-        // entry block will be appended to
-        if (InsertionPointMI->getIterator() != InsertionPointMBB.begin()) {
-          MBBMap.insert({&HookMBB, &InsertionPointMBB});
-        }
-        // If the insertion point is right before the very first instruction
-        // of the block, then it should be appended to the return block of
-        // the hook instead, unless the hook has only a single basic block
-        else if (InjectedPayloadMF.size() == 1) {
-          // If there's only a single basic block in the instrumentation
-          // function, then the insertion point MBB will be where the hook's
-          // first (and last) MBB appends to
-          MBBMap.insert({&InjectedPayloadMF.front(), &InsertionPointMBB});
-        } else {
-          // Otherwise, create a new basic block for the entry block of the
-          // hook, and Make all the pred blocks of the Insertion point MBB
-          // to point to this newly created block instead
-          auto *NewEntryBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
-          ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
-                                    NewEntryBlock);
-          // First add the NewEntryBlock as a pred to all
-          // InsertionPointMBB's preds
-          llvm::SmallVector<llvm::MachineBasicBlock *, 2> PredMBBs;
-          for (auto It = InsertionPointMBB.pred_begin();
-               It != InsertionPointMBB.pred_end(); ++It) {
-            auto PredMBB = *It;
-            PredMBB->addSuccessor(NewEntryBlock);
-            PredMBBs.push_back(PredMBB);
-          }
-          // Remove the insertion point mbb from the PredMBB's successor
-          // list
-          for (auto &PredMBB : PredMBBs) {
-            PredMBB->removeSuccessor(&InsertionPointMBB);
-          }
-          // Add the insertion point MBB as the successor of this block
-          NewEntryBlock->addSuccessor(&InsertionPointMBB);
-          //
-          MBBMap.insert({&InjectedPayloadMF.front(), NewEntryBlock});
-        }
-      }
-      // Special handling for the return blocks
-      else if (HookMBB.isReturnBlock()) {
-        // If this is not the last return block, or there's more than one
-        // return block, then we have to create a new block for it in the
-        // target function
-        if (NumReturnBlocksInHook > 1 || &HookMBB != HookLastReturnMBB) {
-          auto *TargetReturnBlock =
-              ToBeInstrumentedMF.CreateMachineBasicBlock();
-          ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
-                                    TargetReturnBlock);
-          MBBMap.insert({&HookMBB, TargetReturnBlock});
-        }
-      } else {
-        // Otherwise, we only need to create a new basic block in the
-        // instrumented code and just copy its contents over
-        auto *NewHookMBB = ToBeInstrumentedMF.CreateMachineBasicBlock();
-        ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
-                                  NewHookMBB);
-        MBBMap.insert({&HookMBB, NewHookMBB});
-      }
-    }
-
-    // Link blocks
-    for (auto &MBB : InjectedPayloadMF) {
-      auto *DstMBB = MBBMap[&MBB];
-      for (auto It = MBB.succ_begin(), IterEnd = MBB.succ_end(); It != IterEnd;
-           ++It) {
-        auto *SrcSuccMBB = *It;
-        auto *DstSuccMBB = MBBMap[SrcSuccMBB];
-        if (!DstMBB->isSuccessor(DstSuccMBB))
-          DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
-      }
-      if (MBB.isReturnBlock() && NumReturnBlocksInHook > 1) {
-        // Add the LastHookMBBDest as a successor to the return block
-        // if there's more than one return block in the hook
-        if (!DstMBB->isSuccessor(HookLastReturnMBBDest))
-          DstMBB->addSuccessor(HookLastReturnMBBDest);
-      }
-    }
-    // Finally, clone the instructions into the new MBBs
-    const llvm::TargetSubtargetInfo &STI = ToBeInstrumentedMF.getSubtarget();
-    const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
-    const llvm::TargetRegisterInfo *TRI = STI.getRegisterInfo();
-    auto &TargetMFMRI = ToBeInstrumentedMF.getRegInfo();
-
-    llvm::DenseSet<const uint32_t *> ConstRegisterMasks;
-
-    // Track predefined/named regmasks which we ignore.
-    for (const uint32_t *Mask : TRI->getRegMasks())
-      ConstRegisterMasks.insert(Mask);
-    for (const auto &MBB : InjectedPayloadMF) {
-      auto *DstMBB = MBBMap[&MBB];
-      llvm::MachineBasicBlock::iterator InsertionPoint;
-      if (MBB.isReturnBlock() && NumReturnBlocksInHook == 1) {
-        InsertionPoint = DstMBB->begin();
-      } else if (MBB.isEntryBlock() && InjectedPayloadMF.size() == 1) {
-        InsertionPoint = InsertionPointMI->getIterator();
-      } else
-        InsertionPoint = DstMBB->end();
-      if (MBB.isEntryBlock()) {
-        //        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
-        //            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
-        //            /*NoImplicit=*/true);
-        //        DstMBB->insert(InsertionPoint, DstMI);
-        //        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
-      }
-      for (auto &SrcMI : MBB.instrs()) {
-        if (MBB.isReturnBlock() && SrcMI.isTerminator()) {
-          break;
-        }
-        // Don't clone the bundle headers
-        if (SrcMI.isBundle())
-          continue;
-        const auto &MCID = TII->get(SrcMI.getOpcode());
-        // TODO: Properly import the debug location
-        auto *DstMI =
-            ToBeInstrumentedMF.CreateMachineInstr(MCID, llvm::DebugLoc(),
-                                                  /*NoImplicit=*/true);
-        DstMI->setFlags(SrcMI.getFlags());
-        DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
-        DstMBB->insert(InsertionPoint, DstMI);
-        for (auto &SrcMO : SrcMI.operands()) {
-          llvm::MachineOperand DstMO(SrcMO);
-          DstMO.clearParent();
-
-          // Update MBB.
-          if (DstMO.isMBB())
-            DstMO.setMBB(MBBMap[DstMO.getMBB()]);
-          else if (DstMO.isRegMask()) {
-            TargetMFMRI.addPhysRegsUsedFromRegMask(DstMO.getRegMask());
-
-            if (!ConstRegisterMasks.count(DstMO.getRegMask())) {
-              uint32_t *DstMask = ToBeInstrumentedMF.allocateRegMask();
-              std::memcpy(
-                  DstMask, SrcMO.getRegMask(),
-                  sizeof(*DstMask) *
-                      llvm::MachineOperand::getRegMaskSize(TRI->getNumRegs()));
-              DstMO.setRegMask(DstMask);
-            }
-          } else if (DstMO.isGlobal()) {
-            auto GVEntry = VMap.find(DstMO.getGlobal());
-            if (GVEntry == VMap.end()) {
-              TargetAppM.getContext().emitError(
-                  llvm::formatv("Failed to find global variable {0} inside "
-                                "the representation being patched.",
-                                DstMO.getGlobal()));
-            }
-            auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
-            DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
-          }
-
-          DstMI->addOperand(DstMO);
-        }
-      }
-      if (MBB.isReturnBlock() ||
-          (MBB.isEntryBlock() && InjectedPayloadMF.size() == 1)) {
-        //        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
-        //            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
-        //            /*NoImplicit=*/true);
-        //        DstMBB->insert(InsertionPoint, DstMI);
-        //        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
-      }
-      if (NumReturnBlocksInHook > 1 && MBB.isReturnBlock()) {
-        TII->insertUnconditionalBranch(*DstMBB, HookLastReturnMBBDest,
-                                       llvm::DebugLoc());
-      }
+    if (PatchMethods.at(&ToBeInstrumentedMF) == INLINE) {
+      inlineInjectedPayload(InjectedPayloadMF, *InsertionPointMI, MBBMap, VMap);
+    } else {
+      outlineInjectedPayload(InjectedPayloadMF, *InsertionPointMI, MBBMap,
+                             VMap);
     }
   }
   return llvm::PreservedAnalyses::all();

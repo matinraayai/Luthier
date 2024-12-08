@@ -55,6 +55,10 @@ public:
     return InjectedPayloadToAppMIMap.at(&InjectedPayload);
   }
 
+  [[nodiscard]] unsigned int size() const {
+    return InjectedPayloadToAppMIMap.size();
+  }
+
   [[nodiscard]] bool contains(const llvm::Function &InjectedPayload) const {
     return InjectedPayloadToAppMIMap.contains(&InjectedPayload);
   }
