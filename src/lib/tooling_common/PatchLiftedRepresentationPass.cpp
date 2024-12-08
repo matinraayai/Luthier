@@ -33,9 +33,171 @@
 #include <ranges>
 
 namespace luthier {
+
+static void cloneFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
+                           llvm::MachineFunction &ToBeInstrumentedMF) {
+  auto &HookMFFrameInfo = InjectedPayloadMF.getFrameInfo();
+
+  if (HookMFFrameInfo.hasStackObjects()) {
+    ToBeInstrumentedMF.getFrameInfo().setStackSize(
+        ToBeInstrumentedMF.getFrameInfo().getStackSize() +
+        HookMFFrameInfo.getStackSize());
+  }
+
+  if (HookMFFrameInfo.hasStackObjects()) {
+    // Clone the frame objects
+    auto &ToBeInstrumentedMFI = ToBeInstrumentedMF.getFrameInfo();
+
+    auto CopyObjectProperties = [](llvm::MachineFrameInfo &DstMFI,
+                                   const llvm::MachineFrameInfo &SrcMFI,
+                                   int FI) {
+      if (SrcMFI.isStatepointSpillSlotObjectIndex(FI))
+        DstMFI.markAsStatepointSpillSlotObjectIndex(FI);
+      DstMFI.setObjectSSPLayout(FI, SrcMFI.getObjectSSPLayout(FI));
+      DstMFI.setObjectZExt(FI, SrcMFI.isObjectZExt(FI));
+      DstMFI.setObjectSExt(FI, SrcMFI.isObjectSExt(FI));
+    };
+
+    for (int i = 0, e = HookMFFrameInfo.getNumObjects() -
+                        HookMFFrameInfo.getNumFixedObjects();
+         i != e; ++i) {
+      int NewFI;
+
+      assert(!HookMFFrameInfo.isFixedObjectIndex(i));
+      if (!HookMFFrameInfo.isDeadObjectIndex(i)) {
+        if (HookMFFrameInfo.isVariableSizedObjectIndex(i)) {
+          NewFI = ToBeInstrumentedMFI.CreateVariableSizedObject(
+              HookMFFrameInfo.getObjectAlign(i),
+              HookMFFrameInfo.getObjectAllocation(i));
+        } else {
+          NewFI = ToBeInstrumentedMFI.CreateStackObject(
+              HookMFFrameInfo.getObjectSize(i),
+              HookMFFrameInfo.getObjectAlign(i),
+              HookMFFrameInfo.isSpillSlotObjectIndex(i),
+              HookMFFrameInfo.getObjectAllocation(i),
+              HookMFFrameInfo.getStackID(i));
+          ToBeInstrumentedMFI.setObjectOffset(
+              NewFI, HookMFFrameInfo.getObjectOffset(i));
+        }
+        CopyObjectProperties(ToBeInstrumentedMFI, HookMFFrameInfo, i);
+
+        (void)NewFI;
+        assert(i == NewFI && "expected to keep stable frame index numbering");
+      }
+    }
+
+    // Copy the fixed frame objects backwards to preserve frame index
+    // numbers, since CreateFixedObject uses front insertion.
+    for (int i = -1; i >= (int)-HookMFFrameInfo.getNumFixedObjects(); --i) {
+      assert(HookMFFrameInfo.isFixedObjectIndex(i));
+      if (!HookMFFrameInfo.isDeadObjectIndex(i)) {
+        int NewFI = ToBeInstrumentedMFI.CreateFixedObject(
+            HookMFFrameInfo.getObjectSize(i),
+            HookMFFrameInfo.getObjectOffset(i),
+            HookMFFrameInfo.isImmutableObjectIndex(i),
+            HookMFFrameInfo.isAliasedObjectIndex(i));
+        CopyObjectProperties(ToBeInstrumentedMFI, HookMFFrameInfo, i);
+
+        (void)NewFI;
+        assert(i == NewFI && "expected to keep stable frame index numbering");
+      }
+    }
+  }
+}
+
+llvm::DenseMap<const llvm::MachineFunction *,
+               PatchLiftedRepresentationPass::PatchType>
+PatchLiftedRepresentationPass::decidePatchingMethod(
+    llvm::Module &TargetAppM, llvm::ModuleAnalysisManager &TargetMAM) {
+  // Analysis result output
+  llvm::DenseMap<const llvm::MachineFunction *, PatchType> Out;
+  // Things we need for this analysis
+  auto &IModuleAnalysis =
+      *TargetMAM.getCachedResult<IModulePMAnalysis>(TargetAppM);
+  auto &TargetMMI =
+      TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetAppM).getMMI();
+  auto &IMAM = IModuleAnalysis.getMAM();
+  const auto &IPIP =
+      *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+  // We need to estimate whether we can get away with outlining
+
+  // Mapping between branch instructions and their target MBBs
+  llvm::SmallDenseMap<const llvm::MachineInstr *,
+                      const llvm::MachineBasicBlock *, 8>
+      BranchToTargetMap;
+  // Mapping between branch instructions and their offset from the beginning
+  // of the function
+  llvm::SmallDenseMap<const llvm::MachineInstr *, uint64_t> BranchToOffsetMap;
+  // Mapping between the MBBs and their offset from the beginning of the
+  // function
+  llvm::SmallDenseMap<const llvm::MachineBasicBlock *, uint64_t>
+      MBBsToOffsetMap;
+
+  for (const auto &TargetF : TargetAppM) {
+    if (auto *TargetMF = TargetMMI.getMachineFunction(TargetF)) {
+      const auto &TII = *TargetMF->getSubtarget().getInstrInfo();
+      /// Offset from the beginning of the MF; Accumulates anything from
+      /// the target app and the instructions we inject to the function
+      uint64_t MFBeginningOffset = 0;
+      for (const auto &MBB : *TargetMF) {
+        uint64_t MBBBeginningOffset = MFBeginningOffset;
+        MBBsToOffsetMap.insert({&MBB, MBBBeginningOffset});
+        for (const auto &MI : MBB) {
+          uint64_t InstSize = TII.getInstSizeInBytes(MI);
+          // If this is an instrumentation point, add the estimated size of the
+          // code being injected
+          if (IPIP.contains(MI)) {
+            uint64_t InjectedPayloadSize = IMMI.getMachineFunction(*IPIP.at(MI))
+                                               ->estimateFunctionSizeInBytes();
+            IModuleFuncSizes.insert(
+                {IMMI.getMachineFunction(*IPIP.at(MI)), InjectedPayloadSize});
+            MBBBeginningOffset += InjectedPayloadSize;
+          }
+          if (MI.isBranch()) {
+            if (auto TargetMBB = TII.getBranchDestBlock(MI)) {
+              BranchToTargetMap.insert({&MI, TargetMBB});
+              BranchToOffsetMap.insert({&MI, MBBBeginningOffset});
+            }
+          }
+          MBBBeginningOffset += InstSize;
+        }
+        MFBeginningOffset += MBBBeginningOffset;
+      }
+      // Now that we have the offset info, we can decide on the way we're going
+      // to patch the function
+      Out.insert({TargetMF, OUTLINE});
+      for (const auto &[Branch, Target] : BranchToTargetMap) {
+        uint64_t BranchOffset = BranchToOffsetMap[Branch];
+        uint64_t TargetOffset = MBBsToOffsetMap[Target];
+        uint64_t BranchDist = (BranchOffset > TargetOffset)
+                                  ? BranchOffset - TargetOffset
+                                  : TargetOffset - BranchOffset;
+        // If the branch can't make its target with the injected payload code
+        // inlined, break out of the loop
+        if (BranchDist > (1 << 18)) {
+          Out.insert({TargetMF, INLINE});
+        }
+      }
+      // If the injected payload can't be inlined, we have to check what kind
+      // of branch we need to do to reach the injected payloads at the
+      // end of the function
+      if (Out.at(TargetMF) == OUTLINE) {
+        // Take into account the s_branches we need to insert during outlining
+        MFBeginningOffset += IPIP.size() * 4;
+        if (MFBeginningOffset > (1 << 19)) {
+          llvm_unreachable(
+              "Have not yet implemented how to deal with big code.");
+        }
+      }
+    }
+  }
+  return Out;
+}
+
 llvm::PreservedAnalyses
 PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
                                    llvm::ModuleAnalysisManager &TargetMAM) {
+  auto PatchMethods = decidePatchingMethod(TargetAppM, TargetMAM);
   llvm::TimeTraceScope Scope("Lifted Representation Patching");
 
   auto &IModuleAnalysis =
@@ -67,77 +229,13 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
     llvm::DenseMap<const llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
         MBBMap;
 
-    const auto &HookMF = *IMMI.getMachineFunction(*InjectedPayloadFunc);
+    const auto &InjectedPayloadMF =
+        *IMMI.getMachineFunction(*InjectedPayloadFunc);
     auto &InsertionPointMBB = *InsertionPointMI->getParent();
     auto &ToBeInstrumentedMF = *InsertionPointMBB.getParent();
 
-    auto &HookMFFrameInfo = HookMF.getFrameInfo();
-
-    if (HookMFFrameInfo.hasStackObjects()) {
-      ToBeInstrumentedMF.getFrameInfo().setStackSize(
-          ToBeInstrumentedMF.getFrameInfo().getStackSize() +
-          HookMFFrameInfo.getStackSize());
-    }
-
-    if (HookMFFrameInfo.hasStackObjects()) {
-      // Clone the frame objects
-      auto &ToBeInstrumentedMFI = ToBeInstrumentedMF.getFrameInfo();
-
-      auto CopyObjectProperties = [](llvm::MachineFrameInfo &DstMFI,
-                                     const llvm::MachineFrameInfo &SrcMFI,
-                                     int FI) {
-        if (SrcMFI.isStatepointSpillSlotObjectIndex(FI))
-          DstMFI.markAsStatepointSpillSlotObjectIndex(FI);
-        DstMFI.setObjectSSPLayout(FI, SrcMFI.getObjectSSPLayout(FI));
-        DstMFI.setObjectZExt(FI, SrcMFI.isObjectZExt(FI));
-        DstMFI.setObjectSExt(FI, SrcMFI.isObjectSExt(FI));
-      };
-
-      for (int i = 0, e = HookMFFrameInfo.getNumObjects() -
-                          HookMFFrameInfo.getNumFixedObjects();
-           i != e; ++i) {
-        int NewFI;
-
-        assert(!HookMFFrameInfo.isFixedObjectIndex(i));
-        if (!HookMFFrameInfo.isDeadObjectIndex(i)) {
-          if (HookMFFrameInfo.isVariableSizedObjectIndex(i)) {
-            NewFI = ToBeInstrumentedMFI.CreateVariableSizedObject(
-                HookMFFrameInfo.getObjectAlign(i),
-                HookMFFrameInfo.getObjectAllocation(i));
-          } else {
-            NewFI = ToBeInstrumentedMFI.CreateStackObject(
-                HookMFFrameInfo.getObjectSize(i),
-                HookMFFrameInfo.getObjectAlign(i),
-                HookMFFrameInfo.isSpillSlotObjectIndex(i),
-                HookMFFrameInfo.getObjectAllocation(i),
-                HookMFFrameInfo.getStackID(i));
-            ToBeInstrumentedMFI.setObjectOffset(
-                NewFI, HookMFFrameInfo.getObjectOffset(i));
-          }
-          CopyObjectProperties(ToBeInstrumentedMFI, HookMFFrameInfo, i);
-
-          (void)NewFI;
-          assert(i == NewFI && "expected to keep stable frame index numbering");
-        }
-      }
-
-      // Copy the fixed frame objects backwards to preserve frame index numbers,
-      // since CreateFixedObject uses front insertion.
-      for (int i = -1; i >= (int)-HookMFFrameInfo.getNumFixedObjects(); --i) {
-        assert(HookMFFrameInfo.isFixedObjectIndex(i));
-        if (!HookMFFrameInfo.isDeadObjectIndex(i)) {
-          int NewFI = ToBeInstrumentedMFI.CreateFixedObject(
-              HookMFFrameInfo.getObjectSize(i),
-              HookMFFrameInfo.getObjectOffset(i),
-              HookMFFrameInfo.isImmutableObjectIndex(i),
-              HookMFFrameInfo.isAliasedObjectIndex(i));
-          CopyObjectProperties(ToBeInstrumentedMFI, HookMFFrameInfo, i);
-
-          (void)NewFI;
-          assert(i == NewFI && "expected to keep stable frame index numbering");
-        }
-      }
-    }
+    /// Patch the frame info
+    cloneFrameInfo(InjectedPayloadMF, ToBeInstrumentedMF);
 
     // Clone the MBBs
 
@@ -152,7 +250,7 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
 
     // Find the last return block of the Hook function + count the number
     // of the return blocks in the hook
-    for (const auto &MBB : std::ranges::reverse_view(HookMF)) {
+    for (const auto &MBB : std::ranges::reverse_view(InjectedPayloadMF)) {
       if (MBB.isReturnBlock() && HookLastReturnMBB == nullptr) {
         HookLastReturnMBB = &MBB;
         NumReturnBlocksInHook++;
@@ -161,11 +259,12 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
     if (HookLastReturnMBB == nullptr)
       llvm_unreachable("No return block found inside the hook");
 
-    if (HookMF.size() > 1) {
-      // If there's multiple blocks inside the hook, and the insertion point is
-      // not the beginning of the instrumented basic block, then split the
-      // insertion point MBB right before the insertion MI, the destination of
-      // the last return block of the hook will be the newly-created block
+    if (InjectedPayloadMF.size() > 1) {
+      // If there's multiple blocks inside the hook, and the insertion point
+      // is not the beginning of the instrumented basic block, then split
+      // the insertion point MBB right before the insertion MI, the
+      // destination of the last return block of the hook will be the
+      // newly-created block
       if (InsertionPointMI->getIterator() != InsertionPointMBB.begin())
         HookLastReturnMBBDest =
             InsertionPointMBB.splitAt(*InsertionPointMI->getPrevNode());
@@ -176,29 +275,27 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
       // If number of return blocks is greater than 1 (very unlikely) we
       // will create a block for it in the next loop
     }
-
-    for (const auto &HookMBB : HookMF) {
-
+    for (const auto &HookMBB : InjectedPayloadMF) {
       // Special handling of the entry block
       if (HookMBB.isEntryBlock()) {
         // If the Insertion Point is not before the very first instruction,
-        // then the Insertion Point MBB will be where the content of the entry
-        // block will be appended to
+        // then the Insertion Point MBB will be where the content of the
+        // entry block will be appended to
         if (InsertionPointMI->getIterator() != InsertionPointMBB.begin()) {
           MBBMap.insert({&HookMBB, &InsertionPointMBB});
         }
         // If the insertion point is right before the very first instruction
-        // of the block, then it should be appended to the return block of the
-        // hook instead, unless the hook has only a single basic block
-        else if (HookMF.size() == 1) {
+        // of the block, then it should be appended to the return block of
+        // the hook instead, unless the hook has only a single basic block
+        else if (InjectedPayloadMF.size() == 1) {
           // If there's only a single basic block in the instrumentation
           // function, then the insertion point MBB will be where the hook's
           // first (and last) MBB appends to
-          MBBMap.insert({&HookMF.front(), &InsertionPointMBB});
+          MBBMap.insert({&InjectedPayloadMF.front(), &InsertionPointMBB});
         } else {
           // Otherwise, create a new basic block for the entry block of the
-          // hook, and Make all the pred blocks of the Insertion point MBB to
-          // point to this newly created block instead
+          // hook, and Make all the pred blocks of the Insertion point MBB
+          // to point to this newly created block instead
           auto *NewEntryBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
           ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
                                     NewEntryBlock);
@@ -211,21 +308,22 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
             PredMBB->addSuccessor(NewEntryBlock);
             PredMBBs.push_back(PredMBB);
           }
-          // Remove the insertion point mbb from the PredMBB's successor list
+          // Remove the insertion point mbb from the PredMBB's successor
+          // list
           for (auto &PredMBB : PredMBBs) {
             PredMBB->removeSuccessor(&InsertionPointMBB);
           }
           // Add the insertion point MBB as the successor of this block
           NewEntryBlock->addSuccessor(&InsertionPointMBB);
           //
-          MBBMap.insert({&HookMF.front(), NewEntryBlock});
+          MBBMap.insert({&InjectedPayloadMF.front(), NewEntryBlock});
         }
       }
       // Special handling for the return blocks
       else if (HookMBB.isReturnBlock()) {
-        // If this is not the last return block, or there's more than one return
-        // block, then we have to create a new block for it in the target
-        // function
+        // If this is not the last return block, or there's more than one
+        // return block, then we have to create a new block for it in the
+        // target function
         if (NumReturnBlocksInHook > 1 || &HookMBB != HookLastReturnMBB) {
           auto *TargetReturnBlock =
               ToBeInstrumentedMF.CreateMachineBasicBlock();
@@ -244,7 +342,7 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
     }
 
     // Link blocks
-    for (auto &MBB : HookMF) {
+    for (auto &MBB : InjectedPayloadMF) {
       auto *DstMBB = MBBMap[&MBB];
       for (auto It = MBB.succ_begin(), IterEnd = MBB.succ_end(); It != IterEnd;
            ++It) {
@@ -271,12 +369,12 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
     // Track predefined/named regmasks which we ignore.
     for (const uint32_t *Mask : TRI->getRegMasks())
       ConstRegisterMasks.insert(Mask);
-    for (const auto &MBB : HookMF) {
+    for (const auto &MBB : InjectedPayloadMF) {
       auto *DstMBB = MBBMap[&MBB];
       llvm::MachineBasicBlock::iterator InsertionPoint;
       if (MBB.isReturnBlock() && NumReturnBlocksInHook == 1) {
         InsertionPoint = DstMBB->begin();
-      } else if (MBB.isEntryBlock() && HookMF.size() == 1) {
+      } else if (MBB.isEntryBlock() && InjectedPayloadMF.size() == 1) {
         InsertionPoint = InsertionPointMI->getIterator();
       } else
         InsertionPoint = DstMBB->end();
@@ -335,12 +433,13 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
           DstMI->addOperand(DstMO);
         }
       }
-      if (MBB.isReturnBlock() || (MBB.isEntryBlock() && HookMF.size() == 1)) {
-        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
-            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
-            /*NoImplicit=*/true);
-        DstMBB->insert(InsertionPoint, DstMI);
-        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
+      if (MBB.isReturnBlock() ||
+          (MBB.isEntryBlock() && InjectedPayloadMF.size() == 1)) {
+        //        auto *DstMI = ToBeInstrumentedMF.CreateMachineInstr(
+        //            TII->get(llvm::AMDGPU::S_WAITCNT), llvm::DebugLoc(),
+        //            /*NoImplicit=*/true);
+        //        DstMBB->insert(InsertionPoint, DstMI);
+        //        DstMI->addOperand(llvm::MachineOperand::CreateImm(0));
       }
       if (NumReturnBlocksInHook > 1 && MBB.isReturnBlock()) {
         TII->insertUnconditionalBranch(*DstMBB, HookLastReturnMBBDest,

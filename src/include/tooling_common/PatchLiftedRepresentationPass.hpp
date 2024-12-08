@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_PATCH_LIFTED_REPRESENTATION_HPP
 #define LUTHIER_TOOLING_COMMON_PATCH_LIFTED_REPRESENTATION_HPP
+#include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/PassManager.h>
 
@@ -28,11 +29,28 @@ namespace luthier {
 
 class PatchLiftedRepresentationPass
     : public llvm::PassInfoMixin<PatchLiftedRepresentationPass> {
+public:
+  enum PatchType {
+    INLINE = 0,  ///< Patch the injected payload directly into the target app
+    OUTLINE = 1, ///< Append the injected payload to the end/beginning
+                 ///< of the function, jump to the injected
+                 ///< payload using a short jump
+  };
+
 private:
-  // The instrumentation module
+  /// The instrumentation module
   llvm::Module &IModule;
-  // The instrumentation machine module info
+  /// The instrumentation machine module info
   llvm::MachineModuleInfo &IMMI;
+  /// Keeps track of the estimated size of each MF in bytes inside the
+  /// instrumentation module
+  llvm::SmallDenseMap<const llvm::MachineFunction *, uint64_t, 8>
+      IModuleFuncSizes;
+
+  llvm::DenseMap<const llvm::MachineFunction *,
+                 PatchLiftedRepresentationPass::PatchType>
+  decidePatchingMethod(llvm::Module &TargetAppM,
+                       llvm::ModuleAnalysisManager &TargetMAM);
 
 public:
   PatchLiftedRepresentationPass(llvm::Module &IModule,
