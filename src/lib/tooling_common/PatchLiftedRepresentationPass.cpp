@@ -18,6 +18,7 @@
 /// This file implements the Patch lifted representation pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PatchLiftedRepresentationPass.hpp"
+#include "common/Cloning.hpp"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <SIInstrInfo.h>
@@ -37,6 +38,11 @@
 #define DEBUG_TYPE "luthier-patch-lr"
 
 namespace luthier {
+
+static llvm::cl::opt<bool> OutlineAllInjectedPayloads(
+    "luthier-outline-all-injected-payloads",
+    llvm::cl::desc("Outline all injected payloads no matter the code size."),
+    llvm::cl::init(false));
 
 static void cloneFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
                            llvm::MachineFunction &ToBeInstrumentedMF) {
@@ -157,7 +163,7 @@ PatchLiftedRepresentationPass::decidePatchingMethod(
                 {IMMI.getMachineFunction(*IPIP.at(MI)), InjectedPayloadSize});
             MBBBeginningOffset += InjectedPayloadSize;
           }
-          if (MI.isBranch()) {
+          if (MI.isBranch() && !MI.isIndirectBranch()) {
             if (auto TargetMBB = TII.getBranchDestBlock(MI)) {
               BranchToTargetMap.insert({&MI, TargetMBB});
               BranchToOffsetMap.insert({&MI, MBBBeginningOffset});
@@ -165,31 +171,39 @@ PatchLiftedRepresentationPass::decidePatchingMethod(
           }
           MBBBeginningOffset += InstSize;
         }
-        MFBeginningOffset += MBBBeginningOffset;
+        MFBeginningOffset = MBBBeginningOffset;
       }
       // Now that we have the offset info, we can decide on the way we're going
       // to patch the function
-      Out.insert({TargetMF, OUTLINE});
-      for (const auto &[Branch, Target] : BranchToTargetMap) {
-        uint64_t BranchOffset = BranchToOffsetMap[Branch];
-        uint64_t TargetOffset = MBBsToOffsetMap[Target];
-        uint64_t BranchDist = (BranchOffset > TargetOffset)
-                                  ? BranchOffset - TargetOffset
-                                  : TargetOffset - BranchOffset;
-        // If the branch can't make its target with the injected payload code
-        // inlined, break out of the loop
-        if (BranchDist > (1 << 18)) {
-          Out.insert({TargetMF, INLINE});
+      if (!OutlineAllInjectedPayloads) {
+        Out.insert({TargetMF, INLINE});
+        for (const auto &[Branch, Target] : BranchToTargetMap) {
+          uint64_t BranchOffset = BranchToOffsetMap[Branch];
+          uint64_t TargetOffset = MBBsToOffsetMap[Target];
+          uint64_t BranchDist = (BranchOffset > TargetOffset)
+                                    ? BranchOffset - TargetOffset
+                                    : TargetOffset - BranchOffset;
+          // If the branch can't make its target with the injected payload code
+          // inlined, break out of the loop
+          if (BranchDist > (1 << 18)) {
+            Out.insert({TargetMF, OUTLINE});
+          }
         }
-      }
+      } else
+        Out.insert({TargetMF, OUTLINE});
+
       // If the injected payload can't be inlined, we have to check what kind
       // of branch we need to do to reach the injected payloads at the
       // end of the function
       if (Out.at(TargetMF) == OUTLINE) {
-        LLVM_DEBUG(llvm::dbgs() << "Have to outline MF " << TargetMF->getName()
-                                << "\n";);
+        LLVM_DEBUG(llvm::dbgs()
+                       << "Have to outline MF " << TargetMF->getName() << "\n";
+                   llvm::dbgs() << "Size of the MF after patching: "
+                                << MFBeginningOffset << ".\n";);
         // Take into account the s_branches we need to insert during outlining
         MFBeginningOffset += IPIP.size() * 4;
+        LLVM_DEBUG(llvm::dbgs() << "Size of the MF after outlining: "
+                                << MFBeginningOffset << ".\n";);
         if (MFBeginningOffset > (1 << 19)) {
           llvm_unreachable(
               "Have not yet implemented how to deal with big code.");
@@ -375,7 +389,7 @@ void inlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
         if (DstMO.isMBB())
           DstMO.setMBB(MBBMap[DstMO.getMBB()]);
         else if (DstMO.isRegMask()) {
-          TargetMFMRI.addPhysRegsUsedFromRegMask(DstMO.getRegMask());
+          //          TargetMFMRI.addPhysRegsUsedFromRegMask(DstMO.getRegMask());
 
           if (!ConstRegisterMasks.count(DstMO.getRegMask())) {
             uint32_t *DstMask = ToBeInstrumentedMF.allocateRegMask();
@@ -440,13 +454,15 @@ void outlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
     for (auto &Pred :
          llvm::make_early_inc_range(InsertionPointMBB.predecessors())) {
       Pred->addSuccessor(JumpFromBlock);
-      Pred->removeSuccessor(&InsertionPointMBB);
+      if (Pred->isSuccessor(&InsertionPointMBB))
+        Pred->removeSuccessor(&InsertionPointMBB);
     }
+    // InsertionPointMBB will become the jump to block
+    JumpToBlock = &InsertionPointMBB;
   } else {
-    JumpFromBlock = InsertionPointMBB.splitAt(*InsertionPointMI.getPrevNode());
+    JumpToBlock = InsertionPointMBB.splitAt(*InsertionPointMI.getPrevNode());
+    JumpFromBlock = &InsertionPointMBB;
   }
-  // InsertionPointMBB will become the jump to block
-  JumpToBlock = &InsertionPointMBB;
 
   for (const auto &InjectedPayloadMBB : InjectedPayloadMF) {
     // Create MBBs at the end of the function
@@ -541,6 +557,9 @@ void outlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
         }
       }
     }();
+    if (MBB.isEntryBlock()) {
+      TII->insertUnconditionalBranch(*JumpFromBlock, DstMBB, llvm::DebugLoc());
+    }
     if (MBB.isReturnBlock()) {
       TII->insertUnconditionalBranch(*DstMBB, JumpToBlock, llvm::DebugLoc());
     }
@@ -562,6 +581,9 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
   const auto &IPIP =
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
+  auto &TargetMMI =
+      TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetAppM).getMMI();
+
   // A mapping between Global Variables in the instrumentation module and
   // their corresponding Global Variables in the instrumented code
   llvm::ValueToValueMapTy VMap;
@@ -575,6 +597,27 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
     NewGV->copyAttributesFrom(&GV);
     VMap[&GV] = NewGV;
   }
+
+  // Clone only the definition of functions that are not injected payloads
+  for (const auto &F : IModule.functions()) {
+    if (IMMI.getMachineFunction(F) != nullptr &&
+        !F.hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
+        !F.hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+      auto *NewF = llvm::Function::Create(
+          llvm::cast<llvm::FunctionType>(F.getValueType()), F.getLinkage(),
+          F.getAddressSpace(), F.getName(), &TargetAppM);
+      llvm::BasicBlock *BB =
+          llvm::BasicBlock::Create(TargetAppM.getContext(), "", NewF);
+      new llvm::UnreachableInst(TargetAppM.getContext(), BB);
+      VMap[&F] = NewF;
+      auto NewMF = cloneMF(IMMI.getMachineFunction(F), VMap, TargetMMI);
+      LUTHIER_REPORT_FATAL_ON_ERROR(NewMF.takeError());
+      LLVM_DEBUG(llvm::dbgs() << "Found non-hook function. Patched contents:\n";
+                 NewMF->get()->print(llvm::dbgs()););
+      TargetMMI.insertFunction(*NewF, std::move(*NewMF));
+    }
+  }
+
   for (const auto &[InsertionPointMI, InjectedPayloadFunc] :
        IPIP.mi_payload()) {
     // A mapping between a machine basic block in the instrumentation MMI

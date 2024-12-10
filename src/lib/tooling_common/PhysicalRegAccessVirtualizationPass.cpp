@@ -24,6 +24,7 @@
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
 #include <SIRegisterInfo.h>
+#include <llvm/Analysis/CallGraph.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachineSSAUpdater.h>
 #include <llvm/CodeGen/Passes.h>
@@ -239,6 +240,50 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
 
   const auto &CG = TargetMAM.getResult<LRCallGraphAnalysis>(TargetModule);
 
+  const auto &StateValueLocations =
+      TargetMAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(
+          TargetModule);
+
+  auto *SVALoadPlan =
+      StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
+          *IPIP.at(MF.getFunction()));
+  if (!SVALoadPlan) {
+    MF.getContext().reportError(
+        {},
+        llvm::formatv(
+            "Could not find the state value load plan for Machine Instr {0}.",
+            *IPIP.at(MF.getFunction())));
+    return false;
+  }
+
+  // If the function being processed is not an injected payload (i.e a device
+  // function getting called inside a hook) it cannot access physical registers
+  // (it should have been checked by the code generator), so skip it
+  if (!MF.getFunction().hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
+      !MF.getFunction().hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+
+    // Add the state value array's load VGPR as a live-in for all basic blocks
+    // to be preserved throughout the injected payload
+    for (auto &MBB : MF) {
+      if (!MBB.isLiveIn(SVALoadPlan->StateValueArrayLoadVGPR))
+        MBB.addLiveIn(SVALoadPlan->StateValueArrayLoadVGPR);
+    }
+
+    for (auto &MBB : MF) {
+      if (MBB.isReturnBlock()) {
+        // The first return instruction is where we emit the copy instruction
+        auto ReturnInst = MBB.getFirstTerminator();
+        // Add the state value array load VGPR as an implicit use for the
+        // terminator instruction. This is because without a use the register
+        // allocator will not preserve the state value VGPR
+        ReturnInst->addOperand(llvm::MachineOperand::CreateReg(
+            SVALoadPlan->StateValueArrayLoadVGPR, false, true));
+      }
+    }
+
+    return true;
+  }
+
   const auto &AccessedPhysicalRegs =
       IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
           .getPhysRegsNotInLiveIns();
@@ -333,20 +378,6 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                                        PhysicalLiveInsForInjectedPayload);
 
   bool Changed{false};
-
-  // If the function being processed is not an injected payload (i.e a device
-  // function getting called inside a hook) it cannot access physical registers
-  // (it should have been checked by the code generator), so skip it
-  if (!MF.getFunction().hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
-      !MF.getFunction().hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
-
-    LLVM_DEBUG(
-        llvm::dbgs()
-            << "Function " << MF.getName()
-            << " is not a hook or an injected payload. skipping it....";);
-
-    return false;
-  }
   auto *TRI = MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
   auto &MRI = MF.getRegInfo();
 
@@ -475,22 +506,6 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
         PreservedPhysRegToVirtRegStorageMap.insert({LiveIn, CopyRegister});
       }
     }
-  }
-
-  const auto &StateValueLocations =
-      TargetMAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(
-          TargetModule);
-
-  auto *SVALoadPlan =
-      StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
-          *IPIP.at(MF.getFunction()));
-  if (!SVALoadPlan) {
-    MF.getContext().reportError(
-        {},
-        llvm::formatv(
-            "Could not find the state value load plan for Machine Instr {0}.",
-            *IPIP.at(MF.getFunction())));
-    return false;
   }
 
   // Add the state value array's load VGPR as a live-in for all basic blocks
