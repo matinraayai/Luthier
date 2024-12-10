@@ -34,15 +34,13 @@
 #include <llvm/Support/FormatVariadic.h>
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-opcode-hist-tool"
+#define DEBUG_TYPE "luthier-example-lds-bank-conflict"
 
 using namespace luthier;
 
 //===----------------------------------------------------------------------===//
 // Commandline arguments for the tool
 //===----------------------------------------------------------------------===//
-
-/// Define an option category for the instruction count tool
 llvm::cl::OptionCategory
     LDSBankConflictToolOptionCategory("LDS Bank Conflict Options");
 
@@ -80,39 +78,62 @@ static llvm::cl::opt<bool> DemangleKernelNames(
     llvm::cl::init(true), llvm::cl::NotHidden,
     llvm::cl::cat(LDSBankConflictToolOptionCategory));
 
+static llvm::cl::opt<short>
+    Log2BankSize("log-2-bank-size", llvm::cl::desc("Log2 of the LDS bank size"),
+                 llvm::cl::init(9), llvm::cl::NotHidden,
+                 llvm::cl::cat(LDSBankConflictToolOptionCategory));
+
+/// Per-kernel buffer to store the number of bank conflicts detected for
+/// the currently running kernel
 __attribute__((managed)) float NumBankConflicts = 0;
 
+/// The final place on host to store the total number of bank conflicts
+/// detected for all kernels
 static uint64_t TotalNumBankConflicts = 0;
 
+/// Place for the currently running kernel to write the number of single-address
+/// LDS instructions it has executed so far
 __attribute__((managed)) uint64_t NumSingleAddressLDSInstructions = 0;
 
-/// Total number of instructions counted
+/// Total number of single-address LDS instructions executed so far
 static uint64_t TotalNumSingleAddressLDSInstructions = 0;
+
+/// Place for the currently running kernel to write the number of double-address
+/// LDS instructions it has executed so far
+__attribute__((managed)) uint64_t NumDoubleAddressLDSInstructions = 0;
+
+/// Total number of double-address LDS instructions executed so far
+static uint64_t TotalNumDoubleAddressLDSInstructions = 0;
 
 /// Number of kernels launched so far
 static uint32_t NumKernelLaunched = 0;
 
+/// Whether or not the current kernel on the fly is being instrumented
 static bool ActiveRegion = true;
 
+/// Whether or not we must destroy the signal of the dispatch packet after
+/// the kernel is done executing
 bool MustDestroySignalAfterLaunch = false;
 
+/// The kernel currently being instrumented
 const hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{nullptr};
 
+/// The signal value of the launched kernel to wait for
 hsa_signal_value_t SignalValue{0};
 
-#define BANK_SIZE_LOG_2 9
-
-/// Mutex to protect the managed histogram
+/// Mutex to protect the managed variables for the current kernel
 std::mutex Mutex;
 
 MARK_LUTHIER_DEVICE_MODULE
 
-// Record OPCode Histogram
-LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpSingleAddress(unsigned int M0,
-                                                           unsigned int VAddr,
-                                                           short Offset) {
-  unsigned long long int VCC =
-      luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
+///
+/// \param M0
+/// \param VAddr
+/// \param Offset
+/// \param CacheSizeLog2
+LUTHIER_HOOK_ANNOTATE
+countUniqueBanksPerWarpSingleAddress(unsigned int M0, unsigned int VAddr,
+                                     short Offset, short CacheSizeLog2) {
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Get the position of the thread in the current wavefront (1-index)
@@ -127,17 +148,250 @@ LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpSingleAddress(unsigned int M0,
   // Calculate the LDS address accessed by this instruction
   unsigned int Address = M0 + VAddr + Offset;
   // Calculate this work-item's bank ID
-  unsigned int BankIdx = Address >> BANK_SIZE_LOG_2;
+  unsigned int BankIdx = Address >> CacheSizeLog2;
   // Count how many other work-items in the warp have the same bank ID
   auto NumWorkItemsWithSameBankID =
       static_cast<float>(__popcll(__match_any(BankIdx)));
   // Each thread with the same bank ID will add 1 / NumWorkItemsWithSameBankID
   // Incrementing the final value by 1.
   atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID);
-
-  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
+
 LUTHIER_EXPORT_HOOK_HANDLE(countUniqueBanksPerWarpSingleAddress);
+
+///
+/// \param M0
+/// \param VAddr
+/// \param Offset0
+/// \param Offset1
+/// \param CacheSizeLog2
+LUTHIER_HOOK_ANNOTATE
+countUniqueBanksPerWarpDoubleAddress(unsigned int M0, unsigned int VAddr,
+                                     uint8_t Offset0, uint8_t Offset1,
+                                     short CacheSizeLog2) {
+  // Get the exec mask of the wavefront
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
+  // Get the position of the thread in the current wavefront (1-index)
+  const uint32_t LaneId = __lane_id() + 1;
+  // Get the first active thread id inside this wavefront
+  unsigned int FirstActiveThreadId = __ffsll(ExecMask);
+  // Have only the first active thread perform the atomic add
+  if (FirstActiveThreadId == LaneId) {
+    atomicAdd(&NumDoubleAddressLDSInstructions, 1);
+  }
+
+  // Calculate the LDS addresses accessed by this instruction
+  unsigned int Address0 = M0 + VAddr + (Offset0 << 2);
+
+  unsigned int Address1 = M0 + VAddr + (Offset1 << 2);
+  // Calculate this work-item's bank IDs
+  unsigned int BankIdx0 = Address0 >> CacheSizeLog2;
+  unsigned int BankIdx1 = Address1 >> CacheSizeLog2;
+  // Count how many other work-items in the warp have the same bank ID
+  auto NumWorkItemsWithSameBankID0 =
+      static_cast<float>(__popcll(__match_any(BankIdx0)));
+  auto NumWorkItemsWithSameBankID1 =
+      static_cast<float>(__popcll(__match_any(BankIdx1)));
+  // We also have to count the conflict between BankIdx0 of
+  // this thread and BankIdx1 of other threads
+  for (uint32_t I = 0; I < 64; I++) {
+    if (LaneId != I) {
+      unsigned int BankIdx0IthThread = __shfl_sync(ExecMask, BankIdx0, I);
+      if (BankIdx0IthThread == NumWorkItemsWithSameBankID1)
+        NumWorkItemsWithSameBankID1++;
+      unsigned int BankIdx1IthThread = __shfl_sync(ExecMask, BankIdx1, I);
+      if (BankIdx1IthThread == NumWorkItemsWithSameBankID0)
+        NumWorkItemsWithSameBankID0++;
+    }
+  }
+
+  // Each thread with the same bank ID will add 1 / NumWorkItemsWithSameBankID
+  // Incrementing the final value by 1.
+  atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID0);
+  atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID1);
+}
+LUTHIER_EXPORT_HOOK_HANDLE(countUniqueBanksPerWarpDoubleAddress);
+
+LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpDoubleAddressTwoSource32(
+    unsigned int M0, unsigned int VAddr, uint16_t Offset0, uint16_t Offset1,
+    uint8_t CacheSizeLog2) {
+  // Get the exec mask of the wavefront
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
+  // Get the position of the thread in the current wavefront (1-index)
+  const uint32_t LaneId = __lane_id() + 1;
+  // Get the first active thread id inside this wavefront
+  unsigned int FirstActiveThreadId = __ffsll(ExecMask);
+  // Have only the first active thread perform the atomic add
+  if (FirstActiveThreadId == LaneId) {
+    atomicAdd(&NumDoubleAddressLDSInstructions, 1);
+  }
+
+  // Calculate the LDS addresses accessed by this instruction
+  unsigned int Address0 = M0 + VAddr + (Offset0 << 8);
+
+  unsigned int Address1 = M0 + VAddr + (Offset1 << 8);
+  // Calculate this work-item's bank IDs
+  unsigned int BankIdx0 = Address0 >> CacheSizeLog2;
+  unsigned int BankIdx1 = Address1 >> CacheSizeLog2;
+  // Count how many other work-items in the warp have the same bank ID
+  auto NumWorkItemsWithSameBankID0 =
+      static_cast<float>(__popcll(__match_any(BankIdx0)));
+  auto NumWorkItemsWithSameBankID1 =
+      static_cast<float>(__popcll(__match_any(BankIdx1)));
+  // We also have to count the conflict between BankIdx0 of
+  // this thread and BankIdx1 of other threads
+  for (uint32_t I = 0; I < 64; I++) {
+    if (LaneId != I) {
+      unsigned int BankIdx0IthThread = __shfl_sync(ExecMask, BankIdx0, I);
+      if (BankIdx0IthThread == NumWorkItemsWithSameBankID1)
+        NumWorkItemsWithSameBankID1++;
+      unsigned int BankIdx1IthThread = __shfl_sync(ExecMask, BankIdx1, I);
+      if (BankIdx1IthThread == NumWorkItemsWithSameBankID0)
+        NumWorkItemsWithSameBankID0++;
+    }
+  }
+
+  // Each thread with the same bank ID will add 1 / NumWorkItemsWithSameBankID
+  // Incrementing the final value by 1.
+  atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID0);
+  atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID1);
+}
+LUTHIER_EXPORT_HOOK_HANDLE(countUniqueBanksPerWarpDoubleAddressTwoSource32);
+
+LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpDoubleAddressTwoSource64(
+    unsigned int M0, unsigned int VAddr, uint16_t Offset0, uint16_t Offset1,
+    uint8_t CacheSizeLog2) {
+  // Get the exec mask of the wavefront
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
+  // Get the position of the thread in the current wavefront (1-index)
+  const uint32_t LaneId = __lane_id() + 1;
+  // Get the first active thread id inside this wavefront
+  unsigned int FirstActiveThreadId = __ffsll(ExecMask);
+  // Have only the first active thread perform the atomic add
+  if (FirstActiveThreadId == LaneId) {
+    atomicAdd(&NumDoubleAddressLDSInstructions, 1);
+  }
+
+  // Calculate the LDS addresses accessed by this instruction
+  unsigned int Address0 = M0 + VAddr + (Offset0 << 9);
+
+  unsigned int Address1 = M0 + VAddr + (Offset1 << 9);
+  // Calculate this work-item's bank IDs
+  unsigned int BankIdx0 = Address0 >> CacheSizeLog2;
+  unsigned int BankIdx1 = Address1 >> CacheSizeLog2;
+  // Count how many other work-items in the warp have the same bank ID
+  auto NumWorkItemsWithSameBankID0 =
+      static_cast<float>(__popcll(__match_any(BankIdx0)));
+  auto NumWorkItemsWithSameBankID1 =
+      static_cast<float>(__popcll(__match_any(BankIdx1)));
+  // We also have to count the conflict between BankIdx0 of
+  // this thread and BankIdx1 of other threads
+  for (uint32_t I = 0; I < 64; I++) {
+    if (LaneId != I) {
+      unsigned int BankIdx0IthThread = __shfl_sync(ExecMask, BankIdx0, I);
+      if (BankIdx0IthThread == NumWorkItemsWithSameBankID1)
+        NumWorkItemsWithSameBankID1++;
+      unsigned int BankIdx1IthThread = __shfl_sync(ExecMask, BankIdx1, I);
+      if (BankIdx1IthThread == NumWorkItemsWithSameBankID0)
+        NumWorkItemsWithSameBankID0++;
+    }
+  }
+
+  // Each thread with the same bank ID will add 1 / NumWorkItemsWithSameBankID
+  // Incrementing the final value by 1.
+  atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID0);
+  atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID1);
+}
+
+LUTHIER_EXPORT_HOOK_HANDLE(countUniqueBanksPerWarpDoubleAddressTwoSource64);
+
+static llvm::Error instrumentSingleAddressDSOps(InstrumentationTask &IT,
+                                                llvm::LLVMContext &Ctx,
+                                                llvm::MachineInstr &MI,
+                                                llvm::ConstantInt *BankSize) {
+  if (llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                    llvm::AMDGPU::OpName::offset) &&
+      llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                    llvm::AMDGPU::OpName::addr)) {
+    // Get the address operand of the LDS operation
+    int AddrOpIdx = llvm::AMDGPU::getNamedOperandIdx(
+        MI.getOpcode(), llvm::AMDGPU::OpName::addr);
+    llvm::MCRegister AddrOpVGPR = MI.getOperand(AddrOpIdx).getReg().asMCReg();
+    // Get the offset of the operation
+    int OffsetOpIdx = llvm::AMDGPU::getNamedOperandIdx(
+        MI.getOpcode(), llvm::AMDGPU::OpName::offset);
+    unsigned Short = MI.getOperand(OffsetOpIdx).getImm();
+    auto *ShortArg =
+        llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx), Short, false);
+    LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+        MI, LUTHIER_GET_HOOK_HANDLE(countUniqueBanksPerWarpSingleAddress),
+        {llvm::AMDGPU::M0, AddrOpVGPR, ShortArg, BankSize}));
+  }
+  return llvm::Error::success();
+}
+
+static llvm::Error instrumentDoubleAddressDSOps(InstrumentationTask &IT,
+                                                llvm::LLVMContext &Ctx,
+                                                llvm::MachineInstr &MI,
+                                                llvm::ConstantInt *BankSize) {
+  if (llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                    llvm::AMDGPU::OpName::offset0) &&
+      llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                    llvm::AMDGPU::OpName::offset1) &&
+      llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                    llvm::AMDGPU::OpName::addr)) {
+    // Get the address operand of the LDS operation
+    int AddrOpIdx = llvm::AMDGPU::getNamedOperandIdx(
+        MI.getOpcode(), llvm::AMDGPU::OpName::addr);
+    llvm::MCRegister AddrOpVGPR = MI.getOperand(AddrOpIdx).getReg().asMCReg();
+    // Get the offset of the operation
+    int Offset0OpIdx = llvm::AMDGPU::getNamedOperandIdx(
+        MI.getOpcode(), llvm::AMDGPU::OpName::offset);
+    int Offset1OpIdx = llvm::AMDGPU::getNamedOperandIdx(
+        MI.getOpcode(), llvm::AMDGPU::OpName::offset);
+    if (MI.getOpcode() == llvm::AMDGPU::DS_READ2ST64_B32 ||
+        MI.getOpcode() == llvm::AMDGPU::DS_WRITE2ST64_B32 ||
+        MI.getOpcode() == llvm::AMDGPU::DS_WRXCHG2ST64_RTN_B32) {
+      auto *Offset0Arg =
+          llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
+                                 MI.getOperand(Offset0OpIdx).getImm(), false);
+      auto *Offset1Arg =
+          llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
+                                 MI.getOperand(Offset1OpIdx).getImm(), false);
+      LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+          MI,
+          LUTHIER_GET_HOOK_HANDLE(
+              countUniqueBanksPerWarpDoubleAddressTwoSource32),
+          {llvm::AMDGPU::M0, AddrOpVGPR, Offset0Arg, Offset1Arg, BankSize}));
+
+    } else if (MI.getOpcode() == llvm::AMDGPU::DS_READ2ST64_B64 ||
+               MI.getOpcode() == llvm::AMDGPU::DS_WRITE2ST64_B64 ||
+               MI.getOpcode() == llvm::AMDGPU::DS_WRXCHG2ST64_RTN_B64) {
+      auto *Offset0Arg =
+          llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
+                                 MI.getOperand(Offset0OpIdx).getImm(), false);
+      auto *Offset1Arg =
+          llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
+                                 MI.getOperand(Offset1OpIdx).getImm(), false);
+      LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+          MI,
+          LUTHIER_GET_HOOK_HANDLE(
+              countUniqueBanksPerWarpDoubleAddressTwoSource64),
+          {llvm::AMDGPU::M0, AddrOpVGPR, Offset0Arg, Offset1Arg, BankSize}));
+    } else {
+      auto *Offset0Arg =
+          llvm::ConstantInt::get(llvm::Type::getInt8Ty(Ctx),
+                                 MI.getOperand(Offset0OpIdx).getImm(), false);
+      auto *Offset1Arg =
+          llvm::ConstantInt::get(llvm::Type::getInt8Ty(Ctx),
+                                 MI.getOperand(Offset1OpIdx).getImm(), false);
+      LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+          MI, LUTHIER_GET_HOOK_HANDLE(countUniqueBanksPerWarpDoubleAddress),
+          {llvm::AMDGPU::M0, AddrOpVGPR, Offset0Arg, Offset1Arg, BankSize}));
+    }
+  }
+  return llvm::Error::success();
+}
 
 static llvm::Error instrumentationLoop(InstrumentationTask &IT,
                                        LiftedRepresentation &LR) {
@@ -146,33 +400,22 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
     const auto &STI = MF->getSubtarget<llvm::GCNSubtarget>();
     const auto *TII = STI.getInstrInfo();
     auto &Ctx = LR.getContext();
+    auto *BankSizeArg =
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(Ctx), Log2BankSize, false);
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
-        if (I >= InstrBeginInterval && I < InstrEndInterval) {
-          if (llvm::SIInstrInfo::isDS(MI)) {
-            // Single address instruction have a VGPR address operand and an
-            // offset field + modifier indicating if this is a GDS operation or
-            // not
-            if (!TII->isAlwaysGDS(MI.getOpcode()) ||
-                !TII->hasModifiersSet(MI, llvm::AMDGPU::OpName::gds)) {
-              int AddrOpIdx = llvm::AMDGPU::getNamedOperandIdx(
-                  MI.getOpcode(), llvm::AMDGPU::OpName::addr);
-              int OffSetOpIDx = llvm::AMDGPU::getNamedOperandIdx(
-                  MI.getOpcode(), llvm::AMDGPU::OpName::offset);
-              if (AddrOpIdx != 1) {
-                llvm::MCRegister VAddr =
-                    MI.getOperand(AddrOpIdx).getReg().asMCReg();
-                unsigned Short = MI.getOperand(OffSetOpIDx).getImm();
-                auto *ShortArg = llvm::ConstantInt::get(
-                    llvm::Type::getInt16Ty(Ctx), Short, false);
-                LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-                    MI,
-                    LUTHIER_GET_HOOK_HANDLE(
-                        countUniqueBanksPerWarpSingleAddress),
-                    {llvm::AMDGPU::M0, VAddr, ShortArg}));
-              }
-            }
-          }
+        // Ignore instructions not inside an interval
+        // Ignore GDS operations
+        if (I >= InstrBeginInterval && I < InstrEndInterval &&
+            llvm::SIInstrInfo::isDS(MI) && !TII->isAlwaysGDS(MI.getOpcode()) &&
+            !TII->hasModifiersSet(MI, llvm::AMDGPU::OpName::gds)) {
+
+          // Handle single source LDS access
+          LUTHIER_REPORT_FATAL_ON_ERROR(
+              instrumentSingleAddressDSOps(IT, Ctx, MI, BankSizeArg));
+          // Handle double source LDS access
+          LUTHIER_REPORT_FATAL_ON_ERROR(
+              instrumentDoubleAddressDSOps(IT, Ctx, MI, BankSizeArg));
         }
         I++;
       }
@@ -275,6 +518,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               NumBankConflicts = 0.;
 
               NumSingleAddressLDSInstructions = 0;
+
+              NumDoubleAddressLDSInstructions = 0;
             }
           }
         } else {
@@ -322,6 +567,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             // wavefront
             TotalNumSingleAddressLDSInstructions +=
                 NumSingleAddressLDSInstructions;
+            TotalNumDoubleAddressLDSInstructions +=
+                NumDoubleAddressLDSInstructions;
             TotalNumBankConflicts += static_cast<uint64_t>(NumBankConflicts);
 
             // Note: Grid size in HSA contains all the work items in the kernel.
@@ -335,15 +582,19 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             llvm::outs() << llvm::formatv(
                 "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
                 "Workgroup Dims: "
-                "({5}, {6}, {7}) LDS Single Address Instruction "
-                "Count: {8}, Num bank conflicts: {9}, Num bank conflicts "
-                "detected so far: {10}\n",
+                "({5}, {6}, {7}) LDS Size Requested: {8} LDS Single Address "
+                "Instruction "
+                "Count: {9}, LDS Double Address Instruction Count: {10}, Num "
+                "bank conflicts: {11}, Num bank conflicts "
+                "detected so far: {12}\n",
                 NumKernelLaunched++, KernelNameToBePrinted,
                 DispatchPacket.grid_size_x, DispatchPacket.grid_size_y,
                 DispatchPacket.grid_size_z, DispatchPacket.workgroup_size_x,
                 DispatchPacket.workgroup_size_y,
                 DispatchPacket.workgroup_size_z,
-                TotalNumSingleAddressLDSInstructions, NumBankConflicts,
+                DispatchPacket.group_segment_size,
+                TotalNumSingleAddressLDSInstructions,
+                TotalNumDoubleAddressLDSInstructions, NumBankConflicts,
                 TotalNumBankConflicts);
           }
           NumKernelLaunched++;
