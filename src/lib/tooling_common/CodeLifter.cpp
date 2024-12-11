@@ -871,6 +871,27 @@ llvm::Error CodeLifter::liftFunction(
       Builder->addMemOperand(MF, MMO);
     }
 
+    if (MCInst.getNumOperands() < MCID.NumOperands) {
+      LLVM_DEBUG(llvm::dbgs() << "Must fixup instruction ";
+                 Builder->print(llvm::dbgs()); llvm::dbgs() << "\n";
+                 llvm::dbgs() << "Num explicit operands added so far: "
+                              << MCInst.getNumOperands() << "\n";
+                 llvm::dbgs() << "Num explicit operands according to MCID: "
+                              << MCID.NumOperands << "\n";);
+      // Loop over missing explicit operands (if any) and fixup any missing
+      for (unsigned int MissingExpOpIdx = MCInst.getNumOperands();
+           MissingExpOpIdx < MCID.NumOperands; MissingExpOpIdx++) {
+        LLVM_DEBUG(llvm::dbgs()
+                       << "Fixing up operand no " << MissingExpOpIdx << "\n";);
+        auto OpType = MCID.operands()[MissingExpOpIdx].OperandType;
+        if (OpType == llvm::MCOI::OPERAND_IMMEDIATE ||
+            OpType == llvm::AMDGPU::OPERAND_KIMM32) {
+          LLVM_DEBUG(llvm::dbgs() << "Added a 0-immediate operand.\n";);
+          Builder.addImm(0);
+        }
+      }
+    }
+
     LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
     LLVM_DEBUG(llvm::dbgs() << "Final form of the instruction (not final if "
                                "it's a direct branch): ";
