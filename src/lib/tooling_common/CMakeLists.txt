@@ -43,6 +43,7 @@ add_library(LuthierToolingCommon STATIC
         RunMIRPassesOnIModulePass.cpp
         PatchLiftedRepresentationPass.cpp
         MIRConvenience.cpp
+        intrinsic/ImplicitArgPtr.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
