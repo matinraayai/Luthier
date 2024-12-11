@@ -34,6 +34,7 @@ llvm::Error writeExecMIRProcessor(
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
+    const std::function<llvm::Register(KernelArgumentType)> &,
     const llvm::MachineFunction &MF,
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
