@@ -29,6 +29,7 @@
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/TargetManager.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
+#include "tooling_common/intrinsic/ImplicitArgPtr.hpp"
 #include "tooling_common/intrinsic/ReadReg.hpp"
 #include "tooling_common/intrinsic/WriteExec.hpp"
 #include "tooling_common/intrinsic/WriteReg.hpp"
@@ -192,7 +193,7 @@ void rocprofilerFinalize(void *Data){
         // TODO: place this somewhere else
         //   luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
         //       API_EVT_PHASE_BEFORE);
-//           luthier::hsa::HsaRuntimeInterceptor::instance().uninstallApiTables();
+        //           luthier::hsa::HsaRuntimeInterceptor::instance().uninstallApiTables();
         //   luthier::Controller::instance().getAtApiTableReleaseEvtCallback()(
         //       API_EVT_PHASE_AFTER);
         LUTHIER_LOG_FUNCTION_CALL_END}
@@ -215,6 +216,9 @@ Controller::Controller()
                         {writeRegIRProcessor, writeRegMIRProcessor});
   CG->registerIntrinsic("luthier::writeExec",
                         {writeExecIRProcessor, writeExecMIRProcessor});
+  CG->registerIntrinsic(
+      "luthier::implicitArgPtr",
+      {implicitArgPtrIRProcessor, implicitArgPtrMIRProcessor});
 }
 
 Controller::~Controller() {

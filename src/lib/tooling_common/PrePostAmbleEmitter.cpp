@@ -326,7 +326,7 @@ emitCodeToStoreSGPRKernelArg(llvm::MachineInstr &InsertionPoint,
                     TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSVGPR)
           .addReg(TRI.getSubReg(SrcSGPR, SubIdx),
                   KillAfterUse ? llvm::RegState::Kill : 0)
-          .addImm(SpillSlotStart)
+          .addImm(SpillSlotStart + i)
           .addReg(SVSVGPR);
     }
   }
@@ -516,6 +516,41 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
             }
           }
         }
+        // Add code
+        if (SVAInfo.RequestedKernelArguments.contains(HIDDEN_KERNARG_OFFSET)) {
+          llvm::outs() << "emitting code to store the hidden arg offset.\n";
+          auto &KernArgs =
+              llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(FuncSymbol)
+                  ->getKernelMetadata()
+                  .Args;
+
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+              KernArgs.has_value(), "Attempted to access the hidden arguments "
+                                    "of a kernel without any arguments."));
+          uint32_t HiddenOffset = [&]() {
+            for (const auto &Arg : *KernArgs) {
+              if (Arg.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin &&
+                  Arg.ValueKind <= hsa::md::ValueKind::HiddenArgKindEnd) {
+                return Arg.Offset;
+              }
+            }
+            return uint32_t{0};
+          }();
+          auto StoreLane =
+              stateValueArray::getKernelArgumentLaneIdStoreSlotBeginForWave64(
+                  HIDDEN_KERNARG_OFFSET);
+          LUTHIER_REPORT_FATAL_ON_ERROR(StoreLane.takeError());
+
+          llvm::BuildMI(*EntryInstr->getParent(), EntryInstr, llvm::DebugLoc(),
+                        TII->get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageReg)
+              .addImm(HiddenOffset)
+              .addImm(*StoreLane)
+              .addReg(SVSStorageReg);
+
+          EntryInstr->getMF()->print(llvm::outs());
+        }
+
+
         // Put every SGPR argument back in its place
         emitCodeToReturnSGPRArgsToOriginalPlace(OriginalSGPRArgLocs,
                                                 *EntryInstr);
