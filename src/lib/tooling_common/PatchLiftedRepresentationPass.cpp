@@ -42,7 +42,7 @@ namespace luthier {
 static llvm::cl::opt<bool> OutlineAllInjectedPayloads(
     "luthier-outline-all-injected-payloads",
     llvm::cl::desc("Outline all injected payloads no matter the code size."),
-    llvm::cl::init(false));
+    llvm::cl::init(true));
 
 static void cloneFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
                            llvm::MachineFunction &ToBeInstrumentedMF) {
