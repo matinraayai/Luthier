@@ -91,6 +91,31 @@ LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val) {
   doNotOptimize(Val);
 }
 
+/// \return the address of the implicit argument segment
+LUTHIER_INTRINSIC_ANNOTATE uint32_t* implicitArgPtr() {
+  uint32_t* Out;
+  doNotOptimize(Out);
+  return Out;
+}
+
+LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdX() {
+  uint32_t Out;
+  doNotOptimize(Out);
+  return Out;
+}
+
+LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdY() {
+  uint32_t Out;
+  doNotOptimize(Out);
+  return Out;
+}
+
+LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdZ() {
+  uint32_t Out;
+  doNotOptimize(Out);
+  return Out;
+}
+
 #endif
 
 } // namespace luthier

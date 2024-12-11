@@ -336,6 +336,7 @@ typedef std::function<llvm::Error(
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>>,
     const std::function<llvm::MachineInstrBuilder(int)> &,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &,
+    const std::function<llvm::Register(KernelArgumentType)> &,
     const llvm::MachineFunction &,
     const std::function<llvm::Register(llvm::MCRegister)> &,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &)>
