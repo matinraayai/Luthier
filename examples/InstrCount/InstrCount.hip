@@ -121,9 +121,6 @@ MARK_LUTHIER_DEVICE_MODULE
 
 // TODO: Can the optimizations around atomic add be removed here?
 LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
-
-//  unsigned long long int VCC =
-//      luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Get the position of the thread in the current wavefront (1-index)
@@ -144,24 +141,19 @@ LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
       atomicAdd(&Counter, NumActiveThreads);
     }
   }
-//  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsVector);
 
 LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
-//  unsigned long long int VCC =
-//      luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
-
   // Overwrite the exec mask with one so that only a single thread is active
   luthier::writeExec(1);
   // Increment the counter by 1
   atomicAdd(&Counter, 1);
   // Restore the exec mask
   luthier::writeExec(ExecMask);
-//  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
