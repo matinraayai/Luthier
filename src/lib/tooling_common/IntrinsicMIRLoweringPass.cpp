@@ -18,12 +18,14 @@
 /// This file implements the Intrinsic MIR Lowering Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/IntrinsicMIRLoweringPass.hpp"
+#include "tooling_common/MIRConvenience.hpp"
+#include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
+#include "tooling_common/StateValueArraySpecs.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
-#include <tooling_common/PhysicalRegAccessVirtualizationPass.hpp>
 
 namespace luthier {
 
@@ -48,6 +50,26 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   const auto &IntrinsicsProcessors =
       IMAM.getCachedResult<IntrinsicsProcessorsAnalysis>(IModule)
           ->getProcessors();
+
+  auto &TargetMAMAndModule =
+      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
+
+  auto &TargetMAM = TargetMAMAndModule.getTargetAppMAM();
+
+  auto &TargetModule = TargetMAMAndModule.getTargetAppModule();
+
+  auto &PreambleDescriptor =
+      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule);
+
+  auto &IPIP = IMAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+
+  const auto &TargetMI = *IPIP.at(MF.getFunction());
+
+  llvm::MCRegister SVAVGPR =
+      TargetMAM
+          .getResult<LRStateValueStorageAndLoadLocationsAnalysis>(TargetModule)
+          .getStateValueArrayLoadPlanForInstPoint(TargetMI)
+          ->StateValueArrayLoadVGPR;
 
   for (auto &MBB : MF) {
     const auto &RegAccessVirtualizationPass =
@@ -84,6 +106,56 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
           auto Builder =
               llvm::BuildMI(MBB, MI, llvm::MIMetadata(MI), TII->get(Opcode));
           return Builder;
+        };
+
+        auto SVAAccessorBuilder = [&](KernelArgumentType KA) {
+          auto LaneId =
+              stateValueArray::getKernelArgumentLaneIdStoreSlotBeginForWave64(
+                  KA);
+          LUTHIER_REPORT_FATAL_ON_ERROR(LaneId.takeError());
+          auto ArgSize =
+              stateValueArray::getKernelArgumentStoreSlotSizeForWave64(KA);
+          LUTHIER_REPORT_FATAL_ON_ERROR(ArgSize.takeError());
+
+          llvm::SmallVector<llvm::Register, 2> Out;
+
+          for (unsigned short i = 0; i < *ArgSize; i++) {
+            Out.push_back(
+                MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass));
+            llvm::BuildMI(MBB, MI, llvm::MIMetadata(MI),
+                          TII->get(llvm::AMDGPU::V_READLANE_B32), Out.back())
+                .addReg(SVAVGPR, 0)
+                .addImm(*LaneId + i);
+          }
+          // Add the requested kernarg
+          auto TargetMF = TargetMI.getParent()->getParent();
+          if (TargetMF->getFunction().getCallingConv() ==
+              llvm::CallingConv::AMDGPU_KERNEL) {
+            PreambleDescriptor.Kernels[TargetMF]
+                .RequestedKernelArguments.insert(KA);
+          } else {
+            PreambleDescriptor.DeviceFunctions[TargetMF]
+                .RequestedKernelArguments.insert(KA);
+          }
+
+          // Emit a reg sequence if the arg size was greater than 1
+          if (*ArgSize > 1) {
+            // First create a reg sequence MI
+            auto Builder = MIBuilder(llvm::AMDGPU::REG_SEQUENCE);
+
+            auto MergedReg = MRI.createVirtualRegister(
+                llvm::SIRegisterInfo::getSGPRClassForBitWidth(*ArgSize * 32));
+            Builder.addReg(MergedReg, llvm::RegState::Define);
+
+            // Split the src reg into 32-bit regs, and merge them in the
+            for (const auto &[SubIdx, Reg] : llvm::enumerate(Out)) {
+              Builder.addReg(Reg).addImm(
+                  llvm::SIRegisterInfo::getSubRegFromChannel(SubIdx));
+            }
+            return MergedReg;
+          } else {
+            return Out[0];
+          }
         };
 
         auto VirtRegBuilder = [&](const llvm::TargetRegisterClass *RC) {
@@ -124,8 +196,8 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
               "Intrinsic processor was not found in the intrinsic processor "
               "map.");
         if (auto Err = IRProcessor->second.MIRProcessor(
-                IRLoweringInfo, ArgVec, MIBuilder, VirtRegBuilder, MF,
-                PhysRegAccessor, ToBeOverwrittenRegs)) {
+                IRLoweringInfo, ArgVec, MIBuilder, VirtRegBuilder,
+                SVAAccessorBuilder, MF, PhysRegAccessor, ToBeOverwrittenRegs)) {
           MF.getFunction().getContext().emitError(
               "Failed to lower the intrinsic; Error message: " +
               llvm::toString(std::move(Err)));
