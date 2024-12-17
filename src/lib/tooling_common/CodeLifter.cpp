@@ -225,30 +225,33 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
         // Only rely on the loaded address of the symbol instead of its name
         // The name will be stripped from the relocation section
         // if the symbol has a private linkage (i.e. device functions)
-        auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
-        LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
-        LLVM_DEBUG(LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
-                       llvm::StringRef, SymName, Reloc.getSymbol()->getName());
-                   llvm::dbgs() << llvm::formatv(
-                       "Found relocation for symbol {0} at address {1:x}.\n",
-                       SymName, LoadedMemoryBase + *RelocSymbolLoadedAddress));
-        // Check with the hsa::Platform which HSA executable Symbol this
-        // address is associated with
-        auto RelocSymbol = hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
-            LoadedMemoryBase + *RelocSymbolLoadedAddress);
-        LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-            RelocSymbol != nullptr,
-            "Failed to find a symbol associated with device "
-            "address {0:x}.",
-            LoadedMemoryBase + *RelocSymbolLoadedAddress));
-        // The target address will be the base of the loaded
-        luthier::address_t TargetAddress = LoadedMemoryBase + Reloc.getOffset();
-        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
-                       "Relocation found for symbol {0} at address {1:x} for "
-                       "LCO {2:x}.\n",
-                       llvm::cantFail(RelocSymbol->getName()), TargetAddress,
-                       LCO.hsaHandle()));
-        LCORelocationsMap.insert({TargetAddress, {*RelocSymbol, Reloc}});
+        auto RelocSym = Reloc.getSymbol();
+        if (RelocSym != StorageELF->symbol_end()) {
+          auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
+          LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
+          LLVM_DEBUG(LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
+                         llvm::StringRef, SymName, Reloc.getSymbol()->getName());
+                     llvm::dbgs() << llvm::formatv(
+                         "Found relocation for symbol {0} at address {1:x}.\n",
+                         SymName, LoadedMemoryBase + *RelocSymbolLoadedAddress));
+          // Check with the hsa::Platform which HSA executable Symbol this
+          // address is associated with
+          auto RelocSymbol = hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
+              LoadedMemoryBase + *RelocSymbolLoadedAddress);
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+              RelocSymbol != nullptr,
+              "Failed to find a symbol associated with device "
+              "address {0:x}.",
+              LoadedMemoryBase + *RelocSymbolLoadedAddress));
+          // The target address will be the base of the loaded
+          luthier::address_t TargetAddress = LoadedMemoryBase + Reloc.getOffset();
+          LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                         "Relocation found for symbol {0} at address {1:x} for "
+                         "LCO {2:x}.\n",
+                         llvm::cantFail(RelocSymbol->getName()), TargetAddress,
+                         LCO.hsaHandle()));
+          LCORelocationsMap.insert({TargetAddress, {*RelocSymbol, Reloc}});
+        }
       }
     }
   }
@@ -323,7 +326,7 @@ CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
 static llvm::Type *
 processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
                          llvm::LLVMContext &Ctx) {
-  llvm::Type *ParamType = llvm::Type::getIntNTy(Ctx, ArgMD.Size);
+  llvm::Type *ParamType = llvm::Type::getIntNTy(Ctx, ArgMD.Size * 8);
   // Used when the argument kind is global buffer or dynamic shared pointer
   unsigned int AddressSpace = ArgMD.AddressSpace.has_value()
                                   ? *ArgMD.AddressSpace
@@ -432,8 +435,9 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
       llvm::FunctionType::get(ReturnType, Params, false);
 
   auto *F = llvm::Function::Create(
-      FunctionType, llvm::GlobalValue::ExternalLinkage,
+      FunctionType, llvm::GlobalValue::WeakAnyLinkage,
       SymbolName->substr(0, SymbolName->rfind(".kd")), Module);
+  F->setVisibility(llvm::GlobalValue::ProtectedVisibility);
 
   // Populate the Attributes =================================================
 
@@ -512,7 +516,9 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
       TM.getSubtargetImpl(*F)->getRegisterInfo());
   auto MFI = MF.template getInfo<llvm::SIMachineFunctionInfo>();
-
+  if (KCP.EnableSgprDispatchPtr == 1) {
+    MFI->addDispatchPtr(*TRI);
+  }
   if (KCP.EnableSgprPrivateSegmentBuffer == 1) {
     MFI->addPrivateSegmentBuffer(*TRI);
   }
