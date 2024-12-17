@@ -300,10 +300,11 @@ EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
 
 llvm::PassPluginLibraryInfo getEmbedLuthierBitcodePassPluginInfo() {
   const auto Callback = [](llvm::PassBuilder &PB) {
-    PB.registerOptimizerLastEPCallback(
-        [](llvm::ModulePassManager &MPM, llvm::OptimizationLevel Opt) {
-          MPM.addPass(luthier::EmbedInstrumentationModuleBitcodePass());
-        });
+    PB.registerOptimizerLastEPCallback([](llvm::ModulePassManager &MPM,
+                                          llvm::OptimizationLevel Opt,
+                                          llvm::ThinOrFullLTOPhase) {
+      MPM.addPass(luthier::EmbedInstrumentationModuleBitcodePass());
+    });
   };
 
   return {LLVM_PLUGIN_API_VERSION, "pre-process-and-embed-luthier-bitcode",
