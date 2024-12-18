@@ -409,6 +409,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
           MF.getContext().reportError({}, llvm::toString(std::move(Err)));
           return false;
         }
+        if (*IntrinsicIdx == -1)
+          continue;
 
         LLVM_DEBUG(llvm::dbgs()
                        << "Virtualizing physical registers for intrinsic ID "

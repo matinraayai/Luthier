@@ -78,9 +78,9 @@ static llvm::cl::opt<bool> DemangleKernelNames(
     llvm::cl::init(true), llvm::cl::NotHidden,
     llvm::cl::cat(LDSBankConflictToolOptionCategory));
 
-static llvm::cl::opt<short>
-    Log2BankSize("log-2-bank-size", llvm::cl::desc("Log2 of the LDS bank size"),
-                 llvm::cl::init(9), llvm::cl::NotHidden,
+static llvm::cl::opt<unsigned>
+    Log2BankSize("log-two-bank-size", llvm::cl::desc("Log2 of the LDS bank size"),
+                 llvm::cl::init(11), llvm::cl::NotHidden,
                  llvm::cl::cat(LDSBankConflictToolOptionCategory));
 
 /// Per-kernel buffer to store the number of bank conflicts detected for
@@ -346,9 +346,9 @@ static llvm::Error instrumentDoubleAddressDSOps(InstrumentationTask &IT,
     llvm::MCRegister AddrOpVGPR = MI.getOperand(AddrOpIdx).getReg().asMCReg();
     // Get the offset of the operation
     int Offset0OpIdx = llvm::AMDGPU::getNamedOperandIdx(
-        MI.getOpcode(), llvm::AMDGPU::OpName::offset);
+        MI.getOpcode(), llvm::AMDGPU::OpName::offset0);
     int Offset1OpIdx = llvm::AMDGPU::getNamedOperandIdx(
-        MI.getOpcode(), llvm::AMDGPU::OpName::offset);
+        MI.getOpcode(), llvm::AMDGPU::OpName::offset1);
     if (MI.getOpcode() == llvm::AMDGPU::DS_READ2ST64_B32 ||
         MI.getOpcode() == llvm::AMDGPU::DS_WRITE2ST64_B32 ||
         MI.getOpcode() == llvm::AMDGPU::DS_WRXCHG2ST64_RTN_B32) {
@@ -401,7 +401,7 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
     const auto *TII = STI.getInstrInfo();
     auto &Ctx = LR.getContext();
     auto *BankSizeArg =
-        llvm::ConstantInt::get(llvm::Type::getInt8Ty(Ctx), Log2BankSize, false);
+        llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx), Log2BankSize, false);
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
         // Ignore instructions not inside an interval
@@ -490,8 +490,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                   DispatchPacket.completion_signal);
 
           if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval &&
-              !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
+              NumKernelLaunched < KernelEndInterval) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;

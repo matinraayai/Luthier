@@ -85,6 +85,8 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
           MF.getContext().reportError({}, llvm::toString(std::move(Err)));
           return false;
         };
+        if (*IntrinsicIdx == -1)
+          continue;
         llvm::SmallVector<std::pair<llvm::InlineAsm::Flag, llvm::Register>, 4>
             ArgVec;
         for (unsigned I = llvm::InlineAsm::MIOp_FirstOperand,
