@@ -307,8 +307,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                   DispatchPacket.completion_signal);
 
           if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval &&
-              !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
+              NumKernelLaunched < KernelEndInterval) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
