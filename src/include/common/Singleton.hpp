@@ -1,5 +1,5 @@
 //===-- Singleton.hpp - Singleton Interface -------------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_SINGLETON_HPP
 #define LUTHIER_COMMON_SINGLETON_HPP
-#include <llvm/Support/ErrorHandling.h>
-#include <mutex>
+#include "common/Error.hpp"
+#include <luthier/ErrorCheck.h>
 
 namespace luthier {
 
@@ -42,7 +42,8 @@ public:
   /// on the heap with the \c new operator for better control over its lifetime
   Singleton() {
     if (Instance != nullptr) {
-      llvm::report_fatal_error("Called the Singleton constructor twice.");
+      LUTHIER_REPORT_FATAL_ON_ERROR(
+          LUTHIER_CREATE_ERROR("Called the Singleton constructor twice."));
     }
     Instance = static_cast<T *>(this);
   }
@@ -50,7 +51,7 @@ public:
   /// Destructor for explicit initialization of the Singleton Instance \n
   /// The destructor is \b not thread-safe, and is meant to be used directly
   /// with the \p delete operator for better control over its lifetime
-  ~Singleton() { Instance = nullptr; }
+  virtual ~Singleton() { Instance = nullptr; }
 
   /// Disallowed copy construction
   Singleton(const Singleton &) = delete;
@@ -61,18 +62,17 @@ public:
   /// \return a reference to the Singleton instance
   static inline T &instance() {
     if (Instance == nullptr)
-      llvm::report_fatal_error("Singleton is not initialized");
+      LUTHIER_REPORT_FATAL_ON_ERROR(
+          LUTHIER_CREATE_ERROR("Singleton is not initialized"));
     return *Instance;
   }
 
-  static inline bool isInitialized() {
-    return Instance != nullptr;
-  }
+  static inline bool isInitialized() { return Instance != nullptr; }
 };
 
 #ifdef __clang__
 // Template definition of the Instance pointer to suppress clang warnings
-// regarding translation untis
+// regarding translation units
 template <typename T> T *luthier::Singleton<T>::Instance{nullptr};
 #endif
 
