@@ -38,6 +38,7 @@
 #include <llvm/Support/Error.h>
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>
+#include <llvm/Support/TimeProfiler.h>
 #include <rocprofiler-sdk/registration.h>
 #include <rocprofiler-sdk/rocprofiler.h>
 
@@ -45,6 +46,20 @@
 #define DEBUG_TYPE "luthier-controller"
 
 namespace luthier {
+
+static llvm::cl::opt<bool>
+    TimeTrace("time-trace", llvm::cl::desc("Record luthier tool's time trace"));
+
+static llvm::cl::opt<unsigned> TimeTraceGranularity(
+    "time-trace-granularity",
+    llvm::cl::desc(
+        "Minimum time granularity (in microseconds) traced by time profiler"),
+    llvm::cl::init(500), llvm::cl::Hidden);
+
+static llvm::cl::opt<std::string>
+    TimeTraceFile("time-trace-file",
+                  llvm::cl::desc("Specify time trace file destination"),
+                  llvm::cl::value_desc("filename"));
 
 template <> Controller *Singleton<Controller>::Instance{nullptr};
 
@@ -177,6 +192,11 @@ void rocprofilerFinalize(void *) {
   std::call_once(Once, []() {
     atToolFini(API_EVT_PHASE_BEFORE);
     delete C;
+    if (TimeTrace) {
+      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::timeTraceProfilerWrite(
+          TimeTraceFile, "luthier-profile"));
+      llvm::timeTraceProfilerCleanup();
+    }
     atToolFini(API_EVT_PHASE_AFTER);
   });
 }
@@ -190,7 +210,13 @@ void rocprofilerInit(void *) {
     llvm::setBugReportMsg("PLEASE submit a bug report to "
                           "https://github.com/matinraayai/Luthier/issues/ and "
                           "include the crash error message and backtrace.\n");
+    // Add the rocprofiler finalize function as a signal handler to LLVM so that
+    // it executes in case of a fatal error
     llvm::sys::AddSignalHandler(rocprofilerFinalize, nullptr);
+    // Enable the LLVM time tracer if enabled
+    if (TimeTrace)
+      llvm::timeTraceProfilerInitialize(TimeTraceGranularity,
+                                        "libLuthierTooling.so");
     atToolInit(API_EVT_PHASE_AFTER);
   });
 }

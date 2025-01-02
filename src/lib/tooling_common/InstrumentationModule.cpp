@@ -87,7 +87,6 @@ llvm::Expected<std::unique_ptr<llvm::Module>>
 StaticInstrumentationModule::readBitcodeIntoContext(
     llvm::LLVMContext &Ctx, const hsa::GpuAgent &Agent) const {
   llvm::TimeTraceScope Scope("Static Module LLVM Bitcode Loading");
-  auto T1 = std::chrono::high_resolution_clock::now();
   std::shared_lock Lock(Mutex);
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ERROR_CHECK(PerAgentBitcodeBufferMap.contains(Agent),
@@ -96,11 +95,6 @@ StaticInstrumentationModule::readBitcodeIntoContext(
                           Agent.hsaHandle()));
   auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(
       llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent)), "", false);
-  auto T2 = std::chrono::high_resolution_clock::now();
-  llvm::outs()
-      << "Time to Load Tool Bitcode: "
-      << std::chrono::duration_cast<std::chrono::milliseconds>(T2 - T1).count()
-      << "ms.\n";
   return llvm::parseBitcodeFile(*BCBuffer, Ctx);
 }
 

@@ -384,7 +384,6 @@ FunctionPreambleDescriptorAnalysis::run(
 llvm::PreservedAnalyses
 PrePostAmbleEmitter::run(llvm::Module &TargetModule,
                          llvm::ModuleAnalysisManager &TargetMAM) {
-  auto T1 = std::chrono::high_resolution_clock::now();
   const auto &PKInfo =
       *TargetMAM.getCachedResult<FunctionPreambleDescriptorAnalysis>(
           TargetModule);
@@ -642,11 +641,6 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
       }
     }
   }
-  auto T2 = std::chrono::high_resolution_clock::now();
-  llvm::outs()
-      << "Time to Run Pre-PostAmble Pass: "
-      << std::chrono::duration_cast<std::chrono::milliseconds>(T2 - T1).count()
-      << "ms.\n";
   return llvm::PreservedAnalyses::all();
 }
 

@@ -1132,11 +1132,6 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
     for (const auto &LCO : UsedLCOs) {
       LR.RelatedLCOs.erase(LCO.asHsaType());
     }
-    auto T2 = std::chrono::high_resolution_clock::now();
-    llvm::outs()
-        << "Time to Lift Kernel: "
-        << std::chrono::duration_cast<std::chrono::milliseconds>(T2 - T1).count()
-        << "ms.\n";
   }
   return *LiftedKernelSymbols.at(&KernelSymbol);
 }
