@@ -1,5 +1,5 @@
 //===-- MIRConvenience.cpp ------------------------------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -210,8 +210,8 @@ void emitLoadFromEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister DestVGPR) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
+  (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
       .addReg(StackPtr)
       .addImm(-4)
       .addImm(0);
@@ -221,8 +221,8 @@ void emitStoreToEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+  (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
       .addReg(SrcVGPR, KillSource ? llvm::RegState::Kill : 0)
       .addReg(StackPtr)
       .addImm(-4)
@@ -231,8 +231,8 @@ void emitStoreToEmergencySVSScratchSpillLocation(
 
 void emitWaitCnt(llvm::MachineBasicBlock::iterator MI) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                TII.get(llvm::AMDGPU::S_WAITCNT))
+  (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::S_WAITCNT))
       .addImm(0);
 }
 

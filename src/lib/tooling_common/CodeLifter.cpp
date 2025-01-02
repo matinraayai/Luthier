@@ -1,5 +1,5 @@
 //===-- CodeLifter.cpp - Luthier's Code Lifter  ---------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1132,6 +1132,11 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
     for (const auto &LCO : UsedLCOs) {
       LR.RelatedLCOs.erase(LCO.asHsaType());
     }
+    auto T2 = std::chrono::high_resolution_clock::now();
+    llvm::outs()
+        << "Time to Lift Kernel: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(T2 - T1).count()
+        << "ms.\n";
   }
   return *LiftedKernelSymbols.at(&KernelSymbol);
 }

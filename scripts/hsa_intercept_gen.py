@@ -104,6 +104,7 @@ def main():
 #include <vector>
 #include "luthier/hsa/AqlPacket.h"
 #include "luthier/types.h"
+#include "luthier/ErrorCheck.h"
 
 namespace luthier::hsa {{
 

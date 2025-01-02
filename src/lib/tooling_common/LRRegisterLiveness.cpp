@@ -1,5 +1,5 @@
 //===-- LRRegisterLiveness.cpp --------------------------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #include <luthier/LRRegisterLiveness.h>
 #include <luthier/LiftedRepresentation.h>
 #include <luthier/VectorCFG.h>
+#include <chrono>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-lr-register-liveness"
@@ -197,6 +198,7 @@ void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
                                           const llvm::MachineModuleInfo &MMI,
                                           const LRCallGraph &CG) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
+  auto T1 = std::chrono::high_resolution_clock::now();
   LLVM_DEBUG(llvm::dbgs() << "Recomputing LR Register Liveness analysis.\n");
   //  llvm::DenseMap<const llvm::MachineInstr *,
   //                 std::unique_ptr<llvm::LivePhysRegs>>
@@ -237,6 +239,11 @@ void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
 
     // After computing the per-function live-ins, we need to update the liveness
     // information of the call sites
+    auto T2 = std::chrono::high_resolution_clock::now();
+    llvm::outs()
+        << "Time to Recompute Register Liveness: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(T2 - T1).count()
+        << "ms.\n";
   }
 }
 

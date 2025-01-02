@@ -1,5 +1,5 @@
 //===-- InstrumentationModuleIRGeneratorPass.cpp --------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,10 +21,12 @@
 #include "common/Error.hpp"
 #include "luthier/InstrumentationTask.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include <chrono>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/ErrorCheck.h>
 
 #undef DEBUG_TYPE
 
@@ -123,6 +125,7 @@ IModuleIRGeneratorPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
                           << Task.getHookInsertionTasks().size() << "\n");
   auto &IPIP = MAM.getResult<InjectedPayloadAndInstPointAnalysis>(M);
   llvm::TimeTraceScope Scope("Instrumentation Module IR Generation");
+  auto T1 = std::chrono::high_resolution_clock::now();
   // Generate and populate the injected payload functions in the
   // instrumentation module and keep track of them inside the map
   for (const auto &[ApplicationMI, HookSpecs] : Task.getHookInsertionTasks()) {
@@ -135,6 +138,11 @@ IModuleIRGeneratorPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
     }
     IPIP.addEntry(*ApplicationMI, *HookFunc);
   }
+  auto T2 = std::chrono::high_resolution_clock::now();
+  llvm::outs()
+      << "Time to Generate Injected Payload: "
+      << std::chrono::duration_cast<std::chrono::milliseconds>(T2 - T1).count()
+      << "ms.\n";
   return llvm::PreservedAnalyses::all();
 }
 } // namespace luthier

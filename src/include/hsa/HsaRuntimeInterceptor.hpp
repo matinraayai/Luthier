@@ -1,5 +1,5 @@
 //===-- HsaRuntimeInterceptor.hpp - HSA Runtime API Interceptor -----------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,21 +21,18 @@
 #ifndef LUTHIER_HSA_HSA_RUNTIME_INTERCEPT_HPP
 #define LUTHIER_HSA_HSA_RUNTIME_INTERCEPT_HPP
 
-#include <hsa/hsa_ven_amd_loader.h>
-
-#include <functional>
-
-#include <llvm/ADT/DenseSet.h>
-
 #include "common/Error.hpp"
 #include "common/ROCmLibraryApiInterceptor.hpp"
 #include "common/Singleton.hpp"
+#include <hsa/hsa_ven_amd_loader.h>
+#include <llvm/ADT/DenseSet.h>
+#include <luthier/ErrorCheck.h>
 #include <luthier/hsa/TraceApi.h>
 #include <luthier/types.h>
 
 namespace luthier::hsa {
 
-class HsaRuntimeInterceptor
+class HsaRuntimeInterceptor final
     : public Singleton<HsaRuntimeInterceptor>,
       public ROCmLibraryApiInterceptor<ApiEvtID, ApiEvtArgs, HsaApiTable,
                                        HsaApiTableContainer> {
@@ -43,24 +40,6 @@ private:
   /// Holds function pointers to the AMD's loader API \n
   /// The loader API does not get intercepted in this class
   hsa_ven_amd_loader_1_03_pfn_s AmdTable{};
-
-public:
-  HsaRuntimeInterceptor() = default;
-
-  ~HsaRuntimeInterceptor() {
-    //  TODO: Check the timing correctness of uninstalling API tables
-    uninstallApiTables();
-    AmdTable = {};
-    Singleton<HsaRuntimeInterceptor>::~Singleton();
-  }
-
-  HsaRuntimeInterceptor(const HsaRuntimeInterceptor &) = delete;
-  HsaRuntimeInterceptor &operator=(const HsaRuntimeInterceptor &) = delete;
-
-  [[nodiscard]] const hsa_ven_amd_loader_1_03_pfn_t &
-  getHsaVenAmdLoaderTable() const {
-    return AmdTable;
-  }
 
   void uninstallApiTables() {
     if (RuntimeApiTable) {
@@ -75,15 +54,33 @@ public:
     }
   }
 
-  llvm::Error enableUserCallback(ApiEvtID Op);
+public:
+  HsaRuntimeInterceptor() = default;
 
-  llvm::Error disableUserCallback(ApiEvtID Op);
+  ~HsaRuntimeInterceptor() override {
+    //  TODO: Check the timing correctness of uninstalling API tables
+    uninstallApiTables();
+    AmdTable = {};
+    Singleton::~Singleton();
+  }
 
-  llvm::Error enableInternalCallback(ApiEvtID Op);
+  HsaRuntimeInterceptor(const HsaRuntimeInterceptor &) = delete;
+  HsaRuntimeInterceptor &operator=(const HsaRuntimeInterceptor &) = delete;
 
-  llvm::Error disableInternalCallback(ApiEvtID Op);
+  [[nodiscard]] const hsa_ven_amd_loader_1_03_pfn_t &
+  getHsaVenAmdLoaderTable() const {
+    return AmdTable;
+  }
 
-  llvm::Error captureApiTable(HsaApiTable *Table) {
+  llvm::Error enableUserCallback(ApiEvtID Op) override;
+
+  llvm::Error disableUserCallback(ApiEvtID Op) override;
+
+  llvm::Error enableInternalCallback(ApiEvtID Op) override;
+
+  llvm::Error disableInternalCallback(ApiEvtID Op) override;
+
+  llvm::Error captureApiTable(HsaApiTable *Table) override {
     RuntimeApiTable = Table;
     SavedRuntimeApiTable.core = *Table->core_;
     SavedRuntimeApiTable.amd_ext = *Table->amd_ext_;

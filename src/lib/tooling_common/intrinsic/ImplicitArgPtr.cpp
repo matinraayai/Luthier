@@ -1,5 +1,5 @@
 //===-- ImplicitArgPtr.cpp - Luthier implicit arg access  -----------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
+#include <luthier/ErrorCheck.h>
 
 namespace luthier {
 

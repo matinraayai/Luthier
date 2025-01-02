@@ -1,5 +1,5 @@
 //===-- HipCompilerApiInterceptor.hpp - Luthier's HIP API Interceptor -----===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,30 +34,30 @@
 
 namespace luthier::hip {
 
-class HipCompilerApiInterceptor
-    : public ROCmLibraryApiInterceptor<
-          luthier::hip::ApiEvtID, luthier::hip::ApiEvtArgs,
-          HipCompilerDispatchTable, HipCompilerDispatchTable>,
+class HipCompilerApiInterceptor final
+    : public ROCmLibraryApiInterceptor<ApiEvtID, ApiEvtArgs,
+                                       HipCompilerDispatchTable,
+                                       HipCompilerDispatchTable>,
       public Singleton<HipCompilerApiInterceptor> {
-private:
+
 public:
   HipCompilerApiInterceptor() = default;
-  ~HipCompilerApiInterceptor() {
+  ~HipCompilerApiInterceptor() override {
     if (RuntimeApiTable != nullptr)
       *RuntimeApiTable = SavedRuntimeApiTable;
     SavedRuntimeApiTable = {};
     Singleton<HipCompilerApiInterceptor>::~Singleton();
   }
 
-  llvm::Error enableUserCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error enableUserCallback(ApiEvtID Op) override;
 
-  llvm::Error disableUserCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error disableUserCallback(ApiEvtID Op) override;
 
-  llvm::Error enableInternalCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error enableInternalCallback(ApiEvtID Op) override;
 
-  llvm::Error disableInternalCallback(luthier::hip::ApiEvtID Op);
+  llvm::Error disableInternalCallback(ApiEvtID Op) override;
 
-  llvm::Error captureApiTable(HipCompilerDispatchTable *Table) {
+  llvm::Error captureApiTable(HipCompilerDispatchTable *Table) override {
     RuntimeApiTable = Table;
     SavedRuntimeApiTable = *Table;
     Status = API_TABLE_CAPTURED;

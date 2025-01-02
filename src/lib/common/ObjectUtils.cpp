@@ -1,5 +1,5 @@
 //===-- ObjectUtils.cpp - Luthier's Object File Utility  ------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@
 #include <string>
 
 #include "common/Error.hpp"
+
+#include <luthier/ErrorCheck.h>
 
 #undef DEBUG_TYPE
 
