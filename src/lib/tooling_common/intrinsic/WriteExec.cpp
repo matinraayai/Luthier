@@ -5,6 +5,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/MC/MCRegister.h>
+#include <luthier/ErrorCheck.h>
 
 namespace luthier {
 
@@ -51,7 +52,7 @@ llvm::Error writeExecMIRProcessor(
       "The register argument of luthier::writeExec is not a definition."));
   llvm::Register InputReg = Args[0].second;
 
-  MIBuilder(llvm::AMDGPU::COPY)
+  (void)MIBuilder(llvm::AMDGPU::COPY)
       .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Define)
       .addReg(InputReg);
 

@@ -6,6 +6,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
+#include <luthier/ErrorCheck.h>
 
 namespace luthier {
 
