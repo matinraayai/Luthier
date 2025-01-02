@@ -1,5 +1,5 @@
 //===-- Controller.hpp - Luthier tool's Controller Logic ------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,9 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains the main Luthier logic behind a Luthier tool. It
-/// defines a \c Controller singleton class in charge of keeping track of
-/// All other singletons of Luthier and different callbacks invoked during
+/// This file defines a \c Controller singleton class in charge of keeping
+/// track of all other singletons, as well as different callbacks invoked during
 /// execution of an instrumented application.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_CONTROLLER_HPP
@@ -49,45 +48,48 @@ class HsaRuntimeInterceptor;
 class ExecutableBackedObjectsCache;
 } // namespace hsa
 
+/// \brief a \c Singleton in charge of managing all other singletons in Luthier,
+/// as well as registration of Luthier with rocprofiler-sdk
 class Controller : public Singleton<Controller> {
 private:
-  /// Controller manages its own lifetime
-  static Controller *C;
-
-  // All other singletons
-
+  /// \c CodeGenerator \c Singleton instance
   CodeGenerator *CG{nullptr};
 
-  ToolExecutableLoader *COM{nullptr};
+  /// \c ToolExecutableLoader \c Singleton instance
+  ToolExecutableLoader *TEL{nullptr};
 
+  /// \c CodeLifter \c Singleton instance
   CodeLifter *CL{nullptr};
 
+  /// \c TargetManager \c Singleton instance
   TargetManager *TM{nullptr};
 
+  /// \c hip::HipCompilerApiInterceptor \c Singleton instance
   hip::HipCompilerApiInterceptor *HipCompilerInterceptor{nullptr};
 
+  /// \c hip::HipRuntimeApiInterceptor \c Singleton instance
   hip::HipRuntimeApiInterceptor *HipRuntimeInterceptor{nullptr};
 
+  /// \c hsa::HsaRuntimeInterceptor \c Singleton instance
   hsa::HsaRuntimeInterceptor *HsaInterceptor{nullptr};
 
+  /// \c hsa::ExecutableBackedObjectsCache \c Singleton instance
   hsa::ExecutableBackedObjectsCache *HsaPlatform{nullptr};
 
-  // Stored callbacks
+  /// A callback invoked before/after when rocprofiler has provided the
+  /// HSA API table to the Luthier tool
   std::function<void(ApiEvtPhase)> AtHSAApiTableCaptureEvtCallback{
       [](ApiEvtPhase) {}};
 
+  /// A callback invoked before
   std::function<void(ApiEvtPhase)> AtApiTableReleaseEvtCallback{
       [](ApiEvtPhase) {}};
 
-  __attribute__((constructor, used)) static void init();
-
-  __attribute__((destructor, used)) static void finalize();
-
+public:
   Controller();
 
-  ~Controller();
+  ~Controller() override;
 
-public:
   void setAtHSAApiTableCaptureEvtCallback(
       const std::function<void(ApiEvtPhase)> &CB) {
     AtHSAApiTableCaptureEvtCallback = CB;
@@ -95,15 +97,6 @@ public:
 
   const std::function<void(ApiEvtPhase)> &getAtHSAApiTableCaptureEvtCallback() {
     return AtHSAApiTableCaptureEvtCallback;
-  }
-
-  void
-  setAtApiTableReleaseEvtCallback(const std::function<void(ApiEvtPhase)> &CB) {
-    AtApiTableReleaseEvtCallback = CB;
-  }
-
-  const std::function<void(ApiEvtPhase)> &getAtApiTableReleaseEvtCallback() {
-    return AtApiTableReleaseEvtCallback;
   }
 };
 } // namespace luthier
