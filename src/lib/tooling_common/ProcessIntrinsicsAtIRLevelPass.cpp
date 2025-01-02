@@ -1,5 +1,5 @@
 //===-- ProcessIntrinsicUsersAtIRLevelPass.cpp ----------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,8 +49,8 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
       auto It = IntrinsicsProcessors.find(IntrinsicName);
       if (It == IntrinsicsProcessors.end()) {
         IModule.getContext().emitError(
-            "Intrinsic" + llvm::Twine(IntrinsicName) +
-            "is not registered with the code generator.");
+            "Intrinsic " + llvm::Twine(IntrinsicName) +
+            " is not registered with the code generator.");
         return llvm::PreservedAnalyses::all();
       }
 
@@ -104,10 +104,19 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         llvm::SmallVector<llvm::Value *, 4> ArgValues;
         ArgTypes.reserve(IRLoweringInfo->getArgsInfo().size());
         ArgValues.reserve(IRLoweringInfo->getArgsInfo().size());
-        for (const auto &ArgInfo : IRLoweringInfo->getArgsInfo()) {
+        //        llvm::interleave(IRLoweringInfo->getArgsInfo(), [&](const
+        //        IntrinsicValueLoweringInfo & ArgInfo) {
+        //          ArgTypes.push_back(ArgInfo.Val->getType());
+        //          ArgValues.push_back(const_cast<llvm::Value *>(ArgInfo.Val));
+        //          Constraint += ArgInfo.Constraint;
+        //        }, [&]() {Constraint += ",";});
+        for (const auto &[I, ArgInfo] :
+             llvm::enumerate(IRLoweringInfo->getArgsInfo())) {
+          if (I != 0 || (I == 0 && !ReturnValInfo.Val->getType()->isVoidTy()))
+            Constraint += ",";
           ArgTypes.push_back(ArgInfo.Val->getType());
           ArgValues.push_back(const_cast<llvm::Value *>(ArgInfo.Val));
-          Constraint += ReturnValInfo.Constraint;
+          Constraint += ArgInfo.Constraint;
         }
         // Now that we have created the input/output argument constraints,
         // create a call to a placeholder inline assembly instruction in the

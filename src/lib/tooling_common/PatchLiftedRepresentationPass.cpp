@@ -1,5 +1,5 @@
 //===-- PatchLiftedRepresentationPass.cpp ---------------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -571,6 +571,7 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
                                    llvm::ModuleAnalysisManager &TargetMAM) {
   auto PatchMethods = decidePatchingMethod(TargetAppM, TargetMAM);
   llvm::TimeTraceScope Scope("Lifted Representation Patching");
+  auto T1 = std::chrono::high_resolution_clock::now();
 
   auto &IModuleAnalysis =
       *TargetMAM.getCachedResult<IModulePMAnalysis>(TargetAppM);
@@ -641,6 +642,11 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
                              VMap);
     }
   }
+  auto T2 = std::chrono::high_resolution_clock::now();
+  llvm::outs()
+      << "Time to Patch Lifted Representation: "
+      << std::chrono::duration_cast<std::chrono::milliseconds>(T2 - T1).count()
+      << "ms.\n";
   return llvm::PreservedAnalyses::all();
 }
 
