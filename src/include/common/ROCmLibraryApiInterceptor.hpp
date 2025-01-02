@@ -1,5 +1,5 @@
 //===-- ROCmLibraryApiInterceptor.hpp - ROCm Interceptor Interface --------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,14 +21,12 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
 #define LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
-
+#include "common/Error.hpp"
 #include <functional>
 #include <llvm/ADT/DenseSet.h>
+#include <luthier/types.h>
 #include <mutex>
 #include <shared_mutex>
-
-#include "common/Error.hpp"
-#include <luthier/hsa/DenseMapInfo.h>
 
 namespace luthier {
 
@@ -88,7 +86,7 @@ protected:
 
 public:
   ROCmLibraryApiInterceptor() = default;
-  ~ROCmLibraryApiInterceptor() = default;
+  virtual ~ROCmLibraryApiInterceptor() = default;
 
   ROCmLibraryApiInterceptor(const ROCmLibraryApiInterceptor &) = delete;
   ROCmLibraryApiInterceptor &
@@ -184,7 +182,7 @@ public:
   /// to install a wrapper function for the \p Op. The function fails if
   /// the API table has not been captured yet
   /// \param Op the API enum to be captured
-  /// \returns an \c llvm::Error indicating whether the callback has been
+  /// \returns \c llvm::Error indicating whether the callback has been
   /// successfully enabled or an issue was encountered during the
   /// process
   virtual llvm::Error enableUserCallback(ApiIDEnumType Op) = 0;
@@ -206,7 +204,7 @@ public:
   /// to install a wrapper function for the \p Op. The function fails if
   /// the API table has not been captured yet
   /// \param Op the API enum to be captured
-  /// \returns an \c llvm::Error indicating whether the callback has been
+  /// \return \c llvm::Error indicating whether the callback has been
   /// successfully enabled or an issue was encountered during the
   /// process
   virtual llvm::Error enableInternalCallback(ApiIDEnumType Op) = 0;
@@ -222,7 +220,7 @@ public:
   /// passed to Luthier
   /// \param Table the pointer to the API table the target runtime uses to
   /// dispatch functions
-  /// \returns an \c llvm::Error describing if the operation was successful or
+  /// \return \c llvm::Error describing if the operation was successful or
   /// not
   virtual llvm::Error captureApiTable(ApiTableType *Table) = 0;
 };
