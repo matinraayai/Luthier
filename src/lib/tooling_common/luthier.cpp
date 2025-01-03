@@ -27,6 +27,7 @@
 
 #include "common/Error.hpp"
 #include "hip/HipCompilerApiInterceptor.hpp"
+#include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/HsaRuntimeInterceptor.hpp"
 #include "luthier/InstrumentationTask.h"
@@ -40,7 +41,11 @@ namespace luthier {
 namespace hip {
 
 const HipCompilerDispatchTable &getSavedCompilerTable() {
-  return hip::HipCompilerApiInterceptor::instance().getSavedApiTableContainer();
+  return HipCompilerApiInterceptor::instance().getSavedApiTableContainer();
+}
+
+const HipDispatchTable &getSavedDispatchTable() {
+  return HipRuntimeApiInterceptor::instance().getSavedApiTableContainer();
 }
 
 } // namespace hip

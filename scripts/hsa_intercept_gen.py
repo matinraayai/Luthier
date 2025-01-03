@@ -212,6 +212,12 @@ template <>
 luthier::hsa::HsaRuntimeInterceptor
     *luthier::Singleton<luthier::hsa::HsaRuntimeInterceptor>::Instance{{nullptr}};
 
+static thread_local bool DisableUserCallbackInterceptionScope{{false}};
+
+void luthier::hsa::HsaRuntimeInterceptor::toggleDisableUserCallbackInterceptionScope(bool Disable) {{ 
+    DisableUserCallbackInterceptionScope = Disable;
+}}
+
 void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                  uint64_t UserPktIndex, void *Data, 
                                  hsa_amd_queue_intercept_packet_writer Writer) {{
@@ -240,7 +246,7 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
     Args.hsa_queue_packet_submit.queue = Queue;
     Args.hsa_queue_packet_submit.packets = &ModifiedPackets;
     Args.hsa_queue_packet_submit.user_pkt_index = UserPktIndex;
-    if (IsUserCallbackEnabled)
+    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
       (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
     if (IsInternalCallbackEnabled)
       (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
@@ -248,7 +254,7 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
     // Even if the packets are not modified, this call has to be made to ensure
     // the packets are copied to the hardware queue
     Writer(ModifiedPackets.data(), ModifiedPackets.size());
-    if (IsUserCallbackEnabled)
+    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
       (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
     if (IsInternalCallbackEnabled)
       (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
@@ -318,7 +324,7 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
                     wrapper_defs.append(f"""    Args.{hsa_function_name}.{p.name} = {p.name};
 """)
                 wrapper_defs.append(
-                    """    if (IsUserCallbackEnabled)
+                    """    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
       (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
     if (IsInternalCallbackEnabled)
       (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
@@ -344,7 +350,7 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
                             wrapper_defs.append(", ")
                     wrapper_defs.append(");\n")
                 wrapper_defs.append(
-                    f"""    if (IsUserCallbackEnabled)
+                    f"""    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
       (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
     if (IsInternalCallbackEnabled)
       (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);

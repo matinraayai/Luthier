@@ -159,6 +159,8 @@ namespace hip {
 /// TODO: introduce hip runtime api table getter
 const HipCompilerDispatchTable &getSavedCompilerTable();
 
+const HipDispatchTable &getSavedDispatchTable();
+
 } // namespace hip
 
 //===----------------------------------------------------------------------===//

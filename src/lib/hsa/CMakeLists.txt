@@ -33,6 +33,7 @@ add_library(LuthierHSA STATIC
         LoadedCodeObjectVariable.cpp
         LoadedCodeObjectDeviceFunction.cpp
         LoadedCodeObjectExternSymbol.cpp
+        DisableInterceptionScope.cpp
 )
 
 target_include_directories(LuthierHSA PUBLIC ${LUTHIER_PRIVATE_INCLUDE_DIR})

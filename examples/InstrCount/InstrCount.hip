@@ -1,4 +1,4 @@
-//===-- InstrCount.hip - Instruction Count Example ------------------------===//
+//===-- InstrCount.hip - Instruction Count Example -------------*- C++ -*-===//
 // Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,12 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <luthier/hsa/DisableInterceptionScope.h>
+#include <chrono>
+
+static decltype(std::chrono::high_resolution_clock::now()) T1{};
+
+static unsigned int KernelTotalTime{0};
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instr-counter-tool"
@@ -96,7 +102,7 @@ static uint32_t NumKernelLaunched = 0;
 static uint64_t TotalNumInstructions = 0;
 
 /// Kernel instruction counter
-__attribute__((managed)) uint64_t Counter = 0;
+__device__ uint64_t Counter;
 
 /// Keeps track of whether we are in the interval to profile or not
 static bool ActiveRegion = true;
@@ -327,9 +333,19 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
                   DispatchPacket, "instr_count"));
               // Zero the counter
-              Counter = 0;
+              {
+                luthier::hsa::DisableUserInterceptionScope Scope;
+                uint64_t CounterHost = 0;
+                uint64_t* CounterDevice;
+                if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn((void**)&CounterDevice, &Counter) != hipSuccess) {
+                  llvm::report_fatal_error("Failed to get the counter's symbol address.");
+                }
+              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(&CounterDevice, &CounterHost, sizeof(CounterHost)) != HSA_STATUS_SUCCESS)
+                llvm::report_fatal_error("Failed to copy counter from host to device.");
+              }
             }
           }
+          T1 = std::chrono::high_resolution_clock::now();
         } else {
           llvm::outs() << "Active region in the exit callback: " << ActiveRegion
                        << "\n";
@@ -356,7 +372,10 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                   "signal");
             }
           }
+          auto T2 = std::chrono::high_resolution_clock::now();
+          KernelTotalTime += std::chrono::duration_cast<std::chrono::microseconds>(T2 - T1).count();
           if (ActiveRegion) {
+
             llvm::outs() << "Kernel is being waited on\n";
             /// If we are exiting a kernel launch:
             /// 1. Wait on the signal of the kernel being launched
@@ -371,7 +390,18 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             std::string KernelNameToBePrinted =
                 DemangleKernelNames ? llvm::demangle(*KernelName)
                                     : std::string(*KernelName);
-            TotalNumInstructions += Counter;
+            uint64_t CounterHost = 0;
+            {
+              luthier::hsa::DisableUserInterceptionScope Scope;
+              uint64_t* CounterDevice;
+              if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn((void**)&CounterDevice, &Counter) != hipSuccess) {
+                llvm::report_fatal_error("Failed to get the counter's symbol address.");
+              }
+              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(&CounterHost, CounterDevice, sizeof(Counter)) != HSA_STATUS_SUCCESS)
+                llvm::report_fatal_error("Failed to copy counter from device to host.");
+              TotalNumInstructions += CounterHost;
+            }
+
 
             // Note: Grid size in HSA contains all the work items in the kernel.
             // This is different from the number of blocks (grid dim) in CUDA or
@@ -389,7 +419,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket.grid_size_x, DispatchPacket.grid_size_y,
                 DispatchPacket.grid_size_z, DispatchPacket.workgroup_size_x,
                 DispatchPacket.workgroup_size_y,
-                DispatchPacket.workgroup_size_z, Counter, TotalNumInstructions);
+                DispatchPacket.workgroup_size_z, CounterHost, TotalNumInstructions);
           }
           NumKernelLaunched++;
           Mutex.unlock();
@@ -424,6 +454,10 @@ void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     llvm::outs() << "Total number of instructions counted: "
                  << TotalNumInstructions << "\n";
+    llvm::outs()
+        << "Time to run the kernel: "
+        << KernelTotalTime
+        << "micro seconds.\n";
   }
 }
 
