@@ -94,6 +94,8 @@ public:
     // Run the disable API function to install the queue interceptor function
     return disableInternalCallback(HSA_API_EVT_ID_hsa_queue_create);
   }
+
+  void toggleDisableUserCallbackInterceptionScope(bool Disable);
 };
 } // namespace luthier::hsa
 
