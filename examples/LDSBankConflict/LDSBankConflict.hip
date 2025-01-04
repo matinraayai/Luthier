@@ -1,5 +1,5 @@
 //===-- LDSBankConflict.hip - Opcode Histogram Example ----------*- C++ -*-===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -79,7 +79,8 @@ static llvm::cl::opt<bool> DemangleKernelNames(
     llvm::cl::cat(LDSBankConflictToolOptionCategory));
 
 static llvm::cl::opt<unsigned>
-    Log2BankSize("log-two-bank-size", llvm::cl::desc("Log2 of the LDS bank size"),
+    Log2BankSize("log-two-bank-size",
+                 llvm::cl::desc("Log2 of the LDS bank size"),
                  llvm::cl::init(11), llvm::cl::NotHidden,
                  llvm::cl::cat(LDSBankConflictToolOptionCategory));
 
@@ -400,8 +401,8 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
     const auto &STI = MF->getSubtarget<llvm::GCNSubtarget>();
     const auto *TII = STI.getInstrInfo();
     auto &Ctx = LR.getContext();
-    auto *BankSizeArg =
-        llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx), Log2BankSize, false);
+    auto *BankSizeArg = llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
+                                               Log2BankSize, false);
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
         // Ignore instructions not inside an interval
@@ -445,9 +446,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
     // it again after analyzing the AppPackets
     ToBeSubmittedPackets->clear();
     for (auto &Packet : AppPackets) {
-      hsa_packet_type_t PacketType = Packet.getPacketType();
-      auto &DispatchPacket = Packet.asKernelDispatch();
-      if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
+      if (auto *DispatchPacket = Packet.asKernelDispatch()) {
         if (Phase == luthier::API_EVT_PHASE_BEFORE) {
           Mutex.lock();
           /// If we are entering to a kernel launch:
@@ -457,7 +456,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           /// 4. Reset the managed Counter variable
           // Get the kernel that is about to get launched
           auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
-                                  DispatchPacket.kernel_object)
+                                  DispatchPacket->kernel_object)
                                   ->getLoadedCodeObjectKernelSymbol();
 
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
@@ -475,10 +474,10 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 
           // Create a signal if the application didn't create one for this
           // packet
-          if (DispatchPacket.completion_signal.handle == 0) {
+          if (DispatchPacket->completion_signal.handle == 0) {
             if (hsa::getHsaApiTable().amd_ext_->hsa_amd_signal_create_fn(
                     SignalValue, 0, nullptr, 0,
-                    &DispatchPacket.completion_signal) != HSA_STATUS_SUCCESS)
+                    &DispatchPacket->completion_signal) != HSA_STATUS_SUCCESS)
               llvm::report_fatal_error("Failed to create a signal for the "
                                        "dispatch packet.");
             MustDestroySignalAfterLaunch = true;
@@ -487,7 +486,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           }
           SignalValue =
               hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
-                  DispatchPacket.completion_signal);
+                  DispatchPacket->completion_signal);
 
           if (NumKernelLaunched >= KernelBeginInterval &&
               NumKernelLaunched < KernelEndInterval) {
@@ -511,7 +510,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               instrumentAllFunctionsOfLR(*KernelSymbol);
 
               LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
-                  DispatchPacket, "lds bank conflict"));
+                  *DispatchPacket, "lds bank conflict"));
               // zero the managed variables
 
               NumBankConflicts = 0.;
@@ -530,18 +529,18 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                   .count();
           auto CurrentSignalValue =
               hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
-                  DispatchPacket.completion_signal, HSA_SIGNAL_CONDITION_LT,
+                  DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
                   SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
           if (CurrentSignalValue >= SignalValue)
             llvm::report_fatal_error(
                 llvm::formatv("Wait timeout reached for signal handle {0:x},"
                               "Expected "
                               "value: {1}, Actual Value: {2}",
-                              DispatchPacket.completion_signal.handle,
+                              DispatchPacket->completion_signal.handle,
                               CurrentSignalValue - 1, SignalValue));
           if (MustDestroySignalAfterLaunch) {
             if (hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
-                    DispatchPacket.completion_signal) != HSA_STATUS_SUCCESS) {
+                    DispatchPacket->completion_signal) != HSA_STATUS_SUCCESS) {
               llvm::report_fatal_error(
                   "Failed to destroy the completed kernel's"
                   "signal");
@@ -587,11 +586,11 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 "bank conflicts: {11}, Num bank conflicts "
                 "detected so far: {12}\n",
                 NumKernelLaunched++, KernelNameToBePrinted,
-                DispatchPacket.grid_size_x, DispatchPacket.grid_size_y,
-                DispatchPacket.grid_size_z, DispatchPacket.workgroup_size_x,
-                DispatchPacket.workgroup_size_y,
-                DispatchPacket.workgroup_size_z,
-                DispatchPacket.group_segment_size,
+                DispatchPacket->grid_size_x, DispatchPacket->grid_size_y,
+                DispatchPacket->grid_size_z, DispatchPacket->workgroup_size_x,
+                DispatchPacket->workgroup_size_y,
+                DispatchPacket->workgroup_size_z,
+                DispatchPacket->group_segment_size,
                 TotalNumSingleAddressLDSInstructions,
                 TotalNumDoubleAddressLDSInstructions, NumBankConflicts,
                 TotalNumBankConflicts);

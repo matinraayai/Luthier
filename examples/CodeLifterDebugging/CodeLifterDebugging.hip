@@ -1,5 +1,5 @@
 //===-- CodeLifterDebugging.hip -------------------------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,11 +35,9 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
     LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
     auto Packets = CBData->hsa_queue_packet_submit.packets;
     for (auto &Packet : *Packets) {
-      hsa_packet_type_t PacketType = Packet.getPacketType();
-      if (PacketType == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
-        auto &DispatchPacket = Packet.asKernelDispatch();
+      if (auto *DispatchPacket = Packet.asKernelDispatch()) {
         auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
-                                DispatchPacket.kernel_object)
+                                DispatchPacket->kernel_object)
                                 ->getLoadedCodeObjectKernelSymbol();
         if (auto Err = KernelSymbol.takeError())
           llvm::report_fatal_error(std::move(Err), true);
