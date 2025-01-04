@@ -24,15 +24,24 @@
 
 namespace luthier::hsa {
 
+/// Keeps track of the number of times the \c DisableUserInterceptionScope class
+/// has been created. It allows the disable user intercept scopes to be safely
+/// nested
+static thread_local unsigned int NumScopes{0};
+
 DisableUserInterceptionScope::DisableUserInterceptionScope() {
-  if (HsaRuntimeInterceptor::isInitialized()) {
+  if (HsaRuntimeInterceptor::isInitialized() && NumScopes == 0) {
     HsaRuntimeInterceptor::instance()
         .toggleDisableUserCallbackInterceptionScope(true);
   }
+  NumScopes++;
 }
 
 DisableUserInterceptionScope::~DisableUserInterceptionScope() {
   if (HsaRuntimeInterceptor::isInitialized()) {
+    NumScopes--;
+  }
+  if (NumScopes == 0) {
     HsaRuntimeInterceptor::instance()
         .toggleDisableUserCallbackInterceptionScope(false);
   }

@@ -24,12 +24,12 @@
 // undef ICMP_NE macro that was ill-defined in HIP headers
 #undef ICMP_NE
 #include <SIInstrInfo.h>
+#include <chrono>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <luthier/hsa/DisableInterceptionScope.h>
-#include <chrono>
 
 static decltype(std::chrono::high_resolution_clock::now()) T1{};
 
@@ -101,8 +101,8 @@ static uint32_t NumKernelLaunched = 0;
 /// \c Counter every time a kernel finishes executing
 static uint64_t TotalNumInstructions = 0;
 
-/// Kernel instruction counter
-__device__ uint64_t Counter;
+/// Profiling variable on devices Kernel instruction counter
+__attribute__((device)) uint64_t Counter;
 
 /// Keeps track of whether we are in the interval to profile or not
 static bool ActiveRegion = true;
@@ -122,7 +122,7 @@ static hsa_signal_value_t SignalValue{0};
 //===----------------------------------------------------------------------===//
 
 /// If the Luthier tool contains a hook, then this macro must be used to mark it
-/// for Luthier's Tool Executable Manager
+/// for Luthier's Tool Executable Loader
 MARK_LUTHIER_DEVICE_MODULE
 
 // TODO: Can the optimizations around atomic add be removed here?
@@ -219,40 +219,12 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
   return llvm::Error::success();
 }
 
-static void
-instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &Kernel) {
+static llvm::Error instrumentKernel(const hsa::LoadedCodeObjectKernel &Kernel) {
   auto LR = lift(Kernel);
-  LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-  //  llvm::outs() << "Before instrumentation: \n";
-  //  for (const auto &[FuncSymbol, MF] : LR->functions()) {
-  //    MF->print(llvm::outs());
-  //  }
-
-  LUTHIER_REPORT_FATAL_ON_ERROR(
+  LUTHIER_RETURN_ON_ERROR(LR.takeError());
+  LUTHIER_RETURN_ON_ERROR(
       instrumentAndLoad(Kernel, *LR, instrumentationLoop, "instr_count"));
-
-  //   Uncomment this part to print out the final assembly
-  //      llvm::SmallVector<
-  //          std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>,
-  //          1> SourceFiles;
-  //
-  //      auto InstrumentedLR = luthier::instrument(*LR, instrumentationLoop);
-  //      LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
-  //      llvm::outs() << "after instrumentation\n";
-  //      for (const auto &[FuncSymbol, MF]: InstrumentedLR->get()->functions())
-  //      {
-  //        MF->print(llvm::outs());
-  //      }
-  //      LUTHIER_REPORT_FATAL_ON_ERROR(luthier::printLiftedRepresentation(
-  //          **InstrumentedLR, SourceFiles,
-  //          llvm::CodeGenFileType::AssemblyFile));
-  //
-  //      for (const auto &[LCO, SourceFile] : SourceFiles) {
-  //        llvm::outs() << "Instrumented code object for LCO "
-  //                     << llvm::format_hex(LCO.handle, 8) << "\n";
-  //        llvm::outs() << SourceFile;
-  //        llvm::outs() << "\n";
-  //      }
+  return llvm::Error::success();
 }
 
 static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
@@ -282,9 +254,9 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                   DispatchPacket.kernel_object)
                                   ->getLoadedCodeObjectKernelSymbol();
-
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
 
+          // Keep track of the kernel being instrumented for the exit callback
           KernelBeingInstrumented = &(*KernelSymbol);
 
           auto KernelName = KernelSymbol->getName();
@@ -327,23 +299,37 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 isKernelInstrumented(*KernelSymbol, "instr_count");
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
             if (!*IsKernelInstrumented) {
-
-              instrumentAllFunctionsOfLR(*KernelSymbol);
-
-              LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
-                  DispatchPacket, "instr_count"));
-              // Zero the counter
-              {
-                luthier::hsa::DisableUserInterceptionScope Scope;
-                uint64_t CounterHost = 0;
-                uint64_t* CounterDevice;
-                if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn((void**)&CounterDevice, &Counter) != hipSuccess) {
-                  llvm::report_fatal_error("Failed to get the counter's symbol address.");
-                }
-              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(&CounterDevice, &CounterHost, sizeof(CounterHost)) != HSA_STATUS_SUCCESS)
-                llvm::report_fatal_error("Failed to copy counter from host to device.");
-              }
+              LUTHIER_REPORT_FATAL_ON_ERROR(instrumentKernel(*KernelSymbol));
             }
+            LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
+                DispatchPacket, "instr_count"));
+            // Zero the counter
+            {
+              (void)hipApiName(0);
+              llvm::outs() << "inside the scope.\n";
+              luthier::hsa::DisableUserInterceptionScope Scope;
+              uint64_t CounterHost = 0;
+              uint64_t *CounterDevice;
+              llvm::outs() << "Dispatch table: "
+                           << &hip::getSavedDispatchTable() << "\n";
+              llvm::outs()
+                  << "hipGetSymbolAddress_fn: "
+                  << &hip::getSavedDispatchTable().hipGetSymbolAddress_fn
+                  << "\n";
+              if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+                      (void **)&CounterDevice, &Counter) != hipSuccess) {
+                llvm::report_fatal_error(
+                    "Failed to get the counter's symbol address.");
+              }
+              llvm::outs() << "After calling device symbol.\n";
+              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+                      &CounterDevice, &CounterHost, sizeof(CounterHost)) !=
+                  HSA_STATUS_SUCCESS)
+                llvm::report_fatal_error(
+                    "Failed to copy counter from host to device.");
+              llvm::outs() << "After calling memcpy.\n";
+            }
+            llvm::outs() << "Outside the scope.\n";
           }
           T1 = std::chrono::high_resolution_clock::now();
         } else {
@@ -373,7 +359,9 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             }
           }
           auto T2 = std::chrono::high_resolution_clock::now();
-          KernelTotalTime += std::chrono::duration_cast<std::chrono::microseconds>(T2 - T1).count();
+          KernelTotalTime +=
+              std::chrono::duration_cast<std::chrono::microseconds>(T2 - T1)
+                  .count();
           if (ActiveRegion) {
 
             llvm::outs() << "Kernel is being waited on\n";
@@ -393,15 +381,19 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             uint64_t CounterHost = 0;
             {
               luthier::hsa::DisableUserInterceptionScope Scope;
-              uint64_t* CounterDevice;
-              if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn((void**)&CounterDevice, &Counter) != hipSuccess) {
-                llvm::report_fatal_error("Failed to get the counter's symbol address.");
+              uint64_t *CounterDevice;
+              if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+                      (void **)&CounterDevice, &Counter) != hipSuccess) {
+                llvm::report_fatal_error(
+                    "Failed to get the counter's symbol address.");
               }
-              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(&CounterHost, CounterDevice, sizeof(Counter)) != HSA_STATUS_SUCCESS)
-                llvm::report_fatal_error("Failed to copy counter from device to host.");
+              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+                      &CounterHost, CounterDevice, sizeof(Counter)) !=
+                  HSA_STATUS_SUCCESS)
+                llvm::report_fatal_error(
+                    "Failed to copy counter from device to host.");
               TotalNumInstructions += CounterHost;
             }
-
 
             // Note: Grid size in HSA contains all the work items in the kernel.
             // This is different from the number of blocks (grid dim) in CUDA or
@@ -419,7 +411,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket.grid_size_x, DispatchPacket.grid_size_y,
                 DispatchPacket.grid_size_z, DispatchPacket.workgroup_size_x,
                 DispatchPacket.workgroup_size_y,
-                DispatchPacket.workgroup_size_z, CounterHost, TotalNumInstructions);
+                DispatchPacket.workgroup_size_z, CounterHost,
+                TotalNumInstructions);
           }
           NumKernelLaunched++;
           Mutex.unlock();
@@ -454,10 +447,8 @@ void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     llvm::outs() << "Total number of instructions counted: "
                  << TotalNumInstructions << "\n";
-    llvm::outs()
-        << "Time to run the kernel: "
-        << KernelTotalTime
-        << "micro seconds.\n";
+    llvm::outs() << "Time to run the kernel: " << KernelTotalTime
+                 << "micro seconds.\n";
   }
 }
 
