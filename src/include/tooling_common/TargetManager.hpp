@@ -104,12 +104,11 @@ private:
   mutable std::unordered_map<hsa::ISA, TargetInfo> LLVMTargetInfo{};
 
 public:
-  /// Default constructor; Initializes the AMDGPU LLVM target, and parses the
-  /// command line arguments
+  /// Default constructor; Initializes the AMDGPU LLVM target
   TargetManager();
 
   /// Default destructor; Destroys all Target descriptors and shuts down LLVM
-  ~TargetManager();
+  ~TargetManager() override;
 
   llvm::Expected<const TargetInfo &> getTargetInfo(const hsa::ISA &Isa) const;
 
