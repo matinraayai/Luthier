@@ -21,8 +21,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "EmbedInstrumentationModuleBitcodePass.hpp"
-#include "LuthierCompilerPlugins/IntrinsicCalls.h"
-#include "LuthierCompilerPlugins/LuthierConsts.h"
+#include "luthier/Consts.h"
+#include "luthier/IntrinsicCalls.h"
 #include "llvm/Passes/PassPlugin.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Analysis/ValueTracking.h>

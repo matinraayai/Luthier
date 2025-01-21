@@ -19,8 +19,8 @@
 /// compiler plugins projects.
 //===----------------------------------------------------------------------===//
 
-#ifndef LUTHIER_COMPILER_PLUGINS_LUTHIER_CONSTS_H
-#define LUTHIER_COMPILER_PLUGINS_LUTHIER_CONSTS_H
+#ifndef LUTHIER_LUTHIER_CONSTS_H
+#define LUTHIER_LUTHIER_CONSTS_H
 
 namespace luthier {
 

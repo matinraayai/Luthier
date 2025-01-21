@@ -21,15 +21,15 @@ install(FILES ${LuthierCompilerPlugins_BINARY_DIR}/lib/cmake/LuthierCompilerPlug
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LuthierCompilerPlugins/)
 
 # Install IModule Embed targets and export them
-install(TARGETS LuthierIModuleEmbedPlugin Intrinsics DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT
+install(TARGETS IModuleEmbedPlugin Intrinsics DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT
         LuthierCompilerPluginsTargets)
 
 install(EXPORT LuthierCompilerPluginsTargets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LuthierCompilerPlugins/
-        NAMESPACE LuthierCompilerPlugins::)
+        NAMESPACE luthier::)
 
 export(EXPORT LuthierCompilerPluginsTargets
         FILE "${CMAKE_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierCompilerPluginsTargets.cmake"
-        NAMESPACE LuthierCompilerPlugins::
+        NAMESPACE luthier::
 )
 
 # Install and export the modules under the cmake directory
