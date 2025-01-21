@@ -1,0 +1,11 @@
+if (${LLVM_LUTHIERIMODULEEMBEDPLUGIN_LINK_INTO_TOOLS})
+    message(WARNING "Setting LLVM_LUTHIERIMODULEEMBEDPLUGIN_LINK_INTO_TOOLS=ON is not supported")
+endif ()
+
+add_llvm_pass_plugin(LuthierIModuleEmbedPlugin
+        EmbedInstrumentationModuleBitcodePass.hpp
+        EmbedInstrumentationModuleBitcodePass.cpp)
+
+target_include_directories(LuthierIModuleEmbedPlugin PUBLIC "$<BUILD_INTERFACE:${LLVM_INCLUDE_DIRS}>")
+
+
