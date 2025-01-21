@@ -6,6 +6,7 @@ add_llvm_pass_plugin(LuthierIModuleEmbedPlugin
         EmbedInstrumentationModuleBitcodePass.hpp
         EmbedInstrumentationModuleBitcodePass.cpp)
 
-target_include_directories(LuthierIModuleEmbedPlugin PUBLIC "$<BUILD_INTERFACE:${LLVM_INCLUDE_DIRS}>")
+target_include_directories(LuthierIModuleEmbedPlugin PUBLIC "$<BUILD_INTERFACE:${LLVM_INCLUDE_DIRS}>"
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
 
 

@@ -1,3 +1,6 @@
+# Install the headers
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include DESTINATION ${CMAKE_INSTALL_PREFIX})
+
 include(CMakePackageConfigHelpers)
 # Create a basic version file and its installation rule
 write_basic_package_version_file(
@@ -7,7 +10,7 @@ write_basic_package_version_file(
 )
 
 install(FILES ${LuthierCompilerPlugins_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierCompilerPluginsVersion.cmake
-        DESTINATION lib/cmake/LuthierCompilerPlugins/)
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LuthierCompilerPlugins/)
 
 # Create the package configuration file and its installation rule
 configure_file(
@@ -15,13 +18,13 @@ configure_file(
         ${LuthierCompilerPlugins_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierCompilerPluginsConfig.cmake @ONLY)
 
 install(FILES ${LuthierCompilerPlugins_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierCompilerPluginsConfig.cmake
-        DESTINATION lib/cmake/LuthierCompilerPlugins/)
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LuthierCompilerPlugins/)
 
 # Install IModule Embed targets and export them
-install(TARGETS LuthierIModuleEmbedPlugin DESTINATION lib/ EXPORT
+install(TARGETS LuthierIModuleEmbedPlugin Intrinsics DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT
         LuthierCompilerPluginsTargets)
 
-install(EXPORT LuthierCompilerPluginsTargets DESTINATION lib/cmake/LuthierCompilerPlugins/
+install(EXPORT LuthierCompilerPluginsTargets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LuthierCompilerPlugins/
         NAMESPACE LuthierCompilerPlugins::)
 
 export(EXPORT LuthierCompilerPluginsTargets
@@ -31,7 +34,7 @@ export(EXPORT LuthierCompilerPluginsTargets
 
 # Install and export the modules under the cmake directory
 configure_file(${CMAKE_SOURCE_DIR}/cmake/modules/LuthierAddCompilerPlugin.cmake
-               ${CMAKE_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierAddCompilerPlugin.cmake COPYONLY)
+        ${CMAKE_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierAddCompilerPlugin.cmake COPYONLY)
 
 install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierAddCompilerPlugin.cmake
-        DESTINATION lib/cmake/LuthierCompilerPlugins/)
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LuthierCompilerPlugins/)

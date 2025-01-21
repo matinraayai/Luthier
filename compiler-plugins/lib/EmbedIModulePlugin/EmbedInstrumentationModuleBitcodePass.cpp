@@ -15,13 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c luthier::EmbedInstrumentationModuleBitcode pass,
-/// used by Luthier tools to preprocess instrumentation modules and embedding
+/// This file implements the \c luthier::EmbedInstrumentationModuleBitcodePass,
+/// used by Luthier tools to preprocess instrumentation modules and embedd
 /// them inside device code objects.
 //===----------------------------------------------------------------------===//
 
 #include "EmbedInstrumentationModuleBitcodePass.hpp"
-
+#include "LuthierCompilerPlugins/IntrinsicCalls.h"
+#include "LuthierCompilerPlugins/LuthierConsts.h"
 #include "llvm/Passes/PassPlugin.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Analysis/ValueTracking.h>
@@ -35,55 +36,9 @@
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-embed-optimized-bitcode-pass"
+#define DEBUG_TYPE "luthier-embed-imodule-bitcode-pass"
 
 namespace luthier {
-
-// TODO: Import these variables as well as the static functions from
-//  Luthier proper once the separate compilation issue is resolved
-
-static constexpr const char *ReservedManagedVar = "__luthier_reserved";
-
-static constexpr const char *HookAttribute = "luthier_hook";
-
-static constexpr const char *IntrinsicAttribute = "luthier_intrinsic";
-
-static constexpr const char *HipCUIDPrefix = "__hip_cuid_";
-
-/// Builds a \c llvm::CallInst invoking the intrinsic indicated by
-/// \p IntrinsicName at the instruction position indicated by the \p Builder
-/// with the given \p ReturnType and \p Args
-/// \tparam IArgs Arguments passed to the intrinsic; Can be either a scalar
-/// or a reference to a \c llvm::Value
-/// \param M the instrumentation module where the intrinsic will be inserted to
-/// \param Builder the instruction builder used to build the call instruction
-/// \param IntrinsicName the name of the intrinsic
-/// \param ReturnType the return type of the intrinsic call instruction
-/// \param Args the arguments to the intrinsic function
-/// \return a \c llvm::CallInst to the intrinsic function
-llvm::CallInst *insertCallToIntrinsic(llvm::Module &M,
-                                      llvm::IRBuilderBase &Builder,
-                                      llvm::StringRef IntrinsicName,
-                                      llvm::Type &ReturnType) {
-  auto &LLVMContext = Builder.getContext();
-  /// Construct the intrinsic's LLVM function type and its argument value
-  /// list
-  auto *IntrinsicFuncType = llvm::FunctionType::get(&ReturnType, false);
-  // Format the readReg intrinsic function name
-  std::string FormattedIntrinsicName{IntrinsicName};
-  llvm::raw_string_ostream IntrinsicNameOS(FormattedIntrinsicName);
-  // Format the intrinsic function name
-  IntrinsicNameOS << ".";
-  IntrinsicFuncType->getReturnType()->print(IntrinsicNameOS);
-  // Create the intrinsic function in the module, or get it if it already
-  // exists
-  auto ReadRegFunc = M.getOrInsertFunction(
-      FormattedIntrinsicName, IntrinsicFuncType,
-      llvm::AttributeList().addFnAttribute(LLVMContext, IntrinsicAttribute,
-                                           IntrinsicName));
-
-  return Builder.CreateCall(ReadRegFunc);
-}
 
 /// Given a function's mangled name \p MangledFuncName,
 /// partially demangles it and returns the base function name with its
@@ -321,11 +276,10 @@ llvm::PassPluginLibraryInfo getEmbedLuthierBitcodePassPluginInfo() {
         ) { MPM.addPass(luthier::EmbedInstrumentationModuleBitcodePass()); });
   };
 
-  return {LLVM_PLUGIN_API_VERSION, "pre-process-and-embed-luthier-bitcode",
-          LLVM_VERSION_STRING, Callback};
+  return {LLVM_PLUGIN_API_VERSION, DEBUG_TYPE, LLVM_VERSION_STRING, Callback};
 }
 
-#ifndef LLVM_LUTHIER_TOOL_COMPILE_PLUGIN_LINK_INTO_TOOLS
+#ifndef LLVM_LUTHIERIMODULEEMBEDPLUGIN_LINK_INTO_TOOLS
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
   return getEmbedLuthierBitcodePassPluginInfo();

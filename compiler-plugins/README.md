@@ -9,4 +9,7 @@ installed separately first before being used by the Luthier tooling project. Thi
 be used by the `hipcc` compiler. As there is no good way of handling multiple versions of the LLVM same library (even
 in different scopes and folders), there is no way around this issue.
 
+As the ROCm LLVM is older than LLVM master, this project must be kept backward-compatible with older LLVM versions, 
+down to the LLVM version in ROCm 6.2 (18).
+
 Refer to the [Build Instructions](../docs/3.build.md) on how to build this along with the Luthier tooling project.
