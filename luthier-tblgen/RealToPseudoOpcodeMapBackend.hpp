@@ -1,5 +1,5 @@
 //===-- RealToPseudoOpcodeMapBackend.hpp - Real to Pseudo Opcode Map ------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,11 +22,19 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TBLGEN_REAL_TO_PSEUDO_OPCODE_MAP_BACKEND_HPP
 #define LUTHIER_TBLGEN_REAL_TO_PSEUDO_OPCODE_MAP_BACKEND_HPP
-#include "RealToPseudoOpcodeMapBackend.hpp"
-#include <Common/CodeGenInstruction.h>
-#include <Common/CodeGenTarget.h>
-#include <llvm/TableGen/Error.h>
-#include <llvm/TableGen/Record.h>
+#include <llvm/ADT/StringMap.h>
+
+namespace llvm {
+
+class CodeGenTarget;
+
+class RecordKeeper;
+
+class Record;
+
+class raw_ostream;
+
+} // namespace llvm
 
 namespace luthier {
 /// \brief Emits a map between real opcodes and their pseudo equivalent in
@@ -62,19 +70,7 @@ private:
 
 public:
   RealToPseudoOpcodeMapEmitter(llvm::CodeGenTarget &Target,
-                               const llvm::RecordKeeper &Records)
-      : Target(Target) {
-    auto SIInsts = Records.getAllDerivedDefinitions("SIMCInstr");
-    for (auto SIInst : SIInsts) {
-      // Find all pseudo SI instructions and store them in the PseudoInsts map
-      bool IsPseudo =
-          SIInst->getValue("isPseudo")->getValue()->getAsUnquotedString() ==
-          "1";
-      if (IsPseudo) {
-        PseudoInsts.insert({SIInst->getValueAsString("PseudoInstr"), SIInst});
-      }
-    }
-  }
+                               const llvm::RecordKeeper &Records);
 
   /// Emits the real to pseudo table and the function to query it
   /// \param OS Output stream of the emitted file
@@ -86,8 +82,8 @@ public:
 /// \c SIMCInstr class
 /// \param Records Records parsed by the tablegen parser
 /// \param OS Output stream of the emitted file
-void emitRealToPseudoOpcodeTable(llvm::raw_ostream &OS,
-                                 const llvm::RecordKeeper &Records);
+void emitRealToPseudoOpcodeTable(const llvm::RecordKeeper &Records,
+                                 llvm::raw_ostream &OS);
 } // namespace luthier
 
 #endif

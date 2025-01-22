@@ -1,5 +1,5 @@
 //===- RealToPseudoOpcodeMapBackend.cpp - Real To Pseudo Opcode Map  ------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,6 +82,20 @@ void RealToPseudoOpcodeMapEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
   OS << "}\n\n";
 }
 
+RealToPseudoOpcodeMapEmitter::RealToPseudoOpcodeMapEmitter(
+    llvm::CodeGenTarget &Target, const llvm::RecordKeeper &Records)
+    : Target(Target) {
+  auto SIInsts = Records.getAllDerivedDefinitions("SIMCInstr");
+  for (auto SIInst : SIInsts) {
+    // Find all pseudo SI instructions and store them in the PseudoInsts map
+    bool IsPseudo =
+        SIInst->getValue("isPseudo")->getValue()->getAsUnquotedString() == "1";
+    if (IsPseudo) {
+      PseudoInsts.insert({SIInst->getValueAsString("PseudoInstr"), SIInst});
+    }
+  }
+}
+
 void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   OS << "LLVM_READONLY\n";
   OS << "uint16_t getPseudoOpcodeFromReal(uint16_t Opcode) {\n";
@@ -93,8 +107,8 @@ void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   emitMapFuncBody(OS, TableSize);
 }
 
-void emitRealToPseudoOpcodeTable(llvm::raw_ostream &OS,
-                                 const llvm::RecordKeeper &Records) {
+void emitRealToPseudoOpcodeTable(const llvm::RecordKeeper &Records,
+                                 llvm::raw_ostream &OS) {
   llvm::CodeGenTarget Target(Records);
   OS << "#ifndef GET_REAL_TO_PSEUDO_OPCODE_MAP\n";
   OS << "#define GET_REAL_TO_PSEUDO_OPCODE_MAP\n";

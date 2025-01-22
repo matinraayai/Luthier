@@ -1,5 +1,5 @@
 //===-- Main.cpp - main function of luthier-tblgen ------------------------===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,43 +15,25 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains the main function for the Luthier tablegen utility
+/// This file contains the main function for the Luthier tablegen utility.
 //===----------------------------------------------------------------------===//
-#include <llvm/Support/CommandLine.h>
-#include <llvm/TableGen/Main.h>
-#include <llvm/TableGen/Record.h>
-
 #include "RealToPseudoOpcodeMapBackend.hpp"
 #include "RealToPseudoRegisterMapBackend.hpp"
-
-namespace {
-
-llvm::cl::opt<bool> GenerateSiRealToPseudoOpcode(
-    "gen-si-real-to-pseudo-opcode-map",
-    llvm::cl::desc(
-        "Generate a Real to Pseudo Opcode map for the AMDGPU backend"));
-
-llvm::cl::opt<bool> GenerateSiRealToPseudoRegEnum(
-    "gen-si-real-to-pseudo-reg-enum-map",
-    llvm::cl::desc(
-        "Generate a Real to Pseudo Register enum map for the AMDGPU backend"));
-
-} // anonymous namespace
-
-namespace luthier {
-
-bool tableGenMain(llvm::raw_ostream &OS, const llvm::RecordKeeper &Records) {
-  if (GenerateSiRealToPseudoOpcode)
-    emitRealToPseudoOpcodeTable(OS, Records);
-  if (GenerateSiRealToPseudoRegEnum) {
-    emitRealToPseudoRegisterTable(OS, Records);
-  }
-  return false;
-}
-
-} // namespace luthier
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/InitLLVM.h>
+#include <llvm/TableGen/Main.h>
+#include <llvm/TableGen/TableGenBackend.h>
 
 int main(int argc, char *argv[]) {
+  llvm::InitLLVM Y(argc, argv);
+  llvm::PrettyStackTraceProgram X(argc, argv);
+  llvm::TableGen::Emitter::Opt RealToPseudoOpcodeOption(
+      "gen-si-real-to-pseudo-opcode-map", luthier::emitRealToPseudoOpcodeTable,
+      "Generate a Real to Pseudo Opcode map for the AMDGPU backend");
+
+  llvm::TableGen::Emitter::Opt RealToPseudoRegisterOption(
+      "gen-si-real-to-pseudo-reg-map", luthier::emitRealToPseudoRegisterTable,
+      "Generate a Real to Pseudo Register enum map for the AMDGPU backend");
   llvm::cl::ParseCommandLineOptions(argc, argv);
-  return TableGenMain(argv[0], luthier::tableGenMain);
+  return llvm::TableGenMain(argv[0]);
 }

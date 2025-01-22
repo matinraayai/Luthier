@@ -1,5 +1,5 @@
 //===- RealToPseudoRegisterMapBackend.cpp - Real To Pseudo Register Map  --===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 /// Contains implementation for the real to pseudo register tablegen backend
 /// for the Luthier tablegen.
 //===----------------------------------------------------------------------===//
-
 #include "RealToPseudoRegisterMapBackend.hpp"
 #include <Common/CodeGenRegisters.h>
 #include <Common/CodeGenTarget.h>
@@ -78,8 +77,8 @@ void RealToPseudoRegisterMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   emitMapFuncBody(OS, TableSize);
 }
 
-void emitRealToPseudoRegisterTable(llvm::raw_ostream &OS,
-                                   const llvm::RecordKeeper &Records) {
+void emitRealToPseudoRegisterTable(const llvm::RecordKeeper &Records,
+                                   llvm::raw_ostream &OS) {
   llvm::CodeGenTarget Target(Records);
   OS << "#ifndef GET_REAL_TO_PSEUDO_REG_NUM_MAP\n";
   OS << "#define GET_REAL_TO_PSEUDO_REG_NUM_MAP\n";

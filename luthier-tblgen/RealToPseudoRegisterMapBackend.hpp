@@ -1,5 +1,5 @@
 //===-- RealToPseudoRegisterMapBackend.hpp - Real to Pseudo Register Map --===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,10 +20,15 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TBLGEN_REAL_TO_PSEUDO_REGISTER_MAP_BACKEND_HPP
 #define LUTHIER_TBLGEN_REAL_TO_PSEUDO_REGISTER_MAP_BACKEND_HPP
-#include <Common/CodeGenInstruction.h>
-#include <Common/CodeGenTarget.h>
-#include <llvm/TableGen/Error.h>
-#include <llvm/TableGen/Record.h>
+
+namespace llvm {
+
+class CodeGenTarget;
+
+class raw_ostream;
+
+class RecordKeeper;
+} // namespace llvm
 
 namespace luthier {
 /// \brief Emits a map between real register and their pseudo equivalent in
@@ -65,8 +70,8 @@ public:
 /// \c SIMCInstr class
 /// \param Records Records parsed by the tablegen parser
 /// \param OS Output stream of the emitted file
-void emitRealToPseudoRegisterTable(llvm::raw_ostream &OS,
-                                   const llvm::RecordKeeper &Records);
+void emitRealToPseudoRegisterTable(const llvm::RecordKeeper &Records,
+                                   llvm::raw_ostream &OS);
 } // namespace luthier
 
 #endif

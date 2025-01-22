@@ -1,3 +1,5 @@
+find_package(LLVM REQUIRED CONFIG)
+
 include(AddLLVM)
 include(TableGen)
 
@@ -9,6 +11,9 @@ add_tablegen(luthier-tblgen luthier
         Main.cpp
 )
 
-add_llvm_compile_definitions(luthier-tblgen)
-target_include_directories(luthier-tblgen PUBLIC ${LUTHIER_LLVM_SRC_DIR}/llvm/utils/TableGen)
-target_link_libraries(luthier-tblgen PUBLIC LLVMSupport LLVMTableGen LLVMTableGenCommon)
+target_include_directories(luthier-tblgen PRIVATE ${LLVM_INCLUDE_DIRS})
+target_include_directories(luthier-tblgen PRIVATE ${LUTHIER_LLVM_SRC_DIR}/llvm/utils/TableGen)
+
+target_compile_definitions(luthier-tblgen PRIVATE ${LLVM_DEFINITIONS})
+
+target_link_libraries(luthier-tblgen PRIVATE LLVMSupport LLVMTableGen LLVMTableGenCommon)
