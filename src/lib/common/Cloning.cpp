@@ -275,9 +275,10 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
       DstMRI->setType(NewReg, RegTy);
 
     // Copy register allocation hints.
-    const auto &Hints = SrcMRI->getRegAllocationHints(Reg);
-    for (llvm::Register PrefReg : Hints->second)
-      DstMRI->addRegAllocationHint(NewReg, PrefReg);
+    const auto *Hints = SrcMRI->getRegAllocationHints(Reg);
+    if (Hints)
+      for (llvm::Register PrefReg : Hints->second)
+        DstMRI->addRegAllocationHint(NewReg, PrefReg);
   }
 
   const llvm::TargetSubtargetInfo &STI = DstMF->getSubtarget();
@@ -394,9 +395,7 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
   if (!DstMF->cloneInfoFrom(*SrcMF, Src2DstMBB))
     return LUTHIER_CREATE_ERROR(
         "target does not implement MachineFunctionInfo cloning");
-
   DstMRI->freezeReservedRegs();
-
   //  bool Verified = DstMF->verify(nullptr, "", /*AbortOnError=*/true);
   //  LUTHIER_RETURN_ON_ERROR(LUTHIER_ASSERTION(Verified));
   return DstMF;

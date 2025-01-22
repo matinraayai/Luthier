@@ -174,8 +174,8 @@ llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
                                 const llvm::StringMap<ET> &EnumMap, ET &Out) {
   std::string EnumString;
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(EnumMap.contains(EnumString), ""));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      EnumMap.contains(EnumString), "Key {0} is not present in Enum Map.", Key));
   Out = EnumMap.at(EnumString);
   return llvm::Error::success();
 }
@@ -205,7 +205,7 @@ llvm::Error parseDim3MDOptional(MapDocNode &Map, llvm::StringRef Key,
 }
 
 llvm::Error parseDim3MDRequired(MapDocNode &Map, llvm::StringRef Key,
-                                dim3 &Out) {
+                                hsa_dim3_t &Out) {
   auto NodeMD = Map.find(Key);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD != Map.end(), ""));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(NodeMD->second.isArray(), ""));
