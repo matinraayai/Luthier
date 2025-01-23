@@ -31,10 +31,10 @@
 #include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/HsaRuntimeInterceptor.hpp"
 #include "luthier/InstrumentationTask.h"
+#include "luthier/hsa/Instr.h"
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
-#include <luthier/hsa/Instr.h>
 
 namespace luthier {
 

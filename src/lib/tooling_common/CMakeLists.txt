@@ -15,7 +15,6 @@ add_library(LuthierToolingCommon OBJECT
         CodeGenerator.cpp
         CodeLifter.cpp
         InstrumentationTask.cpp
-        luthier.cpp
         TargetManager.cpp
         ToolExecutableLoader.cpp
         LiftedRepresentation.cpp

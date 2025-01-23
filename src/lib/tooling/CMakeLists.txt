@@ -1,4 +1,4 @@
-add_library(LuthierTooling Controller.cpp
+add_library(LuthierTooling luthier.cpp Controller.cpp
 )
 # $<TARGET_OBJECTS:LuthierCommon> $<TARGET_OBJECTS:LuthierHIP> $<TARGET_OBJECTS:LuthierHSA>
 #        $<TARGET_OBJECTS:LuthierToolingCommon>

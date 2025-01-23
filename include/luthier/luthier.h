@@ -133,15 +133,6 @@ llvm::Error disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 
 } // namespace hsa
 
-/// If called, calls the \p Callback function before/after Luthier finalizes
-/// and releases the captured HIP/HSA API tables\n
-/// During \c API_EVT_PHASE_BEFORE of the \p Callback is the tool's last chance
-/// to perform calls to HIP/HSA functions
-/// \param Callback the function to be called before/after the HSA/HIP API
-/// tables are being released by Luthier
-void setAtApiTableReleaseEvtCallback(
-    const std::function<void(ApiEvtPhase)> &Callback);
-
 namespace hsa {
 
 //===----------------------------------------------------------------------===//

@@ -275,9 +275,6 @@ void setAtApiTableCaptureEvtCallback(
   Controller::instance().setAtHSAApiTableCaptureEvtCallback(Callback);
 }
 } // namespace hsa
-
-void setAtApiTableReleaseEvtCallback(
-    const std::function<void(ApiEvtPhase)> &Callback) {}
 } // namespace luthier
 
 extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *

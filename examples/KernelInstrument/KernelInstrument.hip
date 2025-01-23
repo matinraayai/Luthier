@@ -169,11 +169,6 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
   }
 }
 
-static void atHsaApiTableUnload(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_BEFORE) {
-  }
-}
-
 static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     if (auto Err = luthier::hsa::enableHsaApiEvtIDCallback(
@@ -195,7 +190,6 @@ void atToolInit(ApiEvtPhase Phase) {
   } else {
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
     hsa::setAtHsaApiEvtCallback(atHsaEvt);
-    setAtApiTableReleaseEvtCallback(atHsaApiTableUnload);
   }
 }
 
