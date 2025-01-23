@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INTRINSIC_INTRINSICS_H
 #define LUTHIER_INTRINSIC_INTRINSICS_H
+#include <luthier/Consts.h>
 #include <llvm/MC/MCRegister.h>
 
 namespace luthier {
@@ -29,7 +30,8 @@ namespace luthier {
 /// noinline attribute as  well as a \c LUTHIER_INTRINSIC_ATTRIBUTE attribute
 /// to be recognized by Luthier as an intrinsic
 #define LUTHIER_INTRINSIC_ANNOTATE                                             \
-  __attribute__((device, noinline, annotate("luthier_intrinsic")))
+  __attribute__((device, noinline,                                             \
+                 annotate(LUTHIER_STRINGIFY(LUTHIER_INTRINSIC_ATTRIBUTE))))
 
 #if defined(__HIPCC__)
 
@@ -118,8 +120,8 @@ template <typename T,
           typename = std::enable_if_t<
               std::is_same_v<T, uint32_t> || std::is_same_v<T, uint64_t> ||
               std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>>>
-LUTHIER_INTRINSIC_ANNOTATE T* sAtomicAdd(T *Address, T Value) {
-  T* Out;
+LUTHIER_INTRINSIC_ANNOTATE T *sAtomicAdd(T *Address, T Value) {
+  T *Out;
   doNotOptimize(Out);
   doNotOptimize(Address);
   doNotOptimize(Value);

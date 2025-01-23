@@ -29,6 +29,7 @@
 #include <llvm/CodeGen/MachineDominators.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/Passes.h>
+#include <luthier/Consts.h>
 #include <luthier/LiftedRepresentation.h>
 
 #undef DEBUG_TYPE
@@ -53,8 +54,8 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   // If the function being processed is not an injected payload (i.e a device
   // function getting called inside a hook) it does not require the custom
   // prologue/epilogue insertion pass so skip it.
-  if (!MF.getFunction().hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
-      !MF.getFunction().hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+  if (!MF.getFunction().hasFnAttribute(HookAttribute) &&
+      !MF.getFunction().hasFnAttribute(InjectedPayloadAttribute)) {
 
     LLVM_DEBUG(
         llvm::dbgs()
@@ -162,10 +163,10 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     RequiresAccessToStack = true;
     if (TargetMF->getFunction().getCallingConv() ==
         llvm::CallingConv::AMDGPU_KERNEL) {
-      PKInfo.Kernels[TargetMF]
-          .RequiresScratchAndStackSetup = true;
+      PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup = true;
       llvm::outs() << "Pre-kernel is set to: "
-                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup << "\n";
+                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup
+                   << "\n";
     } else
       PKInfo.DeviceFunctions[TargetMF].RequiresScratchAndStackSetup = true;
   }
@@ -178,14 +179,14 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   if (FrameInfo.hasStackObjects() && FrameInfo.getStackSize() != 0) {
     LLVM_DEBUG(llvm::dbgs() << "Found a use of stack.\n";);
     RequiresAccessToStack = true;
-    if (TargetMF->getFunction().getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL) {
-      PKInfo.Kernels[TargetMF]
-          .RequiresScratchAndStackSetup = true;
+    if (TargetMF->getFunction().getCallingConv() ==
+        llvm::CallingConv::AMDGPU_KERNEL) {
+      PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup = true;
       llvm::outs() << "Pre-kernel is set to: "
-                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup << "\n";
+                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup
+                   << "\n";
     } else
-      PKInfo.DeviceFunctions[TargetMF]
-          .RequiresScratchAndStackSetup = true;
+      PKInfo.DeviceFunctions[TargetMF].RequiresScratchAndStackSetup = true;
   }
 
   // If the app has either s0, s1, s2, s3, s32, and FLAT_SCRATCH_LO/HI

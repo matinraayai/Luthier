@@ -18,6 +18,7 @@
 /// This file implements Luthier's Physical Reg Access Virtualization Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
+#include "luthier/Consts.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
@@ -259,8 +260,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   // If the function being processed is not an injected payload (i.e a device
   // function getting called inside a hook) it cannot access physical registers
   // (it should have been checked by the code generator), so skip it
-  if (!MF.getFunction().hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
-      !MF.getFunction().hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+  if (!MF.getFunction().hasFnAttribute(HookAttribute) &&
+      !MF.getFunction().hasFnAttribute(InjectedPayloadAttribute)) {
 
     // Add the state value array's load VGPR as a live-in for all basic blocks
     // to be preserved throughout the injected payload
@@ -700,7 +701,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
               llvm::BuildMI(*CurrentMBB, CurrentMBB->begin(), llvm::DebugLoc(),
                             TII->get(llvm::AMDGPU::V_READLANE_B32), VirtReg)
                   .addReg(SVALoadPlan->StateValueArrayLoadVGPR)
-                  .addImm(stateValueArray::getFrameSpillSlotLaneId(AccessedPhysReg));
+                  .addImm(stateValueArray::getFrameSpillSlotLaneId(
+                      AccessedPhysReg));
           LLVM_DEBUG(llvm::dbgs() << "Adding phys to reg copy instruction "
                                   << Builder << "\n";);
         } else {
@@ -771,7 +773,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                             TII->get(llvm::AMDGPU::V_WRITELANE_B32),
                             SVALoadPlan->StateValueArrayLoadVGPR)
                   .addReg(VirtReg, llvm::RegState::Kill)
-                  .addImm(stateValueArray::getFrameSpillSlotLaneId(AccessedPhysReg))
+                  .addImm(
+                      stateValueArray::getFrameSpillSlotLaneId(AccessedPhysReg))
                   .addReg(SVALoadPlan->StateValueArrayLoadVGPR);
           LLVM_DEBUG(llvm::dbgs()
                          << "Adding virt reg to phys reg copy instruction "

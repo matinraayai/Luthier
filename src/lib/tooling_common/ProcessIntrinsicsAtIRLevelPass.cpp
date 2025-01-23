@@ -22,6 +22,7 @@
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/ScopedPrinter.h>
+#include <luthier/Consts.h>
 
 #undef DEBUG_TYPE
 
@@ -41,10 +42,10 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
   // Do an early increment on the range since we will remove the intrinsic
   // function once we have processed all its users
   for (auto &F : llvm::make_early_inc_range(IModule.functions())) {
-    if (F.hasFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE)) {
+    if (F.hasFnAttribute(IntrinsicAttribute)) {
       // Find the processor for this intrinsic
       auto IntrinsicName =
-          F.getFnAttribute(LUTHIER_INTRINSIC_ATTRIBUTE).getValueAsString();
+          F.getFnAttribute(IntrinsicAttribute).getValueAsString();
       // Ensure the processor is indeed registered with the Code Generator
       auto It = IntrinsicsProcessors.find(IntrinsicName);
       if (It == IntrinsicsProcessors.end()) {
@@ -142,9 +143,9 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         // If the function using the intrinsic is not an injected payload and a
         // hook (i.e a device function called from a hook), check if it's not
         // requesting access to a physical register or a kernel argument
-        if (!ParentFunction->hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
+        if (!ParentFunction->hasFnAttribute(HookAttribute) &&
             !ParentFunction->hasFnAttribute(
-                LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+                InjectedPayloadAttribute)) {
           if (!IRLoweringInfo->accessed_phys_regs_empty()) {
             IModule.getContext().emitError(
                 llvm::formatv("Intrinsic {0} used in function {1} requested "

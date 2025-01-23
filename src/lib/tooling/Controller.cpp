@@ -193,8 +193,8 @@ void rocprofilerFinalize(void *) {
     atToolFini(API_EVT_PHASE_BEFORE);
     delete C;
     if (TimeTrace) {
-      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::timeTraceProfilerWrite(
-          TimeTraceFile, "luthier-profile"));
+      LUTHIER_REPORT_FATAL_ON_ERROR(
+          llvm::timeTraceProfilerWrite(TimeTraceFile, "luthier-profile"));
       llvm::timeTraceProfilerCleanup();
     }
     atToolFini(API_EVT_PHASE_AFTER);
@@ -296,9 +296,9 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
                           << "." << RocProfVerMinor << "." << RocProfVerPatch
                           << " (" << RuntimeVersion << ")" << "\n";
              llvm::dbgs() << "Tool priority: " << Priority << ";\n";);
-  // TODO: Make tools define a function that returns the name of the tool
-  // instead of assigning plain "Luthier" as the tool name
-  ClientID->name = "Luthier";
+  llvm::StringRef ToolName = luthier::getToolName();
+  LLVM_DEBUG(llvm::dbgs() << "Luthier tool name: " << ToolName << "\n";);
+  ClientID->name = ToolName.data();
   rocprofiler_at_intercept_table_registration(
       luthier::apiRegistrationCallback,
       ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE |

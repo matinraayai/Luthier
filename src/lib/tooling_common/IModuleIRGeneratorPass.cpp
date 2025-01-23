@@ -20,12 +20,13 @@
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "common/Error.hpp"
 #include "luthier/InstrumentationTask.h"
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/Consts.h>
 #include <luthier/ErrorCheck.h>
+#include <luthier/IntrinsicCalls.h>
 
 #undef DEBUG_TYPE
 
@@ -68,7 +69,7 @@ static llvm::Expected<llvm::Function &> generateInjectedPayloadForApplicationMI(
   InjectedPayload->addFnAttr(llvm::Attribute::Naked);
   // Set an attribute indicating that this is the top-level function for an
   // injected payload
-  InjectedPayload->addFnAttr(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE);
+  InjectedPayload->addFnAttr(InjectedPayloadAttribute);
 
   LLVM_DEBUG(
 

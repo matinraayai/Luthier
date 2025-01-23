@@ -27,6 +27,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/Consts.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instrumentation-module"
@@ -37,7 +38,6 @@
 //===----------------------------------------------------------------------===//
 namespace luthier {
 
-static constexpr const char *HipCUIDPrefix = "__hip_cuid_";
 static constexpr const char *BCSectionName = ".llvmbc";
 
 /// Finds the ".llvmbc" section of the <tt>LCO</tt>'s host storage ELF
@@ -93,6 +93,9 @@ StaticInstrumentationModule::readBitcodeIntoContext(
                           "Failed to find the static instrumentation module "
                           "bitcode for agent {0:x}",
                           Agent.hsaHandle()));
+  std::error_code EC;
+  llvm::raw_fd_ostream MyFile("out.bc", EC);
+  MyFile << llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent));
   auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(
       llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent)), "", false);
   return llvm::parseBitcodeFile(*BCBuffer, Ctx);
@@ -234,7 +237,7 @@ StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
   LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
   for (const auto &LCO : LCOs) {
     auto LuthierReservedSymbol =
-        LCO.getLoadedCodeObjectSymbolByName(luthier::ReservedManagedVar);
+        LCO.getLoadedCodeObjectSymbolByName(ReservedManagedVar);
     LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbol.takeError());
     if (*LuthierReservedSymbol != nullptr) {
       return true;

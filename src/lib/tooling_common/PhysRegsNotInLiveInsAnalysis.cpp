@@ -24,6 +24,7 @@
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <luthier/Consts.h>
 
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 
@@ -40,9 +41,10 @@ PhysRegsNotInLiveInsAnalysis::run(llvm::Module &IModule,
   const auto &IPIP =
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
-  auto &MAM = IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule).getTargetAppMAM();
-  auto &TargetModule =
-      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule).getTargetAppModule();
+  auto &MAM =
+      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule).getTargetAppMAM();
+  auto &TargetModule = IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule)
+                           .getTargetAppModule();
   const auto &TM = MAM.getResult<llvm::MachineModuleAnalysis>(TargetModule)
                        .getMMI()
                        .getTarget();
@@ -65,8 +67,7 @@ PhysRegsNotInLiveInsAnalysis::run(llvm::Module &IModule,
     for (const auto &User : PlaceHolderInlineAsm.users()) {
       if (auto *InlineAsmCallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
         auto IntrinsicUserFunction = InlineAsmCallInst->getFunction();
-        if (IntrinsicUserFunction->hasFnAttribute(
-                LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+        if (IntrinsicUserFunction->hasFnAttribute(InjectedPayloadAttribute)) {
           for (const auto &UsedPhysReg : LoweringInfo.accessed_phys_regs()) {
             const auto *MIInsertionPoint = IPIP.at(*IntrinsicUserFunction);
             if (!LRRegLiveness

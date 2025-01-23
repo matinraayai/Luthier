@@ -1,5 +1,5 @@
 //===-- luthier.h - Luthier Interface  --------------------------*- C++ -*-===//
-// Copyright 2022-2024 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,14 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains the public-facing interface of Luthier.
+/// This file defines the public-facing interface of Luthier.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_H
 #define LUTHIER_H
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
+#include <luthier/Consts.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
-
 #include <luthier/ErrorCheck.h>
 #include <luthier/InstrumentationTask.h>
 #include <luthier/Intrinsic/Intrinsics.h>
@@ -38,16 +38,18 @@
 namespace luthier {
 
 //===----------------------------------------------------------------------===//
-// Luthier Callback APIs
+// Luthier callback APIs (required to be implemented by all tools)
 //===----------------------------------------------------------------------===//
 
-/// A callback invoked before and after Luthier's internal components are
-/// initialized \n
-/// This function is typically used for initializing callback functions,
-/// or printing a banner for the tool
+/// A callback function required to be defined in a Luthier tool. The tooling
+/// library invokes this function before and after Luthier's internal components
+/// are initialized \n
+/// This function is typically used for setting tool callback functions that are
+/// considered optional for a luthier tool
+/// (e.g. <tt>hsa::setAtApiTableCaptureEvtCallback</tt>),
+/// printing a banner for the tool, or doing non-HIP/HSA related initializations
 /// \warning It is not safe to use HSA or HIP functions in this callback,
-/// as at this point of execution neither HIP or HSA are likely to be
-/// initialized\n
+/// as at this point of execution neither HIP or HSA are initialized.
 /// \warning This callback should not enable callbacks for HIP/HSA APIs, as
 /// at this point of execution, HIP/HSA API tables have not been captured by
 /// Luthier; Use \c hsa::setAtApiTableCaptureEvtCallback and
@@ -73,6 +75,12 @@ void atToolInit(ApiEvtPhase Phase);
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
 /// or \c API_EVT_PHASE_AFTER when called after tool finalization
 void atToolFini(ApiEvtPhase Phase);
+
+/// A function defined by all tools which returns the tool's name
+/// The returned name will be passed to rocprofiler-sdk as the Luthier tool's
+/// identifier
+/// \return the Luthier tool's name
+llvm::StringRef getToolName();
 
 //===----------------------------------------------------------------------===//
 // HSA/HIP callback functions
@@ -344,17 +352,20 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
 ///
 /// * \sa LUTHIER_HOOK_ANNOTATE
 #define MARK_LUTHIER_DEVICE_MODULE                                             \
-  __attribute__((managed, used)) char __luthier_reserved = 0;
+  __attribute__((managed, used)) char LUTHIER_RESERVED_MANAGED_VAR = 0;
 
 #define LUTHIER_HOOK_ANNOTATE                                                  \
-  __attribute__((device, used, annotate("luthier_hook"))) extern "C" void
+  __attribute__((                                                              \
+      device, used,                                                            \
+      annotate(LUTHIER_STRINGIFY(LUTHIER_HOOK_ATTRIBUTE)))) extern "C" void
 
 #define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
-  __attribute__((global,                                                       \
-                 used)) extern "C" void __luthier_hook_handle_##HookName(){};
+  __attribute__((global, used)) extern "C" void LUTHIER_CAT(                         \
+      LUTHIER_HOOK_HANDLE_PREFIX, HookName)(){};
 
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
-  reinterpret_cast<const void *>(__luthier_hook_handle_##HookName)
+  reinterpret_cast<const void *>(                                              \
+      LUTHIER_CAT(LUTHIER_HOOK_HANDLE_PREFIX,HookName))
 } // namespace luthier
 
 #endif

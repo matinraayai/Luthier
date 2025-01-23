@@ -3,6 +3,8 @@ find_package(LLVM REQUIRED CONFIG)
 include(AddLLVM)
 include(TableGen)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 add_tablegen(luthier-tblgen luthier
         RealToPseudoOpcodeMapBackend.hpp
         RealToPseudoOpcodeMapBackend.cpp

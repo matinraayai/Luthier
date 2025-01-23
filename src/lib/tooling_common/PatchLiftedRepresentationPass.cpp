@@ -31,6 +31,7 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/TimeProfiler.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <luthier/Consts.h>
 #include <ranges>
 
 #undef DEBUG_TYPE
@@ -601,8 +602,8 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
   // Clone only the definition of functions that are not injected payloads
   for (const auto &F : IModule.functions()) {
     if (IMMI.getMachineFunction(F) != nullptr &&
-        !F.hasFnAttribute(LUTHIER_HOOK_ATTRIBUTE) &&
-        !F.hasFnAttribute(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)) {
+        !F.hasFnAttribute(HookAttribute) &&
+        !F.hasFnAttribute(InjectedPayloadAttribute)) {
       auto *NewF = llvm::Function::Create(
           llvm::cast<llvm::FunctionType>(F.getValueType()), F.getLinkage(),
           F.getAddressSpace(), F.getName(), &TargetAppM);
