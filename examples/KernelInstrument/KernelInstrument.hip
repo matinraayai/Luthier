@@ -184,6 +184,11 @@ static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
 
 namespace luthier {
 
+llvm::StringRef getToolName() {
+  const static std::string ToolName{"LuthierKernelInstrument"};
+  return ToolName;
+}
+
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     llvm::outs() << "Kernel instrument tool is launching.\n";

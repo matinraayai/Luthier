@@ -285,6 +285,11 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 }
 namespace luthier {
 
+llvm::StringRef getToolName() {
+  const static std::string ToolName{"LuthierKernelArgumentIntrinsicTool"};
+  return ToolName;
+}
+
 static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_AFTER) {
     LUTHIER_REPORT_FATAL_ON_ERROR(hsa::enableHsaApiEvtIDCallback(

@@ -614,6 +614,11 @@ static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
   }
 }
 
+llvm::StringRef getToolName() {
+  const static std::string ToolName{"LuthierLDSBankConflictTool"};
+  return ToolName;
+}
+
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     llvm::outs() << "LDS Bank Conflict detection tool is launching.\n";

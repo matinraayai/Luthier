@@ -1,33 +1,22 @@
 cmake_minimum_required(VERSION 3.21)
-project(LDSBankConflict LANGUAGES HIP CXX)
+project(LuthierLDSBankConflict LANGUAGES HIP CXX)
 
 set(CMAKE_HIP_STANDARD 20)
 
 find_package(hip REQUIRED)
 
-find_package(hsa-runtime64 REQUIRED HINTS ${CMAKE_INSTALL_PREFIX} PATHS /opt/rocm/)
+find_package(LLVM REQUIRED CONFIG)
 
-add_library(LDSBankConflict SHARED LDSBankConflict.hip)
+find_package(LuthierCompilerPlugins REQUIRED CONFIG)
 
-# Some HSA include files won't work unless this is defined
-target_compile_definitions(LDSBankConflict PUBLIC AMD_INTERNAL_BUILD)
+add_library(LuthierLDSBankConflict SHARED LDSBankConflict.hip)
 
-set_property(TARGET LDSBankConflict PROPERTY COMPILE_FLAGS "-fPIC")
+luthier_add_hsa_compile_definitions(LuthierLDSBankConflict)
 
-find_package(LLVM REQUIRED CONFIG PATHS ${LUTHIER_LLVM_BIN_DIR} NO_DEFAULT_PATH)
+luthier_add_position_independence(LuthierLDSBankConflict)
 
-target_include_directories(LDSBankConflict PUBLIC ../../include/)
+luthier_add_llvm_compile_definitions(LuthierLDSBankConflict)
 
-target_include_directories(LDSBankConflict PUBLIC ${LLVM_INCLUDE_DIRS})
+luthier_add_compiler_plugin(LuthierLDSBankConflict luthier::IModuleEmbedPlugin)
 
-add_llvm_compile_definitions(LDSBankConflict)
-
-target_include_directories(LDSBankConflict PUBLIC /llvm-project/)
-
-target_link_directories(LDSBankConflict PUBLIC ${LUTHIER_DIR})
-
-set(LUTHIER_BC_EMBED_PLUGIN_PATH "" CACHE STRING "Path to the Luthier compiler plugin for embedding optimized bitcode")
-
-set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -fpass-plugin=${LUTHIER_BC_EMBED_PLUGIN_PATH}")
-
-target_link_libraries(LDSBankConflict PUBLIC LuthierTooling LLVMDemangle hip::host hip::device)
+target_link_libraries(LuthierLDSBankConflict PUBLIC LuthierTooling LLVMDemangle hip::device hip::host)

@@ -450,4 +450,9 @@ void atToolFini(ApiEvtPhase Phase) {
   }
 }
 
+llvm::StringRef getToolName() {
+  const static std::string ToolName{"LuthierInstrCountTool"};
+  return ToolName;
+}
+
 } // namespace luthier
