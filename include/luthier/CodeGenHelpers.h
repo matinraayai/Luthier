@@ -17,8 +17,8 @@
 /// \file This file includes a set of frequently-used helper functions regarding
 /// LLVM's target independent code generator.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INCLUDE_LUTHIER_LLVMCODEGENHELPERS_H
-#define LUTHIER_INCLUDE_LUTHIER_LLVMCODEGENHELPERS_H
+#ifndef LUTHIER_LLVM_CODEGEN_HELPERS_H
+#define LUTHIER_LLVM_CODEGEN_HELPERS_H
 
 namespace llvm {
 
