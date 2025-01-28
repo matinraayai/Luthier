@@ -3,6 +3,7 @@ add_library(LuthierCommon OBJECT
         CodeGenHelpers.cpp
         Error.cpp
         ObjectUtils.cpp
+        streams.cpp
 )
 
 add_dependencies(LuthierCommon LuthierAMDGPUTableGen)
