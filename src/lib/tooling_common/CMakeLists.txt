@@ -52,19 +52,17 @@ add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoRegEnumMap)
 add_dependencies(LuthierToolingCommon LuthierAMDGPUTableGen)
 
-target_include_directories(LuthierToolingCommon PUBLIC "${CMAKE_SOURCE_DIR}/src/include")
+target_compile_definitions(LuthierToolingCommon PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
-target_include_directories(LuthierToolingCommon PUBLIC
+target_include_directories(LuthierToolingCommon
+        PRIVATE
+        "${CMAKE_SOURCE_DIR}/src/include"
+        ${CMAKE_CURRENT_BINARY_DIR}
+        ${LLVM_INCLUDE_DIRS}
+        ${hsa-runtime64_INCLUDE_DIRS}
+        PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
-# Add the binary folder to the include directory to use LuthierRealToPseudoOpcodeMap.inc and
-# LuthierRealToPseudoRegEnumMap.inc
-target_include_directories(LuthierToolingCommon PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-
-luthier_add_position_independence(LuthierToolingCommon)
-luthier_add_hsa_compile_definitions(LuthierToolingCommon)
-luthier_add_llvm_compile_definitions(LuthierToolingCommon)
-
-target_link_libraries(LuthierToolingCommon PRIVATE hip::host amd_comgr luthier::Intrinsics LuthierAMDGPU)
+target_link_libraries(LuthierToolingCommon PRIVATE luthier::Intrinsics LuthierAMDGPU)

@@ -22,14 +22,15 @@ add_library(LuthierHIP OBJECT
         ${CMAKE_CURRENT_BINARY_DIR}/HipRuntimeApiInterceptor.cpp
 )
 
-target_include_directories(LuthierHIP PUBLIC "${CMAKE_SOURCE_DIR}/src/include")
+target_compile_definitions(LuthierHIP PRIVATE ${LLVM_DEFINITIONS})
 
-target_include_directories(LuthierHIP PUBLIC
+target_include_directories(LuthierHIP
+        PRIVATE
+        "${CMAKE_SOURCE_DIR}/src/include"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+        ${LLVM_INCLUDE_DIRS}
+        ${amd_comgr_INCLUDE_DIRS}
 )
 
-luthier_add_position_independence(LuthierHIP)
-luthier_add_llvm_compile_definitions(LuthierHIP)
-
-target_link_libraries(LuthierHIP PUBLIC hip::host)
+target_link_libraries(LuthierHIP PRIVATE hip::host)

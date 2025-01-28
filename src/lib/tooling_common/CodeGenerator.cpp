@@ -39,6 +39,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <llvm/Analysis/CallGraphSCCPass.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-generator"
@@ -124,6 +125,8 @@ llvm::Error CodeGenerator::printAssembly(
   // Add the target library info pass
   llvm::TargetLibraryInfoImpl TLII(llvm::Triple(Module.getTargetTriple()));
   PM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
+  // DummyCGSCCPass must also be added
+  PM.add(new llvm::DummyCGSCCPass());
   // TargetPassConfig is expected by the passes involved, so it must be added
   auto *TPC = TM.createPassConfig(PM);
   // Don't run the machine verifier after each pass

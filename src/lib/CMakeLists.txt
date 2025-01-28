@@ -22,6 +22,12 @@ find_package(LLVM REQUIRED CONFIG)
 
 find_package(LuthierCompilerPlugins REQUIRED CONFIG)
 
+# Get the include directory of amd_comgr
+get_target_property(amd_comgr_INCLUDE_DIRS amd_comgr INTERFACE_INCLUDE_DIRECTORIES)
+
+# Get the include directory of hsa-runtime64
+get_target_property(hsa-runtime64_INCLUDE_DIRS hsa-runtime64::hsa-runtime64 INTERFACE_INCLUDE_DIRECTORIES)
+
 if (${LUTHIER_BUILD_UNIT_TESTS})
     include(FetchContent)
     FetchContent_Declare(
