@@ -21,11 +21,11 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LR_CALLGRAPH_H
 #define LUTHIER_LR_CALLGRAPH_H
+#include "luthier/hsa/DenseMapInfo.h"
 #include <hsa/hsa.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/hsa/DenseMapInfo.h>
 
 namespace luthier {
 

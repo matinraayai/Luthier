@@ -20,13 +20,13 @@
 #ifndef LUTHIER_H
 #define LUTHIER_H
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
-#include <luthier/Consts.h>
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/tooling/InstrumentationTask.h"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
-#include <luthier/ErrorCheck.h>
-#include <luthier/InstrumentationTask.h>
+#include <luthier/Consts.h>
 #include <luthier/Intrinsic/Intrinsics.h>
-#include <luthier/LiftedRepresentation.h>
 #include <luthier/hip/TraceApi.h>
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/KernelDescriptor.h>
@@ -153,11 +153,9 @@ const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
 namespace hip {
 
 /// \return a const reference to the original HIP Compiler API table
-/// TODO: introduce thread-local temp callback disabling
-/// TODO: introduce hip compiler/runtime API tracing
-/// TODO: introduce hip runtime api table getter
 const HipCompilerDispatchTable &getSavedCompilerTable();
 
+/// \return a const reference to the original HIP Dispatch API table
 const HipDispatchTable &getSavedDispatchTable();
 
 } // namespace hip

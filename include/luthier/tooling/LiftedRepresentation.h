@@ -24,7 +24,9 @@
 
 #ifndef LUTHIER_LIFTED_REPRESENTATION_H
 #define LUTHIER_LIFTED_REPRESENTATION_H
-#include <AMDGPUTargetMachine.h>
+#include "AMDGPUTargetMachine.h"
+#include "luthier/hsa/DenseMapInfo.h"
+#include "luthier/hsa/Instr.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -32,8 +34,6 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LegacyPassManager.h>
-#include <luthier/hsa/DenseMapInfo.h>
-#include <luthier/hsa/Instr.h>
 
 namespace luthier {
 

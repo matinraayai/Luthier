@@ -22,13 +22,13 @@
 #ifndef LUTHIER_LR_REGISTER_LIVENESS_H
 #define LUTHIER_LR_REGISTER_LIVENESS_H
 #include "LRCallgraph.h"
+#include "VectorCFG.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/VectorCFG.h>
 
 namespace luthier {
 

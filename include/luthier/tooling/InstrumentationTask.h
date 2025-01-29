@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INSTRUMENTATION_TASK_H
 #define LUTHIER_INSTRUMENTATION_TASK_H
-#include "types.h"
+#include "luthier/types.h"
 #include <functional>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineInstr.h>
