@@ -20,8 +20,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_RUN_IR_PASSES_ON_IMODULE_PASS_HPP
 #define LUTHIER_TOOLING_COMMON_RUN_IR_PASSES_ON_IMODULE_PASS_HPP
-#include "luthier/InstrumentationTask.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/tooling/InstrumentationTask.h"
 #include <llvm/IR/PassManager.h>
 #include <llvm/Target/TargetMachine.h>
 

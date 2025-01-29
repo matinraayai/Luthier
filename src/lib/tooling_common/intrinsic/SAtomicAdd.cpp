@@ -1,4 +1,6 @@
-#include "common/Error.hpp"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
+#include "luthier/llvm/streams.h"
 #include "tooling_common/intrinsic/WriteReg.hpp"
 #include <AMDGPUTargetMachine.h>
 #include <SIRegisterInfo.h>
@@ -6,7 +8,6 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
-#include <luthier/ErrorCheck.h>
 
 namespace luthier {
 
@@ -23,7 +24,7 @@ sAtomicAddIRProcessor(const llvm::Function &Intrinsic,
 
   luthier::IntrinsicIRLoweringInfo Out;
 
-  llvm::outs() << User << "\n";
+  luthier::outs() << User << "\n";
 
   Out.setReturnValueInfo(&User, "s");
 
@@ -31,7 +32,7 @@ sAtomicAddIRProcessor(const llvm::Function &Intrinsic,
     auto *SrcReg = User.getArgOperand(i);
     Out.addArgInfo(SrcReg, "s");
   }
-  llvm::outs() << "Before returning out;\n";
+  luthier::outs() << "Before returning out;\n";
   return Out;
 }
 
@@ -56,34 +57,34 @@ llvm::Error sAtomicAddMIRProcessor(
   //      Args[0].first.isRegUseKind(),
   //      "The virtual register argument for luthier::writeReg is not a use."));
   //  llvm::Register Address = Args[0].second;
-  llvm::outs() << "SDst operand idx: "
-               << llvm::AMDGPU::getNamedOperandIdx(
-                      llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
-                      llvm::AMDGPU::OpName::sdst)
-               << "\n";
+  luthier::outs() << "SDst operand idx: "
+                  << llvm::AMDGPU::getNamedOperandIdx(
+                         llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
+                         llvm::AMDGPU::OpName::sdst)
+                  << "\n";
 
-  llvm::outs() << "SData operand idx: "
-               << llvm::AMDGPU::getNamedOperandIdx(
-                      llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
-                      llvm::AMDGPU::OpName::sdata)
-               << "\n";
-  llvm::outs() << "Sbase operand idx: "
-               << llvm::AMDGPU::getNamedOperandIdx(
-                      llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
-                      llvm::AMDGPU::OpName::sbase)
-               << "\n";
+  luthier::outs() << "SData operand idx: "
+                  << llvm::AMDGPU::getNamedOperandIdx(
+                         llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
+                         llvm::AMDGPU::OpName::sdata)
+                  << "\n";
+  luthier::outs() << "Sbase operand idx: "
+                  << llvm::AMDGPU::getNamedOperandIdx(
+                         llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
+                         llvm::AMDGPU::OpName::sbase)
+                  << "\n";
 
-  llvm::outs() << "SOffset operand idx: "
-               << llvm::AMDGPU::getNamedOperandIdx(
-                      llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
-                      llvm::AMDGPU::OpName::offset)
-               << "\n";
+  luthier::outs() << "SOffset operand idx: "
+                  << llvm::AMDGPU::getNamedOperandIdx(
+                         llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
+                         llvm::AMDGPU::OpName::offset)
+                  << "\n";
 
-  llvm::outs() << "SOffset operand idx: "
-               << llvm::AMDGPU::getNamedOperandIdx(
-                      llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
-                      llvm::AMDGPU::OpName::cpol)
-               << "\n";
+  luthier::outs() << "SOffset operand idx: "
+                  << llvm::AMDGPU::getNamedOperandIdx(
+                         llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM,
+                         llvm::AMDGPU::OpName::cpol)
+                  << "\n";
 
   auto &MRI = MF.getRegInfo();
   auto &TRI = *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
@@ -101,7 +102,7 @@ llvm::Error sAtomicAddMIRProcessor(
       .addReg(Args[2].second)
       .addImm(0)
       .addImm(1);
-  MF.print(llvm::outs());
+  MF.print(luthier::outs());
   //
   //
   //  uint64_t DestRegSize = TRI->getRegSizeInBits(Dest, MRI);

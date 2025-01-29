@@ -18,7 +18,9 @@
 /// This file implements the State Value Location Intervals Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
-#include "common/Error.hpp"
+#include "luthier/common/LuthierError.h"
+#include "luthier/tooling/LRCallgraph.h"
+#include "luthier/tooling/LRRegisterLiveness.h"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "tooling_common/MMISlotIndexesAnalysis.hpp"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
@@ -27,8 +29,6 @@
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
-#include <luthier/LRCallgraph.h>
-#include <luthier/LRRegisterLiveness.h>
 
 #include <utility>
 

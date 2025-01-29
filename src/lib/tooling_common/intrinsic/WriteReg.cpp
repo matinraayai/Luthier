@@ -1,12 +1,12 @@
 #include "tooling_common/intrinsic/WriteReg.hpp"
-#include "common/Error.hpp"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
 #include <AMDGPUTargetMachine.h>
 #include <SIRegisterInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
-#include <luthier/ErrorCheck.h>
 
 namespace luthier {
 

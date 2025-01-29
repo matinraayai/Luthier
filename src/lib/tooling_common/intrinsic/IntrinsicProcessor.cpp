@@ -18,9 +18,9 @@
 /// This file implements part of Luthier's Intrinsic Processor functions
 /// not already defined by its header.
 //===----------------------------------------------------------------------===//
-#include "common/Error.hpp"
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/Support/Error.h>
+#include <luthier/common/LuthierError.h>
 
 namespace luthier {
 
@@ -48,4 +48,4 @@ getIntrinsicInlineAsmPlaceHolderIdx(const llvm::MachineInstr &MI) {
   }
 }
 
-}
+} // namespace luthier

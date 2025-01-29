@@ -1,4 +1,4 @@
-//===-- LuthierError.cpp - Luthier Error Type -----------------------------===//
+//===-- LLVMError.cpp - Luthier LLVM Error Type ---------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,33 +15,33 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c luthier::LuthierError class.
+/// This file implements the \c luthier::LLVMError class.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/LuthierError.h>
+#include <llvm/Support/Signals.h>
+#include <luthier/llvm/LLVMError.h>
 
 namespace luthier {
 
-char LuthierError::ID = 0;
+char LLVMError::ID = 0;
 
-llvm::Error LuthierError::luthierErrorCheck(const bool Expr,
-                                            llvm::StringRef File,
-                                            int LineNumber,
-                                            llvm::StringRef ErrorMsg) {
-  if (!Expr) {
+void LLVMError::log(llvm::raw_ostream &OS) const {
+  OS << "Call to LLVM library in file " << File << ", line: " << LineNumber
+     << "encountered an error : " << OriginalErrorMsg << "\n";
+  OS << "Stacktrace: \n" << StackTrace << "\n";
+}
+
+llvm::Error LLVMError::llvmErrorCheck(llvm::Error Expr, llvm::StringRef File,
+                                      int LineNumber) {
+  if (Expr) {
     std::string StackTrace;
     llvm::raw_string_ostream STStream(StackTrace);
     llvm::sys::PrintStackTrace(STStream);
-    return llvm::make_error<LuthierError>(File, LineNumber, StackTrace,
-                                          ErrorMsg);
+    std::string OriginalErrorMessage = llvm::toStringWithoutConsuming(Expr);
+    llvm::consumeError(std::move(Expr));
+    return llvm::make_error<LLVMError>(File, LineNumber, StackTrace,
+                                       OriginalErrorMessage);
   }
   return llvm::Error::success();
-}
-
-void LuthierError::log(llvm::raw_ostream &OS) const {
-  OS << "Luthier error encountered in file " << File << ", line: " << LineNumber
-     << ": ";
-  OS << ErrorMsg << "\n";
-  OS << "Stacktrace: \n" << StackTrace << "\n";
 }
 
 } // namespace luthier

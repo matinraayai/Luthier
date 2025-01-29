@@ -49,22 +49,20 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
-
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/Support/TimeProfiler.h>
 #include <memory>
-
-#include "common/Error.hpp"
 #include "common/ObjectUtils.hpp"
 #include "hsa/Executable.hpp"
 #include "hsa/GpuAgent.hpp"
 #include "hsa/ISA.hpp"
 #include "hsa/LoadedCodeObject.hpp"
 #include "hsa/hsa.hpp"
-#include "luthier/LRCallgraph.h"
 #include "luthier/hsa/Instr.h"
 #include "luthier/hsa/KernelDescriptor.h"
+#include "luthier/llvm/streams.h"
+#include "luthier/tooling/LRCallgraph.h"
 #include "luthier/types.h"
 #include "tooling_common/TargetManager.hpp"
 
@@ -229,11 +227,12 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
         if (RelocSym != StorageELF->symbol_end()) {
           auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
           LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
-          LLVM_DEBUG(LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
-                         llvm::StringRef, SymName, Reloc.getSymbol()->getName());
-                     llvm::dbgs() << llvm::formatv(
-                         "Found relocation for symbol {0} at address {1:x}.\n",
-                         SymName, LoadedMemoryBase + *RelocSymbolLoadedAddress));
+          LLVM_DEBUG(
+              LUTHIER_RETURN_ON_MOVE_INTO_FAIL(llvm::StringRef, SymName,
+                                               Reloc.getSymbol()->getName());
+              llvm::dbgs() << llvm::formatv(
+                  "Found relocation for symbol {0} at address {1:x}.\n",
+                  SymName, LoadedMemoryBase + *RelocSymbolLoadedAddress));
           // Check with the hsa::Platform which HSA executable Symbol this
           // address is associated with
           auto RelocSymbol = hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
@@ -244,7 +243,8 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
               "address {0:x}.",
               LoadedMemoryBase + *RelocSymbolLoadedAddress));
           // The target address will be the base of the loaded
-          luthier::address_t TargetAddress = LoadedMemoryBase + Reloc.getOffset();
+          luthier::address_t TargetAddress =
+              LoadedMemoryBase + Reloc.getOffset();
           LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                          "Relocation found for symbol {0} at address {1:x} for "
                          "LCO {2:x}.\n",
@@ -494,7 +494,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
 
   // TODO: Check the args metadata to set this correctly
   // TODO: Set the rest of the attributes
-  //    llvm::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload <<
+  //    luthier::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload <<
   //    "\n";
   //  F->addFnAttr("amdgpu-calls");
   // Add dummy IR instructions ===============================================

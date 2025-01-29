@@ -19,12 +19,12 @@
 /// namespace.
 //===----------------------------------------------------------------------===//
 #include "hsa/Executable.hpp"
-#include "common/Error.hpp"
 #include "hsa/CodeObjectReader.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/ExecutableSymbol.hpp"
 #include "hsa/GpuAgent.hpp"
 #include "hsa/LoadedCodeObject.hpp"
+#include "luthier/hsa/HsaError.h"
 
 namespace luthier::hsa {
 

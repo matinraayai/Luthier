@@ -17,10 +17,10 @@
 /// \file
 /// This file implements the HSA kernel descriptor POD struct methods.
 //===----------------------------------------------------------------------===//
-#include "common/Error.hpp"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
-#include <luthier/ErrorCheck.h>
 #include <luthier/hsa/KernelDescriptor.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 

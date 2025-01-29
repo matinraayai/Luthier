@@ -25,8 +25,8 @@
 #include "IModuleIRGeneratorPass.hpp"
 #include "MMISlotIndexesAnalysis.hpp"
 #include "hsa/LoadedCodeObject.hpp"
-#include "luthier/LRRegisterLiveness.h"
-#include "luthier/LiftedRepresentation.h"
+#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
 #include "tooling_common/StateValueArrayStorage.hpp"
 #include <llvm/CodeGen/SlotIndexes.h>

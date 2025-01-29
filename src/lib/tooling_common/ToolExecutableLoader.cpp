@@ -346,7 +346,7 @@ ToolExecutableLoader::~ToolExecutableLoader() {
   // up anyway
   // TODO: Fix this, again
   //  if (!InstrumentedLCOInfo.empty()) {
-  //    llvm::outs()
+  //    luthier::outs()
   //        << "Tool executable manager is being destroyed while the original "
   //           "executables of its instrumented kernels are still frozen\n";
   //    llvm::DenseSet<hsa::Executable> InstrumentedExecs;
@@ -354,7 +354,7 @@ ToolExecutableLoader::~ToolExecutableLoader() {
   //      auto Exec = llvm::cantFail(LCO.getExecutable());
   //      InstrumentedExecs.insert(Exec);
   //      if (COR.destroy()) {
-  //        llvm::outs() << llvm::formatv(
+  //        luthier::outs() << llvm::formatv(
   //            "Code object reader {0:x} of Loaded Code Object {1:x},
   //            Executable "
   //            "{2:x} got destroyed with errors.\n",
@@ -363,7 +363,7 @@ ToolExecutableLoader::~ToolExecutableLoader() {
   //    }
   //    for (auto &Exec : InstrumentedExecs) {
   //      if (Exec.destroy()) {
-  //        llvm::outs() << llvm::formatv(
+  //        luthier::outs() << llvm::formatv(
   //            "Executable {0:x} got destroyed with errors.\n",
   //            Exec.hsaHandle());
   //      }

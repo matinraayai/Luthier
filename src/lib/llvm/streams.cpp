@@ -19,8 +19,8 @@
 /// Luthier tools.
 //===----------------------------------------------------------------------===//
 #include "luthier/llvm/streams.h"
-#include "common/Error.hpp"
 #include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
 #include "luthier/llvm/EagerManagedStatic.h"
 #include <llvm/Support/FileSystem.h>
 

@@ -21,10 +21,10 @@
 #ifndef LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_STORAGE_HPP
 #define LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_STORAGE_HPP
 #include "hsa/LoadedCodeObject.hpp"
-#include "luthier/LRRegisterLiveness.h"
-#include "luthier/LiftedRepresentation.h"
 #include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
+#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
 #include <llvm/CodeGen/SlotIndexes.h>
 

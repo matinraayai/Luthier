@@ -18,7 +18,8 @@
 /// This file implements Luthier's <tt>ImplicitArgPtr</tt> intrinsic.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/intrinsic/ImplicitArgPtr.hpp"
-#include "common/Error.hpp"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
 #include <AMDGPUTargetMachine.h>
 #include <GCNSubtarget.h>
 #include <SIRegisterInfo.h>
@@ -26,7 +27,6 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
-#include <luthier/ErrorCheck.h>
 
 namespace luthier {
 

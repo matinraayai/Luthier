@@ -18,14 +18,14 @@
 /// This file implements the Instrumentation Module IR Generator Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
-#include "common/Error.hpp"
-#include "luthier/InstrumentationTask.h"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
+#include "luthier/tooling/InstrumentationTask.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/TimeProfiler.h>
 #include <luthier/Consts.h>
-#include <luthier/ErrorCheck.h>
 #include <luthier/IntrinsicCalls.h>
 
 #undef DEBUG_TYPE

@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PrePostAmbleEmitter.hpp"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/llvm/streams.h"
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
@@ -518,7 +519,7 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
         }
         // Add code
         if (SVAInfo.RequestedKernelArguments.contains(HIDDEN_KERNARG_OFFSET)) {
-          llvm::outs() << "emitting code to store the hidden arg offset.\n";
+          luthier::outs() << "emitting code to store the hidden arg offset.\n";
           auto &KernArgs =
               llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(FuncSymbol)
                   ->getKernelMetadata()
@@ -547,9 +548,8 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
               .addImm(*StoreLane)
               .addReg(SVSStorageReg);
 
-          EntryInstr->getMF()->print(llvm::outs());
+          EntryInstr->getMF()->print(luthier::outs());
         }
-
 
         // Put every SGPR argument back in its place
         emitCodeToReturnSGPRArgsToOriginalPlace(OriginalSGPRArgLocs,

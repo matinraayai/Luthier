@@ -20,21 +20,17 @@
 /// For the controller logic of Luthier, see <tt>luthier::Controller</tt>.
 //===----------------------------------------------------------------------===//
 #include "luthier/luthier.h"
-
-#include <llvm/ADT/StringRef.h>
-
-#include <optional>
-
-#include "common/Error.hpp"
 #include "hip/HipCompilerApiInterceptor.hpp"
 #include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/HsaRuntimeInterceptor.hpp"
-#include "luthier/InstrumentationTask.h"
 #include "luthier/hsa/Instr.h"
+#include "luthier/tooling/InstrumentationTask.h"
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
+#include <llvm/ADT/StringRef.h>
+#include <optional>
 
 namespace luthier {
 

@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
+#include "luthier/llvm/streams.h"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/IntrinsicMIRLoweringPass.hpp"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
@@ -30,7 +32,6 @@
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/Passes.h>
 #include <luthier/Consts.h>
-#include <luthier/LiftedRepresentation.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-injected-payload-pei-pass"
@@ -164,9 +165,9 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     if (TargetMF->getFunction().getCallingConv() ==
         llvm::CallingConv::AMDGPU_KERNEL) {
       PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup = true;
-      llvm::outs() << "Pre-kernel is set to: "
-                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup
-                   << "\n";
+      luthier::outs() << "Pre-kernel is set to: "
+                      << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup
+                      << "\n";
     } else
       PKInfo.DeviceFunctions[TargetMF].RequiresScratchAndStackSetup = true;
   }
@@ -182,9 +183,9 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
     if (TargetMF->getFunction().getCallingConv() ==
         llvm::CallingConv::AMDGPU_KERNEL) {
       PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup = true;
-      llvm::outs() << "Pre-kernel is set to: "
-                   << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup
-                   << "\n";
+      luthier::outs() << "Pre-kernel is set to: "
+                      << PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup
+                      << "\n";
     } else
       PKInfo.DeviceFunctions[TargetMF].RequiresScratchAndStackSetup = true;
   }

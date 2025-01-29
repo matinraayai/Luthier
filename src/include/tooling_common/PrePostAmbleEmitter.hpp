@@ -24,11 +24,11 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_PRE_POST_AMBLE_EMITTER_HPP
 #define LUTHIER_TOOLING_COMMON_PRE_POST_AMBLE_EMITTER_HPP
+#include "luthier/tooling/LiftedRepresentation.h"
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/Support/Error.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
-#include <luthier/LiftedRepresentation.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 

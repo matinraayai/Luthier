@@ -23,12 +23,10 @@
 #ifndef LUTHIER_HIP_HIP_RUNTIME_API_INTERCEPTOR_HPP
 #define LUTHIER_HIP_HIP_RUNTIME_API_INTERCEPTOR_HPP
 
-#include <functional>
-#include <llvm/ADT/DenseSet.h>
-
-#include "common/Error.hpp"
 #include "common/ROCmLibraryApiInterceptor.hpp"
 #include "common/Singleton.hpp"
+#include <functional>
+#include <llvm/ADT/DenseSet.h>
 #include <luthier/hip/TraceApi.h>
 #include <luthier/types.h>
 

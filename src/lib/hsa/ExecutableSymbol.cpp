@@ -21,8 +21,8 @@
 
 #include "hsa/ExecutableSymbol.hpp"
 
-#include "common/Error.hpp"
 #include "hsa/GpuAgent.hpp"
+#include "luthier/hsa/HsaError.h"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-hsa-executable-symbol"

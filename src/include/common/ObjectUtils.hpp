@@ -39,6 +39,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_OBJECT_UTILS_HPP
 #define LUTHIER_COMMON_OBJECT_UTILS_HPP
+#include "luthier/hsa/Metadata.h"
+#include "luthier/types.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/BinaryFormat/ELF.h>
 #include <llvm/BinaryFormat/MsgPackDocument.h>
@@ -46,10 +48,6 @@
 #include <llvm/Object/ELFTypes.h>
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
-
-#include "luthier/hsa/Metadata.h"
-#include "luthier/types.h"
-#include <common/Error.hpp>
 #include <map>
 #include <optional>
 #include <utility>

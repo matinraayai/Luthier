@@ -37,8 +37,6 @@
 #include <llvm/Support/ManagedStatic.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
-
-#include "common/Error.hpp"
 #include "hsa/GpuAgent.hpp"
 
 namespace luthier {

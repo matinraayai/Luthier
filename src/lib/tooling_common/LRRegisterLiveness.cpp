@@ -17,13 +17,14 @@
 /// \file
 /// This file implements the \c LRRegisterLiveness class.
 //===----------------------------------------------------------------------===//
-#include "common/Error.hpp"
+#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/llvm/streams.h"
+#include "luthier/tooling/LiftedRepresentation.h"
+#include "luthier/tooling/VectorCFG.h"
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Support/TimeProfiler.h>
-#include <luthier/LRRegisterLiveness.h>
-#include <luthier/LiftedRepresentation.h>
-#include <luthier/VectorCFG.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-lr-register-liveness"
@@ -209,7 +210,7 @@ void LRRegisterLiveness::recomputeLiveIns(const llvm::Module &M,
       continue;
     //    VecCFG.insert({MF, VectorCFG::getVectorCFG(*MF)})
     //        .first->getSecond()
-    //        ->print(llvm::outs());
+    //        ->print(luthier::outs());
     luthier::recomputeLiveIns(*MF, MachineInstrLivenessMap);
     //    luthier::recomputeLiveIns(*VecCFG[MF], VCFGLiveIns);
     //    const auto &TRI =

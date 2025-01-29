@@ -20,7 +20,7 @@
 /// kernel or an executable), as well as a mapping between the HSA primitives
 /// and LLVM IR primitives involved.
 //===----------------------------------------------------------------------===//
-#include <luthier/LiftedRepresentation.h>
+#include "luthier/tooling/LiftedRepresentation.h"
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>

@@ -20,6 +20,7 @@ add_library(LuthierHSA OBJECT
         GpuAgent.cpp
         ExecutableSymbol.cpp
         LoadedCodeObject.cpp
+        HsaError.cpp
         ISA.cpp
         Instr.cpp
         CodeObjectReader.cpp

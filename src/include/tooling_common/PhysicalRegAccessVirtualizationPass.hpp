@@ -22,9 +22,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_PHYSICAL_REG_ACCESS_VIRTUALIZATION_PASS_HPP
 #define LUTHIER_TOOLING_COMMON_PHYSICAL_REG_ACCESS_VIRTUALIZATION_PASS_HPP
-#include "luthier/LRCallgraph.h"
-#include "luthier/LRRegisterLiveness.h"
-#include "luthier/LiftedRepresentation.h"
+#include "luthier/tooling/LRCallgraph.h"
+#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/IR/PassManager.h>

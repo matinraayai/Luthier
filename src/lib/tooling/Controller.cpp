@@ -24,7 +24,10 @@
 #include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/Executable.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
+#include "luthier/llvm/EagerManagedStatic.h"
+#include "luthier/llvm/streams.h"
 #include "luthier/luthier.h"
+#include "luthier/rocprofiler-sdk/RocprofilerSDKError.h"
 #include "luthier/types.h"
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"
@@ -47,19 +50,25 @@
 
 namespace luthier {
 
-static llvm::cl::opt<bool>
-    TimeTrace("time-trace", llvm::cl::desc("Record luthier tool's time trace"));
+static EagerManagedStatic<llvm::cl::OptionCategory>
+    TimeTracingOptionCategory("Luthier Tooling Time Tracing Options");
 
-static llvm::cl::opt<unsigned> TimeTraceGranularity(
+static EagerManagedStatic<llvm::cl::opt<bool>>
+    TimeTrace("time-trace", llvm::cl::desc("Record luthier tool's time trace"),
+              llvm::cl::cat(*TimeTracingOptionCategory));
+
+static EagerManagedStatic<llvm::cl::opt<unsigned>> TimeTraceGranularity(
     "time-trace-granularity",
     llvm::cl::desc(
         "Minimum time granularity (in microseconds) traced by time profiler"),
-    llvm::cl::init(500), llvm::cl::Hidden);
+    llvm::cl::init(500), llvm::cl::Hidden,
+    llvm::cl::cat(*TimeTracingOptionCategory));
 
-static llvm::cl::opt<std::string>
+static EagerManagedStatic<llvm::cl::opt<std::string>>
     TimeTraceFile("time-trace-file",
                   llvm::cl::desc("Specify time trace file destination"),
-                  llvm::cl::value_desc("filename"));
+                  llvm::cl::value_desc("filename"),
+                  llvm::cl::cat(*TimeTracingOptionCategory));
 
 template <> Controller *Singleton<Controller>::Instance{nullptr};
 
@@ -69,13 +78,14 @@ static Controller *C{nullptr};
 Controller::Controller() {
   // Initialize all Luthier singletons
   TM = new TargetManager();
+  HipCompilerInterceptor = new hip::HipCompilerApiInterceptor();
+  HsaInterceptor = new hsa::HsaRuntimeInterceptor();
   HsaPlatform = new hsa::ExecutableBackedObjectsCache();
-  CG = new CodeGenerator();
+  HipRuntimeInterceptor = new hip::HipRuntimeApiInterceptor();
   TEL = new ToolExecutableLoader();
   CL = new CodeLifter();
-  HsaInterceptor = new hsa::HsaRuntimeInterceptor();
-  HipCompilerInterceptor = new hip::HipCompilerApiInterceptor();
-  HipRuntimeInterceptor = new hip::HipRuntimeApiInterceptor();
+  CG = new CodeGenerator();
+
   // Register Luthier intrinsics with the Code Generator
   CG->registerIntrinsic("luthier::readReg",
                         {readRegIRProcessor, readRegMIRProcessor});
@@ -93,12 +103,12 @@ Controller::Controller() {
 Controller::~Controller() {
   delete CG;
   delete CL;
-  delete TM;
   delete TEL;
   delete HsaPlatform;
+  delete HipRuntimeInterceptor;
   delete HsaInterceptor;
   delete HipCompilerInterceptor;
-  delete HipRuntimeInterceptor;
+  delete TM;
 }
 
 namespace hip {
@@ -173,49 +183,61 @@ void internalApiCallback(ApiEvtArgs *Args, const ApiEvtPhase Phase,
 static void parseEnvVariableArgs() {
   llvm::StringMap<llvm::cl::Option *> &RegisteredOpts =
       llvm::cl::getRegisteredOptions();
+
   // Disable machine verifier by default since it takes too much time +
   // it causes issues with live-in registers in code generator
-  reinterpret_cast<llvm::cl::opt<llvm::cl::boolOrDefault> *>(
-      RegisteredOpts["verify-machineinstrs"])
-      ->setValue(llvm::cl::BOU_FALSE, true);
+  auto *VerifyMachineInstrOption =
+      reinterpret_cast<llvm::cl::opt<llvm::cl::boolOrDefault> *>(
+          RegisteredOpts["verify-machineinstrs"]);
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+      VerifyMachineInstrOption != nullptr,
+      "LLVM option --verify-machineinstrs is not registered, likely due to a "
+      "static initialization bug within the LLVM/Luthier Tooling library."));
+  VerifyMachineInstrOption->setValue(llvm::cl::BOU_FALSE, true);
 
   const auto Argv = "";
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
       llvm::cl::ParseCommandLineOptions(
           0, &Argv, "Luthier, An AMD GPU Dynamic Binary Instrumentation Tool",
-          &llvm::errs(), "LUTHIER_ARGS"),
-      "Failed to parse the command line arguments"));
+          &luthier::errs(), "LUTHIER_ARGS"),
+      "Failed to parse the command line arguments."));
 }
 
 void rocprofilerFinalize(void *) {
   static std::once_flag Once{};
   std::call_once(Once, []() {
     atToolFini(API_EVT_PHASE_BEFORE);
-    delete C;
-    if (TimeTrace) {
+    if (*TimeTrace) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
-          llvm::timeTraceProfilerWrite(TimeTraceFile, "luthier-profile"));
+          llvm::timeTraceProfilerWrite(*TimeTraceFile, "luthier-profile"));
       llvm::timeTraceProfilerCleanup();
     }
+    delete C;
     atToolFini(API_EVT_PHASE_AFTER);
   });
 }
 
-void rocprofilerInit(void *) {
+void rocprofilerFinalize() { rocprofilerFinalize(nullptr); }
+
+void toolingLibraryInit(void *) {
   static std::once_flag Once{};
   std::call_once(Once, [] {
+    std::atexit(rocprofilerFinalize);
     atToolInit(API_EVT_PHASE_BEFORE);
     C = new Controller();
     llvm::EnablePrettyStackTrace();
+    llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
     llvm::setBugReportMsg("PLEASE submit a bug report to "
                           "https://github.com/matinraayai/Luthier/issues/ and "
                           "include the crash error message and backtrace.\n");
     // Add the rocprofiler finalize function as a signal handler to LLVM so that
     // it executes in case of a fatal error
     llvm::sys::AddSignalHandler(rocprofilerFinalize, nullptr);
+    // Parse the arguments here so that we can enable tracing afterward
+    luthier::parseEnvVariableArgs();
     // Enable the LLVM time tracer if enabled
-    if (TimeTrace)
-      llvm::timeTraceProfilerInitialize(TimeTraceGranularity,
+    if (*TimeTrace)
+      llvm::timeTraceProfilerInitialize(*TimeTraceGranularity,
                                         "libLuthierTooling.so");
     atToolInit(API_EVT_PHASE_AFTER);
   });
@@ -226,7 +248,7 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
                                     void **Tables, uint64_t NumTables,
                                     void *Data) {
   // Initialize the Luthier tooling (if not already initialized)
-  rocprofilerInit(Data);
+  toolingLibraryInit(Data);
   if (Type == ROCPROFILER_HSA_TABLE) {
     auto &HsaInterceptor = hsa::HsaRuntimeInterceptor::instance();
     auto &HsaApiTableCaptureCallback =
@@ -280,10 +302,8 @@ void setAtApiTableCaptureEvtCallback(
 extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *
 rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
                       uint32_t Priority, rocprofiler_client_id_t *ClientID) {
-  // Parse the luthier arguments here so that LLVM_DEBUG works inside this
-  // function
-  static std::once_flag ArgParseOnceFlag;
-  std::call_once(ArgParseOnceFlag, luthier::parseEnvVariableArgs);
+  // Initialize the tooling library
+  luthier::toolingLibraryInit(nullptr);
 
   LLVM_DEBUG(const uint32_t RocProfVerMajor = Version / 10000;
              const uint32_t RocProfVerMinor = (Version % 10000) / 100;
@@ -296,11 +316,12 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
   llvm::StringRef ToolName = luthier::getToolName();
   LLVM_DEBUG(llvm::dbgs() << "Luthier tool name: " << ToolName << "\n";);
   ClientID->name = ToolName.data();
-  rocprofiler_at_intercept_table_registration(
-      luthier::apiRegistrationCallback,
-      ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE |
-          ROCPROFILER_HIP_RUNTIME_TABLE,
-      nullptr);
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ROCPROFILER_SUCCESS_CHECK(
+      rocprofiler_at_intercept_table_registration(
+          luthier::apiRegistrationCallback,
+          ROCPROFILER_HSA_TABLE | ROCPROFILER_HIP_COMPILER_TABLE |
+              ROCPROFILER_HIP_RUNTIME_TABLE,
+          nullptr)));
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
       sizeof(rocprofiler_tool_configure_result_t), nullptr,

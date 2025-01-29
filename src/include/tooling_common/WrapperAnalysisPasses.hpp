@@ -21,11 +21,11 @@
 #ifndef LUTHIER_TOOLING_COMMON_WRAPPER_ANALYSIS_PASSES_HPP
 #define LUTHIER_TOOLING_COMMON_WRAPPER_ANALYSIS_PASSES_HPP
 #include "hsa/LoadedCodeObject.hpp"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/IR/PassManager.h>
 #include <luthier/Intrinsic/IntrinsicProcessor.h>
-#include <luthier/LiftedRepresentation.h>
 
 namespace luthier {
 

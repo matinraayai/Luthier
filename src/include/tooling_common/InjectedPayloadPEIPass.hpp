@@ -21,9 +21,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_INJECTED_PAYLOAD_PEI_PASS_HPP
 #define LUTHIER_TOOLING_COMMON_INJECTED_PAYLOAD_PEI_PASS_HPP
-#include "luthier/LRCallgraph.h"
-#include "luthier/LRRegisterLiveness.h"
-#include "luthier/LiftedRepresentation.h"
+#include "luthier/tooling/LRCallgraph.h"
+#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
 #include "tooling_common/SVStorageAndLoadLocations.hpp"

@@ -18,8 +18,8 @@
 /// This file implements utility functions used to clone LLVM MIR constructs.
 //===----------------------------------------------------------------------===//
 #include "llvm/Cloning.hpp"
-#include "common/Error.hpp"
 #include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>

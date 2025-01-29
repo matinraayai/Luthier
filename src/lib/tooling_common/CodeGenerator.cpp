@@ -19,10 +19,11 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/CodeGenerator.hpp"
 
-#include "common/Error.hpp"
 #include "hsa/ISA.hpp"
 #include "hsa/LoadedCodeObject.hpp"
-#include "luthier/LRRegisterLiveness.h"
+#include "luthier/comgr/ComgrError.h"
+#include "luthier/common/LuthierError.h"
+#include "luthier/tooling/LRRegisterLiveness.h"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
 #include "tooling_common/MMISlotIndexesAnalysis.hpp"
@@ -35,11 +36,11 @@
 #include <AMDGPUResourceUsageAnalysis.h>
 #include <AMDGPUTargetMachine.h>
 #include <amd_comgr/amd_comgr.h>
+#include <llvm/Analysis/CallGraphSCCPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/TimeProfiler.h>
-#include <llvm/Analysis/CallGraphSCCPass.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-generator"

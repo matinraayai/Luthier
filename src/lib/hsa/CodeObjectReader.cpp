@@ -19,11 +19,9 @@
 /// namespace.
 //===----------------------------------------------------------------------===//
 #include "hsa/CodeObjectReader.hpp"
-
-#include <llvm/ADT/StringExtras.h>
-
-#include "common/Error.hpp"
 #include "hsa/HsaRuntimeInterceptor.hpp"
+#include "luthier/hsa/HsaError.h"
+#include <llvm/ADT/StringExtras.h>
 
 namespace luthier::hsa {
 

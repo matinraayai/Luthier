@@ -16,7 +16,7 @@
 /// \file
 /// This file implements the instrumentation task class.
 //===----------------------------------------------------------------------===//
-#include <luthier/InstrumentationTask.h>
+#include "luthier/tooling/InstrumentationTask.h"
 
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"

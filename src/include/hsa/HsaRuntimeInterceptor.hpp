@@ -21,12 +21,13 @@
 #ifndef LUTHIER_HSA_HSA_RUNTIME_INTERCEPT_HPP
 #define LUTHIER_HSA_HSA_RUNTIME_INTERCEPT_HPP
 
-#include "common/Error.hpp"
 #include "common/ROCmLibraryApiInterceptor.hpp"
 #include "common/Singleton.hpp"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
+#include "luthier/hsa/HsaError.h"
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseSet.h>
-#include <luthier/ErrorCheck.h>
 #include <luthier/hsa/TraceApi.h>
 #include <luthier/types.h>
 

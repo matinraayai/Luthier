@@ -1,5 +1,10 @@
-add_library(LuthierTooling SHARED $<TARGET_OBJECTS:LuthierCommon>
-        $<TARGET_OBJECTS:LuthierHIP> $<TARGET_OBJECTS:LuthierHSA>
+add_library(LuthierTooling SHARED
+        $<TARGET_OBJECTS:LuthierComgr>
+        $<TARGET_OBJECTS:LuthierRocprofilerSDK>
+        $<TARGET_OBJECTS:LuthierHSA>
+        $<TARGET_OBJECTS:LuthierHIP>
+        $<TARGET_OBJECTS:LuthierLLVM>
+        $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierToolingCommon> luthier.cpp Controller.cpp
 )
 

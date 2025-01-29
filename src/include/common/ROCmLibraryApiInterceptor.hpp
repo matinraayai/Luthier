@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
 #define LUTHIER_COMMON_ROCM_LIBRARY_API_INTERCEPT_HPP
-#include "common/Error.hpp"
+#include "luthier/common/LuthierError.h"
 #include <functional>
 #include <llvm/ADT/DenseSet.h>
 #include <luthier/types.h>

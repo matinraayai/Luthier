@@ -1,4 +1,4 @@
-//===-- HipError.cpp - Luthier HIP Error Type -----------------------------===//
+//===-- HsaError.cpp - Luthier HSA Error Type -----------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,42 +15,44 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c luthier::HipError class.
+/// This file implements the \c luthier::HsaError class.
 //===----------------------------------------------------------------------===//
-#include "hip/HipRuntimeApiInterceptor.hpp"
+#include "hsa/HsaRuntimeInterceptor.hpp"
 #include <llvm/Support/Signals.h>
-#include <luthier/hip/HipError.h>
+#include <luthier/hsa/HsaError.h>
 
 namespace luthier {
 
-char HipError::ID = 0;
+char HsaError::ID = 0;
 
-llvm::Error HipError::HipErrorCheck(llvm::StringRef FileName, int LineNumber,
-                                    hipError_t Expr, llvm::StringRef ExprStr,
-                                    hipError_t Expected) {
+llvm::Error HsaError::HsaErrorCheck(llvm::StringRef FileName, int LineNumber,
+                                    hsa_status_t Expr, llvm::StringRef ExprStr,
+                                    hsa_status_t Expected) {
   if (Expr != Expected) {
     std::string StackTrace;
     llvm::raw_string_ostream STStream(StackTrace);
     llvm::sys::PrintStackTrace(STStream);
-    return llvm::make_error<HipError>(FileName, LineNumber, StackTrace, Expr,
+    return llvm::make_error<HsaError>(FileName, LineNumber, StackTrace, Expr,
                                       ExprStr);
   }
   return llvm::Error::success();
 }
 
-void luthier::HipError::log(llvm::raw_ostream &OS) const {
-  OS << "HIP error encountered in file " << File << ", line: " << LineNumber
+void luthier::HsaError::log(llvm::raw_ostream &OS) const {
+  OS << "HSA error encountered in file " << File << ", line: " << LineNumber
      << ": ";
-  OS << "HIP call in expression " << Expression << " failed with error code ";
+  OS << "HSA call in expression " << Expression << " failed with error code ";
   OS << Error;
-  if (hip::HipRuntimeApiInterceptor::isInitialized()) {
-    // Try to get the Error name if the hip runtime interceptor is
+  if (hsa::HsaRuntimeInterceptor::isInitialized()) {
+    // Try to get the Error name if the hsa runtime interceptor is
     // initialized.
     const auto &DispatchAPITable =
-        hip::HipRuntimeApiInterceptor::instance().getSavedApiTableContainer();
+        hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer();
     OS << ", ";
-    const char *ErrorName = DispatchAPITable.hipGetErrorName_fn(Error);
-    if (ErrorName != nullptr) {
+    const char *ErrorName;
+    hsa_status_t Status =
+        DispatchAPITable.core.hsa_status_string_fn(Error, &ErrorName);
+    if (Status == HSA_STATUS_SUCCESS) {
       OS << ErrorName << ".\n";
     } else {
       OS << "Unknown Error.\n";

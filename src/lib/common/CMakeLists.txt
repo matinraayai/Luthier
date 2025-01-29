@@ -1,8 +1,9 @@
 add_library(LuthierCommon OBJECT
         LuthierError.cpp
+        ObjectUtils.cpp
 )
 
-target_compile_definitions(LuthierCommon PRIVATE ${LLVM_DEFINITIONS})
+target_compile_definitions(LuthierCommon PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
 target_include_directories(LuthierCommon
         PUBLIC
@@ -11,4 +12,5 @@ target_include_directories(LuthierCommon
         PRIVATE
         ${CMAKE_SOURCE_DIR}/src/include
         ${LLVM_INCLUDE_DIRS}
+        ${hsa-runtime64_INCLUDE_DIRS}
 )

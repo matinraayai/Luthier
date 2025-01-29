@@ -39,7 +39,6 @@
 
 #include "AMDGPUTargetMachine.h"
 #include "TargetManager.hpp"
-#include "common/Cloning.hpp"
 #include "common/ObjectUtils.hpp"
 #include "common/Singleton.hpp"
 #include "hsa/Executable.hpp"
@@ -48,8 +47,9 @@
 #include "hsa/ISA.hpp"
 #include "hsa/LoadedCodeObject.hpp"
 #include "hsa/hsa.hpp"
-#include "luthier/LiftedRepresentation.h"
+#include "luthier/tooling/LiftedRepresentation.h"
 #include "luthier/types.h"
+#include "llvm/Cloning.hpp"
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>

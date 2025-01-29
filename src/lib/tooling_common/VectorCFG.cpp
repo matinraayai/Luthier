@@ -16,8 +16,9 @@
 ///
 /// \file This file implements the \c VectorMBB and \c VectorCFG classes.
 //===----------------------------------------------------------------------===//
-#include "luthier/VectorCFG.h"
-#include "luthier/CodeGenHelpers.h"
+#include "luthier/tooling/VectorCFG.h"
+#include "luthier/llvm/CodeGenHelpers.h"
+#include "luthier/llvm/streams.h"
 #include <SIInstrInfo.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -150,10 +151,10 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
       bool IsFormerMIScalar =
           MI.getPrevNode() != nullptr &&
           (isScalar(*MI.getPrevNode()) || isLaneAccess(*MI.getPrevNode()));
-      llvm::outs() << "=================\n";
-      llvm::outs() << MI << "\n";
+      luthier::outs() << "=================\n";
+      luthier::outs() << MI << "\n";
       if (IsVector && (WritesExecMask || IsFormerMIScalar)) {
-        llvm::outs() << "Split point detected\n";
+        luthier::outs() << "Split point detected\n";
         // If the current instruction is a vector inst, and if it writes
         // to the exec mask or if the last instruction was a scalar inst,
         // then we need to do a "split": Create a new VectorMBB to
@@ -172,7 +173,7 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
           CurrentTakenBlock->setInstRange(CurrentTakenBlock->begin(),
                                           MI.getIterator());
       } else if (!IsVector && !IsFormerMIScalar) {
-        llvm::outs() << "join point detected\n";
+        luthier::outs() << "join point detected\n";
         // Otherwise, if we observe a scalar instruction, we have to do a "join"
         // operation: Create a new VectorMBB to replace the current taken block,
         // and make it the successor of the current taken block. Also make
@@ -195,7 +196,7 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
       else
         CurrentTakenBlock->setInstRange(CurrentTakenBlock->begin(),
                                         NextIterator);
-      Out->print(llvm::outs());
+      Out->print(luthier::outs());
     }
     // Connect the current taken block to the exit taken block of the current
     // MBB

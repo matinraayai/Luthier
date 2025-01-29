@@ -18,9 +18,9 @@
 /// This file implements the Patch lifted representation pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PatchLiftedRepresentationPass.hpp"
-#include "common/Cloning.hpp"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
+#include "llvm/Cloning.hpp"
 #include <SIInstrInfo.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>

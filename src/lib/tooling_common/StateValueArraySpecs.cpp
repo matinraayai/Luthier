@@ -19,10 +19,10 @@
 /// specs.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/StateValueArraySpecs.hpp"
-#include "common/Error.hpp"
+#include "luthier/common/ErrorCheck.h"
 #include <SIMachineFunctionInfo.h>
 #include <llvm/ADT/DenseMap.h>
-#include <luthier/ErrorCheck.h>
+#include <luthier/common/LuthierError.h>
 
 namespace luthier::stateValueArray {
 
@@ -84,7 +84,6 @@ const static llvm::SmallDenseMap<KernelArgumentType, std::pair<short, short>,
         {SHARED_BASE, {53, 2}}};
 
 // TODO: Add wave32 state value array
-
 
 bool isFrameSpillSlot(llvm::MCRegister Reg) {
   return FrameSpillSlots.contains(Reg);
