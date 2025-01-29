@@ -20,6 +20,7 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/HipCompilerApiInterceptor.
 add_library(LuthierHIP OBJECT
         ${CMAKE_CURRENT_BINARY_DIR}/HipCompilerApiInterceptor.cpp
         ${CMAKE_CURRENT_BINARY_DIR}/HipRuntimeApiInterceptor.cpp
+        HipError.cpp
 )
 
 target_compile_definitions(LuthierHIP PRIVATE ${LLVM_DEFINITIONS})
@@ -30,7 +31,6 @@ target_include_directories(LuthierHIP
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
         ${LLVM_INCLUDE_DIRS}
-        ${amd_comgr_INCLUDE_DIRS}
 )
 
 target_link_libraries(LuthierHIP PRIVATE hip::host)
