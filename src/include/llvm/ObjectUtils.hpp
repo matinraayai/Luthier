@@ -47,9 +47,9 @@
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
 
+#include "luthier/hsa/Metadata.h"
+#include "luthier/types.h"
 #include <common/Error.hpp>
-#include <luthier/hsa/Metadata.h>
-#include <luthier/types.h>
 #include <map>
 #include <optional>
 #include <utility>

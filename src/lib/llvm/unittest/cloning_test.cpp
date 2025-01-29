@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "common/Cloning.hpp"
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
 
 int factorial(int number) {
   return number <= 1 ? number : factorial(number - 1) * number;

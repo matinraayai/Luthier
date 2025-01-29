@@ -18,11 +18,11 @@
 /// <tt>llvm::errs</tt>, and <tt>llvm::nulls</tt> that are safe to use with
 /// Luthier tools.
 //===----------------------------------------------------------------------===//
+#include "luthier/llvm/streams.h"
 #include "common/Error.hpp"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/llvm/EagerManagedStatic.h"
 #include <llvm/Support/FileSystem.h>
-#include <luthier/EagerManagedStatic.h>
-#include <luthier/ErrorCheck.h>
-#include <luthier/streams.h>
 
 namespace luthier {
 

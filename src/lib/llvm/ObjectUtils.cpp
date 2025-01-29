@@ -18,7 +18,7 @@
 /// This file implements all operations related to dealing with parsing and
 /// processing AMDGPU code objects using LLVM object file and DWARF utilities.
 //===----------------------------------------------------------------------===//
-#include "common/ObjectUtils.hpp"
+#include "llvm/ObjectUtils.hpp"
 
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/AMDGPUMetadata.h>
@@ -31,7 +31,7 @@
 
 #include "common/Error.hpp"
 
-#include <luthier/ErrorCheck.h>
+#include "luthier/common/ErrorCheck.h"
 
 #undef DEBUG_TYPE
 
