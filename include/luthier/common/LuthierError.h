@@ -1,4 +1,4 @@
-//===-- LuthierError.h -----------------------------------------------------===//
+//===-- LuthierError.h ------------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements different types of \c llvm::Error used by Luthier.
+/// This file implements an \c llvm::Error encountered inside both the Luthier
+/// tooling library and Luthier tools.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ERROR_LUTHIER_ERROR_H
 #define LUTHIER_ERROR_LUTHIER_ERROR_H
@@ -24,10 +25,6 @@
 #include <llvm/Support/Signals.h>
 
 namespace luthier {
-
-//===----------------------------------------------------------------------===//
-// Luthier Error Definition
-//===----------------------------------------------------------------------===//
 
 /// \brief Error used to indicate issues encountered in Luthier code not
 /// related to any other library
