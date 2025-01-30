@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_SPECS_H
 #define LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_SPECS_H
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include <llvm/Support/Error.h>
 
 namespace luthier::stateValueArray {

@@ -29,7 +29,7 @@
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
+#include <luthier/intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
 

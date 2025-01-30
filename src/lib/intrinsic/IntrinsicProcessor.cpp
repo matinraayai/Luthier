@@ -18,9 +18,9 @@
 /// This file implements part of Luthier's Intrinsic Processor functions
 /// not already defined by its header.
 //===----------------------------------------------------------------------===//
+#include "luthier/common/LuthierError.h"
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/Support/Error.h>
-#include <luthier/common/LuthierError.h>
 
 namespace luthier {
 

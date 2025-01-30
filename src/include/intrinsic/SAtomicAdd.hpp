@@ -22,10 +22,10 @@
 #ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_S_ATOMIC_ADD_HPP
 #define LUTHIER_TOOLING_COMMON_INTRINSIC_S_ATOMIC_ADD_HPP
 
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Support/Error.h>
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
 

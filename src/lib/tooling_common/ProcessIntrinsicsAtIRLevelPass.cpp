@@ -19,10 +19,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "tooling_common/ProcessIntrinsicsAtIRLevelPass.hpp"
+#include "luthier/consts.h"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/ScopedPrinter.h>
-#include <luthier/Consts.h>
 
 #undef DEBUG_TYPE
 

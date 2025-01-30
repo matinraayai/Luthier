@@ -33,11 +33,11 @@
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/TargetManager.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
-#include "tooling_common/intrinsic/ImplicitArgPtr.hpp"
-#include "tooling_common/intrinsic/ReadReg.hpp"
-#include "tooling_common/intrinsic/SAtomicAdd.hpp"
-#include "tooling_common/intrinsic/WriteExec.hpp"
-#include "tooling_common/intrinsic/WriteReg.hpp"
+#include "intrinsic/ImplicitArgPtr.hpp"
+#include "intrinsic/ReadReg.hpp"
+#include "intrinsic/SAtomicAdd.hpp"
+#include "intrinsic/WriteExec.hpp"
+#include "intrinsic/WriteReg.hpp"
 #include <llvm/Support/Error.h>
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>

@@ -1,4 +1,4 @@
-//===-- WriteReg.hpp - Luthier WriteReg Intrinsic  ------------------------===//
+//===-- WriteExec.hpp - Luthier WriteExec Intrinsic  ----------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,25 +15,26 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's <tt>WriteReg</tt> intrinsic, and how it should
-/// be transformed from an extern function call into a set of
+/// This file describes Luthier's <tt>WriteExec</tt> intrinsic, and how it
+/// should be transformed from an extern function call into a set of
 /// <tt>llvm::MachineInstr</tt>s.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_WRITE_REG_HPP
-#define LUTHIER_TOOLING_COMMON_INTRINSIC_WRITE_REG_HPP
+#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_WRITE_EXEC_HPP
+#define LUTHIER_TOOLING_COMMON_INTRINSIC_WRITE_EXEC_HPP
 
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
-#include <llvm/Support/Error.h>
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/Support/Error.h>
 
 namespace luthier {
 
 llvm::Expected<IntrinsicIRLoweringInfo>
-writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
-                   const llvm::GCNTargetMachine &TM);
+writeExecIRProcessor(const llvm::Function &Intrinsic,
+                     const llvm::CallInst &User,
+                     const llvm::GCNTargetMachine &TM);
 
-llvm::Error writeRegMIRProcessor(
+llvm::Error writeExecMIRProcessor(
     const IntrinsicIRLoweringInfo &IRLoweringInfo,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,

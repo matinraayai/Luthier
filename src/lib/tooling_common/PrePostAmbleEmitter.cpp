@@ -19,7 +19,7 @@
 /// \c FunctionPreambleDescriptor and its analysis pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PrePostAmbleEmitter.hpp"
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include "luthier/llvm/streams.h"
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"

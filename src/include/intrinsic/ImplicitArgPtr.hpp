@@ -1,4 +1,4 @@
-//===-- ReadReg.hpp - Luthier ReadReg Intrinsic  ---------------------===//
+//===-- ImplicitArgPtr.hpp - Luthier implicit arg access  -----------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,31 +15,31 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's <tt>ReadReg</tt> intrinsic, and how it should
-/// be transformed from an extern function call into a set of
+/// This file describes Luthier's <tt>ImplicitArgPtr</tt> intrinsic, and how it
+/// should be transformed from an extern function call into a set of
 /// <tt>llvm::MachineInstr</tt>s.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
-#define LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
-
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include <llvm/Support/Error.h>
+#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_IMPLICIT_ARG_PTR_HPP
+#define LUTHIER_TOOLING_COMMON_INTRINSIC_IMPLICIT_ARG_PTR_HPP
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/Support/Error.h>
 
 namespace luthier {
 
 llvm::Expected<IntrinsicIRLoweringInfo>
-readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
-                   const llvm::GCNTargetMachine &TM);
+implicitArgPtrIRProcessor(const llvm::Function &Intrinsic,
+                          const llvm::CallInst &User,
+                          const llvm::GCNTargetMachine &TM);
 
-llvm::Error readRegMIRProcessor(
+llvm::Error implicitArgPtrMIRProcessor(
     const IntrinsicIRLoweringInfo &IRLoweringInfo,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
-    const std::function<llvm::Register(KernelArgumentType)> &,
+    const std::function<llvm::Register(KernelArgumentType)> & KernArgAccessor,
     const llvm::MachineFunction &MF,
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten);

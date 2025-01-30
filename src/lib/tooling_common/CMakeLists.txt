@@ -19,8 +19,6 @@ add_library(LuthierToolingCommon OBJECT
         ToolExecutableLoader.cpp
         LiftedRepresentation.cpp
         InstrumentationModule.cpp
-        intrinsic/ReadReg.cpp
-        intrinsic/WriteReg.cpp
         PhysicalRegAccessVirtualizationPass.cpp
         SVStorageAndLoadLocations.cpp
         LRCallGraph.cpp
@@ -28,8 +26,6 @@ add_library(LuthierToolingCommon OBJECT
         IntrinsicMIRLoweringPass.cpp
         InjectedPayloadPEIPass.cpp
         PrePostAmbleEmitter.cpp
-        intrinsic/WriteExec.cpp
-        intrinsic/IntrinsicProcessor.cpp
         StateValueArraySpecs.cpp
         VectorCFG.cpp
         StateValueArrayStorage.cpp
@@ -42,8 +38,6 @@ add_library(LuthierToolingCommon OBJECT
         RunMIRPassesOnIModulePass.cpp
         PatchLiftedRepresentationPass.cpp
         MIRConvenience.cpp
-        intrinsic/ImplicitArgPtr.cpp
-        intrinsic/SAtomicAdd.cpp
 )
 
 # Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
@@ -65,4 +59,4 @@ target_include_directories(LuthierToolingCommon
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
-target_link_libraries(LuthierToolingCommon PRIVATE luthier::Intrinsics LuthierAMDGPU)
+target_link_libraries(LuthierToolingCommon PRIVATE LuthierAMDGPU)

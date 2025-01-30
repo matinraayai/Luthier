@@ -20,11 +20,11 @@
 /// live-in set.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
+#include "luthier/consts.h"
 #include "luthier/tooling/LRRegisterLiveness.h"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/Support/FormatVariadic.h>
-#include <luthier/Consts.h>
 
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 

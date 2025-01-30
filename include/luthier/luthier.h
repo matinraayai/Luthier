@@ -21,18 +21,18 @@
 #define LUTHIER_H
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
 #include "luthier/common/ErrorCheck.h"
+#include "luthier/consts.h"
 #include "luthier/tooling/InstrumentationTask.h"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
-#include <luthier/Consts.h>
-#include <luthier/Intrinsic/Intrinsics.h>
 #include <luthier/hip/TraceApi.h>
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/KernelDescriptor.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
 #include <luthier/hsa/TraceApi.h>
+#include <luthier/intrinsic/Intrinsics.h>
 #include <luthier/types.h>
 
 namespace luthier {
@@ -349,12 +349,12 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
       annotate(LUTHIER_STRINGIFY(LUTHIER_HOOK_ATTRIBUTE)))) extern "C" void
 
 #define LUTHIER_EXPORT_HOOK_HANDLE(HookName)                                   \
-  __attribute__((global, used)) extern "C" void LUTHIER_CAT(                         \
+  __attribute__((global, used)) extern "C" void LUTHIER_CAT(                   \
       LUTHIER_HOOK_HANDLE_PREFIX, HookName)(){};
 
 #define LUTHIER_GET_HOOK_HANDLE(HookName)                                      \
   reinterpret_cast<const void *>(                                              \
-      LUTHIER_CAT(LUTHIER_HOOK_HANDLE_PREFIX,HookName))
+      LUTHIER_CAT(LUTHIER_HOOK_HANDLE_PREFIX, HookName))
 } // namespace luthier
 
 #endif

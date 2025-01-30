@@ -25,7 +25,7 @@
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
+#include <luthier/intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
 

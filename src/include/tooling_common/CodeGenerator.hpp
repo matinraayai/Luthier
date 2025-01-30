@@ -22,7 +22,7 @@
 #ifndef LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
 #define LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
 #include "common/Singleton.hpp"
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 
 namespace llvm {
 

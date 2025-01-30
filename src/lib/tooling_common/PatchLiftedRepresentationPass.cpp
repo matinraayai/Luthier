@@ -18,6 +18,7 @@
 /// This file implements the Patch lifted representation pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PatchLiftedRepresentationPass.hpp"
+#include "luthier/consts.h"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
 #include "llvm/Cloning.hpp"
@@ -31,7 +32,6 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/TimeProfiler.h>
 #include <llvm/Transforms/Utils/Cloning.h>
-#include <luthier/Consts.h>
 #include <ranges>
 
 #undef DEBUG_TYPE

@@ -4,6 +4,7 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierHSA>
         $<TARGET_OBJECTS:LuthierHIP>
         $<TARGET_OBJECTS:LuthierLLVM>
+        $<TARGET_OBJECTS:LuthierIntrinsic>
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierToolingCommon> luthier.cpp Controller.cpp
 )
@@ -22,8 +23,7 @@ target_include_directories(LuthierTooling
 )
 
 target_link_libraries(LuthierTooling
-        PUBLIC hip::host rocprofiler-sdk::rocprofiler-sdk hsa-runtime64::hsa-runtime64
-        luthier::Intrinsics LuthierAMDGPU
+        PUBLIC hip::host rocprofiler-sdk::rocprofiler-sdk hsa-runtime64::hsa-runtime64 LuthierAMDGPU
         PRIVATE
         LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter

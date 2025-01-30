@@ -24,7 +24,7 @@
 #include "tooling_common/PrePostAmbleEmitter.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
+#include <luthier/intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
 

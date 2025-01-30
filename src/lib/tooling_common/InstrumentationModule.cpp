@@ -21,13 +21,13 @@
 #include "hsa/Executable.hpp"
 #include "hsa/ExecutableSymbol.hpp"
 #include "hsa/LoadedCodeObject.hpp"
+#include "luthier/consts.h"
 #include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/TimeProfiler.h>
-#include <luthier/Consts.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instrumentation-module"

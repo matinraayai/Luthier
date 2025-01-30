@@ -1,9 +1,9 @@
+#include "AMDGPUTargetMachine.h"
+#include "SIRegisterInfo.h"
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/common/LuthierError.h"
 #include "luthier/llvm/streams.h"
-#include "tooling_common/intrinsic/WriteReg.hpp"
-#include <AMDGPUTargetMachine.h>
-#include <SIRegisterInfo.h>
+#include "intrinsic/WriteReg.hpp"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>

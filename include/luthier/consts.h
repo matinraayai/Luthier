@@ -1,4 +1,4 @@
-//===-- LuthierConsts.h ----------------------------------------*- C++ -*-===//
+//===-- consts.h ------------------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,8 +19,8 @@
 /// compiler plugins projects.
 //===----------------------------------------------------------------------===//
 
-#ifndef LUTHIER_LUTHIER_CONSTS_H
-#define LUTHIER_LUTHIER_CONSTS_H
+#ifndef LUTHIER_CONSTS_H
+#define LUTHIER_CONSTS_H
 
 namespace luthier {
 

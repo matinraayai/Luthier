@@ -28,7 +28,7 @@
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/Support/Error.h>
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
+#include <luthier/intrinsic/IntrinsicProcessor.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 

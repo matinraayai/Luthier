@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INTRINSIC_CALLS_H
 #define LUTHIER_INTRINSIC_CALLS_H
-#include "Consts.h"
+#include "luthier/consts.h"
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 

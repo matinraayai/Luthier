@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
+#include "luthier/consts.h"
 #include "luthier/llvm/streams.h"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/IntrinsicMIRLoweringPass.hpp"
@@ -31,7 +32,6 @@
 #include <llvm/CodeGen/MachineDominators.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/Passes.h>
-#include <luthier/Consts.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-injected-payload-pei-pass"

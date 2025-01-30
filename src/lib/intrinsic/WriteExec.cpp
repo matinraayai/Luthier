@@ -1,8 +1,8 @@
-#include "tooling_common/intrinsic/WriteExec.hpp"
+#include "intrinsic/WriteExec.hpp"
+#include "AMDGPUTargetMachine.h"
+#include "SIRegisterInfo.h"
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/common/LuthierError.h"
-#include <AMDGPUTargetMachine.h>
-#include <SIRegisterInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/MC/MCRegister.h>

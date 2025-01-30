@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_RUN_MIR_PASSES_ON_IMODULE_PASS_HPP
 #define LUTHIER_TOOLING_COMMON_RUN_MIR_PASSES_ON_IMODULE_PASS_HPP
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include <AMDGPUTargetMachine.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/PassManager.h>

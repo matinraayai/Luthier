@@ -18,8 +18,8 @@
 /// This file implements Luthier's Physical Reg Access Virtualization Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
-#include "luthier/Consts.h"
-#include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/intrinsic/IntrinsicProcessor.h"
+#include "luthier/consts.h"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"

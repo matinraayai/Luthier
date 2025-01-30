@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INTRINSIC_INTRINSICS_H
 #define LUTHIER_INTRINSIC_INTRINSICS_H
-#include <luthier/Consts.h>
+#include "luthier/consts.h"
 #include <llvm/MC/MCRegister.h>
 
 namespace luthier {

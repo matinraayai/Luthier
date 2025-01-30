@@ -7,15 +7,7 @@ find_package(hip REQUIRED)
 
 find_package(LLVM REQUIRED CONFIG)
 
-find_package(LuthierCompilerPlugins REQUIRED CONFIG)
-
 add_library(LuthierKernelArgumentIntrinsic SHARED KernelArgumentIntrinsic.hip)
-
-luthier_add_hsa_compile_definitions(LuthierKernelArgumentIntrinsic)
-
-luthier_add_position_independence(LuthierKernelArgumentIntrinsic)
-
-luthier_add_llvm_compile_definitions(LuthierKernelArgumentIntrinsic)
 
 luthier_add_compiler_plugin(LuthierKernelArgumentIntrinsic luthier::IModuleEmbedPlugin)
 

@@ -19,6 +19,7 @@
 /// instrumentation modules which are passed to the \c CodeGenerator.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/ToolExecutableLoader.hpp"
+#include "luthier/consts.h"
 #include "tooling_common/TargetManager.hpp"
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Analysis/ValueTracking.h>
@@ -26,7 +27,6 @@
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/Transforms/Utils/Cloning.h>
-#include <luthier/Consts.h>
 #include <vector>
 
 #include "common/Log.hpp"

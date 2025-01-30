@@ -6,8 +6,9 @@ add_llvm_pass_plugin(IModuleEmbedPlugin
         EmbedInstrumentationModuleBitcodePass.hpp
         EmbedInstrumentationModuleBitcodePass.cpp)
 
-target_include_directories(IModuleEmbedPlugin PRIVATE "$<BUILD_INTERFACE:${LLVM_INCLUDE_DIRS}>"
-        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/compiler-plugins/include>")
+target_include_directories(IModuleEmbedPlugin PRIVATE
+        "$<BUILD_INTERFACE:${LLVM_INCLUDE_DIRS}>"
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
 
 add_library(luthier::IModuleEmbedPlugin ALIAS IModuleEmbedPlugin)
 
