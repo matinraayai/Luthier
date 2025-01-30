@@ -24,6 +24,11 @@
 #include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/Executable.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
+#include "intrinsic/ImplicitArgPtr.hpp"
+#include "intrinsic/ReadReg.hpp"
+#include "intrinsic/SAtomicAdd.hpp"
+#include "intrinsic/WriteExec.hpp"
+#include "intrinsic/WriteReg.hpp"
 #include "luthier/llvm/EagerManagedStatic.h"
 #include "luthier/llvm/streams.h"
 #include "luthier/luthier.h"
@@ -33,11 +38,6 @@
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/TargetManager.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
-#include "intrinsic/ImplicitArgPtr.hpp"
-#include "intrinsic/ReadReg.hpp"
-#include "intrinsic/SAtomicAdd.hpp"
-#include "intrinsic/WriteExec.hpp"
-#include "intrinsic/WriteReg.hpp"
 #include <llvm/Support/Error.h>
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>
@@ -138,8 +138,8 @@ static void internalApiCallback(ApiEvtArgs *Args, const ApiEvtPhase Phase,
 namespace hsa {
 /// Luthier's internal HSA API callback; Mainly used to notify singletons about
 /// creation of loaded code objects, freezing and destruction of executables
-void internalApiCallback(ApiEvtArgs *Args, const ApiEvtPhase Phase,
-                         const ApiEvtID ApiId) {
+static void internalApiCallback(ApiEvtArgs *Args, const ApiEvtPhase Phase,
+                                const ApiEvtID ApiId) {
   LUTHIER_LOG_FUNCTION_CALL_START
   if (Phase == API_EVT_PHASE_AFTER &&
       ApiId == HSA_API_EVT_ID_hsa_executable_freeze) {
@@ -203,7 +203,7 @@ static void parseEnvVariableArgs() {
       "Failed to parse the command line arguments."));
 }
 
-void rocprofilerFinalize(void *) {
+static void toolingLibraryFini(void *) {
   static std::once_flag Once{};
   std::call_once(Once, []() {
     atToolFini(API_EVT_PHASE_BEFORE);
@@ -217,12 +217,12 @@ void rocprofilerFinalize(void *) {
   });
 }
 
-void rocprofilerFinalize() { rocprofilerFinalize(nullptr); }
+static void toolingLibraryFini() { toolingLibraryFini(nullptr); }
 
-void toolingLibraryInit(void *) {
+static void toolingLibraryInit(void *) {
   static std::once_flag Once{};
   std::call_once(Once, [] {
-    std::atexit(rocprofilerFinalize);
+    std::atexit(toolingLibraryFini);
     atToolInit(API_EVT_PHASE_BEFORE);
     C = new Controller();
     llvm::EnablePrettyStackTrace();
@@ -232,7 +232,7 @@ void toolingLibraryInit(void *) {
                           "include the crash error message and backtrace.\n");
     // Add the rocprofiler finalize function as a signal handler to LLVM so that
     // it executes in case of a fatal error
-    llvm::sys::AddSignalHandler(rocprofilerFinalize, nullptr);
+    llvm::sys::AddSignalHandler(toolingLibraryFini, nullptr);
     // Parse the arguments here so that we can enable tracing afterward
     luthier::parseEnvVariableArgs();
     // Enable the LLVM time tracer if enabled
@@ -243,12 +243,15 @@ void toolingLibraryInit(void *) {
   });
 }
 
+static int rocprofilerServiceInit(rocprofiler_client_finalize_t, void *) {
+  Controller::instance().getRocprofilerServiceInitCallback()();
+  return 0;
+}
+
 static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
                                     uint64_t LibVersion, uint64_t LibInstance,
                                     void **Tables, uint64_t NumTables,
                                     void *Data) {
-  // Initialize the Luthier tooling (if not already initialized)
-  toolingLibraryInit(Data);
   if (Type == ROCPROFILER_HSA_TABLE) {
     auto &HsaInterceptor = hsa::HsaRuntimeInterceptor::instance();
     auto &HsaApiTableCaptureCallback =
@@ -291,6 +294,10 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
   }
 }
 
+void setRocprofilerServiceInitCallback(const std::function<void()> &Callback) {
+  Controller::instance().setRocprofilerServiceInitCallback(Callback);
+}
+
 namespace hsa {
 void setAtApiTableCaptureEvtCallback(
     const std::function<void(ApiEvtPhase)> &Callback) {
@@ -324,7 +331,7 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
           nullptr)));
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
-      sizeof(rocprofiler_tool_configure_result_t), nullptr,
-      &luthier::rocprofilerFinalize, nullptr};
+      sizeof(rocprofiler_tool_configure_result_t),
+      &luthier::rocprofilerServiceInit, &luthier::toolingLibraryFini, nullptr};
   return &Cfg;
 }

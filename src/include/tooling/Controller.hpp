@@ -81,9 +81,9 @@ private:
   std::function<void(ApiEvtPhase)> AtHSAApiTableCaptureEvtCallback{
       [](ApiEvtPhase) {}};
 
-  /// A callback invoked before
-  std::function<void(ApiEvtPhase)> AtApiTableReleaseEvtCallback{
-      [](ApiEvtPhase) {}};
+  /// A callback invoked inside the \c luthier::rocprofilerServiceInit
+  /// function to allow for requesting additional rocprofiler-sdk services
+  std::function<void()> RocprofilerServiceInitCallback{[]() {}};
 
 public:
   Controller();
@@ -97,6 +97,14 @@ public:
 
   const std::function<void(ApiEvtPhase)> &getAtHSAApiTableCaptureEvtCallback() {
     return AtHSAApiTableCaptureEvtCallback;
+  }
+
+  void setRocprofilerServiceInitCallback(const std::function<void()> &CB) {
+    RocprofilerServiceInitCallback = CB;
+  }
+
+  const std::function<void()> &getRocprofilerServiceInitCallback() {
+    return RocprofilerServiceInitCallback;
   }
 };
 } // namespace luthier

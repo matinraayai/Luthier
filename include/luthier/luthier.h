@@ -43,20 +43,19 @@ namespace luthier {
 
 /// A callback function required to be defined in a Luthier tool. The tooling
 /// library invokes this function before and after Luthier's internal components
-/// are initialized \n
+/// are initialized. The initialization happens inside the
+/// \c rocprofiler_configure function which registers the Luthier tool with the
+/// rocprofiler-sdk, therefore all restrictions imposed by rocprofiler
+/// inside \c rocprofiler_configure apply here \n
 /// This function is typically used for setting tool callback functions that are
 /// considered optional for a luthier tool
 /// (e.g. <tt>hsa::setAtApiTableCaptureEvtCallback</tt>),
 /// printing a banner for the tool, or doing non-HIP/HSA related initializations
 /// \warning It is not safe to use HSA or HIP functions in this callback,
 /// as at this point of execution neither HIP or HSA are initialized.
-/// \warning This callback should not enable callbacks for HIP/HSA APIs, as
-/// at this point of execution, HIP/HSA API tables have not been captured by
-/// Luthier; Use \c hsa::setAtApiTableCaptureEvtCallback and
-/// \c hip::setAtApiTableCaptureEvtCallback instead
-/// \warning It is unsafe to access statically-initialized LLVM command-line
-/// arguments of the tool. Wait until any of the HIP/HSA API tables to be
-/// captured to access them
+/// \warning This callback should not enable callbacks for HSA APIs, as
+/// at this point of execution, HSA API tables have not been captured by
+/// Luthier; Use \c hsa::setAtApiTableCaptureEvtCallback instead
 /// \note This function is required to be implemented by all Luthier tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool initialization
 /// or \c API_EVT_PHASE_AFTER when called after tool initialization
@@ -66,11 +65,10 @@ void atToolInit(ApiEvtPhase Phase);
 /// destroyed and finalized\n
 /// Use this callback to print out/process results that are already on the host,
 /// and finalize the tool\n
-/// \warning No HSA or HIP function should be used inside this callback,
-/// as at this point both HSA and HIP runtimes are finalized\n
 /// \warning If any interactions are to happen inside this callback and
-/// Luthier's internal components, it must be only be done when \p Phase
-/// is \c API_EVT_PHASE_BEFORE
+/// Luthier's internal components and internal managed states
+/// (e.g. <tt>luthier::outs</tt>),
+/// it must be only be done when \p Phase is \c API_EVT_PHASE_BEFORE
 /// \note This function is required to be implemented by all Luthier tools
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
 /// or \c API_EVT_PHASE_AFTER when called after tool finalization
@@ -81,6 +79,11 @@ void atToolFini(ApiEvtPhase Phase);
 /// identifier
 /// \return the Luthier tool's name
 llvm::StringRef getToolName();
+
+
+/// Sets a \p Callback that can be used to create a rocprofiler-sdk context and
+/// request rocprofiler-sdk services
+void setRocprofilerServiceInitCallback(const std::function<void()> &Callback);
 
 //===----------------------------------------------------------------------===//
 // HSA/HIP callback functions
