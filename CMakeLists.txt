@@ -21,12 +21,10 @@ set(LUTHIER_TOOLING_LLVM_SRC_DIR "" CACHE STRING "Path to the source code of the
 
 # Import modules
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake/module ${CMAKE_MODULE_PATH})
-include(LuthierHSA)
-include(LuthierLLVM)
-include(LuthierAddPositionIndependence)
 
 # Add the sub projects
 add_subdirectory(luthier-tblgen)
+add_subdirectory(compiler-plugins)
 add_subdirectory(src)
 
 # Any Compilation Flags, Linking Configuration Left

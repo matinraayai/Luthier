@@ -33,7 +33,7 @@ export(EXPORT LuthierCompilerPluginsTargets
 )
 
 # Install and export the modules under the cmake directory
-configure_file(${CMAKE_SOURCE_DIR}/cmake/modules/LuthierAddCompilerPlugin.cmake
+configure_file(${CMAKE_SOURCE_DIR}/compiler-plugins/cmake/modules/LuthierAddCompilerPlugin.cmake
         ${CMAKE_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierAddCompilerPlugin.cmake COPYONLY)
 
 install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/LuthierCompilerPlugins/LuthierAddCompilerPlugin.cmake
