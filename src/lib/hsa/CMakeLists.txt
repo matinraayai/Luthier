@@ -6,7 +6,7 @@ if (${LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG})
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
 endif ()
 
-add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/HsaRuntimeInterceptor.cpp
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
         --hsa-include-dir ${hsa-runtime64_INCLUDE_DIRS}/hsa
         --cpp-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
@@ -46,4 +46,4 @@ target_include_directories(LuthierHSA
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 
-target_link_libraries(LuthierHSA PRIVATE LuthierAMDGPU)
+target_link_libraries(LuthierHSA PRIVATE LuthierAMDGPU hip::host)

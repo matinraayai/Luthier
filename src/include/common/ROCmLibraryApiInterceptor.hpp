@@ -39,7 +39,6 @@ public:
                              const ApiIDEnumType)>
       callback_t;
 
-protected:
   enum InterceptorStatus {
     WAITING_FOR_API_TABLE, ///< At this state the API table has not been
                            ///< captured by the interceptor, and \c
@@ -91,6 +90,8 @@ public:
   ROCmLibraryApiInterceptor(const ROCmLibraryApiInterceptor &) = delete;
   ROCmLibraryApiInterceptor &
   operator=(const ROCmLibraryApiInterceptor &) = delete;
+
+  InterceptorStatus getInterceptorStatus() const { return Status; }
 
   /// \return a const reference to the saved API table container with
   /// the "actual" API functions

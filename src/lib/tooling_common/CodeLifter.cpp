@@ -22,12 +22,26 @@
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
 
+#include "common/ObjectUtils.hpp"
+#include "hsa/Executable.hpp"
+#include "hsa/GpuAgent.hpp"
+#include "hsa/ISA.hpp"
+#include "hsa/LoadedCodeObject.hpp"
+#include "hsa/hsa.hpp"
+#include "luthier/hsa/Instr.h"
+#include "luthier/hsa/KernelDescriptor.h"
+#include "luthier/llvm/streams.h"
+#include "luthier/tooling/LRCallgraph.h"
+#include "luthier/types.h"
+#include "tooling_common/TargetManager.hpp"
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
+#include <SIRegisterInfo.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/BinaryFormat/MsgPackDocument.h>
 #include <llvm/CodeGen/AsmPrinter.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -46,25 +60,11 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/RelocationResolver.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
+#include <llvm/Support/TimeProfiler.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
-#include <SIRegisterInfo.h>
-#include <llvm/CodeGen/LivePhysRegs.h>
-#include <llvm/Support/TimeProfiler.h>
 #include <memory>
-#include "common/ObjectUtils.hpp"
-#include "hsa/Executable.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/ISA.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-#include "hsa/hsa.hpp"
-#include "luthier/hsa/Instr.h"
-#include "luthier/hsa/KernelDescriptor.h"
-#include "luthier/llvm/streams.h"
-#include "luthier/tooling/LRCallgraph.h"
-#include "luthier/types.h"
-#include "tooling_common/TargetManager.hpp"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-lifter"

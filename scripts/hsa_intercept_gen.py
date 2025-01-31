@@ -206,7 +206,9 @@ template <> struct DenseMapInfo<luthier::hsa::ApiEvtID> {
 #include <hsa/hsa_api_trace.h>
 #include <hsa/amd_hsa_queue.h>
 #include "luthier/hsa/TraceApi.h"
+#include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/HsaRuntimeInterceptor.hpp"
+#include "luthier/llvm/EagerManagedStatic.h"
                      
 template <>
 luthier::hsa::HsaRuntimeInterceptor
@@ -225,10 +227,18 @@ void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
   // still intercept queues in HIP trying to dispatch packets. Basically tells the
   // queue callbacks not to bother using the HSA Runtime interceptor, 
   // because it has been destroyed already
-  if (!luthier::hsa::HsaRuntimeInterceptor::isInitialized()) {{
-    Writer(Packets, PktCount);
-    return;
+  //if (!luthier::hsa::HsaRuntimeInterceptor::isInitialized()) {{
+  //  Writer(Packets, PktCount);
+  //  return;
+  // }}
+  static luthier::EagerManagedStatic<std::mutex> Mutex;
+  Mutex->lock();
+  if (luthier::hip::HipRuntimeApiInterceptor::instance().getInterceptorStatus() == luthier::hip::HipRuntimeApiInterceptor::WAITING_FOR_API_TABLE) {{
+    // Trigger the initialization of the HIP runtime API table
+    hipApiName(0);
   }}
+  Mutex->unlock(); 
+  
   auto *Queue = reinterpret_cast<amd_queue_t*>(Data);
   auto &HsaInterceptor = luthier::hsa::HsaRuntimeInterceptor::instance();
   HsaInterceptor.freezeRuntimeApiTable();
