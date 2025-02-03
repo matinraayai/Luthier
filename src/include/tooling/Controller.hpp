@@ -81,6 +81,16 @@ private:
   std::function<void(ApiEvtPhase)> AtHSAApiTableCaptureEvtCallback{
       [](ApiEvtPhase) {}};
 
+  /// A callback invoked before/after when rocprofiler has provided the
+  /// HIP Dispatch API table to the Luthier tool
+  std::function<void(ApiEvtPhase)> AtHIPDispatchApiTableCaptureEvtCallback{
+      [](ApiEvtPhase) {}};
+
+  /// A callback invoked before/after when rocprofiler has provided the
+  /// HIP Compiler API table to the Luthier tool
+  std::function<void(ApiEvtPhase)> AtHIPCompilerApiTableCaptureEvtCallback{
+      [](ApiEvtPhase) {}};
+
   /// A callback invoked inside the \c luthier::rocprofilerServiceInit
   /// function to allow for requesting additional rocprofiler-sdk services
   std::function<void()> RocprofilerServiceInitCallback{[]() {}};
@@ -97,6 +107,26 @@ public:
 
   const std::function<void(ApiEvtPhase)> &getAtHSAApiTableCaptureEvtCallback() {
     return AtHSAApiTableCaptureEvtCallback;
+  }
+
+  void setAtHIPRuntimeApiTableCaptureEvtCallback(
+      const std::function<void(ApiEvtPhase)> &CB) {
+    AtHIPCompilerApiTableCaptureEvtCallback = CB;
+  }
+
+  const std::function<void(ApiEvtPhase)> &
+  getAtHIPRuntimeApiTableCaptureEvtCallback() {
+    return AtHIPCompilerApiTableCaptureEvtCallback;
+  }
+
+  void setAtHIPCompilerApiTableCaptureEvtCallback(
+      const std::function<void(ApiEvtPhase)> &CB) {
+    AtHIPCompilerApiTableCaptureEvtCallback = CB;
+  }
+
+  const std::function<void(ApiEvtPhase)> &
+  getAtHIPCompilerApiTableCaptureEvtCallback() {
+    return AtHIPCompilerApiTableCaptureEvtCallback;
   }
 
   void setRocprofilerServiceInitCallback(const std::function<void()> &CB) {

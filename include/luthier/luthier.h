@@ -19,20 +19,24 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_H
 #define LUTHIER_H
+/// \c HIP_ENABLE_WARP_SYNC_BUILTINS is defined before HIP runtime headers
+/// are included
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/consts.h"
-#include "luthier/tooling/InstrumentationTask.h"
-#include "luthier/tooling/LiftedRepresentation.h"
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
+#include <luthier/common/ErrorCheck.h>
+#include <luthier/consts.h>
 #include <luthier/hip/TraceApi.h>
+/// Undef the ill-defined \c ICMP_NE in HIP headers
+#undef ICMP_NE
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/KernelDescriptor.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
 #include <luthier/hsa/TraceApi.h>
 #include <luthier/intrinsic/Intrinsics.h>
+#include <luthier/tooling/InstrumentationTask.h>
+#include <luthier/tooling/LiftedRepresentation.h>
 #include <luthier/types.h>
 
 namespace luthier {
@@ -41,22 +45,29 @@ namespace luthier {
 // Luthier callback APIs (required to be implemented by all tools)
 //===----------------------------------------------------------------------===//
 
-/// A callback function required to be defined in a Luthier tool. The tooling
-/// library invokes this function before and after Luthier's internal components
-/// are initialized. The initialization happens inside the
-/// \c rocprofiler_configure function which registers the Luthier tool with the
-/// rocprofiler-sdk, therefore all restrictions imposed by rocprofiler
-/// inside \c rocprofiler_configure apply here \n
-/// This function is typically used for setting tool callback functions that are
-/// considered optional for a luthier tool
+/// A callback function required to be defined in a Luthier tool. It is invoked
+/// by the tooling library before and after Luthier's internal components
+/// are initialized. \n
+/// This function is typically used for setting other tool callback functions
+/// that are not necessarily required for a luthier tool
 /// (e.g. <tt>hsa::setAtApiTableCaptureEvtCallback</tt>),
-/// printing a banner for the tool, or doing non-HIP/HSA related initializations
-/// \warning It is not safe to use HSA or HIP functions in this callback,
-/// as at this point of execution neither HIP or HSA are initialized.
+/// printing a banner for the tool, allocating global variables, or
+/// doing non-HIP/HSA related initializations
+/// \note This function is required to be implemented by all Luthier tools
+/// \note This function is invoked by the tooling library inside the
+/// \c rocprofiler_configure function, which registers the Luthier tool with the
+/// rocprofiler-sdk library. Therefore, all restrictions imposed by rocprofiler
+/// inside \c rocprofiler_configure applies here as well
+/// \warning It is not safe to perform HSA or HIP functions in this callback,
+/// as at this point of execution neither HIP or HSA are initialized. Use
+/// <tt>luthier::hip::setAtHipCompilerTableCaptureEvtCallback</tt>,
+/// <tt>setAtHipCompilerTableCaptureEvtCallback</tt>, and
+/// <tt>hsa::setAtApiTableCaptureEvtCallback</tt> instead to be notified when
+/// it is safe to make HIP/HSA call
 /// \warning This callback should not enable callbacks for HSA APIs, as
 /// at this point of execution, HSA API tables have not been captured by
-/// Luthier; Use \c hsa::setAtApiTableCaptureEvtCallback instead
-/// \note This function is required to be implemented by all Luthier tools
+/// Luthier; Use <tt>hsa::setAtApiTableCaptureEvtCallback</tt> instead to
+/// set a callback for HSA calls inside the application
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool initialization
 /// or \c API_EVT_PHASE_AFTER when called after tool initialization
 void atToolInit(ApiEvtPhase Phase);
@@ -64,77 +75,116 @@ void atToolInit(ApiEvtPhase Phase);
 /// A callback invoked before and after Luthier's sub-systems are
 /// destroyed and finalized\n
 /// Use this callback to print out/process results that are already on the host,
-/// and finalize the tool\n
-/// \warning If any interactions are to happen inside this callback and
-/// Luthier's internal components and internal managed states
-/// (e.g. <tt>luthier::outs</tt>),
-/// it must be only be done when \p Phase is \c API_EVT_PHASE_BEFORE
+/// de-allocate any global variables, or finalize the tool\n
 /// \note This function is required to be implemented by all Luthier tools
+/// \note This function is invoked by the tooling library inside the
+/// rocprofiler-sdk's tool finalizer function. Therefore, any restrictions
+/// imposed by rocprofiler-sdk imposed on tool finalizer functions also apply
+/// here
+/// \warning The tool must not make any calls to the tooling library which
+/// relies on a persistent internal state (e.g. <tt>luthier::outs</tt>,
+/// requesting API tables for HIP/HSA) in the \c API_EVT_PHASE_AFTER phase, as
+/// at this point, all internal global variables of the tooling library have
+/// been destroyed via \c llvm_shutdown
 /// \param Phase \c API_EVT_PHASE_BEFORE when called before tool finalization
 /// or \c API_EVT_PHASE_AFTER when called after tool finalization
 void atToolFini(ApiEvtPhase Phase);
 
-/// A function defined by all tools which returns the tool's name
-/// The returned name will be passed to rocprofiler-sdk as the Luthier tool's
-/// identifier
+/// A function required to be defined by all tools, which the tool's name
+/// \note The returned \c llvm::StringRef will be passed to rocprofiler-sdk as
+/// the Luthier tool's identifier, and must remain valid throughout the
+/// lifetime of the Luthier tool
 /// \return the Luthier tool's name
 llvm::StringRef getToolName();
 
+//===----------------------------------------------------------------------===//
+// HSA/HIP/Rocprofiler callback functions
+//===----------------------------------------------------------------------===//
+
+namespace rocprofiler_sdk {
 
 /// Sets a \p Callback that can be used to create a rocprofiler-sdk context and
 /// request rocprofiler-sdk services
-void setRocprofilerServiceInitCallback(const std::function<void()> &Callback);
+/// \note This function gets invoked as part of <tt>rocprofiler_configure</tt>'s
+/// initializer function, therefore any restrictions imposed by rocprofiler-sdk
+/// also applies here
+void setServiceInitCallback(const std::function<void()> &Callback);
 
-//===----------------------------------------------------------------------===//
-// HSA/HIP callback functions
-//===----------------------------------------------------------------------===//
+} // namespace rocprofiler_sdk
 
 namespace hsa {
 
-/// If called, invokes the \p Callback before and after the HSA API table has
-/// been captured by Luthier\n
+/// If set, invokes the \p Callback before and after the HSA API table has
+/// been provided to Luthier by rocprofiler-sdk\n
 /// Use this function to request callbacks for each \c luthier::hsa::ApiEvtID
-/// (only after tables have been captured)
-/// If the \p Callback is called during <tt>API_EVT_PHASE_AFTER</tt>, it
-/// is allowed to use HSA functions via <tt>luthier::hsa::getHsaApiTable</tt>
+/// after the tables have been captured
+/// \note During <tt>API_EVT_PHASE_AFTER</tt>, it is safe to use HSA
+/// functions via <tt>luthier::hsa::getHsaApiTable</tt>
 /// \param Callback the function to be called before/after the HSA API tables
 /// has been captured by Luthier
 void setAtApiTableCaptureEvtCallback(
     const std::function<void(ApiEvtPhase)> &Callback);
 
-/// If called, performs the \p Callback before and after each HSA API or event
-/// being actively captured by Luthier\n
+/// Enables callbacks to be invoked when the given \p ApiID is reached inside
+/// the target application
+/// \note This function must be called after the HSA API tables have been
+/// captured by the tooling library i.e. inside the callback function provided
+/// to <tt>hsa::setAtApiTableCaptureEvtCallback</tt>.
+/// \warning The Luthier tool must declare all possible <tt>hsa::ApiEvtID</tt>s
+/// it intends to monitor inside the callback function provided
+/// to <tt>hsa::setAtApiTableCaptureEvtCallback</tt>. After the HSA API table
+/// capture event has passed, the tool cannot request for callbacks for any
+/// additional events, as no additional modifications are possible to the
+/// ROCr runtime's API table. It is safe, however, to enable and disable
+/// callbacks for <tt>hsa::ApiEvtID</tt> already requested by the tool.
+/// \note Use \c hsa::setAtHsaApiEvtCallback to set the callback invoked at
+/// each HSA event.
+/// \param ApiID the API/EVT ID to be captured via a callback
+/// \returns an \c llvm::Error if any issue was encountered during the process
+/// \sa setAtHsaApiEvtCallback, disableHsaApiEvtIDCallback
+llvm::Error enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
+
+/// If called, invokes \p Callback before and after each HSA API or event
+/// inside the target application\n
 /// \param Callback the function to be called before/after each HSA API or event
 /// being actively captured by Luthier
-/// \sa hsa_trace_api.h, enableHsaApiEvtIDCallback, disableHsaApiEvtIDCallback,
-/// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
+/// \sa hsa_trace_api.h, enableHsaApiEvtIDCallback, disableHsaApiEvtIDCallback
 void setAtHsaApiEvtCallback(
     const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback);
 
-/// Enables capturing of the given \p Op and performs a HSA API/EVT
-/// callback everytime it is reached in the application
-/// \note This function must be called after the HSA API tables have been
-/// captured by Luthier. The tool will be notified of this event by the
-/// \c luthier::setAtApiTableCaptureEvtCallback function, when \c ApiEvtPhase
-/// is <tt>API_EVT_PHASE_AFTER</tt>.
-/// \param ApiID the API/EVT ID to be captured
-/// \returns an \c llvm::Error if any issue was encountered during the process
-/// \sa setAtHsaApiEvtCallback, disableHsaApiEvtIDCallback,
-/// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
-llvm::Error enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 
 /// Disables capturing of the given HSA \p Op and its callback
 /// \note This function must be called after the HSA API tables have been
-/// captured by Luthier. The tool will be notified of this event by the
-/// \c luthier::setAtApiTableCaptureEvtCallback function, when \c ApiEvtPhase
-/// is <tt>API_EVT_PHASE_AFTER</tt>.
+/// captured by the tooling library i.e. inside the callback function provided
+/// to <tt>hsa::setAtApiTableCaptureEvtCallback</tt>
 /// \param ApiID the API/EVT ID to stop capturing
 /// \returns an \c llvm::Error if any issue was encountered during the process
-/// \sa setAtHsaApiEvtCallback, enableHsaApiEvtIDCallback,
-/// enableAllHsaApiEvtCallbacks, disableAllHsaCallbacks
+/// \sa setAtHsaApiEvtCallback, enableHsaApiEvtIDCallback
 llvm::Error disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 
 } // namespace hsa
+
+namespace hip {
+
+/// If called, invokes the \p Callback before and after the HIP Compiler API
+/// table has been provided to Luthier by rocprofiler-sdk\n
+/// Use this function to be notified exactly when the HIP compiler tabl has been
+/// initialized i.e. it is safe to perform HIP compiler calls
+/// \param Callback the function to be called before/after the HIP Compiler API
+/// tables has been captured by Luthier
+void setAtHipCompilerTableCaptureEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback);
+
+/// If set, invokes the \p Callback before and after the HIP Dispatch API
+/// table has been provided to Luthier by rocprofiler-sdk\n
+/// Use this function to be notified exactly when the HIP runtime has been
+/// initialized i.e. it is safe to perform HIP runtime calls
+/// \param Callback the function to be called before/after the HIP Dispatch API
+/// tables has been captured by Luthier
+void setAtHipDispatchTableCaptureEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback);
+
+} // namespace hip
 
 namespace hsa {
 
@@ -142,36 +192,48 @@ namespace hsa {
 //  HSA/HIP functionality on the tool side
 //===----------------------------------------------------------------------===//
 
-/// Use this function to call HSA functions without it being intercepted
 /// \return a reference to the original HSA API table i.e. the table containing
 /// the original, un-intercepted version of the HSA API functions
+/// \warning Never invoke HSA APIs directly inside a Luthier tool;
+/// Use this function to call HSA functions without it being re-intercepted by
+/// Luthier instead
 const HsaApiTable &getHsaApiTable();
 
-/// Use the AMD vendor loader API only to query segment descriptors
-/// \return a reference to the original AMD
+/// \return a reference to the original AMD Loader table
+/// \sa hsa_ven_amd_loader_1_03_pfn_s
 const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable();
 
 } // namespace hsa
 
 namespace hip {
 
-/// \return a const reference to the original HIP Compiler API table
+/// \return a const reference to the original HIP Compiler API table i.e.
+/// the table containing the original, un-intercepted version of the
+/// HIP Compiler API functions
+/// \warning Never invoke HIP Compiler APIs directly inside a Luthier tool;
+/// Use this function to call HIP Compiler API functions without it being
+/// re-intercepted by Luthier instead
 const HipCompilerDispatchTable &getSavedCompilerTable();
 
-/// \return a const reference to the original HIP Dispatch API table
+/// \return a const reference to the original HIP Dispatch API table i.e.
+/// the table containing the original, un-intercepted version of the
+/// HIP Dispatch API functions
+/// \warning Never invoke HIP Dispatch APIs directly inside a Luthier tool;
+/// Use this function to call HIP Dispatch API functions without it being
+/// re-intercepted by Luthier instead
 const HipDispatchTable &getSavedDispatchTable();
 
 } // namespace hip
 
 //===----------------------------------------------------------------------===//
-//  Inspection API
+//  Inspection APIs
 //===----------------------------------------------------------------------===//
 
 /// Disassembles the \p Kernel into a list of <tt>hsa::Instr</tt>\n
 /// Disassembly only occurs on the first time this function is invoked on
-/// \p Kernel. Subsequent calls will use a result cached internally\n
+/// the \p Kernel. Subsequent calls will use a result cached internally\n
 /// \note This function only provides a raw LLVM MC view of the instructions;
-/// For instrumentation, use <tt>lift</tt>
+/// For instrumentation, use <tt>lift</tt> instead
 /// \param Kernel the kernel symbol to be disassembled
 /// \return an \c llvm::ArrayRef to an internally cached vector of
 /// <tt>hsa::Instr</tt>s, or an \c llvm::Error if an issue was encountered
@@ -183,7 +245,7 @@ disassemble(const hsa::LoadedCodeObjectKernel &Kernel);
 /// Disassembly only occurs on the first time this function is invoked on
 /// \p Func. Subsequent calls will use a result cached internally.\n
 /// \note This function only provides a raw LLVM MC view of the instructions;
-/// For instrumentation, use <tt>lift</tt>
+/// For instrumentation, use <tt>lift</tt> instead
 /// \param Func the device function to be disassembled
 /// \return an \c llvm::ArrayRef to an internally cached vector of
 /// <tt>hsa::Instr</tt>s, or an \c llvm::Error if an issue was encountered
@@ -215,9 +277,9 @@ lift(hsa_executable_t Executable);
 //  Instrumentation API
 //===----------------------------------------------------------------------===//
 
-/// Instruments the \p LR by applying the \p Mutator and
+/// Instruments the \p LR by applying the \p Mutator to it
 /// \param LR the \c LiftedRepresentation about to be instrumented
-/// \param Mutator the lambda that instruments and modifies the \p LR
+/// \param Mutator a function that instruments and modifies the \p LR
 /// \return returns a new \c LiftedRepresentation containing the instrumented
 /// code, or an \c llvm::Error if an issue was encountered during
 /// instrumentation
@@ -234,7 +296,7 @@ instrument(const LiftedRepresentation &LR,
 /// <tt>llvm::MachineModuleInfo</tt>s will be deleted; This is due to an LLVM
 /// design shortcoming which is being worked on
 /// \param [in] LR the \c LiftedRepresentation to be printed into an assembly
-/// file; Its \c llvm::LLVMTargetMachine can be used to control the
+/// file; Its \c llvm::TargetMachine can be used to control the
 /// \c llvm::TargetOptions of the compilation process
 /// \param [out] CompiledObjectFiles the printed assembly file
 /// \param [in] FileType Type of the assembly file printed; Can be either
@@ -274,10 +336,12 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
 /// the instrumentation task <tt>ITask</tt> to it.\n
 /// After instrumentation, loads the instrumented code onto the same device
 /// as the \p Exec
-/// \param Exec
-/// \param LR
-/// \param ITask
-/// \return
+/// \param Exec the executable being instrumented
+/// \param LR the lifted representation of the \p Exec
+/// \param Mutator a function that applies an instrumentation task and mutates
+/// the lifted representation
+/// \return \c llvm::Error describing any issues that might have been
+/// encountered during the process
 llvm::Error
 instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
                   llvm::function_ref<llvm::Error(InstrumentationTask &,
@@ -289,8 +353,8 @@ instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
 /// \param [in] Kernel the \c hsa::LoadedCodeObjectKernel of the app
 /// \param [in] Preset the preset name the kernel was instrumented under
 /// \return on success, returns \c true if the \p Kernel is instrumented, \c
-// false otherwise. Returns an \c llvm::Error if the \p Kernel HSA symbol handle
-// is invalid
+/// false otherwise. Returns an \c llvm::Error if the \p Kernel HSA symbol handle
+/// is invalid
 llvm::Expected<bool>
 isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
                      llvm::StringRef Preset);
@@ -341,8 +405,7 @@ llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
 /// Luthier's function, the `HIP_ENABLE_DEFERRED_LOADING` environment
 /// variable must be set to zero to ensure Luthier tool code objects get loaded
 /// right away on all devices.
-///
-/// * \sa LUTHIER_HOOK_ANNOTATE
+/// \sa LUTHIER_HOOK_ANNOTATE
 #define MARK_LUTHIER_DEVICE_MODULE                                             \
   __attribute__((managed, used)) char LUTHIER_RESERVED_MANAGED_VAR = 0;
 

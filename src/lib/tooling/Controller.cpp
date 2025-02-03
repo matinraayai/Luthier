@@ -275,9 +275,13 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Compiler API Table.\n");
     auto &HipCompilerInterceptor =
         luthier::hip::HipCompilerApiInterceptor::instance();
+    auto &HipCompilerTableCaptureCallback =
+        Controller::instance().getAtHIPCompilerApiTableCaptureEvtCallback();
+    HipCompilerTableCaptureCallback(API_EVT_PHASE_BEFORE);
     auto *Table = static_cast<HipCompilerDispatchTable *>(Tables[0]);
     LUTHIER_REPORT_FATAL_ON_ERROR(
         HipCompilerInterceptor.captureApiTable(Table));
+    HipCompilerTableCaptureCallback(API_EVT_PHASE_AFTER);
     HipCompilerInterceptor.setInternalCallback(hip::internalApiCallback);
 
     LUTHIER_REPORT_FATAL_ON_ERROR(HipCompilerInterceptor.enableInternalCallback(
@@ -287,16 +291,24 @@ static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
   if (Type == ROCPROFILER_HIP_RUNTIME_TABLE) {
     LLVM_DEBUG(llvm::dbgs() << "Capturing the HIP Runtime API Table.\n");
     auto &HipRuntimeInterceptor = hip::HipRuntimeApiInterceptor::instance();
+    auto &HipRuntimeTableCaptureCallback =
+        Controller::instance().getAtHIPRuntimeApiTableCaptureEvtCallback();
+    HipRuntimeTableCaptureCallback(API_EVT_PHASE_BEFORE);
     auto *Table = static_cast<HipDispatchTable *>(Tables[0]);
     LUTHIER_REPORT_FATAL_ON_ERROR(HipRuntimeInterceptor.captureApiTable(Table));
+    HipRuntimeTableCaptureCallback(API_EVT_PHASE_AFTER);
     HipRuntimeInterceptor.setInternalCallback(hip::internalApiCallback);
     LLVM_DEBUG(llvm::dbgs() << "Captured the HIP Runtime API Table.\n");
   }
 }
 
-void setRocprofilerServiceInitCallback(const std::function<void()> &Callback) {
+namespace rocprofiler_sdk {
+
+void setServiceInitCallback(const std::function<void()> &Callback) {
   Controller::instance().setRocprofilerServiceInitCallback(Callback);
 }
+
+} // namespace rocprofiler_sdk
 
 namespace hsa {
 void setAtApiTableCaptureEvtCallback(
@@ -304,6 +316,21 @@ void setAtApiTableCaptureEvtCallback(
   Controller::instance().setAtHSAApiTableCaptureEvtCallback(Callback);
 }
 } // namespace hsa
+
+namespace hip {
+
+void setAtHipDispatchTableCaptureEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback) {
+  Controller::instance().setAtHIPRuntimeApiTableCaptureEvtCallback(Callback);
+}
+
+void setAtHipCompilerTableCaptureEvtCallback(
+    const std::function<void(ApiEvtPhase)> &Callback) {
+  Controller::instance().setAtHIPCompilerApiTableCaptureEvtCallback(Callback);
+}
+
+} // namespace hip
+
 } // namespace luthier
 
 extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *
