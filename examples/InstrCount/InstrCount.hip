@@ -24,7 +24,9 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <luthier/hip/HipError.h>
 #include <luthier/hsa/DisableInterceptionScope.h>
+#include <luthier/hsa/HsaError.h>
 #include <luthier/llvm/CodeGenHelpers.h>
 #include <luthier/llvm/EagerManagedStatic.h>
 #include <luthier/llvm/streams.h>
@@ -45,7 +47,6 @@ using namespace luthier;
 // Commandline arguments for the tool
 //===----------------------------------------------------------------------===//
 
-/// Define an option category for the instruction count tool
 static llvm::cl::OptionCategory *InstrCountToolOptionCategory;
 
 static llvm::cl::opt<unsigned int> *InstrBeginInterval;
@@ -63,11 +64,13 @@ static llvm::cl::opt<bool> *DemangleKernelNames;
 //===----------------------------------------------------------------------===//
 // Global variables of the tool
 //===----------------------------------------------------------------------===//
+/// Name of the tool
+static std::string *ToolName{nullptr};
 
 /// Number of kernels launched so far
 static uint32_t NumKernelLaunched = 0;
 
-/// Total number of instructions, incremented by the managed variable
+/// Total number of instructions, incremented by the device variable
 /// \c Counter every time a kernel finishes executing
 static uint64_t TotalNumInstructions = 0;
 
@@ -77,14 +80,21 @@ __attribute__((device)) uint64_t Counter;
 /// Keeps track of whether we are in the interval to profile or not
 static bool ActiveRegion = true;
 
-/// A Mutex, used to protect the Counter value and ActiveRegion
+/// A Mutex, used to protect the Counter value and ActiveRegion, effectively
+/// makes all kernels launch sequentially
 std::mutex Mutex;
 
+/// The current kernel being instrumented
 static const luthier::hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{
     nullptr};
 
+/// This is set to true if the original dispatch packet didn't have a signal
+/// field set. In this scenario, the tool creates a signal so that it can
+/// wait on the end of the kernel, and must destroy the signal after waiting
+/// on the kernel
 static bool MustDestroySignalAfterLaunch{false};
 
+/// The value of the signal to wait for after kernel launches
 static hsa_signal_value_t SignalValue{0};
 
 //===----------------------------------------------------------------------===//
@@ -126,24 +136,6 @@ LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
-
-//  Counter += 1;
-//  __builtin_amdgcn_s_dcache_wb();
-//    __builtin_amdgcn_s_dcache_inv();
-// atomicAdd(&Counter, 5);
-//  // Get the exec mask of the wavefront
-//  unsigned long long int ExecMask =
-//      luthier::readReg<unsigned long long int>(llvm::AMDGPU::EXEC);
-//  // Get the position of the thread in the current wavefront
-//  const uint32_t ThreadPosition = __lane_id();
-//  // Get the first active thread id inside this wavefront
-//  uint32_t FirstActiveThreadId = __ffsll(ExecMask);
-//  // Get the number of active threads in this wavefront
-//  uint32_t NumActiveThreads = __popcll(ExecMask);
-//
-//  // Have only the first active thread perform the atomic add
-//  if (FirstActiveThreadId == ThreadPosition)
-//      atomicAdd(&Counter, NumActiveThreads);
 
 //===----------------------------------------------------------------------===//
 // Tool Callbacks
@@ -219,18 +211,15 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           std::string KernelNameToBePrinted = *DemangleKernelNames
                                                   ? llvm::demangle(*KernelName)
                                                   : std::string(*KernelName);
-          luthier::errs() << "Kernel " << KernelNameToBePrinted
-                          << " is being launched\n";
           // Get the packet's completion signal and its value
 
           // Create a signal if the application didn't create one for this
           // packet
           if (DispatchPacket->completion_signal.handle == 0) {
-            if (hsa::getHsaApiTable().amd_ext_->hsa_amd_signal_create_fn(
+            LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+                hsa::getHsaApiTable().amd_ext_->hsa_amd_signal_create_fn(
                     SignalValue, 0, nullptr, 0,
-                    &DispatchPacket->completion_signal) != HSA_STATUS_SUCCESS)
-              llvm::report_fatal_error("Failed to create a signal for the "
-                                       "dispatch packet.");
+                    &DispatchPacket->completion_signal)));
             MustDestroySignalAfterLaunch = true;
           } else {
             MustDestroySignalAfterLaunch = false;
@@ -245,8 +234,6 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           } else {
             ActiveRegion = false;
           }
-          luthier::errs() << "Active region: " << ActiveRegion << "\n";
-
           if (ActiveRegion) {
             luthier::errs() << "Kernel is being instrumented.\n";
 
@@ -258,29 +245,21 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             }
             LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
                 *DispatchPacket, "instr_count"));
-            // Zero the counter
+            // Zero the instruction counter device variable
             {
               luthier::hsa::DisableUserInterceptionScope Scope;
               uint64_t CounterHost = 0;
               uint64_t *CounterDevice;
-              if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
-                      (void **)&CounterDevice, &Counter) != hipSuccess) {
-                llvm::report_fatal_error(
-                    "Failed to get the counter's symbol address.");
-              }
-              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
-                      &CounterDevice, &CounterHost, sizeof(CounterHost)) !=
-                  HSA_STATUS_SUCCESS)
-                llvm::report_fatal_error(
-                    "Failed to copy counter from host to device.");
-              luthier::errs() << "After calling memcpy.\n";
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
+                  hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+                      (void **)&CounterDevice, &Counter)));
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+                  hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+                      &CounterDevice, &CounterHost, sizeof(CounterHost))));
             }
-            luthier::errs() << "Outside the scope.\n";
           }
           T1 = std::chrono::high_resolution_clock::now();
         } else {
-          luthier::errs() << "Active region in the exit callback: "
-                          << ActiveRegion << "\n";
           constexpr auto Timeout =
               std::chrono::duration_cast<std::chrono::nanoseconds>(
                   std::chrono::seconds{300})
@@ -297,20 +276,16 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                               DispatchPacket->completion_signal.handle,
                               CurrentSignalValue - 1, SignalValue));
           if (MustDestroySignalAfterLaunch) {
-            if (hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
-                    DispatchPacket->completion_signal) != HSA_STATUS_SUCCESS) {
-              llvm::report_fatal_error(
-                  "Failed to destroy the completed kernel's"
-                  "signal");
-            }
+            LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+                hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
+                    DispatchPacket->completion_signal)));
           }
           auto T2 = std::chrono::high_resolution_clock::now();
           KernelTotalTime +=
               std::chrono::duration_cast<std::chrono::microseconds>(T2 - T1)
                   .count();
           if (ActiveRegion) {
-
-            luthier::errs() << "Kernel is being waited on\n";
+            luthier::errs() << "Kernel is being waited on.\n";
             /// If we are exiting a kernel launch:
             /// 1. Wait on the signal of the kernel being launched
             /// 2. Get the number of wave fronts in the kernel
@@ -328,16 +303,12 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             {
               luthier::hsa::DisableUserInterceptionScope Scope;
               uint64_t *CounterDevice;
-              if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
-                      (void **)&CounterDevice, &Counter) != hipSuccess) {
-                llvm::report_fatal_error(
-                    "Failed to get the counter's symbol address.");
-              }
-              if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
-                      &CounterHost, CounterDevice, sizeof(Counter)) !=
-                  HSA_STATUS_SUCCESS)
-                llvm::report_fatal_error(
-                    "Failed to copy counter from device to host.");
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
+                  hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+                      (void **)&CounterDevice, &Counter)));
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+                  hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+                      &CounterHost, CounterDevice, sizeof(Counter))));
               TotalNumInstructions += CounterHost;
             }
 
@@ -425,8 +396,9 @@ void atToolInit(ApiEvtPhase Phase) {
         llvm::cl::init(true), llvm::cl::NotHidden,
         llvm::cl::cat(*InstrCountToolOptionCategory));
 
-    luthier::errs() << "Instruction counter tool is launching.\n";
+    ToolName = new std::string{"luthier instruction counter tool"};
   } else {
+    luthier::errs() << "Instruction counter tool is launching.\n";
     // Set the callback for when the HSA API table is captured
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
     // Set the HSA API callback
@@ -450,14 +422,13 @@ void atToolFini(ApiEvtPhase Phase) {
 
     delete DemangleKernelNames;
 
+    delete ToolName;
+
     luthier::errs() << "Total number of counted instructions: "
                     << TotalNumInstructions << ".\n";
   }
 }
 
-llvm::StringRef getToolName() {
-  const static std::string ToolName{"LuthierInstrCountTool"};
-  return ToolName;
-}
+llvm::StringRef getToolName() { return *ToolName; }
 
 } // namespace luthier
