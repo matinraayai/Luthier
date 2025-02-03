@@ -120,8 +120,8 @@ template <typename T,
           typename = std::enable_if_t<
               std::is_same_v<T, uint32_t> || std::is_same_v<T, uint64_t> ||
               std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>>>
-LUTHIER_INTRINSIC_ANNOTATE T *sAtomicAdd(T *Address, T Value) {
-  T *Out;
+LUTHIER_INTRINSIC_ANNOTATE T sAtomicAdd(T *Address, T Value) {
+  T Out;
   doNotOptimize(Out);
   doNotOptimize(Address);
   doNotOptimize(Value);

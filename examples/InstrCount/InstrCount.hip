@@ -18,11 +18,6 @@
 /// This file implements a sample instruction counter tool using Luthier.
 /// The tool was inspired by NVBit's instruction counter.
 //===----------------------------------------------------------------------===//
-#include <luthier/luthier.h>
-#include <mutex>
-#include <thread>
-// undef ICMP_NE macro that was ill-defined in HIP headers
-#undef ICMP_NE
 #include <SIInstrInfo.h>
 #include <chrono>
 #include <llvm/Demangle/Demangle.h>
@@ -30,6 +25,12 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <luthier/hsa/DisableInterceptionScope.h>
+#include <luthier/llvm/CodeGenHelpers.h>
+#include <luthier/llvm/EagerManagedStatic.h>
+#include <luthier/llvm/streams.h>
+#include <luthier/luthier.h>
+#include <mutex>
+#include <thread>
 
 static decltype(std::chrono::high_resolution_clock::now()) T1{};
 
@@ -45,50 +46,19 @@ using namespace luthier;
 //===----------------------------------------------------------------------===//
 
 /// Define an option category for the instruction count tool
-llvm::cl::OptionCategory
-    InstrCountToolOptionCategory("Instruction Count Tool Options");
+static llvm::cl::OptionCategory *InstrCountToolOptionCategory;
 
-static llvm::cl::opt<unsigned int> InstrBeginInterval(
-    "instr-begin-interval",
-    llvm::cl::desc("Beginning of the instruction interval where to "
-                   "apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(InstrCountToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrBeginInterval;
 
-static llvm::cl::opt<unsigned int>
-    InstrEndInterval("instr-end-interval",
-                     llvm::cl::desc("End of the instruction interval where to "
-                                    "apply instrumentation, exclusive"),
-                     llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-                     llvm::cl::NotHidden,
-                     llvm::cl::cat(InstrCountToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrEndInterval;
 
-static llvm::cl::opt<unsigned int> KernelBeginInterval(
-    "kernel-begin-interval",
-    llvm::cl::desc(
-        "Beginning of the kernel interval to apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(InstrCountToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelBeginInterval;
 
-static llvm::cl::opt<unsigned int> KernelEndInterval(
-    "kernel-end-interval",
-    llvm::cl::desc(
-        "End of the kernel interval to apply instrumentation, exclusive"),
-    llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-    llvm::cl::NotHidden, llvm::cl::cat(InstrCountToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelEndInterval;
 
-static llvm::cl::opt<bool> CountWavefrontLevel(
-    "count-wavefront-level",
-    llvm::cl::desc("Whether to count number of instructions at the wavefront "
-                   "level or thread level"),
-    llvm::cl::init(false), llvm::cl::NotHidden,
-    llvm::cl::cat(InstrCountToolOptionCategory));
+static llvm::cl::opt<bool> *CountWavefrontLevel;
 
-static llvm::cl::opt<bool> DemangleKernelNames(
-    "demangle-kernel-names",
-    llvm::cl::desc("Whether to demangle kernel names before printing"),
-    llvm::cl::init(true), llvm::cl::NotHidden,
-    llvm::cl::cat(InstrCountToolOptionCategory));
+static llvm::cl::opt<bool> *DemangleKernelNames;
 
 //===----------------------------------------------------------------------===//
 // Global variables of the tool
@@ -152,14 +122,7 @@ LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsVector);
 
 LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
-  // Get the exec mask of the wavefront
-  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
-  // Overwrite the exec mask with one so that only a single thread is active
-  luthier::writeExec(1);
-  // Increment the counter by 1
-  atomicAdd(&Counter, 1);
-  // Restore the exec mask
-  luthier::writeExec(ExecMask);
+  (void)luthier::sAtomicAdd(&Counter, 1UL);
 }
 
 LUTHIER_EXPORT_HOOK_HANDLE(countInstructionsScalar);
@@ -190,20 +153,14 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
                                        LiftedRepresentation &LR) {
   // Create a constant bool indicating the CountWavefrontLevel value
   auto *CountWavefrontLevelConstVal =
-      llvm::ConstantInt::getBool(LR.getContext(), CountWavefrontLevel);
+      llvm::ConstantInt::getBool(LR.getContext(), *CountWavefrontLevel);
   unsigned int I = 0;
   for (auto &[_, MF] : LR.functions()) {
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
-        if (I >= InstrBeginInterval && I < InstrEndInterval) {
-          bool IsScalar =
-              llvm::SIInstrInfo::isSOP1(MI) || llvm::SIInstrInfo::isSOP2(MI) ||
-              llvm::SIInstrInfo::isSOPK(MI) || llvm::SIInstrInfo::isSOPC(MI) ||
-              llvm::SIInstrInfo::isSOPP(MI) || llvm::SIInstrInfo::isSMRD(MI);
-          bool IsLaneAccess =
-              MI.getOpcode() == llvm::AMDGPU::V_READFIRSTLANE_B32 ||
-              MI.getOpcode() == llvm::AMDGPU::V_READLANE_B32 ||
-              MI.getOpcode() == llvm::AMDGPU::V_WRITELANE_B32;
+        if (I >= *InstrBeginInterval && I < *InstrEndInterval) {
+          bool IsScalar = luthier::isScalar(MI);
+          bool IsLaneAccess = luthier::isLaneAccess(MI);
           if (IsScalar || IsLaneAccess)
             LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
                 MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
@@ -259,11 +216,11 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 
           auto KernelName = KernelSymbol->getName();
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
-          std::string KernelNameToBePrinted = DemangleKernelNames
+          std::string KernelNameToBePrinted = *DemangleKernelNames
                                                   ? llvm::demangle(*KernelName)
                                                   : std::string(*KernelName);
-          llvm::outs() << "Kernel " << KernelNameToBePrinted
-                       << " is being launched\n";
+          luthier::errs() << "Kernel " << KernelNameToBePrinted
+                          << " is being launched\n";
           // Get the packet's completion signal and its value
 
           // Create a signal if the application didn't create one for this
@@ -282,16 +239,16 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
                   DispatchPacket->completion_signal);
 
-          if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval) {
+          if (NumKernelLaunched >= *KernelBeginInterval &&
+              NumKernelLaunched < *KernelEndInterval) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
           }
-          llvm::outs() << "Active region: " << ActiveRegion << "\n";
+          luthier::errs() << "Active region: " << ActiveRegion << "\n";
 
           if (ActiveRegion) {
-            llvm::outs() << "Kernel is being instrumented.\n";
+            luthier::errs() << "Kernel is being instrumented.\n";
 
             auto IsKernelInstrumented =
                 isKernelInstrumented(*KernelSymbol, "instr_count");
@@ -303,36 +260,27 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 *DispatchPacket, "instr_count"));
             // Zero the counter
             {
-              (void)hipApiName(0);
-              llvm::outs() << "inside the scope.\n";
               luthier::hsa::DisableUserInterceptionScope Scope;
               uint64_t CounterHost = 0;
               uint64_t *CounterDevice;
-              llvm::outs() << "Dispatch table: "
-                           << &hip::getSavedDispatchTable() << "\n";
-              llvm::outs()
-                  << "hipGetSymbolAddress_fn: "
-                  << &hip::getSavedDispatchTable().hipGetSymbolAddress_fn
-                  << "\n";
               if (hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
                       (void **)&CounterDevice, &Counter) != hipSuccess) {
                 llvm::report_fatal_error(
                     "Failed to get the counter's symbol address.");
               }
-              llvm::outs() << "After calling device symbol.\n";
               if (hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
                       &CounterDevice, &CounterHost, sizeof(CounterHost)) !=
                   HSA_STATUS_SUCCESS)
                 llvm::report_fatal_error(
                     "Failed to copy counter from host to device.");
-              llvm::outs() << "After calling memcpy.\n";
+              luthier::errs() << "After calling memcpy.\n";
             }
-            llvm::outs() << "Outside the scope.\n";
+            luthier::errs() << "Outside the scope.\n";
           }
           T1 = std::chrono::high_resolution_clock::now();
         } else {
-          llvm::outs() << "Active region in the exit callback: " << ActiveRegion
-                       << "\n";
+          luthier::errs() << "Active region in the exit callback: "
+                          << ActiveRegion << "\n";
           constexpr auto Timeout =
               std::chrono::duration_cast<std::chrono::nanoseconds>(
                   std::chrono::seconds{300})
@@ -362,7 +310,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                   .count();
           if (ActiveRegion) {
 
-            llvm::outs() << "Kernel is being waited on\n";
+            luthier::errs() << "Kernel is being waited on\n";
             /// If we are exiting a kernel launch:
             /// 1. Wait on the signal of the kernel being launched
             /// 2. Get the number of wave fronts in the kernel
@@ -374,8 +322,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             auto KernelName = KernelBeingInstrumented->getName();
             LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
             std::string KernelNameToBePrinted =
-                DemangleKernelNames ? llvm::demangle(*KernelName)
-                                    : std::string(*KernelName);
+                *DemangleKernelNames ? llvm::demangle(*KernelName)
+                                     : std::string(*KernelName);
             uint64_t CounterHost = 0;
             {
               luthier::hsa::DisableUserInterceptionScope Scope;
@@ -400,7 +348,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             // of (1024, 1, 1) and workgroup size of (64, 1, 1), since 1024 = 64
             // x 16. As is evident from the example, workgroup size in HSA has
             // the same meaning as CUDA/HIP
-            llvm::outs() << llvm::formatv(
+            luthier::errs() << llvm::formatv(
                 "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
                 "Workgroup Dims: "
                 "({5}, {6}, {7}) Kernel Instruction "
@@ -432,7 +380,52 @@ static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
 
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
-    llvm::outs() << "Instruction counter tool is launching.\n";
+    InstrCountToolOptionCategory =
+        new llvm::cl::OptionCategory("Instruction Count Tool Options");
+
+    InstrBeginInterval = new llvm::cl::opt<unsigned int>(
+        "instr-begin-interval",
+        llvm::cl::desc("Beginning of the instruction interval where to "
+                       "apply instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    InstrEndInterval = new llvm::cl::opt<unsigned int>(
+        "instr-end-interval",
+        llvm::cl::desc("End of the instruction interval where to "
+                       "apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    KernelBeginInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-begin-interval",
+        llvm::cl::desc("Beginning of the kernel interval to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    KernelEndInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-end-interval",
+        llvm::cl::desc(
+            "End of the kernel interval to apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    CountWavefrontLevel = new llvm::cl::opt<bool>(
+        "count-wavefront-level",
+        llvm::cl::desc(
+            "Whether to count number of instructions at the wavefront "
+            "level or thread level"),
+        llvm::cl::init(false), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    DemangleKernelNames = new llvm::cl::opt<bool>(
+        "demangle-kernel-names",
+        llvm::cl::desc("Whether to demangle kernel names before printing"),
+        llvm::cl::init(true), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    luthier::errs() << "Instruction counter tool is launching.\n";
   } else {
     // Set the callback for when the HSA API table is captured
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
@@ -442,11 +435,23 @@ void atToolInit(ApiEvtPhase Phase) {
 }
 
 void atToolFini(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER) {
-    llvm::outs() << "Total number of instructions counted: "
-                 << TotalNumInstructions << "\n";
-    llvm::outs() << "Time to run the kernel: " << KernelTotalTime
-                 << "micro seconds.\n";
+  if (Phase == API_EVT_PHASE_BEFORE) {
+    delete InstrCountToolOptionCategory;
+
+    delete InstrBeginInterval;
+
+    delete InstrEndInterval;
+
+    delete KernelBeginInterval;
+
+    delete KernelEndInterval;
+
+    delete CountWavefrontLevel;
+
+    delete DemangleKernelNames;
+
+    luthier::errs() << "Total number of counted instructions: "
+                    << TotalNumInstructions << ".\n";
   }
 }
 
