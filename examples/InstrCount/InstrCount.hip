@@ -255,7 +255,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                       (void **)&CounterDevice, &Counter)));
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
                   hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
-                      &CounterDevice, &CounterHost, sizeof(CounterHost))));
+                      CounterDevice, &CounterHost, sizeof(CounterHost))));
             }
           }
           T1 = std::chrono::high_resolution_clock::now();

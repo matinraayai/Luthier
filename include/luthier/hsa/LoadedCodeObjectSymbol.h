@@ -130,6 +130,12 @@ public:
   /// binding), or an \c std::nullopt otherwise
   [[nodiscard]] std::optional<hsa_executable_symbol_t>
   getExecutableSymbol() const;
+
+
+  /// Print the symbol in human-readable form.
+  void print(llvm::raw_ostream &OS) const;
+
+  void dump() const;
 };
 
 } // namespace luthier::hsa

@@ -210,6 +210,7 @@ ExecutableBackedObjectsCache::LoadedCodeObjectCache::invalidateOnDestruction(
 
 bool ExecutableBackedObjectsCache::LoadedCodeObjectCache::isCached(
     const LoadedCodeObject &LCO) {
+  std::lock_guard Lock(ExecutableCacheMutex);
   return CachedLCOs.contains(LCO.asHsaType());
 }
 
@@ -339,13 +340,13 @@ ExecutableBackedObjectsCache::cacheExecutableOnLoadedCodeObjectCreation(
 
 llvm::Error ExecutableBackedObjectsCache::cacheExecutableOnExecutableFreeze(
     const Executable &Exec) {
+  std::lock_guard Lock(CacheMutex);
   // Check if executable is indeed frozen
   auto State = Exec.getState();
   LUTHIER_RETURN_ON_ERROR(State.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
       *State == HSA_EXECUTABLE_STATE_FROZEN,
-      "Cannot cache the unfrozen executable {0:x}.",
-                    Exec.hsaHandle()));
+      "Cannot cache the unfrozen executable {0:x}.", Exec.hsaHandle()));
   // Get a list of the executable's loaded code objects
   llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
   LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));

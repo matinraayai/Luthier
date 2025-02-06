@@ -7,6 +7,7 @@ if (${LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG})
 endif ()
 
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
+        ${CMAKE_BINARY_DIR}/include/luthier/hsa/TraceApi.h
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
         --hsa-include-dir ${hsa-runtime64_INCLUDE_DIRS}/hsa
         --cpp-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
@@ -43,6 +44,7 @@ target_include_directories(LuthierHSA
         ${LLVM_INCLUDE_DIRS}
         ${hsa-runtime64_INCLUDE_DIRS}
         PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 
