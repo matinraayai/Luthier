@@ -44,13 +44,155 @@ using namespace llvm::object;
 
 using namespace llvm::msgpack;
 
+namespace luthier {
+
+llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>>
+parseObjectFile(llvm::StringRef ObjectFile) {
+  std::unique_ptr<MemoryBuffer> Buffer =
+      MemoryBuffer::getMemBuffer(ObjectFile, "", false);
+  return ObjectFile::createELFObjectFile(*Buffer);
+}
+
+llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>>
+parseObjectFile(llvm::ArrayRef<uint8_t> ObjectFile) {
+  return parseObjectFile(toStringRef(ObjectFile));
+}
+
+bool isR600(const ELFObjectFileBase &ObjectFile) {
+  return isa<llvm::object::ELF32LEObjectFile>(&ObjectFile) &&
+         ObjectFile.getEMachine() == ELF::EM_AMDGPU;
+}
+
+bool isAMDGCN(const llvm::object::ELFObjectFileBase &ObjectFile) {
+  return isa<llvm::object::ELF64LEObjectFile>(&ObjectFile) &&
+         ObjectFile.getEMachine() == ELF::EM_AMDGPU;
+}
+
+llvm::Expected<
+    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
+getELFObjectFileISA(const llvm::object::ELFObjectFileBase &Obj) {
+  llvm::Triple TT = Obj.makeTriple();
+  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      CPU.has_value(), "Failed to get the CPU name of the object file."));
+  llvm::SubtargetFeatures Features;
+  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
+  return std::make_tuple(TT, *CPU, Features);
+}
+
+llvm::Expected<bool>
+isAMDGPUKernelDescriptor(const llvm::object::ELFSymbolRef &Symbol) {
+  if (!isAMDGCN(*Symbol.getObject()) && !isR600(*Symbol.getObject()))
+    return false;
+  uint8_t Type = Symbol.getELFType();
+  uint64_t Size = Symbol.getSize();
+  llvm::Expected<llvm::StringRef> SymNameOrErr = Symbol.getName();
+  LUTHIER_RETURN_ON_ERROR(SymNameOrErr.takeError());
+  if (Type == llvm::ELF::STT_OBJECT && SymNameOrErr->ends_with(".kd") &&
+      Size == 64) {
+    return true;
+  } else
+    return Type == llvm::ELF::STT_AMDGPU_HSA_KERNEL && Size == 64;
+}
+
+llvm::Expected<bool>
+isAMDGPUKernelFunction(const llvm::object::ELFSymbolRef &Symbol) {
+  if (!isAMDGCN(*Symbol.getObject()) && !isR600(*Symbol.getObject()))
+    return false;
+  uint8_t Type = Symbol.getELFType();
+  llvm::Expected<llvm::StringRef> SymNameOrErr = Symbol.getName();
+  LUTHIER_RETURN_ON_ERROR(SymNameOrErr.takeError());
+
+  if (Type == llvm::ELF::STT_FUNC) {
+    auto KDSymbolOrErr = lookupSymbolByName(*Symbol.getObject(),
+                                            std::string(*SymNameOrErr) + ".kd");
+    LUTHIER_RETURN_ON_ERROR(KDSymbolOrErr.takeError());
+    return KDSymbolOrErr->has_value();
+  }
+  return false;
+}
+
+llvm::Expected<bool>
+isAMDGPUDeviceFunction(const llvm::object::ELFSymbolRef &Symbol) {
+  const llvm::object::ELFObjectFileBase &ObjectFile = *Symbol.getObject();
+  llvm::Expected<bool> IsKernelOrErr = isAMDGPUKernelFunction(Symbol);
+  LUTHIER_RETURN_ON_ERROR(IsKernelOrErr.takeError());
+  return (isAMDGCN(ObjectFile) || isR600(ObjectFile)) &&
+         Symbol.getELFType() == llvm::ELF::STT_FUNC && !*IsKernelOrErr;
+}
+
+// llvm::Error categorizeSymbols(
+//     const llvm::object::ELFObjectFileBase &ObjectFile,
+//     llvm::SmallVectorImpl<KernelSymbolRef> *KernelSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *DeviceFunctionSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *VariableSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *ExternSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *MiscSymbols) {
+//   llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbols;
+//   llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbols;
+//   for (const object::ELFSymbolRef &Symbol : ObjectFile.symbols()) {
+//     auto Type = Symbol.getELFType();
+//     auto Binding = Symbol.getBinding();
+//     auto SymbolName = Symbol.getName();
+//     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+//     auto Size = Symbol.getSize();
+//     if (Type == llvm::ELF::STT_FUNC)
+//       FuncSymbols.insert({*SymbolName, Symbol});
+//     else if (Type == llvm::ELF::STT_OBJECT) {
+//       // Kernel Descriptor Symbol
+//       if (SymbolName->ends_with(".kd") && Size == 64) {
+//         KDSymbols.insert({*SymbolName, Symbol});
+//       }
+//       // Variable Symbol
+//       else {
+//         if (VariableSymbols)
+//           VariableSymbols->push_back(Symbol);
+//       }
+//     } else if (Type == llvm::ELF::STT_AMDGPU_HSA_KERNEL && Size == 64) {
+//       KDSymbols.insert({*SymbolName, Symbol});
+//     } else if (Type == llvm::ELF::STT_NOTYPE &&
+//                Binding == llvm::ELF::STB_GLOBAL) {
+//       if (ExternSymbols)
+//         ExternSymbols->push_back(Symbol);
+//     } else {
+//       if (MiscSymbols)
+//         MiscSymbols->push_back(Symbol);
+//     }
+//   }
+//   // Distinguish kernel and device function symbols
+//   for (const auto &[NameWithKDAtTheEnd, KDSymbol] : KDSymbols) {
+//     llvm::StringRef NameWithoutKD =
+//         NameWithKDAtTheEnd.substr(0, NameWithKDAtTheEnd.rfind(".kd"));
+//     // Find the kernel function symbol
+//     auto KFuncSymbolIter = FuncSymbols.find(NameWithoutKD);
+//     LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+//         KFuncSymbolIter != FuncSymbols.end(),
+//         "Failed to find the kernel function symbol {0} inside the object
+//         file.", NameWithoutKD));
+//     // Construct the Kernel LCO Symbol
+//     if (KernelSymbols)
+//       KernelSymbols->emplace_back(KDSymbol, KFuncSymbolIter->second);
+//     // Remove the kernel function symbol from the map so that it doesn't
+//     // get counted as a device function
+//     FuncSymbols.erase(KFuncSymbolIter);
+//   }
+//   // Add the function symbols
+//   if (DeviceFunctionSymbols) {
+//     for (const auto &[Name, FuncSymbol] : FuncSymbols) {
+//       DeviceFunctionSymbols->push_back(FuncSymbol);
+//     }
+//   }
+//   return llvm::Error::success();
+// }
+
 template <class ELFT>
-static llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-getSymbolFromGnuHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
-                          llvm::StringRef Name, const typename ELFT::Shdr *Sec,
-                          const typename ELFT::GnuHash &HashTab,
-                          llvm::ArrayRef<typename ELFT::Sym> SymTab,
-                          llvm::StringRef StrTab) {
+static llvm::Expected<std::optional<ELFSymbolRef>>
+lookupSymbolByNameFromGnuHashTable(const ELFObjectFile<ELFT> &Elf,
+                                   llvm::StringRef Name,
+                                   const typename ELFT::Shdr *Sec,
+                                   const typename ELFT::GnuHash &HashTab,
+                                   llvm::ArrayRef<typename ELFT::Sym> SymTab,
+                                   llvm::StringRef StrTab) {
   const uint32_t NameHash = llvm::object::hashGnu(Name);
   const typename ELFT::Word NBucket = HashTab.nbuckets;
   const typename ELFT::Word SymOffset = HashTab.symndx;
@@ -75,8 +217,8 @@ getSymbolFromGnuHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
     if ((NameHash | 0x1) != (ChainHash | 0x1))
       continue;
 
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ERROR_CHECK(SymTab[I].st_name < StrTab.size(), ""));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        SymTab[I].st_name < StrTab.size(), "Invalid symbol name size"));
 
     if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
       return Elf.toSymbolRef(Sec, I);
@@ -88,21 +230,23 @@ getSymbolFromGnuHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
 }
 
 template <class ELFT>
-static llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-getSymbolFromSysVHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
-                           llvm::StringRef Name, const typename ELFT::Shdr *Sec,
-                           const typename ELFT::Hash &HashTab,
-                           llvm::ArrayRef<typename ELFT::Sym> SymTab,
-                           llvm::StringRef StrTab) {
+static llvm::Expected<std::optional<ELFSymbolRef>>
+lookupSymbolByNameFromSysVHashTable(const ELFObjectFile<ELFT> &Elf,
+                                    llvm::StringRef Name,
+                                    const typename ELFT::Shdr *Sec,
+                                    const typename ELFT::Hash &HashTab,
+                                    llvm::ArrayRef<typename ELFT::Sym> SymTab,
+                                    llvm::StringRef StrTab) {
   const uint32_t Hash = llvm::object::hashSysV(Name);
   const typename ELFT::Word NBucket = HashTab.nbucket;
   llvm::ArrayRef<typename ELFT::Word> Bucket = HashTab.buckets();
   llvm::ArrayRef<typename ELFT::Word> Chain = HashTab.chains();
   for (typename ELFT::Word I = Bucket[Hash % NBucket];
        I != llvm::ELF::STN_UNDEF; I = Chain[I]) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(I < SymTab.size(), ""));
     LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ERROR_CHECK(SymTab[I].st_name < StrTab.size(), ""));
+        LUTHIER_ERROR_CHECK(I < SymTab.size(), "Invalid symbol table index"));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        SymTab[I].st_name < StrTab.size(), "Invalid symbol name size"));
 
     if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
       return Elf.toSymbolRef(Sec, I);
@@ -111,9 +255,10 @@ getSymbolFromSysVHashTable(const llvm::object::ELFObjectFile<ELFT> &Elf,
 }
 
 template <typename ELFT>
-llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
-           const typename ELFT::Shdr *Sec, llvm::StringRef SymbolName) {
+static llvm::Expected<std::optional<ELFSymbolRef>>
+lookupSymbolByNameViaHashLookup(const ELFObjectFile<ELFT> &Elf,
+                                const typename ELFT::Shdr *Sec,
+                                llvm::StringRef SymbolName) {
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_ERROR_CHECK(Sec->sh_type == llvm::ELF::SHT_HASH ||
                               Sec->sh_type == llvm::ELF::SHT_GNU_HASH,
@@ -143,7 +288,8 @@ hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
     const auto *HashTab = reinterpret_cast<const typename ELFT::GnuHash *>(
         ElfFile.base() + Sec->sh_offset);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        Sec->sh_offset + Sec->sh_size < ElfFile.getBufSize(), ""));
+        Sec->sh_offset + Sec->sh_size < ElfFile.getBufSize(),
+        "Invalid GNU Hash section size"));
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
         Sec->sh_size >= sizeof(typename ELFT::GnuHash) &&
             Sec->sh_size >=
@@ -152,9 +298,9 @@ hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
                     sizeof(typename ELFT::Word) * HashTab->nbuckets +
                     sizeof(typename ELFT::Word) *
                         (SymTab.size() - HashTab->symndx),
-        ""));
-    return getSymbolFromGnuHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
-                                           *HashTab, SymTab, StrTab);
+        "Invalid GNU Hash section size"));
+    return lookupSymbolByNameFromGnuHashTable<ELFT>(
+        Elf, SymbolName, *SymTabOrErr, *HashTab, SymTab, StrTab);
   }
 
   // If this is a Sys-V hash table we verify its size and search the symbol
@@ -162,195 +308,106 @@ hashLookup(const llvm::object::ELFObjectFile<ELFT> &Elf,
   if (Sec->sh_type == llvm::ELF::SHT_HASH) {
     const auto *HashTab = reinterpret_cast<const typename ELFT::Hash *>(
         ElfFile.base() + Sec->sh_offset);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        Sec->sh_offset + Sec->sh_size < ElfFile.getBufSize(), ""));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Sec->sh_offset + Sec->sh_size <
+                                                    ElfFile.getBufSize(),
+                                                "Invalid hash section size"));
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
         Sec->sh_size >= sizeof(typename ELFT::Hash) &&
             Sec->sh_size >= sizeof(typename ELFT::Hash) +
                                 sizeof(typename ELFT::Word) * HashTab->nbucket +
                                 sizeof(typename ELFT::Word) * HashTab->nchain,
-        ""));
-    return getSymbolFromSysVHashTable<ELFT>(Elf, SymbolName, *SymTabOrErr,
-                                            *HashTab, SymTab, StrTab);
+        "Invalid Hash section size"));
+    return lookupSymbolByNameFromSysVHashTable<ELFT>(
+        Elf, SymbolName, *SymTabOrErr, *HashTab, SymTab, StrTab);
   }
 
   return std::nullopt;
 }
 
-namespace luthier {
-
-Expected<std::unique_ptr<ELF64LEObjectFile>>
-parseAMDGCNObjectFile(llvm::StringRef ELF) {
-  std::unique_ptr<MemoryBuffer> Buffer =
-      MemoryBuffer::getMemBuffer(ELF, "", false);
-  Expected<std::unique_ptr<ObjectFile>> ObjectFile =
-      ObjectFile::createELFObjectFile(*Buffer);
-  LUTHIER_RETURN_ON_ERROR(ObjectFile.takeError());
-  return unique_dyn_cast<ELF64LEObjectFile>(std::move(*ObjectFile));
-}
-
-Expected<std::unique_ptr<ELF64LEObjectFile>>
-parseAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF) {
-  return parseAMDGCNObjectFile(toStringRef(ELF));
-}
-
-llvm::Error categorizeSymbols(
-    const AMDGCNObjectFile &ObjectFile,
-    llvm::SmallVectorImpl<KernelSymbolRef> *KernelSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *DeviceFunctionSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *VariableSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *ExternSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *MiscSymbols) {
-  llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbols;
-  llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbols;
-  for (const object::ELFSymbolRef &Symbol : ObjectFile.symbols()) {
-    auto Type = Symbol.getELFType();
-    auto Binding = Symbol.getBinding();
-    auto SymbolName = Symbol.getName();
-    LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
-    auto Size = Symbol.getSize();
-    if (Type == llvm::ELF::STT_FUNC)
-      FuncSymbols.insert({*SymbolName, Symbol});
-    else if (Type == llvm::ELF::STT_OBJECT) {
-      // Kernel Descriptor Symbol
-      if (SymbolName->ends_with(".kd") && Size == 64) {
-        KDSymbols.insert({*SymbolName, Symbol});
-      }
-      // Variable Symbol
-      else {
-        if (VariableSymbols)
-          VariableSymbols->push_back(Symbol);
-      }
-    } else if (Type == llvm::ELF::STT_AMDGPU_HSA_KERNEL && Size == 64) {
-      KDSymbols.insert({*SymbolName, Symbol});
-    } else if (Type == llvm::ELF::STT_NOTYPE &&
-               Binding == llvm::ELF::STB_GLOBAL) {
-      if (ExternSymbols)
-        ExternSymbols->push_back(Symbol);
-    } else {
-      if (MiscSymbols)
-        MiscSymbols->push_back(Symbol);
-    }
-  }
-  // Distinguish kernel and device function symbols
-  for (const auto &[NameWithKDAtTheEnd, KDSymbol] : KDSymbols) {
-    llvm::StringRef NameWithoutKD =
-        NameWithKDAtTheEnd.substr(0, NameWithKDAtTheEnd.rfind(".kd"));
-    // Find the kernel function symbol
-    auto KFuncSymbolIter = FuncSymbols.find(NameWithoutKD);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        KFuncSymbolIter != FuncSymbols.end(),
-        "Failed to find the kernel function symbol {0} inside the object file.",
-        NameWithoutKD));
-    // Construct the Kernel LCO Symbol
-    if (KernelSymbols)
-      KernelSymbols->emplace_back(KDSymbol, KFuncSymbolIter->second);
-    // Remove the kernel function symbol from the map so that it doesn't
-    // get counted as a device function
-    FuncSymbols.erase(KFuncSymbolIter);
-  }
-  // Add the function symbols
-  if (DeviceFunctionSymbols) {
-    for (const auto &[Name, FuncSymbol] : FuncSymbols) {
-      DeviceFunctionSymbols->push_back(FuncSymbol);
-    }
-  }
-  return llvm::Error::success();
-}
-
-llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-lookupSymbolByName(const luthier::AMDGCNObjectFile &ObjectFile,
+template <typename ELT>
+static llvm::Expected<std::optional<ELFSymbolRef>>
+lookupSymbolByName(const llvm::object::ELFObjectFile<ELT> &ObjectFile,
                    llvm::StringRef SymbolName) {
-  for (auto Section =
-           llvm::object::elf_section_iterator(ObjectFile.section_begin());
-       Section != llvm::object::elf_section_iterator(ObjectFile.section_end());
-       ++Section) {
+  for (auto Section = elf_section_iterator(ObjectFile.section_begin());
+       Section != elf_section_iterator(ObjectFile.section_end()); ++Section) {
     auto SectionAsSHdr = ObjectFile.getSection(Section->getRawDataRefImpl());
     if ((SectionAsSHdr->sh_type == llvm::ELF::SHT_HASH) ||
         (SectionAsSHdr->sh_type == llvm::ELF::SHT_GNU_HASH)) {
-      return hashLookup(ObjectFile, SectionAsSHdr, SymbolName);
+      return lookupSymbolByNameViaHashLookup(ObjectFile, SectionAsSHdr,
+                                             SymbolName);
     }
   }
   return LUTHIER_CREATE_ERROR(
       "ELF object does not have a hash table for its symbols.");
 }
 
-/// Returns the <tt>Sec</tt>'s loaded memory offset from the <tt>ELF</tt>'s
-/// loaded base
-/// \note Function was adapted from LLVM's object library
-/// \tparam ELFT type of ELF used
-/// \param ELF the Object file being queried
-/// \param Sec the ELF's section being queried
-/// \return on success, the loaded offset of \p Sec with respect to the
-/// ELF's load base; an \c llvm::Error on failure
-llvm::Expected<uint64_t>
-getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
-                      const llvm::object::ELFSectionRef &Sec) {
-  auto PhdrRange = ELF.program_headers();
-  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+llvm::Expected<std::optional<ELFSymbolRef>>
+lookupSymbolByName(const llvm::object::ELFObjectFileBase &ObjectFile,
+                   llvm::StringRef SymbolName) {
+  if (auto *ObjectFileLE32 = dyn_cast<ELF32LEObjectFile>(&ObjectFile)) {
+    return lookupSymbolByName(*ObjectFileLE32, SymbolName);
+  } else if (auto *ObjectFileLE64 = dyn_cast<ELF64LEObjectFile>(&ObjectFile)) {
+    return lookupSymbolByName(*ObjectFileLE64, SymbolName);
+  } else if (auto *ObjectFileBE32 = dyn_cast<ELF32BEObjectFile>(&ObjectFile)) {
+    return lookupSymbolByName(*ObjectFileBE32, SymbolName);
+  } else {
+    return lookupSymbolByName(*dyn_cast<ELF64BEObjectFile>(&ObjectFile),
+                              SymbolName);
+  }
+}
+
+
+template <class ELFT>
+static llvm::Expected<uint64_t>
+getLoadedMemoryOffset(const ELFFile<ELFT> &Obj, const ELFSectionRef &Sec) {
+  auto PhdrRangeOrErr = Obj.program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRangeOrErr.takeError());
 
   // Search for a PT_LOAD segment containing the requested section. Use this
   // segment's p_addr to calculate the section's LMA.
-  for (const auto &Phdr : *PhdrRange)
-    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
-        (llvm::object::isSectionInSegment<llvm::object::ELF64LE>(
-            Phdr,
-            *llvm::cast<
-                 const llvm::object::ELFObjectFile<llvm::object::ELF64LE>>(
-                 Sec.getObject())
-                 ->getSection(Sec.getRawDataRefImpl()))))
+  for (const typename ELFT::Phdr &Phdr : *PhdrRangeOrErr)
+    if ((Phdr.p_type == ELF::PT_LOAD) &&
+        (isSectionInSegment<ELFT>(
+            Phdr, *cast<const ELFObjectFile<ELFT>>(Sec.getObject())
+                       ->getSection(Sec.getRawDataRefImpl()))))
       return Sec.getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
 
   // Return section's VMA if it isn't in a PT_LOAD segment.
   return Sec.getAddress();
 }
 
-llvm::Expected<
-    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
-getELFObjectFileISA(const luthier::AMDGCNObjectFile &Obj) {
-  llvm::Triple TT = Obj.makeTriple();
-  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      CPU.has_value(), "Failed to get the CPU name of the object file."));
-  llvm::SubtargetFeatures Features;
-  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
-  return std::make_tuple(TT, *CPU, Features);
+llvm::Expected<uint64_t>
+getLoadedMemoryOffset(const object::ELFSectionRef &Sec) {
+  if (const auto *ELF32LEObj = dyn_cast<ELF32LEObjectFile>(Sec.getObject()))
+    return getLoadedMemoryOffset(ELF32LEObj->getELFFile(), Sec);
+  else if (const auto *ELF32BEObj =
+               dyn_cast<ELF32BEObjectFile>(Sec.getObject()))
+    return getLoadedMemoryOffset(ELF32BEObj->getELFFile(), Sec);
+  else if (const auto *ELF64LEObj =
+               dyn_cast<ELF64LEObjectFile>(Sec.getObject()))
+    return getLoadedMemoryOffset(ELF64LEObj->getELFFile(), Sec);
+  const auto *ELF64BEObj = cast<ELF64BEObjectFile>(Sec.getObject());
+  return getLoadedMemoryOffset(ELF64BEObj->getELFFile(), Sec);
 }
 
-/// Returns the <tt>Sym</tt>'s loaded memory offset from the <tt>ELF</tt>'s
-/// loaded base
-/// \note Function was adapted from LLVM's object library
-/// \tparam ELFT type of ELF used
-/// \param ELF the Object file being queried
-/// \param Sym the ELF's symbol being queried
-/// \return on success, the loaded offset of the \c Sym with respect to the
-/// ELF's load base; an \c llvm::Error on failure
+
 llvm::Expected<uint64_t>
-getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
-                      const llvm::object::ELFSymbolRef &Sym) {
-  auto PhdrRange = ELF.program_headers();
-  LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
+getLoadedMemoryOffset(const llvm::object::ELFSymbolRef &Sym) {
+  Expected<section_iterator> SymbolSectionOrErr = Sym.getSection();
+  LUTHIER_RETURN_ON_ERROR(SymbolSectionOrErr.takeError());
 
-  auto SymbolSection = Sym.getSection();
-  LUTHIER_RETURN_ON_ERROR(SymbolSection.takeError());
+  Expected<uint64_t> SectionAddressOrErr = (*SymbolSectionOrErr)->getAddress();
+  LUTHIER_RETURN_ON_ERROR(SectionAddressOrErr.takeError());
 
-  auto SymbolAddress = Sym.getAddress();
-  LUTHIER_RETURN_ON_ERROR(SymbolAddress.takeError());
+  Expected<uint64_t> SymbolAddressOrErr = Sym.getAddress();
+  LUTHIER_RETURN_ON_ERROR(SymbolAddressOrErr.takeError());
 
-  // Search for a PT_LOAD segment containing the requested section. Use this
-  // segment's p_addr to calculate the section's LMA.
-  for (const typename llvm::object::ELF64LE::Phdr &Phdr : *PhdrRange)
-    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
-        (llvm::object::isSectionInSegment<llvm::object::ELF64LE>(
-            Phdr,
-            *llvm::cast<
-                 const llvm::object::ELFObjectFile<llvm::object::ELF64LE>>(
-                 Sym.getObject())
-                 ->getSection(SymbolSection.get()->getRawDataRefImpl()))))
-      return *SymbolAddress - Phdr.p_vaddr + Phdr.p_paddr;
+  Expected<uint64_t> SymbolSectionLoadedAddrOrErr =
+      getLoadedMemoryOffset(**SymbolSectionOrErr);
+  LUTHIER_RETURN_ON_ERROR(SymbolSectionLoadedAddrOrErr.takeError());
 
-  // Return section's VMA if it isn't in a PT_LOAD segment.
-  return *SymbolAddress;
+  return *SymbolSectionLoadedAddrOrErr + *SymbolAddressOrErr -
+         *SectionAddressOrErr;
 }
 
 static llvm::Error
@@ -848,6 +905,5 @@ parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj) {
   return LUTHIER_CREATE_ERROR(
       "Failed to find the note section to parse its metadata.");
 }
-
 
 } // namespace luthier

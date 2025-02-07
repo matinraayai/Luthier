@@ -15,8 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains all operations related to dealing with parsing and
-/// processing AMDGPU code objects using LLVM object file and DWARF utilities.\n
+/// This file defines operations related to dealing with parsing and
+/// processing object files using LLVM object file and DWARF utilities.\n
 /// Luthier uses LLVM's object library (under llvm/Object folder in LLVM)
 /// to parse and inspect AMDGPU code objects, and if present, uses LLVM's
 /// DebugInfo library (under llvm/DebugInfo) to parse and process DWARF
@@ -24,60 +24,119 @@
 /// <tt>ObjectUtils.hpp</tt> is meant to \b only include functionality that:\n
 /// - concerns ELF object files and ELF file section parsing and processing,
 /// including DWARF debug information.\n
-/// - is specific to AMDGPU GCN code objects. Some examples include parsing
-/// an AMDGCN object file and converting it to
-/// \c llvm::object::ELF64LEObjectFile, or parsing the note section of an
-/// AMDGPU code object into a \c luthier::hsa::md::Metadata.\n
 /// - does not readily exist in LLVM's object library, and/or is implemented
 /// in other LLVM-based tools or project. Some examples include retrieving
-/// symbols by name, or getting the loaded address of a symbol\n
-/// Although not strictly restricted for this specific purpose,
-/// <tt>ObjectUtils.hpp</tt> is only used to supplement ROCr functionality,
-/// by parsing the Storage memory ELF of an
-/// <tt>luthier::hsa::LoadedCodeObject</tt>, which is exposed in hsa wrapper
-/// primitives in the \c luthier::hsa namespace.
+/// symbols by name, or getting the loaded address of a symbol.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_OBJECT_UTILS_HPP
 #define LUTHIER_COMMON_OBJECT_UTILS_HPP
+#include "luthier/common/ErrorCheck.h"
 #include "luthier/hsa/Metadata.h"
 #include <llvm/Object/ELFObjectFile.h>
 
 namespace luthier {
 
-struct KernelSymbolRef {
-  llvm::object::ELFSymbolRef KernelDescriptorSymbol;
-  llvm::object::ELFSymbolRef KernelFunctionSymbol;
-};
+//===----------------------------------------------------------------------===//
+// Object file parsing methods
+//===----------------------------------------------------------------------===//
 
-/// As per <a href="https://llvm.org/docs/AMDGPUUsage.html#elf-code-object">
-/// AMDGPU backend documentation</a>, AMDGCN object files are 64-bit LSB.
-/// Luthier does not support the R600 target, hence it is safe to assume for now
-/// all ELF object files encountered by Luthier are of this type.
-typedef llvm::object::ELF64LEObjectFile AMDGCNObjectFile;
-
-typedef llvm::object::ELFFile<llvm::object::ELF64LE> AMDGCNELFFile;
-
-/// Parses the ELF file pointed to by \p Elf into a \c AMDGCNObjectFile.
+/// Parses the ELF file pointed to by \p Elf into a \c llvm::object::ObjectFile
 /// \param ELF \c llvm::StringRef encompassing the ELF file in memory
-/// \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
+/// \return a \c std::unique_ptr<llvm::object::ObjectFile> on successful
 /// parsing, an \c llvm::Error on failure
-llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
-parseAMDGCNObjectFile(llvm::StringRef ELF);
+llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>>
+parseObjectFile(llvm::StringRef ObjectFile);
 
-/// Parses the ELF file pointed to by \b Elf into a \b AMDGCNObjectFile.
-/// \param ELF \p llvm::ArrayRef<uint8_t> encompassing the ELF file in memory
-/// \return a \c std::unique_ptr<llvm::object::ELF64LEObjectFile> on successful
+/// Parses the ELF file pointed to by \p Elf into a \c llvm::object::ObjectFile
+/// \param ELF \c llvm::ArrayRef encompassing the ELF file in memory
+/// \return a \c std::unique_ptr<llvm::object::ObjectFile> on successful
 /// parsing, an \c llvm::Error on failure
-llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
-parseAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF);
+llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>>
+parseObjectFile(llvm::ArrayRef<uint8_t> ObjectFile);
 
-llvm::Error categorizeSymbols(
-    const AMDGCNObjectFile &ObjectFile,
-    llvm::SmallVectorImpl<KernelSymbolRef> *KernelSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *DeviceFunctionSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *VariableSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *ExternSymbols,
-    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *MiscSymbols);
+template <typename ELT>
+llvm::Expected<std::unique_ptr<llvm::object::ELFObjectFile<ELT>>>
+parseObjectFile(llvm::StringRef Elf) {
+  auto ObjectFileOrErr = parseObjectFile(Elf);
+  LUTHIER_RETURN_ON_ERROR(ObjectFileOrErr.takeError());
+  return unique_dyn_cast<llvm::object::ELFObjectFile<ELT>>(
+      std::move(*ObjectFileOrErr));
+}
+
+//===----------------------------------------------------------------------===//
+// ELF machine query methods
+//===----------------------------------------------------------------------===//
+
+/// \return \c true if the object file is intended for R600 targets, \c false
+/// otherwise
+bool isR600(const llvm::object::ELFObjectFileBase &ObjectFile);
+
+/// \return \c true if the object file is intended for AMDGCN targets, \c false
+/// otherwise
+bool isAMDGCN(const llvm::object::ELFObjectFileBase &ObjectFile);
+
+//===----------------------------------------------------------------------===//
+// ELF ISA query method
+//===----------------------------------------------------------------------===//
+
+/// Finds the ISA string components of the given \p Obj file
+/// \param Obj AMD GCN object file being queried
+/// \return an \c std::tuple with the first element being the target triple,
+/// the second element being the CPU name, and the last element being the
+/// feature string
+llvm::Expected<
+    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
+getELFObjectFileISA(const llvm::object::ELFObjectFileBase &Obj);
+
+//===----------------------------------------------------------------------===//
+// ELF symbol query methods
+//===----------------------------------------------------------------------===//
+
+/// \return \c true if \p Symbol is a amdgpu kernel descriptor, \c false if not,
+/// \c llvm::Error if any issues were encountered during the process
+llvm::Expected<bool>
+isAMDGPUKernelDescriptor(const llvm::object::ELFSymbolRef &Symbol);
+
+/// \return \c true if \p Symbol is a amdgpu kernel function, \c false if not,
+/// \c llvm::Error if any issues were encountered during the process
+llvm::Expected<bool>
+isAMDGPUKernelFunction(const llvm::object::ELFSymbolRef &Symbol);
+
+/// \return \c true if \p Symbol is a amdgpu device function, \c false if not,
+/// \c llvm::Error if any issues were encountered during the process
+llvm::Expected<bool>
+isAMDGPUDeviceFunction(const llvm::object::ELFSymbolRef &Symbol);
+
+inline bool isVariable(const llvm::object::ELFSymbolRef &Symbol) {
+  return Symbol.getELFType() == llvm::ELF::STT_OBJECT;
+}
+
+inline bool isExtern(const llvm::object::ELFSymbolRef &Symbol) {
+  return Symbol.getELFType() == llvm::ELF::STT_NOTYPE &&
+         Symbol.getBinding() == llvm::ELF::STB_GLOBAL;
+}
+
+///// Iterates over the symbols of \p ObjectFile and categorizes them into
+///// different AMDGPU symbol types
+///// \param ObjectFile the \c AMDGCNObjectFile being inspected
+///// \param [out] KernelSymbols if not \c nullptr will return the kernel
+/// symbols
+///// inside the \p ObjectFile
+///// \param [out] DeviceFunctionSymbols if not \c nullptr will return the
+/// device
+///// function symbols inside the \p ObjectFile
+///// \param [out] VariableSymbols if not \c nullptr will
+///// \param [out] ExternSymbols
+///// \param [out] MiscSymbols
+///// \return an \c llvm::Error describing the success of the operation or any
+///// issue encountered during the process
+// llvm::Error categorizeSymbols(
+//     const AMDGCNObjectFile &ObjectFile,
+//     llvm::SmallVectorImpl<KernelSymbolRef> *KernelSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *DeviceFunctionSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *VariableSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *ExternSymbols,
+//     llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *MiscSymbols);
 
 /// Looks up a symbol by its name in the given \p Elf from its symbol hash
 /// table
@@ -88,33 +147,30 @@ llvm::Error categorizeSymbols(
 /// an \c std::nullopt if the symbol was not found, and \c llvm::Error if
 /// any issue was encountered during the process
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-lookupSymbolByName(const luthier::AMDGCNObjectFile &ObjectFile,
+lookupSymbolByName(const llvm::object::ELFObjectFileBase &ObjectFile,
                    llvm::StringRef SymbolName);
 
+//===----------------------------------------------------------------------===//
+// ELF loading query functions
+//===----------------------------------------------------------------------===//
+
+/// Returns the <tt>Sym</tt>'s loaded memory offset from its object file's
+/// loaded base
+/// \note Function was adapted from LLVM's object dump utility
+/// \param Sec the section being queried
+/// \return on success, the loaded offset of the \c Sec with respect to the
+/// ELF's load base; an \c llvm::Error on failure
 llvm::Expected<uint64_t>
-getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
-                      const llvm::object::ELFSectionRef &Sec);
+getLoadedMemoryOffset(const llvm::object::ELFSectionRef &Sec);
 
+/// Returns the <tt>Sym</tt>'s loaded memory offset from its object file's
+/// loaded base
+/// \note Function was adapted from LLVM's object dump utility
+/// \param Sym the symbol being queried
+/// \return on success, the loaded offset of the \c Sym with respect to the
+/// ELF's load base; an \c llvm::Error on failure
 llvm::Expected<uint64_t>
-getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
-                      const llvm::object::ELFSymbolRef &Sym);
-
-/// Finds the ISA string components of the given \p Obj file
-/// \param Obj AMD GCN object file being queried
-/// \return an \c std::tuple with the first element being the target triple,
-/// the second element being the CPU name, and the last element being the
-/// feature string
-llvm::Expected<
-    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
-getELFObjectFileISA(const luthier::AMDGCNObjectFile &Obj);
-
-/// Parses the note section of \p Obj into a \c hsa::md::Metadata structure
-/// for easier access to the document's metadata fields
-/// \param Obj the \c luthier::AMDGCNObjectFile to be inspected
-/// \return on success, the \c hsa::md::Metadata of the document, or an
-/// \c llvm::Error describing the issue encountered during the process
-llvm::Expected<hsa::md::Metadata>
-parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj);
+getLoadedMemoryOffset(const llvm::object::ELFSymbolRef &Sym);
 
 } // namespace luthier
 
