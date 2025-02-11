@@ -120,4 +120,20 @@ hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
     return nullptr;
 }
 
+void hsa::LoadedCodeObjectSymbol::print(llvm::raw_ostream &OS) const {
+  OS << "Loaded Code Object Symbol:\n";
+  auto Name = getName();
+  if (Name.takeError())
+    OS << "\tFailed to get name.\n";
+  else
+    OS << "\tName: " << *Name << "\n";
+
+}
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+LLVM_DUMP_METHOD void hsa::LoadedCodeObjectSymbol::dump() const {
+  print(llvm::dbgs());
+}
+#endif
+
 } // namespace luthier

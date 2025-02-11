@@ -40,19 +40,14 @@
 #ifndef LUTHIER_COMMON_OBJECT_UTILS_HPP
 #define LUTHIER_COMMON_OBJECT_UTILS_HPP
 #include "luthier/hsa/Metadata.h"
-#include "luthier/types.h"
-#include <llvm/ADT/ArrayRef.h>
-#include <llvm/BinaryFormat/ELF.h>
-#include <llvm/BinaryFormat/MsgPackDocument.h>
 #include <llvm/Object/ELFObjectFile.h>
-#include <llvm/Object/ELFTypes.h>
-#include <llvm/Object/ObjectFile.h>
-#include <llvm/Support/AMDGPUAddrSpace.h>
-#include <map>
-#include <optional>
-#include <utility>
 
 namespace luthier {
+
+struct KernelSymbolRef {
+  llvm::object::ELFSymbolRef KernelDescriptorSymbol;
+  llvm::object::ELFSymbolRef KernelFunctionSymbol;
+};
 
 /// As per <a href="https://llvm.org/docs/AMDGPUUsage.html#elf-code-object">
 /// AMDGPU backend documentation</a>, AMDGCN object files are 64-bit LSB.
@@ -75,6 +70,14 @@ parseAMDGCNObjectFile(llvm::StringRef ELF);
 /// parsing, an \c llvm::Error on failure
 llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
 parseAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF);
+
+llvm::Error categorizeSymbols(
+    const AMDGCNObjectFile &ObjectFile,
+    llvm::SmallVectorImpl<KernelSymbolRef> *KernelSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *DeviceFunctionSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *VariableSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *ExternSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *MiscSymbols);
 
 /// Looks up a symbol by its name in the given \p Elf from its symbol hash
 /// table

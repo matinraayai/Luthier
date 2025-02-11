@@ -24,6 +24,10 @@
 #include "luthier/common/LuthierError.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringMap.h>
+#include <llvm/BinaryFormat/MsgPackDocument.h>
+#include <llvm/MC/MCAsmInfo.h>
+#include <llvm/MC/MCInst.h>
+#include <llvm/Support/AMDGPUAddrSpace.h>
 #include <llvm/Support/AMDGPUMetadata.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/MemoryBuffer.h>
@@ -190,6 +194,70 @@ parseAMDGCNObjectFile(llvm::ArrayRef<uint8_t> ELF) {
   return parseAMDGCNObjectFile(toStringRef(ELF));
 }
 
+llvm::Error categorizeSymbols(
+    const AMDGCNObjectFile &ObjectFile,
+    llvm::SmallVectorImpl<KernelSymbolRef> *KernelSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *DeviceFunctionSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *VariableSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *ExternSymbols,
+    llvm::SmallVectorImpl<llvm::object::ELFSymbolRef> *MiscSymbols) {
+  llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbols;
+  llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbols;
+  for (const object::ELFSymbolRef &Symbol : ObjectFile.symbols()) {
+    auto Type = Symbol.getELFType();
+    auto Binding = Symbol.getBinding();
+    auto SymbolName = Symbol.getName();
+    LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+    auto Size = Symbol.getSize();
+    if (Type == llvm::ELF::STT_FUNC)
+      FuncSymbols.insert({*SymbolName, Symbol});
+    else if (Type == llvm::ELF::STT_OBJECT) {
+      // Kernel Descriptor Symbol
+      if (SymbolName->ends_with(".kd") && Size == 64) {
+        KDSymbols.insert({*SymbolName, Symbol});
+      }
+      // Variable Symbol
+      else {
+        if (VariableSymbols)
+          VariableSymbols->push_back(Symbol);
+      }
+    } else if (Type == llvm::ELF::STT_AMDGPU_HSA_KERNEL && Size == 64) {
+      KDSymbols.insert({*SymbolName, Symbol});
+    } else if (Type == llvm::ELF::STT_NOTYPE &&
+               Binding == llvm::ELF::STB_GLOBAL) {
+      if (ExternSymbols)
+        ExternSymbols->push_back(Symbol);
+    } else {
+      if (MiscSymbols)
+        MiscSymbols->push_back(Symbol);
+    }
+  }
+  // Distinguish kernel and device function symbols
+  for (const auto &[NameWithKDAtTheEnd, KDSymbol] : KDSymbols) {
+    llvm::StringRef NameWithoutKD =
+        NameWithKDAtTheEnd.substr(0, NameWithKDAtTheEnd.rfind(".kd"));
+    // Find the kernel function symbol
+    auto KFuncSymbolIter = FuncSymbols.find(NameWithoutKD);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        KFuncSymbolIter != FuncSymbols.end(),
+        "Failed to find the kernel function symbol {0} inside the object file.",
+        NameWithoutKD));
+    // Construct the Kernel LCO Symbol
+    if (KernelSymbols)
+      KernelSymbols->emplace_back(KDSymbol, KFuncSymbolIter->second);
+    // Remove the kernel function symbol from the map so that it doesn't
+    // get counted as a device function
+    FuncSymbols.erase(KFuncSymbolIter);
+  }
+  // Add the function symbols
+  if (DeviceFunctionSymbols) {
+    for (const auto &[Name, FuncSymbol] : FuncSymbols) {
+      DeviceFunctionSymbols->push_back(FuncSymbol);
+    }
+  }
+  return llvm::Error::success();
+}
+
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
 lookupSymbolByName(const luthier::AMDGCNObjectFile &ObjectFile,
                    llvm::StringRef SymbolName) {
@@ -284,7 +352,6 @@ getLoadedMemoryOffset(const luthier::AMDGCNELFFile &ELF,
   // Return section's VMA if it isn't in a PT_LOAD segment.
   return *SymbolAddress;
 }
-
 
 static llvm::Error
 parseVersionMDOptional(MapDocNode &Map, llvm::StringRef Key,
@@ -582,7 +649,6 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
   auto ArgsMD = KernelMetaNode.find(hsa::md::Kernel::Key::Args);
   if (ArgsMD != KernelMetaNode.end()) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(ArgsMD->second.isArray(), ""));
-    Out.Args.emplace();
     for (auto &ArgMD : ArgsMD->second.getArray()) {
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(ArgMD.isMap(), ""));
       Out.Args->emplace_back();
@@ -630,8 +696,8 @@ llvm::Error parseKernelMD(llvm::msgpack::MapDocNode &KernelMetaNode,
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
       KernelMetaNode, hsa::md::Kernel::Key::VGPRCount, Out.VGPRCount));
 
-  LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
-      KernelMetaNode, hsa::md::Kernel::Key::AGPRCount, Out.AGPRCount));
+  //  LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
+  //      KernelMetaNode, hsa::md::Kernel::Key::AGPRCount, Out.AGPRCount));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDRequired(
       KernelMetaNode, hsa::md::Kernel::Key::MaxFlatWorkgroupSize,
@@ -708,21 +774,16 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaDataDoc) {
   LUTHIER_RETURN_ON_ERROR(
       parseVersionMDRequired(RootMap, hsa::md::Key::Version, Out.Version));
 
-  bool IsV2 = Out.Version.Minor == 0;
-  // We don't support Code Object V2
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      !IsV2, "Parsing of Code Object V2 metadata is not supported."));
-
   auto PrintfMD = RootMap.find(hsa::md::Key::Printf);
   if (PrintfMD != RootMap.end()) {
     LUTHIER_RETURN_ON_ERROR(
         LUTHIER_ERROR_CHECK(PrintfMD->second.isArray(), ""));
-    Out.Printf.emplace();
     for (const auto &P : PrintfMD->second.getArray()) {
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(P.isString(), ""));
       Out.Printf->emplace_back(P.getString());
     }
   }
+  // TODO: Add V2 metadata parsing
 
   auto KernelsMD = RootMap.find(hsa::md::Key::Kernels);
   if (KernelsMD != RootMap.end()) {

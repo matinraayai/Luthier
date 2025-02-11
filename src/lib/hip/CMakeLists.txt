@@ -9,6 +9,7 @@ endif ()
 
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HipCompilerApiInterceptor.cpp
         ${CMAKE_CURRENT_BINARY_DIR}/HipRuntimeApiInterceptor.cpp
+        ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hip_intercept_gen.py
         --hip-api-trace-path ${hip_INCLUDE_DIR}/hip/amd_detail/hip_api_trace.hpp
         --hpp-structs-save-path ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h
@@ -28,9 +29,11 @@ target_compile_definitions(LuthierHIP PRIVATE ${LLVM_DEFINITIONS})
 target_include_directories(LuthierHIP
         PRIVATE
         "${CMAKE_SOURCE_DIR}/src/include"
+        ${LLVM_INCLUDE_DIRS}
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-        ${LLVM_INCLUDE_DIRS}
 )
 
 target_link_libraries(LuthierHIP PRIVATE hip::host)

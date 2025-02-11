@@ -55,6 +55,7 @@ target_include_directories(LuthierToolingCommon
         ${LLVM_INCLUDE_DIRS}
         ${hsa-runtime64_INCLUDE_DIRS}
         PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
