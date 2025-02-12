@@ -56,9 +56,10 @@ public:
 
 /// \brief Macro used to check an \c llvm::Error and on error, wraps its
 /// original error message inside a \c luthier::LLVMError to provide a more
-/// helpful error message
-#define LLVM_ERROR_CHECK(Expr)                                                 \
-  luthier::LLVMError::LLVMErrorCheck(Expr, __FILE__, __LINE__)
+/// helpful error message\n
+/// Consumes the original error message
+#define LLVM_ERROR_CHECK(Error)                                                \
+  luthier::LLVMError::llvmErrorCheck(std::move(Error), __FILE__, __LINE__)
 
 } // namespace luthier
 #endif
