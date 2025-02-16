@@ -34,6 +34,8 @@ add_library(LuthierHSA OBJECT
         LoadedCodeObjectDeviceFunction.cpp
         LoadedCodeObjectExternSymbol.cpp
         DisableInterceptionScope.cpp
+        ObjectCache.cpp
+        Metadata.cpp
 )
 
 target_compile_definitions(LuthierHSA PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
