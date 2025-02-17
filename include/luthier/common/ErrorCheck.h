@@ -21,23 +21,24 @@
 #ifndef LUTHIER_ERROR_CHECK_H
 #define LUTHIER_ERROR_CHECK_H
 
-/// \brief Reports a fatal error if the passed \p llvm::Error argument is not
-/// equal to \c llvm::Error::success()
+/// \brief moves the passed error into a new \c llvm::Error and checks it; If
+/// the check fails, invokes \c llvm::report_fatal_error to halt the
+/// application
 #define LUTHIER_REPORT_FATAL_ON_ERROR(Error)                                   \
   do {                                                                         \
-    if (Error) {                                                               \
-      llvm::report_fatal_error(std::move(Error), true);                        \
+    if (auto LuthierMacroErrorCheck = std::move(Error)) {                      \
+      llvm::report_fatal_error(std::move(LuthierMacroErrorCheck), true);       \
     }                                                                          \
-  } while (0)
+  } while (false)
 
-/// \brief returns from the function if the passed \p llvm::Error argument is
-/// not equal to \c llvm::Error::success()
+/// \brief moves the passed error into a new \c llvm::Error and checks it; If
+/// the check fails, returns the checked error from the current function
 #define LUTHIER_RETURN_ON_ERROR(Error)                                         \
   do {                                                                         \
-    if (Error) {                                                               \
-      return std::move(Error);                                                 \
+    if (auto LuthierMacroErrorCheck = std::move(Error)) {                      \
+      return LuthierMacroErrorCheck;                                           \
     }                                                                          \
-  } while (0)
+  } while (false)
 
 /// \brief declares a variable \p VarName with type \p type; Returns from the
 /// current function if moving the output value of the
