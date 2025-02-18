@@ -851,4 +851,180 @@ parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj) {
 }
 
 
+// DICtx dump
+
+#include <memory>
+
+#include "llvm/DebugInfo/DIContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
+
+#include "llvm/Object/Binary.h"
+#include "llvm/Object/ObjectFile.h"
+
+#include "llvm/Support/Error.h"
+#include "llvm/Support/WithColor.h"
+#include "llvm/Support/Casting.h"
+
+
+// funcs
+static void error(StringRef Prefix, Error Err) {
+  if (!Err)
+    return;
+  WithColor::error() << Prefix << ": " << toString(std::move(Err)) << "\n";
+  exit(1);
+}
+
+// Return true if the object file has not been filtered by an --arch option.
+static bool filterArch(ObjectFile &Obj) {
+  if (ArchFilters.empty())
+    return true;
+
+  if (auto *MachO = dyn_cast<MachOObjectFile>(&Obj)) {
+    for (const StringRef Arch : ArchFilters) {
+      // Match architecture number.
+      unsigned Value;
+      if (!Arch.getAsInteger(0, Value))
+        if (Value == getCPUType(*MachO))
+          return true;
+
+      // Match as name.
+      if (MachO->getArchTriple().getArchName() == Triple(Arch).getArchName())
+        return true;
+    }
+  }
+  return false;
+}
+
+static std::unique_ptr<MCRegisterInfo>
+createRegInfo(const object::ObjectFile &Obj) {
+  std::unique_ptr<MCRegisterInfo> MCRegInfo;
+  Triple TT;
+  TT.setArch(Triple::ArchType(Obj.getArch()));
+  TT.setVendor(Triple::UnknownVendor);
+  TT.setOS(Triple::UnknownOS);
+  std::string TargetLookupError;
+  const Target *TheTarget =
+      TargetRegistry::lookupTarget(TT.str(), TargetLookupError);
+  if (!TargetLookupError.empty())
+    return nullptr;
+  MCRegInfo.reset(TheTarget->createMCRegInfo(TT.str()));
+  return MCRegInfo;
+}
+
+static DIDumpOptions getDumpOpts(DWARFContext &C) {
+  DIDumpOptions DumpOpts;
+  DumpOpts.DumpType = DumpType;
+  DumpOpts.ChildRecurseDepth = ChildRecurseDepth;
+  DumpOpts.ParentRecurseDepth = ParentRecurseDepth;
+  DumpOpts.ShowAddresses = !Diff;
+  DumpOpts.ShowChildren = ShowChildren;
+  DumpOpts.ShowParents = ShowParents;
+  DumpOpts.ShowForm = ShowForm;
+  DumpOpts.SummarizeTypes = SummarizeTypes;
+  DumpOpts.Verbose = Verbose;
+  DumpOpts.DumpNonSkeleton = DumpNonSkeleton;
+  DumpOpts.RecoverableErrorHandler = C.getRecoverableErrorHandler();
+  // In -verify mode, print DIEs without children in error messages.
+  if (Verify) {
+    DumpOpts.Verbose = ErrorDetails != NoDetailsOnlySummary &&
+                       ErrorDetails != NoDetailsOrSummary;
+    DumpOpts.ShowAggregateErrors = ErrorDetails != OnlyDetailsNoSummary &&
+                                   ErrorDetails != NoDetailsOnlySummary;
+    DumpOpts.JsonErrSummaryFile = JsonErrSummaryFile;
+    return DumpOpts.noImplicitRecursion();
+  }
+  return DumpOpts;
+}
+
+static bool handleFile(StringRef Filename, HandlerFn HandleObj,
+                       raw_ostream &OS) {
+  ErrorOr<std::unique_ptr<MemoryBuffer>> BuffOrErr =
+      MemoryBuffer::getFileOrSTDIN(Filename);
+  error(Filename, BuffOrErr.getError());
+  std::unique_ptr<MemoryBuffer> Buffer = std::move(BuffOrErr.get());
+  return handleBuffer(Filename, *Buffer, HandleObj, OS);
+}
+
+static bool handleBuffer(StringRef Filename, MemoryBufferRef Buffer,
+                         HandlerFn HandleObj, raw_ostream &OS) {
+
+  Expected<std::unique_ptr<Binary>> BinOrErr = object::createBinary(Buffer);
+  error(Filename, BinOrErr.takeError());
+
+  bool Result = true;
+  auto RecoverableErrorHandler = [&](Error E) {
+    Result = false;
+    WithColor::defaultErrorHandler(std::move(E));
+  };
+  if (auto *Obj = dyn_cast<ObjectFile>(BinOrErr->get())) {
+    if (filterArch(*Obj)) {
+      std::unique_ptr<DWARFContext> DICtx = DWARFContext::create(
+          *Obj, DWARFContext::ProcessDebugRelocations::Process, nullptr, "",
+          RecoverableErrorHandler);
+      DICtx->setParseCUTUIndexManually(ManuallyGenerateUnitIndex);
+      if (!HandleObj(*Obj, *DICtx, Filename, OS))
+        Result = false;
+    }
+  }
+  return Result;
+}
+
+static bool dumpObjectFile(ObjectFile &Obj, DWARFContext &DICtx,
+                           const Twine &Filename, raw_ostream &OS) {
+
+  auto MCRegInfo = createRegInfo(Obj);
+  if (!MCRegInfo)
+    logAllUnhandledErrors(createStringError(inconvertibleErrorCode(),
+                                            "Error in creating MCRegInfo"),
+                          errs(), Filename.str() + ": ");
+
+  auto GetRegName = [&MCRegInfo](uint64_t DwarfRegNum, bool IsEH) -> StringRef {
+    if (!MCRegInfo)
+      return {};
+    if (std::optional<MCRegister> LLVMRegNum =
+            MCRegInfo->getLLVMRegNum(DwarfRegNum, IsEH))
+      if (const char *RegName = MCRegInfo->getName(*LLVMRegNum))
+        return StringRef(RegName);
+    return {};
+  };
+
+  //! CLI arguments
+  // The UUID dump already contains all the same information.
+  // if (!(DumpType & DIDT_UUID) || DumpType == DIDT_All)
+    // OS << Filename << ":\tfile format " << Obj.getFileFormatName() << '\n';
+
+  // Handle the --lookup option.
+  // if (Lookup)
+  //   return lookup(Obj, DICtx, Lookup, OS);
+
+  // Handle the --name option.
+  // if (!Name.empty()) {
+  //   StringSet<> Names;
+  //   for (const auto &name : Name)
+  //     Names.insert((IgnoreCase && !UseRegex) ? StringRef(name).lower() : name);
+
+  //   filterByName(Names, DICtx.normal_units(), OS, GetRegName);
+  //   filterByName(Names, DICtx.dwo_units(), OS, GetRegName);
+  //   return true;
+  // }
+
+  // // Handle the --find option and lower it to --debug-info=<offset>.
+  // if (!Find.empty()) {
+  //   filterByAccelName(Find, DICtx, OS, GetRegName);
+  //   return true;
+  // }
+
+  // // Handle the --find-all-apple option and lower it to --debug-info=<offset>.
+  // if (FindAllApple) {
+  //   findAllApple(DICtx, OS, GetRegName);
+  //   return true;
+  // }
+
+  // Dump the complete DWARF structure.
+  auto DumpOpts = getDumpOpts(DICtx);
+  DumpOpts.GetNameForDWARFReg = GetRegName;
+  DICtx.dump(OS, DumpOpts, DumpOffsets);
+  return true;
+}
+  
 } // namespace luthier
