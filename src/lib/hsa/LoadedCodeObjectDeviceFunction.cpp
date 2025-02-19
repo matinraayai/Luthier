@@ -15,18 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c LoadedCodeObjectDeviceFunction under the \c
-/// luthier::hsa namespace.
+/// This file implements the concrete portions of
+/// \c LoadedCodeObjectDeviceFunction interface under the \c luthier::hsa
+/// namespace.
 //===----------------------------------------------------------------------===//
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 
 namespace luthier::hsa {
 
-llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
-LoadedCodeObjectDeviceFunction::create(
-    hsa_loaded_code_object_t LCO, const llvm::object::ELFSymbolRef FuncSymbol) {
-  return std::unique_ptr<LoadedCodeObjectDeviceFunction>(
-      new LoadedCodeObjectDeviceFunction(LCO, FuncSymbol));
-}
+char LoadedCodeObjectDeviceFunction::ID = 0;
 
 } // namespace luthier::hsa

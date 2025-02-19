@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c LoadedCodeObjectDeviceFunction under the
+/// This file defines the \c LoadedCodeObjectDeviceFunction interface under the
 /// \c luthier::hsa namespace, which represents all device (non-kernel)
 /// functions inside a \c hsa::LoadedCodeObject.
 //===----------------------------------------------------------------------===//
@@ -25,35 +25,11 @@
 
 namespace luthier::hsa {
 
-/// \brief a \c LoadedCodeObjectSymbol of type
-/// \c LoadedCodeObjectSymbol::ST_DEVICE_FUNCTION
-class LoadedCodeObjectDeviceFunction final : public LoadedCodeObjectSymbol {
-
-private:
-  /// Constructor
-  /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
-  /// \param FuncSymbol the function symbol of the device function,
-  /// cached internally by Luthier
-  LoadedCodeObjectDeviceFunction(hsa_loaded_code_object_t LCO,
-                                 llvm::object::ELFSymbolRef FuncSymbol)
-      : LoadedCodeObjectSymbol(LCO, FuncSymbol, SymbolKind::SK_DEVICE_FUNCTION,
-                               std::nullopt) {}
-
+class LoadedCodeObjectDeviceFunction
+    : public llvm::RTTIExtends<LoadedCodeObjectDeviceFunction,
+                               LoadedCodeObjectSymbol> {
 public:
-  /// Factory method used internally by Luthier
-  /// Symbols created using this method will be cached, and a reference to them
-  /// will be returned to the tool writer when queried
-  /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
-  /// \param FuncSymbol the function symbol of the device function,
-  /// cached internally by Luthier
-  static llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
-  create(hsa_loaded_code_object_t LCO,
-         llvm::object::ELFSymbolRef FuncSymbol);
-
-  /// method for providing LLVM RTTI
-  __attribute__((used)) static bool classof(const LoadedCodeObjectSymbol *S) {
-    return S->getType() == SK_DEVICE_FUNCTION;
-  }
+  static char ID;
 };
 
 } // namespace luthier::hsa
