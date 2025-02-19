@@ -1,4 +1,4 @@
-//===-- GpuAgent.hpp - HSA GPU Agent Wrapper Interface --------------------===//
+//===-- GpuAgentImpl.hpp --------------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c GpuAgent interface under the \c luthier::hsa
-/// namespace, representing a wrapper around the \c hsa_agent_t of type
-/// \c HSA_DEVICE_TYPE_GPU and its related functionality.
+/// This file defines the \c hsa::GpuAgentImpl class which implements the
+/// \c hsa::GpuAgent interface.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_GPU_AGENT_HPP
-#define LUTHIER_HSA_GPU_AGENT_HPP
-#include "hsa/HandleType.hpp"
+#ifndef LUTHIER_HSA_GPU_AGENT_IMPL_HPP
+#define LUTHIER_HSA_GPU_AGENT_IMPL_HPP
+#include "hsa/GpuAgent.hpp"
 #include "hsa/HsaRuntimeInterceptor.hpp"
 #include "hsa/ISA.hpp"
 #include <hsa/hsa.h>
@@ -31,26 +30,21 @@ namespace luthier::hsa {
 
 /// \brief Interface for a wrapper around the \c hsa_agent_t handles of type
 /// \c HSA_DEVICE_TYPE_GPU
-class GpuAgent : public HandleType<hsa_agent_t> {
+class GpuAgentImpl : public GpuAgent {
 public:
   /// Constructor
   /// \param Agent the HSA handle of the GPU Agent
-  explicit GpuAgent(hsa_agent_t Agent) : HandleType<hsa_agent_t>(Agent) {};
-
-  virtual ~GpuAgent() = default;
+  explicit GpuAgentImpl(hsa_agent_t Agent) : GpuAgent(Agent) {};
 
   /// Queries all the <tt>hsa::ISA</tt>s supported by this GPU Agent.
   /// \param [out] Isa list of ISAs supported by the Agent
   /// \return an llvm::ErrorSuccess if the operation was successful, or
   /// a \c luthier::HsaError in case of failure
   /// \sa hsa_agent_iterate_isas
-  virtual llvm::Error
-  getSupportedISAs(llvm::SmallVectorImpl<std::unique_ptr<ISA>> &Isa) const = 0;
+  llvm::Error getSupportedISAs(
+      llvm::SmallVectorImpl<std::unique_ptr<ISA>> &Isa) const override;
 };
 
 } // namespace luthier::hsa
-
-DECLARE_LLVM_MAP_INFO_STRUCTS_FOR_HANDLE_TYPE(luthier::hsa::GpuAgent,
-                                              hsa_agent_t)
 
 #endif

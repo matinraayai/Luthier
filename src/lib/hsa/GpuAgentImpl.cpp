@@ -1,4 +1,4 @@
-//===-- GpuAgent.cpp - HSA GPU Agent Wrapper Implementation ---------------===//
+//===-- GpuAgentImpl.cpp - Concrete HSA GPU Agent Wrapper Implementation --===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,21 +15,19 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c GpuAgent class under the \c luthier::hsa
-/// namespace.
+/// This file implements the \c hsa::GpuAgentImpl class.
 //===----------------------------------------------------------------------===//
-
-#include "hsa/GpuAgent.hpp"
-#include "hsa/ISA.hpp"
+#include "hsa/GpuAgentImpl.hpp"
+#include "hsa/ISAImpl.hpp"
 
 namespace luthier::hsa {
 
-llvm::Error
-GpuAgent::getSupportedISAs(llvm::SmallVectorImpl<ISA> &IsaList) const {
+llvm::Error GpuAgentImpl::getSupportedISAs(
+    llvm::SmallVectorImpl<std::unique_ptr<ISA>> &IsaList) const {
   auto Iterator = [](hsa_isa_t Isa, void *Data) {
     auto SupportedIsaList =
-        reinterpret_cast<llvm::SmallVectorImpl<ISA> *>(Data);
-    SupportedIsaList->emplace_back(Isa);
+        reinterpret_cast<llvm::SmallVectorImpl<std::unique_ptr<ISA>> *>(Data);
+    SupportedIsaList->emplace_back(std::make_unique<ISAImpl>(Isa));
     return HSA_STATUS_SUCCESS;
   };
 
