@@ -1,4 +1,4 @@
-//===-- ExecutableSymbol.cpp - HSA Executable Symbol Wrapper --------------===//
+//===-- ExecutableSymbolImpl.cpp - Concrete HSA Executable Symbol ---------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,21 +15,19 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c ExecutableSymbol class under the \c luthier::hsa
-/// namespace.
+/// This file implements the \c hsa::ExecutableSymbolImpl class.
 //===----------------------------------------------------------------------===//
-
-#include "hsa/ExecutableSymbol.hpp"
-
+#include "hsa/ExecutableSymbolImpl.hpp"
 #include "hsa/GpuAgent.hpp"
 #include "luthier/hsa/HsaError.h"
 
-#undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-hsa-executable-symbol"
-
 namespace luthier::hsa {
 
-llvm::Expected<hsa_symbol_kind_t> ExecutableSymbol::getType() const {
+std::unique_ptr<ExecutableSymbol> ExecutableSymbolImpl::clone() const {
+  return std::make_unique<ExecutableSymbolImpl>(asHsaType());
+}
+
+llvm::Expected<hsa_symbol_kind_t> ExecutableSymbolImpl::getType() const {
   hsa_symbol_kind_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_symbol_get_info_fn(
@@ -37,7 +35,7 @@ llvm::Expected<hsa_symbol_kind_t> ExecutableSymbol::getType() const {
   return Out;
 }
 
-llvm::Expected<llvm::StringRef> ExecutableSymbol::getName() const {
+llvm::Expected<llvm::StringRef> ExecutableSymbolImpl::getName() const {
   uint32_t NameLength;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_symbol_get_info_fn(
@@ -49,7 +47,7 @@ llvm::Expected<llvm::StringRef> ExecutableSymbol::getName() const {
   return Out;
 }
 
-llvm::Expected<size_t> ExecutableSymbol::getSize() const {
+llvm::Expected<size_t> ExecutableSymbolImpl::getSize() const {
   uint32_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_symbol_get_info_fn(
@@ -57,7 +55,7 @@ llvm::Expected<size_t> ExecutableSymbol::getSize() const {
   return Out;
 }
 
-llvm::Expected<luthier::address_t> ExecutableSymbol::getAddress() const {
+llvm::Expected<luthier::address_t> ExecutableSymbolImpl::getAddress() const {
   auto SymbolType = getType();
   LUTHIER_RETURN_ON_ERROR(SymbolType.takeError());
   luthier::address_t Out;
@@ -71,12 +69,13 @@ llvm::Expected<luthier::address_t> ExecutableSymbol::getAddress() const {
   return Out;
 }
 
-llvm::Expected<GpuAgent> ExecutableSymbol::getAgent() const {
+llvm::Expected<std::unique_ptr<GpuAgent>>
+ExecutableSymbolImpl::getAgent() const {
   hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       getApiTable().core.hsa_executable_symbol_get_info_fn(
           this->asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_AGENT, &Agent)));
-  return hsa::GpuAgent(Agent);
+  return std::make_unique<hsa::GpuAgentImpl>(Agent);
 }
 
 } // namespace luthier::hsa
