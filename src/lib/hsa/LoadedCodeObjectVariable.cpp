@@ -15,43 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c LoadedCodeObjectVariable under the \c
+/// This file implements the concrete portions of the
+/// \c LoadedCodeObjectVariable interface under the \c
 /// luthier::hsa namespace.
 //===----------------------------------------------------------------------===//
-
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-
 #include <luthier/hsa/LoadedCodeObjectVariable.h>
 
 namespace luthier::hsa {
 
-llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
-LoadedCodeObjectVariable::create(hsa_loaded_code_object_t LCO,
-                                 llvm::object::ELFSymbolRef VarSymbol) {
-  hsa::LoadedCodeObject LCOWrapper(LCO);
-  // Get the kernel symbol associated with this kernel
-  auto Exec = LCOWrapper.getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-
-  auto Agent = LCOWrapper.getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-
-  auto Name = VarSymbol.getName();
-  LUTHIER_RETURN_ON_ERROR(Name.takeError());
-
-  auto ExecSymbol = Exec->getExecutableSymbolByName(*Name, *Agent);
-  LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
-
-  auto ExecSymbolAsOptionalHandle =
-      ExecSymbol->has_value() ? std::make_optional<hsa_executable_symbol_t>(
-                                    ExecSymbol.get()->asHsaType())
-                              : std::nullopt;
-
-  return std::unique_ptr<LoadedCodeObjectVariable>(
-      new LoadedCodeObjectVariable(LCO, VarSymbol, ExecSymbolAsOptionalHandle));
-}
+char LoadedCodeObjectVariable::ID = 0;
 
 } // namespace luthier::hsa
