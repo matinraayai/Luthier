@@ -1,4 +1,4 @@
-//===-- LoadedCodeObjectDeviceFunction.cpp --------------------------------===//
+//===-- LoadedCodeObjectExternSymbol.cpp ----------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,43 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c LoadedCodeObjectDeviceFunction under the \c
-/// luthier::hsa namespace.
+/// This file implements the concrete portions of the
+/// \c LoadedCodeObjectExternSymbol interface under the
+/// \c luthier::hsa namespace.
 //===----------------------------------------------------------------------===//
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-
 #include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
 
 namespace luthier::hsa {
 
-llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
-LoadedCodeObjectExternSymbol::create(hsa_loaded_code_object_t LCO,
-                                     llvm::object::ELFSymbolRef ExternSymbol) {
-  hsa::LoadedCodeObject LCOWrapper(LCO);
-  // Get the executable symbol associated with this external symbol
-  auto Exec = LCOWrapper.getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-
-  auto Agent = LCOWrapper.getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-
-  auto Name = ExternSymbol.getName();
-  LUTHIER_RETURN_ON_ERROR(Name.takeError());
-
-  auto ExecSymbol = Exec->getExecutableSymbolByName(*Name, *Agent);
-  LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(ExecSymbol->has_value(),
-                          "Failed to locate the external symbol {0} in its "
-                          "executable using its name",
-                          *Name));
-
-  return std::unique_ptr<LoadedCodeObjectExternSymbol>(
-      new LoadedCodeObjectExternSymbol(LCO, ExternSymbol,
-                                       ExecSymbol.get()->asHsaType()));
-}
+char LoadedCodeObjectExternSymbol::ID = 0;
 
 } // namespace luthier::hsa

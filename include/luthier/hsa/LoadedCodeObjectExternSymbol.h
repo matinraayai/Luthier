@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c LoadedCodeObjectExternSymbol under the
+/// This file defines the \c LoadedCodeObjectExternSymbol interface under the
 /// \c luthier::hsa namespace, which represents all symbols declared
 /// inside a \c hsa::LoadedCodeObject but not defined.
 //===----------------------------------------------------------------------===//
@@ -25,32 +25,11 @@
 
 namespace luthier::hsa {
 
-/// \brief a \c LoadedCodeObjectSymbol of type
-/// \c LoadedCodeObjectSymbol::SK_EXTERNAL
-class LoadedCodeObjectExternSymbol final : public LoadedCodeObjectSymbol {
-
-private:
-  /// Constructor
-  /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
-  /// \param ExternSymbol the external symbol,
-  /// cached internally by Luthier
-  /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
-  /// the extern symbol
-  LoadedCodeObjectExternSymbol(hsa_loaded_code_object_t LCO,
-                               llvm::object::ELFSymbolRef ExternSymbol,
-                               hsa_executable_symbol_t ExecutableSymbol)
-      : LoadedCodeObjectSymbol(LCO, ExternSymbol, SymbolKind::SK_EXTERNAL,
-                               ExecutableSymbol) {}
-
+class LoadedCodeObjectExternSymbol
+    : public llvm::RTTIExtends<LoadedCodeObjectExternSymbol,
+                               LoadedCodeObjectSymbol> {
 public:
-  static llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
-  create(hsa_loaded_code_object_t LCO,
-         llvm::object::ELFSymbolRef ExternSymbol);
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const LoadedCodeObjectSymbol *S) {
-    return S->getType() == SK_EXTERNAL;
-  }
+  static char ID;
 };
 
 } // namespace luthier::hsa
