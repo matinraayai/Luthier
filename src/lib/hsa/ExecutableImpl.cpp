@@ -22,10 +22,18 @@
 #include "hsa/ExecutableBackedObjectsCache.hpp"
 #include "hsa/ExecutableSymbolImpl.hpp"
 #include "hsa/GpuAgent.hpp"
-#include "hsa/LoadedCodeObject.hpp"
+#include "hsa/LoadedCodeObjectImpl.hpp"
 #include "luthier/hsa/HsaError.h"
 
 namespace luthier::hsa {
+
+llvm::Error ExecutableImpl::create(
+    hsa_profile_t Profile,
+    hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) {
+  return LUTHIER_HSA_SUCCESS_CHECK(
+      getApiTable().core.hsa_executable_create_alt_fn(
+          Profile, DefaultFloatRoundingMode, "", &this->HsaType));
+}
 
 std::unique_ptr<Executable> ExecutableImpl::clone() const {
   return std::make_unique<ExecutableImpl>(asHsaType());
@@ -103,8 +111,7 @@ llvm::Error ExecutableImpl::getLoadedCodeObjects(
     auto Out = reinterpret_cast<
         llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObject>> *>(Data);
 
-    Out->emplace_back(std::unique_ptr<hsa::LoadedCodeObject>(
-        new hsa::LoadedCodeObjectImpl(LCO)));
+    Out->emplace_back(std::make_unique<hsa::LoadedCodeObjectImpl>(LCO));
     return HSA_STATUS_SUCCESS;
   };
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(

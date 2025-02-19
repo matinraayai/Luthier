@@ -36,8 +36,16 @@ class LoadedCodeObject;
 /// \brief wrapper around the \c hsa_executable_t handle
 class Executable : public HandleType<hsa_executable_t> {
 public:
-  /// Creates a new \c hsa_executable_t handle and wraps it inside
-  /// an \c Executable object
+  /// Constructor using a \c hsa_executable_t handle
+  /// \warning This constructor must only be used with handles already created
+  /// by HSA. To create executables from scratch, use \c create instead.
+  /// \param Exec
+  explicit Executable(hsa_executable_t Exec)
+      : HandleType<hsa_executable_t>(Exec) {};
+
+  virtual ~Executable() = default;
+
+  /// Creates a new \c hsa_executable_t handle
   /// \param Profile \c hsa_profile_t of the executable; set to
   /// \c HSA_PROFILE_FULL by default
   /// \param DefaultFloatRoundingMode \c hsa_default_float_rounding_mode_t
@@ -53,10 +61,13 @@ public:
   /// \sa hsa_executable_create_alt
   /// \sa hsa_profile_t
   /// \sa hsa_default_float_rounding_mode_t
-  static llvm::Expected<std::unique_ptr<Executable>>
-  create(hsa_profile_t Profile = HSA_PROFILE_FULL,
-         hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
-             HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);
+  [[nodiscard]] virtual llvm::Error
+  create(hsa_profile_t Profile,
+         hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) = 0;
+
+  llvm::Error create() {
+    return create(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);
+  }
 
   /// \return a new cloned version of this executable
   [[nodiscard]] virtual std::unique_ptr<Executable> clone() const = 0;
@@ -111,13 +122,6 @@ public:
   /// indicating any issues encountered by HSA
   /// \sa hsa_executable_destroy
   virtual llvm::Error destroy() = 0;
-
-  /// Constructor using a \c hsa_executable_t handle
-  /// \warning This constructor must only be used with handles already created
-  /// by HSA. To create executables from scratch, use \c create instead.
-  /// \param Exec
-  explicit Executable(hsa_executable_t Exec)
-      : HandleType<hsa_executable_t>(Exec) {};
 
   /// Queries the \c hsa_profile_t of the wrapped \c hsa_executable_t
   /// \return the profile of the executable on success, and an

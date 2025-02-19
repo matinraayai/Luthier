@@ -35,6 +35,10 @@ public:
   /// Constructor using a \c hsa_executable_t handle
   explicit ExecutableImpl(hsa_executable_t Exec) : Executable(Exec) {};
 
+  [[nodiscard]] llvm::Error
+  create(hsa_profile_t Profile,
+         hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) override;
+
   [[nodiscard]] std::unique_ptr<Executable> clone() const override;
 
   llvm::Expected<std::unique_ptr<hsa::LoadedCodeObject>>
