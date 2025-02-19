@@ -19,8 +19,8 @@
 /// which represents a wrapper around a type defined and used by the HSA
 /// library.
 //===----------------------------------------------------------------------===//
-#ifndef HSA_TYPE_HPP
-#define HSA_TYPE_HPP
+#ifndef LUTHIER_HSA_TYPE_HPP
+#define LUTHIER_HSA_TYPE_HPP
 #include "HsaRuntimeInterceptor.hpp"
 
 namespace luthier::hsa {
@@ -38,10 +38,9 @@ namespace luthier::hsa {
 /// the API tables of the HSA runtime
 
 template <typename HT> class Type {
-private:
+protected:
   HT HsaType; ///< Should be trivially copyable
 
-protected:
   /// Direct constructor from the object being encapsulated
   /// \param HsaType the HSA object being encapsulated; If \p HsaType requires
   /// explicit initialization using an HSA API, then the \p HsaType must already

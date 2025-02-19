@@ -15,12 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c HandleType class under the \c luthier::hsa namespace,
-/// which represents a wrapper around handle type objects defined and used by
-/// the HSA library.
+/// This file defines the \c HandleType class under the \c luthier::hsa
+/// namespace, which represents a wrapper around handle type objects defined and
+/// used by the HSA library.
 //===----------------------------------------------------------------------===//
-#ifndef HSA_HANDLE_TYPE_HPP
-#define HSA_HANDLE_TYPE_HPP
+#ifndef LUTHIER_HSA_HANDLE_TYPE_HPP
+#define LUTHIER_HSA_HANDLE_TYPE_HPP
 #include "Type.hpp"
 
 namespace luthier::hsa {
@@ -39,10 +39,10 @@ namespace luthier::hsa {
 template <typename HT> class HandleType : public Type<HT> {
 protected:
   /// Direct constructor from the handle type being encapsulated
-  /// \param Primitive the HSA object being encapsulated; If \p Primitive requires
-  /// explicit initialization using an HSA API, then the \p Primitive must already
-  /// be initialized and valid
-  explicit HandleType(HT Primitive) : Type<HT>(Primitive){};
+  /// \param Primitive the HSA object being encapsulated; If \p Primitive
+  /// requires explicit initialization using an HSA API, then the \p Primitive
+  /// must already be initialized and valid
+  explicit HandleType(HT Primitive) : Type<HT>(Primitive) {};
 
 public:
   /// \returns the handle field of the wrapped opaque handle type
@@ -51,7 +51,7 @@ public:
   }
 
   /// copy constructor
-  HandleType(const HandleType &Type) : HandleType(Type.asHsaType()){};
+  HandleType(const HandleType &Type) : HandleType(Type.asHsaType()) {};
 
   /// copy assignment constructor
   HandleType &operator=(const HandleType &Other) {
@@ -68,23 +68,31 @@ public:
 
 } // namespace luthier::hsa
 
-/// TODO: Is it possible to move all \c llvm::DenseMapInfo / hash struct
-/// definitions of opaque handle wrapper subclasses here instead?
-
-template <typename HT>
-inline bool operator==(const luthier::hsa::HandleType<HT> &Lhs,
-                       const luthier::hsa::HandleType<HT> &Rhs) {
-  return Lhs.hsaHandle() == Rhs.hsaHandle();
-}
-
-template <typename HT>
-inline bool operator==(const luthier::hsa::HandleType<HT> &Lhs, const HT &Rhs) {
-  return Lhs.hsaHandle() == Rhs.handle;
-}
-
-template <typename HT>
-inline bool operator==(const HT &Lhs, const luthier::hsa::HandleType<HT> &Rhs) {
-  return Lhs.handle == Rhs.hsaHandle();
-}
+#define DECLARE_LLVM_MAP_INFO_STRUCTS_FOR_HANDLE_TYPE(HandleStruct, HT)        \
+  namespace llvm {                                                             \
+  template <> struct DenseMapInfo<HandleStruct *> {                            \
+    static inline HandleStruct *getEmptyKey() {                                \
+      return reinterpret_cast<HandleStruct *>(                                 \
+          DenseMapInfo<decltype(HT::handle)>::getEmptyKey());                  \
+    }                                                                          \
+    static inline HandleStruct *getTombstoneKey() {                            \
+      return reinterpret_cast<HandleStruct *>(                                 \
+          DenseMapInfo<decltype(HT::handle)>::getTombstoneKey());              \
+    }                                                                          \
+    static unsigned getHashValue(const HandleStruct *A) {                      \
+      if (A)                                                                   \
+        return DenseMapInfo<decltype(hsa_agent_t::handle)>::getHashValue(      \
+            A->hsaHandle());                                                   \
+      else                                                                     \
+        return DenseMapInfo<decltype(hsa_agent_t::handle)>::getHashValue(0);   \
+    }                                                                          \
+    static bool isEqual(const HandleStruct *Lhs, const HandleStruct *Rhs) {    \
+      if (Lhs && Rhs)                                                          \
+        return Lhs->hsaHandle() == Rhs->hsaHandle();                           \
+      else                                                                     \
+        return false;                                                          \
+    }                                                                          \
+  };                                                                           \
+  }
 
 #endif
