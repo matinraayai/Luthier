@@ -38,6 +38,11 @@ class HipCompilerApiInterceptor final
                                        HipCompilerDispatchTable>,
       public Singleton<HipCompilerApiInterceptor> {
 
+protected:
+  llvm::Error installWrapper(ApiEvtID ApiID) override;
+
+  llvm::Error uninstallWrapper(ApiEvtID ApiID) override;
+
 public:
   HipCompilerApiInterceptor() = default;
   ~HipCompilerApiInterceptor() override {
@@ -47,18 +52,15 @@ public:
     Singleton<HipCompilerApiInterceptor>::~Singleton();
   }
 
-  llvm::Error enableUserCallback(ApiEvtID Op) override;
-
-  llvm::Error disableUserCallback(ApiEvtID Op) override;
-
-  llvm::Error enableInternalCallback(ApiEvtID Op) override;
-
-  llvm::Error disableInternalCallback(ApiEvtID Op) override;
-
-  llvm::Error captureApiTable(HipCompilerDispatchTable *Table) override {
-    RuntimeApiTable = Table;
-    SavedRuntimeApiTable = *Table;
-    Status = API_TABLE_CAPTURED;
+  llvm::Error initializeInterceptor(HipCompilerDispatchTable &Table) override {
+    std::unique_lock Lock(InterceptorMutex);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        RuntimeApiTable == nullptr, "Interceptor is already initialized."));
+    RuntimeApiTable = &Table;
+    SavedRuntimeApiTable = Table;
+    for (const auto &[ApiID, CBs] : InterceptedApiIDCallbacks) {
+      LUTHIER_RETURN_ON_ERROR(installWrapper(ApiID));
+    }
     return llvm::Error::success();
   }
 };

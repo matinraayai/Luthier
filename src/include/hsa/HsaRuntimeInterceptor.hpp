@@ -55,11 +55,15 @@ private:
     }
   }
 
+protected:
+  llvm::Error installWrapper(ApiEvtID ApiID) override;
+
+  llvm::Error uninstallWrapper(ApiEvtID ApiID) override;
+
 public:
   HsaRuntimeInterceptor() = default;
 
   ~HsaRuntimeInterceptor() override {
-    //  TODO: Check the timing correctness of uninstalling API tables
     uninstallApiTables();
     AmdTable = {};
     Singleton::~Singleton();
@@ -73,27 +77,26 @@ public:
     return AmdTable;
   }
 
-  llvm::Error enableUserCallback(ApiEvtID Op) override;
-
-  llvm::Error disableUserCallback(ApiEvtID Op) override;
-
-  llvm::Error enableInternalCallback(ApiEvtID Op) override;
-
-  llvm::Error disableInternalCallback(ApiEvtID Op) override;
-
-  llvm::Error captureApiTable(HsaApiTable *Table) override {
-    RuntimeApiTable = Table;
-    SavedRuntimeApiTable.core = *Table->core_;
-    SavedRuntimeApiTable.amd_ext = *Table->amd_ext_;
-    SavedRuntimeApiTable.image_ext = *Table->image_ext_;
-    SavedRuntimeApiTable.finalizer_ext = *Table->finalizer_ext_;
+  llvm::Error initializeInterceptor(HsaApiTable &Table) override {
+    std::unique_lock Lock(InterceptorMutex);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        RuntimeApiTable == nullptr, "Interceptor is already initialized."));
+    RuntimeApiTable = &Table;
+    SavedRuntimeApiTable.core = *Table.core_;
+    SavedRuntimeApiTable.amd_ext = *Table.amd_ext_;
+    SavedRuntimeApiTable.image_ext = *Table.image_ext_;
+    SavedRuntimeApiTable.finalizer_ext = *Table.finalizer_ext_;
     LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-        Table->core_->hsa_system_get_major_extension_table_fn(
+        Table.core_->hsa_system_get_major_extension_table_fn(
             HSA_EXTENSION_AMD_LOADER, 1, sizeof(hsa_ven_amd_loader_1_03_pfn_t),
             &AmdTable)));
-    Status = API_TABLE_CAPTURED;
     // Run the disable API function to install the queue interceptor function
-    return disableInternalCallback(HSA_API_EVT_ID_hsa_queue_create);
+    uninstallWrapper(HSA_API_EVT_ID_hsa_queue_create);
+    // Install the wrappers for all intercepted Api IDs
+    for (const auto &[ApiID, CBs] : InterceptedApiIDCallbacks) {
+      LUTHIER_RETURN_ON_ERROR(installWrapper(ApiID));
+    }
+    return llvm::Error::success();
   }
 
   void toggleDisableUserCallbackInterceptionScope(bool Disable);

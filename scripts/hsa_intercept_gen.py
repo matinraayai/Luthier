@@ -163,6 +163,10 @@ enum ApiEvtID: unsigned int {{
                 for p in formatted_params:
                     callback_arguments_struct.append(f"""    {p};
 """)
+                # Add the return argument (if present)
+                formatted_ret_type = hsa_function_cxx.return_type.format()
+                if formatted_ret_type != "void":
+                    callback_arguments_struct.append(f"    {formatted_ret_type} ret;\n")
                 callback_arguments_struct.append(f"""  }} {hsa_function_name};
 """)
     # Handle the kernel launch event separately
@@ -223,54 +227,33 @@ void luthier::hsa::HsaRuntimeInterceptor::toggleDisableUserCallbackInterceptionS
 void queueSubmitWriteInterceptor(const void *Packets, uint64_t PktCount,
                                  uint64_t UserPktIndex, void *Data, 
                                  hsa_amd_queue_intercept_packet_writer Writer) {{
-  // This part handles the case where Luthier has been finalized, but there are 
-  // still intercept queues in HIP trying to dispatch packets. Basically tells the
-  // queue callbacks not to bother using the HSA Runtime interceptor, 
-  // because it has been destroyed already
-  //if (!luthier::hsa::HsaRuntimeInterceptor::isInitialized()) {{
-  //  Writer(Packets, PktCount);
-  //  return;
-  // }}
+  auto &HsaInterceptor = luthier::hsa::HsaRuntimeInterceptor::instance();
   static luthier::EagerManagedStatic<std::mutex> Mutex;
   Mutex->lock();
-  if (luthier::hip::HipRuntimeApiInterceptor::instance().getInterceptorStatus() == luthier::hip::HipRuntimeApiInterceptor::WAITING_FOR_API_TABLE) {{
+  if (luthier::hip::HipRuntimeApiInterceptor::instance().isInterceptorInitialized()) {{
     // Trigger the initialization of the HIP runtime API table
     hipApiName(0);
   }}
   Mutex->unlock(); 
   
   auto *Queue = reinterpret_cast<amd_queue_t*>(Data);
-  auto &HsaInterceptor = luthier::hsa::HsaRuntimeInterceptor::instance();
-  HsaInterceptor.freezeRuntimeApiTable();
-  auto [HsaUserCallback, UserCallbackLock] = HsaInterceptor.getUserCallback();
-  auto [HsaInternalCallback, InternalCallbackLock] = HsaInterceptor.getInternalCallback();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit;
   luthier::hsa::ApiEvtArgs Args;
-  bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  if (IsUserCallbackEnabled || IsInternalCallbackEnabled) {{
-    // Copy the packets to a non-const buffer
-    std::vector<luthier::hsa::AqlPacket> ModifiedPackets(
-      reinterpret_cast<const luthier::hsa::AqlPacket*>(Packets),
-      reinterpret_cast<const luthier::hsa::AqlPacket*>(Packets) + PktCount);
-    Args.hsa_queue_packet_submit.queue = Queue;
-    Args.hsa_queue_packet_submit.packets = &ModifiedPackets;
-    Args.hsa_queue_packet_submit.user_pkt_index = UserPktIndex;
-    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
-      (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
-    if (IsInternalCallbackEnabled)
-      (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
-    // Write the packets to hardware queue
-    // Even if the packets are not modified, this call has to be made to ensure
-    // the packets are copied to the hardware queue
-    Writer(ModifiedPackets.data(), ModifiedPackets.size());
-    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
-      (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
-  }} else {{
-    Writer(Packets, PktCount);
-  }}
+  // Copy the packets to a non-const buffer
+  std::vector<luthier::hsa::AqlPacket> ModifiedPackets(
+    reinterpret_cast<const luthier::hsa::AqlPacket*>(Packets),
+    reinterpret_cast<const luthier::hsa::AqlPacket*>(Packets) + PktCount);
+  Args.hsa_queue_packet_submit.queue = Queue;
+  Args.hsa_queue_packet_submit.packets = &ModifiedPackets;
+  Args.hsa_queue_packet_submit.user_pkt_index = UserPktIndex;
+  if (!DisableUserCallbackInterceptionScope)
+    HsaInterceptor.performCallbacks(Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
+  // Write the packets to hardware queue
+  // Even if the packets are not modified, this call has to be made to ensure
+  // the packets are copied to the hardware queue
+  Writer(ModifiedPackets.data(), ModifiedPackets.size());
+  if (!DisableUserCallbackInterceptionScope)
+    HsaInterceptor.performCallbacks(Args, luthier::API_EVT_PHASE_AFTER, ApiId);
 }}
 
 static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size, 
@@ -316,32 +299,20 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
                 wrapper_defs.append(
                     f"""static {return_type} {hsa_function_name}_wrapper({", ".join(formatted_params)}) {{
   auto& HsaInterceptor = luthier::hsa::HsaRuntimeInterceptor::instance();
-  HsaInterceptor.freezeRuntimeApiTable();
   auto ApiId = luthier::hsa::HSA_API_EVT_ID_{hsa_function_name};
-  bool IsUserCallbackEnabled = HsaInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HsaInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {{
 """)
-                if return_type != "void":
-                    wrapper_defs.append(f"""    {return_type} Out{{}};
-""")
-                wrapper_defs.append("""    auto [HsaUserCallback, UserCallbackLock] = HsaInterceptor.getUserCallback();
-    auto [HsaInternalCallback, InternalCallbackLock] = HsaInterceptor.getInternalCallback();
-    luthier::hsa::ApiEvtArgs Args;
+                wrapper_defs.append("""  luthier::hsa::ApiEvtArgs Args;
 """)
                 for p in hsa_function_cxx.parameters:
-                    wrapper_defs.append(f"""    Args.{hsa_function_name}.{p.name} = {p.name};
+                    wrapper_defs.append(f"""  Args.{hsa_function_name}.{p.name} = {p.name};
 """)
                 wrapper_defs.append(
-                    """    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
-      (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
-    if (IsInternalCallbackEnabled)
-      (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
+                    """  if (!DisableUserCallbackInterceptionScope)
+    HsaInterceptor.performCallbacks(Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
 """)
                 if hsa_function_name == "hsa_queue_create":  # Create intercept queues instead
                     wrapper_defs.append(
-                        """    Out = createInterceptQueue(Args.hsa_queue_create.agent, 
+                        f"""  Args.{hsa_function_name}.ret = createInterceptQueue(Args.hsa_queue_create.agent, 
                                                           Args.hsa_queue_create.size,
                                                           Args.hsa_queue_create.type, 
                                                           Args.hsa_queue_create.callback,
@@ -352,7 +323,7 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
 """)
                 else:
                     wrapper_defs.append(
-                        f'      {"Out =" if return_type != "void" else ""} HsaInterceptor.getSavedApiTableContainer().'
+                        f'  {f"Args.{hsa_function_name}.ret =" if return_type != "void" else ""} HsaInterceptor.getSavedApiTableContainer().'
                         f'{api_container_field_name}.{api_table_function_name}(')
                     for i, p in enumerate(hsa_function_cxx.parameters):
                         wrapper_defs.append(f'Args.{hsa_function_name}.{p.name}')
@@ -360,38 +331,10 @@ static hsa_status_t createInterceptQueue(hsa_agent_t agent, uint32_t size,
                             wrapper_defs.append(", ")
                     wrapper_defs.append(");\n")
                 wrapper_defs.append(
-                    f"""    if (IsUserCallbackEnabled && !DisableUserCallbackInterceptionScope)
-      (*HsaUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      (*HsaInternalCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
-    {"return Out;" if return_type != "void" else ""}
-  }}
-  else {{
-""")
-                if hsa_function_name == "hsa_queue_create":  # Create intercept queues instead
-                    wrapper_defs.append(
-                        """    return createInterceptQueue(
-                                                           agent, 
-                                                           size,
-                                                           type, 
-                                                           callback,
-                                                           data, 
-                                                           private_segment_size,
-                                                           group_segment_size, 
-                                                           queue);
-  }
-""")
-                else:
-                    wrapper_defs.append(f'    return HsaInterceptor.getSavedApiTableContainer().'
-                                        f'{api_container_field_name}.{api_table_function_name}(')
-                    for i, p in enumerate(hsa_function_cxx.parameters):
-                        wrapper_defs.append(f'{p.name}')
-                        if i != len(hsa_function_cxx.parameters) - 1:
-                            wrapper_defs.append(", ")
-                    wrapper_defs.append(""");
-  }
-""")
-                wrapper_defs.append("""}
+                    f"""  if (!DisableUserCallbackInterceptionScope)
+    HsaInterceptor.performCallbacks(Args, luthier::API_EVT_PHASE_AFTER, ApiId);
+  {f"return Args.{hsa_function_name}.ret;" if return_type != "void" else ""}
+}}
 
 """)
 
@@ -426,30 +369,6 @@ f"""static void switch_{hsa_function_name}_wrapper(HsaApiTable *RuntimeApiTable,
                     # @formatter:on
                 )
 
-    # Generate wrapper installation functions, which checks whether the wrapper function or the real function
-    # is currently installed over the API runtime table
-    wrapper_checks = []
-    for api_name in api_table_names:
-        api_table = api_tables[api_name]
-        # The field in the API Container this table corresponds to
-        api_container_field_name = api_table_container_fields[api_name]
-        for f in api_table.fields:
-            # look for functions in the API Tables, not fields
-            # function fields in the API table are defined as pointers to the decltype of their target HSA function
-            if isinstance(f.type, cxx_types.Pointer) and isinstance(f.type.ptr_to.typename.segments[0],
-                                                                    cxx_types.DecltypeSpecifier):
-                # Name of the hsa function (e.g.) hsa_init
-                hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
-                # The field of the API Table this function corresponds to (e.g.) hsa_init_fn
-                api_table_function_name = f.name
-                wrapper_checks.append(
-                    # @formatter:off
-                    f"""static bool is_{hsa_function_name}_wrapper_installed(HsaApiTable *RuntimeApiTable) {{
-  return RuntimeApiTable->{api_container_field_name}_->{api_table_function_name} == {hsa_function_name}_wrapper;
-}}\n\n"""
-                    # @formatter:on
-                )
-
     # Generate a static const mapping between the API IDs and the switch wrapper functions
     # This is used to switch between wrappers and reals for each the API IDs
     switch_functions_map = ["static constexpr void (*HsaWrapperSwitchFunctionsMap[])(HsaApiTable *, "
@@ -466,28 +385,9 @@ f"""static void switch_{hsa_function_name}_wrapper(HsaApiTable *RuntimeApiTable,
                 switch_functions_map.append(f"  switch_{hsa_function_name}_wrapper,\n")
     switch_functions_map.append("};")
 
-    # Generate a static const mapping between the API IDs and the wrapper installation check functions
-    # This is used to confirm wrapper installation status of each API ID
-    wrapper_check_functions_map = [
-        "static constexpr bool (*HsaWrapperInstallationCheckFunctionsMap[])(HsaApiTable *) {\n"]
-    for api_name in api_table_names:
-        api_table = api_tables[api_name]
-        for f in api_table.fields:
-            # look for functions in the API Tables, not fields
-            # function fields in the API table are defined as pointers to the decltype of their target HSA function
-            if isinstance(f.type, cxx_types.Pointer) and isinstance(f.type.ptr_to.typename.segments[0],
-                                                                    cxx_types.DecltypeSpecifier):
-                # Name of the hsa function (e.g.) hsa_init
-                hsa_function_name = f.type.ptr_to.typename.segments[0].tokens[0].value
-                wrapper_check_functions_map.append(f"  is_{hsa_function_name}_wrapper_installed,\n")
-    wrapper_check_functions_map.append("};")
-
     # Generate enable/disable wrapper functions for the interceptor
     enable_disable_funcs = f"""
-llvm::Error luthier::hsa::HsaRuntimeInterceptor::enableUserCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "User callback cannot be enabled when "
-                                                                               "HSA interceptor is waiting " 
-                                                                               "for the API table to be captured."));
+llvm::Error luthier::hsa::HsaRuntimeInterceptor::installWrapper(ApiEvtID Op) {{
   LUTHIER_RETURN_ON_ERROR(
      LUTHIER_ERROR_CHECK(
         static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
@@ -495,13 +395,8 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::enableUserCallback(ApiEvtID Op)
      LUTHIER_ERROR_CHECK(
         static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
   if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {{
-    if (Status != FROZEN)
-      HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, true);
-    else {{
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(HsaWrapperInstallationCheckFunctionsMap[Op](RuntimeApiTable), "Function wrapper for Op {0} is not installed.", Op));
-    }};
+    HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, true);
   }};
-  EnabledUserOps.insert(Op);
   return llvm::Error::success();
 }}
 
@@ -515,48 +410,11 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableUserCallback(ApiEvtID Op
   LUTHIER_RETURN_ON_ERROR(
      LUTHIER_ERROR_CHECK(
         static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
-  EnabledUserOps.erase(Op);
-  if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit && !EnabledUserOps.contains(Op))
+  if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit)
     HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, false);
   return llvm::Error::success();
 }}
-
-llvm::Error luthier::hsa::HsaRuntimeInterceptor::enableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be enabled when "
-                                                                               "HSA interceptor is waiting " 
-                                                                               "for the API table to be captured."));
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
-  if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {{
-    if (Status != FROZEN)
-      HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, true);
-    else {{
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(HsaWrapperInstallationCheckFunctionsMap[Op](RuntimeApiTable), "Function wrapper for Op {0} is not installed.", Op));
-    }};
-  }};
-  EnabledInternalOps.insert(Op);
-  return llvm::Error::success();
-}}
-
-llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be disabled when "
-                                                                               "HSA interceptor is waiting " 
-                                                                               "for the API table to be captured."));
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range.")); 
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HSA_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
-  EnabledInternalOps.erase(Op);
-  if (Op != hsa::HSA_API_EVT_ID_hsa_queue_packet_submit && !EnabledUserOps.contains(Op))
-    HsaWrapperSwitchFunctionsMap[Op](RuntimeApiTable, SavedRuntimeApiTable, false);
-  return llvm::Error::success();
-}}"""
+"""
 
     h_api_enums_structs_save_folder = os.path.dirname(args.h_api_enums_structs_save_path)
     if not os.path.exists(h_api_enums_structs_save_folder):
@@ -578,11 +436,7 @@ llvm::Error luthier::hsa::HsaRuntimeInterceptor::disableInternalCallback(ApiEvtI
         f.write("\n")
         f.writelines(wrapper_switches)
         f.write("\n")
-        f.writelines(wrapper_checks)
-        f.write("\n")
         f.writelines(switch_functions_map)
-        f.write("\n")
-        f.writelines(wrapper_check_functions_map)
         f.write("\n")
         f.writelines(enable_disable_funcs)
         f.write("\n")

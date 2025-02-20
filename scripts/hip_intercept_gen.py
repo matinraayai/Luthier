@@ -100,12 +100,7 @@ luthier::hip::{interceptor_name}
                 # @formatter:off
 f"""static {return_type} {function_name}_wrapper({", ".join(formatted_params)}) {{
   auto& HipInterceptor = luthier::hip::{interceptor_name}::instance();
-  HipInterceptor.freezeRuntimeApiTable();
   auto ApiId = luthier::hip::HIP_{api_name.upper()}_API_EVT_ID_{function_name};
-  bool IsUserCallbackEnabled = HipInterceptor.isUserCallbackEnabled(ApiId);
-  bool IsInternalCallbackEnabled = HipInterceptor.isInternalCallbackEnabled(ApiId);
-  bool ShouldCallback = IsUserCallbackEnabled || IsInternalCallbackEnabled;
-  if (ShouldCallback) {{
 """
                 # @formatter:on
             )
@@ -113,9 +108,7 @@ f"""static {return_type} {function_name}_wrapper({", ".join(formatted_params)}) 
                 wrapper_defs.append(f"""    {return_type} Out{{}};\n""")
             wrapper_defs.append(
                 # @formatter:off
-"""    auto [HipUserCallback, UserCallbackLock] = HipInterceptor.getUserCallback();
-    auto [HipInternalCallback, InternalCallbackLock] = HipInterceptor.getInternalCallback();
-    luthier::hip::ApiEvtArgs Args;
+"""    luthier::hip::ApiEvtArgs Args;
 """
                 # @formatter:on
             )
@@ -136,15 +129,12 @@ f"""    Args.{function_name}.{param.name}.x = {param.name}.x;
                         f"    Args.{function_name}.{param.name} = {param.name};\n")
             wrapper_defs.append(
                 # @formatter:off
-"""    if (IsUserCallbackEnabled)
-      (*HipUserCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
-    if (IsInternalCallbackEnabled)
-      (*HipInternalCallback)(&Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
+"""    HipInterceptor.performCallbacks(Args, luthier::API_EVT_PHASE_BEFORE, ApiId);
 """
                 # @formatter:on
             )
             wrapper_defs.append(
-                f'{"Out =" if return_type != "void" else ""} HipInterceptor.getSavedApiTableContainer().'
+                f'{f"Args.{function_name}.ret =" if return_type != "void" else ""} HipInterceptor.getSavedApiTableContainer().'
                 f"{function_api_table_field_name}(")
 
             for i, param in enumerate(hip_function_cxx.parameters):
@@ -155,31 +145,13 @@ f"""    Args.{function_name}.{param.name}.x = {param.name}.x;
                 else:
                     wrapper_defs.append(f'Args.{function_name}.{param.name}')
                 if i != len(hip_function_cxx.parameters) - 1:
-                    wrapper_defs.append(", ")
+                    wrapper_defs.append(", \n")
             wrapper_defs.append(");\n")
             wrapper_defs.append(
                 # @formatter:off
-f"""    if (IsUserCallbackEnabled)
-      (*HipUserCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
-    if (IsInternalCallbackEnabled)
-      (*HipInternalCallback)(&Args, luthier::API_EVT_PHASE_AFTER, ApiId);
-    {"return Out;" if return_type != "void" else ""}
+f"""    HipInterceptor.performCallbacks(Args, luthier::API_EVT_PHASE_AFTER, ApiId);
+    {f"return Args.{function_name}.ret;" if return_type != "void" else ""}
   }}
-  else {{
-"""
-                # @formatter:on
-            )
-            wrapper_defs.append(
-                f"    return HipInterceptor.getSavedApiTableContainer().{function_api_table_field_name}(")
-            for i, param in enumerate(hip_function_cxx.parameters):
-                wrapper_defs.append(param.name)
-                if i != len(hip_function_cxx.parameters) - 1:
-                    wrapper_defs.append(", ")
-            wrapper_defs.append(""");
-  }
-""")
-            wrapper_defs.append("""}
-
 """)
 
     return wrapper_defs
@@ -301,33 +273,11 @@ def generate_wrapper_switch_functions_map(api_name, api_table_struct: ClassScope
     return switch_functions_map
 
 
-def generate_wrapper_check_functions_map(api_name, api_table_struct: ClassScope,
-                                         api_table_name: str):
-    # Generate a static const mapping between the API IDs and the wrapper installation check functions
-    # This is used to confirm wrapper installation status of each API
-    wrapper_check_functions_map = [
-        f"static constexpr bool (*Hip{api_name}WrapperInstallationCheckFunctionsMap[]) ({api_table_name} *) {{\n"]
-    for f in api_table_struct.fields:
-        # look for functions in the API Tables, not fields
-        # function fields in the API table are defined as pointers to typedefs of their target HIP function
-        if isinstance(f.type.typename, cxx_types.PQName) and f.type.typename.segments[0].name != 'size_t':
-            # The field of the API Table this function corresponds to (e.g.) hipApiName_fn
-            function_api_table_field_name = f.name
-            # Name of the function (e.g. hipApiName)
-            function_name = function_api_table_field_name.removesuffix("_fn")
-            wrapper_check_functions_map.append(f"  is_{function_name}_wrapper_installed,\n")
-    wrapper_check_functions_map.append("};")
-    return wrapper_check_functions_map
-
-
 def generate_wrapper_enable_disable_functions(api_name,
                                               interceptor_name: str):
     # Generate enable/disable callback functions for the interceptor
     enable_disable_funcs = f"""
-llvm::Error luthier::hip::{interceptor_name}::enableUserCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "User callback cannot be enabled when "
-                                                                               "{interceptor_name} interceptor is waiting " 
-                                                                               "for the API table to be captured."));
+llvm::Error luthier::hip::{interceptor_name}::installWrapper(ApiEvtID Op) {{
   LUTHIER_RETURN_ON_ERROR(
      LUTHIER_ERROR_CHECK(
         static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
@@ -336,72 +286,20 @@ llvm::Error luthier::hip::{interceptor_name}::enableUserCallback(ApiEvtID Op) {{
         static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
   unsigned int OpIdx = static_cast<unsigned int>(Op) - 
                        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST);
-  if (Status != FROZEN)
-    Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, true);
-  else {{
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Hip{api_name}WrapperInstallationCheckFunctionsMap[OpIdx](RuntimeApiTable), "Wrapper for Op {0} is not installed.", Op));
-  }};
-  EnabledUserOps.insert(Op);
+  Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, true);
   return llvm::Error::success();
 }}
 
-llvm::Error luthier::hip::{interceptor_name}::disableUserCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "User callback cannot be disabled when "
-                                                                               "{interceptor_name} interceptor is waiting " 
-                                                                               "for the API table to be captured."));
+llvm::Error luthier::hip::{interceptor_name}::uninstallWrapper(ApiEvtID Op) {{
   LUTHIER_RETURN_ON_ERROR(
      LUTHIER_ERROR_CHECK(
         static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range.")); 
   LUTHIER_RETURN_ON_ERROR(
      LUTHIER_ERROR_CHECK(
         static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
-  EnabledUserOps.erase(Op);
-  if (Status != FROZEN && !EnabledInternalOps.contains(Op)) {{
-    unsigned int OpIdx = static_cast<unsigned int>(Op) - 
-                   static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST);
-    Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, false);
-  }}
-    
-  return llvm::Error::success();
-}}
-
-llvm::Error luthier::hip::{interceptor_name}::enableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be enabled when "
-                                                                               "{interceptor_name} interceptor is waiting " 
-                                                                               "for the API table to be captured."));
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range.")); 
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be enabled is out of range."));
   unsigned int OpIdx = static_cast<unsigned int>(Op) - 
-                       static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST);
-  if (Status != FROZEN)
-    Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, true);
-  else {{
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Hip{api_name}WrapperInstallationCheckFunctionsMap[OpIdx](RuntimeApiTable), "Wrapper for Op {0} is not installed.", Op));
-  }};
-  EnabledInternalOps.insert(Op);
-  return llvm::Error::success();
-}}
-
-llvm::Error luthier::hip::{interceptor_name}::disableInternalCallback(ApiEvtID Op) {{
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(Status != WAITING_FOR_API_TABLE, "Internal callback cannot be disabled when "
-                                                                               "{interceptor_name} interceptor is waiting " 
-                                                                               "for the API table to be captured."));
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST) <= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range.")); 
-  LUTHIER_RETURN_ON_ERROR(
-     LUTHIER_ERROR_CHECK(
-        static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_LAST) >= static_cast<unsigned int>(Op), "Requested op to be disabled is out of range."));
-  EnabledInternalOps.erase(Op);
-  if (Status != FROZEN && !EnabledInternalOps.contains(Op)) {{
-    unsigned int OpIdx = static_cast<unsigned int>(Op) - 
                    static_cast<unsigned int>(HIP_{api_name.upper()}_API_EVT_ID_FIRST);
-    Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, false);
-  }}
+  Hip{api_name}WrapperSwitchFunctionsMap[OpIdx](RuntimeApiTable, SavedRuntimeApiTable, false);
   return llvm::Error::success();
 }}"""
     return enable_disable_funcs
@@ -436,6 +334,10 @@ def generate_api_args_struct(api_tables, api_names, api_table_names, hip_functio
                         param.type.typename.segments[0].name == "hipFunction_t":
                     formatted_param = formatted_param.replace("const hipFunction_t", "hipFunction_t")
                 formatted_params.append(formatted_param)
+            # Add the return argument (if present)
+            formatted_ret_type = hip_function_cxx.return_type.format()
+            if formatted_ret_type != "void":
+                formatted_params.append(formatted_ret_type + " ret")
             # Generate the argument struct field
             callback_arguments_struct.append("""  struct {
 """)
@@ -540,10 +442,6 @@ def main():
         cpp_file_contents += generate_wrapper_switch_functions_map(api_name,
                                                                    api_table,
                                                                    api_table_name)
-
-        cpp_file_contents += generate_wrapper_check_functions_map(api_name,
-                                                                  api_table,
-                                                                  api_table_name)
 
         cpp_file_contents += generate_wrapper_enable_disable_functions(api_name,
                                                                        interceptor_name)

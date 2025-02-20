@@ -15,11 +15,10 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains Luthier's HIP Runtime API Interceptor Singleton,
-/// implemented using the rocprofiler-sdk API for capturing the HIP runtime API
-/// tables and installing wrappers around them.
+/// This file defines Luthier's HIP Runtime API Interceptor Singleton, used
+/// to install wrappers over the HIP dispatch API table using rocprofiler-sdk
+/// and providing callbacks to Luthier sub-systems.
 //===----------------------------------------------------------------------===//
-
 #ifndef LUTHIER_HIP_HIP_RUNTIME_API_INTERCEPTOR_HPP
 #define LUTHIER_HIP_HIP_RUNTIME_API_INTERCEPTOR_HPP
 
@@ -33,13 +32,17 @@
 namespace luthier::hip {
 
 class HipRuntimeApiInterceptor
-    : public ROCmLibraryApiInterceptor<luthier::hip::ApiEvtID,
-                                       luthier::hip::ApiEvtArgs,
-                                       HipDispatchTable, HipDispatchTable>,
+    : public ROCmLibraryApiInterceptor<ApiEvtID, ApiEvtArgs, HipDispatchTable,
+                                       HipDispatchTable>,
       public Singleton<HipRuntimeApiInterceptor> {
+protected:
+  llvm::Error installWrapper(ApiEvtID ApiID) override;
+
+  llvm::Error uninstallWrapper(ApiEvtID ApiID) override;
 
 public:
   HipRuntimeApiInterceptor() = default;
+
   ~HipRuntimeApiInterceptor() {
     if (RuntimeApiTable != nullptr)
       *RuntimeApiTable = SavedRuntimeApiTable;
@@ -47,18 +50,15 @@ public:
     Singleton<HipRuntimeApiInterceptor>::~Singleton();
   }
 
-  llvm::Error enableUserCallback(luthier::hip::ApiEvtID Op);
-
-  llvm::Error disableUserCallback(luthier::hip::ApiEvtID Op);
-
-  llvm::Error enableInternalCallback(luthier::hip::ApiEvtID Op);
-
-  llvm::Error disableInternalCallback(luthier::hip::ApiEvtID Op);
-
-  llvm::Error captureApiTable(HipDispatchTable *Table) {
-    RuntimeApiTable = Table;
-    SavedRuntimeApiTable = *Table;
-    Status = API_TABLE_CAPTURED;
+  llvm::Error initializeInterceptor(HipDispatchTable &Table) override {
+    std::unique_lock Lock(InterceptorMutex);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        RuntimeApiTable == nullptr, "Interceptor is already initialized."));
+    RuntimeApiTable = &Table;
+    SavedRuntimeApiTable = Table;
+    for (const auto &[ApiID, CBs] : InterceptedApiIDCallbacks) {
+      LUTHIER_RETURN_ON_ERROR(installWrapper(ApiID));
+    }
     return llvm::Error::success();
   }
 };
