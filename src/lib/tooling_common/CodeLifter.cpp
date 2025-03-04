@@ -64,6 +64,8 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
+#include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
+#include <luthier/hsa/LoadedCodeObjectVariable.h>
 #include <memory>
 
 #undef DEBUG_TYPE
@@ -74,34 +76,35 @@ namespace luthier {
 template <> CodeLifter *Singleton<CodeLifter>::Instance{nullptr};
 
 llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
-  std::lock_guard Lock(CacheMutex);
-  // Remove its lifted representation
-  LiftedExecutables.erase(Exec);
-  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
-
-  for (const auto &LCO : LCOs) {
-    // Remove the branch and branch target locations
-    if (DirectBranchTargetLocations.contains(LCO))
-      DirectBranchTargetLocations.erase(LCO);
-    // Remove relocation info
-    if (Relocations.contains(LCO)) {
-      Relocations.erase(LCO);
-    }
-
-    llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *> Symbols;
-    LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
-    for (const auto &Symbol : Symbols) {
-      // Remove the disassembled hsa::Instr of each hsa::ExecutableSymbol
-      if (MCDisassembledSymbols.contains(Symbol))
-        MCDisassembledSymbols.erase(Symbol);
-      // Remove its lifted representation if this is a kernel
-      const auto *SymbolAsKernel =
-          llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Symbol);
-      if (LiftedKernelSymbols.contains(SymbolAsKernel))
-        LiftedKernelSymbols.erase(SymbolAsKernel);
-    }
-  }
+  // TODO: Re-enable this once the executable cache is implemented
+  //  std::lock_guard Lock(CacheMutex);
+  //  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
+  //  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
+  //
+  //  for (const auto &LCO : LCOs) {
+  //     Remove the branch and branch target locations
+  //    if (DirectBranchTargetLocations.contains(LCO))
+  //      DirectBranchTargetLocations.erase(LCO);
+  //     Remove relocation info
+  //    if (Relocations.contains(LCO)) {
+  //      Relocations.erase(LCO);
+  //    }
+  //
+  //    llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> Symbols;
+  //    LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Symbols));
+  //    LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(Symbols));
+  //    for (const auto &Symbol : Symbols) {
+  //       Remove the disassembled hsa::Instr of each hsa::ExecutableSymbol
+  //      if (MCDisassembledSymbols.contains(Symbol))
+  //        MCDisassembledSymbols.erase(Symbol);
+  //       Remove its lifted representation if this is a kernel
+  //      if (auto *KernelSymbol =
+  //              llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Symbol.get())) {
+  //        if (LiftedKernelSymbols.contains(KernelSymbol))
+  //          LiftedKernelSymbols.erase(LiftedKernelSymbols.find(KernelSymbol));
+  //      }
+  //    }
+  //  }
   return llvm::Error::success();
 }
 
@@ -199,7 +202,7 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
   return std::make_pair(Instructions, Addresses);
 }
 
-llvm::Expected<std::optional<CodeLifter::LCORelocationInfo>>
+llvm::Expected<const CodeLifter::LCORelocationInfo *>
 CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
                               luthier::address_t Address) {
   if (!Relocations.contains(LCO)) {
@@ -209,8 +212,8 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
 
     auto LoadedMemoryBase = reinterpret_cast<address_t>(LoadedMemory->data());
 
-    auto StorageELF = LCO.getStorageELF();
-    LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
+    std::unique_ptr<luthier::AMDGCNObjectFile> StorageELF;
+    LUTHIER_RETURN_ON_ERROR(LCO.getStorageELF().moveInto(StorageELF));
 
     // Create an entry for the LCO in the relocations map
     auto &LCORelocationsMap =
@@ -238,7 +241,7 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
           auto RelocSymbol = hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
               LoadedMemoryBase + *RelocSymbolLoadedAddress);
           LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-              RelocSymbol != nullptr,
+              *RelocSymbol != nullptr,
               "Failed to find a symbol associated with device "
               "address {0:x}.",
               LoadedMemoryBase + *RelocSymbolLoadedAddress));
@@ -248,9 +251,12 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
           LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                          "Relocation found for symbol {0} at address {1:x} for "
                          "LCO {2:x}.\n",
-                         llvm::cantFail(RelocSymbol->getName()), TargetAddress,
-                         LCO.hsaHandle()));
-          LCORelocationsMap.insert({TargetAddress, {*RelocSymbol, Reloc}});
+                         llvm::cantFail(RelocSymbol.get()->getName()),
+                         TargetAddress, LCO.hsaHandle()));
+          LCORelocationsMap.insert(
+              {TargetAddress,
+               LCORelocationInfo{std::move(RelocSymbol.get()->clone()),
+                                 Reloc}});
         }
       }
     }
@@ -262,46 +268,42 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
                                     Address, LCO.hsaHandle()));
   if (LCORelocationsMap.contains(Address)) {
     auto &Out = LCORelocationsMap.at(Address);
-    LLVM_DEBUG(llvm::dbgs()
-               << llvm::formatv("Relocation information found for loaded "
-                                "address: {0:x}, targeting symbol {1}.\n",
-                                Address, llvm::cantFail(Out.Symbol.getName())));
+    LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                   "Relocation information found for loaded "
+                   "address: {0:x}, targeting symbol {1}.\n",
+                   Address, llvm::cantFail(Out.Symbol->getName())));
 
-    return Out;
+    return &Out;
   }
-  return std::nullopt;
+  return nullptr;
 }
 
-llvm::Error CodeLifter::initLiftedLCOEntry(const hsa::LoadedCodeObject &LCO,
-                                           LiftedRepresentation &LR) {
+llvm::Error CodeLifter::initLR(LiftedRepresentation &LR,
+                               const hsa::LoadedCodeObjectKernel &Kernel) {
+  // Create a thread-safe LLVMContext
+  LR.Context =
+      llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>());
+  // Get the LCO of the kernel
+  hsa::LoadedCodeObject LCO(Kernel.getLoadedCodeObject());
+  LR.LCO = LCO.asHsaType();
   // Create a new Target Machine for the LCO
   auto ISA = LCO.getISA();
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-  auto LCOTargetMachine = TargetManager::instance().createTargetMachine(*ISA);
-  LUTHIER_RETURN_ON_ERROR(LCOTargetMachine.takeError());
-  auto &TM = *LR.TMs.insert({LCO.asHsaType(), std::move(*LCOTargetMachine)})
-                  .first->getSecond();
+  LUTHIER_RETURN_ON_ERROR(
+      TargetManager::instance().createTargetMachine(*ISA).moveInto(LR.TM));
   // Enable the AsmVerbose option in case we're printing a .s file
-  TM.Options.MCOptions.AsmVerbose = true;
+  LR.TM->Options.MCOptions.AsmVerbose = true;
   // Create the llvm::Module for this LCO
-  // TODO: If debug information is available, the module's name must be
-  // set to its source file
-  auto LCOModule = std::make_unique<llvm::Module>(
-      llvm::to_string(LCO.hsaHandle()), *LR.Context.getContext());
+  llvm::Expected<llvm::StringRef> KernelNameOrErr = Kernel.getName();
+  LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
+
+  LR.Module = std::make_unique<llvm::Module>(*KernelNameOrErr,
+                                             *LR.Context.getContext());
   // Set the data layout
-  LCOModule->setDataLayout(TM.createDataLayout());
+  LR.Module->setDataLayout(LR.TM->createDataLayout());
   // Create the MMIWP which will store the MIR of the LCO
-  auto LCOMMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(&TM);
-  // Store the newly-created Module and its MMIWP
-  auto &ModuleEntry =
-      LR.Modules
-          .insert({LCO.asHsaType(),
-                   std::make_pair(std::move(LCOModule), std::move(LCOMMIWP))})
-          .first->getSecond();
-  // Populate the RelatedLCO entry, making the LCO point directly to the
-  // module and its MMI for convenience
-  LR.RelatedLCOs.insert(
-      {LCO.asHsaType(), {*ModuleEntry.first, ModuleEntry.second->getMMI()}});
+  LR.MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(LR.TM.get());
+
   return llvm::Error::success();
 }
 
@@ -310,16 +312,15 @@ CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
                                           const hsa::LoadedCodeObjectSymbol &GV,
                                           LiftedRepresentation &LR) {
   auto &LLVMContext = LR.getContext();
-  auto &Module = *LR.Modules[LCO.asHsaType()].first;
   auto GVName = GV.getName();
   LUTHIER_RETURN_ON_ERROR(GVName.takeError());
   size_t GVSize = GV.getSize();
   // Lift each variable as an array of bytes, with a length of GVSize
   // We remove any initializers present in the LCO
-  LR.RelatedGlobalVariables[&GV] = new llvm::GlobalVariable(
-      Module, llvm::ArrayType::get(llvm::Type::getInt8Ty(LLVMContext), GVSize),
-      false, llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
-      *GVName);
+  LR.RelatedGlobalVariables[GV.clone()] = new llvm::GlobalVariable(
+      *LR.Module,
+      llvm::ArrayType::get(llvm::Type::getInt8Ty(LLVMContext), GVSize), false,
+      llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr, *GVName);
   return llvm::Error::success();
 }
 
@@ -397,11 +398,11 @@ void processHiddenKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
 }
 
 llvm::Error
-CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
-                                  const hsa::LoadedCodeObjectKernel &Kernel,
+CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObjectKernel &Kernel,
                                   LiftedRepresentation &LR) {
-  auto &LLVMContext = *LR.Context.getContext();
-  auto &Module = *LR.Modules[LCO.asHsaType()].first;
+  llvm::LLVMContext &LLVMContext = *LR.Context.getContext();
+  llvm::Module &Module = *LR.Module;
+  llvm::MachineModuleInfo &MMI = LR.MMIWP->getMMI();
   // Populate the Arguments ==================================================
   auto SymbolName = Kernel.getName();
   LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
@@ -505,8 +506,6 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
 
   // Populate the MFI ========================================================
 
-  llvm::MachineModuleInfo &MMI = LR.RelatedLCOs.at(LCO.asHsaType()).second;
-
   auto &MF = MMI.getOrCreateMachineFunction(*F);
 
   // TODO: Fix alignment value depending on the function type
@@ -558,16 +557,17 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObject &LCO,
   F->addFnAttr("amdgpu-implicitarg-num-bytes",
                llvm::to_string(ImplicitArgsOffset - ExplicitArgsOffset));
 
-  LR.RelatedFunctions.insert({&Kernel, &MF});
-
+  LR.Kernel =
+      llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(Kernel.clone());
+  LR.KernelMF = &MF;
   return llvm::Error::success();
 }
 
 llvm::Error CodeLifter::initLiftedDeviceFunctionEntry(
-    const hsa::LoadedCodeObject &LCO,
     const hsa::LoadedCodeObjectDeviceFunction &Func, LiftedRepresentation &LR) {
-  auto &LLVMContext = *LR.Context.getContext();
-  auto [Module, MMI] = LR.RelatedLCOs.at(LCO.asHsaType());
+  llvm::LLVMContext &LLVMContext = *LR.Context.getContext();
+  llvm::Module &Module = *LR.Module;
+  llvm::MachineModuleInfo &MMI = LR.MMIWP->getMMI();
 
   auto FuncName = Func.getName();
   LUTHIER_RETURN_ON_ERROR(FuncName.takeError());
@@ -578,7 +578,6 @@ llvm::Error CodeLifter::initLiftedDeviceFunctionEntry(
   auto *F = llvm::Function::Create(
       FunctionType, llvm::GlobalValue::PrivateLinkage, *FuncName, Module);
   F->setCallingConv(llvm::CallingConv::C);
-
   // Add dummy IR instructions ===============================================
   // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
   // won't run
@@ -591,7 +590,9 @@ llvm::Error CodeLifter::initLiftedDeviceFunctionEntry(
 
   // TODO: Fix alignment value depending on the function type
   MF.setAlignment(llvm::Align(4096));
-  LR.RelatedFunctions.insert({&Func, &MF});
+  LR.RelatedFunctions.emplace(
+      llvm::unique_dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func.clone()),
+      &MF);
   return llvm::Error::success();
 }
 
@@ -626,14 +627,12 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
   return llvm::Error::success();
 }
 
-llvm::Error CodeLifter::liftFunction(
-    const hsa::LoadedCodeObjectSymbol &Symbol, LiftedRepresentation &LR,
-    llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, bool> &SymbolUsageMap,
-    llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>>
-        &GlobalValueUses) {
-  auto LCO = hsa::LoadedCodeObject(Symbol.getLoadedCodeObject());
-  auto [Module, MMI] = LR.RelatedLCOs.at(LCO.asHsaType());
-  llvm::MachineFunction &MF = *LR.RelatedFunctions.at(&Symbol);
+llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
+                                     llvm::MachineFunction &MF,
+                                     LiftedRepresentation &LR) {
+  hsa::LoadedCodeObject LCO(LR.LCO);
+  llvm::Module &Module = LR.getModule();
+  llvm::MachineModuleInfo &MMI = LR.getMMI();
   auto &F = MF.getFunction();
 
   LLVM_DEBUG(llvm::dbgs() << "================================================="
@@ -769,8 +768,8 @@ llvm::Error CodeLifter::liftFunction(
         for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
           auto RelocationInfo = resolveRelocation(LCO, I);
           LUTHIER_RETURN_ON_ERROR(RelocationInfo.takeError());
-          if (RelocationInfo->has_value()) {
-            auto &TargetSymbol = RelocationInfo.get()->Symbol;
+          if (*RelocationInfo) {
+            auto &TargetSymbol = *RelocationInfo.get()->Symbol;
 
             auto TargetSymbolType = TargetSymbol.getType();
 
@@ -779,8 +778,9 @@ llvm::Error CodeLifter::liftFunction(
 
             uint64_t Type = RelocationInfo.get()->Relocation.getType();
 
-            SymbolUsageMap[&TargetSymbol] = true;
-            if (TargetSymbolType == hsa::LoadedCodeObjectSymbol::SK_VARIABLE) {
+            if (llvm::isa<hsa::LoadedCodeObjectKernel>(TargetSymbol) ||
+                llvm::isa<hsa::LoadedCodeObjectVariable>(TargetSymbol) ||
+                llvm::isa<hsa::LoadedCodeObjectExternSymbol>(TargetSymbol)) {
               LLVM_DEBUG(
                   auto TargetSymbolAddress =
                       TargetSymbol.getLoadedSymbolAddress();
@@ -794,33 +794,37 @@ llvm::Error CodeLifter::liftFunction(
                                    TargetSymbolName,
                                    reinterpret_cast<luthier::address_t>(
                                        *TargetSymbolAddress)));
-              auto *GV = LR.RelatedGlobalVariables.at(&TargetSymbol);
+              auto GV = LR.RelatedGlobalVariables.find(TargetSymbol);
 
-              if (!GlobalValueUses.contains(GV))
-                GlobalValueUses.insert({GV, {Builder.getInstr()}});
-              else
-                GlobalValueUses[GV].push_back(Builder.getInstr());
+              auto TargetSymbolNameOrErr = TargetSymbol.getName();
+              LUTHIER_RETURN_ON_ERROR(TargetSymbolNameOrErr.takeError());
+
+              LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+                  GV != LR.RelatedGlobalVariables.end(),
+                  "Failed to find the GV associated with Symbol {0} in the LR.",
+                  *TargetSymbolNameOrErr));
 
               if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
                 Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
               else if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
                 Type = llvm::SIInstrInfo::MO_GOTPCREL32_HI;
-              Builder.addGlobalAddress(GV, *Addend, Type);
-            } else if (TargetSymbolType ==
-                       hsa::LoadedCodeObjectSymbol::SK_DEVICE_FUNCTION) {
-              auto *UsedMF = LR.RelatedFunctions.at(&TargetSymbol);
-              auto *UsedF = &UsedMF->getFunction();
-              if (!GlobalValueUses.contains(UsedF))
-                GlobalValueUses.insert({UsedF, {Builder.getInstr()}});
-              else
-                GlobalValueUses[UsedF].push_back(Builder.getInstr());
+              Builder.addGlobalAddress(GV->second, *Addend, Type);
+            } else if (hsa::LoadedCodeObjectDeviceFunction
+                           *TargetSymbolAsDevFunc = llvm::dyn_cast<
+                               hsa::LoadedCodeObjectDeviceFunction>(
+                               &TargetSymbol)) {
+              auto UsedMF = LR.RelatedFunctions.find(TargetSymbolAsDevFunc);
+              LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+                  UsedMF != LR.RelatedFunctions.end(),
+                  "Failed to find the related function in map."));
+              llvm::Function &UsedF = UsedMF->second->getFunction();
 
               // Add the function as the operand
               if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
                 Type = llvm::SIInstrInfo::MO_REL32_LO;
               if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
                 Type = llvm::SIInstrInfo::MO_REL32_HI;
-              Builder.addGlobalAddress(UsedF, *Addend, Type);
+              Builder.addGlobalAddress(&UsedF, *Addend, Type);
             } else {
               // For now, we don't handle calling kernels from kernels
               llvm_unreachable("not implemented");
@@ -1013,194 +1017,57 @@ llvm::Error CodeLifter::liftFunction(
 
 llvm::Expected<const LiftedRepresentation &>
 luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
-  if (!LiftedKernelSymbols.contains(&KernelSymbol)) {
-    // Lift the executable if not already lifted
+  std::lock_guard Lock(CacheMutex);
+  if (!LiftedKernelSymbols.contains(KernelSymbol)) {
+    // Lift the kernel if not already lifted
     llvm::TimeTraceScope Scope("Lifting Kernel");
-    // Start by creating an entry in the LiftedExecutables Map
-    auto &LREntry =
-        LiftedKernelSymbols
-            .insert({&KernelSymbol, std::unique_ptr<LiftedRepresentation>()})
-            .first->getSecond();
-    // Don't use std::make_unique because the constructor of
-    // LiftedRepresentation is private
-    LREntry.reset(new LiftedRepresentation());
-    auto &LR = *LREntry;
-    // Create a thread-safe LLVMContext
-    LR.Context =
-        llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>());
-    auto &LLVMContext = *LR.Context.getContext();
-    auto Exec = KernelSymbol.getExecutable();
-    LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-    llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-    LUTHIER_RETURN_ON_ERROR(hsa::Executable(*Exec).getLoadedCodeObjects(LCOs));
+    // Start a lifted representation
+    std::unique_ptr<LiftedRepresentation> LR(new LiftedRepresentation());
+    // Initialize the LR
+    LUTHIER_RETURN_ON_ERROR(initLR(*LR, KernelSymbol));
+    hsa::LoadedCodeObject LCO(LR->LCO);
 
-    llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, bool> UsageMap;
-
-    for (const auto &LCO : LCOs) {
-      // create a single Module/MMI for each LCO
-      LUTHIER_RETURN_ON_ERROR(initLiftedLCOEntry(LCO, LR));
-
-      // Create Global Variables associated with this LCO
-      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> GlobalVariables;
-      LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(GlobalVariables));
-      LUTHIER_RETURN_ON_ERROR(LCO.getExternalSymbols(GlobalVariables));
-      for (auto GV : GlobalVariables) {
-        LUTHIER_RETURN_ON_ERROR(initLiftedGlobalVariableEntry(LCO, *GV, LR));
-        UsageMap.insert({GV, false});
-      }
-      // Create Kernel entries for this LCO
-      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> Kernels;
-      LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
-      for (const auto &Kernel : Kernels) {
-        LUTHIER_RETURN_ON_ERROR(initLiftedKernelEntry(
-            LCO, *llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Kernel), LR));
-        UsageMap.insert({Kernel, false});
-      }
-      // Create device function entries for this LCO
-      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> DeviceFuncs;
-      LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(DeviceFuncs));
-      for (const auto &Func : DeviceFuncs) {
-        LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(
-            LCO, *llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func),
-            LR));
-        UsageMap.insert({Func, false});
-      }
+    // Create Global Variables associated with the LCO
+    llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4>
+        GlobalVariables;
+    LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(GlobalVariables));
+    LUTHIER_RETURN_ON_ERROR(LCO.getExternalSymbols(GlobalVariables));
+    for (auto &GV : GlobalVariables) {
+      LUTHIER_RETURN_ON_ERROR(initLiftedGlobalVariableEntry(LCO, *GV, *LR));
+    }
+    // Create Kernel entries for the LCO
+    llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> Kernels;
+    LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
+    for (const auto &Kernel : Kernels) {
+      if (*Kernel == KernelSymbol)
+        LUTHIER_RETURN_ON_ERROR(initLiftedKernelEntry(KernelSymbol, *LR));
+      else
+        LUTHIER_RETURN_ON_ERROR(
+            initLiftedGlobalVariableEntry(LCO, *Kernel, *LR));
+    }
+    // Create device function entries for this LCO
+    llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4>
+        DeviceFuncs;
+    LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(DeviceFuncs));
+    for (const auto &Func : DeviceFuncs) {
+      LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(
+          *llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func.get()),
+          *LR));
     }
     // Now that all global objects are initialized, we can now populate
     // the target kernel's instructions
-    // As we encounter global objects used by the kernel, we populate them
-    llvm::DenseSet<const hsa::LoadedCodeObjectSymbol *> Populated;
 
-    LUTHIER_RETURN_ON_ERROR(
-        liftFunction(KernelSymbol, LR, UsageMap, LR.GlobalValueMIUses));
+    LUTHIER_RETURN_ON_ERROR(liftFunction(KernelSymbol, LR->getKernelMF(), *LR));
 
-    Populated.insert(&KernelSymbol);
-    UsageMap[&KernelSymbol] = true;
-    bool WereAnySymbolsPopulatedDuringLoop{true};
-    while (WereAnySymbolsPopulatedDuringLoop) {
-      WereAnySymbolsPopulatedDuringLoop = false;
-      for (auto &[S, WasUsed] : UsageMap) {
-        if (WasUsed) {
-          auto Type = S->getType();
-          if (Type == hsa::LoadedCodeObjectSymbol::SK_KERNEL ||
-              Type == hsa::LoadedCodeObjectSymbol::SK_DEVICE_FUNCTION) {
-            if (!Populated.contains(S)) {
-              LUTHIER_RETURN_ON_ERROR(
-                  liftFunction(*S, LR, UsageMap, LR.GlobalValueMIUses));
-              Populated.insert(S);
-              WereAnySymbolsPopulatedDuringLoop = true;
-            }
-          }
-        }
-      }
+    for (const auto &[Func, MF] : LR->functions()) {
+      LUTHIER_RETURN_ON_ERROR(liftFunction(*Func, *MF, *LR));
     }
-
-    //    for (auto &[S, WasUsed] : UsageMap) {
-    //      if (!Populated.contains(S)) {
-    //        if (llvm::isa<hsa::LoadedCodeObjectDeviceFunction>(S)) {
-    //          LUTHIER_RETURN_ON_ERROR(
-    //              liftFunction(*S, LR, UsageMap, LR.GlobalValueMIUses));
-    //          Populated.insert(S);
-    //        }
-    //      }
-    //    }
-
-    // Get the list of used LCOs
-    llvm::DenseSet<hsa::LoadedCodeObject> UsedLCOs;
-    for (auto &[S, WasUsed] : UsageMap) {
-      if (WasUsed) {
-        UsedLCOs.insert(hsa::LoadedCodeObject(S->getLoadedCodeObject()));
-      }
-    }
-
-    for (const auto &[S, WasUsed] : UsageMap) {
-      if (!WasUsed) {
-        if (S->getType() == hsa::LoadedCodeObjectSymbol::SK_VARIABLE ||
-            S->getType() == hsa::LoadedCodeObjectSymbol::SK_EXTERNAL) {
-          LR.RelatedGlobalVariables[S]->eraseFromParent();
-          LR.RelatedGlobalVariables.erase(S);
-        } else {
-          auto &F = LR.RelatedFunctions[S]->getFunction();
-          LR.RelatedLCOs.at(S->getLoadedCodeObject())
-              .second.deleteMachineFunctionFor(F);
-          F.eraseFromParent();
-          LR.RelatedFunctions.erase(S);
-        }
-      }
-    }
-    // Cleanup any unused LCOs or variables
-    for (const auto &LCO : UsedLCOs) {
-      LR.RelatedLCOs.erase(LCO.asHsaType());
-    }
+    LiftedKernelSymbols.emplace(
+        llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(
+            KernelSymbol.clone()),
+        std::move(LR));
   }
-  return *LiftedKernelSymbols.at(&KernelSymbol);
-}
-
-llvm::Expected<const LiftedRepresentation &>
-CodeLifter::lift(const hsa::Executable &Exec) {
-  if (!LiftedExecutables.contains(Exec)) {
-    // Lift the executable if not already lifted
-    // Start by creating an entry in the LiftedExecutables Map
-    auto &LRPointer =
-        LiftedExecutables
-            .insert({Exec, std::unique_ptr<LiftedRepresentation>()})
-            .first->getSecond();
-    LRPointer.reset(new LiftedRepresentation());
-    auto &LR = *LRPointer;
-    // Create a thread-safe LLVMContext for the lifted representation
-    LR.Context =
-        llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>());
-    auto &LLVMContext = *LR.Context.getContext();
-    // Get all the LCOs in the executable
-    llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-    LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
-
-    llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, bool> UsageMap;
-    for (const auto &LCO : LCOs) {
-      // create a single Module/MMI for each LCO
-      LUTHIER_RETURN_ON_ERROR(initLiftedLCOEntry(LCO, LR));
-      // Create Global Variables associated with this LCO
-      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> GlobalVariables;
-      LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(GlobalVariables));
-      LUTHIER_RETURN_ON_ERROR(LCO.getExternalSymbols(GlobalVariables));
-      for (const auto &GV : GlobalVariables) {
-        LUTHIER_RETURN_ON_ERROR(initLiftedGlobalVariableEntry(LCO, *GV, LR));
-        UsageMap.insert({GV, false});
-      }
-      // Create Kernel entries for this LCO
-      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> Kernels;
-      LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
-      for (const auto &Kernel : Kernels) {
-        LUTHIER_RETURN_ON_ERROR(initLiftedKernelEntry(
-            LCO, *llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Kernel), LR));
-        UsageMap.insert({Kernel, false});
-      }
-      // Create device function entries for this LCO
-      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> DeviceFuncs;
-      LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(DeviceFuncs));
-      for (const auto &Func : DeviceFuncs) {
-        LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(
-            LCO, *llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func),
-            LR));
-        UsageMap.insert({Func, false});
-      }
-      // Now that all global objects are initialized, we can now populate
-      // individual functions' instructions
-
-      llvm::DenseMap<llvm::MachineInstr *, llvm::MachineFunction *>
-          CallInstToCalleeMF;
-
-      for (const auto &Kernel : Kernels) {
-        LUTHIER_RETURN_ON_ERROR(
-            liftFunction(*Kernel, LR, UsageMap, LR.GlobalValueMIUses));
-      }
-      for (const auto &Func : DeviceFuncs) {
-        LUTHIER_RETURN_ON_ERROR(
-            liftFunction(*Func, LR, UsageMap, LR.GlobalValueMIUses));
-      }
-    }
-  }
-  return *LiftedExecutables.at(Exec);
+  return *LiftedKernelSymbols.find(&KernelSymbol)->second;
 }
 
 llvm::Expected<std::unique_ptr<LiftedRepresentation>>
@@ -1209,8 +1076,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   // Since we're going to use the SrcLR's context, acquire its lock
   auto Lock = SrcLR.getLock();
   // Construct the output
-  std::unique_ptr<LiftedRepresentation> DestLR;
-  DestLR.reset(new LiftedRepresentation());
+  std::unique_ptr<LiftedRepresentation> DestLR(new LiftedRepresentation());
   // The cloned LiftedRepresentation will share the context and the
   // lifted primitive
   DestLR->Context = SrcLR.Context;
@@ -1221,35 +1087,35 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   llvm::ValueToValueMapTy VMap;
   // This map helps us populate the MachineInstr to hsa::Instr map
   llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> SrcToDstInstrMap;
-  for (const auto &[LCOHandle, SrcModuleAndMMI] : SrcLR.Modules) {
-    const llvm::Module &SrcModule = *SrcModuleAndMMI.first;
-    const llvm::MachineModuleInfo &SrcMMI = SrcModuleAndMMI.second->getMMI();
-    // Clone the Module and the MMI
-    // Create a new target machine for the MMI
-    auto DestModule = llvm::CloneModule(SrcModule, VMap);
-    auto ISA = hsa::LoadedCodeObject(LCOHandle).getISA();
-    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-    auto DestTM = TargetManager::instance().createTargetMachine(*ISA);
-    LUTHIER_RETURN_ON_ERROR(DestTM.takeError());
-    DestModule->setDataLayout(DestTM->get()->createDataLayout());
-    auto DestMMIWP =
-        std::make_unique<llvm::MachineModuleInfoWrapperPass>(DestTM->get());
-    LUTHIER_RETURN_ON_ERROR(cloneMMI(SrcMMI, SrcModule, VMap,
-                                     DestMMIWP->getMMI(), &SrcToDstInstrMap));
-    // Store the MMI and Module entries inside the DestLR
-    // Store the newly created TM
-    DestLR->TMs.insert({LCOHandle, std::move(*DestTM)});
+  const llvm::Module &SrcModule = *SrcLR.Module;
+  const llvm::MachineModuleInfo &SrcMMI = SrcLR.MMIWP->getMMI();
+  // Clone the Module and the MMI
+  // Create a new target machine for the MMI
+  DestLR->Module = llvm::CloneModule(SrcModule, VMap);
+  DestLR->LCO = SrcLR.LCO;
+  auto ISA = hsa::LoadedCodeObject(DestLR->LCO).getISA();
+  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+  LUTHIER_RETURN_ON_ERROR(
+      TargetManager::instance().createTargetMachine(*ISA).moveInto(DestLR->TM));
+  DestLR->Module->setDataLayout(DestLR->TM->createDataLayout());
+  DestLR->MMIWP =
+      std::make_unique<llvm::MachineModuleInfoWrapperPass>(DestLR->TM.get());
+  LUTHIER_RETURN_ON_ERROR(
+      cloneMMI(SrcMMI, SrcModule, VMap, DestLR->getMMI(), &SrcToDstInstrMap));
 
-    auto &DestModuleEntry =
-        DestLR->Modules
-            .insert({LCOHandle, std::make_pair(std::move(DestModule),
-                                               std::move(DestMMIWP))})
-            .first->getSecond();
+  DestLR->Kernel =
+      llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(SrcLR.Kernel->clone());
 
-    DestLR->RelatedLCOs.insert(
-        {LCOHandle,
-         {*DestModuleEntry.first, DestModuleEntry.second->getMMI()}});
-  }
+  auto DestKernelEntry = VMap.find(&SrcLR.KernelMF->getFunction());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      DestKernelEntry != VMap.end(),
+      "Failed to find the matching LLVM Function {0} during "
+      "Lifted Representation cloning.",
+      SrcLR.KernelMF->getFunction()));
+
+  DestLR->KernelMF = DestLR->getMMI().getMachineFunction(
+      *cast<llvm::Function>(DestKernelEntry->second));
+
   // With all Modules and MMIs cloned, we need to populate the related
   // functions and related global variables. We use the VMap to do this
   for (const auto &[GVHandle, GV] : SrcLR.RelatedGlobalVariables) {
@@ -1260,7 +1126,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
         "variable for {0} during Lifted Representation cloning.",
         *GV));
     auto *DestGV = cast<llvm::GlobalVariable>(GVDestEntry->second);
-    DestLR->RelatedGlobalVariables.insert({GVHandle, DestGV});
+    DestLR->RelatedGlobalVariables.emplace(GVHandle->clone(), DestGV);
   }
   for (const auto &[FuncSymbol, SrcMF] : SrcLR.RelatedFunctions) {
     auto FDestEntry = VMap.find(&SrcMF->getFunction());
@@ -1271,32 +1137,16 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
         SrcMF->getFunction()));
     auto *DestF = cast<llvm::Function>(FDestEntry->second);
     // Get the MMI of the dest function
-    auto FuncLCO = FuncSymbol->getLoadedCodeObject();
-    auto &MMI = DestLR->RelatedLCOs.at(FuncLCO).second;
-
-    auto DestMF = MMI.getMachineFunction(*DestF);
-    DestLR->RelatedFunctions.insert({FuncSymbol, DestMF});
+    auto DestMF = DestLR->getMMI().getMachineFunction(*DestF);
+    DestLR->RelatedFunctions.emplace(
+        llvm::unique_dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(
+            FuncSymbol->clone()),
+        DestMF);
   }
   // Finally, populate the instruction map, the Live-ins map, and the global
   // value uses
   for (const auto &[SrcMI, HSAInst] : SrcLR.MachineInstrToMCMap) {
     DestLR->MachineInstrToMCMap.insert({SrcToDstInstrMap[SrcMI], HSAInst});
-  }
-
-  for (const auto &[SrcGV, SrcMIUses] : SrcLR.GlobalValueMIUses) {
-    auto DestGVIterator = VMap.find(SrcGV);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        DestGVIterator != VMap.end(),
-        "Failed to find the matching LLVM Global "
-        "variable for {0} during Lifted Representation cloning.",
-        *SrcGV));
-    auto *DestGV = llvm::dyn_cast<llvm::GlobalValue>(DestGVIterator->second);
-    auto &DestGVUses =
-        DestLR->GlobalValueMIUses.insert({DestGV, {}}).first->getSecond();
-    DestGVUses.reserve(SrcMIUses.size());
-    for (const auto SrcMIUse : SrcMIUses) {
-      DestGVUses.push_back(SrcToDstInstrMap[SrcMIUse]);
-    }
   }
 
   return DestLR;
