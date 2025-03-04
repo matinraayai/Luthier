@@ -1,4 +1,4 @@
-//===-- luthier.cpp - Implementation of the Luthier API -------------------===//
+//===-- luthier.cpp - Implementation of the Public Luthier API ------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 ///
 /// \file
 /// This file contains the implementation of functions declared over at
-/// luthier.h.
+/// <tt>luthier.h</tt>.
 /// For the controller logic of Luthier, see <tt>luthier::Controller</tt>.
 //===----------------------------------------------------------------------===//
 #include "luthier/luthier.h"
@@ -88,11 +88,6 @@ lift(const hsa::LoadedCodeObjectKernel &Kernel) {
   return CodeLifter::instance().lift(Kernel);
 }
 
-llvm::Expected<const luthier::LiftedRepresentation &>
-lift(hsa_executable_t Executable) {
-  return CodeLifter::instance().lift(hsa::Executable{Executable});
-}
-
 llvm::Expected<std::unique_ptr<LiftedRepresentation>>
 instrument(const LiftedRepresentation &LR,
            llvm::function_ref<llvm::Error(InstrumentationTask &,
@@ -101,21 +96,13 @@ instrument(const LiftedRepresentation &LR,
   return CodeGenerator::instance().instrument(LR, Mutator);
 }
 
-llvm::Error printLiftedRepresentation(
-    LiftedRepresentation &LR,
-    llvm::SmallVectorImpl<
-        std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>>
-        &CompiledObjectFiles,
-    llvm::CodeGenFileType FileType) {
+llvm::Error
+printLiftedRepresentation(LiftedRepresentation &LR,
+                          llvm::SmallVectorImpl<char> &CompiledObjectFile,
+                          llvm::CodeGenFileType FileType) {
   auto Lock = LR.getLock();
-  CompiledObjectFiles.reserve(LR.size());
-  for (auto &[LCO, ModuleAndMMIWP] : LR.modules()) {
-    auto &[Module, MMIWP] = ModuleAndMMIWP;
-    llvm::SmallVector<char, 0> ObjectFile;
-    LUTHIER_RETURN_ON_ERROR(CodeGenerator::printAssembly(
-        *Module, *LR.getTM(LCO), MMIWP, ObjectFile, FileType));
-    CompiledObjectFiles.emplace_back(LCO, ObjectFile);
-  }
+  LUTHIER_RETURN_ON_ERROR(CodeGenerator::printAssembly(
+      LR.getModule(), LR.getTM(), LR.getMMIWP(), CompiledObjectFile, FileType));
   return llvm::Error::success();
 }
 
@@ -126,30 +113,23 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
                                                  LiftedRepresentation &)>
                       Mutator,
                   llvm::StringRef Preset) {
+  auto Lock = LR.getLock();
   // Instrument the lifted representation
   auto InstrumentedLR = CodeGenerator::instance().instrument(LR, Mutator);
   LUTHIER_RETURN_ON_ERROR(InstrumentedLR.takeError());
 
-  // Print the assembly files of the Instrumented LR
-  llvm::SmallVector<
-      std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
-      Relocatables;
+  // Print the assembly file of the Instrumented LR
+  llvm::SmallVector<char> Relocatable;
 
   LUTHIER_RETURN_ON_ERROR(printLiftedRepresentation(
-      **InstrumentedLR, Relocatables, llvm::CodeGenFileType::ObjectFile));
+      **InstrumentedLR, Relocatable, llvm::CodeGenFileType::ObjectFile));
 
-  // Link the object files into executables
-  llvm::SmallVector<
-      std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>, 1>
-      Executables;
-  for (const auto &[LCO, Relocatable] : Relocatables) {
-    llvm::SmallVector<uint8_t> Executable;
-    auto ISA = hsa::LoadedCodeObject(LCO).getISA();
-    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-    LUTHIER_RETURN_ON_ERROR(CodeGenerator::linkRelocatableToExecutable(
-        Relocatable, *ISA, Executable));
-    Executables.emplace_back(LCO, Executable);
-  }
+  // Link the object file into executables
+  llvm::SmallVector<uint8_t> Executable;
+  auto ISA = hsa::LoadedCodeObject(LR.getLoadedCodeObject()).getISA();
+  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
+  LUTHIER_RETURN_ON_ERROR(CodeGenerator::linkRelocatableToExecutable(
+      Relocatable, *ISA, Executable));
   // Create a set of extern variables used in the instrumented code
 
   llvm::StringMap<const void *> ExternVariables;
@@ -169,74 +149,8 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
     LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
     ExternVariables.insert({GVName, reinterpret_cast<void *>(**VarAddress)});
   }
-  return TEM.loadInstrumentedKernel(Executables, Kernel, Preset,
+  return TEM.loadInstrumentedKernel(Executable, Kernel, Preset,
                                     ExternVariables);
-}
-
-llvm::Error
-instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
-                  llvm::function_ref<llvm::Error(InstrumentationTask &,
-                                                 LiftedRepresentation &)>
-                      Mutator,
-                  llvm::StringRef Preset) {
-  // Instrument the lifted representation
-  auto InstrumentedLR = CodeGenerator::instance().instrument(LR, Mutator);
-  LUTHIER_RETURN_ON_ERROR(InstrumentedLR.takeError());
-
-  // Print the assembly files of the Instrumented LR
-  llvm::SmallVector<
-      std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>, 1>
-      Relocatables;
-
-  LUTHIER_RETURN_ON_ERROR(printLiftedRepresentation(
-      **InstrumentedLR, Relocatables, llvm::CodeGenFileType::ObjectFile));
-
-  // Link the object files into executables
-  llvm::SmallVector<
-      std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>, 1>
-      Executables;
-  for (const auto &[LCO, Relocatable] : Relocatables) {
-    llvm::SmallVector<uint8_t> Executable;
-    auto ISA = hsa::LoadedCodeObject(LCO).getISA();
-    LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-    LUTHIER_RETURN_ON_ERROR(CodeGenerator::linkRelocatableToExecutable(
-        Relocatable, *ISA, Executable));
-    Executables.emplace_back(LCO, Executable);
-  }
-  // Create a set of extern variables used in the instrumented code
-
-  llvm::SmallVector<std::tuple<hsa::GpuAgent, llvm::StringRef, const void *>>
-      ExternVariables;
-  // set of static variables used in the original kernel itself
-  for (const auto &[Symbol, GV] : LR.globals()) {
-    ExternVariables.emplace_back(
-        hsa::GpuAgent(llvm::cantFail(Symbol->getAgent())),
-        llvm::cantFail(Symbol->getName()),
-        reinterpret_cast<const void *>(
-            llvm::cantFail(Symbol->getLoadedSymbolAddress())));
-  }
-  // Get all the Agents involved in this executable
-  llvm::SmallDenseSet<hsa::GpuAgent, 4> Agents;
-  for (const auto &[LCO, ELF] : Executables) {
-    Agents.insert(llvm::cantFail(LCO.getAgent()));
-  }
-  auto &TEM = ToolExecutableLoader::instance();
-  const auto &SIM = TEM.getStaticInstrumentationModule();
-  // Set of static variables used in the instrumentation module
-  for (const auto &GVName : SIM.gv_names()) {
-    for (const auto &Agent : Agents) {
-      auto VarAddress = SIM.getGlobalVariablesLoadedOnAgent(GVName, Agent);
-      LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-          VarAddress->has_value(),
-          "Failed to get the global variable associated with {0} "
-          "on agent {1:x}.",
-          GVName, Agent.hsaHandle()));
-      ExternVariables.emplace_back(Agent, GVName,
-                                   reinterpret_cast<void *>(**VarAddress));
-    }
-  }
-  return TEM.loadInstrumentedExecutable(Executables, Preset, ExternVariables);
 }
 
 llvm::Expected<bool>
@@ -247,16 +161,20 @@ isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
 
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                                      llvm::StringRef Preset) {
-  auto *Symbol = llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(
-      luthier::hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
-          Packet.kernel_object));
+  auto Symbol = luthier::hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
+      Packet.kernel_object);
+  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      Symbol != nullptr, "Failed to locate the kernel symbol of the dispatch "
-                         "packet from its kernel_object field."));
+      *Symbol != nullptr, "Failed to locate the kernel symbol of the dispatch "
+                          "packet from its kernel_object field."));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      llvm::isa<hsa::LoadedCodeObjectKernel>(**Symbol),
+      "The dispatch packet kernel object does not point to a kernel symbol."));
 
   auto InstrumentedKernel =
-      luthier::ToolExecutableLoader::instance().getInstrumentedKernel(*Symbol,
-                                                                      Preset);
+      luthier::ToolExecutableLoader::instance().getInstrumentedKernel(
+          *llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Symbol.get().get()),
+          Preset);
   LUTHIER_RETURN_ON_ERROR(InstrumentedKernel.takeError());
   auto InstrumentedKD = InstrumentedKernel->getKernelDescriptor();
 
