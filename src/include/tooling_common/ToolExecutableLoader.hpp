@@ -89,12 +89,11 @@ public:
   /// \param ExternVariables a mapping between the name and the address of
   /// external variables of the instrumented code objects
   /// \return an \p llvm::Error if an issue was encountered in the process
-  llvm::Error loadInstrumentedKernel(
-      llvm::ArrayRef<
-          std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
-          InstrumentedElfs,
-      const hsa::LoadedCodeObjectKernel &OriginalKernel, llvm::StringRef Preset,
-      const llvm::StringMap<const void *> &ExternVariables);
+  llvm::Error
+  loadInstrumentedKernel(llvm::ArrayRef<uint8_t> InstrumentedElfs,
+                         const hsa::LoadedCodeObjectKernel &OriginalKernel,
+                         llvm::StringRef Preset,
+                         const llvm::StringMap<const void *> &ExternVariables);
 
   /// Loads a list of instrumented versions of the loaded code objects found in
   /// \p OriginalExecutable into a new executable and freezes it \n
@@ -147,16 +146,20 @@ private:
   /// \param Preset the preset name it was instrumented under
   /// \param InstrumentedKernel instrumented version of the original kernel
   void insertInstrumentedKernelIntoMap(
-      const hsa::LoadedCodeObjectKernel &OriginalKernel, llvm::StringRef Preset,
-      const hsa::LoadedCodeObjectKernel &InstrumentedKernel) {
+      std::unique_ptr<hsa::LoadedCodeObjectKernel> OriginalKernel,
+      llvm::StringRef Preset,
+      std::unique_ptr<hsa::LoadedCodeObjectKernel> InstrumentedKernel) {
     // Create an entry for the OriginalKernel if it doesn't already exist in the
     // map
-    auto &OriginalKernelEntry =
-        !OriginalToInstrumentedKernelsMap.contains(&OriginalKernel)
-            ? OriginalToInstrumentedKernelsMap.insert({&OriginalKernel, {}})
-                  .first->getSecond()
-            : OriginalToInstrumentedKernelsMap[&OriginalKernel];
-    OriginalKernelEntry.insert({Preset, &InstrumentedKernel});
+    if (!OriginalToInstrumentedKernelsMap.contains(OriginalKernel)) {
+      OriginalToInstrumentedKernelsMap
+          .emplace(
+              std::move(OriginalKernel),
+              llvm::StringMap<std::unique_ptr<hsa::LoadedCodeObjectKernel>>{})
+          .first->second.insert({Preset, std::move(InstrumentedKernel)});
+    } else
+      OriginalToInstrumentedKernelsMap.find(OriginalKernel)
+          ->second.insert({Preset, std::move(InstrumentedKernel)});
   }
 
   /// The single static instrumentation module included in Luthier tool
@@ -173,11 +176,12 @@ private:
 
   /// \brief a mapping between the pair of an instrumented kernel, given
   /// its original kernel, and its instrumentation preset
-  llvm::DenseMap<const hsa::LoadedCodeObjectKernel *,
-                 llvm::StringMap<const hsa::LoadedCodeObjectKernel *>>
+  std::unordered_map<
+      std::unique_ptr<hsa::LoadedCodeObjectKernel>,
+      llvm::StringMap<std::unique_ptr<hsa::LoadedCodeObjectKernel>>,
+      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectKernel>,
+      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectKernel>>
       OriginalToInstrumentedKernelsMap{};
-
-
 };
 }; // namespace luthier
 
