@@ -1,4 +1,4 @@
-//===-- luthier.h - Luthier Interface  --------------------------*- C++ -*-===//
+//===-- luthier.h - Luthier High-level Interface  ---------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,16 +19,16 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_H
 #define LUTHIER_H
-/// \c HIP_ENABLE_WARP_SYNC_BUILTINS is defined before HIP runtime headers
-/// are included
+/// HIP_ENABLE_WARP_SYNC_BUILTINS enables the warp sync built-ins in HIP
+/// Must be defined before HIP runtime headers are included
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
+/// Undef the ill-defined \c ICMP_NE in HIP headers
+#undef ICMP_NE
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
 #include <luthier/common/ErrorCheck.h>
 #include <luthier/consts.h>
 #include <luthier/hip/TraceApi.h>
-/// Undef the ill-defined \c ICMP_NE in HIP headers
-#undef ICMP_NE
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/KernelDescriptor.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
@@ -152,7 +152,6 @@ llvm::Error enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID);
 void setAtHsaApiEvtCallback(
     const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback);
 
-
 /// Disables capturing of the given HSA \p Op and its callback
 /// \note This function must be called after the HSA API tables have been
 /// captured by the tooling library i.e. inside the callback function provided
@@ -263,16 +262,6 @@ disassemble(const hsa::LoadedCodeObjectDeviceFunction &Func);
 llvm::Expected<const luthier::LiftedRepresentation &>
 lift(const hsa::LoadedCodeObjectKernel &Kernel);
 
-/// Lifts the given \p Executable and returns a reference to its
-/// <tt>LiftedRepresentation</tt>.\n
-/// The lifted result gets cached internally on the first invocation.
-/// \param [in] Executable an \c hsa_executable_t to be lifted
-/// \return a reference to the internally-cached <tt>LiftedRepresentation</tt>
-/// if successful, or an \c llvm::Error describing the issue encountered.
-/// \sa LiftedRepresentation, \sa lift
-llvm::Expected<const luthier::LiftedRepresentation &>
-lift(hsa_executable_t Executable);
-
 //===----------------------------------------------------------------------===//
 //  Instrumentation API
 //===----------------------------------------------------------------------===//
@@ -305,10 +294,7 @@ instrument(const LiftedRepresentation &LR,
 /// \return an \c llvm::Error in case of any issues encountered during the
 /// process
 llvm::Error printLiftedRepresentation(
-    LiftedRepresentation &LR,
-    llvm::SmallVectorImpl<
-        std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>>
-        &CompiledObjectFiles,
+    LiftedRepresentation &LR, llvm::SmallVectorImpl<char> &CompiledObjectFile,
     llvm::CodeGenFileType FileType = llvm::CodeGenFileType::ObjectFile);
 
 // TODO: Implement link to executable, and load methods individually +
@@ -332,29 +318,12 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
                       Mutator,
                   llvm::StringRef Preset);
 
-/// Instruments the <tt>Exec</tt>'s lifted representation \p LR by applying
-/// the instrumentation task <tt>ITask</tt> to it.\n
-/// After instrumentation, loads the instrumented code onto the same device
-/// as the \p Exec
-/// \param Exec the executable being instrumented
-/// \param LR the lifted representation of the \p Exec
-/// \param Mutator a function that applies an instrumentation task and mutates
-/// the lifted representation
-/// \return \c llvm::Error describing any issues that might have been
-/// encountered during the process
-llvm::Error
-instrumentAndLoad(hsa_executable_t Exec, const LiftedRepresentation &LR,
-                  llvm::function_ref<llvm::Error(InstrumentationTask &,
-                                                 LiftedRepresentation &)>
-                      Mutator,
-                  llvm::StringRef Preset);
-
 /// Checks if the \p Kernel is instrumented under the given \p Preset or not
 /// \param [in] Kernel the \c hsa::LoadedCodeObjectKernel of the app
 /// \param [in] Preset the preset name the kernel was instrumented under
 /// \return on success, returns \c true if the \p Kernel is instrumented, \c
-/// false otherwise. Returns an \c llvm::Error if the \p Kernel HSA symbol handle
-/// is invalid
+/// false otherwise. Returns an \c llvm::Error if the \p Kernel HSA symbol
+/// handle is invalid
 llvm::Expected<bool>
 isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
                      llvm::StringRef Preset);
