@@ -19,17 +19,23 @@
 /// launched, lifts them, and prints the lifted representation as an assembly
 /// file.
 //===----------------------------------------------------------------------===//
+#include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
+#include <unordered_set>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-lift-launched-kernels-tool"
 
 using namespace luthier;
 
-static llvm::DenseSet<const hsa::LoadedCodeObjectKernel *> PrintedKernels;
+static std::unordered_set<
+    std::unique_ptr<hsa::LoadedCodeObjectKernel>,
+    hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectKernel>,
+    hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectKernel>>
+    *PrintedKernels;
 
-static void atHsaEvt(hsa::ApiEvtArgs *CBData,
-                     ApiEvtPhase Phase, hsa::ApiEvtID ApiID) {
+static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
+                     hsa::ApiEvtID ApiID) {
   if (ApiID == hsa::HSA_API_EVT_ID_hsa_queue_packet_submit &&
       Phase == API_EVT_PHASE_AFTER) {
     for (auto &Packet : *CBData->hsa_queue_packet_submit.packets) {
@@ -38,38 +44,30 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData,
                                 DispatchPacket->kernel_object)
                                 ->getLoadedCodeObjectKernelSymbol();
         LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
-        auto KernelName = KernelSymbol->getName();
+        auto KernelName = (*KernelSymbol)->getName();
         LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
 
-        if (!PrintedKernels.contains(&*KernelSymbol)) {
-          auto LiftedKernel = lift(*KernelSymbol);
+        if (!PrintedKernels->contains(*KernelSymbol)) {
+          auto LiftedKernel = lift(**KernelSymbol);
           LUTHIER_REPORT_FATAL_ON_ERROR(LiftedKernel.takeError());
 
-          llvm::SmallVector<
-              std::pair<hsa_loaded_code_object_t, llvm::SmallVector<char, 0>>,
-              1>
-              SourceFiles;
+          llvm::SmallVector<char> SourceFile;
           // Call the instrument function without any work so that the LR gets
           // cloned
           auto InstrumentedLR =
               instrument(*LiftedKernel,
-                                  [&](InstrumentationTask &IT,
-                                      LiftedRepresentation &LR) -> llvm::Error {
-                                    return llvm::Error::success();
-                                  });
+                         [&](InstrumentationTask &IT, LiftedRepresentation &LR)
+                             -> llvm::Error { return llvm::Error::success(); });
           LUTHIER_REPORT_FATAL_ON_ERROR(InstrumentedLR.takeError());
           // Print the assembly files
-          LUTHIER_REPORT_FATAL_ON_ERROR(printLiftedRepresentation(
-              **InstrumentedLR, SourceFiles,
-              llvm::CodeGenFileType::AssemblyFile));
-
-          for (const auto &[LCO, SourceFile] : SourceFiles) {
-            llvm::outs() << "Instrumented code object for LCO "
-                         << llvm::format_hex(LCO.handle, 8) << "\n";
-            llvm::outs() << SourceFile << "\n";
-          }
-          PrintedKernels.insert(&*KernelSymbol);
+          LUTHIER_REPORT_FATAL_ON_ERROR(
+              printLiftedRepresentation(**InstrumentedLR, SourceFile,
+                                        llvm::CodeGenFileType::AssemblyFile));
+          luthier::outs() << "Lifted Kernel contents for " << *KernelName
+                          << ":\n";
+          luthier::outs() << SourceFile << "\n";
         }
+        PrintedKernels->insert(std::move(*KernelSymbol));
       }
     }
   }
@@ -93,6 +91,10 @@ void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     llvm::outs() << "Luthier lift launched kernels tool is launching!\n";
   } else {
+    PrintedKernels = new std::unordered_set<
+        std::unique_ptr<hsa::LoadedCodeObjectKernel>,
+        hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectKernel>,
+        hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectKernel>>();
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
     hsa::setAtHsaApiEvtCallback(atHsaEvt);
   }
@@ -100,6 +102,7 @@ void atToolInit(ApiEvtPhase Phase) {
 
 void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
+    delete PrintedKernels;
     llvm::outs() << "Luthier lift launched kernels tool is terminating!\n";
   }
 }
