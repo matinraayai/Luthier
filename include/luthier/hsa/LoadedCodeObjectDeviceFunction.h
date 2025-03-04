@@ -34,10 +34,12 @@ private:
   /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
   /// \param FuncSymbol the function symbol of the device function,
   /// cached internally by Luthier
-  LoadedCodeObjectDeviceFunction(hsa_loaded_code_object_t LCO,
-                                 llvm::object::ELFSymbolRef FuncSymbol)
-      : LoadedCodeObjectSymbol(LCO, FuncSymbol, SymbolKind::SK_DEVICE_FUNCTION,
-                               std::nullopt) {}
+  LoadedCodeObjectDeviceFunction(
+      hsa_loaded_code_object_t LCO,
+      std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+      llvm::object::ELFSymbolRef FuncSymbol)
+      : LoadedCodeObjectSymbol(LCO, std::move(StorageElf), FuncSymbol,
+                               SymbolKind::SK_DEVICE_FUNCTION, std::nullopt) {}
 
 public:
   /// Factory method used internally by Luthier
@@ -48,6 +50,7 @@ public:
   /// cached internally by Luthier
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
   create(hsa_loaded_code_object_t LCO,
+         std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
          llvm::object::ELFSymbolRef FuncSymbol);
 
   /// method for providing LLVM RTTI

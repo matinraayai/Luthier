@@ -182,8 +182,9 @@ private:
   llvm::DenseMap<hsa::GpuAgent, hsa::Executable> PerAgentModuleExecutables{};
 
   /// Keeps track of the copies of the bitcode's global variables on each device
-  llvm::DenseMap<hsa::GpuAgent,
-                 llvm::StringMap<const hsa::LoadedCodeObjectVariable *>>
+  llvm::DenseMap<
+      hsa::GpuAgent,
+      llvm::StringMap<std::unique_ptr<hsa::LoadedCodeObjectVariable>>>
       PerAgentGlobalVariables{};
 
   /// A mapping between the shadow host pointer of a hook and its name

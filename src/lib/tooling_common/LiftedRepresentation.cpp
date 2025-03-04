@@ -28,17 +28,7 @@
 
 namespace luthier {
 
-llvm::ArrayRef<llvm::MachineInstr *> LiftedRepresentation::getUsesOfGlobalValue(
-    const hsa::LoadedCodeObjectSymbol &GV) const {
-  if (llvm::isa<hsa::LoadedCodeObjectVariable>(GV) ||
-      llvm::isa<hsa::LoadedCodeObjectExternSymbol>(GV))
-    return getUsesOfGlobalValue(*RelatedGlobalVariables.at(&GV));
-  else if (llvm::isa<hsa::LoadedCodeObjectKernel>(GV) ||
-           llvm::isa<hsa::LoadedCodeObjectDeviceFunction>(GV))
-    return getUsesOfGlobalValue(RelatedFunctions.at(&GV)->getFunction());
-  else
-    return {};
-}
+LiftedRepresentation::~LiftedRepresentation() = default;
 
 LiftedRepresentation::LiftedRepresentation() = default;
 } // namespace luthier

@@ -37,14 +37,18 @@ private:
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the variable symbol, if exists
   LoadedCodeObjectVariable(
-      hsa_loaded_code_object_t LCO, llvm::object::ELFSymbolRef VarSymbol,
+      hsa_loaded_code_object_t LCO,
+      std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+      llvm::object::ELFSymbolRef VarSymbol,
       std::optional<hsa_executable_symbol_t> ExecutableSymbol)
-      : LoadedCodeObjectSymbol(LCO, VarSymbol, SymbolKind::SK_VARIABLE,
-                               ExecutableSymbol) {}
+      : LoadedCodeObjectSymbol(LCO, std::move(StorageElf), VarSymbol,
+                               SymbolKind::SK_VARIABLE, ExecutableSymbol) {}
 
 public:
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
-  create(hsa_loaded_code_object_t LCO, llvm::object::ELFSymbolRef VarSymbol);
+  create(hsa_loaded_code_object_t LCO,
+         std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+         llvm::object::ELFSymbolRef VarSymbol);
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const LoadedCodeObjectSymbol *S) {

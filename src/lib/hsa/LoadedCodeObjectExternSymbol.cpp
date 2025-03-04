@@ -23,13 +23,16 @@
 #include "hsa/GpuAgent.hpp"
 #include "hsa/LoadedCodeObject.hpp"
 
+#include <hsa/hsa.h>
 #include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
 
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
-LoadedCodeObjectExternSymbol::create(hsa_loaded_code_object_t LCO,
-                                     llvm::object::ELFSymbolRef ExternSymbol) {
+LoadedCodeObjectExternSymbol::create(
+    hsa_loaded_code_object_t LCO,
+    std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+    llvm::object::ELFSymbolRef ExternSymbol) {
   hsa::LoadedCodeObject LCOWrapper(LCO);
   // Get the executable symbol associated with this external symbol
   auto Exec = LCOWrapper.getExecutable();
@@ -50,7 +53,7 @@ LoadedCodeObjectExternSymbol::create(hsa_loaded_code_object_t LCO,
                           *Name));
 
   return std::unique_ptr<LoadedCodeObjectExternSymbol>(
-      new LoadedCodeObjectExternSymbol(LCO, ExternSymbol,
+      new LoadedCodeObjectExternSymbol(LCO, std::move(StorageElf), ExternSymbol,
                                        ExecSymbol.get()->asHsaType()));
 }
 

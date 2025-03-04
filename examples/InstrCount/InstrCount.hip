@@ -147,6 +147,23 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
   auto *CountWavefrontLevelConstVal =
       llvm::ConstantInt::getBool(LR.getContext(), *CountWavefrontLevel);
   unsigned int I = 0;
+  for (auto &MBB : LR.getKernelMF()) {
+    for (auto &MI : MBB) {
+      if (I >= *InstrBeginInterval && I < *InstrEndInterval) {
+        bool IsScalar = luthier::isScalar(MI);
+        bool IsLaneAccess = luthier::isLaneAccess(MI);
+        if (IsScalar || IsLaneAccess)
+          LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+              MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
+//        else
+//          LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+//              MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
+//              {CountWavefrontLevelConstVal}));
+      }
+      I++;
+    }
+  }
+
   for (auto &[_, MF] : LR.functions()) {
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
@@ -156,10 +173,10 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
           if (IsScalar || IsLaneAccess)
             LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
                 MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
-          else
-            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-                MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
-                {CountWavefrontLevelConstVal}));
+//          else
+//            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+//                MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
+//                {CountWavefrontLevelConstVal}));
         }
         I++;
       }
@@ -204,9 +221,9 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
 
           // Keep track of the kernel being instrumented for the exit callback
-          KernelBeingInstrumented = &(*KernelSymbol);
+          KernelBeingInstrumented = KernelSymbol->release();
 
-          auto KernelName = KernelSymbol->getName();
+          auto KernelName = KernelBeingInstrumented->getName();
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
           std::string KernelNameToBePrinted = *DemangleKernelNames
                                                   ? llvm::demangle(*KernelName)
@@ -238,10 +255,11 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             luthier::errs() << "Kernel is being instrumented.\n";
 
             auto IsKernelInstrumented =
-                isKernelInstrumented(*KernelSymbol, "instr_count");
+                isKernelInstrumented(*KernelBeingInstrumented, "instr_count");
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
             if (!*IsKernelInstrumented) {
-              LUTHIER_REPORT_FATAL_ON_ERROR(instrumentKernel(*KernelSymbol));
+              LUTHIER_REPORT_FATAL_ON_ERROR(
+                  instrumentKernel(*KernelBeingInstrumented));
             }
             LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
                 *DispatchPacket, "instr_count"));
@@ -330,6 +348,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket->workgroup_size_y,
                 DispatchPacket->workgroup_size_z, CounterHost,
                 TotalNumInstructions);
+            delete KernelBeingInstrumented;
           }
           NumKernelLaunched++;
           Mutex.unlock();

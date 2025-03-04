@@ -58,8 +58,8 @@ class ISA;
 /// allows for querying these segments via the
 /// \c hsa_ven_amd_loader_query_segment_descriptors function. As of right now,
 /// Luthier does not use this information to locate the load address of the
-/// symbols, and instead relies on the \c luthier::getLoadedMemoryOffset function
-/// to calculate the load address.
+/// symbols, and instead relies on the \c luthier::getLoadedMemoryOffset
+/// function to calculate the load address.
 ///
 /// \note This wrapper relies on cached functionality as described by the
 /// \c hsa::ExecutableBackedCachable interface and backed by the \c
@@ -98,7 +98,7 @@ public:
   /// HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE
   /// \sa
   /// HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE
-  [[nodiscard]] llvm::Expected<luthier::AMDGCNObjectFile &>
+  [[nodiscard]] llvm::Expected<std::unique_ptr<llvm::object::ELF64LEObjectFile>>
   getStorageELF() const;
 
   /// \return the Load Delta of this Loaded Code Object, or a
@@ -139,7 +139,8 @@ public:
   /// \return \c llvm::Error describing whether the operation has succeeded or
   /// not
   [[nodiscard]] llvm::Error getKernelSymbols(
-      llvm::SmallVectorImpl<const hsa::LoadedCodeObjectSymbol *> &Out) const;
+      llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
+      const;
 
   /// Appends all the <tt>hsa::LoadedCodeObjectVariable</tt>s that belong to
   /// this loaded code object to the \p Out vector
@@ -149,7 +150,8 @@ public:
   /// \return \c llvm::Error describing whether the operation has succeeded or
   /// not
   [[nodiscard]] llvm::Error getVariableSymbols(
-      llvm::SmallVectorImpl<const hsa::LoadedCodeObjectSymbol *> &Out) const;
+      llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
+      const;
 
   /// Appends all the <tt>hsa::LoadedCodeObjectDeviceFunction</tt>s that belong
   /// to this loaded code object to the \p Out vector
@@ -159,7 +161,8 @@ public:
   /// \return \c llvm::Error describing whether the operation has succeeded or
   /// not
   [[nodiscard]] llvm::Error getDeviceFunctionSymbols(
-      llvm::SmallVectorImpl<const hsa::LoadedCodeObjectSymbol *> &Out) const;
+      llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
+      const;
 
   /// Appends all the <tt>hsa::LoadedCodeObjectExternSymbol</tt>s that belong
   /// to this loaded code object to the \p Out vector
@@ -169,7 +172,8 @@ public:
   /// \return \c llvm::Error describing whether the operation has succeeded or
   /// not
   [[nodiscard]] llvm::Error getExternalSymbols(
-      llvm::SmallVectorImpl<const hsa::LoadedCodeObjectSymbol *> &Out) const;
+      llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
+      const;
 
   /// Appends all <tt>LoadedCodeObjectSymbol</tt> of this loaded code object
   /// to the \p Out vector
@@ -179,7 +183,8 @@ public:
   /// \return \c llvm::Error describing whether the operation has succeeded or
   /// not
   [[nodiscard]] llvm::Error getLoadedCodeObjectSymbols(
-      llvm::SmallVectorImpl<const LoadedCodeObjectSymbol *> &Out) const;
+      llvm::SmallVectorImpl<std::unique_ptr<LoadedCodeObjectSymbol>> &Out)
+      const;
 
   /// Looks up the associated \c LoadedCodeObjectSymbol with the given \p Name
   /// in this loaded code object and returns it if found
@@ -187,7 +192,7 @@ public:
   /// \return on success, the \c LoadedCodeObjectSymbol associated with the
   /// \p Name if found, \c std::nullopt otherwise; On failure, an \c llvm::Error
   /// describing the issue encountered during the process
-  [[nodiscard]] llvm::Expected<const LoadedCodeObjectSymbol *>
+  [[nodiscard]] llvm::Expected<std::unique_ptr<LoadedCodeObjectSymbol>>
   getLoadedCodeObjectSymbolByName(llvm::StringRef Name) const;
 
   /// Queries where the host copy of this <tt>LoadedCodeObject</tt>'s ELF is
@@ -197,7 +202,6 @@ public:
   /// encountered during this operation
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getStorageMemory() const;
-
 };
 
 } // namespace luthier::hsa

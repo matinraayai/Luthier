@@ -34,12 +34,14 @@ class KernelDescriptor;
 class LoadedCodeObjectKernel final : public LoadedCodeObjectSymbol {
 
 private:
-  /// A reference to the Kernel descriptor symbol of the kernel,
-  /// cached internally by Luthier
+  /// A reference to the Kernel descriptor symbol of the kernel
   /// The original \c Symbol will hold the kernel function's symbol
   const llvm::object::ELFSymbolRef KDSymbol;
-  /// The Kernel metadata, cached internally by Luthier
-  const md::Kernel::Metadata *MD;
+
+  std::shared_ptr<md::Metadata> LCOMeta;
+
+  /// The Kernel metadata
+  md::Kernel::Metadata &MD;
 
   /// Constructor
   /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
@@ -50,14 +52,16 @@ private:
   /// \param Metadata the Metadata of the kernel, cached internally by Luthier
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the kernel
-  LoadedCodeObjectKernel(hsa_loaded_code_object_t LCO,
-                         llvm::object::ELFSymbolRef KFuncSymbol,
-                         llvm::object::ELFSymbolRef KDSymbol,
-                         const md::Kernel::Metadata &Metadata,
-                         hsa_executable_symbol_t ExecutableSymbol)
-      : LoadedCodeObjectSymbol(LCO, KFuncSymbol, SymbolKind::SK_KERNEL,
-                               ExecutableSymbol),
-        KDSymbol(KDSymbol), MD(&Metadata) {}
+  LoadedCodeObjectKernel(
+      hsa_loaded_code_object_t LCO,
+      std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+      llvm::object::ELFSymbolRef KFuncSymbol,
+      llvm::object::ELFSymbolRef KDSymbol,
+      hsa_executable_symbol_t ExecutableSymbol,
+      std::shared_ptr<md::Metadata> LCOMeta, md::Kernel::Metadata &MD)
+      : LoadedCodeObjectSymbol(LCO, std::move(StorageElf), KFuncSymbol,
+                               SymbolKind::SK_KERNEL, ExecutableSymbol),
+        KDSymbol(KDSymbol), LCOMeta(std::move(LCOMeta)), MD(MD) {}
 
 public:
   /// Factory method used internally by Luthier
@@ -73,9 +77,16 @@ public:
   /// \return on success
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
   create(hsa_loaded_code_object_t LCO,
+         std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+         std::shared_ptr<md::Metadata> LCOMeta,
          llvm::object::ELFSymbolRef KFuncSymbol,
-         llvm::object::ELFSymbolRef KDSymbol,
-         const md::Kernel::Metadata &Metadata);
+         llvm::object::ELFSymbolRef KDSymbol);
+
+  [[nodiscard]] std::unique_ptr<LoadedCodeObjectSymbol> clone() const override {
+    return std::unique_ptr<LoadedCodeObjectKernel>(new LoadedCodeObjectKernel(
+        this->BackingLCO, this->StorageELF, this->Symbol, this->KDSymbol,
+        *this->ExecutableSymbol, this->LCOMeta, this->MD));
+  }
 
   /// \return a pointer to the \c hsa::KernelDescriptor of the kernel on the
   /// agent it is loaded on
@@ -84,7 +95,7 @@ public:
 
   /// \return the parsed \c hsa::md::Kernel::Metadata of the kernel
   [[nodiscard]] const hsa::md::Kernel::Metadata &getKernelMetadata() const {
-    return *MD;
+    return MD;
   }
 
   /// method for providing LLVM RTTI

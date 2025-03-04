@@ -15,7 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's Lifted Representation, which contains the
+/// This file describes Lifted Representation, which provides
+/// over that can be inspected the
 /// \c llvm::Module and \c llvm::MachineModuleInfo of a HSA primitive (a
 /// kernel or an executable) disassembled and lifted to LLVM Machine IR,
 /// as well as a mapping between the HSA primitives and LLVM IR objects
@@ -34,6 +35,8 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
+#include <luthier/hsa/LoadedCodeObjectSymbol.h>
 
 namespace luthier {
 
@@ -77,12 +80,7 @@ class LiftedRepresentation {
   friend luthier::CodeLifter;
 
 private:
-  /// This is a mapping between the LCO and the \c llvm::GCNTargetMachine used
-  /// for its \c llvm::MachineModuleInfo
-  /// It also acts as all the TM's storage
-  llvm::SmallDenseMap<hsa_loaded_code_object_t,
-                      std::unique_ptr<llvm::GCNTargetMachine>, 1>
-      TMs{};
+  std::unique_ptr<llvm::GCNTargetMachine> TM{};
 
   /// A thread-safe context that owns all the thread-safe modules;
   /// Each LiftedRepresentation is given its own context to allow for
@@ -92,39 +90,36 @@ private:
   /// unique pointer's ownership
   llvm::orc::ThreadSafeContext Context;
 
-  /// \brief primary storage of the Module and the Machine Module Info of the
-  /// lifted loaded code objects
-  llvm::SmallDenseMap<
-      hsa_loaded_code_object_t,
-      std::pair<std::unique_ptr<llvm::Module>,
-                std::unique_ptr<llvm::MachineModuleInfoWrapperPass>>,
-      1>
-      Modules{};
+  /// Loaded code object of the lifted kernel
+  hsa_loaded_code_object_t LCO{};
 
-  /// \brief Mapping between an \c hsa_loaded_code_object_t and the
-  /// thread-safe Module and MMI representing it in LLVM
-  /// \details Modules only hold global object definition/declarations; MMI
-  /// and its \c llvm::MachineFunction list contains the \c llvm::MachineInstr
-  /// of each function and therefore, do the heavy lifting for Luthier.\n
-  /// The modules/MMIs have a one-to-one correspondence with a single
-  /// \c hsa_loaded_code_object. This is because an \c hsa_executable_t can
-  /// contain multiple loaded code objects. Each module/MMI will be compiled
-  /// separately from the other and then passed to Luthier to be loaded
-  /// into a single <tt>hsa_executable_t</tt>. In practice, an \c
-  /// hsa_executable_t almost always contains a single
-  /// <tt>hsa_loaded_code_object_t</tt>
-  llvm::SmallDenseMap<hsa_loaded_code_object_t,
-                      std::pair<llvm::Module &, llvm::MachineModuleInfo &>, 1>
-      RelatedLCOs{};
+  /// Module of the lifted kernel
+  std::unique_ptr<llvm::Module> Module{};
 
-  /// Mapping between an \c hsa_executable_symbol_t (of type kernel and
-  /// device function) and its \c llvm::MachineFunction
-  llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, llvm::MachineFunction *>
+  /// MMIWP of the lifted kernel
+  std::unique_ptr<llvm::MachineModuleInfoWrapperPass> MMIWP{};
+
+  /// The symbol of the lifted kernel
+  std::unique_ptr<hsa::LoadedCodeObjectKernel> Kernel{};
+
+  /// MF of the lifted kernel
+  llvm::MachineFunction *KernelMF{};
+
+  /// Mapping between potentially called device function symbols and their \c
+  /// llvm::MachineFunction
+  std::unordered_map<
+      std::unique_ptr<hsa::LoadedCodeObjectDeviceFunction>,
+      llvm::MachineFunction *,
+      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectDeviceFunction>,
+      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectDeviceFunction>>
       RelatedFunctions{};
 
   /// Mapping between an \c hsa_executable_symbol_t of type variable
   /// and its \c llvm::GlobalVariable
-  llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, llvm::GlobalVariable *>
+  std::unordered_map<
+      std::unique_ptr<hsa::LoadedCodeObjectSymbol>, llvm::GlobalVariable *,
+      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectSymbol>,
+      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectSymbol>>
       RelatedGlobalVariables{};
 
   /// A mapping between an \c llvm::MachineInstr in one of the MMIs and
@@ -137,17 +132,11 @@ private:
   /// underlying allocator, and this map becomes invalid
   llvm::DenseMap<llvm::MachineInstr *, hsa::Instr *> MachineInstrToMCMap{};
 
-  /// A mapping between a \c llvm::GlobalValue
-  /// (either \c llvm::GlobalVariable or a \c llvm::Function)
-  /// and its machine instruction users
-  llvm::DenseMap<llvm::GlobalValue *, llvm::SmallVector<llvm::MachineInstr *>>
-      GlobalValueMIUses{};
-
   LiftedRepresentation();
 
 public:
   /// Destructor
-  ~LiftedRepresentation() = default;
+  ~LiftedRepresentation();
 
   /// Disallowed copy construction
   LiftedRepresentation(const LiftedRepresentation &) = delete;
@@ -170,14 +159,6 @@ public:
     return Context.getLock();
   }
 
-  /// Module iterator
-  using module_iterator = decltype(Modules)::iterator;
-  /// Module constant iterator
-  using const_module_iterator = decltype(Modules)::const_iterator;
-  /// Related Loaded Code Object iterator
-  using iterator = decltype(RelatedLCOs)::iterator;
-  /// Related Loaded Code Object constant iterator
-  using const_iterator = decltype(RelatedLCOs)::const_iterator;
   /// Related function iterator
   using function_iterator = decltype(RelatedFunctions)::iterator;
   /// Related function constant iterator
@@ -187,47 +168,6 @@ public:
   /// The Global Variable constant iterator.
   using const_global_iterator =
       decltype(RelatedGlobalVariables)::const_iterator;
-
-  /// Module iteration
-  module_iterator module_begin() { return Modules.begin(); }
-  [[nodiscard]] const_module_iterator module_begin() const {
-    return Modules.begin();
-  }
-
-  module_iterator module_end() { return Modules.end(); }
-  [[nodiscard]] const_module_iterator module_end() const {
-    return Modules.end();
-  }
-
-  [[nodiscard]] size_t module_size() const { return Modules.size(); };
-
-  [[nodiscard]] bool module_empty() const { return Modules.empty(); };
-
-  llvm::iterator_range<module_iterator> modules() {
-    return llvm::make_range(module_begin(), module_end());
-  }
-  [[nodiscard]] llvm::iterator_range<const_module_iterator> modules() const {
-    return llvm::make_range(module_begin(), module_end());
-  }
-
-  /// LCO iteration
-  iterator begin() { return RelatedLCOs.begin(); }
-  [[nodiscard]] const_iterator begin() const { return RelatedLCOs.begin(); }
-
-  iterator end() { return RelatedLCOs.end(); }
-  [[nodiscard]] const_iterator end() const { return RelatedLCOs.end(); }
-
-  [[nodiscard]] size_t size() const { return RelatedLCOs.size(); }
-
-  [[nodiscard]] bool empty() const { return RelatedLCOs.empty(); }
-
-  llvm::iterator_range<iterator> loaded_code_objects() {
-    return llvm::make_range(begin(), end());
-  }
-  [[nodiscard]] llvm::iterator_range<const_iterator>
-  loaded_code_objects() const {
-    return llvm::make_range(begin(), end());
-  }
 
   /// Function iteration
   function_iterator function_begin() { return RelatedFunctions.begin(); }
@@ -282,51 +222,38 @@ public:
     return llvm::make_range(global_begin(), global_end());
   }
 
-  /// \return the \c llvm::Module of the lifted \p LCO if \p LCO is
-  /// included in the Lifted Representation;
-  /// Otherwise, returns <tt>nullptr</tt>
-  [[nodiscard]] llvm::Module *getModule(hsa_loaded_code_object_t LCO) const {
-    auto It = Modules.find(LCO);
-    if (It == Modules.end())
-      return nullptr;
-    else
-      return It->second.first.get();
+  [[nodiscard]] const llvm::Module &getModule() const { return *Module; }
+
+  [[nodiscard]] llvm::Module &getModule() { return *Module; }
+
+  [[nodiscard]] const llvm::MachineModuleInfo &getMMI() const {
+    return MMIWP->getMMI();
   }
 
-  /// \return the \c llvm::MachineModuleInfo of the
-  /// lifted \p LCO if \p LCO is included in the Lifted Representation;
-  /// Otherwise, returns <tt>nullptr</tt>
-  [[nodiscard]] llvm::MachineModuleInfo *
-  getMMI(hsa_loaded_code_object_t LCO) const {
-    auto It = Modules.find(LCO);
-    if (It == Modules.end())
-      return nullptr;
-    else
-      return &It->second.second->getMMI();
+  [[nodiscard]] llvm::MachineModuleInfo &getMMI() { return MMIWP->getMMI(); }
+
+  [[nodiscard]] const llvm::MachineModuleInfoWrapperPass &getMMIWP() const {
+    return *MMIWP;
   }
 
-  /// \return the \c llvm::GCNTargetMachine used to construct the
-  /// \c llvm::MachineModuleInfo of the \p LCO if \p LCO is included
-  /// in the Lifted Representation; Otherwise, returns <tt>nullptr</tt>
-  [[nodiscard]] llvm::GCNTargetMachine *
-  getTM(hsa_loaded_code_object_t LCO) const {
-    auto It = TMs.find(LCO);
-    if (It == TMs.end()) {
-      return nullptr;
-    } else
-      return It->second.get();
+  [[nodiscard]] std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &
+  getMMIWP() {
+    return MMIWP;
   }
 
-  /// \return the \c llvm::MachineFunction associated with \p Func if exists;
-  /// \c nullptr otherwise
-  [[nodiscard]] const llvm::MachineFunction *
-  getMF(const hsa::LoadedCodeObjectSymbol &Func) const {
-    auto It = RelatedFunctions.find(&Func);
-    if (It == RelatedFunctions.end())
-      return nullptr;
-    else
-      return It->second;
+  [[nodiscard]] const llvm::GCNTargetMachine &getTM() const { return *TM; }
+
+  [[nodiscard]] llvm::GCNTargetMachine &getTM() { return *TM; }
+
+  [[nodiscard]] const llvm::MachineFunction &getKernelMF() const {
+    return *KernelMF;
   }
+
+  [[nodiscard]] llvm::MachineFunction &getKernelMF() { return *KernelMF; }
+
+  hsa_loaded_code_object_t getLoadedCodeObject() const { return LCO; }
+
+  const hsa::LoadedCodeObjectKernel &getKernel() const { return *Kernel; }
 
   /// \return the \c llvm::GlobalVariable associated with \p GV if exists;
   /// \c nullptr otherwise
@@ -334,6 +261,15 @@ public:
   getGV(const hsa::LoadedCodeObjectSymbol &GV) const {
     auto It = RelatedGlobalVariables.find(&GV);
     if (It == RelatedGlobalVariables.end())
+      return nullptr;
+    else
+      return It->second;
+  }
+
+  [[nodiscard]] const llvm::MachineFunction *
+  getGV(const hsa::LoadedCodeObjectDeviceFunction &Func) const {
+    auto It = RelatedFunctions.find(&Func);
+    if (It == RelatedFunctions.end())
       return nullptr;
     else
       return It->second;
@@ -348,18 +284,6 @@ public:
       return nullptr;
     else
       return It->second;
-  }
-
-  llvm::ArrayRef<llvm::MachineInstr *>
-  getUsesOfGlobalValue(const hsa::LoadedCodeObjectSymbol &GV) const;
-
-  llvm::ArrayRef<llvm::MachineInstr *>
-  getUsesOfGlobalValue(const llvm::GlobalValue &GV) const {
-    auto UsesIt = GlobalValueMIUses.find(&GV);
-    if (UsesIt == GlobalValueMIUses.end())
-      return {};
-    else
-      return UsesIt->getSecond();
   }
 };
 

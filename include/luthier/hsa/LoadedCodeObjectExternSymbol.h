@@ -36,15 +36,18 @@ private:
   /// cached internally by Luthier
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the extern symbol
-  LoadedCodeObjectExternSymbol(hsa_loaded_code_object_t LCO,
-                               llvm::object::ELFSymbolRef ExternSymbol,
-                               hsa_executable_symbol_t ExecutableSymbol)
-      : LoadedCodeObjectSymbol(LCO, ExternSymbol, SymbolKind::SK_EXTERNAL,
-                               ExecutableSymbol) {}
+  LoadedCodeObjectExternSymbol(
+      hsa_loaded_code_object_t LCO,
+      std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+      llvm::object::ELFSymbolRef ExternSymbol,
+      hsa_executable_symbol_t ExecutableSymbol)
+      : LoadedCodeObjectSymbol(LCO, std::move(StorageElf), ExternSymbol,
+                               SymbolKind::SK_EXTERNAL, ExecutableSymbol) {}
 
 public:
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
   create(hsa_loaded_code_object_t LCO,
+         std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
          llvm::object::ELFSymbolRef ExternSymbol);
 
   /// method for providing LLVM RTTI

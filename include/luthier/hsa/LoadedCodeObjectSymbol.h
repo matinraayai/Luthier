@@ -15,22 +15,22 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c LoadedCodeObjectSymbol under the \c luthier::hsa
-/// namespace. It represents all symbols inside an \c hsa_loaded_code_object_t
-/// with \b all ELF bindings (not just \c STB_GLOBAL like those represented by
-/// <tt>hsa_executable_symbol_t</tt>).
+/// This file defines the \c hsa::LoadedCodeObjectSymbol class.
+/// It represents all symbols of interest inside an \c hsa_loaded_code_object_t
+/// regardless of their binding type, unlike <tt>hsa_executable_symbol_t</tt>
+/// which only include symbols with a \c STB_GLOBAL binding.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LOADED_CODE_OBJECT_SYMBOL_H
-#define LUTHIER_LOADED_CODE_OBJECT_SYMBOL_H
+#ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
+#define LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
 #include <hsa/hsa.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/Hashing.h>
 #include <llvm/Object/ELFObjectFile.h>
-
+#include <luthier/hsa/DenseMapInfo.h>
+#include <luthier/types.h>
 #include <optional>
 #include <string>
-
-#include <luthier/types.h>
 
 namespace luthier::hsa {
 
@@ -47,10 +47,12 @@ public:
 
 protected:
   /// The HSA Loaded Code Object this symbol belongs to
-  hsa_loaded_code_object_t BackingLCO;
+  hsa_loaded_code_object_t BackingLCO{};
+  /// Parsed storage ELF of the LCO, to ensure \c Symbol stays valid
+  std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageELF{};
   /// The LLVM Object ELF symbol of this LCO symbol;
   /// Backed by parsing the storage ELF of the LCO
-  const llvm::object::ELFSymbolRef Symbol;
+  llvm::object::ELFSymbolRef Symbol;
   /// LLVM RTTI
   SymbolKind Kind;
   /// The HSA executable symbol equivalent, if exists
@@ -58,14 +60,17 @@ protected:
 
   /// Constructor used by sub-classes
   /// \param LCO the \c hsa_loaded_code_object_t which the symbol belongs to
+  /// \param StorageELF the \c luthier::AMDGCNObjectFile of \p Symbol
   /// \param Symbol a reference to the \c llvm::object::ELFSymbolRef
   /// that was obtained from parsing the storage ELF of the \p LCO and cached
   /// \param Kind the type of the symbol being constructed
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the <tt>LoadedCodeObjectSymbol</tt> if exists
   LoadedCodeObjectSymbol(
-      hsa_loaded_code_object_t LCO, llvm::object::ELFSymbolRef Symbol,
-      SymbolKind Kind, std::optional<hsa_executable_symbol_t> ExecutableSymbol);
+      hsa_loaded_code_object_t LCO,
+      std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageELF,
+      llvm::object::ELFSymbolRef Symbol, SymbolKind Kind,
+      std::optional<hsa_executable_symbol_t> ExecutableSymbol);
 
 public:
   /// Disallowed copy construction
@@ -74,13 +79,33 @@ public:
   /// Disallowed assignment operation
   LoadedCodeObjectSymbol &operator=(const LoadedCodeObjectSymbol &) = delete;
 
+  /// \return a deep clone copy of the
+  [[nodiscard]] virtual std::unique_ptr<LoadedCodeObjectSymbol> clone() const {
+    return std::unique_ptr<LoadedCodeObjectSymbol>(new LoadedCodeObjectSymbol(
+        this->BackingLCO, this->StorageELF, this->Symbol, this->Kind,
+        this->ExecutableSymbol));
+  }
+
+  /// Equality operator
+  bool operator==(const LoadedCodeObjectSymbol &Other) const {
+    bool Out = Symbol == Other.Symbol &&
+               BackingLCO.handle == Other.BackingLCO.handle &&
+               Kind == Other.Kind;
+    if (ExecutableSymbol.has_value()) {
+      return Out &&
+             (Other.ExecutableSymbol.has_value() &&
+              ExecutableSymbol->handle == Other.ExecutableSymbol->handle);
+    } else
+      return Out && !Other.ExecutableSymbol.has_value();
+  }
+
   /// Factory method which returns the \c LoadedCodeObjectSymbol given its
   /// \c hsa_executable_symbol_t
   /// \param Symbol the \c hsa_executable_symbol_t being queried
   /// \return on success, a const reference to a cached
   /// \c LoadedCodeObjectSymbol of the HSA executable symbol, or an
   /// \c llvm::Error on failure
-  static llvm::Expected<const hsa::LoadedCodeObjectSymbol &>
+  static llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
   fromExecutableSymbol(hsa_executable_symbol_t Symbol);
 
   /// Queries if a \c hsa::LoadedCodeObjectSymbol is
@@ -88,7 +113,7 @@ public:
   /// \param LoadedAddress the device loaded address being queried
   /// \return \c nullptr if no symbol is loaded at the given address, or
   /// a \c const pointer to the symbol loaded at the given address
-  static const hsa::LoadedCodeObjectSymbol *
+  static llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
   fromLoadedAddress(luthier::address_t LoadedAddress);
 
   /// \return the \c SymbolKind of this symbol
@@ -121,9 +146,8 @@ public:
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getLoadedSymbolContents() const;
 
-
   [[nodiscard]] llvm::Expected<luthier::address_t>
-      getLoadedSymbolAddress() const;
+  getLoadedSymbolAddress() const;
 
   /// \return the \c hsa_executable_symbol_t associated with
   /// this LCO Symbol if exists (i.e the symbol has a \c llvm::ELF::STB_GLOBAL
@@ -131,11 +155,189 @@ public:
   [[nodiscard]] std::optional<hsa_executable_symbol_t>
   getExecutableSymbol() const;
 
-
   /// Print the symbol in human-readable form.
   void print(llvm::raw_ostream &OS) const;
 
   void dump() const;
+
+  [[nodiscard]] inline size_t hash() const {
+    llvm::object::DataRefImpl Raw = Symbol.getRawDataRefImpl();
+    return llvm::hash_combine(
+        BackingLCO.handle, Raw.p, Raw.d.a, Raw.d.b, Kind,
+        ExecutableSymbol.has_value() ? ExecutableSymbol->handle : 0);
+  }
+};
+
+/// Equal-to struct used to allow convenient look-ups of symbols inside
+/// STL containers
+template <
+    typename SymbolType,
+    std::enable_if_t<std::is_base_of_v<LoadedCodeObjectSymbol, SymbolType>,
+                     bool> = true>
+struct LoadedCodeObjectSymbolEqualTo {
+  using is_transparent = void;
+
+  template <typename Dt, typename Dt2>
+  bool operator()(const std::unique_ptr<SymbolType, Dt> &Lhs,
+                  const std::unique_ptr<SymbolType, Dt2> &Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs.get() == Rhs.get();
+  }
+
+  template <typename Dt>
+  bool operator()(const std::unique_ptr<SymbolType, Dt> &Lhs,
+                  const std::shared_ptr<SymbolType> &Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs.get() == Rhs.get();
+  }
+
+  template <typename Dt>
+  bool operator()(const std::unique_ptr<SymbolType, Dt> &Lhs,
+                  const SymbolType *Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs.get() == Rhs;
+  }
+
+  template <typename Dt>
+  bool operator()(const std::unique_ptr<SymbolType, Dt> &Lhs,
+                  const SymbolType &Rhs) const {
+    return Lhs && *Lhs == Rhs;
+  }
+
+  bool operator()(const std::shared_ptr<SymbolType> &Lhs,
+                  const std::shared_ptr<SymbolType> &Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs.get() == Rhs.get();
+  }
+
+  template <typename Dt>
+  bool operator()(const std::shared_ptr<SymbolType> &Lhs,
+                  const std::unique_ptr<SymbolType, Dt> &Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs.get() == Rhs.get();
+  }
+
+  bool operator()(const std::shared_ptr<SymbolType> &Lhs,
+                  const SymbolType *Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs.get() == Rhs;
+  }
+
+  bool operator()(const std::shared_ptr<SymbolType> &Lhs,
+                  const SymbolType &Rhs) const {
+    return Lhs && *Lhs == Rhs;
+  }
+
+  bool operator()(const SymbolType *Lhs, const SymbolType *Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs == Rhs;
+  }
+
+  bool operator()(const SymbolType *Lhs,
+                  const std::unique_ptr<SymbolType> &Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs == Rhs.get();
+  }
+
+  bool operator()(const SymbolType *Lhs,
+                  const std::shared_ptr<SymbolType> &Rhs) const {
+    if (Lhs && Rhs)
+      return *Lhs == *Rhs;
+    else
+      return Lhs == Rhs.get();
+  }
+
+  bool operator()(const SymbolType *Lhs, const SymbolType &Rhs) const {
+    return Lhs && *Lhs == Rhs;
+  }
+
+  bool operator()(const SymbolType &Lhs, const SymbolType &Rhs) const {
+    return Lhs == Rhs;
+  }
+
+  template <typename Dt>
+  bool operator()(const SymbolType &Lhs,
+                  const std::unique_ptr<SymbolType, Dt> &Rhs) const {
+    return Rhs && Lhs == *Rhs;
+  }
+
+  bool operator()(const SymbolType &Lhs,
+                  const std::shared_ptr<SymbolType> &Rhs) const {
+    return Rhs && Lhs == *Rhs;
+  }
+
+  bool operator()(const SymbolType &Lhs, const SymbolType *Rhs) const {
+    return Rhs && Lhs == *Rhs;
+  }
+};
+
+/// \brief Hash struct to allow convenient look-up of symbols inside STL
+/// containers
+template <
+    typename SymbolType,
+    std::enable_if_t<std::is_base_of_v<LoadedCodeObjectSymbol, SymbolType>,
+                     bool> = true>
+struct LoadedCodeObjectSymbolHash {
+  using is_transparent = void;
+
+  using transparent_key_equal = LoadedCodeObjectSymbolEqualTo<SymbolType>;
+
+  std::size_t operator()(const std::unique_ptr<SymbolType> &Symbol) const {
+    if (Symbol)
+      return Symbol->hash();
+    else
+      return llvm::hash_value((SymbolType *)nullptr);
+  }
+
+  std::size_t
+  operator()(const std::unique_ptr<const SymbolType> &Symbol) const {
+    if (Symbol)
+      return Symbol->hash();
+    else
+      return llvm::hash_value((const SymbolType *)nullptr);
+  }
+
+  std::size_t operator()(const std::shared_ptr<SymbolType> &Symbol) const {
+    if (Symbol)
+      return Symbol->hash();
+    else
+      return llvm::hash_value((SymbolType *)nullptr);
+  }
+
+  std::size_t
+  operator()(const std::shared_ptr<const SymbolType> &Symbol) const {
+    if (Symbol)
+      return Symbol->hash();
+    else
+      return llvm::hash_value((const SymbolType *)nullptr);
+  }
+
+  std::size_t operator()(const SymbolType *Symbol) const {
+    if (Symbol)
+      return Symbol->hash();
+    else
+      return llvm::hash_value((SymbolType *)nullptr);
+  }
+
+  std::size_t operator()(const SymbolType &Symbol) const {
+    return Symbol.hash();
+  }
 };
 
 } // namespace luthier::hsa

@@ -140,7 +140,7 @@ struct KernelDescriptor {
 
   /// \return a const reference to the KD's \c hsa::LoadedCodeObjectKernel on
   /// success, or an \c llvm::Error if the KD is invalid
-  [[nodiscard]] llvm::Expected<const LoadedCodeObjectKernel &>
+  [[nodiscard]] llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
   getLoadedCodeObjectKernelSymbol() const;
 };
 } // namespace luthier::hsa

@@ -164,17 +164,18 @@ static void internalApiCallback(ApiEvtArgs *Args, const ApiEvtPhase Phase,
   }
   if (Phase == API_EVT_PHASE_BEFORE &&
       ApiId == HSA_API_EVT_ID_hsa_executable_destroy) {
-    hsa::Executable Exec(Args->hsa_executable_destroy.executable);
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        CodeLifter::instance().invalidateCachedExecutableItems(Exec));
-
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        ToolExecutableLoader::instance().unregisterIfLuthierToolExecutable(
-            Exec));
-
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        ExecutableBackedObjectsCache::instance()
-            .invalidateExecutableOnExecutableDestroy(Exec));
+    // TODO: Re-enable once the Executable Cache is implemented
+//    hsa::Executable Exec(Args->hsa_executable_destroy.executable);
+//    LUTHIER_REPORT_FATAL_ON_ERROR(
+//        CodeLifter::instance().invalidateCachedExecutableItems(Exec));
+//
+//    LUTHIER_REPORT_FATAL_ON_ERROR(
+//        ToolExecutableLoader::instance().unregisterIfLuthierToolExecutable(
+//            Exec));
+//
+//    LUTHIER_REPORT_FATAL_ON_ERROR(
+//        ExecutableBackedObjectsCache::instance()
+//            .invalidateExecutableOnExecutableDestroy(Exec));
   }
   LUTHIER_LOG_FUNCTION_CALL_END
 }

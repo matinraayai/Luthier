@@ -50,7 +50,7 @@ getBitcodeBufferOfLCO(const hsa::LoadedCodeObject &LCO) {
   LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
 
   // Find the ".llvmbc" section of the ELF
-  for (const llvm::object::SectionRef &Section : StorageELF->sections()) {
+  for (const llvm::object::SectionRef &Section : StorageELF.get()->sections()) {
     auto SectionName = Section.getName();
     LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
     if (*SectionName == BCSectionName) {
@@ -66,7 +66,7 @@ getBitcodeBufferOfLCO(const hsa::LoadedCodeObject &LCO) {
 /// \return the CUID of the \p LCO
 static llvm::Expected<llvm::StringRef>
 getCUIDOfLCO(const hsa::LoadedCodeObject &LCO) {
-  llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> Variables;
+  llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4> Variables;
   LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(Variables));
   for (const auto &Var : Variables) {
     auto VarName = Var->getName();
@@ -155,16 +155,24 @@ StaticInstrumentationModule::registerExecutable(const hsa::Executable &Exec) {
 
   // Populate the variables of this executable on its agent as well as the
   // global variable list
-  auto &SymbolMap = PerAgentGlobalVariables.insert({*Agent, {}}).first->second;
-  llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> LCOGlobalVariables;
+  auto &SymbolMap =
+      PerAgentGlobalVariables
+          .try_emplace(
+              *Agent,
+              llvm::StringMap<std::unique_ptr<hsa::LoadedCodeObjectVariable>>{})
+          .first->second;
+  llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4>
+      LCOGlobalVariables;
   LUTHIER_RETURN_ON_ERROR(LCOs[0].getVariableSymbols(LCOGlobalVariables));
-  for (const auto &GVSymbol : LCOGlobalVariables) {
+  for (auto &GVSymbol : LCOGlobalVariables) {
     auto GVName = GVSymbol->getName();
     LUTHIER_RETURN_ON_ERROR(GVName.takeError());
     if (FirstTimeInit)
       GlobalVariables.push_back(std::string(*GVName));
     SymbolMap.insert(
-        {*GVName, llvm::dyn_cast<hsa::LoadedCodeObjectVariable>(GVSymbol)});
+        {*GVName,
+         std::move(
+             llvm::unique_dyn_cast<hsa::LoadedCodeObjectVariable>(GVSymbol))});
   }
 
   return llvm::Error::success();
@@ -205,7 +213,7 @@ StaticInstrumentationModule::getLCOGlobalVariableOnAgentNoLock(
         "Failed to find the symbol associated with global variable {0} on "
         "agent {1:x}",
         GVName, Agent.hsaHandle()));
-    return VariableSymbolIt->second;
+    return VariableSymbolIt->second.get();
   } else {
     // If the agent is not in the map, then it probably wasn't loaded on the
     // device
@@ -217,7 +225,7 @@ llvm::Expected<const hsa::LoadedCodeObjectVariable *>
 StaticInstrumentationModule::getLCOGlobalVariableOnAgent(
     llvm::StringRef GVName, const hsa::GpuAgent &Agent) const {
   std::shared_lock Lock(Mutex);
-  return getLCOGlobalVariableOnAgentNoLock(GVName, Agent);
+  return getLCOGlobalVariableOnAgentNoLock(GVName, Agent).get();
 }
 
 llvm::Expected<llvm::StringRef>

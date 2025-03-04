@@ -18,10 +18,10 @@
 /// This file implements the Instrumentation Module IR Generator Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
-#include "luthier/intrinsic/IntrinsicCalls.h"
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/common/LuthierError.h"
 #include "luthier/consts.h"
+#include "luthier/intrinsic/IntrinsicCalls.h"
 #include "luthier/tooling/InstrumentationTask.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
@@ -121,8 +121,6 @@ static llvm::Expected<llvm::Function &> generateInjectedPayloadForApplicationMI(
 
 llvm::PreservedAnalyses
 IModuleIRGeneratorPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-  LLVM_DEBUG(llvm::dbgs() << "Number of MIs to get hooks: "
-                          << Task.getHookInsertionTasks().size() << "\n");
   auto &IPIP = MAM.getResult<InjectedPayloadAndInstPointAnalysis>(M);
   llvm::TimeTraceScope Scope("Instrumentation Module IR Generation");
   // Generate and populate the injected payload functions in the

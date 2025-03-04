@@ -19,9 +19,9 @@
 /// processing AMDGPU code objects using LLVM object file and DWARF utilities.
 //===----------------------------------------------------------------------===//
 #include "common/ObjectUtils.hpp"
-
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/common/LuthierError.h"
+#include "luthier/llvm/LLVMError.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/BinaryFormat/MsgPackDocument.h>
@@ -764,15 +764,15 @@ bool parseNoteSection(const typename llvm::object::ELF64LE::Note &Note,
 /// \param Obj the \c luthier::AMDGCNObjectFile to be inspected
 /// \return on success, the \c hsa::md::Metadata of the document, or an
 /// \c llvm::Error describing the issue encountered during the process
-static llvm::Expected<luthier::hsa::md::Metadata>
+static llvm::Expected<std::unique_ptr<luthier::hsa::md::Metadata>>
 parseMetaDoc(llvm::msgpack::Document &KernelMetaDataDoc) {
-  luthier::hsa::md::Metadata Out;
+  auto Out = std::make_unique<luthier::hsa::md::Metadata>();
   auto MetaDataRoot = KernelMetaDataDoc.getRoot();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(MetaDataRoot.isMap(), ""));
   auto RootMap = MetaDataRoot.getMap();
 
   LUTHIER_RETURN_ON_ERROR(
-      parseVersionMDRequired(RootMap, hsa::md::Key::Version, Out.Version));
+      parseVersionMDRequired(RootMap, hsa::md::Key::Version, Out->Version));
 
   auto PrintfMD = RootMap.find(hsa::md::Key::Printf);
   if (PrintfMD != RootMap.end()) {
@@ -780,7 +780,7 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaDataDoc) {
         LUTHIER_ERROR_CHECK(PrintfMD->second.isArray(), ""));
     for (const auto &P : PrintfMD->second.getArray()) {
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(P.isString(), ""));
-      Out.Printf->emplace_back(P.getString());
+      Out->Printf->emplace_back(P.getString());
     }
   }
   // TODO: Add V2 metadata parsing
@@ -790,7 +790,7 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaDataDoc) {
     LUTHIER_RETURN_ON_ERROR(
         LUTHIER_ERROR_CHECK(KernelsMD->second.isArray(), ""));
     auto KernelsMDAsArray = KernelsMD->second.getArray();
-    Out.Kernels.reserve(KernelsMDAsArray.size());
+    Out->Kernels.reserve(KernelsMDAsArray.size());
     for (auto &KernelMD : KernelsMDAsArray) {
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(KernelMD.isMap(), ""));
 
@@ -798,16 +798,17 @@ parseMetaDoc(llvm::msgpack::Document &KernelMetaDataDoc) {
       auto SymbolMD = KernelMDAsMap.find(hsa::md::Kernel::Key::Symbol);
       LUTHIER_RETURN_ON_ERROR(
           LUTHIER_ERROR_CHECK(SymbolMD != KernelMDAsMap.end(), ""));
-      Out.Kernels.emplace_back();
-      LUTHIER_RETURN_ON_ERROR(parseKernelMD(KernelMDAsMap, Out.Kernels.back()));
+      Out->Kernels.emplace_back();
+      LUTHIER_RETURN_ON_ERROR(
+          parseKernelMD(KernelMDAsMap, Out->Kernels.back()));
     }
   }
   LLVM_DEBUG(llvm::dbgs() << "Number of kernels parsed from the metadata: "
-                          << Out.Kernels.size() << "\n";);
+                          << Out->Kernels.size() << "\n";);
   return Out;
 }
 
-llvm::Expected<hsa::md::Metadata>
+llvm::Expected<std::unique_ptr<hsa::md::Metadata>>
 parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj) {
   // First try to find the note program header and parse it
   llvm::msgpack::Document Doc;

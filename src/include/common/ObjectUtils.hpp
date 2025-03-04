@@ -113,7 +113,7 @@ getELFObjectFileISA(const luthier::AMDGCNObjectFile &Obj);
 /// \param Obj the \c luthier::AMDGCNObjectFile to be inspected
 /// \return on success, the \c hsa::md::Metadata of the document, or an
 /// \c llvm::Error describing the issue encountered during the process
-llvm::Expected<hsa::md::Metadata>
+llvm::Expected<std::unique_ptr<hsa::md::Metadata>>
 parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj);
 
 } // namespace luthier

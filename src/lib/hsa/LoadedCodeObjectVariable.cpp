@@ -24,13 +24,16 @@
 #include "hsa/GpuAgent.hpp"
 #include "hsa/LoadedCodeObject.hpp"
 
+#include <hsa/hsa.h>
 #include <luthier/hsa/LoadedCodeObjectVariable.h>
 
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
-LoadedCodeObjectVariable::create(hsa_loaded_code_object_t LCO,
-                                 llvm::object::ELFSymbolRef VarSymbol) {
+LoadedCodeObjectVariable::create(
+    hsa_loaded_code_object_s LCO,
+    std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+    llvm::object::ELFSymbolRef VarSymbol) {
   hsa::LoadedCodeObject LCOWrapper(LCO);
   // Get the kernel symbol associated with this kernel
   auto Exec = LCOWrapper.getExecutable();
@@ -50,8 +53,8 @@ LoadedCodeObjectVariable::create(hsa_loaded_code_object_t LCO,
                                     ExecSymbol.get()->asHsaType())
                               : std::nullopt;
 
-  return std::unique_ptr<LoadedCodeObjectVariable>(
-      new LoadedCodeObjectVariable(LCO, VarSymbol, ExecSymbolAsOptionalHandle));
+  return std::unique_ptr<LoadedCodeObjectVariable>(new LoadedCodeObjectVariable(
+      LCO, std::move(StorageElf), VarSymbol, ExecSymbolAsOptionalHandle));
 }
 
 } // namespace luthier::hsa

@@ -218,25 +218,26 @@ KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
   return reinterpret_cast<KernelDescriptor *>(KernelObject);
 }
 
-llvm::Expected<const LoadedCodeObjectKernel &>
+llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
 KernelDescriptor::getLoadedCodeObjectKernelSymbol() const {
-  const auto *Symbol = LoadedCodeObjectKernel::fromLoadedAddress(
+  auto Symbol = LoadedCodeObjectKernel::fromLoadedAddress(
       reinterpret_cast<luthier::address_t>(this));
+  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      Symbol != nullptr,
+      *Symbol != nullptr,
       "Failed to locate the symbol associated with loaded address {0:x}.",
       reinterpret_cast<luthier::address_t>(this)));
 
-  const auto *KernelSymbol = llvm::dyn_cast<LoadedCodeObjectKernel>(Symbol);
+  std::unique_ptr<LoadedCodeObjectKernel> KernelSymbol =
+      llvm::unique_dyn_cast<LoadedCodeObjectKernel>(*Symbol);
   if (!KernelSymbol) {
-    auto SymbolName = Symbol->getName();
+    auto SymbolName = (*Symbol)->getName();
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
     return LUTHIER_CREATE_ERROR(
         "Found symbol {0} at address {1:x} but it is not a kernel.",
         *SymbolName, reinterpret_cast<luthier::address_t>(this));
   }
-
-  return *KernelSymbol;
+  return KernelSymbol;
 }
 
 } // namespace luthier::hsa
