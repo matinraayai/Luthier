@@ -25,8 +25,8 @@
 /// equal to \c llvm::Error::success()
 #define LUTHIER_REPORT_FATAL_ON_ERROR(Error)                                   \
   do {                                                                         \
-    if (Error) {                                                               \
-      llvm::report_fatal_error(std::move(Error), true);                        \
+    if (auto ___E = std::move(Error)) {                                        \
+      llvm::report_fatal_error(std::move(___E), true);                         \
     }                                                                          \
   } while (0)
 
@@ -34,8 +34,8 @@
 /// not equal to \c llvm::Error::success()
 #define LUTHIER_RETURN_ON_ERROR(Error)                                         \
   do {                                                                         \
-    if (Error) {                                                               \
-      return std::move(Error);                                                 \
+    if (auto ___E = std::move(Error)) {                                        \
+      return std::move(___E);                                                  \
     }                                                                          \
   } while (0)
 
