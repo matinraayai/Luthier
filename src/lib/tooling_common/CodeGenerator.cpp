@@ -161,86 +161,82 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Acquire the Lifted Representation's lock
   auto Lock = LR.getLock();
   // Each LCO will get its own copy of the instrumented module
-  for (auto &[LCOHandle, LCOModule] : LR) {
-    hsa::LoadedCodeObject LCO(LCOHandle);
-    auto Agent = LCO.getAgent();
-    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
+  hsa::LoadedCodeObject LCO(LR.getLoadedCodeObject());
+  auto Agent = LCO.getAgent();
+  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
-    auto &TM = *LR.getTM(LCOHandle);
-    // Load the bitcode of the instrumentation module into the
-    // Lifted Representation's context
-    std::unique_ptr<llvm::Module> IModule;
-    LUTHIER_RETURN_ON_ERROR(Task.getModule()
-                                .readBitcodeIntoContext(LR.getContext(), *Agent)
-                                .moveInto(IModule));
-    // Instantiate the Module PM and analysis in charge of running the
-    // IR pipeline for the instrumentation module
-    // We keep them here because we will need the analysis done at the IR
-    // stage at the code generation stage, which for now we have to use
-    // the legacy pass manager for
-    llvm::LoopAnalysisManager ILAM;
-    llvm::FunctionAnalysisManager IFAM;
-    llvm::CGSCCAnalysisManager ICGAM;
-    llvm::ModuleAnalysisManager IMAM;
-    llvm::ModulePassManager IPM;
+  auto &TM = LR.getTM();
+  // Load the bitcode of the instrumentation module into the
+  // Lifted Representation's context
+  std::unique_ptr<llvm::Module> IModule;
+  LUTHIER_RETURN_ON_ERROR(Task.getModule()
+                              .readBitcodeIntoContext(LR.getContext(), *Agent)
+                              .moveInto(IModule));
+  // Instantiate the Module PM and analysis in charge of running the
+  // IR pipeline for the instrumentation module
+  // We keep them here because we will need the analysis done at the IR
+  // stage at the code generation stage, which for now we have to use
+  // the legacy pass manager for
+  llvm::LoopAnalysisManager ILAM;
+  llvm::FunctionAnalysisManager IFAM;
+  llvm::CGSCCAnalysisManager ICGAM;
+  llvm::ModuleAnalysisManager IMAM;
+  llvm::ModulePassManager IPM;
 
-    // Instantiate the Legacy PM for running the modified codegen pipeline
-    // on the instrumentation module and MMI
-    // We allocate this on the heap to have the most control over its lifetime,
-    // as if it goes out of scope it will also delete the instrumentation
-    // MMI
-    auto LegacyIPM = new llvm::legacy::PassManager();
-    // Instrumentation module MMI wrapper pass, which will house the final
-    // generate instrumented code
-    auto *IMMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
+  // Instantiate the Legacy PM for running the modified codegen pipeline
+  // on the instrumentation module and MMI
+  // We allocate this on the heap to have the most control over its lifetime,
+  // as if it goes out of scope it will also delete the instrumentation
+  // MMI
+  auto LegacyIPM = new llvm::legacy::PassManager();
+  // Instrumentation module MMI wrapper pass, which will house the final
+  // generate instrumented code
+  auto *IMMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
 
-    // Create a module analysis manager for the target code
-    llvm::ModuleAnalysisManager TargetMAM;
-    // Create a new Module pass manager, in charge of running the entire
-    // pipeline
-    llvm::ModulePassManager TargetMPM;
-    // Add the pass instrumentation analysis as it is required by the new PM
-    TargetMAM.registerPass(
-        [&]() { return llvm::PassInstrumentationAnalysis(); });
-    // Add the MMI Analysis pass, pointing to the target app's lifted MMI
-    TargetMAM.registerPass(
-        [&]() { return llvm::MachineModuleAnalysis(LCOModule.second); });
-    // Add the instrumentation PM analysis
-    TargetMAM.registerPass([&]() {
-      return IModulePMAnalysis(*IModule, IPM, IMAM, ILAM, IFAM, ICGAM);
-    });
-    // Add the LR Analysis pass
-    TargetMAM.registerPass([&]() { return LiftedRepresentationAnalysis(LR); });
-    // Add the LCO Analysis pass
-    TargetMAM.registerPass([&]() { return LoadedCodeObjectAnalysis(LCO); });
-    // Add the LR Register Liveness pass
-    TargetMAM.registerPass([&]() { return LRRegLivenessAnalysis(); });
-    // Add the LR Callgraph analysis pass
-    TargetMAM.registerPass([&]() { return LRCallGraphAnalysis(); });
-    // Add the MMI-wide Slot indexes analysis pass
-    TargetMAM.registerPass([&]() { return MMISlotIndexesAnalysis(); });
-    // Add the State Value Array storage and load analysis pass
-    TargetMAM.registerPass(
-        [&]() { return LRStateValueStorageAndLoadLocationsAnalysis(); });
-    // Add the Function Preamble Descriptor Analysis pass
-    TargetMAM.registerPass(
-        [&]() { return FunctionPreambleDescriptorAnalysis(); });
-    // Add the IR pipeline for the instrumentation module
-    TargetMPM.addPass(
-        RunIRPassesOnIModulePass(Task, IntrinsicsProcessors, TM, *IModule));
-    // Add the MIR pipeline for the instrumentation module
-    TargetMPM.addPass(
-        RunMIRPassesOnIModulePass(TM, *IModule, *IMMIWP, *LegacyIPM));
-    // Add the kernel pre-amble emission pass
-    TargetMPM.addPass(PrePostAmbleEmitter());
-    // Add the lifted representation patching pass
-    TargetMPM.addPass(
-        PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI()));
+  // Create a module analysis manager for the target code
+  llvm::ModuleAnalysisManager TargetMAM;
+  // Create a new Module pass manager, in charge of running the entire
+  // pipeline
+  llvm::ModulePassManager TargetMPM;
+  // Add the pass instrumentation analysis as it is required by the new PM
+  TargetMAM.registerPass([&]() { return llvm::PassInstrumentationAnalysis(); });
+  // Add the MMI Analysis pass, pointing to the target app's lifted MMI
+  TargetMAM.registerPass(
+      [&]() { return llvm::MachineModuleAnalysis(LR.getMMI()); });
+  // Add the instrumentation PM analysis
+  TargetMAM.registerPass([&]() {
+    return IModulePMAnalysis(*IModule, IPM, IMAM, ILAM, IFAM, ICGAM);
+  });
+  // Add the LR Analysis pass
+  TargetMAM.registerPass([&]() { return LiftedRepresentationAnalysis(LR); });
+  // Add the LCO Analysis pass
+  TargetMAM.registerPass([&]() { return LoadedCodeObjectAnalysis(LCO); });
+  // Add the LR Register Liveness pass
+  TargetMAM.registerPass([&]() { return LRRegLivenessAnalysis(); });
+  // Add the LR Callgraph analysis pass
+  TargetMAM.registerPass([&]() { return LRCallGraphAnalysis(); });
+  // Add the MMI-wide Slot indexes analysis pass
+  TargetMAM.registerPass([&]() { return MMISlotIndexesAnalysis(); });
+  // Add the State Value Array storage and load analysis pass
+  TargetMAM.registerPass(
+      [&]() { return LRStateValueStorageAndLoadLocationsAnalysis(); });
+  // Add the Function Preamble Descriptor Analysis pass
+  TargetMAM.registerPass(
+      [&]() { return FunctionPreambleDescriptorAnalysis(); });
+  // Add the IR pipeline for the instrumentation module
+  TargetMPM.addPass(
+      RunIRPassesOnIModulePass(Task, IntrinsicsProcessors, TM, *IModule));
+  // Add the MIR pipeline for the instrumentation module
+  TargetMPM.addPass(
+      RunMIRPassesOnIModulePass(TM, *IModule, *IMMIWP, *LegacyIPM));
+  // Add the kernel pre-amble emission pass
+  TargetMPM.addPass(PrePostAmbleEmitter());
+  // Add the lifted representation patching pass
+  TargetMPM.addPass(PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI()));
 
-    TargetMPM.run(LCOModule.first, TargetMAM);
-    // TODO: remove this once the new MMI makes it to LLVM master
-    delete LegacyIPM;
-  };
+  TargetMPM.run(LR.getModule(), TargetMAM);
+  // TODO: remove this once the new MMI makes it to LLVM master
+  delete LegacyIPM;
   return llvm::Error::success();
 }
 
@@ -267,15 +263,13 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
   LLVM_DEBUG(
 
       llvm::dbgs() << "Final instrumented Lifted Representation Code:\n";
-      for (const auto &[LCO, LCOModule] : *ClonedLR) {
-        for (const auto &F : LCOModule.first) {
-          llvm::dbgs() << "Function name in the LLVM Module: " << F.getName()
+      for (const auto &F : ClonedLR->getModule()) {
+        llvm::dbgs() << "Function name in the LLVM Module: " << F.getName()
+                     << "\n";
+        if (auto MF = ClonedLR->getMMI().getMachineFunction(F)) {
+          llvm::dbgs() << "Location of the Machine Function in memory: " << MF
                        << "\n";
-          if (auto MF = LCOModule.second.getMachineFunction(F)) {
-            llvm::dbgs() << "Location of the Machine Function in memory: " << MF
-                         << "\n";
-            MF->print(llvm::dbgs());
-          }
+          MF->print(llvm::dbgs());
         }
       }
 
