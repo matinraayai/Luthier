@@ -20,8 +20,8 @@
 /// between <tt>hsa::LoadedCodeObjectSymbol</tt>s and their lifted LLVM
 /// equivalent.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LIFTED_REPRESENTATION_H
-#define LUTHIER_LIFTED_REPRESENTATION_H
+#ifndef LUTHIER_TOOLING_LIFTED_REPRESENTATION_H
+#define LUTHIER_TOOLING_LIFTED_REPRESENTATION_H
 #include "AMDGPUTargetMachine.h"
 #include "luthier/hsa/DenseMapInfo.h"
 #include "luthier/hsa/Instr.h"
