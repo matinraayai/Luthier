@@ -15,14 +15,11 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Lifted Representation, which provides
-/// over that can be inspected the
-/// \c llvm::Module and \c llvm::MachineModuleInfo of a HSA primitive (a
-/// kernel or an executable) disassembled and lifted to LLVM Machine IR,
-/// as well as a mapping between the HSA primitives and LLVM IR objects
-/// involved.
+/// This file describes the <tt>LiftedRepresentation</tt>, which encapsulates
+/// the representation of a kernel symbol in LLVM MIR, as well as mappings
+/// between <tt>hsa::LoadedCodeObjectSymbol</tt>s and their lifted LLVM
+/// equivalent.
 //===----------------------------------------------------------------------===//
-
 #ifndef LUTHIER_LIFTED_REPRESENTATION_H
 #define LUTHIER_LIFTED_REPRESENTATION_H
 #include "AMDGPUTargetMachine.h"
