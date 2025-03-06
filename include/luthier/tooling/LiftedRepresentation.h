@@ -23,23 +23,17 @@
 #ifndef LUTHIER_TOOLING_LIFTED_REPRESENTATION_H
 #define LUTHIER_TOOLING_LIFTED_REPRESENTATION_H
 #include "AMDGPUTargetMachine.h"
-#include "luthier/hsa/DenseMapInfo.h"
-#include "luthier/hsa/Instr.h"
-#include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
-#include <llvm/CodeGen/LivePhysRegs.h>
-#include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
-#include <llvm/IR/LegacyPassManager.h>
+#include <luthier/hsa/DenseMapInfo.h>
+#include <luthier/hsa/Instr.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
 
 namespace luthier {
 
 class CodeLifter;
-
-class CodeGenerator;
 
 /// \brief contains information regarding a lifted HSA primitive
 /// \details "Lifting" in Luthier is the process of inspecting the contents
