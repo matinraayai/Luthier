@@ -35,37 +35,21 @@ namespace luthier {
 
 class CodeLifter;
 
-/// \brief contains information regarding a lifted HSA primitive
+/// \brief Holds information regarding a lifted AMD GPU kernel and the mapping
+/// between the HSA and LLVM objects involved in the representation
 /// \details "Lifting" in Luthier is the process of inspecting the contents
-/// of AMDGPU binaries loaded onto a device to recover a valid LLVM Machine IR
-/// representation equivalent or very close to what the clang compiler used (or
-/// would have used) to create the inspected binaries.
-/// The scope of the lift can be either an \c hsa_executable_t or a
-/// <tt>hsa::LoadedCodeObjectKernel</tt>. Luthier's \c CodeLifter is
-/// the only entity allowed to construct or clone a
+/// of AMDGPU binaries loaded on a device to recover a valid LLVM Machine IR
+/// representation equivalent or very close to what the application's compiler
+/// used originally for creating the inspected binaries. The Machine IR allows
+/// for flexible modification of the binary's instruction.\n
+/// Luthier's \c CodeLifter is the only entity allowed to construct or clone a
 /// <tt>LiftedRepresentation</tt>. This allows internal caching and thread-safe
-/// access to its instances by other components. It also allows invalidation of
-/// the representations when the executable backing the lifted primitive gets
-/// destroyed. \n Each lifted primitive has an independent \c
-/// llvm::orc::ThreadSafeContext created for it internally by Luthier's
-/// <tt>CodeLifter</tt> to let independent processing of different primitives by
-/// multiple threads, and proper synchronization when multiple threads need to
-/// instrument the same primitive. Subsequent clones of the lifted
-/// representation use the same thread-safe context. The following mappings are
-/// also retained internally in the representation:
-/// - For each \c hsa_loaded_code_object_t involved,
-/// an \c llvm::orc::ThreadSafeModule and a \c llvm::MachineModuleInfo is
-/// created and stored.
-/// - For each \c hsa_executable_symbol_t of type \c KERNEL or \c
-/// DEVICE_FUNCTION involved, a mapping to the \c llvm::MachineFunction it was
-/// lifted to is retained. The machine function is owned by one of the machine
-/// module info created for its defining <tt>hsa_loaded_code_object_t</tt>.
-/// - For each \c hsa_executable_symbol_t of type <tt>VARIABLE</tt>, a mapping
-/// to the \c llvm::GlobalVariable it was lifted to is retained.
-/// - For each \c llvm::MachineInstr in the lifted functions, a mapping to
-/// the disassembled \c hsa::Instr is retained. This is so that the tool writer
-/// can track the original MC representation of the instruction as well as
-/// its runtime load attributes (i.e. the address it was loaded, its size, etc).
+/// access to its instances by other components. The cached copy of the
+/// representation gets invalidated when the executable of the kernel gets
+/// destroyed. \n Each lifted kernel has an independent \c
+/// llvm::orc::ThreadSafeContext for independent processing and synchronization
+/// by multiple threads. Subsequent clones of the lifted
+/// representation use the same thread-safe context.
 class LiftedRepresentation {
   /// Only Luthier's CodeLifter is able to create <tt>LiftedRepresentation</tt>s
   friend luthier::CodeLifter;
