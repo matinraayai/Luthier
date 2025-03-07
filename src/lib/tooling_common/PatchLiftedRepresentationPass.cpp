@@ -45,72 +45,69 @@ static llvm::cl::opt<bool> OutlineAllInjectedPayloads(
     llvm::cl::desc("Outline all injected payloads no matter the code size."),
     llvm::cl::init(true));
 
-static void cloneFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
+static void patchFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
                            llvm::MachineFunction &ToBeInstrumentedMF) {
-  auto &HookMFFrameInfo = InjectedPayloadMF.getFrameInfo();
+  auto &InjectedPayloadFrameInfo = InjectedPayloadMF.getFrameInfo();
 
-  if (HookMFFrameInfo.hasStackObjects()) {
+  if (InjectedPayloadFrameInfo.hasStackObjects()) {
     ToBeInstrumentedMF.getFrameInfo().setStackSize(
         ToBeInstrumentedMF.getFrameInfo().getStackSize() +
-        HookMFFrameInfo.getStackSize());
+        InjectedPayloadFrameInfo.getStackSize());
   }
 
-  if (HookMFFrameInfo.hasStackObjects()) {
+  if (InjectedPayloadFrameInfo.hasStackObjects()) {
     // Clone the frame objects
     auto &ToBeInstrumentedMFI = ToBeInstrumentedMF.getFrameInfo();
 
     auto CopyObjectProperties = [](llvm::MachineFrameInfo &DstMFI,
                                    const llvm::MachineFrameInfo &SrcMFI,
-                                   int FI) {
-      if (SrcMFI.isStatepointSpillSlotObjectIndex(FI))
-        DstMFI.markAsStatepointSpillSlotObjectIndex(FI);
-      DstMFI.setObjectSSPLayout(FI, SrcMFI.getObjectSSPLayout(FI));
-      DstMFI.setObjectZExt(FI, SrcMFI.isObjectZExt(FI));
-      DstMFI.setObjectSExt(FI, SrcMFI.isObjectSExt(FI));
+                                   int SrcFI, int DestFI) {
+      if (SrcMFI.isStatepointSpillSlotObjectIndex(SrcFI))
+        DstMFI.markAsStatepointSpillSlotObjectIndex(DestFI);
+      DstMFI.setObjectSSPLayout(DestFI, SrcMFI.getObjectSSPLayout(SrcFI));
+      DstMFI.setObjectZExt(DestFI, SrcMFI.isObjectZExt(SrcFI));
+      DstMFI.setObjectSExt(DestFI, SrcMFI.isObjectSExt(SrcFI));
     };
 
-    for (int i = 0, e = HookMFFrameInfo.getNumObjects() -
-                        HookMFFrameInfo.getNumFixedObjects();
+    for (int i = 0, e = InjectedPayloadFrameInfo.getNumObjects() -
+                        InjectedPayloadFrameInfo.getNumFixedObjects();
          i != e; ++i) {
       int NewFI;
 
-      assert(!HookMFFrameInfo.isFixedObjectIndex(i));
-      if (!HookMFFrameInfo.isDeadObjectIndex(i)) {
-        if (HookMFFrameInfo.isVariableSizedObjectIndex(i)) {
+      assert(!InjectedPayloadFrameInfo.isFixedObjectIndex(i));
+      if (!InjectedPayloadFrameInfo.isDeadObjectIndex(i)) {
+        if (InjectedPayloadFrameInfo.isVariableSizedObjectIndex(i)) {
           NewFI = ToBeInstrumentedMFI.CreateVariableSizedObject(
-              HookMFFrameInfo.getObjectAlign(i),
-              HookMFFrameInfo.getObjectAllocation(i));
+              InjectedPayloadFrameInfo.getObjectAlign(i),
+              InjectedPayloadFrameInfo.getObjectAllocation(i));
         } else {
           NewFI = ToBeInstrumentedMFI.CreateStackObject(
-              HookMFFrameInfo.getObjectSize(i),
-              HookMFFrameInfo.getObjectAlign(i),
-              HookMFFrameInfo.isSpillSlotObjectIndex(i),
-              HookMFFrameInfo.getObjectAllocation(i),
-              HookMFFrameInfo.getStackID(i));
+              InjectedPayloadFrameInfo.getObjectSize(i),
+              InjectedPayloadFrameInfo.getObjectAlign(i),
+              InjectedPayloadFrameInfo.isSpillSlotObjectIndex(i),
+              InjectedPayloadFrameInfo.getObjectAllocation(i),
+              InjectedPayloadFrameInfo.getStackID(i));
           ToBeInstrumentedMFI.setObjectOffset(
-              NewFI, HookMFFrameInfo.getObjectOffset(i));
+              NewFI, InjectedPayloadFrameInfo.getObjectOffset(i));
         }
-        CopyObjectProperties(ToBeInstrumentedMFI, HookMFFrameInfo, i);
-
-        (void)NewFI;
-        assert(i == NewFI && "expected to keep stable frame index numbering");
+        CopyObjectProperties(ToBeInstrumentedMFI, InjectedPayloadFrameInfo, i,
+                             NewFI);
       }
     }
 
     // Copy the fixed frame objects backwards to preserve frame index
     // numbers, since CreateFixedObject uses front insertion.
-    for (int i = -1; i >= (int)-HookMFFrameInfo.getNumFixedObjects(); --i) {
-      assert(HookMFFrameInfo.isFixedObjectIndex(i));
-      if (!HookMFFrameInfo.isDeadObjectIndex(i)) {
+    for (int i = -1; i >= (int)-InjectedPayloadFrameInfo.getNumFixedObjects();
+         --i) {
+      assert(InjectedPayloadFrameInfo.isFixedObjectIndex(i));
+      if (!InjectedPayloadFrameInfo.isDeadObjectIndex(i)) {
         int NewFI = ToBeInstrumentedMFI.CreateFixedObject(
-            HookMFFrameInfo.getObjectSize(i),
-            HookMFFrameInfo.getObjectOffset(i),
-            HookMFFrameInfo.isImmutableObjectIndex(i),
-            HookMFFrameInfo.isAliasedObjectIndex(i));
-        CopyObjectProperties(ToBeInstrumentedMFI, HookMFFrameInfo, i);
-
-        (void)NewFI;
-        assert(i == NewFI && "expected to keep stable frame index numbering");
+            InjectedPayloadFrameInfo.getObjectSize(i),
+            InjectedPayloadFrameInfo.getObjectOffset(i),
+            InjectedPayloadFrameInfo.isImmutableObjectIndex(i),
+            InjectedPayloadFrameInfo.isAliasedObjectIndex(i));
+        CopyObjectProperties(ToBeInstrumentedMFI, InjectedPayloadFrameInfo, i,
+                             NewFI);
       }
     }
   }
@@ -632,7 +629,7 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
     auto &ToBeInstrumentedMF = *InsertionPointMBB.getParent();
 
     /// Patch the frame info
-    cloneFrameInfo(InjectedPayloadMF, ToBeInstrumentedMF);
+    patchFrameInfo(InjectedPayloadMF, ToBeInstrumentedMF);
 
     // Clone the MBBs
     if (PatchMethods.at(&ToBeInstrumentedMF) == INLINE) {
