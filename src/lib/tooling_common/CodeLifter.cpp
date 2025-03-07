@@ -627,6 +627,33 @@ llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
   return llvm::Error::success();
 }
 
+static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
+  unsigned int Opcode = MI.getOpcode();
+  if (Opcode == llvm::AMDGPU::S_BITSET0_B32 ||
+      Opcode == llvm::AMDGPU::S_BITSET0_B64 ||
+      Opcode == llvm::AMDGPU::S_BITSET1_B32 ||
+      Opcode == llvm::AMDGPU::S_BITSET1_B64) {
+    // bitset instructions have a tied def/use that is not reflected in the
+    // MC version
+    if (MI.getNumOperands() < MI.getNumExplicitOperands()) {
+      // Check if the first operand is a register
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          MI.getOperand(0).isReg(),
+          "The first operand of a bitset instruction is not a register."));
+      // Add the output reg also as the first input, and tie the first and
+      // second operands together
+      MI.addOperand(
+          llvm::MachineOperand::CreateReg(MI.getOperand(0).getReg(), false));
+      MI.tieOperands(0, 2);
+      MI.print(llvm::outs());
+    }
+    else {
+      return llvm::Error::success();
+    }
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                                      llvm::MachineFunction &MF,
                                      LiftedRepresentation &LR) {
@@ -902,6 +929,7 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
       }
     }
 
+    LUTHIER_RETURN_ON_ERROR(fixupBitsetInst(*Builder));
     LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
     LLVM_DEBUG(llvm::dbgs() << "Final form of the instruction (not final if "
                                "it's a direct branch): ";
