@@ -19,3 +19,5 @@ target_include_directories(luthier-tblgen PRIVATE ${LUTHIER_LLVM_SRC_DIR}/llvm/u
 target_compile_definitions(luthier-tblgen PRIVATE ${LLVM_DEFINITIONS})
 
 target_link_libraries(luthier-tblgen PRIVATE LLVMSupport LLVMTableGen LLVMTableGenCommon)
+
+#set_target_properties(luthier-tblgen PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
