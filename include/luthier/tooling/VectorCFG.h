@@ -175,6 +175,24 @@ private:
   }
 
 public:
+  /// Disallowed copy construction
+  ScalarMBB(const ScalarMBB &) = delete;
+
+  /// Disallowed assignment operation
+  ScalarMBB &operator=(const ScalarMBB &) = delete;
+
+  using iterator = VectorMBBs::iterator;
+
+  using const_iterator = VectorMBBs::const_iterator;
+
+  iterator begin() { return MBBs.begin(); }
+
+  [[nodiscard]] const_iterator begin() const { return MBBs.begin(); }
+
+  iterator end() { return MBBs.end(); }
+
+  [[nodiscard]] const_iterator end() const { return MBBs.end(); }
+
   static llvm::Expected<std::unique_ptr<ScalarMBB>>
   create(const llvm::MachineBasicBlock &ParentMBB, VectorCFG &ParentCFG);
 
