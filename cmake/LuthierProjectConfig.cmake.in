@@ -1,15 +1,6 @@
-#LUTHIER COMPILER PLUGIN CMAKE.IN FILE
-# Compute installation prefix relative to this file.
-#get_filename_component(_dir "${CMAKE_CURRENT_LIST_FILE}" PATH)
-
-# Import the targets
-#include("${_dir}/LuthierCompilerPluginsTargets.cmake")
-# Import the compiler plugin macro
-#include("${_dir}/LuthierAddCompilerPlugin.cmake")
-
-#MY PART
-#copy installation prefix command
+#Add file path
 get_filename_component(_dir "${CMAKE_CURRENT_LIST_FILE}" PATH)
 
 #import the .cmake pieces 
 
+include("${_dir}/LuthierProjectTargets.cmake")
