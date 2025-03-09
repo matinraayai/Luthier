@@ -64,12 +64,12 @@ void VectorMBB::sortUniqueLiveIns() {
   LiveIns.erase(Out, LiveIns.end());
 }
 
-void VectorMBB::print(llvm::raw_ostream &OS) const {
+void VectorMBB::print(llvm::raw_ostream &OS, unsigned int Indent) const {
   const auto &ST = this->getParent().getMF().getSubtarget();
   const auto TII = ST.getInstrInfo();
   const auto TRI = ST.getRegisterInfo();
-  OS << "Vector MBB " << Name << "\n";
-  OS << "Live-ins:[";
+  OS.indent(Indent) << "Vector MBB " << Name << "\n";
+  OS.indent(Indent) << "Live-ins:[";
   llvm::interleave(
       LiveIns.begin(), LiveIns.end(),
       [&](const llvm::MachineBasicBlock::RegisterMaskPair &Vec) {
@@ -77,11 +77,15 @@ void VectorMBB::print(llvm::raw_ostream &OS) const {
       },
       [&]() { OS << ", "; });
   OS << "]\n";
-  OS << "Contents:\n";
-  for (const auto &MI : *this) {
-    MI.print(OS, true, false, false, true, TII);
+
+  if (!this->empty()) {
+    OS.indent(Indent) << "Contents:\n";
+    for (const auto &MI : *this) {
+      MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
+    }
   }
-  OS << "Successors: [";
+
+  OS.indent(Indent) << "Successors: [";
   llvm::interleave(
       Successors.begin(), Successors.end(),
       [&](const VectorMBB *MBB) { OS << "MBB " << MBB->getName(); },
@@ -125,9 +129,14 @@ VectorCFG::getVectorCFG(const llvm::MachineFunction &MF) {
 }
 void VectorCFG::print(llvm::raw_ostream &OS) const {
   OS << "# Vector CFG for Machine Function " << MF.getName() << ":\n";
+  OS << "\n";
+  EntryBlock->print(OS, 2);
+  OS << "\n";
   for (const auto &[MBB, SMBB] : *this) {
-    SMBB->print(OS);
+    SMBB->print(OS, 2);
   }
+  OS << "\n";
+  ExitBlock->print(OS, 2);
   OS << "\n# End Vector CFG for Machine Function " << MF.getName() << ".\n\n";
 }
 
@@ -214,11 +223,11 @@ ScalarMBB::create(const llvm::MachineBasicBlock &ParentMBB,
       ParentMBB.getParent() != nullptr, "MBB {0} does not have a MF parent.",
       ParentMBB.getFullName()));
   llvm::outs() << "Taken blocks: " << "\n";
-  Out->Entry.TakenBlock.print(llvm::outs());
-  Out->Entry.NotTakenBlock.print(llvm::outs());
+  Out->Entry.TakenBlock.print(llvm::outs(), 0);
+  Out->Entry.NotTakenBlock.print(llvm::outs(), 0);
   llvm::outs() << "Non-Taken blocks: " << "\n";
-  Out->Exit.TakenBlock.print(llvm::outs());
-  Out->Exit.NotTakenBlock.print(llvm::outs());
+  Out->Exit.TakenBlock.print(llvm::outs(), 0);
+  Out->Exit.NotTakenBlock.print(llvm::outs(), 0);
 
   auto *TRI = ParentMBB.getParent()->getSubtarget().getRegisterInfo();
   // The currently taken block in the MBB
@@ -284,7 +293,7 @@ ScalarMBB::create(const llvm::MachineBasicBlock &ParentMBB,
       CurrentTakenBlock->setInstRange(MI.getIterator(), NextIterator);
     else
       CurrentTakenBlock->setInstRange(CurrentTakenBlock->begin(), NextIterator);
-    Out->print(luthier::outs());
+    Out->print(luthier::outs(), 0);
   }
   // Connect the current taken block to the exit taken block of the current
   // MBB
@@ -294,26 +303,28 @@ ScalarMBB::create(const llvm::MachineBasicBlock &ParentMBB,
   for (auto &NonTakenBlock : NotTakenBlocksWithHangingEdges) {
     NonTakenBlock->addSuccessorBlock(Out->Exit.NotTakenBlock);
   }
-  Out->print(luthier::outs());
+  Out->print(luthier::outs(), 0);
   return Out;
 }
 
-void ScalarMBB::print(llvm::raw_ostream &OS) const {
-  OS << "Scalar MBB " << ParentMBB.getFullName() << ":\n";
-
-  Entry.TakenBlock.print(OS);
-  Entry.NotTakenBlock.print(OS);
-
+void ScalarMBB::print(llvm::raw_ostream &OS, unsigned int Indent) const {
+  OS.indent(Indent) << "Scalar MBB " << ParentMBB.getFullName() << ":\n";
+  OS << "\n";
+  Entry.TakenBlock.print(OS, Indent + 2);
+  OS << "\n";
+  Entry.NotTakenBlock.print(OS, Indent + 2);
+  OS << "\n";
   for (const auto &MBB : MBBs) {
     if (&*MBB == &Entry.TakenBlock || &*MBB == &Entry.NotTakenBlock ||
         &*MBB == &Exit.TakenBlock || &*MBB == &Exit.NotTakenBlock) {
       continue;
     }
-    MBB->print(OS);
+    MBB->print(OS, Indent + 2);
+    OS << "\n";
   }
 
-  Exit.TakenBlock.print(OS);
-  Exit.NotTakenBlock.print(OS);
+  Exit.TakenBlock.print(OS, Indent + 2);
+  Exit.NotTakenBlock.print(OS, Indent + 2);
 }
 
 } // namespace luthier

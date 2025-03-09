@@ -140,7 +140,7 @@ public:
     return llvm::make_range(LiveIns.begin(), LiveIns.end());
   }
 
-  void print(llvm::raw_ostream &OS) const;
+  void print(llvm::raw_ostream &OS, unsigned int Indent) const;
 };
 
 class ScalarMBB {
@@ -178,7 +178,7 @@ public:
   static llvm::Expected<std::unique_ptr<ScalarMBB>>
   create(const llvm::MachineBasicBlock &ParentMBB, VectorCFG &ParentCFG);
 
-  void print(llvm::raw_ostream &OS) const;
+  void print(llvm::raw_ostream &OS, unsigned int Indent) const;
 };
 
 /// \brief A control-flow graph representation for
