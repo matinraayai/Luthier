@@ -15,7 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file This file describes the \c VectorMBB and \c VectorCFG classes, used
-/// to represent control flow done with exec mask manipulation.
+/// to represent control flow of vector registers via manipulation of
+/// the exec register.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_VECTOR_CFG_H
 #define LUTHIER_VECTOR_CFG_H
@@ -38,9 +39,8 @@ class VectorCFG;
 /// \brief A basic block inside the vector control flow graph; Used primarily
 /// in flow analysis involving vector GPRs and instructions
 /// \details In addition to normal scalar control flow operations that end a
-/// basic block, any operation that ends up modifying an execute mask will
-/// result in the termination of a vector basic block. A single
-/// \c llvm::MachineBasicBlock will have multiple vector basic blocks inside it
+/// basic block in LLVM MIR, any operation that ends up modifying an execute
+/// mask will result in the termination of a vector basic block.
 class VectorMBB {
 private:
   /// CFG that manages the memory of this \c VectorMBB
@@ -92,7 +92,7 @@ public:
     return Instructions.end();
   }
 
-  [[nodiscard]] llvm::StringRef getNum() const { return Name; }
+  [[nodiscard]] llvm::StringRef getName() const { return Name; }
 
   /// Makes the MBB point to a new range of instructions in a single MBB
   void setInstRange(llvm::MachineBasicBlock::const_iterator Begin,
@@ -143,45 +143,75 @@ public:
   void print(llvm::raw_ostream &OS) const;
 };
 
-//class ScalarMBB {
-//private:
-//  /// The MIR basic block this wraps around
-//  const llvm::MachineBasicBlock &ParentMBB;
-//  /// The CFG this scalar MBB belongs to
-//  VectorCFG &ParentCFG;
-//  /// MBB Vector typedef
-//  typedef llvm::SmallVector<std::unique_ptr<VectorMBB>, 0> MBBVector;
-//  MBBVector MBBs;
-//
-//  /// The entry taken Vector MBB
-//  VectorMBB *EntryTakenMBB;
-//  /// The entry not taken Vector MBB
-//  VectorMBB *EntryNotTakenMBB;
-//  /// The exit taken Vector MBB
-//  VectorMBB *ExitTakenMBB;
-//  /// The exit not taken Vector MBB
-//  VectorMBB *ExitNotTakenMBB;
-//
-//public:
-//  ScalarMBB(const llvm::MachineBasicBlock &ParentMBB, VectorCFG &ParentCFG);
-//};
-
-class VectorCFG {
+class ScalarMBB {
 private:
-  typedef llvm::SmallVector<std::unique_ptr<VectorMBB>, 0> MBBVector;
+  friend VectorCFG;
+  /// The CFG this scalar MBB belongs to
+  VectorCFG &ParentCFG;
+  /// The MIR basic block this scalar MBB wraps around
+  const llvm::MachineBasicBlock &ParentMBB;
+  /// All Vector MBBs in the scalar block
+  typedef llvm::SmallVector<std::unique_ptr<VectorMBB>, 6> VectorMBBs;
+  VectorMBBs MBBs{};
 
-  MBBVector MBBs;
+  /// A struct of two <tt>VectorMBB</tt>s representing the entry and exit of
+  /// scalar block
+  typedef struct {
+    VectorMBB &TakenBlock;
+    VectorMBB &NotTakenBlock;
+  } ScalarEntryOrExitBlocks;
 
-  const llvm::MachineFunction &MF;
+  ScalarEntryOrExitBlocks Entry;
 
-  explicit VectorCFG(const llvm::MachineFunction &MF) : MF(MF) {};
+  ScalarEntryOrExitBlocks Exit;
 
-  VectorMBB &createVectorMBB();
+  ScalarMBB(const llvm::MachineBasicBlock &ParentMBB, VectorCFG &ParentCFG);
+
+  VectorMBB &createVectorMBB() {
+    MBBs.emplace_back(std::make_unique<VectorMBB>(
+        ParentCFG,
+        (ParentMBB.getFullName() + "." + llvm::Twine(MBBs.size() - 4)).str()));
+    return *MBBs.back();
+  }
 
 public:
-  using iterator = MBBVector::iterator;
+  static llvm::Expected<std::unique_ptr<ScalarMBB>>
+  create(const llvm::MachineBasicBlock &ParentMBB, VectorCFG &ParentCFG);
 
-  using const_iterator = MBBVector::const_iterator;
+  void print(llvm::raw_ostream &OS) const;
+};
+
+/// \brief A control-flow graph representation for
+/// <tt>llvm::MachineFunction</tt>s of the AMDGPU backend that, in addition to
+/// scalar branches, regards instructions that manipulate the execute mask as a
+/// terminator for its basic blocks
+/// \details The vector CFG allows can be used to do data flow analysis
+/// involving vector registers (e.g. register liveness) which cannot be done
+/// with the CFG of LLVM MIR for the AMD GPU backend
+class VectorCFG {
+private:
+  /// The machine function being analyzed
+  const llvm::MachineFunction &MF;
+  /// A dummy vector block that marks the start of the function
+  std::unique_ptr<VectorMBB> EntryBlock;
+  /// A dummy vector block that marks the end of the function
+  std::unique_ptr<VectorMBB> ExitBlock;
+  /// The list of scalar MBBs
+  typedef llvm::DenseMap<const llvm::MachineBasicBlock *,
+                         std::unique_ptr<ScalarMBB>>
+      MBBList;
+  MBBList MBBs;
+
+  explicit VectorCFG(const llvm::MachineFunction &MF)
+      : MF(MF), EntryBlock(std::make_unique<VectorMBB>(
+                    *this, (MF.getName() + ".entry").str())),
+        ExitBlock(std::make_unique<VectorMBB>(
+            *this, (MF.getName() + ".exit").str())) {};
+
+public:
+  using iterator = MBBList::iterator;
+
+  using const_iterator = MBBList::const_iterator;
 
   iterator begin() { return MBBs.begin(); }
 
@@ -195,7 +225,7 @@ public:
 
   void print(llvm::raw_ostream &OS) const;
 
-  static std::unique_ptr<VectorCFG>
+  static llvm::Expected<std::unique_ptr<VectorCFG>>
   getVectorCFG(const llvm::MachineFunction &MF);
 };
 
