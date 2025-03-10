@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file Includes the <tt>DenseMapInfo</tt> for HSA primitives used by Luthier,
-/// so that they can be stored in LLVM-based maps without additional code on
-/// the tool side.
+/// \file Includes the <tt>llvm::DenseMapInfo</tt> for HSA primitives used by
+/// Luthier, so that they can be stored in LLVM-based maps without
+/// additional code on the tool side.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_DENSE_MAP_INFO
 #define LUTHIER_HSA_DENSE_MAP_INFO
