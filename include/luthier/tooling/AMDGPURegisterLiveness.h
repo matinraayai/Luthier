@@ -32,11 +32,6 @@ namespace luthier {
 
 class AMDGPURegisterLiveness {
 private:
-  /// Mapping between every machine function inside the MMI and its
-  /// \c VectorCFG
-  llvm::DenseMap<const llvm::MachineFunction *, std::unique_ptr<VectorCFG>>
-      VecCFGs;
-
   /// The callgraph analysis result of the MMI
   /// TODO: Use call graph to calculate liveness at a global level
   const LRCallGraph &CG;
