@@ -333,7 +333,10 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket->workgroup_size_y,
                 DispatchPacket->workgroup_size_z, CounterHost,
                 TotalNumInstructions);
+          }
+          if (KernelBeingInstrumented) {
             delete KernelBeingInstrumented;
+            KernelBeingInstrumented = nullptr;
           }
           NumKernelLaunched++;
           Mutex.unlock();

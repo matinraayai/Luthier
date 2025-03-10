@@ -1,4 +1,4 @@
-//===-- LDSBankConflict.hip - Opcode Histogram Example ----------*- C++ -*-===//
+//===-- LDSBankConflict.hip -------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,11 +19,6 @@
 /// using Luthier.
 /// The tool was inspired by NVBit paper's cache simulator example.
 //===----------------------------------------------------------------------===//
-#include <luthier/luthier.h>
-#include <mutex>
-#include <thread>
-// undef ICMP_NE macro that was ill-defined in HIP headers
-#undef ICMP_NE
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <llvm/ADT/APFloat.h>
@@ -32,6 +27,13 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <luthier/hip/HipError.h>
+#include <luthier/hsa/DisableInterceptionScope.h>
+#include <luthier/hsa/HsaError.h>
+#include <luthier/llvm/streams.h>
+#include <luthier/luthier.h>
+#include <mutex>
+#include <thread>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-example-lds-bank-conflict"
@@ -41,52 +43,25 @@ using namespace luthier;
 //===----------------------------------------------------------------------===//
 // Commandline arguments for the tool
 //===----------------------------------------------------------------------===//
-llvm::cl::OptionCategory
-    LDSBankConflictToolOptionCategory("LDS Bank Conflict Options");
+static llvm::cl::OptionCategory *LDSBankConflictToolOptionCategory;
 
-static llvm::cl::opt<unsigned int> InstrBeginInterval(
-    "instr-begin-interval",
-    llvm::cl::desc("Beginning of the instruction interval where to "
-                   "apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(LDSBankConflictToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrBeginInterval;
 
-static llvm::cl::opt<unsigned int> InstrEndInterval(
-    "instr-end-interval",
-    llvm::cl::desc("End of the instruction interval where to apply "
-                   "instrumentation, inclusive"),
-    llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-    llvm::cl::NotHidden, llvm::cl::cat(LDSBankConflictToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrEndInterval;
 
-static llvm::cl::opt<unsigned int> KernelBeginInterval(
-    "kernel-start-interval",
-    llvm::cl::desc(
-        "Beginning of the kernel interval to apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(LDSBankConflictToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelBeginInterval;
 
-static llvm::cl::opt<unsigned int> KernelEndInterval(
-    "kernel-end-interval",
-    llvm::cl::desc(
-        "End of the kernel interval to apply instrumentation, exclusive"),
-    llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-    llvm::cl::NotHidden, llvm::cl::cat(LDSBankConflictToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelEndInterval;
 
-static llvm::cl::opt<bool> DemangleKernelNames(
-    "demangle-kernel-names",
-    llvm::cl::desc("Whether to demangle kernel names before printing"),
-    llvm::cl::init(true), llvm::cl::NotHidden,
-    llvm::cl::cat(LDSBankConflictToolOptionCategory));
+static llvm::cl::opt<bool> *DemangleKernelNames;
 
-static llvm::cl::opt<unsigned>
-    Log2BankSize("log-two-bank-size",
-                 llvm::cl::desc("Log2 of the LDS bank size"),
-                 llvm::cl::init(11), llvm::cl::NotHidden,
-                 llvm::cl::cat(LDSBankConflictToolOptionCategory));
+static llvm::cl::opt<unsigned> *Log2BankSize;
+
+static std::string *ToolName;
 
 /// Per-kernel buffer to store the number of bank conflicts detected for
 /// the currently running kernel
-__attribute__((managed)) float NumBankConflicts = 0;
+__attribute__((device)) float NumBankConflicts;
 
 /// The final place on host to store the total number of bank conflicts
 /// detected for all kernels
@@ -94,14 +69,14 @@ static uint64_t TotalNumBankConflicts = 0;
 
 /// Place for the currently running kernel to write the number of single-address
 /// LDS instructions it has executed so far
-__attribute__((managed)) uint64_t NumSingleAddressLDSInstructions = 0;
+__attribute__((device)) uint64_t NumSingleAddressLDSInstructions;
 
 /// Total number of single-address LDS instructions executed so far
 static uint64_t TotalNumSingleAddressLDSInstructions = 0;
 
 /// Place for the currently running kernel to write the number of double-address
 /// LDS instructions it has executed so far
-__attribute__((managed)) uint64_t NumDoubleAddressLDSInstructions = 0;
+__attribute__((device)) uint64_t NumDoubleAddressLDSInstructions;
 
 /// Total number of double-address LDS instructions executed so far
 static uint64_t TotalNumDoubleAddressLDSInstructions = 0;
@@ -117,13 +92,13 @@ static bool ActiveRegion = true;
 bool MustDestroySignalAfterLaunch = false;
 
 /// The kernel currently being instrumented
-const hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{nullptr};
+std::unique_ptr<hsa::LoadedCodeObjectKernel> KernelBeingInstrumented{nullptr};
 
 /// The signal value of the launched kernel to wait for
 hsa_signal_value_t SignalValue{0};
 
 /// Mutex to protect the managed variables for the current kernel
-std::mutex Mutex;
+std::recursive_mutex Mutex;
 
 MARK_LUTHIER_DEVICE_MODULE
 
@@ -397,32 +372,35 @@ static llvm::Error instrumentDoubleAddressDSOps(InstrumentationTask &IT,
 static llvm::Error instrumentationLoop(InstrumentationTask &IT,
                                        LiftedRepresentation &LR) {
   unsigned int I = 0;
-  for (auto &[_, MF] : LR.functions()) {
-    const auto &STI = MF->getSubtarget<llvm::GCNSubtarget>();
-    const auto *TII = STI.getInstrInfo();
-    auto &Ctx = LR.getContext();
-    auto *BankSizeArg = llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
-                                               Log2BankSize, false);
-    for (auto &MBB : *MF) {
-      for (auto &MI : MBB) {
-        // Ignore instructions not inside an interval
-        // Ignore GDS operations
-        if (I >= InstrBeginInterval && I < InstrEndInterval &&
-            llvm::SIInstrInfo::isDS(MI) && !TII->isAlwaysGDS(MI.getOpcode()) &&
-            !TII->hasModifiersSet(MI, llvm::AMDGPU::OpName::gds)) {
+  return LR.iterateAllDefinedFunctionTypes(
+      [&](const hsa::LoadedCodeObjectSymbol &Sym,
+          llvm::MachineFunction &MF) -> llvm::Error {
+        for (auto &MBB : MF) {
+          const auto &STI = MF.getSubtarget<llvm::GCNSubtarget>();
+          const auto *TII = STI.getInstrInfo();
+          auto &Ctx = LR.getContext();
+          auto *BankSizeArg = llvm::ConstantInt::get(
+              llvm::Type::getInt16Ty(Ctx), *Log2BankSize, false);
+          for (auto &MI : MBB) {
+            // Ignore instructions not inside an interval
+            // Ignore GDS operations
+            if (I >= *InstrBeginInterval && I < *InstrEndInterval &&
+                llvm::SIInstrInfo::isDS(MI) &&
+                !TII->isAlwaysGDS(MI.getOpcode()) &&
+                !TII->hasModifiersSet(MI, llvm::AMDGPU::OpName::gds)) {
 
-          // Handle single source LDS access
-          LUTHIER_REPORT_FATAL_ON_ERROR(
-              instrumentSingleAddressDSOps(IT, Ctx, MI, BankSizeArg));
-          // Handle double source LDS access
-          LUTHIER_REPORT_FATAL_ON_ERROR(
-              instrumentDoubleAddressDSOps(IT, Ctx, MI, BankSizeArg));
+              // Handle single source LDS access
+              LUTHIER_RETURN_ON_ERROR(
+                  instrumentSingleAddressDSOps(IT, Ctx, MI, BankSizeArg));
+              // Handle double source LDS access
+              LUTHIER_RETURN_ON_ERROR(
+                  instrumentDoubleAddressDSOps(IT, Ctx, MI, BankSizeArg));
+            }
+            I++;
+          }
         }
-        I++;
-      }
-    }
-  }
-  return llvm::Error::success();
+        return llvm::Error::success();
+      });
 }
 
 static void
@@ -432,6 +410,33 @@ instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
 
   LUTHIER_REPORT_FATAL_ON_ERROR(instrumentAndLoad(
       KernelSymbol, *LR, instrumentationLoop, "lds bank conflict"));
+}
+
+template <typename T> static llvm::Error zeroDeviceBuffer(T &DevBuffer) {
+  luthier::hsa::DisableUserInterceptionScope Scope;
+  T HostBuffer = 0;
+  T *DevBufferAddr;
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
+      hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+          (void **)&DevBufferAddr, &DevBuffer)));
+  return LUTHIER_HSA_SUCCESS_CHECK(
+      hsa::getHsaApiTable().core_->hsa_memory_copy_fn(DevBufferAddr,
+                                                      &HostBuffer, sizeof(T)));
+}
+
+template <typename T>
+static llvm::Expected<T> copyDeviceBufferToHost(T &DevBuffer) {
+  luthier::hsa::DisableUserInterceptionScope Scope;
+  T *DevBufferAddr;
+  T HostBuffer;
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
+      hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+          (void **)&DevBufferAddr, &DevBuffer)));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_HSA_SUCCESS_CHECK(hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+          &HostBuffer, DevBufferAddr, sizeof(T))));
+  luthier::errs() << "Host value of device buffer: " << HostBuffer << "\n";
+  return HostBuffer;
 }
 
 static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
@@ -461,15 +466,15 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
 
-          KernelBeingInstrumented = &(*KernelSymbol);
+          KernelBeingInstrumented = std::move(*KernelSymbol);
 
-          auto KernelName = KernelSymbol->getName();
+          auto KernelName = KernelBeingInstrumented->getName();
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
           std::string KernelNameToBePrinted = DemangleKernelNames
                                                   ? llvm::demangle(*KernelName)
                                                   : std::string(*KernelName);
-          llvm::outs() << "Kernel " << KernelNameToBePrinted
-                       << " is being launched\n";
+          luthier::errs() << "Kernel " << KernelNameToBePrinted
+                          << " is being launched\n";
           // Get the packet's completion signal and its value
 
           // Create a signal if the application didn't create one for this
@@ -488,41 +493,41 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
                   DispatchPacket->completion_signal);
 
-          if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval) {
+          if (NumKernelLaunched >= *KernelBeginInterval &&
+              NumKernelLaunched < *KernelEndInterval) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
           }
-          llvm::outs() << "Active region: " << ActiveRegion << "\n";
+          luthier::errs() << "Active region: " << ActiveRegion << "\n";
 
           if (ActiveRegion) {
-            llvm::outs() << "Kernel is being instrumented.\n";
+            luthier::errs() << "Kernel is being instrumented.\n";
 
-            auto IsKernelInstrumented =
-                isKernelInstrumented(*KernelSymbol, "lds bank conflict");
+            auto IsKernelInstrumented = isKernelInstrumented(
+                *KernelBeingInstrumented, "lds bank conflict");
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
             if (!*IsKernelInstrumented) {
 
-              auto LR = lift(*KernelSymbol);
-              LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-
-              instrumentAllFunctionsOfLR(*KernelSymbol);
-
-              LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
-                  *DispatchPacket, "lds bank conflict"));
-              // zero the managed variables
-
-              NumBankConflicts = 0.;
-
-              NumSingleAddressLDSInstructions = 0;
-
-              NumDoubleAddressLDSInstructions = 0;
+              instrumentAllFunctionsOfLR(*KernelBeingInstrumented);
             }
+
+            LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
+                *DispatchPacket, "lds bank conflict"));
+
+            // Zero the device variables
+
+            LUTHIER_REPORT_FATAL_ON_ERROR(zeroDeviceBuffer(NumBankConflicts));
+
+            LUTHIER_REPORT_FATAL_ON_ERROR(
+                zeroDeviceBuffer(NumSingleAddressLDSInstructions));
+
+            LUTHIER_REPORT_FATAL_ON_ERROR(
+                zeroDeviceBuffer(NumDoubleAddressLDSInstructions));
           }
         } else {
-          llvm::outs() << "Active region in the exit callback: " << ActiveRegion
-                       << "\n";
+          luthier::errs() << "Active region in the exit callback: "
+                          << ActiveRegion << "\n";
           constexpr auto Timeout =
               std::chrono::duration_cast<std::chrono::nanoseconds>(
                   std::chrono::seconds{300})
@@ -547,7 +552,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             }
           }
           if (ActiveRegion) {
-            llvm::outs() << "Kernel is being waited on\n";
+            luthier::errs() << "Kernel is being waited on\n";
             /// If we are exiting a kernel launch:
             /// 1. Wait on the signal of the kernel being launched
             /// 2. Get the number of wave fronts in the kernel
@@ -561,13 +566,27 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             std::string KernelNameToBePrinted =
                 DemangleKernelNames ? llvm::demangle(*KernelName)
                                     : std::string(*KernelName);
+
+            auto KernelBankConflicts = copyDeviceBufferToHost(NumBankConflicts);
+
+            LUTHIER_REPORT_FATAL_ON_ERROR(KernelBankConflicts.takeError());
+
+            auto KernelSingleAddrLDSInsts =
+                copyDeviceBufferToHost(NumSingleAddressLDSInstructions);
+
+            LUTHIER_REPORT_FATAL_ON_ERROR(KernelSingleAddrLDSInsts.takeError());
+
+            auto KernelDoubleAddrLDSInsts =
+                copyDeviceBufferToHost(NumDoubleAddressLDSInstructions);
+
+            LUTHIER_REPORT_FATAL_ON_ERROR(KernelDoubleAddrLDSInsts.takeError());
+
             // Add the number of LDS instructions + conflicts recorded per
             // wavefront
-            TotalNumSingleAddressLDSInstructions +=
-                NumSingleAddressLDSInstructions;
-            TotalNumDoubleAddressLDSInstructions +=
-                NumDoubleAddressLDSInstructions;
-            TotalNumBankConflicts += static_cast<uint64_t>(NumBankConflicts);
+            TotalNumSingleAddressLDSInstructions += *KernelSingleAddrLDSInsts;
+            TotalNumDoubleAddressLDSInstructions += *KernelDoubleAddrLDSInsts;
+            TotalNumBankConflicts +=
+                static_cast<uint64_t>(*KernelBankConflicts);
 
             // Note: Grid size in HSA contains all the work items in the kernel.
             // This is different from the number of blocks (grid dim) in CUDA or
@@ -577,7 +596,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             // x 16. As is evident from the example, workgroup size in HSA has
             // the same meaning as CUDA/HIP
 
-            llvm::outs() << llvm::formatv(
+            luthier::errs() << llvm::formatv(
                 "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
                 "Workgroup Dims: "
                 "({5}, {6}, {7}) LDS Size Requested: {8} LDS Single Address "
@@ -614,14 +633,56 @@ static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
   }
 }
 
-llvm::StringRef getToolName() {
-  const static std::string ToolName{"LuthierLDSBankConflictTool"};
-  return ToolName;
-}
+llvm::StringRef getToolName() { return *ToolName; }
 
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
-    llvm::outs() << "LDS Bank Conflict detection tool is launching.\n";
+    luthier::errs() << "LDS Bank Conflict detection tool is launching.\n";
+
+    ToolName = new std::string("Luthier LDS Bank Conflict Tool");
+
+    LDSBankConflictToolOptionCategory =
+        new llvm::cl::OptionCategory("LDS Bank Conflict Options");
+
+    InstrBeginInterval = new llvm::cl::opt<unsigned int>(
+        "instr-begin-interval",
+        llvm::cl::desc("Beginning of the instruction interval where to "
+                       "apply instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*LDSBankConflictToolOptionCategory));
+
+    InstrEndInterval = new llvm::cl::opt<unsigned int>(
+        "instr-end-interval",
+        llvm::cl::desc("End of the instruction interval where to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*LDSBankConflictToolOptionCategory));
+
+    KernelBeginInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-start-interval",
+        llvm::cl::desc("Beginning of the kernel interval to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*LDSBankConflictToolOptionCategory));
+
+    KernelEndInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-end-interval",
+        llvm::cl::desc(
+            "End of the kernel interval to apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*LDSBankConflictToolOptionCategory));
+
+    DemangleKernelNames = new llvm::cl::opt<bool>(
+        "demangle-kernel-names",
+        llvm::cl::desc("Whether to demangle kernel names before printing"),
+        llvm::cl::init(true), llvm::cl::NotHidden,
+        llvm::cl::cat(*LDSBankConflictToolOptionCategory));
+
+    Log2BankSize = new llvm::cl::opt<unsigned>(
+        "log-two-bank-size", llvm::cl::desc("Log2 of the LDS bank size"),
+        llvm::cl::init(11), llvm::cl::NotHidden,
+        llvm::cl::cat(*LDSBankConflictToolOptionCategory));
+
   } else {
     // Set the callback for when the HSA API table is captured
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
@@ -631,11 +692,28 @@ void atToolInit(ApiEvtPhase Phase) {
 }
 
 void atToolFini(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER) {
-    llvm::outs() << "Total number of LDS instructions: "
-                 << TotalNumSingleAddressLDSInstructions << "\n";
-    llvm::outs() << "Total number of bank conflicts detected: "
-                 << TotalNumBankConflicts << "\n";
+  if (Phase == API_EVT_PHASE_BEFORE) {
+
+    delete ToolName;
+
+    delete InstrBeginInterval;
+
+    delete InstrEndInterval;
+
+    delete KernelBeginInterval;
+
+    delete KernelEndInterval;
+
+    delete DemangleKernelNames;
+
+    delete Log2BankSize;
+
+    delete LDSBankConflictToolOptionCategory;
+
+    luthier::errs() << "Total number of LDS instructions: "
+                    << TotalNumSingleAddressLDSInstructions << "\n";
+    luthier::errs() << "Total number of bank conflicts detected: "
+                    << TotalNumBankConflicts << "\n";
   }
 }
 

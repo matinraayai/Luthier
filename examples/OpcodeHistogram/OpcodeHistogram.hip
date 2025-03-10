@@ -75,7 +75,7 @@ static bool ActiveRegion = true;
 
 bool MustDestroySignalAfterLaunch = false;
 
-const hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{nullptr};
+hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{nullptr};
 
 hsa_signal_value_t SignalValue{0};
 
@@ -185,10 +185,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
                                   DispatchPacket->kernel_object)
                                   ->getLoadedCodeObjectKernelSymbol();
-
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
-
-          KernelBeingInstrumented = &(**KernelSymbol);
+          KernelBeingInstrumented = KernelSymbol->release();
 
           auto KernelName = KernelBeingInstrumented->getName();
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
@@ -223,16 +221,16 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           if (ActiveRegion) {
             luthier::errs() << "Kernel is being instrumented.\n";
 
-            auto IsKernelInstrumented =
-                isKernelInstrumented(**KernelSymbol, "opcode histogram");
+            auto IsKernelInstrumented = isKernelInstrumented(
+                *KernelBeingInstrumented, "opcode histogram");
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
 
-            auto LR = lift(**KernelSymbol);
+            auto LR = lift(*KernelBeingInstrumented);
             LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
             TII = LR->getKernelMF().getSubtarget().getInstrInfo();
 
             if (!*IsKernelInstrumented) {
-              instrumentAllFunctionsOfLR(**KernelSymbol);
+              instrumentAllFunctionsOfLR(*KernelBeingInstrumented);
             }
             LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
                 *DispatchPacket, "opcode histogram"));
@@ -349,6 +347,11 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               }
             }
           }
+          if (KernelBeingInstrumented) {
+            delete KernelBeingInstrumented;
+            KernelBeingInstrumented = nullptr;
+          }
+
           NumKernelLaunched++;
           Mutex.unlock();
         }
