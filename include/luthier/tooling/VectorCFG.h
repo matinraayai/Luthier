@@ -14,9 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file This file describes the \c VectorMBB and \c VectorCFG classes, used
-/// to represent control flow of vector registers via manipulation of
-/// the exec register.
+/// \file This file describes the \c VectorCFG class and its basic blocks.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_VECTOR_CFG_H
 #define LUTHIER_VECTOR_CFG_H
@@ -36,15 +34,21 @@ namespace luthier {
 
 class VectorCFG;
 
+class ScalarMBB;
+
 /// \brief A basic block inside the vector control flow graph; Used primarily
 /// in flow analysis involving vector GPRs and instructions
 /// \details In addition to normal scalar control flow operations that end a
-/// basic block in LLVM MIR, any operation that ends up modifying an execute
-/// mask will result in the termination of a vector basic block.
+/// basic block in LLVM MIR, any operation that modifies the execute
+/// mask will result in the termination of the vector basic block
 class VectorMBB {
 private:
-  /// CFG that manages the memory of this \c VectorMBB
+  /// CFG that this MBB belongs to
   const VectorCFG &CFG;
+
+  /// The scalar MBB this vector MBB belongs to
+  /// If nullptr, this vector MBB is a dummy entry/exit block of the vector CFG
+  const ScalarMBB *ParentScalarMBB;
 
   /// Basic block name
   std::string Name;
@@ -70,19 +74,16 @@ public:
   /// Disallowed assignment operation
   VectorMBB &operator=(const VectorMBB &) = delete;
 
+  VectorMBB(const ScalarMBB &SMBB, llvm::StringRef Name);
+
   VectorMBB(const VectorCFG &CFG, llvm::StringRef Name)
-      : CFG(CFG), Name(Name) {};
-
-  VectorMBB(const VectorCFG &CFG, const llvm::MachineInstr &BeginMI,
-            llvm::StringRef Name)
-      : CFG(CFG), Instructions({BeginMI, *BeginMI.getNextNode()}),
-        Name(Name) {};
-
-  VectorMBB(const VectorCFG &CFG, const llvm::MachineInstr &BeginMI,
-            const llvm::MachineInstr &EndMI, llvm::StringRef Name)
-      : CFG(CFG), Instructions({BeginMI, *EndMI.getNextNode()}), Name(Name) {};
+      : CFG(CFG), Name(Name), ParentScalarMBB(nullptr) {};
 
   [[nodiscard]] const VectorCFG &getParent() const { return CFG; };
+
+  [[nodiscard]] const ScalarMBB *getScalarMBB() const {
+    return ParentScalarMBB;
+  };
 
   [[nodiscard]] llvm::MachineBasicBlock::const_iterator begin() const {
     return Instructions.begin();
@@ -92,13 +93,13 @@ public:
     return Instructions.end();
   }
 
+  [[nodiscard]] bool empty() const { return Instructions.empty(); }
+
   [[nodiscard]] llvm::StringRef getName() const { return Name; }
 
   /// Makes the MBB point to a new range of instructions in a single MBB
   void setInstRange(llvm::MachineBasicBlock::const_iterator Begin,
                     llvm::MachineBasicBlock::const_iterator End);
-
-  [[nodiscard]] bool empty() const { return Instructions.empty(); }
 
   void addPredecessorBlock(VectorMBB &MBB) {
     Predecessors.insert(&MBB);
@@ -141,8 +142,12 @@ public:
   }
 
   void print(llvm::raw_ostream &OS, unsigned int Indent) const;
+
+  LLVM_DUMP_METHOD void dump() const;
 };
 
+/// \brief a wrapper around a group of <tt>VectorMBB</tt>s inside a single
+/// \c llvm::MachineBasicBlock for easier construction of the \c VectorCFG
 class ScalarMBB {
 private:
   friend VectorCFG;
@@ -169,7 +174,7 @@ private:
 
   VectorMBB &createVectorMBB() {
     MBBs.emplace_back(std::make_unique<VectorMBB>(
-        ParentCFG,
+        *this,
         (ParentMBB.getFullName() + "." + llvm::Twine(MBBs.size() - 4)).str()));
     return *MBBs.back();
   }
@@ -180,6 +185,8 @@ public:
 
   /// Disallowed assignment operation
   ScalarMBB &operator=(const ScalarMBB &) = delete;
+
+  [[nodiscard]] VectorCFG &getCFG() const { return ParentCFG; }
 
   using iterator = VectorMBBs::iterator;
 
@@ -193,9 +200,6 @@ public:
 
   [[nodiscard]] const_iterator end() const { return MBBs.end(); }
 
-  static llvm::Expected<std::unique_ptr<ScalarMBB>>
-  create(const llvm::MachineBasicBlock &ParentMBB, VectorCFG &ParentCFG);
-
   void print(llvm::raw_ostream &OS, unsigned int Indent) const;
 };
 
@@ -203,7 +207,7 @@ public:
 /// <tt>llvm::MachineFunction</tt>s of the AMDGPU backend that, in addition to
 /// scalar branches, regards instructions that manipulate the execute mask as a
 /// terminator for its basic blocks
-/// \details The vector CFG allows can be used to do data flow analysis
+/// \details The vector CFG can be used to perform data flow analysis
 /// involving vector registers (e.g. register liveness) which cannot be done
 /// with the CFG of LLVM MIR for the AMD GPU backend
 class VectorCFG {
@@ -214,11 +218,12 @@ private:
   std::unique_ptr<VectorMBB> EntryBlock;
   /// A dummy vector block that marks the end of the function
   std::unique_ptr<VectorMBB> ExitBlock;
-  /// The list of scalar MBBs
+  /// A mapping between the <tt>llvm::MachineBasicBlock</tt>s of the \c MF and
+  /// their \c ScalarMBB
   typedef llvm::DenseMap<const llvm::MachineBasicBlock *,
                          std::unique_ptr<ScalarMBB>>
-      MBBList;
-  MBBList MBBs;
+      MBBMap;
+  MBBMap MBBs;
 
   explicit VectorCFG(const llvm::MachineFunction &MF)
       : MF(MF), EntryBlock(std::make_unique<VectorMBB>(
@@ -227,9 +232,9 @@ private:
             *this, (MF.getName() + ".exit").str())) {};
 
 public:
-  using iterator = MBBList::iterator;
+  using iterator = MBBMap::iterator;
 
-  using const_iterator = MBBList::const_iterator;
+  using const_iterator = MBBMap::const_iterator;
 
   iterator begin() { return MBBs.begin(); }
 
@@ -241,15 +246,20 @@ public:
 
   [[nodiscard]] const llvm::MachineFunction &getMF() const { return MF; }
 
+  VectorMBB &getEntryBlock() { return *EntryBlock; }
+
+  VectorMBB &getExitBlock() { return *ExitBlock; }
+
+  // TODO: Implement an iterator for directly going over VectorMBBs
+
   void print(llvm::raw_ostream &OS) const;
 
-  static llvm::Expected<std::unique_ptr<VectorCFG>>
+  LLVM_DUMP_METHOD void dump() const;
+
+  static std::unique_ptr<VectorCFG>
   getVectorCFG(const llvm::MachineFunction &MF);
 };
 
-/// Re-implementation of \c llvm::LivePhysRegs::addLiveOutsNoPristines for
-/// \c VectorMBB
-/// \param VecMBB
 void addBlockLiveIns(llvm::LivePhysRegs &LPR, const VectorMBB &VecMBB);
 
 void addLiveIns(VectorMBB &MBB, const llvm::LivePhysRegs &LiveRegs);
