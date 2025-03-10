@@ -59,10 +59,13 @@ llvm::Expected<GpuAgent> LoadedCodeObject::getAgent() const {
 
 llvm::Expected<std::unique_ptr<llvm::object::ELF64LEObjectFile>>
 LoadedCodeObject::getStorageELF() const {
-  llvm::Expected<llvm::ArrayRef<uint8_t>> StorageMemoryOrErr =
-      getStorageMemory();
-  LUTHIER_RETURN_ON_ERROR(StorageMemoryOrErr.takeError());
-  return parseAMDGCNObjectFile(*StorageMemoryOrErr);
+  auto &LCOCache =
+      ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
+  std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
+  return parseAMDGCNObjectFile(
+      LCOCache.CachedLCOs.at(this->asHsaType()).CodeObject);
 }
 
 llvm::Expected<long> LoadedCodeObject::getLoadDelta() const {

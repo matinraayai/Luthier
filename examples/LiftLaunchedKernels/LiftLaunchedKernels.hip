@@ -1,4 +1,4 @@
-//===-- CodeLifterDebugging.hip -------------------------------------------===//
+//===-- LiftLaunchedKernels.hip --------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,9 +63,9 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           LUTHIER_REPORT_FATAL_ON_ERROR(
               printLiftedRepresentation(**InstrumentedLR, SourceFile,
                                         llvm::CodeGenFileType::AssemblyFile));
-          luthier::outs() << "Lifted Kernel contents for " << *KernelName
+          luthier::errs() << "Lifted Kernel contents for " << *KernelName
                           << ":\n";
-          luthier::outs() << SourceFile << "\n";
+          luthier::errs() << SourceFile << "\n";
         }
         PrintedKernels->insert(std::move(*KernelSymbol));
       }
@@ -89,7 +89,7 @@ llvm::StringRef getToolName() {
 
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
-    llvm::outs() << "Luthier lift launched kernels tool is launching!\n";
+    luthier::errs() << "Luthier lift launched kernels tool is launching!\n";
   } else {
     PrintedKernels = new std::unordered_set<
         std::unique_ptr<hsa::LoadedCodeObjectKernel>,
@@ -103,7 +103,7 @@ void atToolInit(ApiEvtPhase Phase) {
 void atToolFini(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
     delete PrintedKernels;
-    llvm::outs() << "Luthier lift launched kernels tool is terminating!\n";
+    luthier::errs() << "Luthier lift launched kernels tool is terminating!\n";
   }
 }
 

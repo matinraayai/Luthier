@@ -16,13 +16,8 @@
 ///
 /// \file
 /// This file implements a sample Opcode Histogram using Luthier.
-/// The tool was inspired by NVBit's instruction counter.
+/// The tool was inspired by NVBit's opcode histogram tool.
 //===----------------------------------------------------------------------===//
-#include <luthier/luthier.h>
-#include <mutex>
-#include <thread>
-// undef ICMP_NE macro that was ill-defined in HIP headers
-#undef ICMP_NE
 #include <SIInstrInfo.h>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
@@ -30,6 +25,14 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <luthier/hip/HipError.h>
+#include <luthier/hsa/DisableInterceptionScope.h>
+#include <luthier/hsa/HsaError.h>
+#include <luthier/llvm/CodeGenHelpers.h>
+#include <luthier/llvm/streams.h>
+#include <luthier/luthier.h>
+#include <mutex>
+#include <thread>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-opcode-hist-tool"
@@ -40,52 +43,25 @@ using namespace luthier;
 // Commandline arguments for the tool
 //===----------------------------------------------------------------------===//
 
-/// Define an option category for the instruction count tool
-llvm::cl::OptionCategory
-    OpcodeHistogramToolOptionCategory("Opcode Histogram Tool Options");
+static llvm::cl::OptionCategory *OpcodeHistogramToolOptionCategory;
 
-static llvm::cl::opt<unsigned int> InstrBeginInterval(
-    "instr-begin-interval",
-    llvm::cl::desc("Beginning of the instruction interval where to "
-                   "apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(OpcodeHistogramToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrBeginInterval;
 
-static llvm::cl::opt<unsigned int> InstrEndInterval(
-    "instr-end-interval",
-    llvm::cl::desc("End of the instruction interval where to apply "
-                   "instrumentation, inclusive"),
-    llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-    llvm::cl::NotHidden, llvm::cl::cat(OpcodeHistogramToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrEndInterval;
 
-static llvm::cl::opt<unsigned int> KernelBeginInterval(
-    "kernel-start-interval",
-    llvm::cl::desc(
-        "Beginning of the kernel interval to apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(OpcodeHistogramToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelBeginInterval;
 
-static llvm::cl::opt<unsigned int> KernelEndInterval(
-    "kernel-end-interval",
-    llvm::cl::desc(
-        "End of the kernel interval to apply instrumentation, exclusive"),
-    llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-    llvm::cl::NotHidden, llvm::cl::cat(OpcodeHistogramToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelEndInterval;
 
-static llvm::cl::opt<bool> CountWavefrontLevel(
-    "count-wavefront-level",
-    llvm::cl::desc("Count instructions at the wavefront level"),
-    llvm::cl::init(false), llvm::cl::NotHidden,
-    llvm::cl::cat(OpcodeHistogramToolOptionCategory));
+static llvm::cl::opt<bool> *CountWavefrontLevel;
 
-static llvm::cl::opt<bool> DemangleKernelNames(
-    "demangle-kernel-names",
-    llvm::cl::desc("Whether to demangle kernel names before printing"),
-    llvm::cl::init(true), llvm::cl::NotHidden,
-    llvm::cl::cat(OpcodeHistogramToolOptionCategory));
+static llvm::cl::opt<bool> *DemangleKernelNames;
+
+/// Name of the tool
+static std::string *ToolName{nullptr};
 
 __attribute__((
-    managed)) uint64_t KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
+    device)) uint64_t KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
 static llvm::StringMap<uint64_t> *GlobalHistogram{nullptr};
 
@@ -105,16 +81,13 @@ hsa_signal_value_t SignalValue{0};
 
 const llvm::TargetInstrInfo *TII{nullptr};
 
-/// Mutex to protect the managed histogram
-std::mutex Mutex;
+/// Mutex to protect the static device buffer
+std::recursive_mutex Mutex;
 
 MARK_LUTHIER_DEVICE_MODULE
 
-// Record OPCode Histogram
 LUTHIER_HOOK_ANNOTATE countOpcodeHistogramVector(bool CountWaveFrontLevel,
                                                  int OpcodeNumber) {
-  unsigned long long int VCC =
-      luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
   // Get the exec mask of the wavefront
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   // Get the position of the thread in the current wavefront (1-index)
@@ -135,23 +108,14 @@ LUTHIER_HOOK_ANNOTATE countOpcodeHistogramVector(bool CountWaveFrontLevel,
       atomicAdd(&KernelHistogram[OpcodeNumber], NumActiveThreads);
     }
   }
-  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
 }
+
 LUTHIER_EXPORT_HOOK_HANDLE(countOpcodeHistogramVector);
 
 LUTHIER_HOOK_ANNOTATE countOpcodeHistogramScalar(int OpcodeNumber) {
-  unsigned long long int VCC =
-      luthier::readReg<unsigned long long int>(llvm::AMDGPU::VCC);
-  // Get the exec mask of the wavefront
-  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
-  // Overwrite the exec mask with one so that only a single thread is active
-  luthier::writeExec(1);
-  //  Increment the counter for this opcode
-  atomicAdd(&KernelHistogram[OpcodeNumber], 1);
-  // Restore the exec mask
-  luthier::writeExec(ExecMask);
-  luthier::writeReg(llvm::AMDGPU::VCC, VCC);
+  luthier::sAtomicAdd(&KernelHistogram[OpcodeNumber], 1UL);
 }
+
 LUTHIER_EXPORT_HOOK_HANDLE(countOpcodeHistogramScalar);
 
 static llvm::Error instrumentationLoop(InstrumentationTask &IT,
@@ -160,38 +124,32 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
   auto *CountWavefrontLevelConstVal =
       llvm::ConstantInt::getBool(LR.getContext(), CountWavefrontLevel);
   unsigned int I = 0;
-  for (auto &[_, MF] : LR.functions()) {
-    const auto &STI = MF->getSubtarget();
-    const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
-    for (auto &MBB : *MF) {
-      for (auto &MI : MBB) {
-        if (I >= InstrBeginInterval && I < InstrEndInterval) {
-          std::string OpcodeName = TII->getName(MI.getOpcode()).str();
-          // Get the opcode number, llvm const int
-          auto *OpcodeNumber = llvm::ConstantInt::get(
-              llvm::Type::getInt32Ty(LR.getContext()), MI.getOpcode(), false);
-          bool IsScalar =
-              llvm::SIInstrInfo::isSOP1(MI) || llvm::SIInstrInfo::isSOP2(MI) ||
-              llvm::SIInstrInfo::isSOPK(MI) || llvm::SIInstrInfo::isSOPC(MI) ||
-              llvm::SIInstrInfo::isSOPP(MI) || llvm::SIInstrInfo::isSMRD(MI);
-          bool IsLaneAccess =
-              MI.getOpcode() == llvm::AMDGPU::V_READFIRSTLANE_B32 ||
-              MI.getOpcode() == llvm::AMDGPU::V_READLANE_B32 ||
-              MI.getOpcode() == llvm::AMDGPU::V_WRITELANE_B32;
-          if (IsScalar || IsLaneAccess)
-            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-                MI, LUTHIER_GET_HOOK_HANDLE(countOpcodeHistogramScalar),
-                {OpcodeNumber}));
-          else
-            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-                MI, LUTHIER_GET_HOOK_HANDLE(countOpcodeHistogramVector),
-                {CountWavefrontLevelConstVal, OpcodeNumber}));
+  return LR.iterateAllDefinedFunctionTypes(
+      [&](const hsa::LoadedCodeObjectSymbol &Sym,
+          llvm::MachineFunction &MF) -> llvm::Error {
+        for (auto &MBB : MF) {
+          for (auto &MI : MBB) {
+            if (I >= *InstrBeginInterval && I < *InstrEndInterval) {
+              // Get the opcode number, llvm const int
+              auto *OpcodeNumber = llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(LR.getContext()), MI.getOpcode(),
+                  false);
+              bool IsScalar = luthier::isScalar(MI);
+              bool IsLaneAccess = luthier::isLaneAccess(MI);
+              if (IsScalar || IsLaneAccess)
+                LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+                    MI, LUTHIER_GET_HOOK_HANDLE(countOpcodeHistogramScalar),
+                    {OpcodeNumber}));
+              else
+                LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+                    MI, LUTHIER_GET_HOOK_HANDLE(countOpcodeHistogramVector),
+                    {CountWavefrontLevelConstVal, OpcodeNumber}));
+            }
+            I++;
+          }
         }
-        I++;
-      }
-    }
-  }
-  return llvm::Error::success();
+        return llvm::Error::success();
+      });
 }
 
 static void
@@ -230,15 +188,13 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
 
-          KernelBeingInstrumented = &(*KernelSymbol);
+          KernelBeingInstrumented = &(**KernelSymbol);
 
-          auto KernelName = KernelSymbol->getName();
+          auto KernelName = KernelBeingInstrumented->getName();
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
           std::string KernelNameToBePrinted = DemangleKernelNames
                                                   ? llvm::demangle(*KernelName)
                                                   : std::string(*KernelName);
-          llvm::outs() << "Kernel " << KernelNameToBePrinted
-                       << " is being launched\n";
           // Get the packet's completion signal and its value
 
           // Create a signal if the application didn't create one for this
@@ -257,40 +213,45 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
                   DispatchPacket->completion_signal);
 
-          if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval &&
-              !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
+          if (NumKernelLaunched >= *KernelBeginInterval &&
+              NumKernelLaunched < *KernelEndInterval) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
           }
-          llvm::outs() << "Active region: " << ActiveRegion << "\n";
 
           if (ActiveRegion) {
-            llvm::outs() << "Kernel is being instrumented.\n";
+            luthier::errs() << "Kernel is being instrumented.\n";
 
             auto IsKernelInstrumented =
-                isKernelInstrumented(*KernelSymbol, "opcode histogram");
+                isKernelInstrumented(**KernelSymbol, "opcode histogram");
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
+
+            auto LR = lift(**KernelSymbol);
+            LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
+            TII = LR->getKernelMF().getSubtarget().getInstrInfo();
+
             if (!*IsKernelInstrumented) {
-
-              auto LR = lift(*KernelSymbol);
-              LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-              TII = LR->getMF(*KernelSymbol)->getSubtarget().getInstrInfo();
-
-              instrumentAllFunctionsOfLR(*KernelSymbol);
-
-              LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
-                  *DispatchPacket, "opcode histogram"));
-              // zero the histogram
-              for (auto &Op : KernelHistogram) {
-                Op = 0;
-              }
+              instrumentAllFunctionsOfLR(**KernelSymbol);
+            }
+            LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
+                *DispatchPacket, "opcode histogram"));
+            // Zero the instruction counter device variable
+            {
+              luthier::hsa::DisableUserInterceptionScope Scope;
+              uint64_t HistogramHost[llvm::AMDGPU::INSTRUCTION_LIST_END]{0};
+              uint64_t *HistogramDevice;
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
+                  hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+                      (void **)&HistogramDevice, &KernelHistogram)));
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+                  hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+                      HistogramDevice, &HistogramHost, sizeof(HistogramHost))));
             }
           }
         } else {
-          llvm::outs() << "Active region in the exit callback: " << ActiveRegion
-                       << "\n";
+          luthier::errs() << "Active region in the exit callback: "
+                          << ActiveRegion << "\n";
           constexpr auto Timeout =
               std::chrono::duration_cast<std::chrono::nanoseconds>(
                   std::chrono::seconds{300})
@@ -315,7 +276,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             }
           }
           if (ActiveRegion) {
-            llvm::outs() << "Kernel is being waited on\n";
+            luthier::errs() << "Kernel is being waited on\n";
             /// If we are exiting a kernel launch:
             /// 1. Wait on the signal of the kernel being launched
             /// 2. Get the number of wave fronts in the kernel
@@ -330,15 +291,28 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DemangleKernelNames ? llvm::demangle(*KernelName)
                                     : std::string(*KernelName);
             // Copy the histogram to the global histogram
+            uint64_t HistogramHost[llvm::AMDGPU::INSTRUCTION_LIST_END]{0};
+            // Zero the instruction counter device variable
+            {
+              luthier::hsa::DisableUserInterceptionScope Scope;
+              uint64_t *HistogramDevice;
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
+                  hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
+                      (void **)&HistogramDevice, &KernelHistogram)));
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+                  hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+                      &HistogramHost, HistogramDevice, sizeof(HistogramHost))));
+            }
+
             uint64_t InstsCountedForThisKernel = 0;
             for (int i = 0; i < llvm::AMDGPU::INSTRUCTION_LIST_END; i++) {
-              if (KernelHistogram[i] != 0) {
+              if (HistogramHost[i] != 0) {
                 auto OpcodeName = TII->getName(i);
                 if (GlobalHistogram->contains(OpcodeName))
-                  (*GlobalHistogram)[OpcodeName] += KernelHistogram[i];
+                  (*GlobalHistogram)[OpcodeName] += HistogramHost[i];
                 else
-                  GlobalHistogram->insert({OpcodeName, KernelHistogram[i]});
-                InstsCountedForThisKernel += KernelHistogram[i];
+                  GlobalHistogram->insert({OpcodeName, HistogramHost[i]});
+                InstsCountedForThisKernel += HistogramHost[i];
               }
             }
             TotalNumInstructions += InstsCountedForThisKernel;
@@ -351,7 +325,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             // x 16. As is evident from the example, workgroup size in HSA has
             // the same meaning as CUDA/HIP
 
-            llvm::outs() << llvm::formatv(
+            luthier::errs() << llvm::formatv(
                 "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
                 "Workgroup Dims: "
                 "({5}, {6}, {7}) Kernel Instruction "
@@ -363,30 +337,15 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket->workgroup_size_z, InstsCountedForThisKernel,
                 TotalNumInstructions);
 
-            llvm::outs() << "Histogram for kernel " << KernelNameToBePrinted
-                         << ":\n";
-            /*
-            To obtain the Opcode name:
-              1. From the dispatch packet, get the kernel symbol
-              2. From the kernel symbol, get the executable
-              3. Call lift on the executable
-              4. Get the TII from one of the functions in the
-            LiftedRepresentation
-            */
-            // auto LR = luthier::lift(*KernelSymbol);
-            // LUTHIER_REPORT_FATAL_ON_ERROR(LR.takeError());
-            // auto funcIt = LR->functions().begin();
-            // // TODO:funcIt != LR.functions().function_end()
-            // llvm::MachineFunction *First_MF = funcIt->second;
-            // const llvm::TargetInstrInfo *TII =
-            // First_MF->getSubtarget().getInstrInfo();
-            for (auto opcode = 0; opcode < llvm::AMDGPU::INSTRUCTION_LIST_END;
-                 ++opcode) {
-              if (KernelHistogram[opcode] != 0) {
-                std::string OpcodeName = TII->getName(opcode).str();
-                llvm::outs() << llvm::formatv("  {0} = {1}\n",
-                                              OpcodeName, // index
-                                              KernelHistogram[opcode]);
+            luthier::errs()
+                << "Histogram for kernel " << KernelNameToBePrinted << ":\n";
+            for (auto Opcode = 0; Opcode < llvm::AMDGPU::INSTRUCTION_LIST_END;
+                 ++Opcode) {
+              if (HistogramHost[Opcode] != 0) {
+                std::string OpcodeName = TII->getName(Opcode).str();
+                luthier::errs() << llvm::formatv("  {0} = {1}\n",
+                                                 OpcodeName, // index
+                                                 HistogramHost[Opcode]);
               }
             }
           }
@@ -409,17 +368,60 @@ static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
   }
 }
 
-llvm::StringRef getToolName() {
-  const static std::string ToolName{"LuthierOpcodeHistogram"};
-  return ToolName;
-}
+llvm::StringRef getToolName() { return *ToolName; }
 
 void atToolInit(ApiEvtPhase Phase) {
   if (Phase == API_EVT_PHASE_BEFORE) {
-    llvm::outs() << "Opcode Histogram tool is launching.\n";
-  } else {
-    // Allocate a new string map
+    luthier::errs() << "Opcode Histogram tool is launching.\n";
+
+    /// Define an option category for the instruction count tool
+    OpcodeHistogramToolOptionCategory =
+        new llvm::cl::OptionCategory("Opcode Histogram Tool Options");
+
+    InstrBeginInterval = new llvm::cl::opt<unsigned int>(
+        "instr-begin-interval",
+        llvm::cl::desc("Beginning of the instruction interval where to "
+                       "apply instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    InstrEndInterval = new llvm::cl::opt<unsigned int>(
+        "instr-end-interval",
+        llvm::cl::desc("End of the instruction interval where to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    KernelBeginInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-start-interval",
+        llvm::cl::desc("Beginning of the kernel interval to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    KernelEndInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-end-interval",
+        llvm::cl::desc(
+            "End of the kernel interval to apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    CountWavefrontLevel = new llvm::cl::opt<bool>(
+        "count-wavefront-level",
+        llvm::cl::desc("Count instructions at the wavefront level"),
+        llvm::cl::init(false), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    DemangleKernelNames = new llvm::cl::opt<bool>(
+        "demangle-kernel-names",
+        llvm::cl::desc("Whether to demangle kernel names before printing"),
+        llvm::cl::init(true), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    ToolName = new std::string{"luthier opcode histogram tool"};
+
     GlobalHistogram = new llvm::StringMap<uint64_t>();
+  } else {
     // Set the callback for when the HSA API table is captured
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
     // Set the HSA API callback
@@ -428,16 +430,32 @@ void atToolInit(ApiEvtPhase Phase) {
 }
 
 void atToolFini(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER) {
-    llvm::outs() << "Instruction Opcode Results: \n";
+  if (Phase == API_EVT_PHASE_BEFORE) {
+    luthier::errs() << "Instruction Opcode Results: \n";
     for (const auto &[OpcodeName, Count] : *GlobalHistogram) {
-      llvm::outs() << llvm::formatv("  {0} = {1}\n",
-                                    OpcodeName, // index
-                                    Count);
+      luthier::errs() << llvm::formatv("  {0} = {1}\n",
+                                       OpcodeName, // index
+                                       Count);
     }
+    delete InstrBeginInterval;
+
+    delete InstrEndInterval;
+
+    delete KernelBeginInterval;
+
+    delete KernelEndInterval;
+
+    delete CountWavefrontLevel;
+
+    delete DemangleKernelNames;
+
+    delete OpcodeHistogramToolOptionCategory;
+
+    delete ToolName;
+
     delete GlobalHistogram;
-    llvm::outs() << "Total number of instructions counted: "
-                 << TotalNumInstructions << "\n";
+    luthier::errs() << "Total number of instructions counted: "
+                    << TotalNumInstructions << "\n";
   }
 }
 

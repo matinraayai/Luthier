@@ -82,7 +82,7 @@ static bool ActiveRegion = true;
 
 /// A Mutex, used to protect the Counter value and ActiveRegion, effectively
 /// makes all kernels launch sequentially
-std::mutex Mutex;
+std::recursive_mutex Mutex;
 
 /// The current kernel being instrumented
 static const luthier::hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{
@@ -147,42 +147,27 @@ static llvm::Error instrumentationLoop(InstrumentationTask &IT,
   auto *CountWavefrontLevelConstVal =
       llvm::ConstantInt::getBool(LR.getContext(), *CountWavefrontLevel);
   unsigned int I = 0;
-  for (auto &MBB : LR.getKernelMF()) {
-    for (auto &MI : MBB) {
-      if (I >= *InstrBeginInterval && I < *InstrEndInterval) {
-        bool IsScalar = luthier::isScalar(MI);
-        bool IsLaneAccess = luthier::isLaneAccess(MI);
-        if (IsScalar || IsLaneAccess)
-          LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-              MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
-//        else
-//          LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-//              MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
-//              {CountWavefrontLevelConstVal}));
-      }
-      I++;
-    }
-  }
-
-  for (auto &[_, MF] : LR.functions()) {
-    for (auto &MBB : *MF) {
-      for (auto &MI : MBB) {
-        if (I >= *InstrBeginInterval && I < *InstrEndInterval) {
-          bool IsScalar = luthier::isScalar(MI);
-          bool IsLaneAccess = luthier::isLaneAccess(MI);
-          if (IsScalar || IsLaneAccess)
-            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-                MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
-//          else
-//            LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-//                MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
-//                {CountWavefrontLevelConstVal}));
+  return LR.iterateAllDefinedFunctionTypes(
+      [&](const hsa::LoadedCodeObjectSymbol &Sym,
+          llvm::MachineFunction &MF) -> llvm::Error {
+        for (auto &MBB : MF) {
+          for (auto &MI : MBB) {
+            if (I >= *InstrBeginInterval && I < *InstrEndInterval) {
+              bool IsScalar = luthier::isScalar(MI);
+              bool IsLaneAccess = luthier::isLaneAccess(MI);
+              if (IsScalar || IsLaneAccess)
+                LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+                    MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsScalar)));
+              else
+                LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+                    MI, LUTHIER_GET_HOOK_HANDLE(countInstructionsVector),
+                    {CountWavefrontLevelConstVal}));
+            }
+            I++;
+          }
         }
-        I++;
-      }
-    }
-  }
-  return llvm::Error::success();
+        return llvm::Error::success();
+      });
 }
 
 static llvm::Error instrumentKernel(const hsa::LoadedCodeObjectKernel &Kernel) {

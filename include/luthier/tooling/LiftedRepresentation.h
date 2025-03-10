@@ -29,11 +29,19 @@
 #include <luthier/hsa/DenseMapInfo.h>
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
-#include <luthier/hsa/LoadedCodeObjectSymbol.h>
+#include <luthier/hsa/LoadedCodeObjectKernel.h>
 
 namespace luthier {
 
 class CodeLifter;
+
+namespace hsa {
+
+class LoadedCodeObjectVariable;
+
+class LoadedCodeObjectExternSymbol;
+
+} // namespace hsa
 
 /// \brief Holds information regarding a lifted AMD GPU kernel and the mapping
 /// between the HSA and LLVM objects involved in the representation
@@ -78,12 +86,13 @@ private:
   /// MF of the lifted kernel
   llvm::MachineFunction *KernelMF{};
 
-  /// Mapping between the kernel and potentially called device function
+  /// Mapping between the potentially called device function
   /// symbols and their \c llvm::MachineFunction
   std::unordered_map<
-      std::unique_ptr<hsa::LoadedCodeObjectSymbol>, llvm::MachineFunction *,
-      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectSymbol>,
-      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectSymbol>>
+      std::unique_ptr<hsa::LoadedCodeObjectDeviceFunction>,
+      llvm::MachineFunction *,
+      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectDeviceFunction>,
+      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectDeviceFunction>>
       Functions{};
 
   /// Mapping between static variables potentially used by the kernel and
@@ -283,8 +292,8 @@ public:
 
   /// \return the \c llvm::Function associated with
   /// \p DevFunc if exists \c nullptr otherwise
-  [[nodiscard]] const llvm::Function *getLiftedEquivalent(
-      const hsa::LoadedCodeObjectDeviceFunction &DevFunc) const;
+  [[nodiscard]] const llvm::Function *
+  getLiftedEquivalent(const hsa::LoadedCodeObjectDeviceFunction &DevFunc) const;
 
   /// \return the \c llvm::Function associated with
   /// \p DevFunc if exists \c nullptr otherwise

@@ -245,6 +245,10 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
       TargetMAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(
           TargetModule);
 
+  if (!MF.getFunction().hasFnAttribute(InjectedPayloadAttribute)) {
+    return true;
+  }
+
   auto *SVALoadPlan =
       StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
           *IPIP.at(MF.getFunction()));
