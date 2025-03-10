@@ -25,7 +25,7 @@
 #include "IModuleIRGeneratorPass.hpp"
 #include "MMISlotIndexesAnalysis.hpp"
 #include "hsa/LoadedCodeObject.hpp"
-#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
 #include "tooling_common/StateValueArrayStorage.hpp"
@@ -129,7 +129,7 @@ public:
   llvm::Error calculate(
       const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
       const MMISlotIndexesAnalysis::Result &SlotIndexes,
-      const LRRegisterLiveness &RegLiveness,
+      const AMDGPURegisterLiveness &RegLiveness,
       const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
       const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns);
 
@@ -164,7 +164,6 @@ class LRStateValueStorageAndLoadLocationsAnalysis
   static llvm::AnalysisKey Key;
 
 public:
-
   using Result = SVStorageAndLoadLocations;
 
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);

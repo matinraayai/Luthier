@@ -22,7 +22,7 @@ add_library(LuthierToolingCommon OBJECT
         PhysicalRegAccessVirtualizationPass.cpp
         SVStorageAndLoadLocations.cpp
         LRCallGraph.cpp
-        LRRegisterLiveness.cpp
+        AMDGPURegisterLiveness.cpp
         IntrinsicMIRLoweringPass.cpp
         InjectedPayloadPEIPass.cpp
         PrePostAmbleEmitter.cpp

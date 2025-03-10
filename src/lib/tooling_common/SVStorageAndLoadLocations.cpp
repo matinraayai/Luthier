@@ -19,8 +19,8 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/SVStorageAndLoadLocations.hpp"
 #include "luthier/common/LuthierError.h"
+#include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "luthier/tooling/LRCallgraph.h"
-#include "luthier/tooling/LRRegisterLiveness.h"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include "tooling_common/MMISlotIndexesAnalysis.hpp"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
@@ -407,7 +407,7 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
 llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
     const MMISlotIndexesAnalysis::Result &SlotIndexes,
-    const LRRegisterLiveness &RegLiveness,
+    const AMDGPURegisterLiveness &RegLiveness,
     const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
   llvm::SmallVector<llvm::MachineFunction *, 4> MFs;
@@ -473,7 +473,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     }
     for (const auto &[InsertionPointMI, HookFunction] : IPIP.mi_payload()) {
       auto *HookLiveRegs =
-          RegLiveness.getLiveInPhysRegsOfMachineInstr(*InsertionPointMI);
+          RegLiveness.getMFLevelInstrLiveIns(*InsertionPointMI);
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
           HookLiveRegs != nullptr,
           "Failed to get the Live Physical register set for MI {0}.",
@@ -503,7 +503,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       // usage of the kernel the same as before, these needs to be initialized
       // to the last available SGPR/VGPR/AGPR
       auto FirstMILiveIns =
-          RegLiveness.getLiveInPhysRegsOfMachineInstr(*MF->begin()->begin());
+          RegLiveness.getMFLevelInstrLiveIns(*MF->begin()->begin());
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
           FirstMILiveIns != nullptr,
           "Failed to obtain the live physical regs for MI {0}.",
@@ -539,7 +539,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
         for (const auto &MI : MBB) {
           if (IPIP.contains(MI))
             HookInsertionPointsInCurrentSegment.insert(&MI);
-          auto *InstrLiveRegs = RegLiveness.getLiveInPhysRegsOfMachineInstr(MI);
+          auto *InstrLiveRegs = RegLiveness.getMFLevelInstrLiveIns(MI);
           LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
               InstrLiveRegs != nullptr,
               "Failed to get the live physical register set for MI {0}.", MI));
@@ -572,8 +572,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
             CurrentMBBSegments.emplace_back(CurrentIntervalBegin, NextIndex,
                                             SVS);
             for (const auto &HookMI : HookInsertionPointsInCurrentSegment) {
-              auto *HookLiveRegs =
-                  RegLiveness.getLiveInPhysRegsOfMachineInstr(*HookMI);
+              auto *HookLiveRegs = RegLiveness.getMFLevelInstrLiveIns(*HookMI);
               auto [HookSVGPR, ClobbersAppReg] =
                   selectVGPRLoadLocationForInjectedPayload(
                       *HookMI, *SVS, *HookLiveRegs,
@@ -613,7 +612,7 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
       TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
           ->getMMI(),
       TargetModule, TargetMAM.getResult<MMISlotIndexesAnalysis>(TargetModule),
-      *TargetMAM.getCachedResult<LRRegLivenessAnalysis>(TargetModule),
+      *TargetMAM.getCachedResult<AMDGPURegLivenessAnalysis>(TargetModule),
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule),
       TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule),
       IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)

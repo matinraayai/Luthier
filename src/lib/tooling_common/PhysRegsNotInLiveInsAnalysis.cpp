@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
 #include "luthier/consts.h"
-#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/Support/FormatVariadic.h>
@@ -53,7 +53,7 @@ PhysRegsNotInLiveInsAnalysis::run(llvm::Module &IModule,
       *TM.getSubtargetImpl(*IModule.functions().begin())->getRegisterInfo());
 
   const auto &LRRegLiveness =
-      MAM.getResult<LRRegLivenessAnalysis>(TargetModule);
+      MAM.getResult<AMDGPURegLivenessAnalysis>(TargetModule);
 
   for (const auto &LoweringInfo : IntrinsicIRLoweringInfoMap) {
     auto &PlaceHolderInlineAsm = LoweringInfo.getPlaceHolderInlineAsm();
@@ -70,8 +70,7 @@ PhysRegsNotInLiveInsAnalysis::run(llvm::Module &IModule,
         if (IntrinsicUserFunction->hasFnAttribute(InjectedPayloadAttribute)) {
           for (const auto &UsedPhysReg : LoweringInfo.accessed_phys_regs()) {
             const auto *MIInsertionPoint = IPIP.at(*IntrinsicUserFunction);
-            if (!LRRegLiveness
-                     .getLiveInPhysRegsOfMachineInstr(*MIInsertionPoint)
+            if (!LRRegLiveness.getMFLevelInstrLiveIns(*MIInsertionPoint)
                      ->contains(UsedPhysReg)) {
               if (Out->empty())
                 Out->init(*TM.getSubtargetImpl(*IntrinsicUserFunction)

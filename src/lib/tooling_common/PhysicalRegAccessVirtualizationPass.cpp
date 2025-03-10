@@ -237,7 +237,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   auto &IPIP =
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
-  auto &RegLiveness = TargetMAM.getResult<LRRegLivenessAnalysis>(TargetModule);
+  auto &RegLiveness = TargetMAM.getResult<AMDGPURegLivenessAnalysis>(TargetModule);
 
   const auto &CG = TargetMAM.getResult<LRCallGraphAnalysis>(TargetModule);
 
@@ -298,8 +298,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
       *InstPointMF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
   // Get the originally calculated live-in registers at the function level
   // and add them to the final set
-  auto *MILivePhysRegs =
-      RegLiveness.getLiveInPhysRegsOfMachineInstr(*InstPointMI);
+  auto *MILivePhysRegs = RegLiveness.getMFLevelInstrLiveIns(*InstPointMI);
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
       MILivePhysRegs != nullptr,
       "Failed to find the physical live-in regs for machine instruction {0} "
@@ -341,7 +340,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
             for (const auto &LRMI : LRMBB) {
               if (LRMI.isCall()) {
                 auto *LRMILivePhysRegs =
-                    RegLiveness.getLiveInPhysRegsOfMachineInstr(LRMI);
+                    RegLiveness.getMFLevelInstrLiveIns(LRMI);
                 LUTHIER_REPORT_FATAL_ON_ERROR(
                     LUTHIER_ERROR_CHECK(LRMILivePhysRegs != nullptr,
                                         "Failed to find the physical live-in "
@@ -362,8 +361,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
                         "Adding the call instruction live-ins.\n";);
       for (const auto &[CallMI, Parent] :
            CG.getCallGraphNode(InstPointMF).CalleeFunctions) {
-        auto *CallMILivePhysRegs =
-            RegLiveness.getLiveInPhysRegsOfMachineInstr(*CallMI);
+        auto *CallMILivePhysRegs = RegLiveness.getMFLevelInstrLiveIns(*CallMI);
         LUTHIER_REPORT_FATAL_ON_ERROR(
             LUTHIER_ERROR_CHECK(CallMILivePhysRegs != nullptr, ""));
         add32BitRegsOfLivePhysRegsToDenseSet(*CallMILivePhysRegs, InstPointTRI,

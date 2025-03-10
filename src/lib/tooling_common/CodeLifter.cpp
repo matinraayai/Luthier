@@ -317,7 +317,7 @@ CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
   size_t GVSize = GV.getSize();
   // Lift each variable as an array of bytes, with a length of GVSize
   // We remove any initializers present in the LCO
-  LR.RelatedGlobalVariables[GV.clone()] = new llvm::GlobalVariable(
+  LR.Variables[GV.clone()] = new llvm::GlobalVariable(
       *LR.Module,
       llvm::ArrayType::get(llvm::Type::getInt8Ty(LLVMContext), GVSize), false,
       llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr, *GVName);
@@ -590,7 +590,7 @@ llvm::Error CodeLifter::initLiftedDeviceFunctionEntry(
 
   // TODO: Fix alignment value depending on the function type
   MF.setAlignment(llvm::Align(4096));
-  LR.RelatedFunctions.emplace(
+  LR.Functions.emplace(
       llvm::unique_dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func.clone()),
       &MF);
   return llvm::Error::success();
@@ -821,13 +821,13 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                                    TargetSymbolName,
                                    reinterpret_cast<luthier::address_t>(
                                        *TargetSymbolAddress)));
-              auto GV = LR.RelatedGlobalVariables.find(TargetSymbol);
+              auto GV = LR.Variables.find(TargetSymbol);
 
               auto TargetSymbolNameOrErr = TargetSymbol.getName();
               LUTHIER_RETURN_ON_ERROR(TargetSymbolNameOrErr.takeError());
 
               LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-                  GV != LR.RelatedGlobalVariables.end(),
+                  GV != LR.Variables.end(),
                   "Failed to find the GV associated with Symbol {0} in the LR.",
                   *TargetSymbolNameOrErr));
 
@@ -840,9 +840,9 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                            *TargetSymbolAsDevFunc = llvm::dyn_cast<
                                hsa::LoadedCodeObjectDeviceFunction>(
                                &TargetSymbol)) {
-              auto UsedMF = LR.RelatedFunctions.find(TargetSymbolAsDevFunc);
+              auto UsedMF = LR.Functions.find(TargetSymbolAsDevFunc);
               LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-                  UsedMF != LR.RelatedFunctions.end(),
+                  UsedMF != LR.Functions.end(),
                   "Failed to find the related function in map."));
               llvm::Function &UsedF = UsedMF->second->getFunction();
 
@@ -1146,7 +1146,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
 
   // With all Modules and MMIs cloned, we need to populate the related
   // functions and related global variables. We use the VMap to do this
-  for (const auto &[GVHandle, GV] : SrcLR.RelatedGlobalVariables) {
+  for (const auto &[GVHandle, GV] : SrcLR.Variables) {
     auto GVDestEntry = VMap.find(GV);
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
         GVDestEntry != VMap.end(),
@@ -1154,9 +1154,9 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
         "variable for {0} during Lifted Representation cloning.",
         *GV));
     auto *DestGV = cast<llvm::GlobalVariable>(GVDestEntry->second);
-    DestLR->RelatedGlobalVariables.emplace(GVHandle->clone(), DestGV);
+    DestLR->Variables.emplace(GVHandle->clone(), DestGV);
   }
-  for (const auto &[FuncSymbol, SrcMF] : SrcLR.RelatedFunctions) {
+  for (const auto &[FuncSymbol, SrcMF] : SrcLR.Functions) {
     auto FDestEntry = VMap.find(&SrcMF->getFunction());
     LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
         FDestEntry != VMap.end(),
@@ -1166,7 +1166,7 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
     auto *DestF = cast<llvm::Function>(FDestEntry->second);
     // Get the MMI of the dest function
     auto DestMF = DestLR->getMMI().getMachineFunction(*DestF);
-    DestLR->RelatedFunctions.emplace(
+    DestLR->Functions.emplace(
         llvm::unique_dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(
             FuncSymbol->clone()),
         DestMF);

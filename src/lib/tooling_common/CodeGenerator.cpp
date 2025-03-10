@@ -23,7 +23,7 @@
 #include "hsa/LoadedCodeObject.hpp"
 #include "luthier/comgr/ComgrError.h"
 #include "luthier/common/LuthierError.h"
-#include "luthier/tooling/LRRegisterLiveness.h"
+#include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
 #include "tooling_common/MMISlotIndexesAnalysis.hpp"
@@ -212,7 +212,7 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Add the LCO Analysis pass
   TargetMAM.registerPass([&]() { return LoadedCodeObjectAnalysis(LCO); });
   // Add the LR Register Liveness pass
-  TargetMAM.registerPass([&]() { return LRRegLivenessAnalysis(); });
+  TargetMAM.registerPass([&]() { return AMDGPURegLivenessAnalysis(); });
   // Add the LR Callgraph analysis pass
   TargetMAM.registerPass([&]() { return LRCallGraphAnalysis(); });
   // Add the MMI-wide Slot indexes analysis pass
