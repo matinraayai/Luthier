@@ -1,4 +1,4 @@
-//===-- LRRegisterLiveness.h ------------------------------------*- C++ -*-===//
+//===-- AMDGPURegisterLiveness.h --------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
 /// \file
-/// This file describes the \c LRRegisterLiveness class, which calculates the
-/// register live-in sets for each \c llvm::MachineInstr of a
-/// \c LiftedRepresentation at a machine function level.
+/// This file describes the \c AMDGPURegisterLiveness class and its pass,
+/// which calculates the register live-in sets for each \c llvm::MachineInstr
+/// of all <tt>llvm::MachineFunction</tt>s inside a <tt>llvm::MachineModuleInfo.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LR_REGISTER_LIVENESS_H
-#define LUTHIER_LR_REGISTER_LIVENESS_H
+#ifndef LUTHIER_AMDGPU_REGISTER_LIVENESS_H
+#define LUTHIER_AMDGPU_REGISTER_LIVENESS_H
 #include "LRCallgraph.h"
 #include "VectorCFG.h"
-#include <hsa/hsa.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineInstr.h>
@@ -32,43 +30,43 @@
 
 namespace luthier {
 
-class LiftedRepresentation;
-
-class LRRegisterLiveness {
+class AMDGPURegisterLiveness {
 private:
+  /// Mapping between every machine function inside the MMI and its
+  /// \c VectorCFG
   llvm::DenseMap<const llvm::MachineFunction *, std::unique_ptr<VectorCFG>>
-      VecCFG;
+      VecCFGs;
 
-  /// A mapping between an \c llvm::MachineInstr and the set of physical
-  /// registers that are live right before it\n
-  /// This mapping is only valid before any LLVM pass is run over the Modules
-  /// and MMIs of the \c LR
+  /// The callgraph analysis result of the MMI
+  /// TODO: Use call graph to calculate liveness at a global level
+  const LRCallGraph &CG;
+
+  /// A mapping between an \c llvm::MachineInstr of the MMI and the set of
+  /// physical registers that are live right before it is executed.
+  /// The live registers here only includes ones obtained using data-flow
+  /// at the \c llvm::MachineFunction level. It does not consider
+  /// the registers that are live at the call sites of the function
+  /// the \c llvm::MachineInstr belongs to
   llvm::DenseMap<const llvm::MachineInstr *,
                  std::unique_ptr<llvm::LivePhysRegs>>
       MachineInstrLivenessMap{};
 
 public:
-  LRRegisterLiveness() = default;
+  AMDGPURegisterLiveness(const llvm::Module &M,
+                         const llvm::MachineModuleInfo &MMI,
+                         const LRCallGraph &CG);
 
   /// \returns the set of physical registers that are live before executing
-  /// the instruction \p MI
-  /// \note This
+  /// the instruction \p MI at the function level, or nullptr if the
+  /// live register set of \p MI was not found
   [[nodiscard]] const llvm::LivePhysRegs *
-  getLiveInPhysRegsOfMachineInstr(const llvm::MachineInstr &MI) const {
+  getMFLevelInstrLiveIns(const llvm::MachineInstr &MI) const {
     auto It = MachineInstrLivenessMap.find(&MI);
     if (It == MachineInstrLivenessMap.end())
       return nullptr;
     else
       return It->second.get();
   }
-
-  /// Recomputes the Live-ins map for each \c llvm::MachineInstr in the Lifted
-  /// Representation
-  /// This includes both the instructions lifted from the code objects, and
-  /// the ones manually injected by the tool writer
-  void recomputeLiveIns(const llvm::Module &M,
-                        const llvm::MachineModuleInfo &MMI,
-                        const LRCallGraph &CG);
 
   /// Never invalidate the results
   bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
@@ -77,19 +75,19 @@ public:
   }
 };
 
-class LRRegLivenessAnalysis
-    : public llvm::AnalysisInfoMixin<LRRegLivenessAnalysis> {
+/// \brief the analysis pass used to obtain the \c AMDGPURegisterLiveness
+class AMDGPURegLivenessAnalysis
+    : public llvm::AnalysisInfoMixin<AMDGPURegLivenessAnalysis> {
 private:
-  friend AnalysisInfoMixin<LRRegLivenessAnalysis>;
+  friend AnalysisInfoMixin<AMDGPURegLivenessAnalysis>;
 
   static llvm::AnalysisKey Key;
 
 public:
-  using Result = LRRegisterLiveness;
+  using Result = AMDGPURegisterLiveness;
 
-  LRRegLivenessAnalysis() = default;
+  AMDGPURegLivenessAnalysis() = default;
 
-  /// Run the analysis pass that would
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 };
 
