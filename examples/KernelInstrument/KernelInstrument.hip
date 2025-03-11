@@ -18,18 +18,6 @@
 /// This file implements a sample kernel instrumentation tool.
 //===----------------------------------------------------------------------===//
 #include <luthier/luthier.h>
-// undef ICMP_NE macro that was ill-defined in HIP headers
-#undef ICMP_NE
-#include <GCNSubtarget.h>
-#include <llvm/Support/FormatVariadic.h>
-#include <mutex>
-
-// #define GET_REGINFO_ENUM
-// #include "AMDGPUGenRegisterInfo.inc"
-//
-// #define GET_INSTRINFO_ENUM
-// #define GET_INSTRINFO_OPERAND_ENUM
-// #include "AMDGPUGenInstrInfo.inc"
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-kernel-instrument-tool"
@@ -130,32 +118,30 @@ static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
         if (auto Err = KernelSymbol.takeError())
           llvm::report_fatal_error(std::move(Err), true);
         if (!llvm::cantFail(
-                isKernelInstrumented(*KernelSymbol, "instrumented"))) {
-          auto Exec = llvm::cantFail(KernelSymbol->getExecutable());
+                isKernelInstrumented(**KernelSymbol, "instrumented"))) {
 
-          auto LiftedKernel = luthier::lift(Exec);
+          auto LiftedKernel = luthier::lift(**KernelSymbol);
           if (auto Err = LiftedKernel.takeError())
             llvm::report_fatal_error(std::move(Err), true);
 
           if (auto Err = luthier::instrumentAndLoad(
-                  Exec, *LiftedKernel,
+                  **KernelSymbol, *LiftedKernel,
                   [&](InstrumentationTask &IT,
                       LiftedRepresentation &LR) -> llvm::Error {
                     // insert a hook after the first instruction of each basic
                     // block
-                    for (auto &[Func, MF] : LR.functions()) {
-                      auto &MBB = MF->front();
-                      if (auto Err = IT.insertHookBefore(
+                    return LR.iterateAllDefinedFunctionTypes(
+                        [&](const hsa::LoadedCodeObjectSymbol &Sym,
+                            llvm::MachineFunction &MF) -> llvm::Error {
+                          auto &MBB = MF.front();
+                          return IT.insertHookBefore(
                               *MBB.begin()
                                    ->getNextNode()
                                    ->getNextNode()
                                    ->getNextNode(),
                               LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
-                              {llvm::AMDGPU::SGPR4_SGPR5})) {
-                        return Err;
-                      }
-                    }
-                    return llvm::Error::success();
+                              {llvm::AMDGPU::SGPR4_SGPR5});
+                        });
                   },
                   "instrumented")) {
             llvm::report_fatal_error(std::move(Err), true);

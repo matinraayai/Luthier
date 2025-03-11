@@ -435,7 +435,6 @@ static llvm::Expected<T> copyDeviceBufferToHost(T &DevBuffer) {
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
           &HostBuffer, DevBufferAddr, sizeof(T))));
-  luthier::errs() << "Host value of device buffer: " << HostBuffer << "\n";
   return HostBuffer;
 }
 

@@ -21,13 +21,9 @@
 #include <luthier/luthier.h>
 #include <mutex>
 #include <thread>
-// undef ICMP_NE macro that was ill-defined in HIP headers
-#undef ICMP_NE
-#include <SIInstrInfo.h>
+
+#include <hip/hip_runtime_api.h>
 #include <llvm/Demangle/Demangle.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/Support/CommandLine.h>
-#include <llvm/Support/FormatVariadic.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-kernarg-instrinsic"
@@ -38,48 +34,23 @@ using namespace luthier;
 // Commandline arguments for the tool
 //===----------------------------------------------------------------------===//
 
-llvm::cl::OptionCategory KernelArgumentIntrinsicToolOptionCategory(
-    "Kernel Argument Intrinsic Tool Options");
+static llvm::cl::OptionCategory *KernelArgumentIntrinsicToolOptionCategory;
 
-static llvm::cl::opt<unsigned int> InstrBeginInterval(
-    "instr-begin-interval",
-    llvm::cl::desc("Beginning of the instruction interval where to "
-                   "apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(KernelArgumentIntrinsicToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrBeginInterval;
 
-static llvm::cl::opt<unsigned int>
-    InstrEndInterval("instr-end-interval",
-                     llvm::cl::desc("End of the instruction interval where to "
-                                    "apply instrumentation, exclusive"),
-                     llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-                     llvm::cl::NotHidden,
-                     llvm::cl::cat(KernelArgumentIntrinsicToolOptionCategory));
+static llvm::cl::opt<unsigned int> *InstrEndInterval;
 
-static llvm::cl::opt<unsigned int> KernelBeginInterval(
-    "kernel-begin-interval",
-    llvm::cl::desc(
-        "Beginning of the kernel interval to apply instrumentation, inclusive"),
-    llvm::cl::init(0), llvm::cl::NotHidden,
-    llvm::cl::cat(KernelArgumentIntrinsicToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelBeginInterval;
 
-static llvm::cl::opt<unsigned int> KernelEndInterval(
-    "kernel-end-interval",
-    llvm::cl::desc(
-        "End of the kernel interval to apply instrumentation, exclusive"),
-    llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-    llvm::cl::NotHidden,
-    llvm::cl::cat(KernelArgumentIntrinsicToolOptionCategory));
+static llvm::cl::opt<unsigned int> *KernelEndInterval;
 
-static llvm::cl::opt<bool> DemangleKernelNames(
-    "demangle-kernel-names",
-    llvm::cl::desc("Whether to demangle kernel names before printing"),
-    llvm::cl::init(true), llvm::cl::NotHidden,
-    llvm::cl::cat(KernelArgumentIntrinsicToolOptionCategory));
+static llvm::cl::opt<bool> *DemangleKernelNames;
 
 //===----------------------------------------------------------------------===//
 // Global variables of the tool
 //===----------------------------------------------------------------------===//
+
+static std::string *ToolName;
 
 /// Number of kernels launched so far
 static uint32_t NumKernelLaunched = 0;
@@ -118,11 +89,13 @@ LUTHIER_EXPORT_HOOK_HANDLE(accessKernelArg);
 
 static llvm::Error instrumentationLoop(InstrumentationTask &IT,
                                        LiftedRepresentation &LR) {
-  for (auto &[_, MF] : LR.functions()) {
-    LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
-        MF->begin()->front(), LUTHIER_GET_HOOK_HANDLE(accessKernelArg)));
-  }
-  return llvm::Error::success();
+  return LR.iterateAllDefinedFunctionTypes(
+      [&](const hsa::LoadedCodeObjectSymbol &Sym,
+          llvm::MachineFunction &MF) -> llvm::Error {
+        LUTHIER_RETURN_ON_ERROR(IT.insertHookBefore(
+            MF.begin()->front(), LUTHIER_GET_HOOK_HANDLE(accessKernelArg)));
+        return llvm::Error::success();
+      });
 }
 
 static void
@@ -162,9 +135,9 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
 
-          KernelBeingInstrumented = &(*KernelSymbol);
+          KernelBeingInstrumented = KernelSymbol->release();
 
-          auto KernelName = KernelSymbol->getName();
+          auto KernelName = KernelBeingInstrumented->getName();
           LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
           std::string KernelNameToBePrinted = DemangleKernelNames
                                                   ? llvm::demangle(*KernelName)
@@ -189,9 +162,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
               hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
                   DispatchPacket->completion_signal);
 
-          if (NumKernelLaunched >= KernelBeginInterval &&
-              NumKernelLaunched < KernelEndInterval &&
-              !llvm::cantFail(KernelSymbol->getName()).contains("rocclr")) {
+          if (NumKernelLaunched >= *KernelBeginInterval &&
+              NumKernelLaunched < *KernelEndInterval) {
             ActiveRegion = true;
           } else {
             ActiveRegion = false;
@@ -201,18 +173,17 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
           if (ActiveRegion) {
             llvm::outs() << "Kernel is being instrumented.\n";
 
-            auto IsKernelInstrumented =
-                isKernelInstrumented(*KernelSymbol, "kernarg_access");
+            auto IsKernelInstrumented = isKernelInstrumented(
+                *KernelBeingInstrumented, "kernarg_access");
             LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
             if (!*IsKernelInstrumented) {
 
-              instrumentAllFunctionsOfLR(*KernelSymbol);
-
-              LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
-                  *DispatchPacket, "kernarg_access"));
-              // Zero the counter
-              BlockCount = {0, 0, 0};
+              instrumentAllFunctionsOfLR(*KernelBeingInstrumented);
             }
+            LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
+                *DispatchPacket, "kernarg_access"));
+            // Zero the counter
+            BlockCount = {0, 0, 0};
           }
         } else {
           llvm::outs() << "Active region in the exit callback: " << ActiveRegion
@@ -285,12 +256,52 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
 }
 namespace luthier {
 
-llvm::StringRef getToolName() {
-  const static std::string ToolName{"LuthierKernelArgumentIntrinsicTool"};
-  return ToolName;
-}
+llvm::StringRef getToolName() { return *ToolName; }
 
 static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
+  if (Phase == API_EVT_PHASE_BEFORE) {
+    KernelArgumentIntrinsicToolOptionCategory =
+        new llvm::cl::OptionCategory("Kernel Argument Intrinsic Tool Options");
+
+    InstrBeginInterval = new llvm::cl::opt<unsigned int>(
+        "instr-begin-interval",
+        llvm::cl::desc("Beginning of the instruction interval where to "
+                       "apply instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*KernelArgumentIntrinsicToolOptionCategory));
+
+    InstrEndInterval = new llvm::cl::opt<unsigned int>(
+        "instr-end-interval",
+        llvm::cl::desc("End of the instruction interval where to "
+                       "apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden,
+        llvm::cl::cat(*KernelArgumentIntrinsicToolOptionCategory));
+
+    KernelBeginInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-begin-interval",
+        llvm::cl::desc("Beginning of the kernel interval to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*KernelArgumentIntrinsicToolOptionCategory));
+
+    KernelEndInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-end-interval",
+        llvm::cl::desc(
+            "End of the kernel interval to apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden,
+        llvm::cl::cat(*KernelArgumentIntrinsicToolOptionCategory));
+
+    DemangleKernelNames = new llvm::cl::opt<bool>(
+        "demangle-kernel-names",
+        llvm::cl::desc("Whether to demangle kernel names before printing"),
+        llvm::cl::init(true), llvm::cl::NotHidden,
+        llvm::cl::cat(*KernelArgumentIntrinsicToolOptionCategory));
+
+    ToolName = new std::string{"LuthierKernelArgumentIntrinsicTool"};
+  }
+
   if (Phase == API_EVT_PHASE_AFTER) {
     LUTHIER_REPORT_FATAL_ON_ERROR(hsa::enableHsaApiEvtIDCallback(
         hsa::HSA_API_EVT_ID_hsa_queue_packet_submit));
@@ -308,6 +319,22 @@ void atToolInit(ApiEvtPhase Phase) {
   }
 }
 
-void atToolFini(ApiEvtPhase Phase) {}
+void atToolFini(ApiEvtPhase Phase) {
+
+  delete InstrBeginInterval;
+
+  delete InstrEndInterval;
+
+  delete KernelBeginInterval;
+
+  delete KernelEndInterval;
+
+  delete DemangleKernelNames;
+
+  delete ToolName;
+
+  delete KernelArgumentIntrinsicToolOptionCategory;
+
+}
 
 } // namespace luthier
