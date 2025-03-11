@@ -1,4 +1,4 @@
-//===-- CodeObjectReader.hpp - HSA Code Object Reader Wrapper -------------===//
+//===-- CodeObjectReader.hpp ----------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,13 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c CodeObjectReader class under the \c luthier::hsa
-/// namespace, representing a wrapper around the \c hsa_code_object_reader_t
-/// in charge of reading AMDGPU code objects into an \c Executable and
-/// creating a <tt>LoadedCodeObject</tt>.
+/// This file defines the \c hsa::CodeObjectReader interface, representing
+/// a wrapper around <tt>hsa_code_object_reader_t</tt>.
+/// It is in charge of reading AMDGPU code objects into an \c Executable and
+/// creating a <tt>hsa::LoadedCodeObject</tt>.
 //===----------------------------------------------------------------------===//
-#ifndef HSA_CODE_OBJECT_READER_HPP
-#define HSA_CODE_OBJECT_READER_HPP
+#ifndef LUTHIER_HSA_CODE_OBJECT_READER_HPP
+#define LUTHIER_HSA_CODE_OBJECT_READER_HPP
 #include "hsa/HandleType.hpp"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringRef.h>
@@ -30,32 +30,10 @@
 namespace luthier::hsa {
 
 /// \brief Wrapper around the \c hsa_code_object_reader_t handle
-/// \note
 class CodeObjectReader : public HandleType<hsa_code_object_reader_t> {
-
 public:
-  /// Factory function, which creates a handle to a \c CodeObjectReader from
-  /// an \p Elf in memory
-  /// \param Elf the code object to be loaded
-  /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
-  /// \sa hsa_code_object_reader_create_from_memory
-  static llvm::Expected<CodeObjectReader> createFromMemory(llvm::StringRef Elf);
-
-  /// Factory function, which creates a handle to a \c CodeObjectReader from
-  /// an \p Elf in memory
-  /// \param Elf the code object to be loaded
-  /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
-  /// \sa hsa_code_object_reader_create_from_memory
-  static llvm::Expected<CodeObjectReader>
-  createFromMemory(llvm::ArrayRef<uint8_t> Elf);
-
-  /// Destroys the code object reader instance
-  /// \return an \c llvm::HsaError if any issues where encountered, or
-  /// an \c llvm::ErrorSuccess if the operation was successful
-  /// \sa hsa_code_object_reader_destroy
-  llvm::Error destroy();
+  /// Default constructor
+  CodeObjectReader() : HandleType<hsa_code_object_reader_t>({0}) {};
 
   /// Constructor from a \c hsa_code_object_reader_t handle
   /// \warning This should not be used to create a new
@@ -64,10 +42,29 @@ public:
   /// been created by HSA
   /// \sa createFromMemory
   explicit CodeObjectReader(hsa_code_object_reader_t Reader)
-      : HandleType(Reader){};
+      : HandleType(Reader) {};
+
+  /// Creates a new \c hsa_code_object_reader_t handle
+  /// for loading the \p Elf into an \c hsa_executable_t and assigns it to be
+  /// managed by this \c CodeObjectReader
+  /// \param Elf a code object in memory to be loaded by the
+  /// \c hsa_code_object_reader_t
+  /// \returns an error if the underlying handle is not zero
+  /// \return an \c llvm::Error indicating the success or failure of the
+  /// operation
+  virtual llvm::Error createFromMemory(llvm::StringRef Elf) = 0;
+
+  /// \see createFromMemory(llvm::StringRef Elf)
+  llvm::Error createFromMemory(llvm::ArrayRef<uint8_t> Elf);
+
+  /// Destroys the code object reader handle managed by this \c CodeObjectReader
+  /// \return an \c llvm::Error indicating the success of failure of the
+  /// operation
+  /// \sa hsa_code_object_reader_destroy
+  virtual llvm::Error destroy() = 0;
+
 };
 
 } // namespace luthier::hsa
-
 
 #endif
