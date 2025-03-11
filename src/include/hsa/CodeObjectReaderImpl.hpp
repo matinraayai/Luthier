@@ -1,4 +1,4 @@
-//===-- CodeObjectReader.hpp ----------------------------------------------===//
+//===-- CodeObjectReaderImpl.hpp ------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,16 +15,29 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the concrete portions of the \c hsa::CodeObjectReader
-/// interface.
+/// This file defines the concrete implementation of the \c CodeObjectReader
+/// class.
 //===----------------------------------------------------------------------===//
+#ifndef LUTHIER_HSA_CODE_OBJECT_READER_IMPL_HPP
+#define LUTHIER_HSA_CODE_OBJECT_READER_IMPL_HPP
 #include "hsa/CodeObjectReader.hpp"
-#include <llvm/ADT/StringExtras.h>
 
 namespace luthier::hsa {
 
-llvm::Error CodeObjectReader::createFromMemory(llvm::ArrayRef<uint8_t> Elf) {
-  return createFromMemory(llvm::toStringRef(Elf));
-}
+/// \brief the concrete implementation of the \c CodeObjectReader interface
+class CodeObjectReaderImpl : public CodeObjectReader {
+
+public:
+  CodeObjectReaderImpl() : CodeObjectReader() {};
+
+  explicit CodeObjectReaderImpl(hsa_code_object_reader_t Handle)
+      : CodeObjectReader(Handle) {};
+
+  llvm::Error createFromMemory(llvm::StringRef Elf) override;
+
+  llvm::Error destroy() override;
+};
 
 } // namespace luthier::hsa
+
+#endif

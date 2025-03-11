@@ -25,6 +25,7 @@ add_library(LuthierHSA OBJECT
         ISA.cpp
         Instr.cpp
         CodeObjectReader.cpp
+        CodeObjectReaderImpl.cpp
         KernelDescriptor.cpp
         hsa.cpp
         ExecutableBackedObjectsCache.cpp
