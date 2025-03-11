@@ -20,8 +20,8 @@
 /// <tt>hsa::Executable</tt>. Reason behind this cache can range from being
 /// required for proper functioning of the object to simply faster queries.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_RUNTIME_STATE_CACHE_HPP
-#define LUTHIER_HSA_RUNTIME_STATE_CACHE_HPP
+#ifndef LUTHIER_HSA_EXECUTABLE_BACKED_OBJECTS_CACHE_HPP
+#define LUTHIER_HSA_EXECUTABLE_BACKED_OBJECTS_CACHE_HPP
 #include "common/ObjectUtils.hpp"
 #include "common/Singleton.hpp"
 #include <llvm/ADT/DenseMap.h>
@@ -74,32 +74,33 @@ public:
 
     struct LoadedCodeObjectCacheEntry {
       /// Object file used to create the loaded code object
-      llvm::SmallVector<uint8_t> CodeObject;
+      std::unique_ptr<llvm::SmallVector<uint8_t>> CodeObject;
       /// Parsed ELF representation of \c CodeObject
-//      std::unique_ptr<luthier::AMDGCNObjectFile> ElfObjectFile;
-////      /// Parsed metadata of the loaded code object
-////      hsa::md::Metadata Metadata;
-////      /// Mapping between names of the loaded code object kernels and
-////      /// their symbols
-////      llvm::StringMap<const LoadedCodeObjectKernel *> KernelSymbols;
-////
-////      /// A mapping between the cached <tt>hsa_loaded_code_object_t</tt>s and
-////      /// their <tt>LoadedCodeObjectSymbol</tt>s of device function type
-////
-////      llvm::StringMap<const LoadedCodeObjectDeviceFunction *>
-////          DeviceFuncSymbolsOfLCOs{};
-////
-////      /// A mapping between the cached <tt>hsa_loaded_code_object_t</tt>s and
-////      /// their <tt>LoadedCodeObjectSymbol</tt>s of variable type
-////      llvm::DenseMap<hsa_loaded_code_object_t,
-////                     llvm::StringMap<const LoadedCodeObjectVariable *>>
-////          VariableSymbolsOfLCOs{};
-////
-////      /// A mapping between the cached <tt>hsa_loaded_code_object_t</tt>s and
-////      /// their external <tt>LoadedCodeObjectSymbol</tt>s
-////      llvm::DenseMap<hsa_loaded_code_object_t,
-////                     llvm::StringMap<const LoadedCodeObjectExternSymbol *>>
-////          ExternSymbolsOfLCOs{};
+      std::unique_ptr<luthier::AMDGCNObjectFile> ElfObjectFile;
+      ////      /// Parsed metadata of the loaded code object
+      ////      hsa::md::Metadata Metadata;
+      ////      /// Mapping between names of the loaded code object kernels and
+      ////      /// their symbols
+      ////      llvm::StringMap<const LoadedCodeObjectKernel *> KernelSymbols;
+      ////
+      ////      /// A mapping between the cached
+      ///<tt>hsa_loaded_code_object_t</tt>s and /      /// their
+      ///<tt>LoadedCodeObjectSymbol</tt>s of device function type
+      ////
+      ////      llvm::StringMap<const LoadedCodeObjectDeviceFunction *>
+      ////          DeviceFuncSymbolsOfLCOs{};
+      ////
+      ////      /// A mapping between the cached
+      ///<tt>hsa_loaded_code_object_t</tt>s and /      /// their
+      ///<tt>LoadedCodeObjectSymbol</tt>s of variable type /
+      ///llvm::DenseMap<hsa_loaded_code_object_t, / llvm::StringMap<const
+      ///LoadedCodeObjectVariable *>> /          VariableSymbolsOfLCOs{};
+      ////
+      ////      /// A mapping between the cached
+      ///<tt>hsa_loaded_code_object_t</tt>s and /      /// their external
+      ///<tt>LoadedCodeObjectSymbol</tt>s /
+      ///llvm::DenseMap<hsa_loaded_code_object_t, / llvm::StringMap<const
+      ///LoadedCodeObjectExternSymbol *>> /          ExternSymbolsOfLCOs{};
     };
 
     llvm::DenseMap<hsa_loaded_code_object_t, LoadedCodeObjectCacheEntry>

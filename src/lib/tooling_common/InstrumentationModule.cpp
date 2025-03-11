@@ -46,11 +46,12 @@ static constexpr const char *BCSectionName = ".llvmbc";
 /// if found, or an \c llvm::Error if the bitcode was not found
 static llvm::Expected<llvm::ArrayRef<char>>
 getBitcodeBufferOfLCO(const hsa::LoadedCodeObject &LCO) {
-  auto StorageELF = LCO.getStorageELF();
-  LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
+  llvm::Expected<luthier::AMDGCNObjectFile &> StorageELFOrErr =
+      LCO.getStorageELF();
+  LUTHIER_RETURN_ON_ERROR(StorageELFOrErr.takeError());
 
   // Find the ".llvmbc" section of the ELF
-  for (const llvm::object::SectionRef &Section : StorageELF.get()->sections()) {
+  for (const llvm::object::SectionRef &Section : StorageELFOrErr->sections()) {
     auto SectionName = Section.getName();
     LUTHIER_RETURN_ON_ERROR(SectionName.takeError());
     if (*SectionName == BCSectionName) {

@@ -24,13 +24,11 @@
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
-LoadedCodeObjectDeviceFunction::create(
-    hsa_loaded_code_object_t LCO,
-    std::shared_ptr<luthier::AMDGCNObjectFile> StorageElf,
-    llvm::object::ELFSymbolRef FuncSymbol) {
+LoadedCodeObjectDeviceFunction::create(hsa_loaded_code_object_t LCO,
+                                       luthier::AMDGCNObjectFile &StorageElf,
+                                       llvm::object::ELFSymbolRef FuncSymbol) {
   return std::unique_ptr<LoadedCodeObjectDeviceFunction>(
-      new LoadedCodeObjectDeviceFunction(LCO, std::move(StorageElf),
-                                         FuncSymbol));
+      new LoadedCodeObjectDeviceFunction(LCO, StorageElf, FuncSymbol));
 }
 
 } // namespace luthier::hsa

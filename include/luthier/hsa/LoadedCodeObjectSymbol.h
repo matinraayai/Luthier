@@ -49,7 +49,7 @@ protected:
   /// The HSA Loaded Code Object this symbol belongs to
   hsa_loaded_code_object_t BackingLCO{};
   /// Parsed storage ELF of the LCO, to ensure \c Symbol stays valid
-  std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageELF{};
+  llvm::object::ELF64LEObjectFile &StorageELF;
   /// The LLVM Object ELF symbol of this LCO symbol;
   /// Backed by parsing the storage ELF of the LCO
   llvm::object::ELFSymbolRef Symbol;
@@ -67,8 +67,7 @@ protected:
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the <tt>LoadedCodeObjectSymbol</tt> if exists
   LoadedCodeObjectSymbol(
-      hsa_loaded_code_object_t LCO,
-      std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageELF,
+      hsa_loaded_code_object_t LCO, llvm::object::ELF64LEObjectFile &StorageELF,
       llvm::object::ELFSymbolRef Symbol, SymbolKind Kind,
       std::optional<hsa_executable_symbol_t> ExecutableSymbol);
 

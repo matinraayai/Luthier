@@ -57,15 +57,14 @@ llvm::Expected<GpuAgent> LoadedCodeObject::getAgent() const {
   return GpuAgent(Agent);
 }
 
-llvm::Expected<std::unique_ptr<llvm::object::ELF64LEObjectFile>>
+llvm::Expected<llvm::object::ELF64LEObjectFile &>
 LoadedCodeObject::getStorageELF() const {
   auto &LCOCache =
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
       LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
-  return parseAMDGCNObjectFile(
-      LCOCache.CachedLCOs.at(this->asHsaType()).CodeObject);
+  return *LCOCache.CachedLCOs.at(this->asHsaType()).ElfObjectFile;
 }
 
 llvm::Expected<long> LoadedCodeObject::getLoadDelta() const {
@@ -115,7 +114,7 @@ llvm::Expected<std::string> LoadedCodeObject::getUri() const {
 llvm::Expected<ISA> LoadedCodeObject::getISA() const {
   auto StorageElfOrErr = getStorageELF();
   LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
-  auto ElfISAOrErr = getELFObjectFileISA(**StorageElfOrErr);
+  auto ElfISAOrErr = getELFObjectFileISA(*StorageElfOrErr);
   LUTHIER_RETURN_ON_ERROR(ElfISAOrErr.takeError());
   return hsa::ISA::fromLLVM(std::get<0>(*ElfISAOrErr),
                             std::get<1>(*ElfISAOrErr),
@@ -135,13 +134,13 @@ LoadedCodeObject::getMetadata() const {
 llvm::Error LoadedCodeObject::getKernelSymbols(
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
-  std::shared_ptr<luthier::AMDGCNObjectFile> StorageElf;
-  LUTHIER_RETURN_ON_ERROR(getStorageELF().moveInto(StorageElf));
+  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr = getStorageELF();
+  LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
   llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbolsOfThisLCO;
   llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbolsOfThisLCO;
 
-  for (const object::ELFSymbolRef &Symbol : StorageElf->symbols()) {
+  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     auto Type = Symbol.getELFType();
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
@@ -161,7 +160,8 @@ llvm::Error LoadedCodeObject::getKernelSymbols(
 
   // Cache the LCO and Kernel Symbols Metadata
   std::shared_ptr<hsa::md::Metadata> MetaData;
-  LUTHIER_RETURN_ON_ERROR(parseNoteMetaData(*StorageElf).moveInto(MetaData));
+  LUTHIER_RETURN_ON_ERROR(
+      parseNoteMetaData(*StorageElfOrErr).moveInto(MetaData));
 
   // Construct the kernel symbols and cache them
   for (auto &KernelMD : MetaData->Kernels) {
@@ -189,7 +189,7 @@ llvm::Error LoadedCodeObject::getKernelSymbols(
 
     // Construct the Kernel LCO Symbol
     auto KernelSymbol = LoadedCodeObjectKernel::create(
-        asHsaType(), StorageElf, MetaData, KFuncSymbolIter->second,
+        asHsaType(), *StorageElfOrErr, MetaData, KFuncSymbolIter->second,
         KDSymbolIter->second);
     LUTHIER_RETURN_ON_ERROR(KernelSymbol.takeError());
     Out.push_back(std::move(*KernelSymbol));
@@ -200,10 +200,10 @@ llvm::Error LoadedCodeObject::getKernelSymbols(
 llvm::Error LoadedCodeObject::getVariableSymbols(
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
-  std::shared_ptr<luthier::AMDGCNObjectFile> StorageElf;
-  LUTHIER_RETURN_ON_ERROR(getStorageELF().moveInto(StorageElf));
+  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr = getStorageELF();
+  LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
-  for (const object::ELFSymbolRef &Symbol : StorageElf->symbols()) {
+  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     auto Type = Symbol.getELFType();
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
@@ -215,7 +215,7 @@ llvm::Error LoadedCodeObject::getVariableSymbols(
     if (Type == llvm::ELF::STT_OBJECT && !SymbolName->ends_with(".kd")) {
       // Variable Symbol
       auto VarSymbolOrErr = std::move(
-          LoadedCodeObjectVariable::create(asHsaType(), StorageElf, Symbol));
+          LoadedCodeObjectVariable::create(asHsaType(), *StorageElfOrErr, Symbol));
       LUTHIER_RETURN_ON_ERROR(VarSymbolOrErr.takeError());
       Out.push_back(std::move(*VarSymbolOrErr));
     }
@@ -226,13 +226,13 @@ llvm::Error LoadedCodeObject::getVariableSymbols(
 llvm::Error LoadedCodeObject::getDeviceFunctionSymbols(
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
-  std::shared_ptr<luthier::AMDGCNObjectFile> StorageElf;
-  LUTHIER_RETURN_ON_ERROR(getStorageELF().moveInto(StorageElf));
+  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr = getStorageELF();
+  LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
   llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbolsOfThisLCO;
   llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbolsOfThisLCO;
 
-  for (const object::ELFSymbolRef &Symbol : StorageElf->symbols()) {
+  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     auto Type = Symbol.getELFType();
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
@@ -253,7 +253,7 @@ llvm::Error LoadedCodeObject::getDeviceFunctionSymbols(
   for (auto &[FuncSymbolName, FuncSymbol] : FuncSymbolsOfThisLCO) {
     if (!KDSymbolsOfThisLCO.contains((FuncSymbolName + ".kd").str())) {
       auto DevFuncSymOrErr = LoadedCodeObjectDeviceFunction::create(
-          asHsaType(), StorageElf, FuncSymbol);
+          asHsaType(), *StorageElfOrErr, FuncSymbol);
       LUTHIER_RETURN_ON_ERROR(DevFuncSymOrErr.takeError());
       Out.push_back(std::move(*DevFuncSymOrErr));
     }
@@ -264,13 +264,13 @@ llvm::Error LoadedCodeObject::getDeviceFunctionSymbols(
 llvm::Error LoadedCodeObject::getExternalSymbols(
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
-  std::shared_ptr<luthier::AMDGCNObjectFile> StorageElf;
-  LUTHIER_RETURN_ON_ERROR(getStorageELF().moveInto(StorageElf));
+  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr = getStorageELF();
+  LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
   llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbolsOfThisLCO;
   llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbolsOfThisLCO;
 
-  for (const object::ELFSymbolRef &Symbol : StorageElf->symbols()) {
+  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     auto Type = Symbol.getELFType();
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
@@ -278,8 +278,8 @@ llvm::Error LoadedCodeObject::getExternalSymbols(
     auto Size = Symbol.getSize();
     if (Type == llvm::ELF::STT_NOTYPE && Binding == llvm::ELF::STB_GLOBAL &&
         *SymbolName != "UNDEF") {
-      auto ExternSymbol =
-          LoadedCodeObjectExternSymbol::create(asHsaType(), StorageElf, Symbol);
+      auto ExternSymbol = LoadedCodeObjectExternSymbol::create(
+          asHsaType(), *StorageElfOrErr, Symbol);
       LUTHIER_RETURN_ON_ERROR(ExternSymbol.takeError());
 
       Out.push_back(std::move(*ExternSymbol));
@@ -302,10 +302,10 @@ llvm::Error LoadedCodeObject::getLoadedCodeObjectSymbols(
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectSymbol>>
 LoadedCodeObject::getLoadedCodeObjectSymbolByName(llvm::StringRef Name) const {
-  std::shared_ptr<luthier::AMDGCNObjectFile> StorageElf;
-  LUTHIER_RETURN_ON_ERROR(getStorageELF().moveInto(StorageElf));
+  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr = getStorageELF();
+  LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
-  auto OptElfSymbolOrErr = lookupSymbolByName(*StorageElf, Name);
+  auto OptElfSymbolOrErr = lookupSymbolByName(*StorageElfOrErr, Name);
   LUTHIER_RETURN_ON_ERROR(OptElfSymbolOrErr.takeError());
   if (!OptElfSymbolOrErr->has_value())
     return nullptr;
@@ -317,40 +317,42 @@ LoadedCodeObject::getLoadedCodeObjectSymbolByName(llvm::StringRef Name) const {
          SymbolSize == 64) ||
         (SymbolType == llvm::ELF::STT_AMDGPU_HSA_KERNEL && SymbolSize == 64)) {
       // Find the Kernel function symbol
-      auto KDFuncOrErr =
-          lookupSymbolByName(*StorageElf, Name.substr(0, Name.rfind(".kd")));
+      auto KDFuncOrErr = lookupSymbolByName(*StorageElfOrErr,
+                                            Name.substr(0, Name.rfind(".kd")));
       LUTHIER_RETURN_ON_ERROR(KDFuncOrErr.takeError());
       LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
           KDFuncOrErr->has_value(),
           "Failed to find the kernel function for {0}.", Name));
       std::shared_ptr<hsa::md::Metadata> MetaData;
       LUTHIER_RETURN_ON_ERROR(
-          parseNoteMetaData(*StorageElf).moveInto(MetaData));
+          parseNoteMetaData(*StorageElfOrErr).moveInto(MetaData));
 
-      return LoadedCodeObjectKernel::create(asHsaType(), StorageElf, MetaData,
-                                            **KDFuncOrErr, **OptElfSymbolOrErr);
+      return LoadedCodeObjectKernel::create(asHsaType(), *StorageElfOrErr,
+                                            MetaData, **KDFuncOrErr,
+                                            **OptElfSymbolOrErr);
     } else if (SymbolType == llvm::ELF::STT_FUNC) {
       // Find the KD symbol (if available)
-      auto KDSymOrErr = lookupSymbolByName(*StorageElf, (Name + ".kd").str());
+      auto KDSymOrErr =
+          lookupSymbolByName(*StorageElfOrErr, (Name + ".kd").str());
       LUTHIER_RETURN_ON_ERROR(KDSymOrErr.takeError());
       if (KDSymOrErr->has_value()) {
         std::shared_ptr<hsa::md::Metadata> MetaData;
         LUTHIER_RETURN_ON_ERROR(
-            parseNoteMetaData(*StorageElf).moveInto(MetaData));
+            parseNoteMetaData(*StorageElfOrErr).moveInto(MetaData));
 
-        return LoadedCodeObjectKernel::create(asHsaType(), StorageElf, MetaData,
-                                              **OptElfSymbolOrErr,
+        return LoadedCodeObjectKernel::create(asHsaType(), *StorageElfOrErr,
+                                              MetaData, **OptElfSymbolOrErr,
                                               **KDSymOrErr);
       } else {
-        return LoadedCodeObjectDeviceFunction::create(asHsaType(), StorageElf,
-                                                      **OptElfSymbolOrErr);
+        return LoadedCodeObjectDeviceFunction::create(
+            asHsaType(), *StorageElfOrErr, **OptElfSymbolOrErr);
       }
     } else if (SymbolType == llvm::ELF::STT_OBJECT) {
-      return LoadedCodeObjectVariable::create(asHsaType(), StorageElf,
+      return LoadedCodeObjectVariable::create(asHsaType(), *StorageElfOrErr,
                                               **OptElfSymbolOrErr);
     } else if (SymbolType == llvm::ELF::STT_NOTYPE &&
                SymbolBinding == llvm::ELF::STB_GLOBAL && Name != "UNDEF") {
-      return LoadedCodeObjectExternSymbol::create(asHsaType(), StorageElf,
+      return LoadedCodeObjectExternSymbol::create(asHsaType(), *StorageElfOrErr,
                                                   **OptElfSymbolOrErr);
     } else {
       return nullptr;

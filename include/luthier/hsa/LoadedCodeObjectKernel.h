@@ -52,14 +52,14 @@ private:
   /// \param Metadata the Metadata of the kernel, cached internally by Luthier
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the kernel
-  LoadedCodeObjectKernel(
-      hsa_loaded_code_object_t LCO,
-      std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
-      llvm::object::ELFSymbolRef KFuncSymbol,
-      llvm::object::ELFSymbolRef KDSymbol,
-      hsa_executable_symbol_t ExecutableSymbol,
-      std::shared_ptr<md::Metadata> LCOMeta, md::Kernel::Metadata &MD)
-      : LoadedCodeObjectSymbol(LCO, std::move(StorageElf), KFuncSymbol,
+  LoadedCodeObjectKernel(hsa_loaded_code_object_t LCO,
+                         llvm::object::ELF64LEObjectFile &StorageElf,
+                         llvm::object::ELFSymbolRef KFuncSymbol,
+                         llvm::object::ELFSymbolRef KDSymbol,
+                         hsa_executable_symbol_t ExecutableSymbol,
+                         std::shared_ptr<md::Metadata> LCOMeta,
+                         md::Kernel::Metadata &MD)
+      : LoadedCodeObjectSymbol(LCO, StorageElf, KFuncSymbol,
                                SymbolKind::SK_KERNEL, ExecutableSymbol),
         KDSymbol(KDSymbol), LCOMeta(std::move(LCOMeta)), MD(MD) {}
 
@@ -77,7 +77,7 @@ public:
   /// \return on success
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
   create(hsa_loaded_code_object_t LCO,
-         std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
+         llvm::object::ELF64LEObjectFile &StorageElf,
          std::shared_ptr<md::Metadata> LCOMeta,
          llvm::object::ELFSymbolRef KFuncSymbol,
          llvm::object::ELFSymbolRef KDSymbol);

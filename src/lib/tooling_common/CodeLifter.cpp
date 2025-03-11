@@ -212,8 +212,9 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
 
     auto LoadedMemoryBase = reinterpret_cast<address_t>(LoadedMemory->data());
 
-    std::unique_ptr<luthier::AMDGCNObjectFile> StorageELF;
-    LUTHIER_RETURN_ON_ERROR(LCO.getStorageELF().moveInto(StorageELF));
+    llvm::Expected<luthier::AMDGCNObjectFile &> StorageELFOrErr =
+        LCO.getStorageELF();
+    LUTHIER_RETURN_ON_ERROR(StorageELFOrErr.takeError());
 
     // Create an entry for the LCO in the relocations map
     auto &LCORelocationsMap =
@@ -221,13 +222,13 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
             .insert({LCO, llvm::DenseMap<address_t, LCORelocationInfo>{}})
             .first->getSecond();
 
-    for (const auto &Section : StorageELF->sections()) {
+    for (const auto &Section : StorageELFOrErr->sections()) {
       for (const llvm::object::ELFRelocationRef Reloc : Section.relocations()) {
         // Only rely on the loaded address of the symbol instead of its name
         // The name will be stripped from the relocation section
         // if the symbol has a private linkage (i.e. device functions)
         auto RelocSym = Reloc.getSymbol();
-        if (RelocSym != StorageELF->symbol_end()) {
+        if (RelocSym != StorageELFOrErr->symbol_end()) {
           auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
           LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
           LLVM_DEBUG(
@@ -645,9 +646,7 @@ static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
       MI.addOperand(
           llvm::MachineOperand::CreateReg(MI.getOperand(0).getReg(), false));
       MI.tieOperands(0, 2);
-      MI.print(llvm::outs());
-    }
-    else {
+    } else {
       return llvm::Error::success();
     }
   }

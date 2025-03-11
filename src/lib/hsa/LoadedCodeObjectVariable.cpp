@@ -30,10 +30,9 @@
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
-LoadedCodeObjectVariable::create(
-    hsa_loaded_code_object_s LCO,
-    std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
-    llvm::object::ELFSymbolRef VarSymbol) {
+LoadedCodeObjectVariable::create(hsa_loaded_code_object_s LCO,
+                                 llvm::object::ELF64LEObjectFile &StorageElf,
+                                 llvm::object::ELFSymbolRef VarSymbol) {
   hsa::LoadedCodeObject LCOWrapper(LCO);
   // Get the kernel symbol associated with this kernel
   auto Exec = LCOWrapper.getExecutable();
@@ -54,7 +53,7 @@ LoadedCodeObjectVariable::create(
                               : std::nullopt;
 
   return std::unique_ptr<LoadedCodeObjectVariable>(new LoadedCodeObjectVariable(
-      LCO, std::move(StorageElf), VarSymbol, ExecSymbolAsOptionalHandle));
+      LCO, StorageElf, VarSymbol, ExecSymbolAsOptionalHandle));
 }
 
 } // namespace luthier::hsa

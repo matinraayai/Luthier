@@ -98,7 +98,7 @@ public:
   /// HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE
   /// \sa
   /// HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE
-  [[nodiscard]] llvm::Expected<std::unique_ptr<llvm::object::ELF64LEObjectFile>>
+  [[nodiscard]] llvm::Expected<llvm::object::ELF64LEObjectFile &>
   getStorageELF() const;
 
   /// \return the Load Delta of this Loaded Code Object, or a

@@ -31,12 +31,11 @@
 namespace luthier {
 
 hsa::LoadedCodeObjectSymbol::LoadedCodeObjectSymbol(
-    hsa_loaded_code_object_t LCO,
-    std::shared_ptr<luthier::AMDGCNObjectFile> StorageELF,
+    hsa_loaded_code_object_t LCO, luthier::AMDGCNObjectFile &StorageELF,
     llvm::object::ELFSymbolRef Symbol, SymbolKind Kind,
     std::optional<hsa_executable_symbol_t> ExecutableSymbol)
-    : BackingLCO(LCO), StorageELF(std::move(StorageELF)), Symbol(Symbol),
-      Kind(Kind), ExecutableSymbol(ExecutableSymbol) {};
+    : BackingLCO(LCO), StorageELF(StorageELF), Symbol(Symbol), Kind(Kind),
+      ExecutableSymbol(ExecutableSymbol) {};
 
 llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
 luthier::hsa::LoadedCodeObjectSymbol::fromExecutableSymbol(
@@ -82,7 +81,7 @@ hsa::LoadedCodeObjectSymbol::getLoadedSymbolAddress() const {
   auto SymbolElfAddress = Symbol.getAddress();
   LUTHIER_RETURN_ON_ERROR(SymbolElfAddress.takeError());
 
-  auto SymbolLMO = getLoadedMemoryOffset(StorageELF->getELFFile(), Symbol);
+  auto SymbolLMO = getLoadedMemoryOffset(StorageELF.getELFFile(), Symbol);
   LUTHIER_RETURN_ON_ERROR(SymbolLMO.takeError());
 
   return reinterpret_cast<luthier::address_t>(*SymbolLMO +

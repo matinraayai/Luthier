@@ -44,15 +44,19 @@ hsa::ExecutableBackedObjectsCache::LoadedCodeObjectCache::cacheOnCreation(
     const hsa::LoadedCodeObject &LCO) {
   std::lock_guard Lock(ExecutableCacheMutex);
 
-  //  // Cache the Storage ELF
-  //  LLVM_DEBUG(llvm::dbgs() << llvm::formatv("Caching LCO with Handle
-  //  {0:x}.\n",
-  //                                           LCO.hsaHandle()););
-  auto StorageMemory = LCO.getStorageMemory();
-  LUTHIER_RETURN_ON_ERROR(StorageMemory.takeError());
+  llvm::Expected<llvm::ArrayRef<uint8_t>> StorageMemoryOrErr =
+      LCO.getStorageMemory();
+  LUTHIER_RETURN_ON_ERROR(StorageMemoryOrErr.takeError());
+
+  auto StorageCopy =
+      std::make_unique<llvm::SmallVector<uint8_t>>(*StorageMemoryOrErr);
+
+  auto ParsedElf = parseAMDGCNObjectFile(*StorageCopy);
+  LUTHIER_RETURN_ON_ERROR(ParsedElf.takeError());
+
   CachedLCOs.insert(
-      {LCO.asHsaType(),
-       LoadedCodeObjectCacheEntry{llvm::SmallVector<uint8_t>(*StorageMemory)}});
+      {LCO.asHsaType(), LoadedCodeObjectCacheEntry{std::move(StorageCopy),
+                                                   std::move(*ParsedElf)}});
   //  auto *LeakyStorage = new std::vector<uint8_t>(*StorageMemory);
   //  auto StorageELF = parseAMDGCNObjectFile(*LeakyStorage);
   //  LUTHIER_RETURN_ON_ERROR(StorageELF.takeError());
@@ -335,25 +339,25 @@ ExecutableBackedObjectsCache::cacheExecutableOnLoadedCodeObjectCreation(
     const Executable &Exec) {
   // Acquire a lock during this operation
   std::lock_guard Lock(CacheMutex);
-    // Get all loaded code objects of the executable
-    llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-    LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
-    // Cache all LCOs, and their symbols, if not already cached
-    for (const auto &LCO : LCOs) {
-      if (!LCOCache.isCached(LCO)) {
-        // Cache the LCO
-        LUTHIER_RETURN_ON_ERROR(LCOCache.cacheOnCreation(LCO));
-//        // Get all symbols of the LCO
-//        llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *> Symbols;
-//        LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
-//        LLVM_DEBUG(llvm::dbgs()
-//                   << "Number of Symbols: " << Symbols.size() << "\n");
+  // Get all loaded code objects of the executable
+  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
+  LUTHIER_RETURN_ON_ERROR(Exec.getLoadedCodeObjects(LCOs));
+  // Cache all LCOs, and their symbols, if not already cached
+  for (const auto &LCO : LCOs) {
+    if (!LCOCache.isCached(LCO)) {
+      // Cache the LCO
+      LUTHIER_RETURN_ON_ERROR(LCOCache.cacheOnCreation(LCO));
+      //        // Get all symbols of the LCO
+      //        llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *> Symbols;
+      //        LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
+      //        LLVM_DEBUG(llvm::dbgs()
+      //                   << "Number of Symbols: " << Symbols.size() << "\n");
 
-//        // Cache all the LCO symbols
-//        for (const auto &Symbol : Symbols)
-//          LUTHIER_RETURN_ON_ERROR(LCOSymbolCache.cacheOnCreation(*Symbol));
-      }
+      //        // Cache all the LCO symbols
+      //        for (const auto &Symbol : Symbols)
+      //          LUTHIER_RETURN_ON_ERROR(LCOSymbolCache.cacheOnCreation(*Symbol));
     }
+  }
   return llvm::Error::success();
 }
 

@@ -32,12 +32,11 @@
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
-LoadedCodeObjectKernel::create(
-    hsa_loaded_code_object_s LCO,
-    std::shared_ptr<llvm::object::ELF64LEObjectFile> StorageElf,
-    std::shared_ptr<md::Metadata> LCOMeta,
-    llvm::object::ELFSymbolRef KFuncSymbol,
-    llvm::object::ELFSymbolRef KDSymbol) {
+LoadedCodeObjectKernel::create(hsa_loaded_code_object_s LCO,
+                               llvm::object::ELF64LEObjectFile &StorageElf,
+                               std::shared_ptr<md::Metadata> LCOMeta,
+                               llvm::object::ELFSymbolRef KFuncSymbol,
+                               llvm::object::ELFSymbolRef KDSymbol) {
   hsa::LoadedCodeObject LCOWrapper(LCO);
   // Get the kernel symbol associated with this kernel
   auto Exec = LCOWrapper.getExecutable();
