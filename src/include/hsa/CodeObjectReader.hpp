@@ -44,6 +44,9 @@ public:
   explicit CodeObjectReader(hsa_code_object_reader_t Reader)
       : HandleType(Reader) {};
 
+  /// \return a cloned instance of this \c CodeObjectReader
+  [[nodiscard]] virtual std::unique_ptr<CodeObjectReader> clone() const = 0;
+
   /// Creates a new \c hsa_code_object_reader_t handle
   /// for loading the \p Elf into an \c hsa_executable_t and assigns it to be
   /// managed by this \c CodeObjectReader

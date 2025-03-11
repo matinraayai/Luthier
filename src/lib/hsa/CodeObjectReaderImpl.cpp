@@ -25,6 +25,10 @@
 
 namespace luthier::hsa {
 
+std::unique_ptr<CodeObjectReader> CodeObjectReaderImpl::clone() const {
+  return std::make_unique<CodeObjectReaderImpl>(asHsaType());
+}
+
 llvm::Error CodeObjectReaderImpl::createFromMemory(llvm::StringRef Elf) {
   if (hsaHandle() != 0)
     return LUTHIER_CREATE_ERROR(
@@ -38,7 +42,6 @@ llvm::Error CodeObjectReaderImpl::createFromMemory(llvm::StringRef Elf) {
   *this = CodeObjectReaderImpl{Reader};
   return llvm::Error::success();
 }
-
 
 llvm::Error CodeObjectReaderImpl::destroy() {
   return LUTHIER_HSA_SUCCESS_CHECK(

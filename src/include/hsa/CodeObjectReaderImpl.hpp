@@ -33,6 +33,8 @@ public:
   explicit CodeObjectReaderImpl(hsa_code_object_reader_t Handle)
       : CodeObjectReader(Handle) {};
 
+  [[nodiscard]] std::unique_ptr<CodeObjectReader> clone() const override;
+
   llvm::Error createFromMemory(llvm::StringRef Elf) override;
 
   llvm::Error destroy() override;
