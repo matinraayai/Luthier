@@ -11,6 +11,17 @@ add_library(LuthierTooling SHARED
 
 target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
+# target_include_directories(LuthierTooling
+#         PRIVATE
+#         "${CMAKE_SOURCE_DIR}/src/include"
+#         PUBLIC
+#         ${LLVM_INCLUDE_DIRS}
+#         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+#         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+#         "$<BUILD_INTERFACE:${AMDGPU_INCLUDE_DIR}>"
+#         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/luthier/amdgpu>"
+# )
+
 target_include_directories(LuthierTooling
         PRIVATE
         "${CMAKE_SOURCE_DIR}/src/include"

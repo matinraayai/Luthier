@@ -61,12 +61,19 @@
 #include <llvm/Object/RelocationResolver.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <llvm/Support/ToolOutputFile.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/WithColor.h>
+#include <llvm/Support/Error.h>
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
 #include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
 #include <luthier/hsa/LoadedCodeObjectVariable.h>
 #include <memory>
+
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-lifter"
@@ -1089,6 +1096,7 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
           *llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func.get()),
           *LR));
     }
+
     // Now that all global objects are initialized, we can now populate
     // the target kernel's instructions
 

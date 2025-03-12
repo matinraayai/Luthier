@@ -34,6 +34,25 @@
 #include <ranges>
 #include <string>
 
+
+#include <memory>
+
+#include "llvm/DebugInfo/DIContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
+
+#include "llvm/Object/Binary.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Object/MachO.h"
+#include "llvm/Object/MachOUniversal.h"
+#include "llvm/Object/Archive.h"
+
+#include "llvm/Support/Error.h"
+#include "llvm/Support/WithColor.h"
+#include "llvm/Support/Casting.h"
+
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/MC/MCRegisterInfo.h"
+
 #undef DEBUG_TYPE
 
 #define DEBUG_TYPE "luthier-object-utils"
@@ -851,252 +870,15 @@ parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj) {
 }
 
 
-} // namespace luthier
-
-
-
-// DICtx dump
-#include <memory>
-
-#include "llvm/DebugInfo/DIContext.h"
-#include "llvm/DebugInfo/DWARF/DWARFContext.h"
-
-#include "llvm/Object/Binary.h"
-#include "llvm/Object/ObjectFile.h"
-#include "llvm/Object/MachO.h"
-#include "llvm/Object/MachOUniversal.h"
-#include "llvm/Object/Archive.h"
-
-#include "llvm/Support/Error.h"
-#include "llvm/Support/WithColor.h"
-#include "llvm/Support/Casting.h"
-
-#include "llvm/MC/TargetRegistry.h"
-#include "llvm/MC/MCRegisterInfo.h" 
-
-
-static bool handleBuffer(StringRef Filename, MemoryBufferRef Buffer,
-                         HandlerFn HandleObj, raw_ostream &OS);
-                    
-
-static void error(Error Err) {
-  if (!Err)
-    return;
-  WithColor::error() << toString(std::move(Err)) << "\n";
-  exit(1);
-}
-
-static void error(StringRef Prefix, Error Err) {
+static void error(llvm::StringRef Prefix, llvm::Error Err) {
   if (!Err)
     return;
   WithColor::error() << Prefix << ": " << toString(std::move(Err)) << "\n";
   exit(1);
 }
 
-static void error(StringRef Prefix, std::error_code EC) {
+static void error(llvm::StringRef Prefix, std::error_code EC) {
   error(Prefix, errorCodeToError(EC));
 }
 
-
-
-static bool handleArchive(StringRef Filename, Archive &Arch,
-                          HandlerFn HandleObj, raw_ostream &OS) {
-  bool Result = true;
-  Error Err = Error::success();
-  for (const auto &Child : Arch.children(Err)) {
-    auto BuffOrErr = Child.getMemoryBufferRef();
-    error(Filename, BuffOrErr.takeError());
-    auto NameOrErr = Child.getName();
-    error(Filename, NameOrErr.takeError());
-    std::string Name = (Filename + "(" + NameOrErr.get() + ")").str();
-    Result &= handleBuffer(Name, BuffOrErr.get(), HandleObj, OS);
-  }
-  error(Filename, std::move(Err));
-
-  return Result;
-}
-
-static bool handleBuffer(StringRef Filename, MemoryBufferRef Buffer,
-                         HandlerFn HandleObj, raw_ostream &OS) {
-  Expected<std::unique_ptr<Binary>> BinOrErr = object::createBinary(Buffer);
-  error(Filename, BinOrErr.takeError());
-
-  bool Result = true;
-  auto RecoverableErrorHandler = [&](Error E) {
-    Result = false;
-    WithColor::defaultErrorHandler(std::move(E));
-  };
-  // if (auto *Obj = dyn_cast<ObjectFile>(BinOrErr->get())) {
-  //   if (filterArch(*Obj)) {
-  //     std::unique_ptr<DWARFContext> DICtx = DWARFContext::create(
-  //         *Obj, DWARFContext::ProcessDebugRelocations::Process, nullptr, "",
-  //         RecoverableErrorHandler);
-  //     DICtx->setParseCUTUIndexManually(ManuallyGenerateUnitIndex);
-  //     if (!HandleObj(*Obj, *DICtx, Filename, OS))
-  //       Result = false;
-  //   }
-  // } else if
- if (auto *Fat = dyn_cast<MachOUniversalBinary>(BinOrErr->get()))
-    for (auto &ObjForArch : Fat->objects()) {
-      std::string ObjName =
-          (Filename + "(" + ObjForArch.getArchFlagName() + ")").str();
-      if (auto MachOOrErr = ObjForArch.getAsObjectFile()) {
-        auto &Obj = **MachOOrErr;
-        // if (filterArch(Obj)) assumed to be true
-        if (true) {
-          std::unique_ptr<DWARFContext> DICtx = DWARFContext::create(
-              Obj, DWARFContext::ProcessDebugRelocations::Process, nullptr, "",
-              RecoverableErrorHandler);
-          if (!HandleObj(Obj, *DICtx, ObjName, OS))
-            Result = false;
-        }
-        continue;
-      } else
-        consumeError(MachOOrErr.takeError());
-      if (auto ArchiveOrErr = ObjForArch.getAsArchive()) {
-        error(ObjName, ArchiveOrErr.takeError());
-        if (!handleArchive(ObjName, *ArchiveOrErr.get(), HandleObj, OS))
-          Result = false;
-        continue;
-      } else
-        consumeError(ArchiveOrErr.takeError());
-    }
-
-  // else if (auto *Arch = dyn_cast<Archive>(BinOrErr->get()))
-  //   Result = handleArchive(Filename, *Arch, HandleObj, OS);
-  return Result;
-}
-
-bool handleFile(StringRef Filename, HandlerFn HandleObj,
-                       raw_ostream &OS) {
-  ErrorOr<std::unique_ptr<MemoryBuffer>> BuffOrErr =
-      MemoryBuffer::getFileOrSTDIN(Filename);
-  error(Filename, BuffOrErr.getError());
-  std::unique_ptr<MemoryBuffer> Buffer = std::move(BuffOrErr.get());
-  return handleBuffer(Filename, *Buffer, HandleObj, OS);
-}
-
-
-static std::unique_ptr<MCRegisterInfo> 
-createRegInfo(const object::ObjectFile &Obj) {
-  std::unique_ptr<MCRegisterInfo> MCRegInfo;
-  Triple TT;
-  TT.setArch(Triple::ArchType(Obj.getArch()));
-  TT.setVendor(Triple::UnknownVendor);
-  TT.setOS(Triple::UnknownOS);
-  std::string TargetLookupError;
-  const Target *TheTarget =
-      TargetRegistry::lookupTarget(TT.str(), TargetLookupError);
-  if (!TargetLookupError.empty())
-    return nullptr;
-  MCRegInfo.reset(TheTarget->createMCRegInfo(TT.str()));
-  return MCRegInfo;
-}
-
-
-enum ErrorDetailLevel {
-  OnlyDetailsNoSummary,
-  NoDetailsOnlySummary,
-  NoDetailsOrSummary,
-  BothDetailsAndSummary,
-  Unspecified
-};
-
-static unsigned DumpType = 0;  // For example, use 0 or a constant like DIDT_DebugInfo if available
-static unsigned ChildRecurseDepth = -1U;
-static unsigned ParentRecurseDepth = -1U;
-static bool Diff = false;
-static bool ShowChildren = true;
-static bool ShowParents = false;
-static bool ShowForm = false;
-static bool SummarizeTypes = false;
-static bool Verbose = false;
-static bool DumpNonSkeleton = false;
-static bool Verify = false;
-static int ErrorDetails = Unspecified;
-static std::string JsonErrSummaryFile;
-
-static std::array<std::optional<uint64_t>, (unsigned)DIDT_ID_Count> DumpOffsets;
-
-static DIDumpOptions getDumpOpts(DWARFContext &C) {
-  DIDumpOptions DumpOpts;
-  DumpOpts.DumpType = DumpType;
-  DumpOpts.ChildRecurseDepth = ChildRecurseDepth;
-  DumpOpts.ParentRecurseDepth = ParentRecurseDepth;
-  DumpOpts.ShowAddresses = !Diff;
-  DumpOpts.ShowChildren = ShowChildren;
-  DumpOpts.ShowParents = ShowParents;
-  DumpOpts.ShowForm = ShowForm;
-  DumpOpts.SummarizeTypes = SummarizeTypes;
-  DumpOpts.Verbose = Verbose;
-  DumpOpts.DumpNonSkeleton = DumpNonSkeleton;
-  DumpOpts.RecoverableErrorHandler = C.getRecoverableErrorHandler();
-  // In -verify mode, print DIEs without children in error messages.
-  if (Verify) {
-    DumpOpts.Verbose = ErrorDetails != NoDetailsOnlySummary &&
-                       ErrorDetails != NoDetailsOrSummary;
-    DumpOpts.ShowAggregateErrors = ErrorDetails != OnlyDetailsNoSummary &&
-                                   ErrorDetails != NoDetailsOnlySummary;
-    DumpOpts.JsonErrSummaryFile = JsonErrSummaryFile;
-    return DumpOpts.noImplicitRecursion();
-  }
-  return DumpOpts;
-}
-
-static bool dumpObjectFile(ObjectFile &Obj, DWARFContext &DICtx,
-                           const Twine &Filename, raw_ostream &OS) {
-
-  auto MCRegInfo = createRegInfo(Obj);
-  if (!MCRegInfo)
-    logAllUnhandledErrors(createStringError(inconvertibleErrorCode(),
-                                            "Error in creating MCRegInfo"),
-                          errs(), Filename.str() + ": ");
-
-  auto GetRegName = [&MCRegInfo](uint64_t DwarfRegNum, bool IsEH) -> StringRef {
-    if (!MCRegInfo)
-      return {};
-    if (std::optional<MCRegister> LLVMRegNum =
-            MCRegInfo->getLLVMRegNum(DwarfRegNum, IsEH))
-      if (const char *RegName = MCRegInfo->getName(*LLVMRegNum))
-        return StringRef(RegName);
-    return {};
-  };
-
-  //! CLI flags
-  // // The UUID dump already contains all the same information.
-  // if (!(DumpType & DIDT_UUID) || DumpType == DIDT_All)
-  //   OS << Filename << ":\tfile format " << Obj.getFileFormatName() << '\n';
-
-  // // Handle the --lookup option.
-  // if (Lookup)
-  //   return lookup(Obj, DICtx, Lookup, OS);
-
-  // // Handle the --name option.
-  // if (!Name.empty()) {
-  //   StringSet<> Names;
-  //   for (const auto &name : Name)
-  //     Names.insert((IgnoreCase && !UseRegex) ? StringRef(name).lower() : name);
-
-  //   filterByName(Names, DICtx.normal_units(), OS, GetRegName);
-  //   filterByName(Names, DICtx.dwo_units(), OS, GetRegName);
-  //   return true;
-  // }
-
-  // // Handle the --find option and lower it to --debug-info=<offset>.
-  // if (!Find.empty()) {
-  //   filterByAccelName(Find, DICtx, OS, GetRegName);
-  //   return true;
-  // }
-
-  // // Handle the --find-all-apple option and lower it to --debug-info=<offset>.
-  // if (FindAllApple) {
-  //   findAllApple(DICtx, OS, GetRegName);
-  //   return true;
-  // }
-
-  // Dump the complete DWARF structure.
-  auto DumpOpts = getDumpOpts(DICtx);
-  DumpOpts.GetNameForDWARFReg = GetRegName;
-  DICtx.dump(OS, DumpOpts, DumpOffsets);
-  return true;
-}
+} // namespace luthier
