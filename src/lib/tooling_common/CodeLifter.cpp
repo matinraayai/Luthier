@@ -61,10 +61,17 @@
 #include <llvm/Object/RelocationResolver.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <llvm/Support/ToolOutputFile.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/WithColor.h>
+#include <llvm/Support/Error.h>
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
 #include <memory>
+
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-lifter"
@@ -1036,7 +1043,17 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
 
     llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, bool> UsageMap;
 
+
     for (const auto &LCO : LCOs) {
+
+      std::error_code EC;
+      //? where to get filenames if more than 1 LCO? 
+      std::string OutputFilename = "debug-info.dwarf";
+      llvm::ToolOutputFile OutputFile(OutputFilename, EC, llvm::sys::fs::OF_TextWithCRLF);
+      error("unable to open outputfile " + OutputFilename, EC);
+      // Don't remove outputfile if we exist with an error
+      OutputFile.keep();
+
       // create a single Module/MMI for each LCO
       LUTHIER_RETURN_ON_ERROR(initLiftedLCOEntry(LCO, LR));
 
@@ -1065,7 +1082,38 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
             LR));
         UsageMap.insert({Func, false});
       }
+        
+        llvm::Expected<llvm::object::ELF64LEObjectFile &> AMDGCNObject = LCO.getStorageELF();
+        
+        // handle the error
+        if (!AMDGCNObject) {
+            llvm::Error Err = AMDGCNo.takeError();
+            llvm::errs() << "Error: " << Err << "\n";
+            // return;
+          }
+          
+          llvm::object::ELF64LEObjectFile *AMDGCNObject_ptr = &AMDGCNo.get();
+          
+          bool Result = true;
+          auto RecoverableErrorHandler = [&](llvm::Error E) {
+            Result = false;
+            llvm::WithColor::defaultErrorHandler(std::move(E));
+          };
+          
+          // init DICtx
+          std::unique_ptr<llvm::DWARFContext> DICtx = llvm::DWARFContext::create(
+            *AMDGCNObject_ptr, llvm::DWARFContext::ProcessDebugRelocations::Process, nullptr, "", 
+            RecoverableErrorHandler);
+            
+            DICtx->setParseCUTUIndexManually(true);
+            if (!dumpAMDGCNObject(*AMDGCNObject, *DICtx, OutputFile.os())) {
+              Result = false;
+            }
+            
+            //? what to return if error
+          
     }
+
     // Now that all global objects are initialized, we can now populate
     // the target kernel's instructions
     // As we encounter global objects used by the kernel, we populate them
