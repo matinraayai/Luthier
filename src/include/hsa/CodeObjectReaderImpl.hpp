@@ -25,15 +25,18 @@
 namespace luthier::hsa {
 
 /// \brief the concrete implementation of the \c CodeObjectReader interface
-class CodeObjectReaderImpl : public CodeObjectReader {
+class CodeObjectReaderImpl : public CodeObjectReader,
+                             HandleType<hsa_code_object_reader_t> {
 
 public:
-  CodeObjectReaderImpl() : CodeObjectReader() {};
+  CodeObjectReaderImpl() : HandleType<hsa_code_object_reader_t>({0}) {};
 
   explicit CodeObjectReaderImpl(hsa_code_object_reader_t Handle)
-      : CodeObjectReader(Handle) {};
+      : HandleType<hsa_code_object_reader_t>(Handle) {};
 
   [[nodiscard]] std::unique_ptr<CodeObjectReader> clone() const override;
+
+  [[nodiscard]] size_t hash() const override;
 
   llvm::Error createFromMemory(llvm::StringRef Elf) override;
 

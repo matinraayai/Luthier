@@ -29,10 +29,9 @@ std::unique_ptr<CodeObjectReader> CodeObjectReaderImpl::clone() const {
   return std::make_unique<CodeObjectReaderImpl>(asHsaType());
 }
 
+size_t CodeObjectReaderImpl::hash() const { return hsaHandle(); }
+
 llvm::Error CodeObjectReaderImpl::createFromMemory(llvm::StringRef Elf) {
-  if (hsaHandle() != 0)
-    return LUTHIER_CREATE_ERROR(
-        "Cannot create a new code object reader with a non-zero handle.");
   const auto &CoreApiTable =
       hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
   hsa_code_object_reader_t Reader;

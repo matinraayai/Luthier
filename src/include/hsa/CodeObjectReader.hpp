@@ -15,10 +15,9 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c hsa::CodeObjectReader interface, representing
-/// a wrapper around <tt>hsa_code_object_reader_t</tt>.
-/// It is in charge of reading AMDGPU code objects into an \c Executable and
-/// creating a <tt>hsa::LoadedCodeObject</tt>.
+/// This file defines the \c hsa::CodeObjectReader interface, in charge of
+/// reading AMDGPU code objects into an \c hsa::Executable and creating a
+/// <tt>hsa::LoadedCodeObject</tt>.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_CODE_OBJECT_READER_HPP
 #define LUTHIER_HSA_CODE_OBJECT_READER_HPP
@@ -29,30 +28,21 @@
 
 namespace luthier::hsa {
 
-/// \brief Wrapper around the \c hsa_code_object_reader_t handle
-class CodeObjectReader : public HandleType<hsa_code_object_reader_t> {
+/// \brief Represents a code object reader in the HSA standard. Reads
+/// code objects into an \c hsa::Executable to create an instance
+/// of a \c hsa::LoadedCodeObject
+class CodeObjectReader {
 public:
-  /// Default constructor
-  CodeObjectReader() : HandleType<hsa_code_object_reader_t>({0}) {};
-
-  /// Constructor from a \c hsa_code_object_reader_t handle
-  /// \warning This should not be used to create a new
-  /// <tt>hsa_code_object_reader_t</tt>, use \c createFromMemory instead.
-  /// \param Reader a \c hsa_code_object_reader_t handle, which already has
-  /// been created by HSA
-  /// \sa createFromMemory
-  explicit CodeObjectReader(hsa_code_object_reader_t Reader)
-      : HandleType(Reader) {};
-
   /// \return a cloned instance of this \c CodeObjectReader
   [[nodiscard]] virtual std::unique_ptr<CodeObjectReader> clone() const = 0;
 
-  /// Creates a new \c hsa_code_object_reader_t handle
-  /// for loading the \p Elf into an \c hsa_executable_t and assigns it to be
-  /// managed by this \c CodeObjectReader
+  /// \return hash of the \c CodeObjectReader
+  [[nodiscard]] virtual size_t hash() const = 0;
+
+  /// Creates a new code object reader for loading the \p Elf into an
+  /// \c hsa::Executable and assigns it to be managed by this object
   /// \param Elf a code object in memory to be loaded by the
-  /// \c hsa_code_object_reader_t
-  /// \returns an error if the underlying handle is not zero
+  /// \c CodeObjectReader
   /// \return an \c llvm::Error indicating the success or failure of the
   /// operation
   virtual llvm::Error createFromMemory(llvm::StringRef Elf) = 0;
