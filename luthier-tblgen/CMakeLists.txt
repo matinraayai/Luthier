@@ -12,6 +12,8 @@ add_tablegen(luthier-tblgen luthier
         RealToPseudoRegisterMapBackend.cpp
         Main.cpp
 )
+#Added External Project Dep
+add_dependencies(luthier-tblgen LLVMSRC)
 
 target_include_directories(luthier-tblgen PRIVATE ${LLVM_INCLUDE_DIRS})
 target_include_directories(luthier-tblgen PRIVATE ${LUTHIER_LLVM_SRC_DIR}/llvm/utils/TableGen)
