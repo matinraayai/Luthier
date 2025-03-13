@@ -15,38 +15,33 @@ if(NOT DEFINED LUTHIER_LLVM_SRC_DIR)
   #Case where LLVM_SRC_DIR is not given either
   if(NOT DEFINED LLVM_SRC_DIR)
     #Set LLVM_SRC_DIR if not already
-    set(LLVM_SRC_DIR /usr/local/install_proc)
+    set(LLVM_SRC_DIR ${CMAKE_BINARY_DIR}/llvm-project)
 
-    #Execute Process at Compile Time
-    #find_package(Git REQUIRED)  # Ensure Git is available
-    #execute_process(
-    #  COMMAND ${GIT_EXECUTABLE} clone --branch 5e51f7702e2703df95f7a3d57284a1fdef4766b7 git@github.com:ROCm/llvm-project.git ${LLVM_SRC_DIR}
-    #  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    #  RESULT_VARIABLE GIT_CLONE_RESULT
-    #)
     #This is at build time
     ExternalProject_Add(llvm-project
       GIT_REPOSITORY    git@github.com:ROCm/llvm-project.git
       GIT_TAG           5e51f7702e2703df95f7a3d57284a1fdef4766b7
-      GIT_SHALLOW       1
+      #GIT_SHALLOW       1
       PREFIX ${LLVM_SRC_DIR}
+      SOURCE_DIR ${LLVM_SRC_DIR}
+      #CONFIGURE_COMMAND ""
+      #BUILD_COMMAND ""
+      #INSTALL_COMMAND ""
+      #UPDATE_COMMAND ""
+      BUILD_BYPRODUCTS ${LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td
     )
 
     #Add Custom Target which all are dependent on
-    add_custom_target(llvm-project-clone ALL DEPENDS llvm-project)
+    add_custom_target(LLVMSRC ALL DEPENDS llvm-project)
 
-    #Set LuthierLLVMSRCDIR to something else?
+    #Set Luthier_LLVM_SRC_DIR to LLVM_SRC_DIR
     message(STATUS "VARIABLE_NAME is set to ${LLVM_SRC_DIR}")
-    set(LUTHIER_LLVM_SRC_DIR ${LLVM_SRC_DIR})
+    set(LUTHIER_LLVM_SRC_DIR ${LLVM_SRC_DIR} CACHE STRING "LLVM source directory")
     message(STATUS "VARIABLE_NAME is set to ${LUTHIER_LLVM_SRC_DIR}")
 
-    #Set CMAKE_PREFIX_PATH to something else?
-    #set(CMAKE_PREFIX_PATH "/opt/luthier;/opt/rocm")
-
-    #message(STATUS "VARIABLE_NAME is set to ${CMAKE_PREFIX_PATH}")
   else()
     #Case where LLVM_SRC_DIR is already set, so LUTHIER gets set to it
-    set(LUTHIER_LLVM_SRC_DIR ${LLVM_SRC_DIR})
+    set(LUTHIER_LLVM_SRC_DIR ${LLVM_SRC_DIR} )
   endif()
   
 endif()
@@ -94,6 +89,5 @@ if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
     doxygen_add_docs(luthier_docs docs src compiler-plugins luthier-tblgen)
 endif ()
 
-#Adding dependencies to custom target
-add_dependencies(LUTHIERAMDGPU llvm-project-clone)
+
 
