@@ -15,13 +15,10 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c Executable interface under the \c luthier::hsa
-/// namespace, representing a wrapper around the \c hsa_executable_t.
+/// This file defines the \c hsa::Executable interface.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_EXECUTABLE_HPP
 #define LUTHIER_HSA_EXECUTABLE_HPP
-#include "hsa/HandleType.hpp"
-#include <llvm/ADT/DenseMapInfo.h>
 #include <optional>
 
 namespace luthier::hsa {
@@ -34,16 +31,12 @@ class ExecutableSymbol;
 
 class LoadedCodeObject;
 
-/// \brief wrapper around the \c hsa_executable_t handle
-class Executable : public HandleType<hsa_executable_t> {
+/// \brief an interface representing the concept of an executable inside
+/// the HSA standard
+class Executable {
 public:
-  /// Constructor using an already created \c hsa_executable_t \p Exec handle
-  /// \warning This constructor must only be used with handles already created
-  /// by HSA. To create executables from scratch, use \c create instead.
-  explicit Executable(hsa_executable_t Exec);
-
-  /// Creates a new \c hsa_executable_t handle and assigns it to be managed by
-  /// this \c Executable object
+  /// Creates a new executable and assigns it to be managed by this
+  /// \c Executable object
   /// \param Profile \c hsa_profile_t of the executable
   /// \param DefaultFloatRoundingMode \c hsa_default_float_rounding_mode_t
   /// of the executable
@@ -149,7 +142,7 @@ public:
   /// executable
   /// \return \c llvm::ErrorSuccess if the operation was successful, or an
   /// \c llvm::Error on failure
-  virtual llvm::Error getLoadedCodeObjects(
+  [[nodiscard]] virtual llvm::Error getLoadedCodeObjects(
       llvm::SmallVectorImpl<std::unique_ptr<LoadedCodeObject>> &LCOs) const = 0;
 
   /// Looks up the \c ExecutableSymbol by its \p Name in the Executable
