@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # User Options =========================================================================================================
+option(LUTHIER_BUILD_UNIT_TESTS "Builds the unit tests" OFF)
 option(LUTHIER_BUILD_INTEGRATION_TESTS "Builds the integration tests" OFF)
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
 option(LUTHIER_BUILD_LATEX_DOCS "Builds Luthier documentation with Doxygen in PDF format with Latex" OFF)
@@ -34,6 +35,11 @@ add_subdirectory(src)
 # Build examples if enabled
 if (${LUTHIER_BUILD_EXAMPLES})
     add_subdirectory(examples)
+endif ()
+
+# Build unit tests if enabled
+if (${LUTHIER_BUILD_UNIT_TESTS})
+    add_subdirectory(tests)
 endif ()
 
 # Build integration tests if enabled
