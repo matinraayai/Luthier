@@ -1,4 +1,4 @@
-//===-- GpuAgent.hpp ------------------------------------------------------===//
+//===-- GpuAgentImpl.hpp --------------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,22 +15,29 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c hsa::GpuAgent interface, representing a GPU Agent
-/// inside the HSA standard.
+/// This file defines the \c hsa::GpuAgentImpl class, the concrete
+/// implementation for the \c hsa::GpuAgent interface.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_GPU_AGENT_HPP
-#define LUTHIER_HSA_GPU_AGENT_HPP
-#include "hsa/ISA.hpp"
+#ifndef LUTHIER_HSA_GPU_AGENT_IMPL_HPP
+#define LUTHIER_HSA_GPU_AGENT_IMPL_HPP
+#include "hsa/GpuAgent.hpp"
+#include "hsa/HandleType.hpp"
+#include <hsa/hsa.h>
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/Support/ExtensibleRTTI.h>
 
 namespace luthier::hsa {
 
 /// \brief Wrapper around the \c hsa_agent_t handles of type
-/// \c HSA_DEVICE_TYPE_CPU
-class GpuAgent : public llvm::RTTIExtends<GpuAgent, llvm::RTTIRoot> {
+/// \c HSA_DEVICE_TYPE_GPU
+class GpuAgentImpl : public llvm::RTTIExtends<GpuAgentImpl, GpuAgent>,
+                     public HandleType<hsa_agent_t> {
 public:
   static char ID;
+
+  /// Constructor
+  /// \param Agent the HSA handle of the GPU Agent
+  explicit GpuAgentImpl(hsa_agent_t Agent) : HandleType<hsa_agent_t>(Agent) {};
+
   /// Queries all the <tt>hsa::ISA</tt>s supported by this GPU Agent.
   /// \param [out] Isa list of ISAs supported by the Agent
   /// \return an llvm::ErrorSuccess if the operation was successful, or

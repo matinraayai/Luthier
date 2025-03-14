@@ -1,4 +1,4 @@
-//===-- LoadedCodeObjectExternSymbol.h - LCO External Symbol ----*- C++ -*-===//
+//===-- GpuAgentImpl.cpp --------------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,25 +15,27 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c LoadedCodeObjectExternSymbol under the
-/// \c luthier::hsa namespace, which represents all symbols declared
-/// inside a \c hsa::LoadedCodeObject but not defined.
+/// This file implements the \c GpuAgent class under the \c luthier::hsa
+/// namespace.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_EXTERN_SYMBOL_H
-#define LUTHIER_HSA_LOADED_CODE_OBJECT_EXTERN_SYMBOL_H
-#include "LoadedCodeObjectSymbol.h"
+#include "hsa/GpuAgentImpl.hpp"
+#include "hsa/ISA.hpp"
 
 namespace luthier::hsa {
 
-/// \brief an external variable \c LoadedCodeObjectSymbol
-class LoadedCodeObjectExternSymbol
-    : public llvm::RTTIExtends<LoadedCodeObjectExternSymbol,
-                               LoadedCodeObjectSymbol> {
-public:
-  static char ID;
+char GpuAgentImpl::ID = 0;
 
-};
+llvm::Error GpuAgentImpl::getSupportedISAs(
+    llvm::SmallVectorImpl<std::unique_ptr<ISA>> &IsaList) const {
+  auto Iterator = [](hsa_isa_t Isa, void *Data) {
+    auto SupportedIsaList =
+        reinterpret_cast<llvm::SmallVectorImpl<std::unique_ptr<ISA>> *>(Data);
+    SupportedIsaList->emplace_back(new hsa::ISA(Isa));
+    return HSA_STATUS_SUCCESS;
+  };
+
+  return LUTHIER_HSA_SUCCESS_CHECK(getApiTable().core.hsa_agent_iterate_isas_fn(
+      this->asHsaType(), Iterator, &IsaList));
+}
 
 } // namespace luthier::hsa
-
-#endif

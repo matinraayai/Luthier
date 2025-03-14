@@ -37,7 +37,7 @@ public:
 
   /// Wrapper constructor
   /// \param Handle HSA handle of the \c hsa_executable_symbol_t
-  explicit ExecutableSymbol(hsa_executable_symbol_t Handle)
+  explicit ExecutableSymbolImpl(hsa_executable_symbol_t Handle)
       : HandleType<hsa_executable_symbol_t>(Handle) {};
 
   [[nodiscard]] llvm::Expected<hsa_symbol_kind_t> getType() const override;

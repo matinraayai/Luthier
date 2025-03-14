@@ -15,44 +15,23 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c LoadedCodeObjectVariable under the
-/// \c luthier::hsa namespace, which represents all device variable symbols
-/// inside a <tt>hsa::LoadedCodeObject</tt>.
+/// This file defines the \c luthier::hsa::LoadedCodeObjectVariable interface,
+/// which represents all device variable symbols inside a
+/// <tt>hsa_loaded_code_object_t</tt>.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LOADED_CODE_OBJECT_VARIABLE_H
-#define LUTHIER_LOADED_CODE_OBJECT_VARIABLE_H
+#ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_VARIABLE_H
+#define LUTHIER_HSA_LOADED_CODE_OBJECT_VARIABLE_H
 #include "LoadedCodeObjectSymbol.h"
 
 namespace luthier::hsa {
 
 /// \brief a \c LoadedCodeObjectSymbol of type
 /// \c LoadedCodeObjectSymbol::ST_DEVICE_FUNCTION
-class LoadedCodeObjectVariable final : public LoadedCodeObjectSymbol {
-
-private:
-  /// Constructor
-  /// \param LCO the \c hsa_loaded_code_object_t this symbol belongs to
-  /// \param VarSymbol the symbol of the variable,
-  /// cached internally by Luthier
-  /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
-  /// the variable symbol, if exists
-  LoadedCodeObjectVariable(
-      hsa_loaded_code_object_t LCO, llvm::object::ELF64LEObjectFile &StorageElf,
-      llvm::object::ELFSymbolRef VarSymbol,
-      std::optional<hsa_executable_symbol_t> ExecutableSymbol)
-      : LoadedCodeObjectSymbol(LCO, StorageElf, VarSymbol,
-                               SymbolKind::SK_VARIABLE, ExecutableSymbol) {}
-
+class LoadedCodeObjectVariable
+    : public llvm::RTTIExtends<LoadedCodeObjectVariable,
+                               LoadedCodeObjectSymbol> {
 public:
-  static llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
-  create(hsa_loaded_code_object_t LCO,
-         llvm::object::ELF64LEObjectFile &StorageElf,
-         llvm::object::ELFSymbolRef VarSymbol);
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const LoadedCodeObjectSymbol *S) {
-    return S->getType() == SK_VARIABLE;
-  }
+  static char ID;
 };
 
 } // namespace luthier::hsa

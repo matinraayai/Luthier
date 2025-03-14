@@ -33,6 +33,9 @@ class ISAImpl : public llvm::RTTIExtends<ISAImpl, ISA>,
 public:
   static char ID;
 
+  /// Default Constructor
+  explicit ISAImpl() : HandleType<hsa_isa_t>({0}) {};
+
   /// Constructor
   /// \param Isa the \c hsa_isa_t handle being encapsulated
   explicit ISAImpl(hsa_isa_t Isa) : HandleType<hsa_isa_t>(Isa) {};

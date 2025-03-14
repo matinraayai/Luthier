@@ -26,15 +26,12 @@
 
 namespace luthier::hsa {
 
-class GpuAgent;
-
-class ExecutableSymbol;
-
-class LoadedCodeObject;
-
 /// \brief Concrete implementation of the \c Executable interface
-class ExecutableImpl : public Executable, public HandleType<hsa_executable_t> {
+class ExecutableImpl : public llvm::RTTIExtends<ExecutableImpl, Executable>,
+                       public HandleType<hsa_executable_t> {
 public:
+  static char ID;
+
   /// Default constructor
   ExecutableImpl() : HandleType<hsa_executable_t>({0}) {};
 
@@ -47,7 +44,7 @@ public:
   create(hsa_profile_t Profile,
          hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) override;
 
-  llvm::Expected<hsa::LoadedCodeObject>
+  llvm::Expected<std::unique_ptr<hsa::LoadedCodeObject>>
   loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
                       const hsa::GpuAgent &Agent,
                       llvm::StringRef LoaderOptions) override;
@@ -73,75 +70,10 @@ public:
       llvm::SmallVectorImpl<std::unique_ptr<LoadedCodeObject>> &LCOs)
       const override;
 
-  /// Looks up the \c ExecutableSymbol by its \p Name in the Executable
-  /// \param Name Name of the symbol being looked up; If the queried symbol
-  /// is a kernel then it must have ".kd" as a suffix in the name
-  /// \return on success, the \c ExecutableSymbol with the given \p Name if
-  /// found, otherwise <tt>std::nullopt</tt>; Otherwise a \c luthier::HsaError
-  /// indicating any issue encountered during the process
-  llvm::Expected<std::optional<ExecutableSymbol>>
+  llvm::Expected<std::unique_ptr<ExecutableSymbol>>
   getExecutableSymbolByName(llvm::StringRef Name, const hsa::GpuAgent &Agent);
 };
 
 } // namespace luthier::hsa
-
-//===----------------------------------------------------------------------===//
-// LLVM DenseMapInfo, for insertion into LLVM-based containers
-//===----------------------------------------------------------------------===//
-
-namespace llvm {
-
-template <> struct DenseMapInfo<luthier::hsa::Executable> {
-  static inline luthier::hsa::Executable getEmptyKey() {
-    return luthier::hsa::Executable(
-        {DenseMapInfo<decltype(hsa_executable_t::handle)>::getEmptyKey()});
-  }
-
-  static inline luthier::hsa::Executable getTombstoneKey() {
-    return luthier::hsa::Executable(
-        {DenseMapInfo<decltype(hsa_executable_t::handle)>::getTombstoneKey()});
-  }
-
-  static unsigned getHashValue(const luthier::hsa::Executable &Executable) {
-    return DenseMapInfo<decltype(hsa_executable_t::handle)>::getHashValue(
-        Executable.hsaHandle());
-  }
-
-  static bool isEqual(const luthier::hsa::Executable &lhs,
-                      const luthier::hsa::Executable &rhs) {
-    return lhs.hsaHandle() == rhs.hsaHandle();
-  }
-};
-
-} // namespace llvm
-
-//===----------------------------------------------------------------------===//
-// C++ std library function objects for hashing and comparison, for insertion
-// into stl container
-//===----------------------------------------------------------------------===//
-
-namespace std {
-
-template <> struct hash<luthier::hsa::Executable> {
-  size_t operator()(const luthier::hsa::Executable &Obj) const {
-    return hash<unsigned long>()(Obj.hsaHandle());
-  }
-};
-
-template <> struct less<luthier::hsa::Executable> {
-  bool operator()(const luthier::hsa::Executable &Lhs,
-                  const luthier::hsa::Executable &Rhs) const {
-    return Lhs.hsaHandle() < Rhs.hsaHandle();
-  }
-};
-
-template <> struct equal_to<luthier::hsa::Executable> {
-  bool operator()(const luthier::hsa::Executable &Lhs,
-                  const luthier::hsa::Executable &Rhs) const {
-    return Lhs.hsaHandle() == Rhs.hsaHandle();
-  }
-};
-
-} // namespace std
 
 #endif

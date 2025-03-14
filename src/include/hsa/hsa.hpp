@@ -19,8 +19,8 @@
 /// the global status of the HSA runtime (e.g. agents attached to the device).
 //===----------------------------------------------------------------------===//
 
-#ifndef HSA_HSA_HPP
-#define HSA_HSA_HPP
+#ifndef LUTHIER_HSA_HSA_HPP
+#define LUTHIER_HSA_HSA_HPP
 #include "hsa/Executable.hpp"
 #include "hsa/GpuAgent.hpp"
 #include <llvm/ADT/SmallVector.h>

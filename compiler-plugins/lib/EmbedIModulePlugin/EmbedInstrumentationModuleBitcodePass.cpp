@@ -228,9 +228,9 @@ EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
          std::initializer_list<
              std::tuple<const char *, const char *, llvm::Type *>>{
              {"llvm.amdgcn.workgroup.id.x", "luthier::workgroupIdX", Int32Type},
-             {"llvm.amdgcn.workgroup.idx.y", "luthier::workgroupIdY",
+             {"llvm.amdgcn.workgroup.id.y", "luthier::workgroupIdY",
               Int32Type},
-             {"llvm.amdgcn.workgroup.idx.z", "luthier::workgroupIdZ",
+             {"llvm.amdgcn.workgroup.id.z", "luthier::workgroupIdZ",
               Int32Type},
              {"llvm.amdgcn.implicitarg.ptr", "luthier::implicitArgPtr",
               Int32Ptr}}) {

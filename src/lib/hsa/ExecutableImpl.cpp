@@ -21,12 +21,14 @@
 #include "hsa/ExecutableImpl.hpp"
 #include "hsa/CodeObjectReaderImpl.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
-#include "hsa/ExecutableSymbol.hpp"
+#include "hsa/ExecutableSymbolImpl.hpp"
 #include "hsa/GpuAgentImpl.hpp"
-#include "hsa/LoadedCodeObject.hpp"
+#include "hsa/LoadedCodeObjectImpl.hpp"
 #include "luthier/hsa/HsaError.h"
 
 namespace luthier::hsa {
+
+char ExecutableImpl::ID = 0;
 
 llvm::Error ExecutableImpl::create(
     hsa_profile_t Profile,
@@ -38,7 +40,7 @@ llvm::Error ExecutableImpl::create(
   return llvm::Error::success();
 }
 
-llvm::Expected<hsa::LoadedCodeObject>
+llvm::Expected<std::unique_ptr<hsa::LoadedCodeObject>>
 ExecutableImpl::loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
                                     const hsa::GpuAgent &Agent,
                                     llvm::StringRef LoaderOptions) {
@@ -62,7 +64,8 @@ ExecutableImpl::loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
   LUTHIER_RETURN_ON_ERROR(
       ExecutableBackedObjectsCache::instance()
           .cacheExecutableOnLoadedCodeObjectCreation(*this));
-  return LoadedCodeObject{LCO};
+
+  return std::make_unique<LoadedCodeObjectImpl>(LCO);
 }
 
 llvm::Error
@@ -135,7 +138,7 @@ llvm::Error ExecutableImpl::getLoadedCodeObjects(
                      void *Data) -> hsa_status_t {
     auto Out = reinterpret_cast<
         llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObject>> *>(Data);
-    Out->emplace_back(new hsa::LoadedCodeObject(LCO));
+    Out->emplace_back(new hsa::LoadedCodeObjectImpl(LCO));
     return HSA_STATUS_SUCCESS;
   };
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
@@ -145,7 +148,7 @@ llvm::Error ExecutableImpl::getLoadedCodeObjects(
   return llvm::Error::success();
 }
 
-llvm::Expected<std::optional<ExecutableSymbol>>
+llvm::Expected<std::unique_ptr<ExecutableSymbol>>
 ExecutableImpl::getExecutableSymbolByName(llvm::StringRef Name,
                                           const hsa::GpuAgent &Agent) {
   auto *AgentImpl = llvm::dyn_cast<hsa::GpuAgentImpl>(&Agent);
@@ -160,9 +163,9 @@ ExecutableImpl::getExecutableSymbolByName(llvm::StringRef Name,
   auto Status = getApiTable().core.hsa_executable_get_symbol_by_name_fn(
       this->asHsaType(), Name.str().c_str(), &HsaAgent, &Symbol);
   if (Status == HSA_STATUS_SUCCESS)
-    return ExecutableSymbol(Symbol);
+    return std::make_unique<ExecutableSymbolImpl>(Symbol);
   else if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME)
-    return std::nullopt;
+    return nullptr;
   else
     return LUTHIER_HSA_SUCCESS_CHECK(Status);
 }

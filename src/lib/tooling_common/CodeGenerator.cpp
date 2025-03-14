@@ -172,6 +172,7 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   LUTHIER_RETURN_ON_ERROR(Task.getModule()
                               .readBitcodeIntoContext(LR.getContext(), *Agent)
                               .moveInto(IModule));
+
   // Instantiate the Module PM and analysis in charge of running the
   // IR pipeline for the instrumentation module
   // We keep them here because we will need the analysis done at the IR

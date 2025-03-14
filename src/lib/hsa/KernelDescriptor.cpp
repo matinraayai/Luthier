@@ -17,6 +17,7 @@
 /// \file
 /// This file implements the HSA kernel descriptor POD struct methods.
 //===----------------------------------------------------------------------===//
+#include "hsa/LoadedCodeObjectSymbolImpl.hpp"
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/common/LuthierError.h"
 #include <hsa/amd_hsa_common.h>
@@ -220,9 +221,9 @@ KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
 KernelDescriptor::getLoadedCodeObjectKernelSymbol() const {
-  auto Symbol = LoadedCodeObjectKernel::fromLoadedAddress(
-      reinterpret_cast<luthier::address_t>(this));
-  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
+  auto Symbol = std::make_unique<LoadedCodeObjectSymbolImpl>();
+  LUTHIER_RETURN_ON_ERROR(
+      Symbol->fromLoadedAddress(reinterpret_cast<luthier::address_t>(this)));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
       *Symbol != nullptr,
       "Failed to locate the symbol associated with loaded address {0:x}.",

@@ -27,6 +27,10 @@ add_subdirectory(luthier-tblgen)
 add_subdirectory(compiler-plugins)
 add_subdirectory(src)
 
+file(STRINGS /opt/rocm/llvm/include/llvm/Support/VCSRevision.h CONTENTS REGEX "^LLVM_REPOSITORY.*")
+
+message(STATUS ${CONTENTS})
+
 # Any Compilation Flags, Linking Configuration Left
 # TODO: Add option to build with sanitizers
 #target_compile_options(luthier PUBLIC "-fsanitize=address")

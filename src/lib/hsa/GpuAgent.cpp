@@ -24,17 +24,6 @@
 
 namespace luthier::hsa {
 
-llvm::Error
-GpuAgent::getSupportedISAs(llvm::SmallVectorImpl<ISA> &IsaList) const {
-  auto Iterator = [](hsa_isa_t Isa, void *Data) {
-    auto SupportedIsaList =
-        reinterpret_cast<llvm::SmallVectorImpl<ISA> *>(Data);
-    SupportedIsaList->emplace_back(Isa);
-    return HSA_STATUS_SUCCESS;
-  };
-
-  return LUTHIER_HSA_SUCCESS_CHECK(getApiTable().core.hsa_agent_iterate_isas_fn(
-      this->asHsaType(), Iterator, &IsaList));
-}
+char GpuAgent::ID = 0;
 
 } // namespace luthier::hsa

@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c hsa::LoadedCodeObjectSymbol class.
+/// This file defines the \c hsa::LoadedCodeObjectSymbol interface.
 /// It represents all symbols of interest inside an \c hsa_loaded_code_object_t
 /// regardless of their binding type, unlike <tt>hsa_executable_symbol_t</tt>
 /// which only include symbols with a \c STB_GLOBAL binding.
@@ -26,10 +26,9 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/Hashing.h>
-#include <llvm/Object/ELFObjectFile.h>
+#include <llvm/Support/ExtensibleRTTI.h>
 #include <luthier/hsa/DenseMapInfo.h>
 #include <luthier/types.h>
-#include <optional>
 #include <string>
 
 namespace luthier::hsa {
@@ -41,62 +40,17 @@ namespace luthier::hsa {
 /// <tt>STB_LOCAL</tt> bindings. This allows for representation of symbols of
 /// interest, including device functions and variables with local bindings (e.g.
 /// strings used in host call print operations).
-class LoadedCodeObjectSymbol {
+class LoadedCodeObjectSymbol
+    : public llvm::RTTIExtends<LoadedCodeObjectSymbol, llvm::RTTIRoot> {
 public:
-  enum SymbolKind { SK_KERNEL, SK_DEVICE_FUNCTION, SK_VARIABLE, SK_EXTERNAL };
+  static char ID;
 
-protected:
-  /// The HSA Loaded Code Object this symbol belongs to
-  hsa_loaded_code_object_t BackingLCO{};
-  /// Parsed storage ELF of the LCO, to ensure \c Symbol stays valid
-  llvm::object::ELF64LEObjectFile &StorageELF;
-  /// The LLVM Object ELF symbol of this LCO symbol;
-  /// Backed by parsing the storage ELF of the LCO
-  llvm::object::ELFSymbolRef Symbol;
-  /// LLVM RTTI
-  SymbolKind Kind;
-  /// The HSA executable symbol equivalent, if exists
-  std::optional<hsa_executable_symbol_t> ExecutableSymbol;
-
-  /// Constructor used by sub-classes
-  /// \param LCO the \c hsa_loaded_code_object_t which the symbol belongs to
-  /// \param StorageELF the \c luthier::AMDGCNObjectFile of \p Symbol
-  /// \param Symbol a reference to the \c llvm::object::ELFSymbolRef
-  /// that was obtained from parsing the storage ELF of the \p LCO and cached
-  /// \param Kind the type of the symbol being constructed
-  /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
-  /// the <tt>LoadedCodeObjectSymbol</tt> if exists
-  LoadedCodeObjectSymbol(
-      hsa_loaded_code_object_t LCO, llvm::object::ELF64LEObjectFile &StorageELF,
-      llvm::object::ELFSymbolRef Symbol, SymbolKind Kind,
-      std::optional<hsa_executable_symbol_t> ExecutableSymbol);
-
-public:
-  /// Disallowed copy construction
-  LoadedCodeObjectSymbol(const LoadedCodeObjectSymbol &) = delete;
-
-  /// Disallowed assignment operation
-  LoadedCodeObjectSymbol &operator=(const LoadedCodeObjectSymbol &) = delete;
-
-  /// \return a deep clone copy of the
-  [[nodiscard]] virtual std::unique_ptr<LoadedCodeObjectSymbol> clone() const {
-    return std::unique_ptr<LoadedCodeObjectSymbol>(new LoadedCodeObjectSymbol(
-        this->BackingLCO, this->StorageELF, this->Symbol, this->Kind,
-        this->ExecutableSymbol));
-  }
+  /// \return a deep clone copy of the symbol
+  [[nodiscard]] virtual std::unique_ptr<LoadedCodeObjectSymbol>
+  clone() const = 0;
 
   /// Equality operator
-  bool operator==(const LoadedCodeObjectSymbol &Other) const {
-    bool Out = Symbol == Other.Symbol &&
-               BackingLCO.handle == Other.BackingLCO.handle &&
-               Kind == Other.Kind;
-    if (ExecutableSymbol.has_value()) {
-      return Out &&
-             (Other.ExecutableSymbol.has_value() &&
-              ExecutableSymbol->handle == Other.ExecutableSymbol->handle);
-    } else
-      return Out && !Other.ExecutableSymbol.has_value();
-  }
+  virtual bool operator==(const LoadedCodeObjectSymbol &Other) const = 0;
 
   /// Factory method which returns the \c LoadedCodeObjectSymbol given its
   /// \c hsa_executable_symbol_t
@@ -104,67 +58,57 @@ public:
   /// \return on success, a const reference to a cached
   /// \c LoadedCodeObjectSymbol of the HSA executable symbol, or an
   /// \c llvm::Error on failure
-  static llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
-  fromExecutableSymbol(hsa_executable_symbol_t Symbol);
+  virtual llvm::Error fromExecutableSymbol(hsa_executable_symbol_t Symbol) = 0;
 
   /// Queries if a \c hsa::LoadedCodeObjectSymbol is
   /// loaded on device memory at \p LoadedAddress
   /// \param LoadedAddress the device loaded address being queried
   /// \return \c nullptr if no symbol is loaded at the given address, or
   /// a \c const pointer to the symbol loaded at the given address
-  static llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
-  fromLoadedAddress(luthier::address_t LoadedAddress);
-
-  /// \return the \c SymbolKind of this symbol
-  [[nodiscard]] SymbolKind getType() const { return Kind; }
+  virtual llvm::Error fromLoadedAddress(luthier::address_t LoadedAddress) = 0;
 
   /// \return GPU Agent of this symbol on success, an \c llvm::Error
   /// on failure
-  [[nodiscard]] llvm::Expected<hsa_agent_t> getAgent() const;
+  [[nodiscard]] virtual llvm::Expected<hsa_agent_t> getAgent() const = 0;
 
   /// \return Loaded Code Object of this symbol
-  [[nodiscard]] hsa_loaded_code_object_t getLoadedCodeObject() const {
-    return BackingLCO;
-  }
+  [[nodiscard]] virtual llvm::Expected<hsa_loaded_code_object_t>
+  getLoadedCodeObject() const = 0;
 
   /// \return the executable this symbol was loaded into
-  [[nodiscard]] llvm::Expected<hsa_executable_t> getExecutable() const;
+  [[nodiscard]] virtual llvm::Expected<hsa_executable_t>
+  getExecutable() const = 0;
 
   /// \return the name of the symbol on success, or an \c llvm::Error on
   /// failure
-  [[nodiscard]] llvm::Expected<llvm::StringRef> getName() const;
+  [[nodiscard]] virtual llvm::Expected<llvm::StringRef> getName() const = 0;
 
   /// \return the size of the symbol
-  [[nodiscard]] size_t getSize() const;
+  [[nodiscard]] virtual size_t getSize() const = 0;
 
   /// \return the binding of the symbol
-  [[nodiscard]] uint8_t getBinding() const;
+  [[nodiscard]] virtual uint8_t getBinding() const = 0;
 
   /// \return an \c llvm::ArrayRef<uint8_t> encapsulating the contents of
   /// this symbol on the \c GpuAgent it was loaded onto
-  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
-  getLoadedSymbolContents() const;
+  [[nodiscard]] virtual llvm::Expected<llvm::ArrayRef<uint8_t>>
+  getLoadedSymbolContents() const = 0;
 
-  [[nodiscard]] llvm::Expected<luthier::address_t>
-  getLoadedSymbolAddress() const;
+  [[nodiscard]] virtual llvm::Expected<luthier::address_t>
+  getLoadedSymbolAddress() const = 0;
 
   /// \return the \c hsa_executable_symbol_t associated with
   /// this LCO Symbol if exists (i.e the symbol has a \c llvm::ELF::STB_GLOBAL
   /// binding), or an \c std::nullopt otherwise
-  [[nodiscard]] std::optional<hsa_executable_symbol_t>
-  getExecutableSymbol() const;
+  [[nodiscard]] virtual std::optional<hsa_executable_symbol_t>
+  getExecutableSymbol() const = 0;
 
   /// Print the symbol in human-readable form.
-  void print(llvm::raw_ostream &OS) const;
+  void virtual print(llvm::raw_ostream &OS) const = 0;
 
-  void dump() const;
+  LLVM_DUMP_METHOD void dump() const;
 
-  [[nodiscard]] inline size_t hash() const {
-    llvm::object::DataRefImpl Raw = Symbol.getRawDataRefImpl();
-    return llvm::hash_combine(
-        BackingLCO.handle, Raw.p, Raw.d.a, Raw.d.b, Kind,
-        ExecutableSymbol.has_value() ? ExecutableSymbol->handle : 0);
-  }
+  [[nodiscard]] virtual size_t hash() const = 0;
 };
 
 /// Equal-to struct used to allow convenient look-ups of symbols inside

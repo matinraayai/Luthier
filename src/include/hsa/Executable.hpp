@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_EXECUTABLE_HPP
 #define LUTHIER_HSA_EXECUTABLE_HPP
+#include <llvm/Support/ExtensibleRTTI.h>
 #include <optional>
 
 namespace luthier::hsa {
@@ -33,8 +34,10 @@ class LoadedCodeObject;
 
 /// \brief an interface representing the concept of an executable inside
 /// the HSA standard
-class Executable {
+class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
 public:
+  static char ID;
+
   /// Creates a new executable and assigns it to be managed by this
   /// \c Executable object
   /// \param Profile \c hsa_profile_t of the executable
@@ -68,14 +71,14 @@ public:
   /// \return on success, a newly created <tt>LoadedCodeObject</tt>. On
   /// failure, an \c llvm::Error
   /// \sa hsa_executable_load_agent_code_object
-  virtual llvm::Expected<hsa::LoadedCodeObject>
+  virtual llvm::Expected<std::unique_ptr<hsa::LoadedCodeObject>>
   loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
                       const hsa::GpuAgent &Agent,
                       llvm::StringRef LoaderOptions) = 0;
 
-  llvm::Expected<hsa::LoadedCodeObject>
-  loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
-                      const hsa::GpuAgent &Agent);
+  llvm::Expected<std::unique_ptr<hsa::LoadedCodeObject>>
+  loadAgentCodeObject(const CodeObjectReader &Reader,
+                      const GpuAgent &Agent);
 
   /// Creates and defines a new external \c hsa_executable_symbol_t with the
   /// given \p SymbolName inside the executable. The new symbol will reside in
@@ -149,9 +152,9 @@ public:
   /// \param Name Name of the symbol being looked up; If the queried symbol
   /// is a kernel then it must have ".kd" as a suffix in the name
   /// \return on success, the \c ExecutableSymbol with the given \p Name if
-  /// found, otherwise <tt>std::nullopt</tt>; On failure an \c llvm::Error
+  /// found, otherwise <tt>nullptr</tt>; On failure an \c llvm::Error
   /// describing the issue encountered during the process
-  virtual llvm::Expected<std::optional<ExecutableSymbol>>
+  virtual llvm::Expected<std::unique_ptr<ExecutableSymbol>>
   getExecutableSymbolByName(llvm::StringRef Name,
                             const hsa::GpuAgent &Agent) = 0;
 };

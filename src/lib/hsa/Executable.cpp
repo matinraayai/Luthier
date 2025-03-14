@@ -24,11 +24,13 @@
 
 namespace luthier::hsa {
 
+char Executable::ID = 0;
+
 llvm::Error Executable::create() {
   return create(HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);
 }
 
-llvm::Expected<hsa::LoadedCodeObject>
+llvm::Expected<std::unique_ptr<hsa::LoadedCodeObject>>
 Executable::loadAgentCodeObject(const CodeObjectReader &Reader,
                                 const GpuAgent &Agent) {
   return loadAgentCodeObject(Reader, Agent, "");
