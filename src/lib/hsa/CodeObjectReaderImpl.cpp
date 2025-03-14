@@ -25,6 +25,8 @@
 
 namespace luthier::hsa {
 
+char CodeObjectReaderImpl::ID = 0;
+
 std::unique_ptr<CodeObjectReader> CodeObjectReaderImpl::clone() const {
   return std::make_unique<CodeObjectReaderImpl>(asHsaType());
 }

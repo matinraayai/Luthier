@@ -21,14 +21,18 @@
 #ifndef LUTHIER_HSA_CODE_OBJECT_READER_IMPL_HPP
 #define LUTHIER_HSA_CODE_OBJECT_READER_IMPL_HPP
 #include "hsa/CodeObjectReader.hpp"
+#include "hsa/HandleType.hpp"
 
 namespace luthier::hsa {
 
 /// \brief the concrete implementation of the \c CodeObjectReader interface
-class CodeObjectReaderImpl : public CodeObjectReader,
-                             HandleType<hsa_code_object_reader_t> {
+class CodeObjectReaderImpl
+    : public llvm::RTTIExtends<CodeObjectReaderImpl, CodeObjectReader>,
+      public HandleType<hsa_code_object_reader_t> {
 
 public:
+  static char ID;
+
   CodeObjectReaderImpl() : HandleType<hsa_code_object_reader_t>({0}) {};
 
   explicit CodeObjectReaderImpl(hsa_code_object_reader_t Handle)

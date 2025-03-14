@@ -23,6 +23,8 @@
 
 namespace luthier::hsa {
 
+char CodeObjectReader::ID = 0;
+
 llvm::Error CodeObjectReader::createFromMemory(llvm::ArrayRef<uint8_t> Elf) {
   return createFromMemory(llvm::toStringRef(Elf));
 }

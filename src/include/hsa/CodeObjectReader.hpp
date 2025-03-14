@@ -21,18 +21,21 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_CODE_OBJECT_READER_HPP
 #define LUTHIER_HSA_CODE_OBJECT_READER_HPP
-#include "hsa/HandleType.hpp"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/ExtensibleRTTI.h>
 
 namespace luthier::hsa {
 
 /// \brief Represents a code object reader in the HSA standard. Reads
 /// code objects into an \c hsa::Executable to create an instance
 /// of a \c hsa::LoadedCodeObject
-class CodeObjectReader {
+class CodeObjectReader
+    : public llvm::RTTIExtends<CodeObjectReader, llvm::RTTIRoot> {
 public:
+  static char ID;
+
   /// \return a cloned instance of this \c CodeObjectReader
   [[nodiscard]] virtual std::unique_ptr<CodeObjectReader> clone() const = 0;
 
@@ -55,7 +58,6 @@ public:
   /// operation
   /// \sa hsa_code_object_reader_destroy
   virtual llvm::Error destroy() = 0;
-
 };
 
 } // namespace luthier::hsa
