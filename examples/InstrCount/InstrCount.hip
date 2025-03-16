@@ -433,6 +433,8 @@ void atToolFini(ApiEvtPhase Phase) {
 
     luthier::errs() << "Total number of counted instructions: "
                     << TotalNumInstructions << ".\n";
+    luthier::errs() << "Total kernel run time (us): "
+                    << KernelTotalTime << ".\n";
   }
 }
 

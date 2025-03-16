@@ -62,8 +62,8 @@ LoadedCodeObject::getStorageELF() const {
   auto &LCOCache =
       ExecutableBackedObjectsCache::instance().getLoadedCodeObjectCache();
   std::lock_guard Lock(LCOCache.ExecutableCacheMutex);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      LCOCache.isCached(*this), "LCO {0:x} is not cached.", hsaHandle()));
+  if (!LCOCache.isCached(*this))
+    LUTHIER_RETURN_ON_ERROR(LCOCache.cacheOnCreation(*this));
   return *LCOCache.CachedLCOs.at(this->asHsaType()).ElfObjectFile;
 }
 

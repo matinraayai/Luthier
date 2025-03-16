@@ -169,7 +169,11 @@ llvm::Error LRCallGraph::analyse(const llvm::Module &M,
     auto *MF = MMI.getMachineFunction(F);
     if (!MF)
       continue;
-
+    if (!CallGraph.contains(MF)) {
+      CallGraph.insert(
+          {MF, std::move(std::make_unique<CallGraphNode>())});
+      CallGraph.at(MF)->Node = MF;
+    }
     for (auto &MBB : *MF) {
       for (auto &MI : MBB) {
         if (MI.isCall()) {
