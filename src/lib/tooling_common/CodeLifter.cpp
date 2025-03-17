@@ -820,13 +820,21 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                                    TargetSymbolName,
                                    reinterpret_cast<luthier::address_t>(
                                        *TargetSymbolAddress)));
-              auto GV = LR.Variables.find(TargetSymbol);
+              llvm::GlobalVariable *GV;
+              auto GVIter = LR.Variables.find(TargetSymbol);
 
               auto TargetSymbolNameOrErr = TargetSymbol.getName();
               LUTHIER_RETURN_ON_ERROR(TargetSymbolNameOrErr.takeError());
 
+              if (GVIter == LR.Variables.end() &&
+                  TargetSymbol == LR.getKernel()) {
+                GV = &llvm::cast<llvm::GlobalVariable>(
+                    LR.getKernelMF().getFunction());
+              } else
+                GV = GVIter->second;
+
               LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-                  GV != LR.Variables.end(),
+                  GV != nullptr,
                   "Failed to find the GV associated with Symbol {0} in the LR.",
                   *TargetSymbolNameOrErr));
 
@@ -834,7 +842,7 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                 Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
               else if (Type == llvm::ELF::R_AMDGPU_REL32_HI)
                 Type = llvm::SIInstrInfo::MO_GOTPCREL32_HI;
-              Builder.addGlobalAddress(GV->second, *Addend, Type);
+              Builder.addGlobalAddress(GV, *Addend, Type);
             } else if (hsa::LoadedCodeObjectDeviceFunction
                            *TargetSymbolAsDevFunc = llvm::dyn_cast<
                                hsa::LoadedCodeObjectDeviceFunction>(
