@@ -5,17 +5,17 @@
 #include "hip/HipCompilerApiInterceptor.hpp"
 #include "hip/HipRuntimeApiInterceptor.hpp"
 #include "hsa/ExecutableBackedObjectsCache.hpp"
-#include <gtest/gtest.h>
+// #include <gtest/gtest.h>
 #include <amd_comgr/amd_comgr.h>
 #include <cstdint>
-#include <include/luthier/common/ErrorCheck.h>
-#include <include/luthier/llvm/streams.h>
-#include <include/luthier/types.h>
+#include <luthier/common/ErrorCheck.h>
+#include <luthier/llvm/streams.h>
+#include <luthier/types.h>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Support/FileSystem.h>
 #include <luthier/comgr/ComgrError.h>
-#include <luthier/common/ErrorCheck.h>
 #include <rocprofiler-sdk/registration.h>
+#include <rocprofiler-sdk/rocprofiler.h>
 #include <string>
 #include <tooling/Controller.hpp>
 #include <tooling_common/CodeLifter.hpp>
@@ -45,14 +45,15 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
           ROCPROFILER_HSA_TABLE,
           nullptr);
 
+  // TODO - double check that this is ok
   static auto Cfg = rocprofiler_tool_configure_result_t{
     sizeof(rocprofiler_tool_configure_result_t),
-    &rocprofilerServiceInit, &toolingLibraryFini, nullptr};
+    nullptr, nullptr, nullptr};
   return &Cfg;
 }
 
 using namespace luthier;
-class ComgrTest {
+class CodeLifterTest {
   std::string m_filepath;
 
   /// \c CodeLifter \c Singleton instance
@@ -69,7 +70,7 @@ class ComgrTest {
 
   public:
     // TODO test for valid filepath?
-    ComgrTest(std::string filepath) : m_filepath(filepath) {}
+    CodeLifterTest(std::string filepath) : m_filepath(filepath) {}
 
     llvm::Error setupTest() {
       LUTHIER_RETURN_ON_ERROR(hsa::init());
@@ -172,8 +173,8 @@ class ComgrTest {
 
 int main()
 {
-  ComgrTest comgrTest("main-hip-amdgcn-amd-amdhsa-gfx908.s");
+  CodeLifterTest codeLifterTest("main-hip-amdgcn-amd-amdhsa-gfx908.s");
   // TODO - this will be replaced with a gtest TEST macro, eventually
-  comgrTest.runTest();
+  codeLifterTest.runTest();
   return 0;
 }
