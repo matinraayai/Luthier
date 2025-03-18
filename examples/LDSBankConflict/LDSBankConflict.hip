@@ -598,7 +598,8 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             luthier::errs() << llvm::formatv(
                 "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
                 "Workgroup Dims: "
-                "({5}, {6}, {7}) LDS Size Requested: {8} LDS Single Address "
+                "({5}, {6}, {7}) Dyn. LDS Size Requested: {8} LDS Single "
+                "Address "
                 "Instruction "
                 "Count: {9}, LDS Double Address Instruction Count: {10}, Num "
                 "bank conflicts: {11}, Num bank conflicts "
@@ -610,7 +611,7 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DispatchPacket->workgroup_size_z,
                 DispatchPacket->group_segment_size,
                 TotalNumSingleAddressLDSInstructions,
-                TotalNumDoubleAddressLDSInstructions, NumBankConflicts,
+                TotalNumDoubleAddressLDSInstructions, *KernelBankConflicts,
                 TotalNumBankConflicts);
           }
           NumKernelLaunched++;

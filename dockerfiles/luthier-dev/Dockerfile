@@ -6,7 +6,7 @@ FROM rocm-$ROCM_VERSION-dev
 
 ARG NVIM_VER=0.10.2
 ARG LLVM_BUILD_TYPE=RelWithDebInfo
-ARG BUILD_SHARED_LIBS=OFF
+ARG BUILD_SHARED_LIBS=ON
 ARG LLVM_SRC_DIR=/src/
 ARG LLVM_ENABLE_EXPENSIVE_CHECKS=OFF
 ARG LLVM_ENABLE_ASSERTIONS=OFF
@@ -74,6 +74,6 @@ RUN cd $LLVM_SRC_DIR/llvm-project/amd/device-libs && mkdir build && cd build && 
 RUN cd $LLVM_SRC_DIR/llvm-project/amd/hipcc/ && mkdir build && cd build &&  \
     cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/opt/luthier/ -DCMAKE_PREFIX_PATH="/opt/luthier/"  \
     -DCMAKE_BUILD_TYPE=Release  \
-    .. && LD_LIBRARY_PATH=/opt/luthier/llvm/lib/ ninja install && rm -rf $LLVM_SRC_DIR/llvm-project/amd/hipcc/build/ \
+    .. && LD_LIBRARY_PATH=/opt/luthier/llvm/lib/ ninja install && rm -rf $LLVM_SRC_DIR/llvm-project/amd/hipcc/build/
 
-ENV LD_LIBRARY_PATH "/opt/rocm/lib:/opt/luthier/llvm/lib/:/opt/luthier/lib"
+ENV LD_LIBRARY_PATH="/opt/rocm/lib:/opt/luthier/llvm/lib/:/opt/luthier/lib"
