@@ -18,19 +18,28 @@
 /// \c llvm::object::ELFObjectFile that can be used via casting.
 //===----------------------------------------------------------------------===//
 #include <llvm/Object/ELFObjectFile.h>
+#include <luthier/common/ErrorCheck.h>
 
 namespace luthier::object {
 
+template <class ELFT> class ELFObjectFile;
+
 class ELFSectionRef : public llvm::object::ELFSectionRef {
 public:
-  ELFSectionRef(const SectionRef &B) : llvm::object::ELFSectionRef(B) {}
+  ELFSectionRef(const llvm::object::ELFSectionRef &B)
+      : llvm::object::ELFSectionRef(B) {}
 
   /// Returns the section's loaded memory offset from its object's
   /// loaded base
   /// \note Function was adapted from LLVM's object utilities
-  /// \return on success, the loaded offset of \p Sec with respect to the
-  /// section's object file's load base; an \c llvm::Error on failure
+  /// \return on success, the loaded offset of this section with respect to its
+  /// object file's load base; an \c llvm::Error on failure
   llvm::Expected<uint64_t> getLoadedOffset() const;
+
+private:
+  template <typename ELFT>
+  llvm::Expected<uint64_t>
+  getLoadedOffset(const luthier::object::ELFObjectFile<ELFT> &ObjFile) const;
 };
 
 class elf_section_iterator : public llvm::object::elf_section_iterator {
@@ -53,7 +62,17 @@ class ELFSymbolRef : public llvm::object::ELFSymbolRef {
 public:
   ELFSymbolRef(const SymbolRef &B) : llvm::object::ELFSymbolRef(B) {};
 
+  /// Returns the symbol's loaded memory offset from its object's
+  /// loaded base
+  /// \note Function was adapted from LLVM's object utilities
+  /// \return on success, the loaded offset of this symbol with respect to its
+  /// object file's load base; an \c llvm::Error on failure
   llvm::Expected<uint64_t> getLoadedOffset() const;
+
+private:
+  template <typename ELFT>
+  llvm::Expected<uint64_t>
+  getLoadedOffset(const luthier::object::ELFObjectFile<ELFT> &ObjFile) const;
 };
 
 class elf_symbol_iterator : public llvm::object::elf_symbol_iterator {
@@ -76,7 +95,8 @@ public:
 /// auto* LuthierObject =
 /// llvm::Cast<luthier::object::ELFObjectFile>(MyLLVMObjFile)
 /// \endcode
-template <class ELFT> class ELFObjectFile : llvm::object::ELFObjectFile<ELFT> {
+template <class ELFT>
+class ELFObjectFile : public llvm::object::ELFObjectFile<ELFT> {
 public:
   static bool classof(llvm::object::Binary *V) {
     return llvm::object::ELFObjectFile<ELFT>::classof(V);
@@ -121,23 +141,77 @@ using ELF64BEObjectFile = luthier::object::ELFObjectFile<llvm::object::ELF64BE>;
 //===----------------------------------------------------------------------===//
 
 llvm::Expected<uint64_t> ELFSectionRef::getLoadedOffset() const {
-  auto PhdrRange = getObject()program_headers();
+  if (auto *ELF64LE =
+          llvm::dyn_cast<luthier::object::ELF64LEObjectFile>(getObject()))
+    return getLoadedOffset(*ELF64LE);
+  else if (auto *ELF64BE =
+               llvm::dyn_cast<luthier::object::ELF64BEObjectFile>(getObject()))
+    return getLoadedOffset(*ELF64BE);
+  else if (auto *ELF32LE =
+               llvm::dyn_cast<luthier::object::ELF32LEObjectFile>(getObject()))
+    return getLoadedOffset(*ELF32LE);
+  else
+    return getLoadedOffset(
+        *llvm::cast<luthier::object::ELF32BEObjectFile>(getObject()));
+}
+
+template <typename ELFT>
+llvm::Expected<uint64_t> ELFSectionRef::getLoadedOffset(
+    const luthier::object::ELFObjectFile<ELFT> &Obj) const {
+  auto PhdrRange = Obj.getELFFile().program_headers();
   LUTHIER_RETURN_ON_ERROR(PhdrRange.takeError());
 
   // Search for a PT_LOAD segment containing the requested section. Use this
   // segment's p_addr to calculate the section's LMA.
-  for (const auto &Phdr : *PhdrRange)
+  for (const typename ELFT::Phdr &Phdr : *PhdrRange)
     if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
-        (llvm::object::isSectionInSegment<llvm::object::ELF64LE>(
-            Phdr,
-            *llvm::cast<
-                 const llvm::object::ELFObjectFile<llvm::object::ELF64LE>>(
-                 Sec.getObject())
-                 ->getSection(Sec.getRawDataRefImpl()))))
-      return Sec.getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
+        (llvm::object::isSectionInSegment<ELFT>(
+            Phdr, *Obj.getSection(getRawDataRefImpl()))))
+      return getAddress() - Phdr.p_vaddr + Phdr.p_paddr;
 
   // Return section's VMA if it isn't in a PT_LOAD segment.
-  return Sec.getAddress();
+  return getAddress();
+}
+
+llvm::Expected<uint64_t> ELFSymbolRef::getLoadedOffset() const {
+  if (auto *ELF64LE =
+          llvm::dyn_cast<luthier::object::ELF64LEObjectFile>(getObject()))
+    return getLoadedOffset(*ELF64LE);
+  else if (auto *ELF64BE =
+               llvm::dyn_cast<luthier::object::ELF64BEObjectFile>(getObject()))
+    return getLoadedOffset(*ELF64BE);
+  else if (auto *ELF32LE =
+               llvm::dyn_cast<luthier::object::ELF32LEObjectFile>(getObject()))
+    return getLoadedOffset(*ELF32LE);
+  else
+    return getLoadedOffset(
+        *llvm::cast<luthier::object::ELF32BEObjectFile>(getObject()));
+}
+
+template <typename ELFT>
+llvm::Expected<uint64_t> ELFSymbolRef::getLoadedOffset(
+    const luthier::object::ELFObjectFile<ELFT> &Obj) const {
+  auto PhdrRangeOrErr = Obj.getELFFile().program_headers();
+  LUTHIER_RETURN_ON_ERROR(PhdrRangeOrErr.takeError());
+
+  llvm::Expected<llvm::object::section_iterator> SymbolSectionOrErr =
+      getSection();
+  LUTHIER_RETURN_ON_ERROR(SymbolSectionOrErr.takeError());
+
+  auto SymbolAddressOrErr = getAddress();
+  LUTHIER_RETURN_ON_ERROR(SymbolAddressOrErr.takeError());
+
+  // Search for a PT_LOAD segment containing the requested section. Use this
+  // segment's p_addr to calculate the section's LMA.
+  for (const typename ELFT::Phdr &Phdr : *PhdrRangeOrErr)
+    if ((Phdr.p_type == llvm::ELF::PT_LOAD) &&
+        (llvm::object::isSectionInSegment<ELFT>(
+            Phdr,
+            *Obj.getSection(SymbolSectionOrErr.get()->getRawDataRefImpl()))))
+      return *SymbolAddressOrErr - Phdr.p_vaddr + Phdr.p_paddr;
+
+  // Return section's VMA if it isn't in a PT_LOAD segment.
+  return *SymbolAddressOrErr;
 }
 
 template <class ELFT>
