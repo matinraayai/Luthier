@@ -17,6 +17,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+add_subdirectory(src)
+
 add_library(CodeLifterTest SHARED
         $<TARGET_OBJECTS:LuthierComgr>
         $<TARGET_OBJECTS:LuthierRocprofilerSDK>
@@ -40,6 +42,8 @@ target_include_directories(CodeLifterTest
         PRIVATE
         "${CMAKE_SOURCE_DIR}/src"
         "${CMAKE_SOURCE_DIR}/src/include"
+        "${CMAKE_SOURCE_DIR}/tests/include"
+        "${CMAKE_SOURCE_DIR}/tests/src"
         ${amd_comgr_INCLUDE_DIRS}
         ${LLVM_INCLUDE_DIRS}
         PUBLIC
@@ -73,6 +77,7 @@ target_link_libraries(
 #        Gtest::gtest_main
         # doctest::doctest
 )
+
 
 include(GoogleTest)
 #gtest_discover_tests(CodeLifterTest)

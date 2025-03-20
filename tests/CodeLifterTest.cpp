@@ -21,6 +21,8 @@
 #include <tooling_common/CodeLifter.hpp>
 #include <tooling_common/ToolExecutableLoader.hpp>
 
+#include <TestingUtils.h>
+
 static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
                                     uint64_t LibVersion, uint64_t LibInstance,
                                     void **Tables, uint64_t NumTables,
@@ -100,70 +102,8 @@ class CodeLifterTest {
     llvm::Error runTest() {
       LUTHIER_REPORT_FATAL_ON_ERROR(setupTest());
 
-      // read in .s file
-      llvm::ErrorOr <std::unique_ptr<llvm::MemoryBuffer>> BuffOrErr =
-          llvm::MemoryBuffer::getFile(m_filepath);
-
-      // https://github.com/ROCm/llvm-project/blob/7addc3557e2d6e0a1aa133d625c62e5ee04bc5bf/llvm/tools/llvm-dwarfdump/llvm-dwarfdump.cpp#L322
-      if (BuffOrErr.getError()) {
-        llvm::errs() << "Error opening file: " << m_filepath << "\n";
-        // TODO - handle this error
-      }
-
-      std::unique_ptr<llvm::MemoryBuffer> Buff = std::move(BuffOrErr.get());
-
-      // TODO - move this logic into utils file for unit tests
-      amd_comgr_data_t DataIn, DataReloc;
-      amd_comgr_data_set_t DataSetIn, DataSetOut, DataSetReloc;
-      amd_comgr_action_info_t DataAction;
-
-      // create data in set
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_ERROR_CHECK(
-        amd_comgr_create_data_set(&DataSetIn)));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_create_data(AMD_COMGR_DATA_KIND_SOURCE, &DataIn)));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_set_data(DataIn, Buff->getBuffer().size(),
-          Buff->getBuffer().data())));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_set_data_name(DataIn, m_filepath.c_str())));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_data_set_add(DataSetIn, DataIn)));
-
-      // create action info and set ISA name??
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_create_action_info(&DataAction)));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_action_info_set_isa_name(DataAction, "amdgcn-amd-amdhsa--gfx908")));
-
-      // compile source to executable
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_create_data_set(&DataSetOut)));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_action_info_set_option_list(DataAction, NULL, 0)));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_do_action(
-          AMD_COMGR_ACTION_COMPILE_SOURCE_TO_EXECUTABLE, DataAction, DataSetIn, DataSetOut)));
-
-      // link to executable on drive
-      amd_comgr_data_set_t DataSetLinked;
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_create_data_set(&DataSetLinked)));
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
-          DataAction, DataSetOut, DataSetLinked)));
-
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-        amd_comgr_create_data_set(&DataSetReloc)));
-
-      /*
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_ERROR_CHECK(
-        amd_comgr_action_data_get_data(DataSetReloc, AMD_COMGR_DATA_KIND_RELOCATABLE,
-            0, &DataReloc)));
-
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_COMGR_ERROR_CHECK(
-        amd_comgr_get_data()));
-        */
+      // use testing utils
+      LUTHIER_REPORT_FATAL_ON_ERROR(compile_and_link(m_filepath));
 
       LUTHIER_REPORT_FATAL_ON_ERROR(tearDownTest());
 
