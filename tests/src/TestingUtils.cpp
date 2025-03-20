@@ -28,7 +28,6 @@ llvm::Error compile_and_link(std::string filepath)
 
   std::unique_ptr<llvm::MemoryBuffer> Buff = std::move(BuffOrErr.get());
 
-  // TODO - move this logic into utils file for unit tests
   amd_comgr_data_t DataIn, DataReloc;
   amd_comgr_data_set_t DataSetIn, DataSetOut, DataSetReloc;
   amd_comgr_action_info_t DataAction;
@@ -72,13 +71,9 @@ llvm::Error compile_and_link(std::string filepath)
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
     amd_comgr_create_data_set(&DataSetReloc)));
 
-  /*
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_ERROR_CHECK(
-    amd_comgr_action_data_get_data(DataSetReloc, AMD_COMGR_DATA_KIND_RELOCATABLE,
-        0, &DataReloc)));
+   amd_comgr_action_data_get_data(DataSetReloc, AMD_COMGR_DATA_KIND_RELOCATABLE,
+       0, &DataReloc)));
 
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_ERROR_CHECK(
-    amd_comgr_get_data()));
-    */
   return llvm::Error::success();
 }
