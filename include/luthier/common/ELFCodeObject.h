@@ -128,7 +128,7 @@ public:
   /// \return an \c llvm::object::ELFSymbolRef if the Symbol was found,
   /// an \c std::nullopt if the symbol was not found, and \c llvm::Error if
   /// any issue was encountered during the process
-  llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+  llvm::Expected<std::optional<luthier::ELFSymbolRefWrapper>>
   lookupSymbol(llvm::StringRef SymbolName) const;
 
 private:
@@ -233,7 +233,7 @@ llvm::Expected<uint64_t> ELFSymbolRefWrapper::getLoadedOffset(
 }
 
 template <class ELFT>
-llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+llvm::Expected<std::optional<luthier::ELFSymbolRefWrapper>>
 ELFObjectFileWrapper<ELFT>::lookupSymbol(llvm::StringRef SymbolName) const {
   for (auto Section = llvm::object::elf_section_iterator(this->section_begin());
        Section != llvm::object::elf_section_iterator(this->section_end());
