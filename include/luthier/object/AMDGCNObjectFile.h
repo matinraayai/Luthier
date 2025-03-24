@@ -1,6 +1,6 @@
 #ifndef LUTHIER_COMMON_AMDGCN_OBJECT_FILE_H
 #define LUTHIER_COMMON_AMDGCN_OBJECT_FILE_H
-#include <luthier/common/ELFCodeObject.h>
+#include "ELFObjectUtils.h"
 
 namespace luthier {
 
@@ -8,14 +8,14 @@ class AMDGCNObjectFile;
 
 /// \brief Wrapper around a \c ELFSymbolRefWrapper representing a
 /// symbol inside a \c AMDGCNObjectFile
-class AMDGCNElfSymbolRef : public ELFSymbolRefWrapper {
+class AMDGCNElfSymbolRef : public llvm::object::ELFSymbolRef {
   /// \c AMDGCNObjectFile can skip checks on \c ELFSymbolRefWrapper
   friend AMDGCNObjectFile;
 
 protected:
   // NOLINTBEGIN(google-explicit-constructor)
   /*implicit*/ AMDGCNElfSymbolRef(const llvm::object::SymbolRef &S)
-      : ELFSymbolRefWrapper(S) {};
+      : llvm::object::ELFSymbolRef(S) {};
   // NOLINTEND(google-explicit-constructor)
 
 public:
@@ -225,23 +225,35 @@ using amdgcn_device_function_iterator_range =
 /// class specific to amdgcn code object files
 /// As per <a href="https://llvm.org/docs/AMDGPUUsage.html#elf-code-object">
 /// AMDGPU backend documentation</a>, AMDGCN object files are 64-bit LE.
-class AMDGCNObjectFile : public luthier::ELF64LEObjectFileWrapper {
-public:
-  llvm::Expected<std::optional<luthier::AMDGCNElfSymbolRef>>
-  lookupSymbol(llvm::StringRef SymbolName) const {
-    auto Out = luthier::ELF64LEObjectFileWrapper::lookupSymbol(SymbolName);
-    LUTHIER_RETURN_ON_ERROR(Out.takeError());
-    if (Out->has_value())
-      return AMDGCNElfSymbolRef{**Out};
-    else
-      return std::nullopt;
+class AMDGCNObjectFile : public llvm::object::ELF64LEObjectFile {
+protected:
+  AMDGCNObjectFile(llvm::object::ELF64LEObjectFile &&ObjFile)
+      : llvm::object::ELF64LEObjectFile(std::move(ObjFile)) {}
+
+  static llvm::Expected<AMDGCNObjectFile> create(llvm::MemoryBufferRef Object,
+                                                 bool InitContent = true) {
+
+    llvm::Expected<llvm::object::ELF64LEObjectFile> Elf64LEObj =
+        llvm::object::ELF64LEObjectFile::create(Object, InitContent);
+    LUTHIER_RETURN_ON_ERROR(Elf64LEObj.takeError());
+    LUTHIER_RETURN_ON_ERROR(
+        LUTHIER_ERROR_CHECK(Elf64LEObj->makeTriple().isAMDGCN(),
+                            "Passed ELF object is not for an amdgcn target."));
+    return AMDGCNObjectFile{std::move(*Elf64LEObj)};
   }
 
-  static bool classof(const llvm::object::Binary *v) {
-    return llvm::isa<luthier::ELF64LEObjectFileWrapper>(v) &&
-           llvm::cast<luthier::ELF64LEObjectFileWrapper>(v)
-               ->makeTriple()
-               .isAMDGCN();
+public:
+  /// Parses the ELF file pointed to by \p Elf into a \c AMDGCNObjectFile.
+  /// \param ELF \c llvm::StringRef encompassing the ELF file in memory
+  /// \return a \c std::unique_ptr<AMDGCNObjectFile> on successful
+  /// parsing, an \c llvm::Error on failure
+  static llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
+  createAMDGCNObjectFile(llvm::MemoryBufferRef Object,
+                         bool InitContent = true) {
+    llvm::Expected<AMDGCNObjectFile> GCNObjFileOrErr =
+        create(Object, InitContent);
+    LUTHIER_RETURN_ON_ERROR(GCNObjFileOrErr.takeError());
+    return std::make_unique<AMDGCNObjectFile>(std::move(*GCNObjFileOrErr));
   }
 
   /// Parses the ELF file pointed to by \p Elf into a \c AMDGCNObjectFile.
@@ -252,21 +264,24 @@ public:
   createAMDGCNObjectFile(llvm::StringRef Elf) {
     std::unique_ptr<llvm::MemoryBuffer> Buffer =
         llvm::MemoryBuffer::getMemBuffer(Elf, "", false);
-    llvm::Expected<std::unique_ptr<ObjectFile>> ObjectFile =
-        ObjectFile::createELFObjectFile(*Buffer);
-    LUTHIER_RETURN_ON_ERROR(ObjectFile.takeError());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        ObjectFile.get() != nullptr, "Created object file is nullptr."));
-    return llvm::unique_dyn_cast<AMDGCNObjectFile>(std::move(*ObjectFile));
+    return createAMDGCNObjectFile(*Buffer);
   }
 
   /// Parses the ELF file pointed to by \b Elf into a \b AMDGCNObjectFile.
   /// \param ELF \p llvm::ArrayRef<uint8_t> encompassing the ELF file in memory
-  /// \return a \c std::unique_ptr<AMDGCNObjectFile> on successful
-  /// parsing, an \c llvm::Error on failure
   static llvm::Expected<std::unique_ptr<AMDGCNObjectFile>>
   createAMDGCNObjectFile(llvm::ArrayRef<uint8_t> Elf) {
     return createAMDGCNObjectFile(llvm::toStringRef(Elf));
+  }
+
+  llvm::Expected<std::optional<luthier::AMDGCNElfSymbolRef>>
+  lookupSymbol(llvm::StringRef SymbolName) const {
+    auto Out = luthier::lookupSymbolByName(*this, SymbolName);
+    LUTHIER_RETURN_ON_ERROR(Out.takeError());
+    if (Out->has_value())
+      return AMDGCNElfSymbolRef{**Out};
+    else
+      return std::nullopt;
   }
 
   amdgcn_elf_symbol_iterator_range symbols() const {
@@ -274,11 +289,11 @@ public:
   }
 
   amdgcn_elf_symbol_iterator dynamic_symbol_begin() const {
-    return luthier::ELF64LEObjectFileWrapper::dynamic_symbol_begin();
+    return llvm::object::ELF64LEObjectFile::dynamic_symbol_begin();
   }
 
   amdgcn_elf_symbol_iterator dynamic_symbol_end() const {
-    return luthier::ELF64LEObjectFileWrapper::dynamic_symbol_end();
+    return llvm::object::ELF64LEObjectFile::dynamic_symbol_end();
   }
 
 #define CREATE_AMDGCN_OBJECT_SYMBOL_ITERATOR_FUNCTION(                         \
