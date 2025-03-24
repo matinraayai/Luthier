@@ -8,41 +8,40 @@ project(luthier
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-#Include the ExternalProject regardless if necessary or not
-include(ExternalProject)
+
+include(FetchContent)
+
 #Conditional to check if LLVM_SRC_DIR exists somewhere or not
-if(NOT DEFINED LUTHIER_LLVM_SRC_DIR)
-  #Case where LLVM_SRC_DIR is not given either
-  if(NOT DEFINED LLVM_SRC_DIR)
-    #Set LLVM_SRC_DIR if not already
-    set(LLVM_SRC_DIR ${CMAKE_BINARY_DIR}/llvm-project)
+#Check if LUTHIER_LLVM_SRC_DIR is empty string or just a folder
+if (NOT IS_DIRECTORY LUTHIER_LLVM_SRC_DIR AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 
-    #This is at build time
-    ExternalProject_Add(llvm-project
-      GIT_REPOSITORY    git@github.com:ROCm/llvm-project.git
-      GIT_TAG           5e51f7702e2703df95f7a3d57284a1fdef4766b7
-      #GIT_SHALLOW       1
-      PREFIX ${LLVM_SRC_DIR}
-      SOURCE_DIR ${LLVM_SRC_DIR}
-      #CONFIGURE_COMMAND ""
-      #BUILD_COMMAND ""
-      #INSTALL_COMMAND ""
-      #UPDATE_COMMAND ""
-      BUILD_BYPRODUCTS ${LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td
-    )
+  #Fetches GIT_HASH variable
+  execute_process(
+    COMMAND python3 hash_parse.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  
+  #Checks GIT_HASH
+  message(STATUS "Git hash retrieved: ${GIT_HASH}")
+  
+  #Clones llvm-project branch used for build
+  FetchContent_Declare(
+    llvm_src
+    URL https://github.com/llvm/llvm-project/archive/${GIT_HASH}.zip
+  )
+  FetchContent_MakeAvailable(llvm_src)
 
-    #Add Custom Target which all are dependent on
-    add_custom_target(LLVMSRC ALL DEPENDS llvm-project)
+  #Provide source directory location
+  FetchContent_GetProperties(llvm_src)
 
-    #Set Luthier_LLVM_SRC_DIR to LLVM_SRC_DIR
-    message(STATUS "VARIABLE_NAME is set to ${LLVM_SRC_DIR}")
-    set(LUTHIER_LLVM_SRC_DIR ${LLVM_SRC_DIR} CACHE STRING "LLVM source directory")
-    message(STATUS "VARIABLE_NAME is set to ${LUTHIER_LLVM_SRC_DIR}")
-
-  else()
-    #Case where LLVM_SRC_DIR is already set, so LUTHIER gets set to it
-    set(LUTHIER_LLVM_SRC_DIR ${LLVM_SRC_DIR} )
-  endif()
+  #Checks SOURCE_DIR name
+  message(STATUS "VARIABLE_NAME is set to ${llvm_src_SOURCE_DIR}")
+    
+  #Sets env variable, caching it for installation
+  set(LUTHIER_LLVM_SRC_DIR ${llvm_src_SOURCE_DIR} CACHE STRING "Path to the LLVM source directory")
+  message(STATUS "VARIABLE_NAME is set to ${LUTHIER_LLVM_SRC_DIR}")
   
 endif()
 
@@ -58,6 +57,7 @@ set(LUTHIER_TOOLING_LLVM_SRC_DIR "" CACHE STRING "Path to the source code of the
 
 # Import modules
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake/module ${CMAKE_MODULE_PATH})
+
 
 # Add the sub projects
 add_subdirectory(luthier-tblgen)

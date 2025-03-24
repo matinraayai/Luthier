@@ -27,7 +27,7 @@ if __name__ == "__main__":
     revision = extract_llvm_revision(header_file)
     
     if revision:
-        print("LLVM_REVISION:", revision)
+        print(revision)
     else:
         print("LLVM_REVISION not found")
     

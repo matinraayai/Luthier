@@ -1,6 +1,11 @@
 #Add file path
 get_filename_component(_dir "${CMAKE_CURRENT_LIST_FILE}" PATH)
 
+# Find HIP
+find_dependency(hip REQUIRED)
+# Find rocprofiler-sdk if needed
+find_dependency(rocprofiler-sdk REQUIRED)
+
 #import the .cmake pieces 
 
 include("${_dir}/LuthierProjectTargets.cmake")

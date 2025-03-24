@@ -27,9 +27,6 @@ file(COPY ${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/ DESTINATION ${AMDGPU_I
 # Create a target for all the internal amdgpu headers
 add_library(LuthierAMDGPU INTERFACE)
 
-#Added External Project Dep
-add_dependencies(LuthierAMDGPU LLVMSRC)
-
 target_include_directories(LuthierAMDGPU INTERFACE
         "$<BUILD_INTERFACE:${AMDGPU_INCLUDE_DIR}>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/luthier/amdgpu>"

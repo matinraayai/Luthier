@@ -49,9 +49,6 @@ add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoRegEnumMap)
 add_dependencies(LuthierToolingCommon LuthierAMDGPUTableGen)
 
-#Added External Project Dep
-add_dependencies(LuthierToolingCommon LLVMSRC)
-
 target_compile_definitions(LuthierToolingCommon PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
 target_include_directories(LuthierToolingCommon
