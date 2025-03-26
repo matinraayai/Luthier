@@ -1,4 +1,3 @@
-
 # Add target to generate real to pseudo opcode and register map and functions to query them
 set(LuthierToolingCommon_TABLEGEN_EXE luthier-tblgen)
 set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td")
@@ -11,8 +10,6 @@ set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDG
 tablegen(LuthierToolingCommon LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-pseudo-reg-map EXTRA_INCLUDES
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
-
-
 
 add_library(LuthierToolingCommon OBJECT
         CodeGenerator.cpp

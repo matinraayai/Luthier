@@ -11,35 +11,33 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(FetchContent)
 
-#Conditional to check if LLVM_SRC_DIR exists somewhere or not
-#Check if LUTHIER_LLVM_SRC_DIR is empty string or just a folder
-if (NOT IS_DIRECTORY LUTHIER_LLVM_SRC_DIR AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+# Conditional to check if LLVM_SRC_DIR exists somewhere or not
+# Check if LUTHIER_LLVM_SRC_DIR is empty string or just a folder
+if (NOT IS_DIRECTORY LUTHIER_LLVM_SRC_DIR)
 
-  #Fetches GIT_HASH variable
-  execute_process(
-    COMMAND python3 hash_parse.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
-    OUTPUT_VARIABLE GIT_HASH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
+  # Fetches GIT_HASH variable from VCS_Revision.h
+  set(HEADER_FILE "/opt/luthier/llvm/include/llvm/Support/VCSRevision.h")
+  file(STRINGS ${HEADER_FILE} LLVM_REVISION_LINE REGEX "^#define LLVM_REVISION")
+  string(REGEX MATCH "LLVM_REVISION[ \t]+\"([^\"]+)\"" _ ${LLVM_REVISION_LINE})
+  set(GIT_HASH ${CMAKE_MATCH_1})
   
-  #Checks GIT_HASH
+  # Checks GIT_HASH
   message(STATUS "Git hash retrieved: ${GIT_HASH}")
   
-  #Clones llvm-project branch used for build
+  # Clones llvm-project branch used for build
   FetchContent_Declare(
     llvm_src
     URL https://github.com/llvm/llvm-project/archive/${GIT_HASH}.zip
   )
   FetchContent_MakeAvailable(llvm_src)
 
-  #Provide source directory location
+  # Provide source directory location
   FetchContent_GetProperties(llvm_src)
 
-  #Checks SOURCE_DIR name
+  # Checks SOURCE_DIR name
   message(STATUS "VARIABLE_NAME is set to ${llvm_src_SOURCE_DIR}")
     
-  #Sets env variable, caching it for installation
+  # Sets env variable, caching it for installation
   set(LUTHIER_LLVM_SRC_DIR ${llvm_src_SOURCE_DIR} CACHE STRING "Path to the LLVM source directory")
   message(STATUS "VARIABLE_NAME is set to ${LUTHIER_LLVM_SRC_DIR}")
   
@@ -57,7 +55,6 @@ set(LUTHIER_TOOLING_LLVM_SRC_DIR "" CACHE STRING "Path to the source code of the
 
 # Import modules
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake/module ${CMAKE_MODULE_PATH})
-
 
 # Add the sub projects
 add_subdirectory(luthier-tblgen)
