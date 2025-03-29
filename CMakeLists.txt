@@ -37,7 +37,7 @@ if(NOT IS_DIRECTORY LUTHIER_LLVM_SRC_DIR)
   set(REPO_URL "${CMAKE_MATCH_1}")
 
   #Checks llvm URL
-  message(STATUS "Found LLVM repository: ${REPO_URL}")
+  message(STATUS "Found LLVM repository at ${REPO_URL}")
   
   # Clones llvm-project branch used for build
   FetchContent_Declare(
