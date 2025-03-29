@@ -11,23 +11,38 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(FetchContent)
 
-# Conditional to check if LLVM_SRC_DIR exists somewhere or not
-# Check if LUTHIER_LLVM_SRC_DIR is empty string or just a folder
-if (NOT IS_DIRECTORY LUTHIER_LLVM_SRC_DIR)
+# Check if LUTHIER_LLVM_SRC_DIR is empty string or folder
+if(NOT IS_DIRECTORY LUTHIER_LLVM_SRC_DIR)
 
-  # Fetches GIT_HASH variable from VCS_Revision.h
-  set(HEADER_FILE "/opt/luthier/llvm/include/llvm/Support/VCSRevision.h")
-  file(STRINGS ${HEADER_FILE} LLVM_REVISION_LINE REGEX "^#define LLVM_REVISION")
-  string(REGEX MATCH "LLVM_REVISION[ \t]+\"([^\"]+)\"" _ ${LLVM_REVISION_LINE})
-  set(GIT_HASH ${CMAKE_MATCH_1})
-  
-  # Checks GIT_HASH
-  message(STATUS "Git hash retrieved: ${GIT_HASH}")
+  set("Searching for LLVM Installation")
+
+  # Find LLVM package
+  find_package(LLVM REQUIRED CONFIG)
+
+  # Get LLVM's include directory
+  set(HEADER_FILE "${LLVM_INCLUDE_DIRS}/llvm/Support/VCSRevision.h")
+
+  # Read the file contents
+  file(READ "${HEADER_FILE}" VCS_REVISION_CONTENT)
+
+  # Extract Git hash
+  string(REGEX MATCH "#define LLVM_REVISION \"([^\"]+)\"" _ "${VCS_REVISION_CONTENT}")
+  set(GIT_HASH "${CMAKE_MATCH_1}")
+
+  # Checks git hash
+  message(STATUS "Found LLVM distribution at ${GIT_HASH}")
+
+  # Extract repository URL
+  string(REGEX MATCH "#define LLVM_REPOSITORY \"([^\"]+)\"" _ "${VCS_REVISION_CONTENT}")
+  set(REPO_URL "${CMAKE_MATCH_1}")
+
+  #Checks llvm URL
+  message(STATUS "Found LLVM repository: ${REPO_URL}")
   
   # Clones llvm-project branch used for build
   FetchContent_Declare(
     llvm_src
-    URL https://github.com/llvm/llvm-project/archive/${GIT_HASH}.zip
+    URL ${REPO_URL}/archive/${GIT_HASH}.zip
   )
   FetchContent_MakeAvailable(llvm_src)
 
@@ -35,11 +50,10 @@ if (NOT IS_DIRECTORY LUTHIER_LLVM_SRC_DIR)
   FetchContent_GetProperties(llvm_src)
 
   # Checks SOURCE_DIR name
-  message(STATUS "VARIABLE_NAME is set to ${llvm_src_SOURCE_DIR}")
+  message(STATUS "LLVM source directory is set to ${llvm_src_SOURCE_DIR}")
     
   # Sets env variable, caching it for installation
   set(LUTHIER_LLVM_SRC_DIR ${llvm_src_SOURCE_DIR} CACHE STRING "Path to the LLVM source directory")
-  message(STATUS "VARIABLE_NAME is set to ${LUTHIER_LLVM_SRC_DIR}")
   
 endif()
 
@@ -61,7 +75,7 @@ add_subdirectory(luthier-tblgen)
 add_subdirectory(compiler-plugins)
 add_subdirectory(src)
 
-#TESTED ADDITION TO SEE IF IT WORKS WITH CMAKE --INSTALL
+# Add cmake installation config
 add_subdirectory(cmake/modules)
 
 # Any Compilation Flags, Linking Configuration Left

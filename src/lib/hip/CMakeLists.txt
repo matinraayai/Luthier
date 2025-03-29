@@ -12,8 +12,7 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HipCompilerApiInterceptor.
         ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hip_intercept_gen.py
         --hip-api-trace-path ${hip_INCLUDE_DIR}/hip/amd_detail/hip_api_trace.hpp
-        --hpp-structs-save-path ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h #need to be added to publicly available target dirs
-        #error w/ above in Tooling/other dependencies
+        --hpp-structs-save-path ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h
         --cpp-compiler-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HipCompilerApiInterceptor.cpp
         --cpp-runtime-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HipRuntimeApiInterceptor.cpp
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
