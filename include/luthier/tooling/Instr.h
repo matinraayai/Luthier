@@ -17,28 +17,28 @@
 /// \file
 /// This file describes the \c luthier::Instr class,
 /// which keeps track of an instruction disassembled by LLVM as well as other
-/// info not included in the \c llvm::MCInst class, including its symbol,
-/// address, and its size in bytes.
+/// info not included in the \c llvm::MCInst class, including its function
+/// symbol, its offset from the symbol start, and its size in bytes.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LIFT_INSTR_H
-#define LUTHIER_LIFT_INSTR_H
+#ifndef LUTHIER_TOOLING_INSTR_H
+#define LUTHIER_TOOLING_INSTR_H
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/LuthierError.h"
 #include <llvm/MC/MCInst.h>
 #include <llvm/Object/ObjectFile.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/common/LuthierError.h>
 
 namespace luthier {
 
 /// \brief Keeps track of an instruction disassembled by LLVM as well as other
 /// info not included in the \c llvm::MCInst class, including its symbol,
-/// address, and its size in bytes
+/// offset from the start of the symbol, and its size in bytes
 class Instr {
 private:
   /// The MC representation of the instruction
   const llvm::MCInst Inst;
   /// The symbol it belongs to
   const llvm::object::SymbolRef Symbol;
-  /// The offset from bass which this instruction resides
+  /// The offset from base which this instruction resides
   const uint64_t Offset;
   /// Size of the instruction
   const size_t Size;
@@ -46,7 +46,7 @@ private:
   /// Constructor
   /// \param Inst \c MCInst representation the instruction
   /// \param Symbol a symbol of type function which the instruction belongs to
-  /// \param Offset the offset of this instruction's bytes from the
+  /// \param Offset the byte offset of this instruction from the
   /// start of \p Symbol
   /// \param Size size of the instruction in bytes
   Instr(llvm::MCInst Inst, llvm::object::SymbolRef Symbol, size_t Offset,
@@ -55,15 +55,15 @@ private:
 
 public:
   /// Factory method
-  static llvm::Expected<Instr> create(llvm::MCInst Inst,
-                                      llvm::object::SymbolRef Symbol,
+  static llvm::Expected<Instr> create(const llvm::MCInst &Inst,
+                                      const llvm::object::SymbolRef &Symbol,
                                       size_t Offset, size_t Size) {
     llvm::Expected<llvm::object::SymbolRef::Type> TypeOrErr = Symbol.getType();
     LUTHIER_RETURN_ON_ERROR(TypeOrErr.takeError());
     LUTHIER_RETURN_ON_ERROR(
         LUTHIER_ERROR_CHECK(*TypeOrErr != llvm::object::SymbolRef::ST_Function,
                             "Instr Symbol is not a function."));
-    return Instr{std::move(Inst), Symbol, Offset, Size};
+    return Instr{Inst, Symbol, Offset, Size};
   }
 
   /// \return the function symbol this instruction was disassembled from
