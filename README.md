@@ -25,3 +25,7 @@ applications or Windows.
 For more information on how to build, get started, and contribute, see the [documentation](docs) folder.
 To report bugs, feel free to file an issue on GitHub. 
 
+## Found a Bug? Having Issues? Experiencing Crashes? Have a Suggestion or a feature request?
+Feel free to file an issue. If you're reporting a crash, please include the stack trace of the
+error, and preferably, compile Luthier with `CMAKE_BUILD_TYPE=Debug` and include the debug info alongside
+the stack trace of the crash.
