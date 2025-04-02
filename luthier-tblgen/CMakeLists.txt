@@ -2,6 +2,9 @@ find_package(LLVM REQUIRED CONFIG)
 
 include(AddLLVM)
 include(TableGen)
+include(LuthierFetchLLVMSrcIfNotGiven)
+
+luthier_fetch_llvm_src_if_not_given(${LLVM_INCLUDE_DIRS} LUTHIER_LLVM_SRC_DIR)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 

@@ -20,6 +20,10 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 find_package(LLVM REQUIRED CONFIG)
 
+include(LuthierFetchLLVMSrcIfNotGiven)
+
+luthier_fetch_llvm_src_if_not_given(${LLVM_INCLUDE_DIRS} LUTHIER_LLVM_SRC_DIR)
+
 # Get the include directory of amd_comgr
 get_target_property(amd_comgr_INCLUDE_DIRS amd_comgr INTERFACE_INCLUDE_DIRECTORIES)
 
