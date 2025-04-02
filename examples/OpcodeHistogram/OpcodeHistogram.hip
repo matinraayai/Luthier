@@ -63,6 +63,8 @@ static std::string *ToolName{nullptr};
 __attribute__((
     device)) uint64_t KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
+static uint64_t * KernelHistogramHostBuffer;
+
 static llvm::StringMap<uint64_t> *GlobalHistogram{nullptr};
 
 /// Total number of instructions counted
@@ -234,17 +236,20 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
             }
             LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
                 *DispatchPacket, "opcode histogram"));
+
+            for (int i = 0; i < llvm::AMDGPU::INSTRUCTION_LIST_END; i++) {
+              KernelHistogramHostBuffer[i] = 0;
+            }
             // Zero the instruction counter device variable
             {
               luthier::hsa::DisableUserInterceptionScope Scope;
-              uint64_t HistogramHost[llvm::AMDGPU::INSTRUCTION_LIST_END]{0};
               uint64_t *HistogramDevice;
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
                   hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
                       (void **)&HistogramDevice, &KernelHistogram)));
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
                   hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
-                      HistogramDevice, &HistogramHost, sizeof(HistogramHost))));
+                      HistogramDevice, KernelHistogramHostBuffer, sizeof(KernelHistogramHostBuffer) * llvm::AMDGPU::INSTRUCTION_LIST_END)));
             }
           }
         } else {
@@ -289,8 +294,6 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 DemangleKernelNames ? llvm::demangle(*KernelName)
                                     : std::string(*KernelName);
             // Copy the histogram to the global histogram
-            uint64_t HistogramHost[llvm::AMDGPU::INSTRUCTION_LIST_END]{0};
-            // Zero the instruction counter device variable
             {
               luthier::hsa::DisableUserInterceptionScope Scope;
               uint64_t *HistogramDevice;
@@ -299,18 +302,18 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                       (void **)&HistogramDevice, &KernelHistogram)));
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
                   hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
-                      &HistogramHost, HistogramDevice, sizeof(HistogramHost))));
+                      KernelHistogramHostBuffer, HistogramDevice, sizeof(KernelHistogramHostBuffer) * llvm::AMDGPU::INSTRUCTION_LIST_END)));
             }
 
             uint64_t InstsCountedForThisKernel = 0;
             for (int i = 0; i < llvm::AMDGPU::INSTRUCTION_LIST_END; i++) {
-              if (HistogramHost[i] != 0) {
+              if (KernelHistogramHostBuffer[i] != 0) {
                 auto OpcodeName = TII->getName(i);
                 if (GlobalHistogram->contains(OpcodeName))
-                  (*GlobalHistogram)[OpcodeName] += HistogramHost[i];
+                  (*GlobalHistogram)[OpcodeName] += KernelHistogramHostBuffer[i];
                 else
-                  GlobalHistogram->insert({OpcodeName, HistogramHost[i]});
-                InstsCountedForThisKernel += HistogramHost[i];
+                  GlobalHistogram->insert({OpcodeName, KernelHistogramHostBuffer[i]});
+                InstsCountedForThisKernel += KernelHistogramHostBuffer[i];
               }
             }
             TotalNumInstructions += InstsCountedForThisKernel;
@@ -339,11 +342,11 @@ static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
                 << "Histogram for kernel " << KernelNameToBePrinted << ":\n";
             for (auto Opcode = 0; Opcode < llvm::AMDGPU::INSTRUCTION_LIST_END;
                  ++Opcode) {
-              if (HistogramHost[Opcode] != 0) {
+              if (KernelHistogramHostBuffer[Opcode] != 0) {
                 std::string OpcodeName = TII->getName(Opcode).str();
                 luthier::errs() << llvm::formatv("  {0} = {1}\n",
                                                  OpcodeName, // index
-                                                 HistogramHost[Opcode]);
+                                                 KernelHistogramHostBuffer[Opcode]);
               }
             }
           }
@@ -424,6 +427,8 @@ void atToolInit(ApiEvtPhase Phase) {
     ToolName = new std::string{"luthier opcode histogram tool"};
 
     GlobalHistogram = new llvm::StringMap<uint64_t>();
+
+    KernelHistogramHostBuffer = new uint64_t[llvm::AMDGPU::INSTRUCTION_LIST_END];
   } else {
     // Set the callback for when the HSA API table is captured
     hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
@@ -457,6 +462,8 @@ void atToolFini(ApiEvtPhase Phase) {
     delete ToolName;
 
     delete GlobalHistogram;
+
+    delete KernelHistogramHostBuffer;
     luthier::errs() << "Total number of instructions counted: "
                     << TotalNumInstructions << "\n";
   }
