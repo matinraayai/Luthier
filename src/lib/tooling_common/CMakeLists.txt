@@ -40,8 +40,6 @@ add_library(LuthierToolingCommon OBJECT
         MIRConvenience.cpp
 )
 
-# Add explicit dependency between the tablegen target and the tooling common target to force cmake to run
-# tablegen-ed target first
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoRegEnumMap)
 add_dependencies(LuthierToolingCommon LuthierAMDGPUTableGen)

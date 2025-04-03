@@ -16,6 +16,7 @@ target_include_directories(LuthierTooling
         "${CMAKE_SOURCE_DIR}/src/include"
         PUBLIC
         ${LLVM_INCLUDE_DIRS}
+        "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${AMDGPU_INCLUDE_DIR}>"

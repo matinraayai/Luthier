@@ -2,6 +2,9 @@ find_package(LLVM REQUIRED CONFIG)
 
 include(AddLLVM)
 include(TableGen)
+include(LuthierFetchLLVMSrcIfNotGiven)
+
+luthier_fetch_llvm_src_if_not_given(${LLVM_INCLUDE_DIRS} LUTHIER_LLVM_SRC_DIR)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
@@ -19,3 +22,5 @@ target_include_directories(luthier-tblgen PRIVATE ${LUTHIER_LLVM_SRC_DIR}/llvm/u
 target_compile_definitions(luthier-tblgen PRIVATE ${LLVM_DEFINITIONS})
 
 target_link_libraries(luthier-tblgen PRIVATE LLVMSupport LLVMTableGen LLVMTableGenCommon)
+
+#set_target_properties(luthier-tblgen PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

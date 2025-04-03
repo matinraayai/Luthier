@@ -1,7 +1,0 @@
-# Compute installation prefix relative to this file.
-get_filename_component(_dir "${CMAKE_CURRENT_LIST_FILE}" PATH)
-
-# Import the targets
-include("${_dir}/LuthierCompilerPluginsTargets.cmake")
-# Import the compiler plugin macro
-include("${_dir}/LuthierAddCompilerPlugin.cmake")

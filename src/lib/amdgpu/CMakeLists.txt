@@ -19,6 +19,7 @@ tablegen(LuthierToolingCommon AMDGPUGenSubtargetInfo.inc -gen-subtarget EXTRA_IN
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 add_public_tablegen_target(LuthierAMDGPUTableGen)
 
+
 # Copy all the header files under llvm/lib/Target/AMDGPU under ${AMDGPU_INCLUDE_DIR}
 file(COPY ${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/ DESTINATION ${AMDGPU_INCLUDE_DIR} FILES_MATCHING
         PATTERN "*.h")

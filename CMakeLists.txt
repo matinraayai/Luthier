@@ -4,6 +4,7 @@ project(luthier
         VERSION 0.1.0
         LANGUAGES CXX
         DESCRIPTION "Dynamic Binary Instrumentation for AMD GPUs"
+        HOMEPAGE_URL "https://github.com/matinraayai/Luthier"
 )
 
 set(CMAKE_CXX_STANDARD 20)
@@ -14,18 +15,19 @@ option(LUTHIER_BUILD_INTEGRATION_TESTS "Builds the integration tests" OFF)
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
 option(LUTHIER_BUILD_LATEX_DOCS "Builds Luthier documentation with Doxygen in PDF format with Latex" OFF)
 option(LUTHIER_BUILD_HTML_DOCS "Builds Luthier documentation with Doxygen in HTML format" OFF)
-# TODO: Besides manual specification of the LLVM src code, also provide the option of cloning the correct source
-# depending on the LLVM version imported by the user
-set(LUTHIER_TOOLING_LLVM_SRC_DIR "" CACHE STRING "Path to the source code of the ROCm LLVM project used; Required.")
+set(LUTHIER_LLVM_SRC_DIR "" CACHE STRING "Path to the source code of the ROCm LLVM project used")
 # ======================================================================================================================
 
-# Import modules
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake/module ${CMAKE_MODULE_PATH})
+# Append the modules
+list(INSERT CMAKE_MODULE_PATH 0 "${PROJECT_SOURCE_DIR}/cmake/modules")
 
 # Add the sub projects
 add_subdirectory(luthier-tblgen)
 add_subdirectory(compiler-plugins)
 add_subdirectory(src)
+
+# Add cmake installation config
+add_subdirectory(cmake/modules)
 
 # Any Compilation Flags, Linking Configuration Left
 # TODO: Add option to build with sanitizers
@@ -48,4 +50,6 @@ if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
     set(DOXYGEN_GENERATE_LATEX ${LUTHIER_BUILD_LATEX_DOCS})
     doxygen_add_docs(luthier_docs docs src compiler-plugins luthier-tblgen)
 endif ()
+
+
 
