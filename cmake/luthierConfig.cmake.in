@@ -7,5 +7,8 @@ find_dependency(hip REQUIRED)
 # Find rocprofiler-sdk 
 find_dependency(rocprofiler-sdk REQUIRED)
 
-# import the .cmake pieces 
+# import the Luthier targets
 include("${_dir}/luthierTargets.cmake")
+
+# Import the compiler plugin macro
+include("${_dir}/LuthierAddCompilerPlugin.cmake")

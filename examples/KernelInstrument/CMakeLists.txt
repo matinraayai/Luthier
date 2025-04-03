@@ -9,6 +9,6 @@ find_package(LLVM REQUIRED CONFIG)
 
 add_library(KernelInstrument SHARED KernelInstrument.hip)
 
-luthier_add_compiler_plugin(KernelInstrument luthier::IModuleEmbedPlugin)
+luthier_add_compiler_plugin(KernelInstrument LuthierIModuleEmbedPlugin)
 
 target_link_libraries(KernelInstrument PUBLIC LuthierTooling LLVMDemangle hip::device hip::host)

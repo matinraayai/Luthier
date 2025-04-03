@@ -1,43 +1,46 @@
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/include DESTINATION ${CMAKE_INSTALL_PREFIX})
-
 include(CMakePackageConfigHelpers)
 
-# Write & Install Version Cmake File
+# Write & Install Version File
 write_basic_package_version_file(
-        ${luthier_BINARY_DIR}/lib/cmake/luthier/luthierVersion.cmake
+        ${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierVersion.cmake
         VERSION "${luthier_VERSION}"
         COMPATIBILITY AnyNewerVersion
 )
-install(FILES ${luthier_BINARY_DIR}/lib/cmake/luthier/luthierVersion.cmake
+install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierVersion.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier)
 
-# Set luthier SRC DIR variable
-set(luthier_SOURCE_DIR ${CMAKE_SOURCE_DIR})
-
-# Write & Install Config File
+# Write & Install Config Files
 configure_file(
-        ${luthier_SOURCE_DIR}/cmake/luthierConfig.cmake.in
-        ${luthier_BINARY_DIR}/lib/cmake/luthier/luthierConfig.cmake @ONLY)
+        ${CMAKE_SOURCE_DIR}/cmake/luthierConfig.cmake.in
+        ${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierConfig.cmake @ONLY)
 
-# Change destination to /cmake/luthier
-install(FILES ${luthier_BINARY_DIR}/lib/cmake/luthier/luthierConfig.cmake
+install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierConfig.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier)
 
-# Install luthier binaries
+configure_file(
+        ${CMAKE_SOURCE_DIR}/cmake/modules/LuthierAddCompilerPlugin.cmake
+        ${CMAKE_BINARY_DIR}/lib/cmake/luthier/LuthierAddCompilerPlugin.cmake COPYONLY)
+
+install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/luthier/LuthierAddCompilerPlugin.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier)
+
+# Install Include directories
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include
+        DESTINATION ${CMAKE_INSTALL_PREFIX})
+
 install(DIRECTORY ${CMAKE_BINARY_DIR}/include
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
+        DESTINATION ${CMAKE_INSTALL_PREFIX})
 
 # Install & Export Targets
-install(TARGETS LuthierAMDGPU LuthierTooling
+install(TARGETS LuthierAMDGPU LuthierTooling LuthierIModuleEmbedPlugin
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         EXPORT luthierTargets)
 
 install(TARGETS luthier-tblgen
-        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BIN_DIR})
 
-# Install & Export luthierTargets to proper location
-install(EXPORT luthierTargets 
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier)
+install(EXPORT luthierTargets
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier/)
 
 export(EXPORT luthierTargets
         FILE "${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierTargets.cmake")
