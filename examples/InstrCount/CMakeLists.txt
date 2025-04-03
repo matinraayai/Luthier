@@ -4,7 +4,7 @@ project(LuthierInstrCount LANGUAGES HIP CXX)
 
 set(CMAKE_HIP_STANDARD 20)
 
-find_package(hip REQUIRED)
+find_package(luthier REQUIRED)
 
 add_library(LuthierInstrCount SHARED InstrCount.hip)
 

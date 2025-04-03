@@ -3,11 +3,9 @@ project(LuthierLDSBankConflict LANGUAGES HIP CXX)
 
 set(CMAKE_HIP_STANDARD 20)
 
-find_package(hip REQUIRED)
+find_package(luthier REQUIRED)
 
-find_package(LLVM REQUIRED CONFIG)
-
-
+find_package(LLVM REQUIRED)
 
 add_library(LuthierLDSBankConflict SHARED LDSBankConflict.hip)
 

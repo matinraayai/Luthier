@@ -4,6 +4,7 @@ project(luthier
         VERSION 0.1.0
         LANGUAGES CXX
         DESCRIPTION "Dynamic Binary Instrumentation for AMD GPUs"
+        HOMEPAGE_URL "https://github.com/matinraayai/Luthier"
 )
 
 set(CMAKE_CXX_STANDARD 20)
