@@ -15,59 +15,57 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c CodeObjectReader class under the \c luthier::hsa
-/// namespace, representing a wrapper around the \c hsa_code_object_reader_t
-/// in charge of reading AMDGPU code objects into an \c Executable and
-/// creating a <tt>LoadedCodeObject</tt>.
+/// This file defines the \c hsa::CodeObjectReader class, a
+/// wrapper around \c hsa_code_object_reader_t in charge of
+/// reading AMDGPU code objects into an \c Executable and creating a
+/// <tt>LoadedCodeObject</tt>.
 //===----------------------------------------------------------------------===//
-#ifndef HSA_CODE_OBJECT_READER_HPP
-#define HSA_CODE_OBJECT_READER_HPP
+#ifndef LUTHIER_HSA_CODE_OBJECT_READER_HPP
+#define LUTHIER_HSA_CODE_OBJECT_READER_HPP
 #include "hsa/HandleType.hpp"
-#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Error.h>
 
 namespace luthier::hsa {
 
 /// \brief Wrapper around the \c hsa_code_object_reader_t handle
-/// \note
 class CodeObjectReader : public HandleType<hsa_code_object_reader_t> {
-
 public:
-  /// Factory function, which creates a handle to a \c CodeObjectReader from
-  /// an \p Elf in memory
-  /// \param Elf the code object to be loaded
-  /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
-  /// \sa hsa_code_object_reader_create_from_memory
-  static llvm::Expected<CodeObjectReader> createFromMemory(llvm::StringRef Elf);
-
-  /// Factory function, which creates a handle to a \c CodeObjectReader from
-  /// an \p Elf in memory
-  /// \param Elf the code object to be loaded
-  /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
+  /// Creates a new \c CodeObjectReader from a \c CodeObject in memory
+  /// \param CodeObject the code object to be loaded
+  /// \return on success, a \c CodeObjectReader for reading the
+  /// \p CodeObjectReader into an <tt>hsa::Executable</tt>; On failure,
+  /// an \c llvm::Error
   /// \sa hsa_code_object_reader_create_from_memory
   static llvm::Expected<CodeObjectReader>
-  createFromMemory(llvm::ArrayRef<uint8_t> Elf);
+  createFromMemory(llvm::StringRef CodeObject);
 
-  /// Destroys the code object reader instance
-  /// \return an \c llvm::HsaError if any issues where encountered, or
-  /// an \c llvm::ErrorSuccess if the operation was successful
+
+  /// Creates a new \c CodeObjectReader from a \c CodeObject in memory
+  /// \param CodeObject the code object to be loaded
+  /// \return on success, a \c CodeObjectReader for reading the
+  /// \p CodeObjectReader into an <tt>hsa::Executable</tt>; On failure,
+  /// an \c llvm::Error
+  /// \sa hsa_code_object_reader_create_from_memory
+  static llvm::Expected<CodeObjectReader>
+  createFromMemory(llvm::ArrayRef<uint8_t> CodeObject);
+
+  /// Destroys the code object reader handle
+  /// \return an \c llvm::Error indicating the success or failure of the
+  /// operation
   /// \sa hsa_code_object_reader_destroy
   llvm::Error destroy();
 
   /// Constructor from a \c hsa_code_object_reader_t handle
-  /// \warning This should not be used to create a new
-  /// <tt>hsa_code_object_reader_t</tt>, use \c createFromMemory instead.
-  /// \param Reader a \c hsa_code_object_reader_t handle, which already has
-  /// been created by HSA
+  /// \note This should not be used to create a new
+  /// <tt>hsa_code_object_reader_t</tt>; For creating new handles
+  /// use \c createFromMemory instead.
+  /// \param Reader a valid \c hsa_code_object_reader_t handle
   /// \sa createFromMemory
   explicit CodeObjectReader(hsa_code_object_reader_t Reader)
-      : HandleType(Reader){};
+      : HandleType(Reader) {};
 };
 
 } // namespace luthier::hsa
-
 
 #endif
