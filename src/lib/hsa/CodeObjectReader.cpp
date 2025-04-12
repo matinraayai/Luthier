@@ -15,8 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c CodeObjectReader class under the \c luthier::hsa
-/// namespace.
+/// This file implements the \c hsa::CodeObjectReader class.
 //===----------------------------------------------------------------------===//
 #include "hsa/CodeObjectReader.hpp"
 #include "hsa/HsaRuntimeInterceptor.hpp"
@@ -26,13 +25,13 @@
 namespace luthier::hsa {
 
 llvm::Expected<CodeObjectReader>
-CodeObjectReader::createFromMemory(llvm::StringRef Elf) {
+CodeObjectReader::createFromMemory(llvm::StringRef CodeObject) {
   const auto &CoreApiTable =
       hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
   hsa_code_object_reader_t Reader;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
       CoreApiTable.hsa_code_object_reader_create_from_memory_fn(
-          Elf.data(), Elf.size(), &Reader)));
+          CodeObject.data(), CodeObject.size(), &Reader)));
   return CodeObjectReader{Reader};
 }
 
