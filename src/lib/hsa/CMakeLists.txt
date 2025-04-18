@@ -1,18 +1,18 @@
 if (${LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG})
-    execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
+    execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/scripts/hsa_intercept_gen.py
             --hsa-include-dir ${hsa-runtime64_INCLUDE_DIRS}/hsa
             --cpp-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
             --h-api-enums-structs-save-path ${CMAKE_BINARY_DIR}/include/luthier/hsa/TraceApi.h
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/scripts)
 endif ()
 
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
         ${CMAKE_BINARY_DIR}/include/luthier/hsa/TraceApi.h
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hsa_intercept_gen.py
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/scripts/hsa_intercept_gen.py
         --hsa-include-dir ${hsa-runtime64_INCLUDE_DIRS}/hsa
         --cpp-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
         --h-api-enums-structs-save-path ${CMAKE_BINARY_DIR}/include/luthier/hsa/TraceApi.h
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/scripts
         COMMENT "Generating HSA API interceptor implementation")
 
 add_library(LuthierHSA OBJECT
