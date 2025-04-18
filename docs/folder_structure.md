@@ -5,14 +5,14 @@ It can be used with IDEs like CLion or VSCode to run and develop Luthier inside 
 the dev container shipped by us, but you can build the container yourself in the [`dockerfiles`](../dockerfiles) folder.
 - [`.vscode`](../.vscode): contains compile commands which can be used with VSCode to enable Intellisense code 
 completion.
-- [`compiler-plugins`](../compiler-plugins): contains the LLVM compiler plugins for Luthier. It is currently used
+- [`compiler-plugins`](../src/lib/compiler-plugins): contains the LLVM compiler plugins for Luthier. It is currently used
 by Luthier tools; In the future, it will contain compiler plugins used in static instrumentation as well.
 - [`dockerfiles`](../dockerfiles): contains the Dockerfiles of the Luthier project to run and develop Luthier-based
 tools.
 - [`docs`](../docs): contains the Luthier documentation.
 - [`examples`](../examples): contains example Luthier tools.
 - [`include`](../include): contains the public-facing API of Luthier.
-- [`scripts`](../scripts): contains scripts for generating HIP and HSA callbacks for Luthier.
+- [`scripts`](../src/scripts): contains scripts for generating HIP and HSA callbacks for Luthier.
 - [`src`](../src): contains the Luthier source code.
 - [`tests`](../tests): contains integration tests.
 

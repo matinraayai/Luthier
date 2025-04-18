@@ -1,21 +1,21 @@
 if (${LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG})
-    execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hip_intercept_gen.py
+    execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/scripts/hip_intercept_gen.py
             --hip-api-trace-path ${hip_INCLUDE_DIR}/hip/amd_detail/hip_api_trace.hpp
             --hpp-structs-save-path ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h
             --cpp-compiler-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HipCompilerApiInterceptor.cpp
             --cpp-runtime-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HipRuntimeApiInterceptor.cpp
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/scripts)
 endif ()
 
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HipCompilerApiInterceptor.cpp
         ${CMAKE_CURRENT_BINARY_DIR}/HipRuntimeApiInterceptor.cpp
         ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/hip_intercept_gen.py
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/scripts/hip_intercept_gen.py
         --hip-api-trace-path ${hip_INCLUDE_DIR}/hip/amd_detail/hip_api_trace.hpp
         --hpp-structs-save-path ${CMAKE_BINARY_DIR}/include/luthier/hip/TraceApi.h
         --cpp-compiler-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HipCompilerApiInterceptor.cpp
         --cpp-runtime-implementation-save-path ${CMAKE_CURRENT_BINARY_DIR}/HipRuntimeApiInterceptor.cpp
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/scripts
         COMMENT "Generating HIP API interceptor implementation")
 
 add_library(LuthierHIP OBJECT
