@@ -103,6 +103,12 @@ llvm::Error CodeGenerator::linkRelocatableToExecutable(
       LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_data_set(DataSetIn)));
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_data_set(DataSetOut)));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_action_info(DataAction)));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_release_data(DataIn)));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_release_data(DataOut)));
   return llvm::Error::success();
 }
 
