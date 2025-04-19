@@ -40,7 +40,7 @@ if (${LUTHIER_BUILD_EXAMPLES})
 endif ()
 
 # Build integration tests if enabled
-if (${LUTHIER_BUILD_INTEGRATION_TESTS})
+if (${LUTHIER_BUILD_INTEGRATION_TESTS} OR ${LUTHIER_BUILD_UNIT_TESTS})
     add_subdirectory(tests)
 endif ()
 
