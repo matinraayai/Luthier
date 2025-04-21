@@ -31,7 +31,7 @@ add_subdirectory(bin)
 add_subdirectory(lib)
 
 if (${LUTHIER_BUILD_UNIT_TESTS})
-    add_subdirectory(unit)
+    add_subdirectory(test)
 endif ()
 
 
