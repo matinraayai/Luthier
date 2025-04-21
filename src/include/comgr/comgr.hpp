@@ -32,6 +32,6 @@ namespace luthier::comgr {
 llvm::Error linkRelocatableToExecutable(llvm::ArrayRef<char> Code,
                                         llvm::SmallVectorImpl<char> &Out);
 
-}
+} // namespace luthier::comgr
 
 #endif
