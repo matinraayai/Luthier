@@ -10,6 +10,11 @@ target_include_directories(LuthierComgrTests PRIVATE
 target_link_libraries(
         LuthierComgrTests
         LuthierComgr
+        LuthierCommon
+        LuthierObject
+        LLVMBinaryFormat
+        LLVMTargetParser
+        LLVMObject
         LLVMSupport
         amd_comgr
         GTest::gtest_main

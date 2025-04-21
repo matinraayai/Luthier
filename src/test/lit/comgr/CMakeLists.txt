@@ -10,6 +10,11 @@ target_include_directories(comgr-link PRIVATE
 target_link_libraries(
         comgr-link
         LuthierComgr
+        LuthierCommon
+        LuthierObject
+        LLVMObject
+        LLVMBinaryFormat
+        LLVMTargetParser
         LLVMSupport
         amd_comgr
 )

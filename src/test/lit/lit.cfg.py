@@ -4,7 +4,7 @@ import lit.formats
 import lit.util
 
 config.name = "Luthier"
-config.suffixes = {".hip", ".cl", ".c", ".cpp"}
+config.suffixes = {".s"}
 config.test_format = lit.formats.ShTest(True)
 
 config.excludes = ["comgr"]

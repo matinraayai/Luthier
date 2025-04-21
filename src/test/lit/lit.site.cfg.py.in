@@ -8,7 +8,7 @@ config.environment['PATH'] = os.pathsep.join(["@LLVM_TOOLS_BINARY_DIR@",
                                               config.environment['PATH']])
 
 # Needed for Luthier binaries
-config.environment['PATH'] = os.pathsep.join(["@CMAKE_CURRENT_BINARY_DIR@",
+config.environment['PATH'] = os.pathsep.join(["@CMAKE_BINARY_DIR@/bin",
                                               config.environment['PATH']])
 
 lit_config.load_config(
