@@ -31,14 +31,7 @@ add_subdirectory(bin)
 add_subdirectory(lib)
 
 if (${LUTHIER_BUILD_UNIT_TESTS})
-    include(FetchContent)
-    FetchContent_Declare(
-            doctest
-            URL https://github.com/doctest/doctest/archive/refs/heads/master.zip
-    )
-    FetchContent_MakeAvailable(doctest)
-    enable_testing()
+    add_subdirectory(test)
 endif ()
-
 
 

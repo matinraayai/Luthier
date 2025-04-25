@@ -19,7 +19,3 @@ target_include_directories(LuthierLLVM
 )
 
 target_link_libraries(LuthierLLVM PRIVATE LuthierAMDGPU)
-
-if (${LUTHIER_BUILD_UNIT_TESTS})
-    add_subdirectory(unittest)
-endif ()
