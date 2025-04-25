@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include <llvm/TargetParser/SubtargetFeature.h>
 #include <luthier/common/ErrorCheck.h>
-#include <luthier/object/ObjectFileUtils.h>
+#include <luthier/object/ObjectUtils.h>
 
 namespace luthier::object {
 

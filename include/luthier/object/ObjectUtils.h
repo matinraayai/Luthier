@@ -21,6 +21,24 @@
 #define LUTHIER_OBJECT_OBJECT_UTILS_H
 #include <llvm/Object/ObjectFile.h>
 
+namespace luthier::object {
+
+/// \param ObjFile a memory region pointed encapsulating an object file
+/// \param InitContent indicates the argument of the same named passed to
+/// \c llvm::object::ObjectFile when created
+/// \return on success, creates and returns a \c llvm::object::ObjectFile
+/// representation of the \p ObjFile or an \c llvm::Error on failure
+llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>>
+createObjectFile(llvm::StringRef ObjFile, bool InitContent = true);
+
+/// \return the target string of the \p ObjFile if successful, an \c llvm::Error
+/// on failure
+llvm::Expected<std::string>
+getObjectFileTarget(const llvm::object::ObjectFile &ObjFile);
+
+} // namespace luthier::object
+
+
 namespace llvm {
 
 /// Similar to \c llvm::DenseMapInfo for \c llvm::object::SectionRef
