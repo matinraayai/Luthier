@@ -1,5 +1,5 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s | \
-// RUN: comgr-link -o %t && llvm-objdump -p %t && llvm-readelf --file-header %t | \
+// RUN: comgr-link -o %t && llvm-readelf --file-header %t | \
 // RUN: FileCheck --check-prefix=SHAREDOBJ %s
 
 // SHAREDOBJ: Class: ELF64

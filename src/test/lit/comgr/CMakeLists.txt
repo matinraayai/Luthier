@@ -19,4 +19,4 @@ target_link_libraries(
         amd_comgr
 )
 
-add_dependencies(test-lit comgr-link)
+add_dependencies(luthier-lit-tests comgr-link)

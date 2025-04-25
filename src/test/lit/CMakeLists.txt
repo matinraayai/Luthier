@@ -14,7 +14,7 @@ get_llvm_lit_path(
         ALLOW_EXTERNAL
 )
 
-add_custom_target(test-lit COMMAND "${LIT_BASE_DIR}/${LIT_FILE_NAME}"
+add_custom_target(luthier-lit-tests COMMAND "${LIT_BASE_DIR}/${LIT_FILE_NAME}"
         "${CMAKE_CURRENT_BINARY_DIR}" -v)
 
 add_subdirectory(comgr)
