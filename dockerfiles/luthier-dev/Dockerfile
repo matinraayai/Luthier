@@ -1,6 +1,6 @@
-ARG ROCM_VERSION=6.3.1
+ARG ROCM_DEV_BASE=containers.rc.northeastern.edu/luthier/rocm-6.4-dev-ubuntu-2404
 
-FROM rocm-$ROCM_VERSION-dev
+FROM ${ROCM_DEV_BASE}
 
 # Environment variables and build arguments
 ARG LLVM_BUILD_TYPE=RelWithDebInfo
@@ -10,13 +10,11 @@ ARG LLVM_ENABLE_EXPENSIVE_CHECKS=OFF
 ARG LLVM_ENABLE_ASSERTIONS=OFF
 ARG LLVM_GIT_REVISION=5e51f7702e2703df95f7a3d57284a1fdef4766b7
 
-# Install neovim from AppImage
-RUN wget https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.appimage && \
-    chmod +x ./nvim-linux-x86_64.appimage && ./nvim-linux-x86_64.appimage --appimage-extract &&  \
-    rm nvim-linux-x86_64.appimage && \
-    cp -r ./squashfs-root/* / && rm -rf ./squashfs-root/
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN pip3 install cxxheaderparser pcpp --break-system-packages
+ENV LD_LIBRARY_PATH="/opt/rocm/lib:/opt/luthier/llvm/lib/:/opt/luthier/lib"
+
+RUN pip3 install cxxheaderparser pcpp
 # Clone all LLVM-based ROCm projects in the $LLVM_SRC_DIR directory
 RUN mkdir -p $LLVM_SRC_DIR && cd $LLVM_SRC_DIR && \
     mkdir llvm-project && cd llvm-project &&  \
@@ -29,8 +27,8 @@ RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/buil
     -DCMAKE_INSTALL_PREFIX=/opt/luthier/llvm/  \
     -DCMAKE_BUILD_TYPE=$LLVM_BUILD_TYPE \
     -DLLVM_TARGETS_TO_BUILD="AMDGPU;X86"  \
-    -DLLVM_ENABLE_PROJECTS="llvm;clang;lld;compiler-rt;clang-tools-extra" \
-    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+    -DLLVM_ENABLE_PROJECTS="llvm;clang;lld;clang-tools-extra" \
+    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
     -DLLVM_ENABLE_EXPENSIVE_CHECKS=$LLVM_ENABLE_EXPENSIVE_CHECKS \
     -DLIBCXX_ENABLE_SHARED=OFF \
     -DLIBCXX_ENABLE_STATIC=ON \
@@ -68,20 +66,27 @@ RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/buil
     -DCMAKE_SKIP_BUILD_RPATH=TRUE \
     -DCMAKE_SKIP_INSTALL_RPATH=TRUE \
     -DFLANG_INCLUDE_DOCS=OFF \
-    ../llvm && LD_LIBRARY_PATH=$LLVM_SRC_DIR/llvm-project/build/lib ninja install &&  \
+    ../llvm && LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$LLVM_SRC_DIR/llvm-project/build/lib ninja install &&  \
     rm -rf $LLVM_SRC_DIR/llvm-project/build
 ## Install LLVM Lit
-RUN pip install $LLVM_SRC_DIR/llvm-project/llvm/utils/lit/ --break-system-packages
+RUN pip install $LLVM_SRC_DIR/llvm-project/llvm/utils/lit/
 ## Install ROCm Device Libs
 RUN cd $LLVM_SRC_DIR/llvm-project/amd/device-libs && mkdir build && cd build &&  \
     cmake -G Ninja -DCMAKE_BUILD_TYPE=$LLVM_BUILD_TYPE  \
     -DCMAKE_INSTALL_PREFIX=/opt/luthier/  \
-    -DCMAKE_PREFIX_PATH="/opt/luthier/" ../ && LD_LIBRARY_PATH=/opt/luthier/llvm/lib/ ninja install &&  \
+    -DCMAKE_PREFIX_PATH="/opt/luthier/" ../ && ninja install &&  \
     rm -rf $LLVM_SRC_DIR/llvm-project/amd/device-libs/build/
 ## HIPCC Installation
 RUN cd $LLVM_SRC_DIR/llvm-project/amd/hipcc/ && mkdir build && cd build &&  \
     cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/opt/luthier/ -DCMAKE_PREFIX_PATH="/opt/luthier/"  \
     -DCMAKE_BUILD_TYPE=$LLVM_BUILD_TYPE  \
-    .. && LD_LIBRARY_PATH=/opt/luthier/llvm/lib/ ninja install && rm -rf $LLVM_SRC_DIR/llvm-project/amd/hipcc/build/
-
-ENV LD_LIBRARY_PATH="/opt/rocm/lib:/opt/luthier/llvm/lib/:/opt/luthier/lib"
+    .. && ninja install && rm -rf $LLVM_SRC_DIR/llvm-project/amd/hipcc/build/
+## Comgr Installation
+RUN cd $LLVM_SRC_DIR/llvm-project/amd/comgr/ && mkdir build && cd build && \
+    cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/opt/luthier/ -DCMAKE_PREFIX_PATH="/opt/luthier/llvm"  \
+    -DCMAKE_BUILD_TYPE=$LLVM_BUILD_TYPE  \
+    .. && LD_LIBRARY_PATH="/opt/rocm/lib:/opt/luthier/llvm/lib/:/opt/luthier/lib" ninja install  \
+    && rm -rf $LLVM_SRC_DIR/llvm-project/amd/comgr/build/
+## Create some symlinks for hipcc
+RUN mkdir -p /opt/luthier/lib/ && ln -s /opt/luthier/llvm /opt/luthier/lib/llvm &&  \
+    ln -s /opt/rocm/share/hip/ /opt/luthier/share/hip
