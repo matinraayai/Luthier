@@ -1,4 +1,8 @@
-.text
+// RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx942 -filetype=obj %s | \
+// RUN: object-test --print-triple | \
+// RUN: FileCheck --check-prefix=TRIPLE %s
+
+// TRIPLE: Target Triple: amdgcn-amd-amdhsa--gfx942
         .amdgcn_target "amdgcn-amd-amdhsa--gfx942"
         .p2align        2                               ; -- Begin function _Z5myAddi
         .type   _Z5myAddi,@function
