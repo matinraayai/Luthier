@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines a set of utilites for the LLVM object file class.
+/// This file defines a set of utilities for the LLVM object file class.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_OBJECT_OBJECT_UTILS_H
 #define LUTHIER_OBJECT_OBJECT_UTILS_H
