@@ -1,8 +1,10 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx942 -filetype=obj %s | \
-// RUN: object-test --print-triple | \
+// RUN: object-test --triple-test --symbol-lookup-test | \
 // RUN: FileCheck --check-prefix=TRIPLE %s
 
 // TRIPLE: Target Triple: amdgcn-amd-amdhsa--gfx942
+
+// SYMLOOKUP: Passed symbol name lookup tests.
         .amdgcn_target "amdgcn-amd-amdhsa--gfx942"
         .p2align        2                               ; -- Begin function _Z5myAddi
         .type   _Z5myAddi,@function

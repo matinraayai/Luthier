@@ -23,7 +23,7 @@
 #include <luthier/common/LuthierError.h>
 #include <luthier/llvm/LLVMError.h>
 
-namespace luthier {
+namespace luthier::object {
 
 /// Returns the <tt>Sec</tt>'s load memory offset from the <tt>ELF</tt>'s
 /// load base; If the section is not in the program headers (i.e. is not
@@ -373,71 +373,49 @@ getHashTableSymbol(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
   return std::nullopt;
 }
 
-template <class ELFT>
-static llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
-getSymTableSymbol(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
-                  const llvm::object::ELFSectionRef &SymTabRef,
-                  llvm::StringRef Name) {
-  auto SymTabOrErr = ELFObj.getELFFile().getSection(SymTabRef.getIndex());
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SymTabOrErr.takeError()));
-
-  const typename ELFT::Shdr &SymTabSec = **SymTabOrErr;
-
-  const llvm::object::ELFFile<ELFT> &Elf = ELFObj.getELFFile();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      SymTabSec.sh_type == llvm::ELF::SHT_SYMTAB ||
-          SymTabSec.sh_type == llvm::ELF::SHT_DYNSYM,
-      "invalid sh_type for hash table, expected SHT_SYMTAB or SHT_DYNSYM"));
-  llvm::Expected<typename ELFT::ShdrRange> SectionsOrError = Elf.sections();
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SectionsOrError.takeError()));
-
-  auto StrTabOrErr = Elf.getStringTableForSymtab(SymTabSec, *SectionsOrError);
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(StrTabOrErr.takeError()));
-
-  llvm::StringRef StrTab = *StrTabOrErr;
-
-  auto SymsOrErr = Elf.symbols(&SymTabSec);
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SymsOrErr.takeError()));
-  llvm::ArrayRef<typename ELFT::Sym> SymTab = *SymsOrErr;
-
-  for (const typename ELFT::Sym &Sym : SymTab)
-    if (StrTab.drop_front(Sym.st_name).data() == Name)
-      return ELFObj.toSymbolRef(&SymTabSec, &Sym - &SymTab[0]);
-
-  return std::nullopt;
-}
-
-/// Looks up a symbol by its name in the given \p ObjectFile
-/// \note Function was adapted from LLVM's OpenMP library
-/// \param ObjectFile the ELF object being queried
-/// \param SymbolName Name of the symbol being looked up
+/// Looks up a symbol by its name in the given \p ELFObj
+/// This function first tries to look up the symbol using the hash section of
+/// \p ELFObj if present. If \p ELFObj doesn't have a hash section, or if
+/// the hash look up fails to find the symbol, \p FallbackToIteration can be
+/// set so that the function falls back to simple iteration afterwards
+/// \note Function was adapted from LLVM's offload library
+/// \param ELFObj the ELF object being queried
+/// \param Name Name of the symbol being looked up
+/// \param FallbackToIteration If \c true the function will fall back to
+/// iteration over symbols if hash lookup fails
 /// \return an \c llvm::object::ELFSymbolRef if the Symbol was found,
 /// an \c std::nullopt if the symbol was not found, and \c llvm::Error if
 /// any issue was encountered during the process
 template <class ELFT>
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
 lookupSymbolByName(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
-                   llvm::StringRef Name) {
+                   llvm::StringRef Name, bool FallbackToIteration = true) {
   // First try to look up the symbol via the hash table.
   for (llvm::object::ELFSectionRef Sec : ELFObj.sections()) {
     if (Sec.getType() != llvm::ELF::SHT_HASH &&
         Sec.getType() != llvm::ELF::SHT_GNU_HASH)
       continue;
-
-    return getHashTableSymbol<ELFT>(ELFObj, Sec, Name);
+    llvm::outs() << "Using the hash section; Section's type: " << Sec.getType()
+                 << "\n";
+    auto Out = getHashTableSymbol<ELFT>(ELFObj, Sec, Name);
+    LUTHIER_RETURN_ON_ERROR(Out.takeError());
+    if (Out->has_value())
+      return Out;
   }
 
-  // If this is an executable file check the entire standard symbol table.
-  for (llvm::object::ELFSectionRef Sec : ELFObj.sections()) {
-    if (Sec.getType() != llvm::ELF::SHT_SYMTAB)
-      continue;
-
-    return getSymTableSymbol<ELFT>(ELFObj, Sec, Name);
+  if (FallbackToIteration) {
+    llvm::outs() << "Using Simple iteration\n";
+    // If this is a relocatable we have no choice
+    for (llvm::object::ELFSymbolRef CurSym : ELFObj.symbols()) {
+      llvm::Expected<llvm::StringRef> CurSymNameOrErr = CurSym.getName();
+      LUTHIER_RETURN_ON_ERROR(CurSymNameOrErr.takeError());
+      if (*CurSymNameOrErr == Name)
+        return CurSym;
+    }
   }
-
   return std::nullopt;
 }
 
-} // namespace luthier
+} // namespace luthier::object
 
 #endif

@@ -2,6 +2,16 @@
 // RUN: comgr-link -o %t && llvm-readelf --file-header %t | \
 // RUN: FileCheck --check-prefix=SHAREDOBJ %s
 
+// RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s | \
+// RUN: object-test --triple-test --symbol-lookup-test | \
+// RUN: FileCheck --check-prefix=TRIPLE %s
+
+// RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s -o %t | \
+// RUN: lld -flavor gnu -m elf64_amdgpu --no-undefined -shared -plugin-opt=-amdgpu-internalize-symbols \
+// RUN: -plugin-opt=mcpu=gfx908 -plugin-opt=O3 --lto-CGO3 --whole-archive -o - %t | \
+// RUN: object-test --triple-test --symbol-lookup-test | \
+// RUN: FileCheck --check-prefix=TRIPLE %s
+
 // SHAREDOBJ: Class: ELF64
 // SHAREDOBJ: Data: 2's complement, little endian
 // SHAREDOBJ: Version: 1 (current)
@@ -12,6 +22,9 @@
 // SHAREDOBJ: Version: 0x1
 // SHAREDOBJ: Entry point address: 0x0
 // SHAREDOBJ: Flags: 0x530, gfx908, xnack, sramecc
+
+// TRIPLE: Target Triple: amdgcn-amd-amdhsa--gfx908
+
   .text
         .amdgcn_target "amdgcn-amd-amdhsa--gfx908"
         .protected      _Z15accuracy_kerneliiiPKfPKiPi ; -- Begin function _Z15accuracy_kerneliiiPKfPKiPi

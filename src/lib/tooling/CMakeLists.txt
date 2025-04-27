@@ -5,6 +5,7 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierHIP>
         $<TARGET_OBJECTS:LuthierLLVM>
         $<TARGET_OBJECTS:LuthierIntrinsic>
+        $<TARGET_OBJECTS:LuthierObject>
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierToolingCommon> luthier.cpp Controller.cpp
 )

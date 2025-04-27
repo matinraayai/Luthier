@@ -25,7 +25,7 @@
 #include <llvm/Support/TimeProfiler.h>
 #include <luthier/comgr/ComgrError.h>
 #include <luthier/common/ErrorCheck.h>
-#include <luthier/object/ObjectFileUtils.h>
+#include <luthier/object/ObjectUtils.h>
 
 namespace luthier::comgr {
 
@@ -69,7 +69,7 @@ llvm::Error linkRelocatableToExecutable(llvm::ArrayRef<char> Code,
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_action_info_set_isa_name(
           DataAction, ObjFileIsaOrErr->c_str()))));
-  const char *LinkOptions[]{"-Wl,--unresolved-symbols=ignore-all"};
+  const char *LinkOptions[]{"-Wl,--unresolved-symbols=ignore-all,--emit-relocs"};
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
       (amd_comgr_action_info_set_option_list(DataAction, LinkOptions, 1))));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(

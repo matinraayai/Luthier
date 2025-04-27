@@ -18,6 +18,9 @@
 /// This file implements object-test, an executable used for testing Luthier's
 /// object library functionality using LLVM LIT.
 //===----------------------------------------------------------------------===//
+#include "SymbolLookupTest.hpp"
+#include "TripleTest.hpp"
+#include <llvm/Object/ELFObjectFile.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/InitLLVM.h>
@@ -34,10 +37,17 @@ static llvm::cl::opt<std::string>
     InputFilename(llvm::cl::Positional, llvm::cl::desc("<input file>"),
                   llvm::cl::init("-"), llvm::cl::cat(ObjectTestOptions));
 
-static llvm::cl::opt<bool> PrintTargetTriple(
-    "print-triple",
-    llvm::cl::desc("Print the target triple of the object file"),
+static llvm::cl::opt<bool> TargetTripleTest(
+    "triple-test",
+    llvm::cl::desc("Test obtaining the target triple of the object file"),
     llvm::cl::init(false), llvm::cl::cat(ObjectTestOptions));
+
+static llvm::cl::opt<bool>
+    SymbolNameLookupTest("symbol-lookup-test",
+                         llvm::cl::desc("Run tests for looking up symbols with "
+                                        "their names (Applies to ELFs only)."),
+                         llvm::cl::init(false),
+                         llvm::cl::cat(ObjectTestOptions));
 
 static llvm::cl::opt<std::string>
     OutputFilename("o", llvm::cl::desc("Output filename"),
@@ -50,7 +60,7 @@ int main(int Argc, char *Argv[]) {
   llvm::cl::HideUnrelatedOptions(
       {&ObjectTestOptions, &llvm::getColorCategory()});
   llvm::cl::ParseCommandLineOptions(Argc, Argv,
-                                    "Luthier link with comgr tool\n");
+                                    "Luthier object library testing tool\n");
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> BufferPtr =
       llvm::MemoryBuffer::getFileOrSTDIN(InputFilename);
@@ -75,11 +85,13 @@ int main(int Argc, char *Argv[]) {
       EC.message()));
 
   // Print the target triple if enabled
-  if (PrintTargetTriple) {
-    llvm::Expected<std::string> TripleStrOrErr =
-        luthier::object::getObjectFileTarget(ObjFile);
-    LUTHIER_REPORT_FATAL_ON_ERROR(TripleStrOrErr.takeError());
-    OutFile->os() << "Target Triple: " << *TripleStrOrErr << "\n";
+  if (TargetTripleTest) {
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        performTargetTripleTest(ObjFile, OutFile->os()));
+  }
+
+  if (SymbolNameLookupTest) {
+    symbolLookupTest(ObjFile, OutFile->os());
   }
 
   OutFile->keep();
