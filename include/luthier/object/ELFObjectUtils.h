@@ -374,38 +374,44 @@ getHashTableSymbol(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
 }
 
 /// Looks up a symbol by its name in the given \p ELFObj
-/// This function first tries to look up the symbol using the hash section of
-/// \p ELFObj if present. If \p ELFObj doesn't have a hash section, or if
-/// the hash look up fails to find the symbol, \p FallbackToIteration can be
-/// set so that the function falls back to simple iteration afterwards
+/// This function first tries to look up the symbol inside the dynamic symbol
+/// table section using the hash section of \p ELFObj if present.
+/// If \p ELFObj doesn't have a hash section, or if
+/// the hash look up fails to find the symbol in the dynamic symbol table,
+/// \p FallbackToIteration can be set so that the function fall backs to using
+/// simple iteration over the symbol table after hash lookup
+/// \note If this function is being used to look for a symbol inside a
+/// relocatable ELF, \p FallbackToSymTabIteration must be set to \c true
+/// as relocatables don't have a hash table
 /// \note Function was adapted from LLVM's offload library
 /// \param ELFObj the ELF object being queried
 /// \param Name Name of the symbol being looked up
-/// \param FallbackToIteration If \c true the function will fall back to
-/// iteration over symbols if hash lookup fails
+/// \param FallbackToSymTabIteration If \c true the function will fall back to
+/// iteration over the symbol table if hash lookup fails
 /// \return an \c llvm::object::ELFSymbolRef if the Symbol was found,
 /// an \c std::nullopt if the symbol was not found, and \c llvm::Error if
 /// any issue was encountered during the process
 template <class ELFT>
 llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
 lookupSymbolByName(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
-                   llvm::StringRef Name, bool FallbackToIteration = true) {
-  // First try to look up the symbol via the hash table.
+                   llvm::StringRef Name,
+                   bool FallbackToSymTabIteration = true) {
+  // First try to look up the symbol via the hash table
   for (llvm::object::ELFSectionRef Sec : ELFObj.sections()) {
     if (Sec.getType() != llvm::ELF::SHT_HASH &&
         Sec.getType() != llvm::ELF::SHT_GNU_HASH)
       continue;
-    llvm::outs() << "Using the hash section; Section's type: " << Sec.getType()
-                 << "\n";
     auto Out = getHashTableSymbol<ELFT>(ELFObj, Sec, Name);
     LUTHIER_RETURN_ON_ERROR(Out.takeError());
+    // If we have found the symbol here return it
     if (Out->has_value())
       return Out;
+    // If the lookup fails then there's no point looking for any other hash
+    // tables; break and fall back to symbol table iteration if necessary
+    break;
   }
 
-  if (FallbackToIteration) {
-    llvm::outs() << "Using Simple iteration\n";
-    // If this is a relocatable we have no choice
+  if (FallbackToSymTabIteration) {
     for (llvm::object::ELFSymbolRef CurSym : ELFObj.symbols()) {
       llvm::Expected<llvm::StringRef> CurSymNameOrErr = CurSym.getName();
       LUTHIER_RETURN_ON_ERROR(CurSymNameOrErr.takeError());
