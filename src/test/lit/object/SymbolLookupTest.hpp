@@ -33,59 +33,102 @@ inline std::string getRandomString(std::size_t Len) {
   return str;
 }
 
+inline bool
+hasSymbolLookupHashTable(const llvm::object::ELFObjectFileBase &ObjFile) {
+  return llvm::any_of(ObjFile.sections(),
+                      [](const llvm::object::ELFSectionRef &Sec) {
+                        return Sec.getType() == llvm::ELF::SHT_HASH &&
+                               Sec.getType() == llvm::ELF::SHT_GNU_HASH;
+                      });
+}
+
 template <typename ELFT>
-static void
+static llvm::Error
 symbolLookupTest(const llvm::object::ELFObjectFile<ELFT> &ElfObjFile,
                  llvm::raw_ostream &OS) {
-  // A mapping between symbol names inside ElfObjFile and their symbol ref;
-  // We will use this later for testing if symbol lookup fails for symbols
-  // not present in the ELF
-  llvm::StringMap<llvm::object::ELFSymbolRef> NameToSymbolMap;
-  // Iterate over the symbols of the ELF object, and check if we can find them
+  // Check if the ELF has a hash section to begin with; If not, skip tests
+  // that relies on it being present
+  // Mapping between dynamic symbol names and their symbol refs inside the
+  // dynamic symbol table; We will use this later for testing if symbol lookup
+  // fails for symbols not present in the ELF
+  if (hasSymbolLookupHashTable(ElfObjFile)) {
+    llvm::StringMap<llvm::object::ELFSymbolRef> NameToDynSymMap;
+    for (const auto &DynSym :
+         llvm::make_range(ElfObjFile.dynamic_symbol_begin(),
+                          ElfObjFile.dynamic_symbol_end())) {
+      llvm::Expected<llvm::StringRef> SymNameOrErr = DynSym.getName();
+      LUTHIER_RETURN_ON_ERROR(SymNameOrErr.takeError());
+      NameToDynSymMap.insert({*SymNameOrErr, DynSym});
+      // Test if we can find this symbol using its name
+      llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+          LookedUpSymbolUsingNameOrErr = luthier::object::lookupSymbolByName(
+              ElfObjFile, *SymNameOrErr, false);
+      LUTHIER_RETURN_ON_ERROR(LookedUpSymbolUsingNameOrErr.takeError());
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          LookedUpSymbolUsingNameOrErr->has_value(),
+          "Could not find dynamic symbol {0} by its name.", *SymNameOrErr));
+      // The symbol refs should be equal
+      LUTHIER_REPORT_FATAL_ON_ERROR(
+          LUTHIER_ERROR_CHECK((**LookedUpSymbolUsingNameOrErr) == DynSym,
+                              "Looked up symbol with name {0} does not match"
+                              "the original symbol found using iteration",
+                              *SymNameOrErr));
+    }
+    // Iterate over all the symbols of the ELF object; If they are not
+    // inside the dynsym table, then symbol lookup using the hash table should
+    // fail
+    for (const auto &Sym : ElfObjFile.symbols()) {
+      llvm::Expected<llvm::StringRef> SymNameOrErr = Sym.getName();
+      LUTHIER_REPORT_FATAL_ON_ERROR(SymNameOrErr.takeError());
+      if (!NameToDynSymMap.contains(*SymNameOrErr)) {
+        // Test if we can find this symbol using its name
+        llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
+            LookedUpSymbolUsingNameOrErr = luthier::object::lookupSymbolByName(
+                ElfObjFile, *SymNameOrErr, false);
+        LUTHIER_REPORT_FATAL_ON_ERROR(LookedUpSymbolUsingNameOrErr.takeError());
+        LUTHIER_REPORT_FATAL_ON_ERROR(
+            LUTHIER_ERROR_CHECK(!LookedUpSymbolUsingNameOrErr->has_value(),
+                                "Found the non-dynamic {0} symbol using hash "
+                                "lookup using its name.",
+                                *SymNameOrErr));
+      }
+    }
+  }
+
+  llvm::StringMap<llvm::object::ELFSymbolRef> NameToSymMap;
+  // Iterate over all the symbols of the ELF object, and check if we can find
+  // them
   for (const auto &Sym : ElfObjFile.symbols()) {
     llvm::Expected<llvm::StringRef> SymNameOrErr = Sym.getName();
     LUTHIER_REPORT_FATAL_ON_ERROR(SymNameOrErr.takeError());
-    NameToSymbolMap.insert({*SymNameOrErr, Sym});
+    NameToSymMap.insert({*SymNameOrErr, Sym});
     // Test if we can find this symbol using its name
     llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
         LookedUpSymbolUsingNameOrErr =
             luthier::object::lookupSymbolByName(ElfObjFile, *SymNameOrErr);
     LUTHIER_REPORT_FATAL_ON_ERROR(LookedUpSymbolUsingNameOrErr.takeError());
-    if (LookedUpSymbolUsingNameOrErr->has_value()) {
-      OS << "Found the symbol.\n";
-    }
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
         LookedUpSymbolUsingNameOrErr->has_value(),
         "Could not find symbol {0} by its name.", *SymNameOrErr));
-    if (**LookedUpSymbolUsingNameOrErr != Sym) {
-      OS << "Does not match!\n";
-      OS << "Original: " << *SymNameOrErr << "\n";
-      OS << "Found: "
-         << llvm::cantFail((*LookedUpSymbolUsingNameOrErr)->getName()) << "\n";
-      OS << "Does comparing the symbol struct work? ";
-      auto FoundSym = *llvm::cantFail(ElfObjFile.getSymbol(
-          (*LookedUpSymbolUsingNameOrErr)->getRawDataRefImpl()));
-      auto OrigSymThing =
-          *llvm::cantFail(ElfObjFile.getSymbol(Sym.getRawDataRefImpl()));
-      OS << (FoundSym.st_name == OrigSymThing.st_name) << "\n";
-      OS << (FoundSym.st_value == OrigSymThing.st_value) << "\n";
-      OS << (FoundSym.st_size == OrigSymThing.st_size) << "\n";
-      OS << (FoundSym.st_info == OrigSymThing.st_info) << "\n";
-      OS << (FoundSym.st_other == OrigSymThing.st_other) << "\n";
-      OS << (FoundSym.st_shndx == OrigSymThing.st_shndx) << "\n";
-    }
-    // LUTHIER_REPORT_FATAL_ON_ERROR(
-    //     LUTHIER_ERROR_CHECK((**LookedUpSymbolUsingNameOrErr) == Sym,
-    //                         "Looked up symbol with name {0} does not match
-    //                         the " "original symbol found using iteration",
-    //                         *SymNameOrErr));
+    // The symbol refs might not be equal, but the contents of the symbols
+    // should be the same
+    llvm::Expected<bool> SymsAreEqualOrErr = luthier::object::areSymbolsEqual(
+        ElfObjFile, (*LookedUpSymbolUsingNameOrErr)->getRawDataRefImpl(),
+        Sym.getRawDataRefImpl());
+    LUTHIER_RETURN_ON_ERROR(SymsAreEqualOrErr.takeError());
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        LUTHIER_ERROR_CHECK(*SymsAreEqualOrErr,
+                            "Looked up symbol with name {0} does not match "
+                            "the original symbol found using iteration",
+                            *SymNameOrErr));
   }
+
   // Generate a random symbol name that's not inside the ELF, and look it up
   // inside the ELF to make sure we can't find it
   std::string RandomSymbolName;
   do {
     RandomSymbolName = getRandomString(10);
-  } while (NameToSymbolMap.contains(RandomSymbolName));
+  } while (NameToSymMap.contains(RandomSymbolName));
   llvm::Expected<std::optional<llvm::object::ELFSymbolRef>>
       RandomSymbolLookupRes =
           luthier::object::lookupSymbolByName(ElfObjFile, RandomSymbolName);
@@ -94,10 +137,11 @@ symbolLookupTest(const llvm::object::ELFObjectFile<ELFT> &ElfObjFile,
       !RandomSymbolLookupRes->has_value(),
       "Found a symbol associated with a randomly generated string."));
   OS << "Passed symbol name lookup test.\n";
+  return llvm::Error::success();
 }
 
-static void symbolLookupTest(const llvm::object::ObjectFile &ObjFile,
-                             llvm::raw_ostream &OS) {
+static llvm::Error symbolLookupTest(const llvm::object::ObjectFile &ObjFile,
+                                    llvm::raw_ostream &OS) {
   if (const auto *ELF64LE =
           llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(&ObjFile))
     return symbolLookupTest(*ELF64LE, OS);
@@ -112,6 +156,7 @@ static void symbolLookupTest(const llvm::object::ObjectFile &ObjFile,
     return symbolLookupTest(*ELF32BE, OS);
   } else {
     OS << "Skipped symbol name lookup test: Object file is not an ELF.\n";
+    return llvm::Error::success();
   }
 }
 

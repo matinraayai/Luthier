@@ -91,7 +91,7 @@ int main(int Argc, char *Argv[]) {
   }
 
   if (SymbolNameLookupTest) {
-    symbolLookupTest(ObjFile, OutFile->os());
+    LUTHIER_REPORT_FATAL_ON_ERROR(symbolLookupTest(ObjFile, OutFile->os()));
   }
 
   OutFile->keep();

@@ -422,6 +422,31 @@ lookupSymbolByName(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
   return std::nullopt;
 }
 
+/// Checks if the data ref of two ELF symbols \p SymA and \p SymB
+/// point to the same entry inside \p ELFObjFile
+/// \tparam ELFT type of the ELF object file
+/// \param ELFObjFile object file of the symbols
+/// \param SymA data ref of the first symbol
+/// \param SymB data ref of the second symbol
+/// \return \c true if the symbols are equal, \c false if not, an \c llvm::Error
+/// if an issue was encountered
+template <typename ELFT>
+llvm::Expected<bool>
+areSymbolsEqual(const llvm::object::ELFObjectFile<ELFT> &ELFObjFile,
+                llvm::object::DataRefImpl SymA,
+                llvm::object::DataRefImpl SymB) {
+  const typename ELFT::Sym *ELFSymA;
+  const typename ELFT::Sym *ELFSymB;
+  LUTHIER_RETURN_ON_ERROR(ELFObjFile.getSymbol(SymA).moveInto(ELFSymA));
+  LUTHIER_RETURN_ON_ERROR(ELFObjFile.getSymbol(SymB).moveInto(ELFSymB));
+  return ELFSymA->st_name == ELFSymB->st_name &&
+         ELFSymA->st_value == ELFSymB->st_value &&
+         ELFSymA->st_size == ELFSymB->st_size &&
+         ELFSymA->st_info == ELFSymB->st_info &&
+         ELFSymA->st_other == ELFSymB->st_other &&
+         ELFSymA->st_shndx == ELFSymB->st_shndx;
+}
+
 } // namespace luthier::object
 
 #endif
