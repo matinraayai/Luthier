@@ -34,6 +34,7 @@
 #include "luthier/tooling/LRCallgraph.h"
 #include "luthier/types.h"
 #include "tooling_common/TargetManager.hpp"
+#include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
@@ -1095,6 +1096,158 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
       LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(
           *llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func.get()),
           *LR));
+    llvm::DenseMap<const hsa::LoadedCodeObjectSymbol *, bool> UsageMap;
+
+    for (const auto &LCO : LCOs) {
+
+      std::error_code EC;
+      //? where to get filenames if more than 1 LCO?
+      std::string OutputFilename = "debug-info.dwarf";
+      llvm::ToolOutputFile OutputFile(OutputFilename, EC,
+                                      llvm::sys::fs::OF_TextWithCRLF);
+      // error("unable to open outputfile " + OutputFilename, EC);
+      //
+      // Don't remove outputfile if we exist with an error
+      OutputFile.keep();
+
+      // create a single Module/MMI for each LCO
+      LUTHIER_RETURN_ON_ERROR(initLiftedLCOEntry(LCO, LR));
+
+      // Create Global Variables associated with this LCO
+      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> GlobalVariables;
+      LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(GlobalVariables));
+      LUTHIER_RETURN_ON_ERROR(LCO.getExternalSymbols(GlobalVariables));
+      for (auto GV : GlobalVariables) {
+        LUTHIER_RETURN_ON_ERROR(initLiftedGlobalVariableEntry(LCO, *GV, LR));
+        UsageMap.insert({GV, false});
+      }
+      // Create Kernel entries for this LCO
+      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> Kernels;
+      LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
+      for (const auto &Kernel : Kernels) {
+        LUTHIER_RETURN_ON_ERROR(initLiftedKernelEntry(
+            LCO, *llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Kernel), LR));
+        UsageMap.insert({Kernel, false});
+      }
+      // Create device function entries for this LCO
+      llvm::SmallVector<const hsa::LoadedCodeObjectSymbol *, 4> DeviceFuncs;
+      LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(DeviceFuncs));
+      for (const auto &Func : DeviceFuncs) {
+        LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(
+            LCO, *llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func),
+            LR));
+        UsageMap.insert({Func, false});
+      }
+      llvm::Expected<llvm::object::ELF64LEObjectFile &> AMDGCNObject =
+          LCO.getStorageELF();
+
+      // handle the error
+      if (!AMDGCNObject) {
+        llvm::Error Err = AMDGCNObject.takeError();
+        llvm::errs() << "Error: " << Err << "\n";
+        // return;
+      }
+
+      llvm::object::ELF64LEObjectFile *AMDGCNObject_ptr = &AMDGCNObject.get();
+
+      bool Result = true;
+      auto RecoverableErrorHandler = [&](llvm::Error E) {
+        Result = false;
+        llvm::WithColor::defaultErrorHandler(std::move(E));
+      };
+
+      // init DICtx
+      std::unique_ptr<llvm::DWARFContext> DICtx = llvm::DWARFContext::create(
+          *AMDGCNObject_ptr,
+          llvm::DWARFContext::ProcessDebugRelocations::Process, nullptr, "",
+          RecoverableErrorHandler);
+
+      // dump CompileUnit
+      DICtx->dump(llvm::outs(), {.ShowChildren = false});
+
+      llvm::LLVMContext llvmContext;
+
+      // CodeLifter.cpp:301 @main LR Module
+      std::unique_ptr<llvm::Module> M =
+          std::make_unique<llvm::Module>("ImportedDebugInfo", llvmContext);
+      llvm::DIBuilder Builder(*M);
+
+      for (auto &CU : DICtx->compile_units()) {
+        llvm::DWARFDie CUDie = CU->getUnitDIE();
+
+        for (auto Child : CUDie.children()) {
+          // llvm::dwarf::Attribute AttrsArray[] = {
+          //     llvm::dwarf::DW_AT_language,  llvm::dwarf::DW_AT_producer,
+          //     llvm::dwarf::DW_AT_name, llvm::dwarf::DW_AT_str_offsets_base,
+          //     llvm::dwarf::DW_AT_stmt_list, llvm::dwarf::DW_AT_comp_dir,
+          //     llvm::dwarf::DW_AT_low_pc,    llvm::dwarf::DW_AT_high_pc,
+          //     llvm::dwarf::DW_AT_addr_base,
+          //     llvm::dwarf::DW_AT_rnglists_base};
+
+          // llvm::ArrayRef<llvm::dwarf::Attribute> Attrs(
+          //     AttrsArray, sizeof(AttrsArray) / sizeof(AttrsArray[0]));
+
+          // std::optional<llvm::DWARFFormValue> dwarfForm = Child.find(Attrs);
+
+          // for (const auto &Attr : AttrsArray) {
+          //   switch (Attr->Attr) {
+
+          //   }
+          // }
+
+          llvm::StringRef producer, name, comp_dir;
+          uint64_t lang, str_offset_base, stmt_list, high_pc, low_pc, addr_base,
+              rnglists_base;
+
+          for (const auto &Attr : Child.attributes()) {
+            switch (Attr.Attr) {
+            case llvm::dwarf::DW_AT_producer:
+              if (auto FormValue = Attr.Value.getAsCString())
+                llvm::StringRef producer = *FormValue;
+            case llvm::dwarf::DW_AT_language:
+              if (auto FormValue = Attr.Value.getAsUnsignedConstant())
+                uint64_t lang = *FormValue;
+            case llvm::dwarf::DW_AT_name:
+              if (auto FormValue = Attr.Value.getAsCString())
+                llvm::StringRef name = *FormValue;
+            case llvm::dwarf::DW_AT_str_offsets_base:
+              if (auto FormValue = Attr.Value.getAsUnsignedConstant())
+                uint64_t str_offset_base = *FormValue;
+            case llvm::dwarf::DW_AT_stmt_list:
+              if (auto FormValue = Attr.Value.getAsUnsignedConstant())
+                uint64_t stmt_list = *FormValue;
+            case llvm::dwarf::DW_AT_comp_dir:
+              if (auto FormValue = Attr.Value.getAsCString())
+                llvm::StringRef comp_dir = *FormValue;
+            case llvm::dwarf::DW_AT_high_pc:
+              if (auto FormValue = Attr.Value.getAsUnsignedConstant())
+                uint64_t high_pc = *FormValue;
+            case llvm::dwarf::DW_AT_low_pc:
+              if (auto FormValue = Attr.Value.getAsUnsignedConstant())
+                uint64_t low_pc = *FormValue;
+            case llvm::dwarf::DW_AT_addr_base:
+              if (auto FormValue = Attr.Value.getAsUnsignedConstant())
+                uint64_t addr_base = *FormValue;
+            case llvm::dwarf::DW_AT_rnglists_base:
+              if (auto FormValue = Attr.Value.getAsUnsignedConstant())
+                uint64_t rnglists_base = *FormValue;
+            }
+          }
+
+          if (Child.isValid()) {
+            switch (Child.getAbbreviationDeclarationPtr()->getTag()) {
+            case llvm::dwarf::DW_TAG_compile_unit:
+              llvm::DIFile *File = Builder.createFile(name, comp_dir);
+              llvm::DICompileUnit *NewCU =
+                  Builder.createCompileUnit(lang, File, producer, false, "", 0);
+            
+            // handle other 117 enums...
+            }
+          }
+
+          // if Child is DW_TAG_....
+        }
+      }
     }
 
     // Now that all global objects are initialized, we can now populate
