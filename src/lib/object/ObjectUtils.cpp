@@ -870,15 +870,4 @@ parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj) {
 }
 
 
-static void error(llvm::StringRef Prefix, llvm::Error Err) {
-  if (!Err)
-    return;
-  WithColor::error() << Prefix << ": " << toString(std::move(Err)) << "\n";
-  exit(1);
-}
-
-static void error(llvm::StringRef Prefix, std::error_code EC) {
-  error(Prefix, errorCodeToError(EC));
-}
-
 } // namespace luthier

@@ -121,11 +121,6 @@ getELFObjectFileISA(const luthier::AMDGCNObjectFile &Obj);
 llvm::Expected<std::unique_ptr<hsa::md::Metadata>>
 parseNoteMetaData(const luthier::AMDGCNObjectFile &Obj);
 
-// static void error(Error Err); 
-static void error(llvm::StringRef Prefix, llvm::Error Err);
-static void error(llvm::StringRef Prefix, std::error_code EC);
-
-bool dumpAMDGCNObject(AMDGCNObjectFile &Obj, llvm::DWARFContext &DICtx, llvm::raw_ostream &OS);
 
 } // namespace luthier
 #endif

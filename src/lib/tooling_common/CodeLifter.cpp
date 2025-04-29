@@ -34,6 +34,7 @@
 #include "luthier/tooling/LRCallgraph.h"
 #include "luthier/types.h"
 #include "tooling_common/TargetManager.hpp"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
@@ -46,6 +47,7 @@
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
+#include <llvm/IR/DIBuilder.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/MC/MCAsmInfo.h>
@@ -60,20 +62,18 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/RelocationResolver.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/Error.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/TimeProfiler.h>
 #include <llvm/Support/ToolOutputFile.h>
-#include <llvm/Support/FileSystem.h>
-#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/WithColor.h>
-#include <llvm/Support/Error.h>
-#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
 #include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
 #include <luthier/hsa/LoadedCodeObjectVariable.h>
 #include <memory>
-
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-lifter"
