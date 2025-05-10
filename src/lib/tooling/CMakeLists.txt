@@ -29,7 +29,7 @@ target_include_directories(LuthierTooling
         ${LLVM_INCLUDE_DIRS}
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
+        # "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${AMDGPU_INCLUDE_DIR}>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/luthier/amdgpu>"
@@ -38,7 +38,7 @@ target_include_directories(LuthierTooling
 target_link_libraries(LuthierTooling
         PUBLIC hip::host rocprofiler-sdk::rocprofiler-sdk hsa-runtime64::hsa-runtime64 LuthierAMDGPU
         PRIVATE
-        LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
+        LuthierObject LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter
         LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
         LLVMAMDGPUUtils LLVMCore LLVMPasses LLVMCodeGen LLVMAMDGPUCodeGen)
