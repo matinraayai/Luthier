@@ -1322,6 +1322,8 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
       break;
     }
     Builder.finalize();
+    
+    LR->Module->print(llvm::outs(), nullptr);
 
     LUTHIER_RETURN_ON_ERROR(liftFunction(KernelSymbol, LR->getKernelMF(), *LR));
 
