@@ -15,34 +15,38 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c hsa::CodeObjectReader class.
+/// This file implements the \c CodeObjectReader class under the \c luthier::hsa
+/// namespace.
 //===----------------------------------------------------------------------===//
 #include "hsa/CodeObjectReader.hpp"
-#include "hsa/HsaRuntimeInterceptor.hpp"
+#include "luthier/common/ErrorCheck.h"
 #include "luthier/hsa/HsaError.h"
 #include <llvm/ADT/StringExtras.h>
 
 namespace luthier::hsa {
 
-llvm::Expected<CodeObjectReader>
-CodeObjectReader::createFromMemory(llvm::StringRef CodeObject) {
-  const auto &CoreApiTable =
-      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
+llvm::Expected<CodeObjectReader> CodeObjectReader::createFromMemory(
+    const decltype(hsa_code_object_reader_create_from_memory)
+        *HsaCodeObjectReaderCreateFromMemoryFn,
+    llvm::StringRef Elf) {
   hsa_code_object_reader_t Reader;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      CoreApiTable.hsa_code_object_reader_create_from_memory_fn(
-          CodeObject.data(), CodeObject.size(), &Reader)));
+      HsaCodeObjectReaderCreateFromMemoryFn(Elf.data(), Elf.size(), &Reader)));
   return CodeObjectReader{Reader};
 }
 
-llvm::Expected<CodeObjectReader>
-CodeObjectReader::createFromMemory(llvm::ArrayRef<uint8_t> Elf) {
-  return createFromMemory(llvm::toStringRef(Elf));
+llvm::Expected<CodeObjectReader> CodeObjectReader::createFromMemory(
+    const decltype(hsa_code_object_reader_create_from_memory)
+        *HsaCodeObjectReaderCreateFromMemoryFn,
+    llvm::ArrayRef<uint8_t> Elf) {
+  return createFromMemory(HsaCodeObjectReaderCreateFromMemoryFn,
+                          llvm::toStringRef(Elf));
 }
 
-llvm::Error CodeObjectReader::destroy() {
-  return LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_code_object_reader_destroy_fn(asHsaType()));
+llvm::Error
+CodeObjectReader::destroy(const decltype(hsa_code_object_reader_destroy)
+                              *HsaCodeObjectReaderDestroyFn) {
+  return LUTHIER_HSA_SUCCESS_CHECK(HsaCodeObjectReaderDestroyFn(asHsaType()));
 }
 
 } // namespace luthier::hsa

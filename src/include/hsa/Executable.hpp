@@ -15,20 +15,20 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c Executable class under the \c luthier::hsa
-/// namespace, representing a wrapper around the \c hsa_executable_t.
+/// Defines the \c Executable class, a wrapper around the \c hsa_executable_t
+/// handle in HSA.
 //===----------------------------------------------------------------------===//
-#ifndef HSA_EXECUTABLE_HPP
-#define HSA_EXECUTABLE_HPP
-#include <optional>
-#include <vector>
-
-#include <llvm/ADT/DenseMapInfo.h>
-
-#include "hsa/CodeObjectReader.hpp"
+#ifndef LUTHIER_HSA_EXECUTABLE_HPP
+#define LUTHIER_HSA_EXECUTABLE_HPP
 #include "hsa/HandleType.hpp"
+#include <hsa/hsa_ven_amd_loader.h>
+#include <llvm/ADT/DenseMapInfo.h>
+#include <llvm/Support/Error.h>
+#include <optional>
 
 namespace luthier::hsa {
+
+class CodeObjectReader;
 
 class GpuAgent;
 
@@ -39,8 +39,16 @@ class LoadedCodeObject;
 /// \brief wrapper around the \c hsa_executable_t handle
 class Executable final : public HandleType<hsa_executable_t> {
 public:
+  /// Constructor using a \c hsa_executable_t handle
+  /// \note This constructor must only be used with handles already created
+  /// by HSA. To create executables from scratch, use \c create instead.
+  /// \param Exec an already-created HSA executable
+  explicit Executable(hsa_executable_t Exec);
+
   /// Creates a new, empty \c hsa_executable_t handle and wraps it inside
   /// an \c Executable object
+  /// \param HsaCreateExecutableCreateAltFn the \c hsa_executable_create_alt
+  /// function used to carry out the operation
   /// \param Profile \c hsa_profile_t of the executable; set to
   /// \c HSA_PROFILE_FULL by default
   /// \param DefaultFloatRoundingMode \c hsa_default_float_rounding_mode_t
@@ -51,115 +59,113 @@ public:
   /// However, this argument does not get used by
   /// <tt>hsa_executable_create_alt</tt>, which is why it is absent from this
   /// method's arguments.
-  /// \return on success, a new <tt>Executable</tt>, on failure, an
-  /// \c luthier::HsaError
+  /// \return Expects a newly created \c Executable
   /// \sa hsa_executable_create_alt
   /// \sa hsa_profile_t
   /// \sa hsa_default_float_rounding_mode_t
   static llvm::Expected<Executable>
-  create(hsa_profile_t Profile = HSA_PROFILE_FULL,
+  create(decltype(hsa_executable_create_alt) *HsaCreateExecutableCreateAltFn,
+         hsa_profile_t Profile = HSA_PROFILE_FULL,
          hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
              HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);
 
   /// Loads the code object read by the \p Reader onto the <tt>Agent</tt>'s
   /// memory. Results in creation of a \c LoadedCodeObject which will be
   /// managed by this executable.
+  /// \param HsaExecutableLoadAgentCodeObjectFn the \c
+  /// hsa_executable_load_agent_code_object used to carry out the operation
   /// \param Reader the \c CodeObjectReader encapsulating a code object to
   /// be read into the executable
   /// \param Agent the \c GpuAgent the code object will be loaded onto
   /// \param LoaderOptions the loader options passed; See \c
   /// rocr::amd::hsa::loader::LoaderOptions::LoaderOptions in the HSA
-  /// runtime source code for a the complete list of options
+  /// runtime source code for a complete list of options
   /// \return on success, a newly created <tt>LoadedCodeObject</tt>. On
   /// failure, a \c luthier::HsaError
   /// \sa hsa_executable_load_agent_code_object
-  llvm::Expected<hsa::LoadedCodeObject>
-  loadAgentCodeObject(const hsa::CodeObjectReader &Reader,
-                      const hsa::GpuAgent &Agent,
+  llvm::Expected<LoadedCodeObject>
+  loadAgentCodeObject(const decltype(hsa_executable_load_agent_code_object)
+                          *HsaExecutableLoadAgentCodeObjectFn,
+                      const CodeObjectReader &Reader, const GpuAgent &Agent,
                       llvm::StringRef LoaderOptions = "");
 
-  /// Creates and defines a new external \c hsa_executable_symbol_t with the
-  /// given \p SymbolName inside the executable. The new symbol will reside in
-  /// the passed \p Address which must be accessible to the given \p Agent
-  /// \param Agent the \c GpuAgent the newly created symbol will be defined
-  /// for
-  /// \param SymbolName the name of the newly created symbol
-  /// \param Address the device address accessible by the \c Agent where
-  /// this symbol will reside in
-  /// \note This function must be called before the \c LoadedCodeObject that
-  /// uses it
-  /// \return an \c llvm::ErrorSuccess if the operation was successful, or a
-  /// \c luthier::HsaError if the operation fails
+  /// Creates and defines a new external HSA executable symbol with the
+  /// given \p SymbolName inside the executable
+  /// \param HsaExecutableAgentGlobalVariableDefineFn the \c
+  /// hsa_executable_agent_global_variable_define_fn function used to carry out
+  /// this operation
+  /// \param Agent the \c GpuAgent the symbol will be defined for
+  /// \param SymbolName the name of the created symbol
+  /// \param Address the device address of the symbol; Must accessible by
+  /// the \c Agent
+  /// \return \c llvm::Error indicating the success or failure of the operation
   /// \sa hsa_executable_agent_global_variable_define
-  llvm::Error defineExternalAgentGlobalVariable(const hsa::GpuAgent &Agent,
-                                                llvm::StringRef SymbolName,
-                                                const void *Address);
+  llvm::Error defineExternalAgentGlobalVariable(
+      const decltype(hsa_executable_agent_global_variable_define)
+          *HsaExecutableAgentGlobalVariableDefineFn,
+      const GpuAgent &Agent, llvm::StringRef SymbolName, const void *Address);
 
-  /// Freezes the wrapped <tt>hsa_executable_t</tt>, which prevents it from
-  /// being modified.
+  /// Freezes the wrapped <tt>hsa_executable_t</tt>
+  /// \param HsaExecutableFreezeFn The \c hsa_executable_freeze function
+  /// used to carry out the operation
   /// \note the HSA function \c hsa_executable_freeze called by this method
   /// takes in an extra <tt>options</tt> argument which goes unused; Hence why
   /// it is not present in this method's arguments
-  /// \return on success, an \c llvm::ErrorSuccess and on failure,
-  /// a \c luthier::HsaError
+  /// \return \c llvm::Error indicating the success or failure of the operation
   /// \sa hsa_executable_freeze
-  llvm::Error freeze();
-
-  /// Validates the executable
-  /// \note the HSA function \c hsa_executable_validate_alt called by this
-  /// method takes in an extra <tt>options</tt> argument which goes unused;
-  /// Hence why it is not present in this method's arguments
-  /// \return on success, true if the executable is valid, false otherwise; On
-  /// error, returns a \c luthier::HsaError indicating the HSA issue encountered
-  /// during the process
-  /// \sa hsa_executable_validate_alt
-  llvm::Expected<bool> validate();
+  llvm::Error
+  freeze(const decltype(hsa_executable_freeze) *HsaExecutableFreezeFn);
 
   /// Destroys the executable handle
-  /// \return an \c llvm::ErrorSuccess if successful, or a \c luthier::HsaError
-  /// indicating any issues encountered by HSA
+  /// \param HsaExecutableDestroyFn The \c hsa_executable_destroy function
+  /// used to carry out the operation
+  /// \return \c llvm::Error indicating the success of failure of the operation
   /// \sa hsa_executable_destroy
-  llvm::Error destroy();
-
-  /// Constructor using a \c hsa_executable_t handle
-  /// \warning This constructor must only be used with handles already created
-  /// by HSA. To create executables from scratch, use \c create instead.
-  /// \param Exec
-  explicit Executable(hsa_executable_t Exec);
+  llvm::Error
+  destroy(const decltype(hsa_executable_destroy) *HsaExecutableDestroyFn);
 
   /// Queries the \c hsa_profile_t of the wrapped \c hsa_executable_t
-  /// \return the profile of the executable on success, and an
-  /// \c luthier::HsaError on failure
-  llvm::Expected<hsa_profile_t> getProfile();
+  /// \param HsaExecutableGetInfoFn the \c hsa_executable_get_info function
+  /// used to carry out the operation
+  /// \return \c llvm::Error indicating the success or failure of the operation
+  llvm::Expected<hsa_profile_t> getProfile(
+      const decltype(hsa_executable_get_info) *HsaExecutableGetInfoFn) const;
 
   /// Queries the \c hsa_executable_state_t of the executable
+  /// \param HsaExecutableGetInfoFn the \c hsa_executable_get_info function
+  /// used to carry out the operation
   /// \return on success the state of the executable (i.e. frozen or not), on
   /// failure a \c luthier::HsaError indicating any issue encountered with the
   /// HSA runtime
-  [[nodiscard]] llvm::Expected<hsa_executable_state_t> getState() const;
-
-  /// Queries the default rounding mode of the executable
-  /// \return on success the \c hsa_default_float_rounding_mode_t of the
-  /// executable, and on failure an \c luthier::HsaError indicating any issue
-  /// encountered with the HSA runtime
-  llvm::Expected<hsa_default_float_rounding_mode_t> getRoundingMode();
+  [[nodiscard]] llvm::Expected<hsa_executable_state_t> getState(
+      const decltype(hsa_executable_get_info) *HsaExecutableGetInfoFn) const;
 
   /// Queries the loaded code objects managed by this executable
+  /// \param HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn the
+  /// \c hsa_ven_amd_loader_executable_iterate_loaded_code_objects function
+  /// used to complete the operation
   /// \param [out] LCOs the list of <tt>LoadedCodeObject</tt>s managed by this
   /// executable
-  /// \return \c llvm::ErrorSuccess if the operation was successful, or a
-  /// \c luthier::HsaError on failure
-  llvm::Error
-  getLoadedCodeObjects(llvm::SmallVectorImpl<LoadedCodeObject> &LCOs) const;
+  /// \return \c llvm::Error indicating the success or failure of the operation
+  llvm::Error getLoadedCodeObjects(
+      const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
+          *HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
+      llvm::SmallVectorImpl<LoadedCodeObject> &LCOs) const;
 
   /// Looks up the \c ExecutableSymbol by its \p Name in the Executable
+  /// \param HsaExecutableGetSymbolByNameFn the
+  /// \c hsa_executable_get_symbol_by_name function used to complete the
+  /// operation
   /// \param Name Name of the symbol being looked up; If the queried symbol
   /// is a kernel then it must have ".kd" as a suffix in the name
+  /// \param Agent the \c GpuAgent the symbol belongs to
   /// \return on success, the \c ExecutableSymbol with the given \p Name if
-  /// found, otherwise <tt>std::nullopt</tt>; Otherwise a \c luthier::HsaError
+  /// found, otherwise <tt>std::nullopt</tt>; Otherwise a \c llvm::Error
   /// indicating any issue encountered during the process
   llvm::Expected<std::optional<ExecutableSymbol>>
-  getExecutableSymbolByName(llvm::StringRef Name, const hsa::GpuAgent &Agent);
+  getExecutableSymbolByName(const decltype(hsa_executable_get_symbol_by_name)
+                                *HsaExecutableGetSymbolByNameFn,
+                            llvm::StringRef Name, const GpuAgent &Agent) const;
 };
 
 } // namespace luthier::hsa
