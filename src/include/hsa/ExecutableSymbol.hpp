@@ -15,74 +15,79 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c ExecutableSymbol class under the \c luthier::hsa
-/// namespace, representing a wrapper around the \c hsa_executable_symbol handle
-/// type.
+/// Defines the \c ExecutableSymbol class, a wrapper around the
+/// \c hsa_executable_symbol handle type in HSA.
 //===----------------------------------------------------------------------===//
 
-#ifndef HSA_EXECUTABLE_SYMBOL_HPP
-#define HSA_EXECUTABLE_SYMBOL_HPP
-#include <hsa/hsa.h>
-#include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/DenseMap.h>
-
-#include <optional>
-#include <string>
-
+#ifndef LUTHIER_HSA_EXECUTABLE_SYMBOL_HPP
+#define LUTHIER_HSA_EXECUTABLE_SYMBOL_HPP
 #include "hsa/HandleType.hpp"
-#include <luthier/types.h>
+#include <hsa/hsa.h>
+#include <llvm/Support/Error.h>
+#include <string>
 
 namespace luthier::hsa {
 
 class GpuAgent;
 
 /// \brief wrapper around \c hsa_executable_symbol_t
-/// \details By design <tt>hsa::LoadedCodeObjectSymbol</tt> is the primary
-/// symbol representation used by Luthier, and this wrapper is reserved for
-/// only straight-forward queries for global-facing symbols (e.g. address of
-/// a global variable, especially when the variable is externally defined).
 class ExecutableSymbol final : public HandleType<hsa_executable_symbol_t> {
 
 public:
   /// Wrapper constructor
-  /// \param Handle HSA handle of the \c hsa_executable_symbol_t
   explicit ExecutableSymbol(hsa_executable_symbol_t Handle)
-      : HandleType<hsa_executable_symbol_t>(Handle) {}
+      : HandleType(Handle) {}
 
-  /// \return the type of the symbol on success, a \c luthier::HsaError on
-  /// failure
+  /// \param HsaExecutableSymbolGetInfoFn the \c hsa_executable_symbol_get_info
+  /// function used to complete the operation
+  /// \return the type of the symbol on success
   /// \sa HSA_EXECUTABLE_SYMBOL_INFO_TYPE
   /// \sa hsa_executable_symbol_get_info
-  [[nodiscard]] llvm::Expected<hsa_symbol_kind_t> getType() const;
+  [[nodiscard]] llvm::Expected<hsa_symbol_kind_t>
+  getType(const decltype(hsa_executable_symbol_get_info)
+              *HsaExecutableSymbolGetInfoFn) const;
 
-  /// \return the name of the symbol on success, a \c luthier::HsaError on
-  /// failure
+  /// \param HsaExecutableSymbolGetInfoFn the \c hsa_executable_symbol_get_info
+  /// function used to complete the operation
+  /// \return the name of the symbol on operation success
   /// \sa HSA_EXECUTABLE_SYMBOL_INFO_NAME
   /// \sa HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH
   /// \sa hsa_executable_symbol_get_info
-  [[nodiscard]] llvm::Expected<llvm::StringRef> getName() const;
+  [[nodiscard]] llvm::Expected<llvm::StringRef>
+  getName(const decltype(hsa_executable_symbol_get_info)
+              *HsaExecutableSymbolGetInfoFn) const;
 
-  /// \return size of the symbol if symbol is a variable
-  /// (0 if the variable is external), otherwise a \c luthier::HsaError on
-  /// failure
+  /// \param HsaExecutableSymbolGetInfoFn the \c hsa_executable_symbol_get_info
+  /// function used to complete the operation
+  /// \return on success, size of the symbol if symbol is a variable
+  /// (0 if the variable is external)
   /// \sa HSA_EXECUTABLE_SYMBOL_INFO_SIZE
   /// \sa hsa_executable_symbol_get_info
-  [[nodiscard]] llvm::Expected<size_t> getSize() const;
+  [[nodiscard]] llvm::Expected<size_t>
+  getSize(const decltype(hsa_executable_symbol_get_info)
+              *HsaExecutableSymbolGetInfoFn) const;
 
-  /// \return the address of the symbol if the symbol is a variable, or the
-  /// address of the kernel descriptor if the symbol is a kernel; Otherwise,
-  /// a \c luthier::HsaError
+  /// \param HsaExecutableSymbolGetInfoFn the \c hsa_executable_symbol_get_info
+  /// function used to complete the operation
+  /// \return on success, the address of the symbol if the symbol is a variable,
+  /// or the address of the kernel descriptor if the symbol is a kernel
   /// \sa HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT
   /// \sa HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS
   /// \sa hsa_executable_symbol_get_info
-  [[nodiscard]] llvm::Expected<luthier::address_t> getAddress() const;
+  [[nodiscard]] llvm::Expected<uint64_t>
+  getAddress(const decltype(hsa_executable_symbol_get_info)
+                 *HsaExecutableSymbolGetInfoFn) const;
 
-  /// \return the agent of the symbol;
+  /// \param HsaExecutableSymbolGetInfoFn the \c hsa_executable_symbol_get_info
+  /// function used to complete the operation
+  /// \return the agent of the symbol on operation success
   /// \note This is safe to use since all symbols used in HSA are of
   /// agent allocation and not of program allocation
   /// \sa HSA_EXECUTABLE_SYMBOL_INFO_AGENT
   /// \sa hsa_executable_symbol_get_info
-  [[nodiscard]] llvm::Expected<GpuAgent> getAgent() const;
+  [[nodiscard]] llvm::Expected<GpuAgent>
+  getAgent(const decltype(hsa_executable_symbol_get_info)
+               *HsaExecutableSymbolGetInfoFn) const;
 };
 
 } // namespace luthier::hsa
