@@ -1,4 +1,4 @@
-//===-- ExecutableSymbol.h ------------------------------------------------===//
+//===-- ExecutableSymbol.h ---------------------------------------*- C++-*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
