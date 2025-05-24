@@ -15,113 +15,109 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c Executable class under the \c luthier::hsa
-/// namespace.
+/// This file implements a set of commonly used functionality for the \c
+/// hsa_executable_t in HSA.
 //===----------------------------------------------------------------------===//
-#include "hsa/Executable.hpp"
-#include "hsa/CodeObjectReader.hpp"
-#include "hsa/ExecutableBackedObjectsCache.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/LoadedCodeObject.hpp"
+#include "luthier/hsa/Executable.h"
+#include "luthier/common/ErrorCheck.h"
 #include "luthier/hsa/HsaError.h"
 
 namespace luthier::hsa {
 
-llvm::Expected<Executable> Executable::create(
-    decltype(hsa_executable_create_alt) *HsaCreateExecutableCreateAltFn,
+llvm::Expected<hsa_executable_t> createExecutable(
+    decltype(hsa_executable_create_alt) &HsaCreateExecutableCreateAltFn,
     hsa_profile_t Profile,
     hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) {
   hsa_executable_t Exec;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(HsaCreateExecutableCreateAltFn(
           Profile, DefaultFloatRoundingMode, "", &Exec)));
-  return Executable{Exec};
+  return Exec;
 }
 
-llvm::Expected<LoadedCodeObject> Executable::loadAgentCodeObject(
+llvm::Expected<hsa_loaded_code_object_t> loadAgentCodeObjectIntoExec(
+    hsa_executable_t Exec,
     const decltype(hsa_executable_load_agent_code_object)
-        *HsaExecutableLoadAgentCodeObjectFn,
-    const CodeObjectReader &Reader, const GpuAgent &Agent,
+        &HsaExecutableLoadAgentCodeObjectFn,
+    hsa_code_object_reader_t Reader, hsa_agent_t Agent,
     llvm::StringRef LoaderOptions) {
   hsa_loaded_code_object_t LCO;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      HsaExecutableLoadAgentCodeObjectFn(asHsaType(), Agent.asHsaType(),
-                                         Reader.asHsaType(),
-                                         LoaderOptions.data(), &LCO)));
-  return LoadedCodeObject{LCO};
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_HSA_SUCCESS_CHECK(HsaExecutableLoadAgentCodeObjectFn(
+          Exec, Agent, Reader, LoaderOptions.data(), &LCO)));
+  return LCO;
 }
 
-llvm::Error Executable::defineExternalAgentGlobalVariable(
+llvm::Error defineExternalAgentGlobalVariableInExec(
+    hsa_executable_t Exec,
     const decltype(hsa_executable_agent_global_variable_define)
-        *HsaExecutableAgentGlobalVariableDefineFn,
-    const hsa::GpuAgent &Agent, llvm::StringRef SymbolName,
-    const void *Address) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_agent_global_variable_define_fn(
-          asHsaType(), Agent.asHsaType(), SymbolName.data(),
-          const_cast<void *>(Address))));
+        &HsaExecutableAgentGlobalVariableDefineFn,
+    hsa_agent_t Agent, llvm::StringRef SymbolName, const void *Address) {
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_HSA_SUCCESS_CHECK(HsaExecutableAgentGlobalVariableDefineFn(
+          Exec, Agent, SymbolName.data(), const_cast<void *>(Address))));
   return llvm::Error::success();
 }
 
-llvm::Error Executable::freeze(
-    const decltype(hsa_executable_freeze) *HsaExecutableFreezeFn) {
-  return LUTHIER_HSA_SUCCESS_CHECK(HsaExecutableFreezeFn(asHsaType(), ""));
+llvm::Error
+freezeExec(hsa_executable_t Exec,
+           const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn) {
+  return LUTHIER_HSA_SUCCESS_CHECK(HsaExecutableFreezeFn(Exec, ""));
 }
 
-llvm::Error Executable::destroy(
-    const decltype(hsa_executable_destroy) *HsaExecutableDestroyFn) {
-  return LUTHIER_HSA_SUCCESS_CHECK(HsaExecutableDestroyFn(asHsaType()));
+llvm::Error
+destroyExec(hsa_executable_t Exec,
+            const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn) {
+  return LUTHIER_HSA_SUCCESS_CHECK(HsaExecutableDestroyFn(Exec));
 }
 
-Executable::Executable(hsa_executable_t Exec)
-    : HandleType<hsa_executable_t>(Exec) {}
-
-llvm::Expected<hsa_profile_t> Executable::getProfile(
-    const decltype(hsa_executable_get_info) *HsaExecutableGetInfoFn) const {
+llvm::Expected<hsa_profile_t> getExecProfile(
+    hsa_executable_t Exec,
+    const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn) {
   hsa_profile_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      HsaExecutableGetInfoFn(asHsaType(), HSA_EXECUTABLE_INFO_PROFILE, &Out)));
+      HsaExecutableGetInfoFn(Exec, HSA_EXECUTABLE_INFO_PROFILE, &Out)));
   return Out;
 }
 
-llvm::Expected<hsa_executable_state_t> Executable::getState(
-    const decltype(hsa_executable_get_info) *HsaExecutableGetInfoFn) const {
+llvm::Expected<hsa_executable_state_t>
+getExecState(hsa_executable_t Exec,
+             const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn) {
   hsa_executable_state_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      HsaExecutableGetInfoFn(asHsaType(), HSA_EXECUTABLE_INFO_STATE, &Out)));
+      HsaExecutableGetInfoFn(Exec, HSA_EXECUTABLE_INFO_STATE, &Out)));
   return Out;
 }
 
-llvm::Error Executable::getLoadedCodeObjects(
+llvm::Error getExecLoadedCodeObjects(
+    hsa_executable_t Exec,
     const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-        *HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
-    llvm::SmallVectorImpl<hsa::LoadedCodeObject> &LCOs) const {
+        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
+    llvm::SmallVectorImpl<hsa_loaded_code_object_t> &LCOs) {
   auto Iterator = [](hsa_executable_t Exec, hsa_loaded_code_object_t LCO,
                      void *Data) -> hsa_status_t {
     auto Out =
-        static_cast<llvm::SmallVectorImpl<hsa::LoadedCodeObject> *>(Data);
+        static_cast<llvm::SmallVectorImpl<hsa_loaded_code_object_t> *>(Data);
     Out->emplace_back(LCO);
     return HSA_STATUS_SUCCESS;
   };
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn(this->asHsaType(),
-                                                          Iterator, &LCOs)));
+      HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn(Exec, Iterator,
+                                                          &LCOs)));
   return llvm::Error::success();
 }
 
-llvm::Expected<std::optional<ExecutableSymbol>>
-Executable::getExecutableSymbolByName(
-    const decltype(hsa_executable_get_symbol_by_name)
-        *HsaExecutableGetSymbolByNameFn,
-    llvm::StringRef Name, const GpuAgent &Agent) const {
+llvm::Expected<std::optional<hsa_executable_symbol_t>>
+lookupExecutableSymbolByName(hsa_executable_t Exec,
+                             const decltype(hsa_executable_get_symbol_by_name)
+                                 &HsaExecutableGetSymbolByNameFn,
+                             llvm::StringRef Name, hsa_agent_t Agent) {
   hsa_executable_symbol_t Symbol;
-  hsa_agent_t HsaAgent = Agent.asHsaType();
 
-  auto Status = HsaExecutableGetSymbolByNameFn(
-      this->asHsaType(), Name.str().c_str(), &HsaAgent, &Symbol);
+  auto Status =
+      HsaExecutableGetSymbolByNameFn(Exec, Name.str().c_str(), &Agent, &Symbol);
   if (Status == HSA_STATUS_SUCCESS)
-    return ExecutableSymbol(Symbol);
+    return Symbol;
   if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME)
     return std::nullopt;
   return LUTHIER_HSA_SUCCESS_CHECK(Status);
