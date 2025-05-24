@@ -123,4 +123,34 @@ lookupExecutableSymbolByName(hsa_executable_t Exec,
   return LUTHIER_HSA_SUCCESS_CHECK(Status);
 }
 
+llvm::Error iterateSymbolsOfExecutable(
+    hsa_executable_t Exec,
+    decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    hsa_agent_t Agent,
+    const std::function<bool(hsa_executable_symbol_t, llvm::Error &)>
+        &Callback) {
+
+  struct CBDataType {
+    decltype(Callback) CB;
+    llvm::Error Err;
+  } CBData{Callback, llvm::Error::success()};
+
+  auto CTypeCB = [](hsa_executable_t, hsa_agent_t, hsa_executable_symbol_t S,
+                    void *D) -> hsa_status_t {
+    auto *Data = static_cast<CBDataType *>(D);
+    bool ContinueIter = Data->CB(S, Data->Err);
+    if (ContinueIter != false || Data->Err)
+      return HSA_STATUS_INFO_BREAK;
+    else {
+      return HSA_STATUS_SUCCESS;
+    }
+  };
+
+  hsa_status_t Out = SymbolIterFn(Exec, Agent, CTypeCB, &CBData);
+  if (Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK)
+    return std::move(CBData.Err);
+  else
+    return LUTHIER_HSA_SUCCESS_CHECK(Out);
+}
+
 } // namespace luthier::hsa

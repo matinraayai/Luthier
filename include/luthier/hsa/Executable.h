@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_EXECUTABLE_H
 #define LUTHIER_HSA_EXECUTABLE_H
+#include "HsaError.h"
+
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseMapInfo.h>
@@ -163,6 +165,28 @@ lookupExecutableSymbolByName(hsa_executable_t Exec,
                                  &HsaExecutableGetSymbolByNameFn,
                              llvm::StringRef Name, hsa_agent_t Agent);
 
+/// Iterates over the symbols inside the \p Exec that belong to \p Agent and
+/// invokes the provided \p Callback
+/// \param Exec the executable being inspected
+/// \param SymbolIterFn the underlying \c hsa_executable_iterate_agent_symbols
+/// invoked to complete the operation
+/// \param Agent the GPU agent for which the symbols are going to be iterated
+/// over
+/// \param Callback a generic \c std::function that gets invoked during the
+/// iteration. It takes in the current iteration's \c hsa_executable_symbol_t
+/// as well as a reference to a \c llvm::Error and returns a boolean. The
+/// callback can use the passed \c llvm::Error reference to propogate any
+/// issues encountered during the iteration callback. If the callback returns
+/// \c true the iteration will continue, and if the callback returns \c false
+/// the iteration halts
+/// \return an \c llvm::Error indicating the success or the failure of the
+/// operation
+llvm::Error iterateSymbolsOfExecutable(
+    hsa_executable_t Exec,
+    decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    hsa_agent_t Agent,
+    const std::function<bool(hsa_executable_symbol_t, llvm::Error &)>
+        &Callback);
 } // namespace luthier::hsa
 
 //===----------------------------------------------------------------------===//
