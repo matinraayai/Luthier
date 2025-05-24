@@ -15,26 +15,27 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c GpuAgent class under the \c luthier::hsa
-/// namespace.
+/// Implements a set of commonly used functionality around the \c hsa_agent_t
+/// handle in HSA.
 //===----------------------------------------------------------------------===//
-
-#include "hsa/GpuAgent.hpp"
-#include "hsa/ISA.hpp"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/HsaError.h"
 
 namespace luthier::hsa {
 
-llvm::Error
-GpuAgent::getSupportedISAs(llvm::SmallVectorImpl<ISA> &IsaList) const {
+llvm::Error getSupportedISAsOfAgent(
+    hsa_agent_t Agent,
+    const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
+    llvm::SmallVectorImpl<hsa_isa_t> &ISAList) {
   auto Iterator = [](hsa_isa_t Isa, void *Data) {
     auto SupportedIsaList =
-        reinterpret_cast<llvm::SmallVectorImpl<ISA> *>(Data);
+        static_cast<llvm::SmallVectorImpl<hsa_isa_t> *>(Data);
     SupportedIsaList->emplace_back(Isa);
     return HSA_STATUS_SUCCESS;
   };
 
-  return LUTHIER_HSA_SUCCESS_CHECK(getApiTable().core.hsa_agent_iterate_isas_fn(
-      this->asHsaType(), Iterator, &IsaList));
+  return LUTHIER_HSA_SUCCESS_CHECK(
+      HsaAgentIterateISAsFn(Agent, Iterator, &ISAList));
 }
 
 } // namespace luthier::hsa
