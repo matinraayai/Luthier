@@ -15,108 +15,105 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's Instrumentation Module, which contains
-/// an LLVM bitcode buffer as well as static variables loaded onto each GPU
-/// device. The lifetime of an Instrumentation Module is managed by the
-/// <tt>ToolExecutableLoader</tt>.
+/// This file describes Luthier's Instrumentation Module, and its Loaded version
+/// when it is loaded on the GPU.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
 #define LUTHIER_TOOLING_COMMON_INSTRUMENTATION_MODULE_HPP
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
+#include <hsa/hsa.h>
+#include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseMap.h>
-#include <llvm/ADT/SmallVector.h>
+#include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/Support/Error.h>
-#include <luthier/hsa/LoadedCodeObjectVariable.h>
-#include <optional>
-#include <string>
+#include <luthier/object/ELFObjectUtils.h>
+#include <luthier/object/ObjectUtils.h>
 
 namespace luthier {
 
-namespace hsa {
-class Executable;
-}
-
 class ToolExecutableLoader;
 
-//===----------------------------------------------------------------------===//
-// Instrumentation Module
-//===----------------------------------------------------------------------===//
-
-/// \brief Similar to HIP Modules in concept; Consists of an LLVM bitcode buffer
-/// + All static variable addresses it uses on each GPU device
+/// \brief Encapsulates a Luthier instrumentation module, consisting of
+/// a shared object file with its LLVM bitcode embedded in one of its sections
 class InstrumentationModule {
-public:
-  /// Discriminator for LLVM-style RTTI (dyn_cast<> et al.)
-  enum ModuleKind { MK_Static, MK_Dynamic };
+  /// A host copy of the code object used to load the module
+  const std::vector<uint8_t> CodeObject;
 
-protected:
-  /// Only CodeObjectManager is allowed to create Instrumentation
-  /// Modules
-  friend ToolExecutableLoader;
+  /// Parsed representation of the \c CodeObject
+  const std::unique_ptr<llvm::object::ObjectFile> ObjectFile;
 
-  explicit InstrumentationModule(ModuleKind Kind) : Kind(Kind) {};
+  /// The LLVM bitcode buffer inside the \c CodeObject
+  const std::unique_ptr<llvm::MemoryBuffer> BCBuffer;
 
-  /// Compile Unit ID of the Module. This is an identifier generated
-  /// by Clang to create a correspondence between the host and the device code.
-  /// Presence of CUID is a requirement of all Luthier tool code
-  std::string CUID{};
-
-private:
-  const ModuleKind Kind;
-
-protected:
-  /// List of static symbols without the agent information
-  llvm::SmallVector<std::string, 4> GlobalVariables{};
+  InstrumentationModule(std::vector<uint8_t> CodeObject,
+                        std::unique_ptr<llvm::object::ObjectFile> ObjectFile,
+                        std::unique_ptr<llvm::MemoryBuffer> BCBuffer)
+      : CodeObject(std::move(CodeObject)), ObjectFile(std::move(ObjectFile)),
+        BCBuffer(std::move(BCBuffer)) {}
 
 public:
-  [[nodiscard]] ModuleKind getKind() const { return Kind; }
+  static llvm::Expected<std::unique_ptr<InstrumentationModule>>
+  create(std::vector<uint8_t> CodeObject);
 
-  /// Global Variable names iteration functions
-
-  using const_gv_names_iterator = decltype(GlobalVariables)::const_iterator;
-
-  [[nodiscard]] const_gv_names_iterator gv_names_begin() const {
-    return GlobalVariables.begin();
+  /// \returns the parsed object file representation of the instrumentation
+  /// module
+  [[nodiscard]] const llvm::object::ObjectFile &getObject() const {
+    return *ObjectFile;
   }
-
-  [[nodiscard]] const_gv_names_iterator gv_names_end() const {
-    return GlobalVariables.end();
-  }
-
-  [[nodiscard]] llvm::iterator_range<const_gv_names_iterator> gv_names() const {
-    return llvm::make_range(gv_names_begin(), gv_names_end());
-  }
-
-  [[nodiscard]] bool gv_names_empty() const { return GlobalVariables.empty(); }
-
-  [[nodiscard]] size_t gv_names_size() const { return GlobalVariables.size(); }
 
   /// Reads the bitcode of this InstrumentationModule into a new
   /// \c llvm::Module backed by the \p Ctx
-  /// \param Ctx an \c LLVMContext to back the returned Module
-  /// \return an \c llvm::Module, or an \c llvm::Error if any problem was
-  /// encountered during the process
-  virtual llvm::Expected<std::unique_ptr<llvm::Module>>
-  readBitcodeIntoContext(llvm::LLVMContext &Ctx,
-                         const hsa::GpuAgent &Agent) const = 0;
+  /// \param Ctx an \c LLVMContext of the returned Module
+  /// \return the \c llvm::Module of the loaded instrumentation module on
+  /// success
+  llvm::Expected<std::unique_ptr<llvm::Module>>
+  readBitcodeIntoContext(llvm::LLVMContext &Ctx) const {
+    return llvm::parseBitcodeFile(*BCBuffer, Ctx);
+  }
 
-  /// Returns the loaded address of the global variable on the given \p Agent if
-  /// already loaded, or \c std::nullopt if it is not loaded at the time of
-  /// the query \n
-  /// Mostly used when loading an instrumented executable
-  /// \param GVName the name of the global variable queried
-  /// \param Agent The \c hsa::GpuAgent to look for the global variable variable
-  /// on
-  /// \return A \c luthier::address_t if the variable was located on the \p
-  /// Agent, an \c std::nullopt if not loaded, or an \c llvm::Error if an issue
-  /// was encountered
-  /// \sa luthier::hsa::Executable::defineExternalAgentGlobalVariable
-  [[nodiscard]] virtual llvm::Expected<std::optional<luthier::address_t>>
-  getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
-                                  const hsa::GpuAgent &Agent) const = 0;
+  /// \param [out] Manifest the manifest of the instrumentation module
+  /// (i.e. the offsets of each object symbol of the module
+  /// \return \c llvm::Error indicating the success or failure of the operation
+  llvm::Error readManifest(llvm::StringMap<uint64_t> &Manifest) const {
+    return object::readManifest(*ObjectFile, Manifest);
+  }
+};
+
+/// \brief encapsulates a Luthier tool
+class InstrumentationModule {
+protected:
+  /// The loaded code object of the loaded instrumentation module
+  const hsa_loaded_code_object_t LCO;
+
+  /// Stored to get the load manifest of the
+  const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+      &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn;
+
+  std::unique_ptr<InstrumentationModule> IModule;
+
+  InstrumentationModule(
+      hsa_loaded_code_object_t LCO,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+      std::unique_ptr<InstrumentationModule> IModule)
+      : LCO(LCO), HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
+                      HsaVenAmdLoaderLoadedCodeObjectGetInfoFn),
+        IModule(std::move(IModule)) {};
+
+  virtual ~InstrumentationModule() = default;
+
+public:
+  [[nodiscard]] const InstrumentationModule &getIModule() const {
+    return *IModule;
+  }
+
+  [[nodiscard]] hsa_loaded_code_object_t getLCO() const { return LCO; }
+
+  /// \param [out] Manifest the manifest of the instrumentation module
+  /// (i.e. the addresses of each object symbol of the module is loaded on the
+  /// device)
+  /// \return \c llvm::Error indicating the success or failure of the operation
+  llvm::Error readManifest(llvm::StringMap<uint64_t> &Manifest) const;
 };
 
 //===----------------------------------------------------------------------===//
@@ -154,120 +151,65 @@ public:
 /// \c StaticInstrumentationModule also gets notified of the kernel shadow host
 /// pointers of each hook, and converts them to the correct hook name to
 /// be found in the module later on.
-/// \sa InstrumentationModule::BitcodeBuffer, LUTHIER_HOOK_ANNOTATE,
+/// \sa llvm::BitcodeBuffer, LUTHIER_HOOK_ANNOTATE,
 /// LUTHIER_EXPORT_HOOK_HANDLE
-class StaticInstrumentationModule final : public InstrumentationModule {
-private:
-  friend ToolExecutableLoader;
-  /// Private default constructor only accessible by \c ToolExecutableManager
-  StaticInstrumentationModule() : InstrumentationModule(MK_Static) {};
-
-  /// Mutex to protect the contents of the static instrumentation module as
-  /// it gets updated
-  mutable std::shared_mutex Mutex;
-
-  /// A mapping between the bitcode extracted from the each \c hsa::GpuAgent
-  llvm::SmallDenseMap<hsa::GpuAgent, llvm::ArrayRef<char>, 8>
-      PerAgentBitcodeBufferMap{};
-
-  /// Each static HIP module gets loaded on each device as a single HSA
-  /// executable \n
-  /// This is a mapping from agents to said executables that belong to this
-  /// static Module \n
-  /// If HIP deferred loading is enabled, this map will be updated as the
-  /// app utilizes multiple GPU devices and the HIP runtime loads the module on
-  /// each utilized device \n
-  /// Since HIP only loads a single LCO per executable, there's no need to save
-  /// LCOs here
-  llvm::DenseMap<hsa::GpuAgent, hsa::Executable> PerAgentModuleExecutables{};
-
-  /// Keeps track of the copies of the bitcode's global variables on each device
-  llvm::DenseMap<
-      hsa::GpuAgent,
-      llvm::StringMap<std::unique_ptr<hsa::LoadedCodeObjectVariable>>>
-      PerAgentGlobalVariables{};
-
-  /// A mapping between the shadow host pointer of a hook and its name
-  /// Gets updated whenever \c __hipRegisterFunction is called by
-  /// \c ToolExecutableManager
-  llvm::DenseMap<const void *, llvm::StringRef> HookHandleMap{};
-
-  /// Registers this executable into the static Instrumentation Module \n
-  /// On first invocation this function extracts the bitcode in the ELF of
-  /// \p Exec, and creates a list of global variables, as well as their
-  /// \c hsa::ExecutableSymbol on the device the executable was loaded on \n
-  /// On subsequent calls it only updates the global variable list for the
-  /// new device \n
-  /// This function is only called by \c ToolExecutableManager whenever
-  /// it confirms a newly frozen executable is a copy of a Luthier
-  /// static FAT binary for instrumentation
-  /// \param Exec the static Luthier tool executable that was just frozen by
-  /// the HIP runtime
-  /// \return an \c llvm::Error if any issues were encountered during the
-  /// process
-  llvm::Error registerExecutable(const hsa::Executable &Exec);
-
-  /// Unregisters the executable from the Module \n
-  /// As this function gets invoked for each executable on the device
-  /// the instrumentation module was loaded on, the internal global variable
-  /// list removes the defunct \c hsa::ExecutableSymbols. When the last
-  /// executable of this module gets destroyed, the bitcode is wiped as well
-  /// as any other internal state \n
-  /// This function is only called by \c ToolExecutableManager whenever
-  /// it confirms an executable that is about to be destroyed is a copy of
-  /// a Luthier static FAT binary for instrumentation
-  /// \param Exec handle to the module executable about to be destroyed
-  /// \return an \c llvm::Error if any issue was encountered during the process
-  llvm::Error unregisterExecutable(const hsa::Executable &Exec);
-
-  /// Same as \c getLCOGlobalVariableOnAgent except with no lock
-  [[nodiscard]] llvm::Expected<const hsa::LoadedCodeObjectVariable *>
-  getLCOGlobalVariableOnAgentNoLock(llvm::StringRef GVName,
-                                    const hsa::GpuAgent &Agent) const;
+class HipLoadedInstrumentationModule final
+    : public InstrumentationModule {
+  HipLoadedInstrumentationModule(
+      hsa_loaded_code_object_t LCO,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+      std::unique_ptr<InstrumentationModule> IModule)
+      : InstrumentationModule(LCO,
+                                    HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+                                    std::move(IModule)) {};
 
 public:
-  [[nodiscard]] llvm::Expected<std::optional<luthier::address_t>>
-  getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
-                                  const hsa::GpuAgent &Agent) const override;
+  static llvm::Expected<std::unique_ptr<HipLoadedInstrumentationModule>>
+  getIfHipLoadedIModule(
+      hsa_loaded_code_object_t LCO,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &LoadedCodeObjectGetInfoFun);
 
-  [[nodiscard]] llvm::Expected<std::unique_ptr<llvm::Module>>
-  readBitcodeIntoContext(llvm::LLVMContext &Ctx,
-                         const hsa::GpuAgent &Agent) const override;
-
-  /// Same as <tt>getGlobalVariablesLoadedOnAgent</tt>,
-  /// except it returns the ExecutableSymbol of the variables
-  /// Use this function only if \c getGlobalVariablesLoadedOnAgent does not
-  /// provide sufficient information.
-  /// \param Agent The \c hsa::GpuAgent where a copy (executable) of this module
-  /// is loaded
-  /// \return a const reference to the mapping between variable names and their
-  /// Executable Symbols, or an \c llvm::Error if an issue is encountered
-  [[nodiscard]] llvm::Expected<const hsa::LoadedCodeObjectVariable *>
-  getLCOGlobalVariableOnAgent(llvm::StringRef GVName,
-                              const hsa::GpuAgent &Agent) const;
-
-  /// Converts the shadow host pointer \p Handle to the name of the hook it
-  /// represents
-  /// \param Handle Shadow host pointer of the hook handle
-  /// \return the name of the hook \c llvm::Function, or and \c llvm::Error if
-  /// the \p Handle doesn't exist
-  llvm::Expected<llvm::StringRef>
-  convertHookHandleToHookName(const void *Handle) const;
-
-  /// A helper function which detects if the passed executable is part of the
-  /// static instrumentation module. \n
-  /// Used by \c ToolExecutableManager to detect and register/unregister
-  /// static instrumentation executables
-  /// \param Exec an \c hsa::Executable
-  /// \return \c true if this is a static instrumentation module copy, false if
-  /// not, or an \c llvm::Error if any issues were encountered during the
-  /// process
-  static llvm::Expected<bool>
-  isStaticInstrumentationModuleExecutable(const hsa::Executable &Exec);
-
-  static bool classof(const InstrumentationModule *IM) {
-    return IM->getKind() == MK_Static;
-  }
+  ~HipLoadedInstrumentationModule() override = default;
 };
+
+class DynamicallyLoadedInstrumentationModule final
+    : public InstrumentationModule {
+
+  /// The executable used to load this module
+  hsa_executable_t Exec;
+
+  const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn;
+
+  DynamicallyLoadedInstrumentationModule(
+      hsa_executable_t Exec, hsa_loaded_code_object_t LCO,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+      std::unique_ptr<InstrumentationModule> IModule,
+      const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn)
+      : InstrumentationModule(
+            LCO, HsaVenAmdLoaderLoadedCodeObjectGetInfoFn, std::move(IModule)),
+        Exec(Exec), HsaExecutableDestroyFn(HsaExecutableDestroyFn) {};
+
+public:
+  static llvm::Expected<std::unique_ptr<DynamicallyLoadedInstrumentationModule>>
+  loadInstrumentationModule(
+      std::vector<uint8_t> CodeObject, hsa_agent_t Agent,
+      const decltype(hsa_executable_create_alt) &HsaExecutableCreateAltFn,
+      const decltype(hsa_code_object_reader_create_from_memory)
+          &HsaCodeObjectReaderCreateFromMemory,
+      const decltype(hsa_executable_load_agent_code_object)
+          &HsaExecutableLoadAgentCodeObjectFn,
+      const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn,
+      const decltype(hsa_code_object_reader_destroy)
+          &HsaCodeObjectReaderDestroyFn,
+      const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &LoadedCodeObjectGetInfoFun);
+
+  ~DynamicallyLoadedInstrumentationModule() override;
+};
+
 } // namespace luthier
 #endif
