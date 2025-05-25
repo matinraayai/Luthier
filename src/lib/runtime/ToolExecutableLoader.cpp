@@ -19,18 +19,13 @@
 /// instrumentation modules which are passed to the \c CodeGenerator.
 //===----------------------------------------------------------------------===//
 #include "luthier/runtime/ToolExecutableLoader.h"
-#include "common/Log.hpp"
 #include "luthier/consts.h"
 #include "luthier/hsa/Agent.h"
 #include "luthier/hsa/CodeObjectReader.h"
 #include "luthier/hsa/ExecutableSymbol.h"
 #include "luthier/hsa/HsaApiTableInterceptor.h"
 #include "luthier/hsa/LoadedCodeObject.h"
-#include "luthier/hsa/hsa.h"
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/Analysis/ValueTracking.h>
-#include <llvm/Bitcode/BitcodeWriter.h>
-#include <llvm/Transforms/Utils/Cloning.h>
 #include <rocprofiler-sdk/intercept_table.h>
 #include <vector>
 
@@ -205,6 +200,72 @@ ToolExecutableLoader::loadDynamicIModule(
   return *Out;
 }
 
+llvm::Expected<hsa_executable_t>
+ToolExecutableLoader::loadInstrumentedCodeObject(
+    llvm::ArrayRef<uint8_t> InstrumentedElf,
+    hsa_loaded_code_object_t OriginalLoadedCodeObject,
+    const llvm::StringMap<const void *> &ExternVariables,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &LCOInfoQueryFn,
+    const decltype(hsa_executable_agent_global_variable_define)
+        &HsaExecutableAgentGlobalVariableDefineFn,
+    decltype(hsa_executable_create_alt) &HsaExecutableCreateAltFn,
+    decltype(hsa_code_object_reader_create_from_memory)
+        &HsaCodeObjectReaderCreateFromMemory,
+    decltype(hsa_executable_load_agent_code_object)
+        &HsaExecutableLoadAgentCodeObjectFn,
+    decltype(hsa_executable_freeze) &HsaExecutableFreezeFn,
+    decltype(hsa_code_object_reader_destroy) &HsaCodeObjectReaderDestroyFn) {
+
+  /// Get the Agent of the original LCO
+  hsa_agent_t Agent;
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::getLCOAgent(OriginalLoadedCodeObject, LCOInfoQueryFn)
+          .moveInto(Agent));
+  /// Get the executable of the original LCO
+  hsa_executable_t OriginalExecutable;
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::getLCOExecutable(OriginalLoadedCodeObject, LCOInfoQueryFn)
+          .moveInto(OriginalExecutable));
+
+  // Create the instrumented executable
+  hsa_executable_t InstrumentedExec{};
+  LUTHIER_RETURN_ON_ERROR(hsa::createExecutable(HsaExecutableCreateAltFn)
+                              .moveInto(InstrumentedExec));
+
+  // Define the external variables
+  for (const auto &[EVName, EVAddress] : ExternVariables) {
+    LUTHIER_RETURN_ON_ERROR(hsa::defineExternalAgentGlobalVariableInExec(
+        InstrumentedExec, HsaExecutableAgentGlobalVariableDefineFn, Agent,
+        EVName, EVAddress));
+  }
+
+  // Load the code objects into the executable
+  hsa_code_object_reader_t Reader{};
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::createCodeObjectReaderFromMemory(HsaCodeObjectReaderCreateFromMemory,
+                                            InstrumentedElf)
+          .moveInto(Reader));
+  hsa_loaded_code_object_t InstrumentedLCO{};
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::loadAgentCodeObjectIntoExec(
+          InstrumentedExec, HsaExecutableLoadAgentCodeObjectFn, Reader, Agent)
+          .moveInto(InstrumentedLCO));
+  // Freeze the executable
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::freezeExec(InstrumentedExec, HsaExecutableFreezeFn));
+
+  // Destroy the code object reader
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::destroyCodeObjectReader(Reader, HsaCodeObjectReaderDestroyFn));
+
+  std::lock_guard Lock(InstrumentedExecMutex);
+  ApplicationToInstrumentedExecutablesMap.insert(
+      {OriginalExecutable, InstrumentedExec});
+
+  return InstrumentedExec;
+}
+
 llvm::Expected<std::pair<const HipLoadedInstrumentationModule &, std::string>>
 ToolExecutableLoader::getHipLoadedHook(void *HostHandle,
                                        hsa_agent_t Agent) const {
@@ -236,222 +297,6 @@ ToolExecutableLoader::getHipLoadedHook(void *HostHandle,
                           CUID->second, Agent.handle));
 
   return std::make_pair(*HipModule->second, FuncInfo->second.Name);
-}
-
-llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
-    llvm::ArrayRef<uint8_t> InstrumentedElf,
-    hsa_executable_symbol_t OriginalKernel,
-    const llvm::StringMap<const void *> &ExternVariables,
-    llvm::StringRef Preset,
-    decltype(hsa_executable_create_alt) *HsaExecutableCreateAltFn) {
-
-  // Create the executable
-  auto Executable = hsa::Executable::create(HsaExecutableCreateAltFn);
-
-  // Define the Agent allocation external variables
-  auto Agent = OriginalKernel.getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-
-  LUTHIER_RETURN_ON_ERROR(Executable.takeError());
-  for (const auto &[EVName, EVAddress] : ExternVariables) {
-    LUTHIER_RETURN_ON_ERROR(Executable->defineExternalAgentGlobalVariable(
-        hsa::GpuAgent(*Agent), EVName, EVAddress));
-  }
-
-  // Load the code objects into the executable
-  auto Reader = hsa::CodeObjectReader::createFromMemory(InstrumentedElf);
-  LUTHIER_RETURN_ON_ERROR(Reader.takeError());
-  auto LCO = Executable->loadAgentCodeObject(*Reader, hsa::GpuAgent(*Agent));
-  LUTHIER_RETURN_ON_ERROR(LCO.takeError());
-  InstrumentedLCOInfo.insert({*LCO, *Reader});
-  // Freeze the executable
-  LUTHIER_RETURN_ON_ERROR(Executable->freeze());
-
-  // Find the original kernel in the instrumented executable
-  auto OriginalSymbolName = OriginalKernel.getName();
-  LUTHIER_RETURN_ON_ERROR(OriginalSymbolName.takeError());
-
-  std::unique_ptr<hsa::LoadedCodeObjectSymbol> InstrumentedKernel{};
-  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-  LUTHIER_RETURN_ON_ERROR(Executable->getLoadedCodeObjects(LCOs));
-  for (const auto &LCO : LCOs) {
-    LUTHIER_RETURN_ON_ERROR(
-        LCO.getLoadedCodeObjectSymbolByName(*OriginalSymbolName)
-            .moveInto(InstrumentedKernel));
-    if (InstrumentedKernel != nullptr)
-      break;
-  }
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(InstrumentedKernel != nullptr,
-                          "Failed to find the corresponding kernel "
-                          "to {0} inside its instrumented executable."));
-
-  auto InstrumentedKernelType = InstrumentedKernel->getType();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      InstrumentedKernelType == hsa::LoadedCodeObjectSymbol::SK_KERNEL,
-      "Found the symbol associated with kernel {0} inside the instrumented "
-      "executable, but it is not of type kernel.",
-      *OriginalSymbolName));
-
-  insertInstrumentedKernelIntoMap(
-      llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(
-          OriginalKernel.clone()),
-      Preset,
-      llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(
-          InstrumentedKernel->clone()));
-
-  OriginalExecutablesWithKernelsInstrumented.insert(
-      hsa::Executable(llvm::cantFail(OriginalKernel.getExecutable())));
-
-  return llvm::Error::success();
-}
-
-llvm::Error ToolExecutableLoader::loadInstrumentedExecutable(
-    llvm::ArrayRef<std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
-        InstrumentedElfs,
-    llvm::StringRef Preset,
-    llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, const void *>>
-        ExternVariables) {
-  // Ensure that all LCOs belong to the same executable, and their kernels
-  // were not instrumented under this profile
-  hsa::Executable Exec{{0}};
-  for (const auto &[LCO, InstrumentedELF] : InstrumentedElfs) {
-    auto LCOExec = LCO.getExecutable();
-    LUTHIER_RETURN_ON_ERROR(LCOExec.takeError());
-    if (Exec.hsaHandle() == 0)
-      Exec = *LCOExec;
-    else
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-          *LCOExec == Exec, "Requested loading of instrumented LCOs that do "
-                            "not belong to the same executable."));
-
-    llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4> Kernels;
-    LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
-    for (const auto &Kernel : Kernels) {
-      if (isKernelInstrumented(
-              *llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Kernel.get()),
-              Preset)) {
-        auto KernelName = Kernel->getName();
-        LUTHIER_RETURN_ON_ERROR(KernelName.takeError());
-        return LUTHIER_CREATE_ERROR("Found kernel {0} inside LCO {1:x} which "
-                                    "was already instrumented "
-                                    "under the preset {2}",
-                                    *KernelName, LCO.hsaHandle(), Preset);
-      }
-    }
-  }
-
-  // Create the executable
-  auto Executable = hsa::Executable::create();
-
-  LUTHIER_RETURN_ON_ERROR(Executable.takeError());
-  for (const auto &[EVAgent, EVName, EVAddress] : ExternVariables) {
-    LUTHIER_RETURN_ON_ERROR(Executable->defineExternalAgentGlobalVariable(
-        EVAgent, EVName, EVAddress));
-  }
-
-  // Load the code objects into the executable
-  llvm::SmallVector<hsa::LoadedCodeObject, 1> InstrumentedLCOs;
-  for (const auto &[OriginalLCO, InstrumentedELF] : InstrumentedElfs) {
-    auto Reader = hsa::CodeObjectReader::createFromMemory(InstrumentedELF);
-    LUTHIER_RETURN_ON_ERROR(Reader.takeError());
-    auto Agent = OriginalLCO.getAgent();
-    LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-    auto InstrumentedLCO = Executable->loadAgentCodeObject(*Reader, *Agent);
-    LUTHIER_RETURN_ON_ERROR(InstrumentedLCO.takeError());
-    InstrumentedLCOInfo.insert({*InstrumentedLCO, *Reader});
-    InstrumentedLCOs.push_back(*InstrumentedLCO);
-  }
-  // Freeze the executable
-  LUTHIER_RETURN_ON_ERROR(Executable->freeze());
-
-  // Establish a correspondence between original kernels and the instrumented
-  // kernels
-  for (unsigned int I = 0; I < InstrumentedElfs.size(); ++I) {
-    const auto &OriginalLCO = InstrumentedElfs[I].first;
-    const auto &InstrumentedLCO = InstrumentedLCOs[I];
-    llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4>
-        KernelsOfOriginalLCO;
-    LUTHIER_RETURN_ON_ERROR(OriginalLCO.getKernelSymbols(KernelsOfOriginalLCO));
-
-    for (auto &OriginalKernel : KernelsOfOriginalLCO) {
-      auto OriginalKernelName = OriginalKernel->getName();
-      LUTHIER_RETURN_ON_ERROR(OriginalKernelName.takeError());
-
-      std::unique_ptr<hsa::LoadedCodeObjectSymbol> InstrumentedKernel{nullptr};
-      llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
-      LUTHIER_RETURN_ON_ERROR(Executable->getLoadedCodeObjects(LCOs));
-      for (const auto &LCO : LCOs) {
-        LUTHIER_RETURN_ON_ERROR(
-            LCO.getLoadedCodeObjectSymbolByName(*OriginalKernelName)
-                .moveInto(InstrumentedKernel));
-        if (InstrumentedKernel != nullptr)
-          break;
-      }
-      LUTHIER_RETURN_ON_ERROR(
-          LUTHIER_ERROR_CHECK(InstrumentedKernel != nullptr,
-                              "Failed to find the corresponding instrumented "
-                              "kernel for {0} inside "
-                              "the instrumented executable.",
-                              *OriginalKernelName));
-
-      auto InstrumentedKernelType = InstrumentedKernel->getType();
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-          InstrumentedKernelType == hsa::LoadedCodeObjectSymbol::SK_KERNEL,
-          "Found the corresponding instrumented symbol for kernel {0}, but "
-          "the "
-          "symbol is not of type kernel.",
-          *OriginalKernelName));
-
-      insertInstrumentedKernelIntoMap(
-          std::move(llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(
-              OriginalKernel)),
-          Preset,
-          std::move(llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(
-              InstrumentedKernel)));
-    }
-  }
-  OriginalExecutablesWithKernelsInstrumented.insert(Exec);
-  return llvm::Error::success();
-}
-
-bool ToolExecutableLoader::isKernelInstrumented(
-    const hsa::LoadedCodeObjectKernel &Kernel, llvm::StringRef Preset) const {
-  return OriginalToInstrumentedKernelsMap.contains(Kernel) &&
-         OriginalToInstrumentedKernelsMap.find(Kernel)->second.contains(Preset);
-}
-
-ToolExecutableLoader::~ToolExecutableLoader() {
-  // By the time the Tool Executable Manager is deleted, all instrumentation
-  // kernels must have been destroyed; If not, print a warning, and clean
-  // up anyway
-  // TODO: Fix this, again
-  //  if (!InstrumentedLCOInfo.empty()) {
-  //    luthier::outs()
-  //        << "Tool executable manager is being destroyed while the original
-  //        "
-  //           "executables of its instrumented kernels are still frozen\n";
-  //    llvm::DenseSet<hsa::Executable> InstrumentedExecs;
-  //    for (auto &[LCO, COR] : InstrumentedLCOInfo) {
-  //      auto Exec = llvm::cantFail(LCO.getExecutable());
-  //      InstrumentedExecs.insert(Exec);
-  //      if (COR.destroy()) {
-  //        luthier::outs() << llvm::formatv(
-  //            "Code object reader {0:x} of Loaded Code Object {1:x},
-  //            Executable "
-  //            "{2:x} got destroyed with errors.\n",
-  //            COR.hsaHandle(), LCO.hsaHandle(), Exec.hsaHandle());
-  //      }
-  //    }
-  //    for (auto &Exec : InstrumentedExecs) {
-  //      if (Exec.destroy()) {
-  //        luthier::outs() << llvm::formatv(
-  //            "Executable {0:x} got destroyed with errors.\n",
-  //            Exec.hsaHandle());
-  //      }
-  //    }
-  //  }
-  OriginalToInstrumentedKernelsMap.clear();
 }
 
 } // namespace luthier
