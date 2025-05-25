@@ -42,13 +42,26 @@ class InstrumentationModule {
   /// The LLVM bitcode buffer inside the \c CodeObject
   const std::unique_ptr<llvm::MemoryBuffer> BCBuffer;
 
+  /// The CUID of the instrumentation module used to uniquely identify this
+  /// module
+  size_t CUID;
+
   InstrumentationModule(std::vector<uint8_t> CodeObject,
                         std::unique_ptr<llvm::object::ObjectFile> ObjectFile,
-                        std::unique_ptr<llvm::MemoryBuffer> BCBuffer)
+                        std::unique_ptr<llvm::MemoryBuffer> BCBuffer,
+                        size_t CUID)
       : CodeObject(std::move(CodeObject)), ObjectFile(std::move(ObjectFile)),
-        BCBuffer(std::move(BCBuffer)) {}
+        BCBuffer(std::move(BCBuffer)), CUID(CUID) {}
 
 public:
+  /// \return on success, expects \c true if the \p CodeObject is an
+  /// instrumentation module, \c false otherwise.
+  /// \note Returning \c true does not mean if the \p CodeObject is a "valid"
+  /// instrumentation module; Use \c get to check the validity of the
+  /// \p CodeObject and obtain its \c InstrumentationModule instance
+  static llvm::Expected<bool>
+  isInstrumentationModule(llvm::ArrayRef<uint8_t> CodeObject);
+
   /// Creates an instance of \c InstrumentationModule from the passed Luthier
   /// instrumentation \p CodeObject
   /// \param CodeObject a Luthier instrumentation module's shared object with
@@ -56,7 +69,7 @@ public:
   /// \returns Expects a new instance of \c InstrumentationModule on success;
   /// \c llvm::Error if \p CodeObject is not a valid instrumentation module
   static llvm::Expected<std::unique_ptr<InstrumentationModule>>
-  create(std::vector<uint8_t> CodeObject);
+  get(std::vector<uint8_t> CodeObject);
 
   /// \returns the parsed object file representation of the instrumentation
   /// module
@@ -78,7 +91,11 @@ public:
   llvm::Expected<llvm::StringMap<uint64_t>> getSymbolLoadOffsetsMap() const {
     return object::getSymbolLoadOffsetsMap(*ObjectFile);
   }
-};
 
+  /// \returns the CUID of this instrumentation module; Two modules with the
+  /// same CUID have been compiled from the same source code, but they might
+  /// have different target triples
+  [[nodiscard]] size_t getCUID() const { return CUID; }
+};
 } // namespace luthier
 #endif
