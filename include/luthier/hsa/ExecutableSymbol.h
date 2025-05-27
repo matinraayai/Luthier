@@ -46,7 +46,7 @@ getSymbolType(hsa_executable_symbol_t Symbol,
 /// \sa HSA_EXECUTABLE_SYMBOL_INFO_NAME
 /// \sa HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH
 /// \sa hsa_executable_symbol_get_info
-[[nodiscard]] llvm::Expected<llvm::StringRef>
+[[nodiscard]] llvm::Expected<std::string>
 getSymbolName(hsa_executable_symbol_t Symbol,
               const decltype(hsa_executable_symbol_get_info)
                   *HsaExecutableSymbolGetInfoFn);
