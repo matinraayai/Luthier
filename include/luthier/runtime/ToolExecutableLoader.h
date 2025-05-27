@@ -630,6 +630,11 @@ void ToolExecutableLoaderInstance<Idx>::hipRegisterManagedVarWrapper(
   return UnderlyingHipRegisterManagedVarFn(HipModule, Pointer, InitValue, Name,
                                            Size, Align);
 }
+
+template <size_t Idx>
+ToolExecutableLoaderInstance<Idx>
+    *Singleton<ToolExecutableLoaderInstance<Idx>>::Instance{nullptr};
+
 template <size_t Idx>
 void ToolExecutableLoaderInstance<Idx>::hipUnregisterFatBinaryWrapper(
     void **Modules) {
@@ -638,6 +643,13 @@ void ToolExecutableLoaderInstance<Idx>::hipUnregisterFatBinaryWrapper(
                           "Underlying __hipUnregisterFatBinary is nullptr"));
   if (!ToolExecutableLoaderInstance::isInitialized())
     return UnderlyingHipUnregisterFatBinaryFn(Modules);
+
+  auto &TEL = ToolExecutableLoaderInstance::instance();
+  {
+    std::lock_guard Lock(TEL.HipLoaderMutex);
+    TEL.HipModuleCUIDs.erase(Modules);
+  }
+  UnderlyingHipUnregisterFatBinaryFn(Modules);
 }
 
 template <size_t Idx>
