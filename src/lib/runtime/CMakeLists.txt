@@ -1,5 +1,7 @@
 add_library(LuthierRuntime OBJECT
+        HsaObjectCache.cpp
         LoadedInstrumentationModule.cpp
+        ToolExecutableLoader.cpp
 )
 
 target_compile_definitions(LuthierRuntime PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
