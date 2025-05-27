@@ -27,7 +27,7 @@ namespace luthier::hsa {
 llvm::Expected<hsa_executable_t>
 getLCOExecutable(hsa_loaded_code_object_t LCO,
                  const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-                     *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
+                     &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   hsa_executable_t Exec;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
@@ -38,7 +38,7 @@ getLCOExecutable(hsa_loaded_code_object_t LCO,
 llvm::Expected<hsa_agent_t>
 getLCOAgent(hsa_loaded_code_object_t LCO,
             const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-                *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
+                &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
@@ -49,7 +49,7 @@ getLCOAgent(hsa_loaded_code_object_t LCO,
 llvm::Expected<long>
 getLCOLoadDelta(hsa_loaded_code_object_t LCO,
                 const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-                    *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
+                    &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   long LoadDelta;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
@@ -61,7 +61,7 @@ getLCOLoadDelta(hsa_loaded_code_object_t LCO,
 llvm::Expected<llvm::ArrayRef<uint8_t>> getLCOLoadedMemory(
     hsa_loaded_code_object_t LCO,
     const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-        *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   uint64_t LoadBase;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
@@ -80,7 +80,7 @@ llvm::Expected<llvm::ArrayRef<uint8_t>> getLCOLoadedMemory(
 llvm::Expected<std::string>
 getLCOUri(hsa_loaded_code_object_t LCO,
           const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-              *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
+              &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   unsigned int UriLength;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
@@ -100,7 +100,7 @@ getLCOUri(hsa_loaded_code_object_t LCO,
 llvm::Expected<llvm::ArrayRef<uint8_t>> getLCOStorageMemory(
     hsa_loaded_code_object_t LCO,
     const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-        *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   uint64_t StorageBase;
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_HSA_SUCCESS_CHECK(HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
