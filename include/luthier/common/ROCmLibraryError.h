@@ -1,4 +1,4 @@
-//===-- LoadedCodeObjectDeviceFunction.cpp --------------------------------===//
+//===-- RocmLibraryError.h --------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,20 +15,26 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c LoadedCodeObjectDeviceFunction under the \c
-/// luthier::hsa namespace.
+/// This file describes the \c RocmLibraryError class,
+/// used as a base class for creating specialized \c llvm::ErrorInfo for
+/// ROCm libraries.
 //===----------------------------------------------------------------------===//
-#include "common/ObjectUtils.hpp"
-#include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
+#ifndef LUTHIER_COMMON_ROCM_LIBRARY_ERROR_H
+#define LUTHIER_COMMON_ROCM_LIBRARY_ERROR_H
+#include <luthier/common/LuthierError.h>
 
-namespace luthier::hsa {
+namespace luthier {
 
-llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
-LoadedCodeObjectDeviceFunction::create(hsa_loaded_code_object_t LCO,
-                                       luthier::AMDGCNObjectFile &StorageElf,
-                                       llvm::object::ELFSymbolRef FuncSymbol) {
-  return std::unique_ptr<LoadedCodeObjectDeviceFunction>(
-      new LoadedCodeObjectDeviceFunction(LCO, StorageElf, FuncSymbol));
-}
+class RocmLibraryError : public LuthierError {
+protected:
+  RocmLibraryError(std::string FileName, const int LineNumber,
+                   std::string StackTrace)
+      : LuthierError(std::move(FileName), LineNumber, std::move(StackTrace)) {};
 
-} // namespace luthier::hsa
+public:
+  static char ID;
+};
+
+} // namespace luthier
+
+#endif
