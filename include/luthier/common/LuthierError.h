@@ -34,13 +34,10 @@ protected:
   const int LineNumber;
   /// Stack trace of where the error occurred
   const std::string StackTrace;
-  /// Expression (C++ code) that caused this error
-  const std::string Expression;
 
-  LuthierError(std::string File, int LineNumber, std::string StackTrace,
-               std::string Expression)
+  LuthierError(std::string File, int LineNumber, std::string StackTrace)
       : File(std::move(File)), LineNumber(LineNumber),
-        StackTrace(std::move(StackTrace)), Expression(std::move(Expression)) {}
+        StackTrace(std::move(StackTrace)) {}
 
 public:
   static char ID;

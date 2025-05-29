@@ -1,4 +1,5 @@
 add_library(LuthierCommon OBJECT
+        LuthierErrorBase.cpp
         LuthierError.cpp
 )
 
