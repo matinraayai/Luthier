@@ -1,4 +1,4 @@
-//===-- LuthierError.cpp - Luthier Error Type -----------------------------===//
+//===-- LuthierError.cpp --------------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,33 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c luthier::LuthierError class.
+/// Implements concrete portions of the <tt>LuthierError</tt> class.
 //===----------------------------------------------------------------------===//
 #include <luthier/common/LuthierError.h>
 
 namespace luthier {
 
-char LuthierError::ID = 0;
+char LuthierError::ID;
 
-llvm::Error LuthierError::luthierErrorCheck(const bool Expr,
-                                            llvm::StringRef File,
-                                            int LineNumber,
-                                            llvm::StringRef ErrorMsg) {
-  if (!Expr) {
-    std::string StackTrace;
-    llvm::raw_string_ostream STStream(StackTrace);
-    llvm::sys::PrintStackTrace(STStream);
-    return llvm::make_error<LuthierError>(File, LineNumber, StackTrace,
-                                          ErrorMsg);
-  }
-  return llvm::Error::success();
 }
-
-void LuthierError::log(llvm::raw_ostream &OS) const {
-  OS << "Luthier error encountered in file " << File << ", line: " << LineNumber
-     << ": ";
-  OS << ErrorMsg << "\n";
-  OS << "Stacktrace: \n" << StackTrace << "\n";
-}
-
-} // namespace luthier

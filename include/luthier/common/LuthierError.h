@@ -15,79 +15,40 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements an \c llvm::Error encountered inside both the Luthier
-/// tooling library and Luthier tools.
+/// Defines <tt>LuthierError</tt>, containing the common part among all
+/// \c llvm::ErrorInfo classes defined by Luthier, as well as RTTI mechanism
+/// for checking whether a given \c llvm::Error originated from Luthier.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_ERROR_LUTHIER_ERROR_H
-#define LUTHIER_ERROR_LUTHIER_ERROR_H
+#ifndef LUTHIER_COMMON_LUTHIER_ERROR_H
+#define LUTHIER_COMMON_LUTHIER_ERROR_H
 #include <llvm/Support/Error.h>
-#include <llvm/Support/FormatVariadic.h>
-#include <llvm/Support/Signals.h>
 
 namespace luthier {
 
-/// \brief Error used to indicate issues encountered in Luthier code not
-/// related to any other library
-class LuthierError final : public llvm::ErrorInfo<LuthierError> {
+class LuthierError : public llvm::ErrorInfo<LuthierError> {
+
+protected:
+  /// Path to the file the error was encountered
+  const std::string File;
+  /// Line number of the file the error was encountered
+  const int LineNumber;
+  /// Stack trace of where the error occurred
+  const std::string StackTrace;
+  /// Expression (C++ code) that caused this error
+  const std::string Expression;
+
+  LuthierError(std::string File, int LineNumber, std::string StackTrace,
+               std::string Expression)
+      : File(std::move(File)), LineNumber(LineNumber),
+        StackTrace(std::move(StackTrace)), Expression(std::move(Expression)) {}
+
 public:
-  static char ID;               ///< ID of the Error
-  const std::string File;       ///< Path to the file the error was encountered
-  const int LineNumber;         ///< Line number of the file the error was
-                                ///< encountered
-  const std::string StackTrace; ///< Stack trace of where the error occurred
-  const std::string ErrorMsg;   ///< Message describing the error
-
-  LuthierError(const llvm::StringRef File, const int LineNumber,
-               const llvm::StringRef StackTrace, const llvm::StringRef ErrorMsg)
-      : File(File), LineNumber(LineNumber), StackTrace(StackTrace),
-        ErrorMsg(ErrorMsg) {}
-
-  template <typename... Ts>
-  LuthierError(const llvm::StringRef File, const int LineNumber,
-               const llvm::StringRef StackTrace, char const *Fmt,
-               const Ts &...Vals)
-      : File(File), LineNumber(LineNumber), StackTrace(StackTrace),
-        ErrorMsg(llvm::formatv(Fmt, Vals...).str()) {}
-
-  static llvm::Error luthierErrorCheck(bool Expr, llvm::StringRef File,
-                                       int LineNumber,
-                                       llvm::StringRef ErrorMsg);
-
-  template <typename... Ts>
-  static llvm::Error luthierErrorCheck(const bool Expr, llvm::StringRef File,
-                                       int LineNumber, char const *Fmt,
-                                       const Ts &...Vals) {
-    if (!Expr) {
-      std::string StackTrace;
-      llvm::raw_string_ostream STStream(StackTrace);
-      llvm::sys::PrintStackTrace(STStream);
-      return llvm::make_error<LuthierError>(File, LineNumber, StackTrace, Fmt,
-                                            Vals...);
-    }
-    return llvm::Error::success();
-  }
-
-  void log(llvm::raw_ostream &OS) const override;
+  static char ID;
 
   [[nodiscard]] std::error_code convertToErrorCode() const override {
     llvm_unreachable("Not implemented");
   }
 };
-
-#define LUTHIER_CREATE_ERROR(...)                                              \
-  llvm::make_error<luthier::LuthierError>(                                     \
-      __FILE__, __LINE__,                                                      \
-      []() {                                                                   \
-        std::string Out;                                                       \
-        llvm::raw_string_ostream OutStream(Out);                               \
-        llvm::sys::PrintStackTrace(OutStream);                                 \
-        return Out;                                                            \
-      }(),                                                                     \
-      __VA_ARGS__)
-
-#define LUTHIER_ERROR_CHECK(Expr, ...)                                         \
-  luthier::LuthierError::luthierErrorCheck(Expr, __FILE__, __LINE__,           \
-                                           __VA_ARGS__)
 
 } // namespace luthier
 
