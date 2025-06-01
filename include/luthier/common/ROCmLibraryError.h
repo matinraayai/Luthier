@@ -27,9 +27,19 @@ namespace luthier {
 
 class RocmLibraryError : public LuthierError {
 protected:
-  RocmLibraryError(std::string FileName, const int LineNumber,
-                   std::string StackTrace)
-      : LuthierError(std::move(FileName), LineNumber, std::move(StackTrace)) {};
+  explicit RocmLibraryError(std::string ErrorMsg,
+                            const std::source_location ErrorLocation =
+                                std::source_location::current(),
+                            StackTraceType StackTrace = StackTraceInitializer())
+      : LuthierError(std::move(ErrorMsg), ErrorLocation,
+                     std::move(StackTrace)) {};
+
+  explicit RocmLibraryError(const llvm::formatv_object_base &FormatObject,
+                            const std::source_location ErrorLocation =
+                                std::source_location::current(),
+                            StackTraceType StackTrace = StackTraceInitializer())
+      : LuthierError(std::move(FormatObject.str()), ErrorLocation,
+                     std::move(StackTrace)){};
 
 public:
   static char ID;
