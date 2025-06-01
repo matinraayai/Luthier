@@ -46,10 +46,14 @@ public:
           std::source_location::current(),
       StackTraceType StackTrace = StackTraceInitializer())
       : LuthierError(std::move(FormatObject.str()), ErrorLocation,
-                     std::move(StackTrace)){};
+                     std::move(StackTrace)) {};
 
   void log(llvm::raw_ostream &OS) const override;
 };
+
+#define LUTHIER_GENERIC_ERROR_CHECK(Expr, ErrorMsg)                            \
+  (Expr) ? llvm::Error::success()                                              \
+         : llvm::make_error<GenericLuthierError>(ErrorMsg)
 
 } // namespace luthier
 
