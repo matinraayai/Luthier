@@ -38,11 +38,12 @@ llvm::Error init(const decltype(hsa_init) &HsaInitFn);
 /// Queries the GPU <tt>hsa_agent_t</tt>s attached to the host
 /// \param [in] HsaIterateAgentsFn the underlying \c hsa_iterate_agents function
 /// used to carry out this operation
-/// \param [out] Agent the list of <tt>hsa_agent_t</tt>s attached to the host
+/// \param [out] Agents the list of <tt>hsa_agent_t</tt>s of type GPU attached
+/// to the host
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa hsa_iterate_agents
 llvm::Error getGpuAgents(const decltype(hsa_iterate_agents) &HsaIterateAgentsFn,
-                         llvm::SmallVectorImpl<hsa_agent_t> &Agent);
+                         llvm::SmallVectorImpl<hsa_agent_t> &Agents);
 
 /// Queries all the \c hsa_executable_t handles currently loaded into HSA
 /// \param IterateExecFn the underlying
@@ -67,8 +68,11 @@ llvm::Expected<T *> queryHostAddress(
     const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
     T *DeviceAddress) {
   const T *HostAddress;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(QueryHostFn(
-      DeviceAddress, (reinterpret_cast<const void **>(&HostAddress)))));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      QueryHostFn(DeviceAddress, reinterpret_cast<const void **>(&HostAddress)),
+      llvm::formatv(
+          "Failed to query the host address associated with address {0:x}.",
+          DeviceAddress)));
   return HostAddress;
 }
 
@@ -87,17 +91,21 @@ llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
 
 /// Convenience version of <tt>hsa::queryHostAddress(T *)</tt> for locating
 /// device code on the host-accessible memory
-/// \param Code an \c llvm::StringRef encapsulating the GPU code region
+/// \param QueryHostFn the underlying \c hsa_ven_amd_loader_query_host_address
+/// function used to carry out the operation
+/// \param Code \c llvm::StringRef encapsulating the GPU code region
 /// residing on the device
-/// \return an \c llvm::StringRef pointing to the code accessible on
-/// host memory, or an \c llvm::Error indicating any HSA errors encountered
-llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code);
+/// \return Expects a \c llvm::StringRef pointing to the code accessible on
+/// host memory
+llvm::Expected<llvm::StringRef> convertToHostEquivalent(
+    const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
+    llvm::StringRef Code);
 
 /// Decreases the reference count of the HSA runtime instance; Shuts down the
 /// HSA runtime if the counter reaches zero
 /// \param HsaShutdownFn the underlying \c hsa_shut_down function used to
 /// carry out the operation
-/// \return an \c llvm::Error indicating the success or failure of the operation
+/// \return \c llvm::Error indicating the success or failure of the operation
 llvm::Error shutdown(const decltype(hsa_shut_down) &HsaShutdownFn);
 
 } // namespace luthier::hsa

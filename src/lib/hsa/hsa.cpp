@@ -18,37 +18,36 @@
 /// Implements a set of commonly used functionality regarding the global state
 /// of the HSA runtime.
 //===----------------------------------------------------------------------===//
-#include "luthier/hsa/hsa.h"
-
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/hsa/HsaError.h"
-
 #include <llvm/ADT/StringExtras.h>
+#include <luthier/common/ErrorCheck.h>
+#include <luthier/hsa/HsaError.h>
+#include <luthier/hsa/hsa.h>
 
 namespace luthier::hsa {
 
 llvm::Error init(const decltype(hsa_init) &HsaInitFn) {
-  return LUTHIER_HSA_SUCCESS_CHECK(HsaInitFn());
+  return LUTHIER_HSA_CALL_ERROR_CHECK(HsaInitFn(), "Failed to initialize HSA");
 }
 
 llvm::Error getGpuAgents(const decltype(hsa_iterate_agents) &HsaIterateAgentsFn,
                          llvm::SmallVectorImpl<hsa_agent_t> &Agents) {
   auto ReturnGpuAgentsCallback = [](hsa_agent_t Agent, void *Data) {
-    auto AgentMap = static_cast<llvm::SmallVector<hsa_agent_t> *>(Data);
+    auto AgentList = static_cast<llvm::SmallVector<hsa_agent_t> *>(Data);
     hsa_device_type_t DevType = HSA_DEVICE_TYPE_CPU;
 
-    hsa_status_t Status =
+    const hsa_status_t Status =
         hsa_agent_get_info(Agent, HSA_AGENT_INFO_DEVICE, &DevType);
 
     if (Status != HSA_STATUS_SUCCESS)
       return Status;
     if (DevType == HSA_DEVICE_TYPE_GPU) {
-      AgentMap->emplace_back(Agent);
+      AgentList->emplace_back(Agent);
     }
     return Status;
   };
-  return LUTHIER_HSA_SUCCESS_CHECK(
-      HsaIterateAgentsFn(ReturnGpuAgentsCallback, &Agents));
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      HsaIterateAgentsFn(ReturnGpuAgentsCallback, &Agents),
+      "Failed to iterate over all HSA agents attached to the system");
 }
 
 llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
@@ -65,12 +64,13 @@ llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
     }
     return HSA_STATUS_SUCCESS;
   };
-  return LUTHIER_HSA_SUCCESS_CHECK(IterateExecFn(Iterator, &Out));
+  return LUTHIER_HSA_CALL_ERROR_CHECK(IterateExecFn(Iterator, &Out),
+                                      "Failed to iterate over HSA executables");
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
     const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
-    llvm::ArrayRef<uint8_t> Code) {
+    const llvm::ArrayRef<uint8_t> Code) {
   llvm::Expected<const unsigned char *> CodeStartHostAddressOrErr =
       queryHostAddress(QueryHostFn, Code.data());
   LUTHIER_RETURN_ON_ERROR(CodeStartHostAddressOrErr.takeError());
@@ -79,7 +79,7 @@ llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
 
 llvm::Expected<llvm::StringRef> convertToHostEquivalent(
     const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
-    llvm::StringRef Code) {
+    const llvm::StringRef Code) {
   llvm::Expected<llvm::ArrayRef<uint8_t>> HostAccessibleCodeOrErr =
       convertToHostEquivalent(QueryHostFn, llvm::arrayRefFromStringRef(Code));
   LUTHIER_RETURN_ON_ERROR(HostAccessibleCodeOrErr.takeError());
@@ -87,6 +87,7 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(
 }
 
 llvm::Error shutdown(const decltype(hsa_shut_down) &HsaShutdownFn) {
-  return LUTHIER_HSA_SUCCESS_CHECK(HsaShutdownFn());
+  return LUTHIER_HSA_CALL_ERROR_CHECK(HsaShutdownFn(),
+                                      "Failed to shutdown the HSA runtime");
 }
 } // namespace luthier::hsa
