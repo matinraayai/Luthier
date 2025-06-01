@@ -20,8 +20,6 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_EXECUTABLE_H
 #define LUTHIER_HSA_EXECUTABLE_H
-#include "HsaError.h"
-
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseMapInfo.h>
@@ -47,8 +45,8 @@ namespace luthier::hsa {
 /// \sa hsa_executable_create_alt
 /// \sa hsa_profile_t
 /// \sa hsa_default_float_rounding_mode_t
-llvm::Expected<hsa_executable_t> createExecutable(
-    decltype(hsa_executable_create_alt) &HsaCreateExecutableCreateAltFn,
+llvm::Expected<hsa_executable_t> executableCreate(
+    const decltype(hsa_executable_create_alt) &HsaCreateExecutableCreateAltFn,
     hsa_profile_t Profile = HSA_PROFILE_FULL,
     hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
         HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);
@@ -69,7 +67,7 @@ llvm::Expected<hsa_executable_t> createExecutable(
 /// runtime source code for a complete list of options
 /// \return Expects the newly created \c hsa_loaded_code_object_t on success
 /// \sa hsa_executable_load_agent_code_object
-llvm::Expected<hsa_loaded_code_object_t> loadAgentCodeObjectIntoExec(
+llvm::Expected<hsa_loaded_code_object_t> executableLoadAgentCodeObject(
     hsa_executable_t Exec,
     const decltype(hsa_executable_load_agent_code_object)
         &HsaExecutableLoadAgentCodeObjectFn,
@@ -88,7 +86,7 @@ llvm::Expected<hsa_loaded_code_object_t> loadAgentCodeObjectIntoExec(
 /// the \p Agent
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa hsa_executable_agent_global_variable_define
-llvm::Error defineExternalAgentGlobalVariableInExec(
+llvm::Error executableDefineExternalAgentGlobalVariable(
     hsa_executable_t Exec,
     const decltype(hsa_executable_agent_global_variable_define)
         &HsaExecutableAgentGlobalVariableDefineFn,
@@ -104,8 +102,8 @@ llvm::Error defineExternalAgentGlobalVariableInExec(
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa hsa_executable_freeze
 llvm::Error
-freezeExec(hsa_executable_t Exec,
-           const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn);
+executableFreeze(hsa_executable_t Exec,
+                 const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn);
 
 /// Destroys the executable handle
 /// \param Exec the \c hsa_executable_t being destroyed
@@ -113,27 +111,27 @@ freezeExec(hsa_executable_t Exec,
 /// function used to carry out the operation
 /// \return \c llvm::Error indicating the success of failure of the operation
 /// \sa hsa_executable_destroy
-llvm::Error
-destroyExec(hsa_executable_t Exec,
-            const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn);
+llvm::Error executableDestroy(
+    hsa_executable_t Exec,
+    const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn);
 
 /// Queries the \c hsa_profile_t of the wrapped \c hsa_executable_t
 /// \param Exec the \c hsa_executable_t being queried
 /// \param HsaExecutableGetInfoFn the \c hsa_executable_get_info function
 /// used to carry out the operation
 /// \return \c llvm::Error indicating the success or failure of the operation
-llvm::Expected<hsa_profile_t>
-getExecProfile(hsa_executable_t Exec,
-               const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn);
+llvm::Expected<hsa_profile_t> executableGetProfile(
+    hsa_executable_t Exec,
+    const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn);
 
 /// Queries the \c hsa_executable_state_t of the executable
 /// \param Exec the \c hsa_executable_t being queried
 /// \param HsaExecutableGetInfoFn the \c hsa_executable_get_info function
 /// used to carry out the operation
 /// \return Expects the state of the executable (i.e. frozen or not) on success
-[[nodiscard]] llvm::Expected<hsa_executable_state_t>
-getExecState(hsa_executable_t Exec,
-             const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn);
+[[nodiscard]] llvm::Expected<hsa_executable_state_t> executableGetState(
+    hsa_executable_t Exec,
+    const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn);
 
 /// Queries the loaded code objects managed by this executable
 /// \param Exec the \c hsa_executable_t being queried
@@ -143,7 +141,7 @@ getExecState(hsa_executable_t Exec,
 /// \param [out] LCOs the list of <tt>hsa_loaded_code_object</tt>s managed by
 /// this executable
 /// \return \c llvm::Error indicating the success or failure of the operation
-llvm::Error getExecLoadedCodeObjects(
+llvm::Error executableGetLoadedCodeObjects(
     hsa_executable_t Exec,
     const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
         &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
@@ -160,10 +158,10 @@ llvm::Error getExecLoadedCodeObjects(
 /// \return Expects the \c hsa_executable_symbol_t with the given \p Name if
 /// found, otherwise <tt>std::nullopt</tt> on success
 llvm::Expected<std::optional<hsa_executable_symbol_t>>
-lookupExecutableSymbolByName(hsa_executable_t Exec,
-                             const decltype(hsa_executable_get_symbol_by_name)
-                                 &HsaExecutableGetSymbolByNameFn,
-                             llvm::StringRef Name, hsa_agent_t Agent);
+executableGetSymbolByName(hsa_executable_t Exec,
+                          const decltype(hsa_executable_get_symbol_by_name)
+                              &HsaExecutableGetSymbolByNameFn,
+                          llvm::StringRef Name, hsa_agent_t Agent);
 
 /// Iterates over the symbols inside the \p Exec that belong to \p Agent and
 /// invokes the provided \p Callback
@@ -181,9 +179,9 @@ lookupExecutableSymbolByName(hsa_executable_t Exec,
 /// the iteration halts
 /// \return an \c llvm::Error indicating the success or the failure of the
 /// operation
-llvm::Error iterateSymbolsOfExecutable(
+llvm::Error executableIterateSymbols(
     hsa_executable_t Exec,
-    decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
     hsa_agent_t Agent,
     const std::function<bool(hsa_executable_symbol_t, llvm::Error &)>
         &Callback);
@@ -193,15 +191,13 @@ llvm::Error iterateSymbolsOfExecutable(
 // LLVM DenseMapInfo, for insertion into LLVM-based containers
 //===----------------------------------------------------------------------===//
 
-namespace llvm {
-
-template <> struct DenseMapInfo<hsa_executable_t> {
-  static inline hsa_executable_t getEmptyKey() {
+template <> struct llvm::DenseMapInfo<hsa_executable_t> {
+  static hsa_executable_t getEmptyKey() {
     return hsa_executable_t(
         {DenseMapInfo<decltype(hsa_executable_t::handle)>::getEmptyKey()});
   }
 
-  static inline hsa_executable_t getTombstoneKey() {
+  static hsa_executable_t getTombstoneKey() {
     return hsa_executable_t(
         {DenseMapInfo<decltype(hsa_executable_t::handle)>::getTombstoneKey()});
   }
@@ -211,13 +207,11 @@ template <> struct DenseMapInfo<hsa_executable_t> {
         Executable.handle);
   }
 
-  static bool isEqual(const hsa_executable_t &lhs,
-                      const hsa_executable_t &rhs) {
-    return lhs.handle == rhs.handle;
+  static bool isEqual(const hsa_executable_t &Lhs,
+                      const hsa_executable_t &Rhs) {
+    return Lhs.handle == Rhs.handle;
   }
-};
-
-} // namespace llvm
+}; // namespace llvm
 
 //===----------------------------------------------------------------------===//
 // C++ std library function objects for hashing and comparison, for insertion
@@ -229,13 +223,6 @@ namespace std {
 template <> struct hash<hsa_executable_t> {
   size_t operator()(const hsa_executable_t &Obj) const noexcept {
     return hash<unsigned long>()(Obj.handle);
-  }
-};
-
-template <> struct less<hsa_executable_t> {
-  bool operator()(const hsa_executable_t &Lhs,
-                  const hsa_executable_t &Rhs) const {
-    return Lhs.handle < Rhs.handle;
   }
 };
 
