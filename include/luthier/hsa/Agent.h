@@ -1,4 +1,4 @@
-//===-- GpuAgent.h ------------------------------===//
+//===-- Agent.h -------------------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Defines a set of commonly used functionality for the
-/// \c hsa_agent_t handle in HSA.
+/// Defines a set of commonly used functionality for the \c hsa_agent_t handle
+/// in HSA.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_AGENT_H
 #define LUTHIER_HSA_AGENT_H
@@ -33,10 +33,10 @@ namespace luthier::hsa {
 /// \param [out] ISAList list of ISAs supported by the Agent
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa hsa_agent_iterate_isas
-llvm::Error
-getSupportedISAsOfAgent(hsa_agent_t Agent,
-                 const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
-                 llvm::SmallVectorImpl<hsa_isa_t> &ISAList);
+llvm::Error agentGetSupportedISAs(
+    hsa_agent_t Agent,
+    const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
+    llvm::SmallVectorImpl<hsa_isa_t> &ISAList);
 
 } // namespace luthier::hsa
 
@@ -44,15 +44,13 @@ getSupportedISAsOfAgent(hsa_agent_t Agent,
 // LLVM DenseMapInfo, for insertion into LLVM-based containers
 //===----------------------------------------------------------------------===//
 
-namespace llvm {
-
-template <> struct DenseMapInfo<hsa_agent_t> {
-  static inline hsa_agent_t getEmptyKey() {
+template <> struct llvm::DenseMapInfo<hsa_agent_t> {
+  static hsa_agent_t getEmptyKey() {
     return hsa_agent_t(
         {DenseMapInfo<decltype(hsa_agent_t::handle)>::getEmptyKey()});
   }
 
-  static inline hsa_agent_t getTombstoneKey() {
+  static hsa_agent_t getTombstoneKey() {
     return hsa_agent_t(
         {DenseMapInfo<decltype(hsa_agent_t::handle)>::getTombstoneKey()});
   }
@@ -65,9 +63,7 @@ template <> struct DenseMapInfo<hsa_agent_t> {
   static bool isEqual(const hsa_agent_t &Lhs, const hsa_agent_t &Rhs) {
     return Lhs.handle == Rhs.handle;
   }
-};
-
-} // namespace llvm
+}; // namespace llvm
 
 //===----------------------------------------------------------------------===//
 // C++ std library function objects for hashing and comparison, for insertion
@@ -82,39 +78,9 @@ template <> struct hash<hsa_agent_t> {
   }
 };
 
-template <> struct less<hsa_agent_t> {
-  bool operator()(const hsa_agent_t &Lhs, const hsa_agent_t &Rhs) const {
-    return Lhs.handle < Rhs.handle;
-  }
-};
-
-template <> struct less_equal<hsa_agent_t> {
-  bool operator()(const hsa_agent_t &Lhs, const hsa_agent_t &Rhs) const {
-    return Lhs.handle <= Rhs.handle;
-  }
-};
-
 template <> struct equal_to<hsa_agent_t> {
   bool operator()(const hsa_agent_t &Lhs, const hsa_agent_t &Rhs) const {
     return Lhs.handle == Rhs.handle;
-  }
-};
-
-template <> struct not_equal_to<hsa_agent_t> {
-  bool operator()(const hsa_agent_t &Lhs, const hsa_agent_t &Rhs) const {
-    return Lhs.handle != Rhs.handle;
-  }
-};
-
-template <> struct greater<hsa_agent_t> {
-  bool operator()(const hsa_agent_t &Lhs, const hsa_agent_t &Rhs) const {
-    return Lhs.handle > Rhs.handle;
-  }
-};
-
-template <> struct greater_equal<hsa_agent_t> {
-  bool operator()(const hsa_agent_t &Lhs, const hsa_agent_t &Rhs) const {
-    return Lhs.handle >= Rhs.handle;
   }
 };
 

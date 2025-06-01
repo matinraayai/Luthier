@@ -23,7 +23,7 @@
 
 namespace luthier::hsa {
 
-llvm::Error getSupportedISAsOfAgent(
+llvm::Error agentGetSupportedISAs(
     hsa_agent_t Agent,
     const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
     llvm::SmallVectorImpl<hsa_isa_t> &ISAList) {
@@ -34,8 +34,12 @@ llvm::Error getSupportedISAsOfAgent(
     return HSA_STATUS_SUCCESS;
   };
 
-  return LUTHIER_HSA_SUCCESS_CHECK(
-      HsaAgentIterateISAsFn(Agent, Iterator, &ISAList));
+  if (auto Status = HsaAgentIterateISAsFn(Agent, Iterator, &ISAList);
+      Status != HSA_STATUS_SUCCESS)
+    return llvm::make_error<HsaError>(
+        llvm::formatv("Failed to iterate over ISAs of Agent {0:x}"), Status);
+  else
+    return llvm::Error::success();
 }
 
 } // namespace luthier::hsa
