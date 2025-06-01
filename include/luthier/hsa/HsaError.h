@@ -15,28 +15,48 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements an \c llvm::Error for issues encountered when calling
-/// HSA APIs.
+/// Defines a \c llvm::ErrorInfo for holding information regarding
+/// issues encountered with using HSA APIs.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_ERROR_HSA_ERROR_H
-#define LUTHIER_ERROR_HSA_ERROR_H
+#ifndef LUTHIER_HSA_HSA_ERROR_H
+#define LUTHIER_HSA_HSA_ERROR_H
 #include <hsa/hsa.h>
-#include <llvm/Support/Error.h>
+#include <luthier/common/ROCmLibraryError.h>
 
-namespace luthier {
+namespace luthier::hsa {
+class HsaError final : RocmLibraryError {
+  const std::optional<hsa_status_t> Error;
 
-#include "luthier/common/ROCmLibraryErrorDefine.h"
-LUTHIER_DEFINE_ROCM_LIBRARY_ERROR(Hsa, hsa_status_t, HSA_STATUS_SUCCESS);
+public:
+  explicit HsaError(std::string ErrorMsg,
+                    const std::optional<hsa_status_t> Error,
+                    const std::source_location ErrorLocation =
+                        std::source_location::current(),
+                    StackTraceType StackTrace = StackTraceInitializer())
+      : RocmLibraryError(std::move(ErrorMsg), ErrorLocation,
+                         std::move(StackTrace)),
+        Error(Error) {};
 
-/// Macro to check for an expected value of an Hsa status
-#define LUTHIER_HSA_ERROR_CHECK(Expr, Expected)                                \
-  luthier::HsaError::HsaErrorCheck(__FILE__, __LINE__, Expr, #Expr, Expected)
+  explicit HsaError(const llvm::formatv_object_base &ErrorMsg,
+                    const std::optional<hsa_status_t> Error,
+                    const std::source_location ErrorLocation =
+                        std::source_location::current(),
+                    StackTraceType StackTrace = StackTraceInitializer())
+      : RocmLibraryError(ErrorMsg.str(), ErrorLocation, std::move(StackTrace)),
+        Error(Error) {};
 
-#define LUTHIER_HSA_SUCCESS_CHECK(Expr)                                        \
-  luthier::HsaError::HsaErrorCheck(__FILE__, __LINE__, Expr, #Expr)
+  static char ID;
 
-} // namespace luthier
+  void log(llvm::raw_ostream &OS) const override;
+};
 
-#undef LUTHIER_DEFINE_ROCM_LIBRARY_ERROR
+#define LUTHIER_HSA_CALL_ERROR_CHECK(Expr, ErrorMsg)                           \
+  [&]() {                                                                      \
+    if (const hsa_status_t Status = Expr; Status != HSA_STATUS_SUCCESS) {      \
+      return llvm::make_error<HsaError>(ErrorMsg, Status);                     \
+    }                                                                          \
+    return llvm::Error::success();                                             \
+  }()
+} // namespace luthier::hsa
 
 #endif
