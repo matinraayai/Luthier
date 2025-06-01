@@ -23,24 +23,17 @@ namespace luthier {
 
 char GenericLuthierError::ID = 0;
 
-llvm::Error GenericLuthierError::luthierErrorCheck(const bool Expr,
-                                                   std::string File,
-                                                   int LineNumber,
-                                                   std::string ErrorMsg) {
-  if (!Expr) {
-    std::string StackTrace;
-    llvm::raw_string_ostream STStream(StackTrace);
-    llvm::sys::PrintStackTrace(STStream);
-    return llvm::make_error<GenericLuthierError>(
-        std::move(File), LineNumber, StackTrace, std::move(ErrorMsg));
-  }
-  return llvm::Error::success();
-}
-
 void GenericLuthierError::log(llvm::raw_ostream &OS) const {
-  OS << "Error encountered in file " << File << ", line: " << LineNumber << ": "
+  OS << "Error encountered in file " << ErrorLocation.file_name() << ", function "
+     << ErrorLocation.function_name() << ", at " << ErrorLocation.line() << ": "
      << ErrorMsg << ".\n";
-  OS << "Stacktrace: \n" << StackTrace << "\n";
+  OS << "Stack trace: \n";
+#ifdef __cpp_lib_stacktrace
+  OS << std::to_string(StackTrace);
+#else
+  OS << StackTrace;
+#endif
+  OS << "\n";
 }
 
 } // namespace luthier
