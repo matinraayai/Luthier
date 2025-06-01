@@ -73,7 +73,7 @@ executableFreeze(const hsa_executable_t Exec,
                  const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn) {
   return LUTHIER_HSA_CALL_ERROR_CHECK(
       HsaExecutableFreezeFn(Exec, ""),
-      llvm::formatv("Failed to freeze the executable {0:x}", Exec.handle)));
+      llvm::formatv("Failed to freeze the executable {0:x}", Exec.handle));
 }
 
 llvm::Error executableDestroy(
@@ -151,8 +151,7 @@ llvm::Error executableIterateAgentSymbols(
     const hsa_executable_t Exec,
     const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
     const hsa_agent_t Agent,
-    const std::function<llvm::Error(hsa_executable_symbol_t)>
-        &Callback) {
+    const std::function<llvm::Error(hsa_executable_symbol_t)> &Callback) {
 
   struct CBDataType {
     decltype(Callback) CB;
