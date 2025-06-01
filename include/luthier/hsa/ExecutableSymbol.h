@@ -34,9 +34,9 @@ namespace luthier::hsa {
 /// \sa HSA_EXECUTABLE_SYMBOL_INFO_TYPE
 /// \sa hsa_executable_symbol_get_info
 [[nodiscard]] llvm::Expected<hsa_symbol_kind_t>
-getSymbolType(hsa_executable_symbol_t Symbol,
+executableSymbolGetType(hsa_executable_symbol_t Symbol,
               const decltype(hsa_executable_symbol_get_info)
-                  *HsaExecutableSymbolGetInfoFn);
+                  &HsaExecutableSymbolGetInfoFn);
 
 /// Queries the name of the \p Symbol
 /// \param Symbol the \c hsa_executable_symbol_t being queried
@@ -47,9 +47,9 @@ getSymbolType(hsa_executable_symbol_t Symbol,
 /// \sa HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH
 /// \sa hsa_executable_symbol_get_info
 [[nodiscard]] llvm::Expected<std::string>
-getSymbolName(hsa_executable_symbol_t Symbol,
+executableSymbolGetName(hsa_executable_symbol_t Symbol,
               const decltype(hsa_executable_symbol_get_info)
-                  *HsaExecutableSymbolGetInfoFn);
+                  &HsaExecutableSymbolGetInfoFn);
 
 /// Queries the size of the \p Symbol
 /// \param Symbol the \c hsa_executable_symbol_t being queried
@@ -60,9 +60,9 @@ getSymbolName(hsa_executable_symbol_t Symbol,
 /// \sa HSA_EXECUTABLE_SYMBOL_INFO_SIZE
 /// \sa hsa_executable_symbol_get_info
 [[nodiscard]] llvm::Expected<size_t>
-getSymbolSize(hsa_executable_symbol_t Symbol,
+executableSymbolGetSymbolSize(hsa_executable_symbol_t Symbol,
               const decltype(hsa_executable_symbol_get_info)
-                  *HsaExecutableSymbolGetInfoFn);
+                  &HsaExecutableSymbolGetInfoFn);
 
 /// Queries the loaded address of the \p Symbol
 /// \param Symbol the \c hsa_executable_symbol_t being queried
@@ -74,9 +74,9 @@ getSymbolSize(hsa_executable_symbol_t Symbol,
 /// \sa HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS
 /// \sa hsa_executable_symbol_get_info
 [[nodiscard]] llvm::Expected<uint64_t>
-getSymbolAddress(hsa_executable_symbol_t Symbol,
+executableSymbolGetAddress(hsa_executable_symbol_t Symbol,
                  const decltype(hsa_executable_symbol_get_info)
-                     *HsaExecutableSymbolGetInfoFn);
+                     &HsaExecutableSymbolGetInfoFn);
 
 /// Queries the \c hsa_agent_t associated with the \p Symbol
 /// \param Symbol the \c hsa_executable_symbol_t being queried
@@ -88,9 +88,9 @@ getSymbolAddress(hsa_executable_symbol_t Symbol,
 /// \sa HSA_EXECUTABLE_SYMBOL_INFO_AGENT
 /// \sa hsa_executable_symbol_get_info
 [[nodiscard]] llvm::Expected<hsa_agent_t>
-getSymbolAgent(hsa_executable_symbol_t Symbol,
+executableSymbolGetAgent(hsa_executable_symbol_t Symbol,
                const decltype(hsa_executable_symbol_get_info)
-                   *HsaExecutableSymbolGetInfoFn);
+                   &HsaExecutableSymbolGetInfoFn);
 
 } // namespace luthier::hsa
 
@@ -98,15 +98,13 @@ getSymbolAgent(hsa_executable_symbol_t Symbol,
 // LLVM DenseMapInfo, for insertion into LLVM-based containers
 //===----------------------------------------------------------------------===//
 
-namespace llvm {
-
-template <> struct DenseMapInfo<hsa_executable_symbol_t> {
-  static inline hsa_executable_symbol_t getEmptyKey() {
+template <> struct llvm::DenseMapInfo<hsa_executable_symbol_t> {
+  static hsa_executable_symbol_t getEmptyKey() {
     return hsa_executable_symbol_t{{DenseMapInfo<
         decltype(hsa_executable_symbol_t::handle)>::getEmptyKey()}};
   }
 
-  static inline hsa_executable_symbol_t getTombstoneKey() {
+  static hsa_executable_symbol_t getTombstoneKey() {
     return hsa_executable_symbol_t{{DenseMapInfo<
         decltype(hsa_executable_symbol_t::handle)>::getTombstoneKey()}};
   }
@@ -120,9 +118,7 @@ template <> struct DenseMapInfo<hsa_executable_symbol_t> {
                       const hsa_executable_symbol_t &Rhs) {
     return Lhs.handle == Rhs.handle;
   }
-};
-
-} // namespace llvm
+}; // namespace llvm
 
 //===----------------------------------------------------------------------===//
 // C++ std library function objects for hashing and comparison, for insertion
@@ -134,13 +130,6 @@ namespace std {
 template <> struct hash<hsa_executable_symbol_t> {
   size_t operator()(const hsa_executable_symbol_t &Obj) const noexcept {
     return hash<unsigned long>()(Obj.handle);
-  }
-};
-
-template <> struct less<hsa_executable_symbol_t> {
-  bool operator()(const hsa_executable_symbol_t &Lhs,
-                  const hsa_executable_symbol_t &Rhs) const {
-    return Lhs.handle < Rhs.handle;
   }
 };
 
