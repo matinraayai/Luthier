@@ -28,7 +28,7 @@
     if (auto ___E = std::move(Error)) {                                        \
       llvm::report_fatal_error(std::move(___E), true);                         \
     }                                                                          \
-  } while (0)
+  } while (false)
 
 /// \brief returns from the function if the passed \p llvm::Error argument is
 /// not equal to \c llvm::Error::success()
@@ -37,13 +37,6 @@
     if (auto ___E = std::move(Error)) {                                        \
       return std::move(___E);                                                  \
     }                                                                          \
-  } while (0)
-
-/// \brief declares a variable \p VarName with type \p type; Returns from the
-/// current function if moving the output value of the
-/// \p Operation to \p VarName fails
-#define LUTHIER_RETURN_ON_MOVE_INTO_FAIL(Type, VarName, Operation)             \
-  Type VarName;                                                                \
-  LUTHIER_RETURN_ON_ERROR((Operation).moveInto(VarName));
+  } while (false)
 
 #endif
