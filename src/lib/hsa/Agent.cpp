@@ -1,4 +1,4 @@
-//===-- GpuAgent.cpp - HSA GPU Agent Wrapper Implementation ---------------===//
+//===-- GpuAgent.cpp ------------------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,13 +18,13 @@
 /// Implements a set of commonly used functionality around the \c hsa_agent_t
 /// handle in HSA.
 //===----------------------------------------------------------------------===//
-#include "luthier/hsa/Agent.h"
-#include "luthier/hsa/HsaError.h"
+#include <luthier/hsa/Agent.h>
+#include <luthier/hsa/HsaError.h>
 
 namespace luthier::hsa {
 
 llvm::Error agentGetSupportedISAs(
-    hsa_agent_t Agent,
+    const hsa_agent_t Agent,
     const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
     llvm::SmallVectorImpl<hsa_isa_t> &ISAList) {
   auto Iterator = [](hsa_isa_t Isa, void *Data) {
@@ -33,13 +33,39 @@ llvm::Error agentGetSupportedISAs(
     SupportedIsaList->emplace_back(Isa);
     return HSA_STATUS_SUCCESS;
   };
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      HsaAgentIterateISAsFn(Agent, Iterator, &ISAList),
+      llvm::formatv("Failed to iterate over ISAs of Agent {0:x}"));
+}
 
-  if (auto Status = HsaAgentIterateISAsFn(Agent, Iterator, &ISAList);
-      Status != HSA_STATUS_SUCCESS)
-    return llvm::make_error<HsaError>(
-        llvm::formatv("Failed to iterate over ISAs of Agent {0:x}"), Status);
-  else
-    return llvm::Error::success();
+llvm::Error
+agentIterateISAs(const hsa_agent_t Agent,
+                 decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
+                 const std::function<llvm::Error(hsa_isa_t)> &Callback) {
+  struct CallbackDataType {
+    decltype(Callback) CB;
+    llvm::Error Err;
+  } CBData{Callback, llvm::Error::success()};
+
+  auto Iterator = [](const hsa_isa_t ISA, void *D) -> hsa_status_t {
+    auto *Data = static_cast<CallbackDataType *>(D);
+    if (!Data) {
+      return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    Data->Err = Data->CB(ISA);
+    if (Data->Err)
+      return HSA_STATUS_INFO_BREAK;
+    return HSA_STATUS_SUCCESS;
+  };
+
+  if (const hsa_status_t Out = HsaAgentIterateISAsFn(Agent, Iterator, &CBData);
+      Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK)
+    return std::move(CBData.Err);
+
+  return llvm::make_error<HsaError>(
+      llvm::formatv("Failed to iterate over the ISAs of agent "
+                    "{0:x}.",
+                    Agent.handle));
 }
 
 } // namespace luthier::hsa

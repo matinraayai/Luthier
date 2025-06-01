@@ -38,6 +38,20 @@ llvm::Error agentGetSupportedISAs(
     const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
     llvm::SmallVectorImpl<hsa_isa_t> &ISAList);
 
+/// Iterates over the supported \c hsa_isa_t list of \p Agent and invokes the
+/// \p Callback
+/// \param Agent the agent being queried
+/// \param HsaAgentIterateISAsFn the underlying \c hsa_agent_iterate_isas used
+/// to complete the operation
+/// \param Callback a callback function invoked for each \c hsa_isa_t of the
+/// <tt>Agent</tt>. If the callback doesn't return a success error value, it
+/// will halt the iteration, and the error will be returned
+/// \return \c llvm::Error indication the success or failure of the operation
+llvm::Error
+agentIterateISAs(hsa_agent_t Agent,
+                 const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
+                 const std::function<llvm::Error(hsa_isa_t isa)> &Callback);
+
 } // namespace luthier::hsa
 
 //===----------------------------------------------------------------------===//
