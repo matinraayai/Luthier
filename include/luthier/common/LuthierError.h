@@ -22,28 +22,70 @@
 #ifndef LUTHIER_COMMON_LUTHIER_ERROR_H
 #define LUTHIER_COMMON_LUTHIER_ERROR_H
 #include <llvm/Support/Error.h>
+#include <llvm/Support/FormatVariadic.h>
+#include <source_location>
+/// Use the C++ stacktrace if it's supported by the compiler/standard;
+/// Otherwise, use LLVM's stack trace printer
+#include <stacktrace>
+#ifndef __cpp_lib_stacktrace
+#include <llvm/Support/Signals.h>
+#endif
 
 namespace luthier {
 
 class LuthierError : public llvm::ErrorInfo<LuthierError> {
+public:
+#ifdef __cpp_lib_stacktrace
+  using StackTraceType = std::stacktrace;
+#else
+  using StackTraceType = std::string;
+#endif
 
 protected:
-  /// Path to the file the error was encountered
-  const std::string File;
-  /// Line number of the file the error was encountered
-  const int LineNumber;
-  /// Stack trace of where the error occurred
-  const std::string StackTrace;
-  /// Expression that failed the error checking
-  const std::string Expression;
+#ifdef __cpp_lib_stacktrace
+  static auto constexpr StackTraceInitializer = std::stacktrace::current;
+#else
+  static auto constexpr StackTraceInitializer = []() {
+    std::string Out;
+    llvm::raw_string_ostream OutStream(Out);
+    llvm::sys::PrintStackTrace(OutStream);
+    return Out;
+  };
+#endif
 
-  LuthierError(std::string File, int LineNumber, std::string StackTrace,
-               std::string Expression)
-      : File(std::move(File)), LineNumber(LineNumber),
-        StackTrace(std::move(StackTrace)), Expression(std::move(Expression)) {}
+  /// Source location where the error occurred
+  const std::source_location ErrorLocation;
+  /// Stack trace of where the error occurred
+  const StackTraceType StackTrace;
+  /// Message of the error
+  const std::string ErrorMsg;
+
+  explicit LuthierError(std::string ErrorMsg,
+                        const std::source_location ErrorLocation =
+                            std::source_location::current(),
+                        StackTraceType StackTrace = StackTraceInitializer())
+      : ErrorLocation(ErrorLocation), StackTrace(std::move(StackTrace)),
+        ErrorMsg(std::move(ErrorMsg)) {};
+
+  explicit LuthierError(const llvm::formatv_object_base &ErrorMsg,
+                        const std::source_location ErrorLocation =
+                            std::source_location::current(),
+                        StackTraceType StackTrace = StackTraceInitializer())
+      : ErrorLocation(ErrorLocation), StackTrace(std::move(StackTrace)),
+        ErrorMsg(ErrorMsg.str()) {};
 
 public:
   static char ID;
+
+  [[nodiscard]] std::source_location getErrorLocation() const {
+    return ErrorLocation;
+  }
+
+  [[nodiscard]] const StackTraceType &getStackTrace() const {
+    return StackTrace;
+  }
+
+  [[nodiscard]] llvm::StringRef getErrorMsg() const { return ErrorMsg; }
 
   [[nodiscard]] std::error_code convertToErrorCode() const override {
     llvm_unreachable("Not implemented");
