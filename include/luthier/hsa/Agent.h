@@ -59,7 +59,7 @@ agentIterateISAs(hsa_agent_t Agent,
 /// \param HsaAgentIterateISAsFn the underlying \c hsa_agent_iterate_isas used
 /// to complete the operation
 /// \param Predicate a predicate function invoked for each \c hsa_isa_t of the
-/// <tt>Agent</tt>. If the callback doesn't return a success error value, it
+/// <tt>Agent</tt>. If the callback returns a failure error value, it
 /// will halt the iteration, and the error will be returned
 /// \return Expects the first \c hsa_isa_t entry found by the predicate; Expects
 /// a \c std::nullopt if no ISA entry was found by the predicate
