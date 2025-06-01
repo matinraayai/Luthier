@@ -34,9 +34,9 @@ namespace luthier::hsa {
 /// \param Elf the code object to be loaded by the code object reader
 /// \return Expects the newly created \c hsa_code_object_reader_t on success
 /// \sa hsa_code_object_reader_create_from_memory
-llvm::Expected<hsa_code_object_reader_t> createCodeObjectReaderFromMemory(
+llvm::Expected<hsa_code_object_reader_t> codeObjectReaderCreateFromMemory(
     const decltype(hsa_code_object_reader_create_from_memory)
-        *HsaCodeObjectReaderCreateFromMemoryFn,
+        &HsaCodeObjectReaderCreateFromMemoryFn,
     llvm::StringRef Elf);
 
 /// Creates a handle to a \c hsa_code_object_reader_t from an \p Elf in memory
@@ -47,11 +47,11 @@ llvm::Expected<hsa_code_object_reader_t> createCodeObjectReaderFromMemory(
 /// \return Expects the newly created \c hsa_code_object_reader_t on success
 /// \sa hsa_code_object_reader_create_from_memory
 inline llvm::Expected<hsa_code_object_reader_t>
-createCodeObjectReaderFromMemory(
+codeObjectReaderCreateFromMemory(
     const decltype(hsa_code_object_reader_create_from_memory)
-        *HsaCodeObjectReaderCreateFromMemoryFn,
+        &HsaCodeObjectReaderCreateFromMemoryFn,
     llvm::ArrayRef<uint8_t> Elf) {
-  return createCodeObjectReaderFromMemory(HsaCodeObjectReaderCreateFromMemoryFn,
+  return codeObjectReaderCreateFromMemory(HsaCodeObjectReaderCreateFromMemoryFn,
                                           llvm::toStringRef(Elf));
 }
 
@@ -62,9 +62,9 @@ createCodeObjectReaderFromMemory(
 /// \return \c llvm::Error indicating the success or failure of the
 /// operation
 llvm::Error
-destroyCodeObjectReader(hsa_code_object_reader_t COR,
+codeObjectReaderDestroy(hsa_code_object_reader_t COR,
                         const decltype(hsa_code_object_reader_destroy)
-                            *HsaCodeObjectReaderDestroyFn);
+                            &HsaCodeObjectReaderDestroyFn);
 
 } // namespace luthier::hsa
 

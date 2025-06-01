@@ -15,31 +15,43 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements a set of commonly used functionality for the
+/// Implements a set of commonly used functionality for the
 /// \c hsa_code_object_reader_t handle in HSA.
 //===----------------------------------------------------------------------===//
-#include "luthier/hsa/CodeObjectReader.h"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/hsa/HsaError.h"
 #include <llvm/ADT/StringExtras.h>
+#include <luthier/hsa/CodeObjectReader.h>
+#include <luthier/hsa/HsaError.h>
 
 namespace luthier::hsa {
 
-llvm::Expected<hsa_code_object_reader_t> createCodeObjectReaderFromMemory(
+llvm::Expected<hsa_code_object_reader_t> codeObjectReaderCreateFromMemory(
     const decltype(hsa_code_object_reader_create_from_memory)
-        *HsaCodeObjectReaderCreateFromMemoryFn,
+        &HsaCodeObjectReaderCreateFromMemoryFn,
     llvm::StringRef Elf) {
   hsa_code_object_reader_t Reader;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      HsaCodeObjectReaderCreateFromMemoryFn(Elf.data(), Elf.size(), &Reader)));
+  if (hsa_status_t Status = HsaCodeObjectReaderCreateFromMemoryFn(
+          Elf.data(), Elf.size(), &Reader);
+      Status != HSA_STATUS_SUCCESS) {
+    return llvm::make_error<HsaError>(
+        llvm::formatv("Failed to create a new code object reader handle from "
+                      "memory for code object:\n {0}",
+                      Elf),
+        Status);
+  }
   return Reader;
 }
 
 llvm::Error
-destroyCodeObjectReader(hsa_code_object_reader_t COR,
+codeObjectReaderDestroy(hsa_code_object_reader_t COR,
                         const decltype(hsa_code_object_reader_destroy)
-                            *HsaCodeObjectReaderDestroyFn) {
-  return LUTHIER_HSA_SUCCESS_CHECK(HsaCodeObjectReaderDestroyFn(COR));
+                            &HsaCodeObjectReaderDestroyFn) {
+  if (hsa_status_t Status = HsaCodeObjectReaderDestroyFn(COR);
+      Status != HSA_STATUS_SUCCESS) {
+    return llvm::make_error<HsaError>(
+        "Failed to destroy code object reader with handle {0:x}", COR.handle,
+        Status);
+  }
+  return llvm::Error::success();
 }
 
 } // namespace luthier::hsa
