@@ -50,7 +50,23 @@ llvm::Error agentGetSupportedISAs(
 llvm::Error
 agentIterateISAs(hsa_agent_t Agent,
                  const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
-                 const std::function<llvm::Error(hsa_isa_t isa)> &Callback);
+                 const std::function<llvm::Error(hsa_isa_t)> &Callback);
+
+/// Iterates over the supported \c hsa_isa_t list of \p Agent and finds and
+/// returns the first \c hsa_isa_t of the \p Agent that the \p Predicate returns
+/// \c true on
+/// \param Agent the agent being queried
+/// \param HsaAgentIterateISAsFn the underlying \c hsa_agent_iterate_isas used
+/// to complete the operation
+/// \param Predicate a predicate function invoked for each \c hsa_isa_t of the
+/// <tt>Agent</tt>. If the callback doesn't return a success error value, it
+/// will halt the iteration, and the error will be returned
+/// \return Expects the first \c hsa_isa_t entry found by the predicate; Expects
+/// a \c std::nullopt if no ISA entry was found by the predicate
+llvm::Expected<std::optional<hsa_isa_t>> agentFindFirstISA(
+    hsa_agent_t Agent,
+    const decltype(hsa_agent_iterate_isas) &HsaAgentIterateISAsFn,
+    const std::function<llvm::Expected<bool>(hsa_isa_t)> &Predicate);
 
 } // namespace luthier::hsa
 
