@@ -171,20 +171,39 @@ executableGetSymbolByName(hsa_executable_t Exec,
 /// \param Agent the GPU agent for which the symbols are going to be iterated
 /// over
 /// \param Callback a generic \c std::function that gets invoked during the
-/// iteration. It takes in the current iteration's \c hsa_executable_symbol_t
-/// as well as a reference to a \c llvm::Error and returns a boolean. The
-/// callback can use the passed \c llvm::Error reference to propogate any
-/// issues encountered during the iteration callback. If the callback returns
-/// \c true the iteration will continue, and if the callback returns \c false
-/// the iteration halts
-/// \return an \c llvm::Error indicating the success or the failure of the
+/// iteration for the current \c hsa_executable_symbol_t of the iteration.
+/// If it returns a \c llvm::Error in a failure state, the function halts
+/// the iteration and returns the failure error instead
+/// \return a \c llvm::Error indicating the success or the failure of the
 /// operation
-llvm::Error executableIterateSymbols(
+llvm::Error executableIterateAgentSymbols(
     hsa_executable_t Exec,
     const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
     hsa_agent_t Agent,
-    const std::function<bool(hsa_executable_symbol_t, llvm::Error &)>
-        &Callback);
+    const std::function<llvm::Error(hsa_executable_symbol_t)> &Callback);
+
+/// Iterates over the symbols inside the \p Exec that belong to \p Agent and
+/// finds the first \c hsa_executable_symbol_t inside \p Exec that returns
+/// true for the given \p Predicate
+/// \param Exec the executable being inspected
+/// \param SymbolIterFn the underlying \c hsa_executable_iterate_agent_symbols
+/// invoked to complete the operation
+/// \param Agent the GPU agent for which the symbols are going to be iterated
+/// over
+/// \param Predicate a generic \c std::function that gets invoked during the
+/// iteration. It takes in the current iteration's \c hsa_executable_symbol_t
+/// as its parameter and expects a boolean value. If the predicate returns
+/// an error, the iteration halts and the error is returned
+/// \return Expects a \c hsa_executable_symbol_t if a symbol was found using
+/// the \p Predicate; \c std::nullopt is expected if no symbol is found
+llvm::Expected<std::optional<hsa_executable_symbol_t>>
+executableFindFirstAgentSymbol(
+    hsa_executable_t Exec,
+    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    hsa_agent_t Agent,
+    const std::function<llvm::Expected<bool>(hsa_executable_symbol_t)>
+        &Predicate);
+
 } // namespace luthier::hsa
 
 //===----------------------------------------------------------------------===//
