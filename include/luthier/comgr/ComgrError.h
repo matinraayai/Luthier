@@ -15,32 +15,52 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the \c ComgrError class which encapsulates errors
-/// encountered when making calls to the AMD CoMGR library. It also defines
-/// the \c LUTHIER_COMGR_ERROR_CHECK and \c LUTHIER_COMGR_SUCCESS_CHECK macros,
-/// which can be used to check the results of a CoMGR operation.
+/// Describes the \c ComgrError class which encapsulates errors
+/// originating from the AMD COMGR library.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMGR_COMGR_ERROR_H
 #define LUTHIER_COMGR_COMGR_ERROR_H
 #include <amd_comgr/amd_comgr.h>
-#include <llvm/Support/Error.h>
+#include <luthier/common/ROCmLibraryError.h>
 
 namespace luthier {
 
-#include "luthier/common/ROCmLibraryErrorDefine.h"
-LUTHIER_DEFINE_ROCM_LIBRARY_ERROR(Comgr, amd_comgr_status_t,
-                                  AMD_COMGR_STATUS_SUCCESS);
+/// \brief Encapsulates errors originating from AMD Comgr library
+class ComgrError final : RocmLibraryError {
+  const std::optional<amd_comgr_status_t> Error;
 
-/// Macro to check for an expected value of Comgr status
-#define LUTHIER_COMGR_ERROR_CHECK(Expr, Expected)                              \
-  luthier::ComgrError::ComgrErrorCheck(__FILE__, __LINE__, Expr, #Expr,        \
-                                       Expected)
+  ComgrError(std::string ErrorMsg,
+             const std::optional<amd_comgr_status_t> Error,
+             const std::source_location ErrorLocation =
+                 std::source_location::current(),
+             std::stacktrace StackTrace = std::stacktrace::current())
+      : RocmLibraryError(std::move(ErrorMsg), ErrorLocation,
+                         std::move(StackTrace)),
+        Error(Error) {};
 
-/// Macro to check for success of a Comgr operation
-#define LUTHIER_COMGR_SUCCESS_CHECK(Expr)                                      \
-  luthier::ComgrError::ComgrErrorCheck(__FILE__, __LINE__, Expr, #Expr)
+  ComgrError(const llvm::formatv_object_base &ErrorMsg,
+             const std::optional<amd_comgr_status_t> Error,
+             const std::source_location ErrorLocation =
+                 std::source_location::current(),
+             std::stacktrace StackTrace = std::stacktrace::current())
+      : RocmLibraryError(std::move(ErrorMsg.str()), ErrorLocation,
+                         std::move(StackTrace)),
+        Error(Error) {};
 
-#undef LUTHIER_DEFINE_ROCM_LIBRARY_ERROR
+public:
+  static char ID;
+
+  void log(llvm::raw_ostream &OS) const override;
+};
+
+#define LUTHIER_COMGR_CALL_ERROR_CHECK(Expr, ErrorMsg)                         \
+  [&]() {                                                                      \
+    if (const amd_comgr_status_t Status = Expr;                                \
+        Status != AMD_COMGR_STATUS_SUCCESS) {                                  \
+      return llvm::make_error<ComgrError>(ErrorMsg, Status);                   \
+    }                                                                          \
+    return llvm::Error::success();                                             \
+  }()
 
 } // namespace luthier
 
