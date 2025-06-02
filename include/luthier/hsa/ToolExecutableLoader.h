@@ -20,8 +20,6 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_TOOL_EXECUTABLE_LOADER_H
 #define LUTHIER_HSA_TOOL_EXECUTABLE_LOADER_H
-#include "HsaError.h"
-
 #include <hip/amd_detail/amd_hip_vector_types.h>
 #include <hip/hip_runtime.h>
 #include <llvm/ADT/DenseSet.h>
@@ -32,6 +30,7 @@
 #include <luthier/hip/HipCompilerApiTableInterceptor.h>
 #include <luthier/hsa/Executable.h>
 #include <luthier/hsa/HsaApiTableInterceptor.h>
+#include <luthier/hsa/HsaError.h>
 #include <luthier/hsa/LoadedInstrumentationModule.h>
 #include <luthier/hsa/hsa.h>
 
