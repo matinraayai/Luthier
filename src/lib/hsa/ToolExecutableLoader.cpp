@@ -123,7 +123,7 @@ llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
 
         if (SymbolNameOrErr->starts_with(HipCUIDPrefix)) {
           size_t CUID = 0;
-          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
               llvm::to_integer(SymbolNameOrErr->substr(strlen(HipCUIDPrefix)),
                                CUID),
               "Failed to parse the CUID of the HIP module"));
@@ -278,29 +278,31 @@ ToolExecutableLoader::getHipLoadedHook(void *HostHandle,
   std::lock_guard Lock(HipLoaderMutex);
   // Get the binary info of the func
   auto FuncInfo = HipFunctions.find(HostHandle);
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(FuncInfo != HipFunctions.end(),
-                          "Failed to find the HIP module information for HIP "
-                          "function handle {0:x}",
-                          HostHandle));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      FuncInfo != HipFunctions.end(),
+      llvm::formatv("Failed to find the HIP module information for HIP "
+                    "function handle {0:x}",
+                    HostHandle)));
   // Get the cuid associated with the HIP module
   auto CUID = HipModuleCUIDs.find(FuncInfo->second.FatBinaryModuleInfo);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       CUID != HipModuleCUIDs.end(),
-      "Failed to find the CUID associated with module {0:x}, hook name {1}",
-      FuncInfo->second.FatBinaryModuleInfo, FuncInfo->second.Name));
+      llvm::formatv(
+          "Failed to find the CUID associated with module {0:x}, hook name {1}",
+          FuncInfo->second.FatBinaryModuleInfo, FuncInfo->second.Name)));
   // Find the Hip Loaded module
   auto HipModule = HipLoadedIMsPerAgent.find({CUID->second, Agent});
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(HipModule != HipLoadedIMsPerAgent.end(),
-                          "Failed to find the HIP Loaded module associated "
-                          "with CUID {0} and Agent {1:x}.",
-                          CUID->second, Agent.handle));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(HipModule->second != nullptr,
-                          "The HIP Loaded module associated with CUID {0} and "
-                          "Agent {1:x} is nullptr.",
-                          CUID->second, Agent.handle));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      HipModule != HipLoadedIMsPerAgent.end(),
+      llvm::formatv("Failed to find the HIP Loaded module associated "
+                    "with CUID {0} and Agent {1:x}",
+                    CUID->second, Agent.handle)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      HipModule->second != nullptr,
+      llvm::formatv("The HIP Loaded module associated with CUID {0} and "
+                    "Agent {1:x} is nullptr; It is likely that it has not been "
+                    "loaded by the HIP runtime yet",
+                    CUID->second, Agent.handle)));
 
   return std::make_pair(*HipModule->second, FuncInfo->second.Name);
 }
