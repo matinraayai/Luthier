@@ -39,7 +39,7 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
   // Get the LCO's storage memory
   llvm::ArrayRef<uint8_t> StorageMemory;
   LUTHIER_RETURN_ON_ERROR(
-      hsa::getLCOStorageMemory(LCO, LoadedCodeObjectGetInfoFun)
+      hsa::loadedCodeObjectGetStorageMemory(LCO, LoadedCodeObjectGetInfoFun)
           .moveInto(StorageMemory));
 
   // Check if the LCO is indeed a loaded instrumentation module
@@ -56,13 +56,15 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
     /// Get the executable of the LCO
     hsa_executable_t Exec;
     LUTHIER_RETURN_ON_ERROR(
-        hsa::getLCOExecutable(LCO, LoadedCodeObjectGetInfoFun).moveInto(Exec));
+        hsa::loadedCodeObjectGetExecutable(LCO, LoadedCodeObjectGetInfoFun)
+            .moveInto(Exec));
     /// Get the CUID of the Module
     size_t CUID = IModuleOrErr.get()->getCUID();
     /// Get the agent of the LCO
     hsa_agent_t Agent;
     LUTHIER_RETURN_ON_ERROR(
-        hsa::getLCOAgent(LCO, LoadedCodeObjectGetInfoFun).moveInto(Agent));
+        hsa::loadedCodeObjectGetAgent(LCO, LoadedCodeObjectGetInfoFun)
+            .moveInto(Agent));
     /// If the CUID and the agent of the module indicate that we were expecting
     /// it, register it; Otherwise, the LCO must have been a dynamically loaded
     /// instrumentation module by another tool executable loader instance
@@ -105,7 +107,7 @@ llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
     /// Get the agent of the LCO
     hsa_agent_t Agent;
     LUTHIER_RETURN_ON_ERROR(
-        hsa::getLCOAgent(LCO, LCOGetInfoFn).moveInto(Agent));
+        hsa::loadedCodeObjectGetAgent(LCO, LCOGetInfoFn).moveInto(Agent));
 
     /// Look for the IModule reserved symbol inside the executable
     std::optional<hsa_executable_symbol_t> ReservedMangedVar{std::nullopt};
@@ -234,13 +236,13 @@ ToolExecutableLoader::loadInstrumentedCodeObject(
   /// Get the Agent of the original LCO
   hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(
-      hsa::getLCOAgent(OriginalLoadedCodeObject, LCOInfoQueryFn)
+      hsa::loadedCodeObjectGetAgent(OriginalLoadedCodeObject, LCOInfoQueryFn)
           .moveInto(Agent));
   /// Get the executable of the original LCO
   hsa_executable_t OriginalExecutable;
-  LUTHIER_RETURN_ON_ERROR(
-      hsa::getLCOExecutable(OriginalLoadedCodeObject, LCOInfoQueryFn)
-          .moveInto(OriginalExecutable));
+  LUTHIER_RETURN_ON_ERROR(hsa::loadedCodeObjectGetExecutable(
+                              OriginalLoadedCodeObject, LCOInfoQueryFn)
+                              .moveInto(OriginalExecutable));
 
   // Create the instrumented executable
   hsa_executable_t InstrumentedExec{};

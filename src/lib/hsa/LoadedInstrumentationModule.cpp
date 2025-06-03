@@ -41,7 +41,8 @@ LoadedInstrumentationModule::getSymbolLoadAddressesMap() const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       *IsLoadedOrErr, "The instrumentation module has not been loaded yet."));
   llvm::Expected<llvm::ArrayRef<uint8_t>> LCOLoadedMemOrErr =
-      hsa::getLCOLoadedMemory(LCO, HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+      hsa::loadedCodeObjectGetLoadedMemory(
+          LCO, HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
   LUTHIER_RETURN_ON_ERROR(LCOLoadedMemOrErr.takeError());
   auto LCOLoadBase = reinterpret_cast<uint64_t>(LCOLoadedMemOrErr->data());
 

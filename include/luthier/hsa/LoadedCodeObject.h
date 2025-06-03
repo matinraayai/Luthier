@@ -43,79 +43,75 @@ namespace luthier::hsa {
 /// \param LCO the \c hsa_loaded_code_object_t being queried
 /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
 /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
-/// used to complete the operation
-/// \return expects the \c Executable of this \c LoadedCodeObject on success
+/// \return Expects the \c hsa_executable_t of \p LCO on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_EXECUTABLE
-[[nodiscard]] llvm::Expected<hsa_executable_t>
-getLCOExecutable(hsa_loaded_code_object_t LCO,
-                 const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-                     *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+[[nodiscard]] llvm::Expected<hsa_executable_t> loadedCodeObjectGetExecutable(
+    hsa_loaded_code_object_t LCO,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
 
-/// Queries the \c GpuAgent associated with the \p LCO
+/// Queries the \c hsa_agent_t associated with the \p LCO
 /// \param LCO the \c hsa_loaded_code_object_t being queried
 /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
 /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
-/// used to complete the operation
 /// \note As Loaded Code Objects of program allocation are deprecated in ROCr,
 /// it is safe to assume all Loaded Code Objects have agent allocation, and
 /// therefore, are backed by an HSA GPU Agent
-/// \return expects the \c hsa_agent_t of the \p LCO on success
+/// \return Expects the \c hsa_agent_t of the \p LCO on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT
-[[nodiscard]] llvm::Expected<hsa_agent_t>
-getLCOAgent(hsa_loaded_code_object_t LCO,
-            const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-                *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+[[nodiscard]] llvm::Expected<hsa_agent_t> loadedCodeObjectGetAgent(
+    hsa_loaded_code_object_t LCO,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
 
 /// Queries the load delta of the \p LCO
 /// \param LCO the \c hsa_loaded_code_object_t being queried
 /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
 /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
-/// used to complete the operation
-/// \return expects the Load Delta of this Loaded Code Object on success
+/// \return Expects the Load Delta of this Loaded Code Object on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_DELTA
-[[nodiscard]] llvm::Expected<long>
-getLCOLoadDelta(hsa_loaded_code_object_t LCO,
-                const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-                    *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+[[nodiscard]] llvm::Expected<long> loadedCodeObjectGetLoadDelta(
+    hsa_loaded_code_object_t LCO,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
 
 /// Queries the entire loaded memory range of the \p LCO
 /// \param LCO the \c hsa_loaded_code_object_t being queried
 /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
 /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
-/// used to complete the operation
 /// \return Expects the \c llvm::ArrayRef to the portion of GPU memory that
 /// this code object has been loaded onto on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE
-[[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getLCOLoadedMemory(
+[[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
+loadedCodeObjectGetLoadedMemory(
     hsa_loaded_code_object_t LCO,
     const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-        *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
 
 /// \param LCO the \c hsa_loaded_code_object_t being queried
 /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
 /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
-/// used to complete the operation
 /// \return Expects the URI describing the origins of the \p LCO
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI_LENGTH
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI
-[[nodiscard]] llvm::Expected<std::string>
-getLCOUri(hsa_loaded_code_object_t LCO,
-          const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-              *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+[[nodiscard]] llvm::Expected<std::string> loadedCodeObjectGetURI(
+    hsa_loaded_code_object_t LCO,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
 
 /// Queries where the host copy of the <tt>LCO</tt>'s ELF is
 /// stored, and its size from HSA
 /// \param LCO the \c hsa_loaded_code_object_t being queried
 /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
 /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
-/// used to complete the operation
 /// \return Expects the \c llvm::ArrayRef pointing to the beginning and the
 /// end of the storage memory on success
-[[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getLCOStorageMemory(
+[[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
+loadedCodeObjectGetStorageMemory(
     hsa_loaded_code_object_t LCO,
     const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-        *HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
 
 } // namespace luthier::hsa
 
@@ -123,15 +119,13 @@ getLCOUri(hsa_loaded_code_object_t LCO,
 // LLVM DenseMapInfo, for insertion into LLVM-based containers
 //===----------------------------------------------------------------------===//
 
-namespace llvm {
-
-template <> struct DenseMapInfo<hsa_loaded_code_object_t> {
-  static inline hsa_loaded_code_object_t getEmptyKey() {
+template <> struct llvm::DenseMapInfo<hsa_loaded_code_object_t> {
+  static hsa_loaded_code_object_t getEmptyKey() {
     return hsa_loaded_code_object_t({DenseMapInfo<
         decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()});
   }
 
-  static inline hsa_loaded_code_object_t getTombstoneKey() {
+  static hsa_loaded_code_object_t getTombstoneKey() {
     return hsa_loaded_code_object_t({DenseMapInfo<
         decltype(hsa_loaded_code_object_t::handle)>::getTombstoneKey()});
   }
@@ -145,9 +139,7 @@ template <> struct DenseMapInfo<hsa_loaded_code_object_t> {
                       const hsa_loaded_code_object_t &Rhs) {
     return Lhs.handle == Rhs.handle;
   }
-};
-
-} // namespace llvm
+}; // namespace llvm
 
 //===----------------------------------------------------------------------===//
 // C++ std library function objects for hashing and comparison, for insertion
