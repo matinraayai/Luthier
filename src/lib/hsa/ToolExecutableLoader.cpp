@@ -20,21 +20,22 @@
 //===----------------------------------------------------------------------===//
 #include <llvm/ADT/SmallVector.h>
 #include <luthier/consts.h>
-#include <luthier/hsa/Agent.h>
 #include <luthier/hsa/CodeObjectReader.h>
 #include <luthier/hsa/ExecutableSymbol.h>
 #include <luthier/hsa/HsaApiTableInterceptor.h>
 #include <luthier/hsa/LoadedCodeObject.h>
 #include <luthier/hsa/ToolExecutableLoader.h>
-#include <rocprofiler-sdk/intercept_table.h>
 #include <vector>
 
 namespace luthier::hsa {
 
 llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
-    const hsa_loaded_code_object_t LCO,
+    hsa_loaded_code_object_t LCO,
     const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-        &LoadedCodeObjectGetInfoFun) {
+        &LoadedCodeObjectGetInfoFun,
+    const decltype(hsa_executable_get_info) &HsaExecutableGetInfo,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   // Get the LCO's storage memory
   llvm::ArrayRef<uint8_t> StorageMemory;
   LUTHIER_RETURN_ON_ERROR(
@@ -78,7 +79,8 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
         // Finally, register the newly constructed loaded instrumentation
         // module
         ModuleIter->second.reset(new HipLoadedInstrumentationModule(
-            Exec, LCO, std::move(*IModuleOrErr)));
+            Exec, LCO, std::move(*IModuleOrErr), HsaExecutableGetInfo,
+            HsaVenAmdLoaderLoadedCodeObjectGetInfoFn));
       }
     }
   }
@@ -144,6 +146,7 @@ llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
   }
   return llvm::Error::success();
 }
+
 llvm::Error ToolExecutableLoader::destroyInstrumentedCopiesOfExecutable(
     const hsa_executable_t Exec,
     decltype(hsa_executable_destroy) &ExecutableDestroyFn) {
@@ -162,14 +165,18 @@ llvm::Error ToolExecutableLoader::destroyInstrumentedCopiesOfExecutable(
 llvm::Expected<DynamicallyLoadedInstrumentationModule &>
 ToolExecutableLoader::loadDynamicIModule(
     std::vector<uint8_t> CodeObject, hsa_agent_t Agent,
-    decltype(hsa_executable_create_alt) &HsaExecutableCreateAltFn,
-    decltype(hsa_code_object_reader_create_from_memory)
+    const decltype(hsa_executable_create_alt) &HsaExecutableCreateAltFn,
+    const decltype(hsa_code_object_reader_create_from_memory)
         &HsaCodeObjectReaderCreateFromMemory,
-    decltype(hsa_executable_load_agent_code_object)
+    const decltype(hsa_executable_load_agent_code_object)
         &HsaExecutableLoadAgentCodeObjectFn,
-    decltype(hsa_executable_freeze) &HsaExecutableFreezeFn,
-    decltype(hsa_code_object_reader_destroy) &HsaCodeObjectReaderDestroyFn,
-    decltype(hsa_executable_destroy) &HsaExecutableDestroyFn) {
+    const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn,
+    const decltype(hsa_code_object_reader_destroy)
+        &HsaCodeObjectReaderDestroyFn,
+    const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn,
+    const decltype(hsa_executable_get_info) &HsaExecutableGetInfo,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {
   std::lock_guard Lock(DynamicModuleMutex);
 
   std::unique_ptr<InstrumentationModule> IModule;
@@ -199,7 +206,8 @@ ToolExecutableLoader::loadDynamicIModule(
       hsa::codeObjectReaderDestroy(Reader, HsaCodeObjectReaderDestroyFn));
 
   auto *Out = new DynamicallyLoadedInstrumentationModule(
-      Exec, LCO, std::move(IModule), HsaExecutableDestroyFn);
+      Exec, LCO, std::move(IModule), HsaExecutableGetInfo,
+      HsaVenAmdLoaderLoadedCodeObjectGetInfoFn, HsaExecutableDestroyFn);
 
   DynModules.insert(Out);
 
