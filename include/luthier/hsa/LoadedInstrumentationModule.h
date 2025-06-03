@@ -15,18 +15,18 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Describes the \c LoadedInstrumentationModule class, representing an
-/// \c InstrumentationModule that has been loaded onto a GPU device.
+/// Describes the \c hsa::LoadedInstrumentationModule class, representing an
+/// \c InstrumentationModule that has been loaded onto a GPU device in the HSA
+/// runtime.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_RUNTIME_LOADED_INSTRUMENTATION_MODULE_H
-#define LUTHIER_RUNTIME_LOADED_INSTRUMENTATION_MODULE_H
+#ifndef LUTHIER_HSA_LOADED_INSTRUMENTATION_MODULE_H
+#define LUTHIER_HSA_LOADED_INSTRUMENTATION_MODULE_H
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
-#include <llvm/ADT/DenseMap.h>
 #include <llvm/Support/Error.h>
 #include <luthier/tooling/InstrumentationModule.h>
 
-namespace luthier {
+namespace luthier::hsa {
 
 class ToolExecutableLoader;
 
@@ -43,10 +43,26 @@ protected:
   /// The instrumentation module loaded
   std::unique_ptr<InstrumentationModule> IModule;
 
-  LoadedInstrumentationModule(hsa_executable_t Exec,
-                              hsa_loaded_code_object_t LCO,
-                              std::unique_ptr<InstrumentationModule> IModule)
-      : Exec(Exec), LCO(LCO), IModule(std::move(IModule)) {};
+  //===--------------------------------------------------------------------===//
+  // A set of underlying functions that the \c ToolExecutableLoader will
+  // supply to the Loaded IModule to carry out its query operations.
+  //===--------------------------------------------------------------------===//
+
+  const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn;
+
+  const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+      &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn;
+
+  LoadedInstrumentationModule(
+      hsa_executable_t Exec, hsa_loaded_code_object_t LCO,
+      std::unique_ptr<InstrumentationModule> IModule,
+      const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn)
+      : Exec(Exec), LCO(LCO), IModule(std::move(IModule)),
+        HsaExecutableGetInfoFn(HsaExecutableGetInfoFn),
+        HsaVenAmdLoaderLoadedCodeObjectGetInfoFn(
+            HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {};
 
   virtual ~LoadedInstrumentationModule() = default;
 
@@ -54,8 +70,7 @@ public:
   /// \returns On success, expects \c true if the instrumentation module has
   /// been loaded onto the device (i.e. its executable has been frozen), \c
   /// false otherwise;
-  llvm::Expected<bool> isLoaded(
-      const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn) const;
+  llvm::Expected<bool> isLoaded() const;
 
   /// \returns the \c InstrumentationModule of this loaded module
   [[nodiscard]] const InstrumentationModule &getIModule() const {
@@ -67,10 +82,7 @@ public:
 
   /// \return Expects the mapping between all symbols inside this loaded
   /// instrumentation module and their load address on the GPU
-  llvm::Expected<llvm::StringMap<uint64_t>> getSymbolLoadAddressesMap(
-      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
-      const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn) const;
+  llvm::Expected<llvm::StringMap<uint64_t>> getSymbolLoadAddressesMap() const;
 };
 
 /// \brief Keeps track of instrumentation modules loaded via HIP FAT
@@ -79,10 +91,15 @@ class HipLoadedInstrumentationModule final
     : public LoadedInstrumentationModule {
   friend ToolExecutableLoader;
 
-  HipLoadedInstrumentationModule(hsa_executable_t Exec,
-                                 hsa_loaded_code_object_t LCO,
-                                 std::unique_ptr<InstrumentationModule> IModule)
-      : LoadedInstrumentationModule(Exec, LCO, std::move(IModule)) {};
+  HipLoadedInstrumentationModule(
+      const hsa_executable_t Exec, const hsa_loaded_code_object_t LCO,
+      std::unique_ptr<InstrumentationModule> IModule,
+      const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn)
+      : LoadedInstrumentationModule(
+            Exec, LCO, std::move(IModule), HsaExecutableGetInfoFn,
+            HsaVenAmdLoaderLoadedCodeObjectGetInfoFn) {};
 
 public:
   ~HipLoadedInstrumentationModule() override = default;
@@ -91,18 +108,26 @@ public:
 class DynamicallyLoadedInstrumentationModule final
     : public LoadedInstrumentationModule {
   friend ToolExecutableLoader;
+
+  /// Needed to destroy the underlying executable of the module in the
+  /// destructor
   const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn;
 
   DynamicallyLoadedInstrumentationModule(
       hsa_executable_t Exec, hsa_loaded_code_object_t LCO,
       std::unique_ptr<InstrumentationModule> IModule,
+      const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
       const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn)
-      : LoadedInstrumentationModule(Exec, LCO, std::move(IModule)),
+      : LoadedInstrumentationModule(Exec, LCO, std::move(IModule),
+                                    HsaExecutableGetInfoFn,
+                                    HsaVenAmdLoaderLoadedCodeObjectGetInfoFn),
         HsaExecutableDestroyFn(HsaExecutableDestroyFn) {};
 
 public:
   ~DynamicallyLoadedInstrumentationModule() override;
 };
 
-} // namespace luthier
+} // namespace luthier::hsa
 #endif
