@@ -19,107 +19,99 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_ISA_H
 #define LUTHIER_HSA_ISA_H
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/hsa/HsaError.h"
 #include <hsa/hsa.h>
 #include <llvm/Support/Error.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
 #include <llvm/TargetParser/Triple.h>
+#include <luthier/common/ErrorCheck.h>
+#include <luthier/hsa/HsaError.h>
 
 namespace luthier::hsa {
 /// Queries the \c ISA handle associated with the \p FullIsaName
-/// \param HsaISAFromNameFn The underlying \c hsa_isa_from_name function used
-/// to carry out the operation
+/// \param HsaISAFromNameFn The underlying \c hsa_isa_from_name function
 /// \param FullIsaName the full name of the ISA
 /// \note HSA for the most part follows LLVM's convention for naming ISAs,
 /// with the only minor difference being the location of +/- coming after
 /// subtarget features, not after. For more details, refer to <tt>isa.cpp</tt>
 /// source file in the ROCr runtime project
-/// \returns \c the \c hsa_isa_t handle of the queried ISA on success,
-/// \c llvm::Error on failure
+/// \returns Expects the \c hsa_isa_t handle of the queried ISA
 inline llvm::Expected<hsa_isa_t>
 isaFromName(const decltype(hsa_isa_from_name) &HsaISAFromNameFn,
             llvm::StringRef FullIsaName) {
   hsa_isa_t Isa;
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_HSA_SUCCESS_CHECK(HsaISAFromNameFn(FullIsaName.data(), &Isa)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      HsaISAFromNameFn(FullIsaName.data(), &Isa),
+      llvm::formatv("Failed to get the ISA {0} using its name from HSA.",
+                    FullIsaName)));
   return Isa;
 }
 
 /// Queries the \c ISA handle associated with the given <tt>TT</tt>,
 /// <tt>CPU</tt>, and <tt>Features</tt> from LLVM
-/// \param HsaISAFromNameFn The underlying \c hsa_isa_from_name function used
-/// to carry out the operation
+/// \param HsaISAFromNameFn The underlying \c hsa_isa_from_name function
 /// \param TT the \c llvm::Triple of the ISA
 /// \param GPUName the name of the GPU
 /// \param Features the subtarget features of the target; (e.g. <tt>xnack</tt>,
 /// <tt>sramecc</tt>)
 /// \note refer to the LLVM AMDGPU backend documentation for more details
 /// on the supported ISA and their names
-/// \returns \c the \c hsa_isa_t handle of the queried ISA on success,
-/// \c llvm::Error on failure
+/// \returns Expects \c hsa_isa_t handle of the queried ISA
 llvm::Expected<hsa_isa_t>
-isaFromLlvm(const decltype(hsa_isa_from_name) &HsaISAFromNameFn,
+isaFromLLVM(const decltype(hsa_isa_from_name) &HsaISAFromNameFn,
             const llvm::Triple &TT, llvm::StringRef GPUName,
             const llvm::SubtargetFeatures &Features);
 
-/// \returns the full name of the ISA on success, an \c llvm::Error on failure
+/// \returns Expects the full name of the ISA
 llvm::Expected<std::string>
-getISAName(hsa_isa_t ISA,
+isaGetName(hsa_isa_t ISA,
            const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
-/// \returns the architecture field of the LLVM target triple of the ISA on
-/// success, \c llvm::Error on failure
+/// \returns Expects the architecture field of the LLVM target triple of the
+/// \p ISA
 [[nodiscard]] llvm::Expected<std::string>
-getISAArchitecture(hsa_isa_t ISA,
+isaGetArchitecture(hsa_isa_t ISA,
                    const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
-/// \returns the vendor field of the LLVM target triple of the \p ISA on
-/// success, \c llvm::Error on failure
+/// \returns Expects the vendor field of the LLVM target triple of the \p ISA
 [[nodiscard]] llvm::Expected<std::string>
-getISAVendor(hsa_isa_t ISA,
+isaGetVendor(hsa_isa_t ISA,
              const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
-/// \returns the OS field of the LLVM target triple of the \p ISA on success,
-/// or \c llvm::Error on failure
+/// \returns Expects the OS field of the LLVM target triple of the \p ISA
 [[nodiscard]] llvm::Expected<std::string>
-getISAOperatingSystem(hsa_isa_t ISA,
+isaGetOperatingSystem(hsa_isa_t ISA,
                       const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
 /// \returns the environment field of the LLVM target triple of the \p ISA
-/// on success, \c llvm::Error on failure
 [[nodiscard]] llvm::Expected<std::string>
-getISAEnvironment(hsa_isa_t ISA,
+isaGetEnvironment(hsa_isa_t ISA,
                   const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
-/// \returns the name of the GPU processor on success,
-/// \c llvm::Error on failure
+/// \returns the name of the GPU processor of the \p ISA
 [[nodiscard]] llvm::Expected<std::string>
-getISAGPUName(hsa_isa_t ISA,
+isaGetGPUName(hsa_isa_t ISA,
               const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
-/// \returns on success, returns \c true if the ISA enables XNACK, \c false
-/// otherwise; On failure, \c llvm::Error is returned
+/// \returns Expects \c true if the \p ISA enables XNACK, \c false
+/// otherwise
 [[nodiscard]] llvm::Expected<bool>
-doesISASupportXNACK(hsa_isa_t ISA,
-                    const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
-
-/// \returns on success, returns \c true if the \p ISA has SRAMECC, \c false
-/// otherwise; On failure, an \c llvm::Error
-[[nodiscard]] llvm::Expected<bool>
-doesISASupportSRAMECC(hsa_isa_t ISA,
-                      const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
-
-/// \returns the \c llvm::Triple of the \p ISA on success,
-/// \c llvm::Error on failure
-[[nodiscard]] llvm::Expected<llvm::Triple>
-getISATargetTriple(hsa_isa_t ISA,
+isaGetXnackSupport(hsa_isa_t ISA,
                    const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
-/// \returns the LLVM subtarget feature string of the \p ISA on success,
-/// \c llvm::Error on failure
+/// \returns Expects \c true if the \p ISA has SRAM error correction, \c false
+/// otherwise
+[[nodiscard]] llvm::Expected<bool>
+isaGetSramEcc(hsa_isa_t ISA,
+              const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
+
+/// \returns Expects the \c llvm::Triple of the \p ISA
+[[nodiscard]] llvm::Expected<llvm::Triple>
+isaGetTargetTriple(hsa_isa_t ISA,
+                   const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
+
+/// \returns Expects the LLVM subtarget feature string of the \p ISA
 [[nodiscard]] llvm::Expected<llvm::SubtargetFeatures>
-getISASubTargetFeatures(hsa_isa_t ISA,
+isaGetSubTargetFeatures(hsa_isa_t ISA,
                         const decltype(hsa_isa_get_info_alt) &HsaIsaGetInfoFn);
 
 } // namespace luthier::hsa
@@ -128,15 +120,13 @@ getISASubTargetFeatures(hsa_isa_t ISA,
 // LLVM DenseMapInfo, for insertion into LLVM-based containers
 //===----------------------------------------------------------------------===//
 
-namespace llvm {
-
-template <> struct DenseMapInfo<hsa_isa_t> {
-  static inline hsa_isa_t getEmptyKey() {
+template <> struct llvm::DenseMapInfo<hsa_isa_t> {
+  static hsa_isa_t getEmptyKey() {
     return hsa_isa_t(
         {DenseMapInfo<decltype(hsa_isa_t::handle)>::getEmptyKey()});
   }
 
-  static inline hsa_isa_t getTombstoneKey() {
+  static hsa_isa_t getTombstoneKey() {
     return hsa_isa_t(
         {DenseMapInfo<decltype(hsa_isa_t::handle)>::getTombstoneKey()});
   }
@@ -148,9 +138,7 @@ template <> struct DenseMapInfo<hsa_isa_t> {
   static bool isEqual(const hsa_isa_t &Lhs, const hsa_isa_t &Rhs) {
     return Lhs.handle == Rhs.handle;
   }
-};
-
-} // namespace llvm
+}; // namespace llvm
 
 //===----------------------------------------------------------------------===//
 // C++ std library function objects for hashing and comparison, for insertion
@@ -160,7 +148,7 @@ template <> struct DenseMapInfo<hsa_isa_t> {
 namespace std {
 
 template <> struct hash<hsa_isa_t> {
-  size_t operator()(const hsa_isa_t &Obj) const {
+  size_t operator()(const hsa_isa_t &Obj) const noexcept {
     return hash<unsigned long>()(Obj.handle);
   }
 };
