@@ -15,13 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements functionality related to the \c hsa_isa_t type in HSA.
+/// Implements functionality related to the \c hsa_isa_t type in HSA.
 //===----------------------------------------------------------------------===//
-#include "luthier/common/GenericLuthierError.h"
-
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringRef.h>
+#include <luthier/common/GenericLuthierError.h>
 #include <luthier/hsa/HsaError.h>
 #include <luthier/hsa/ISA.h>
 
