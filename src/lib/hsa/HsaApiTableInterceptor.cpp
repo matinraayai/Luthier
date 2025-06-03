@@ -13,54 +13,64 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
 /// \file
-/// This file implements the <tt>luthier::hsa::HsaApiTableInterceptor</tt>
-/// class.
+/// Implements the HsaApiTableInterceptor class.
 //===----------------------------------------------------------------------===//
-#include "hsa/HsaApiTableInterceptor.hpp"
-#include "luthier/hsa/HsaError.h"
+#include <luthier/common/ErrorCheck.h>
+#include <luthier/hsa/HsaApiTableInterceptor.h>
+#include <luthier/rocprofiler/RocprofilerError.h>
 
 namespace luthier::hsa {
 
-llvm::Error HsaApiTableInterceptor::checkApiTableCopySuccess() const {
-  const auto &[version, core_, amd_ext_, finalizer_ext_, image_ext_, tools_,
-               pc_sampling_ext_] = SavedApiTable.root;
-  /// Check if the copy was initiated in the first place
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      version.major_id, "Failed to copy the HSA API table"));
-  /// Check if the core API table was copied successfully
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      core_->version.major_id, "Failed to copy the Core HSA API table"));
-  /// Check if the AMD ext API table was copied successfully
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      amd_ext_->version.major_id, "Failed to copy the AMD Ext HSA API table"));
-  /// Check if the finalizer ext API table was copied successfully
-#if defined(HSA_FINALIZER_API_TABLE_MAJOR_VERSION)
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(finalizer_ext_->version.major_id,
-                          "Failed to copy the Finalizer Ext HSA API table"));
-#endif
-  /// Check if the Image ext API table was copied successfully
-#if defined(HSA_IMAGE_API_TABLE_MAJOR_VERSION)
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(image_ext_->version.major_id,
-                          "Failed to copy the Image Ext HSA API table"));
-#endif
+void HsaApiTableInterceptor::apiRegistrationCallback(
+    rocprofiler_intercept_table_t Type, uint64_t LibVersion,
+    uint64_t LibInstance, void **Tables, uint64_t NumTables, void *Data) {
+  /// Check for errors
+  if (NumTables != 1) {
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        llvm::make_error<rocprofiler::RocprofilerError>(
+            llvm::formatv("Expected HSA to register only a single API table, "
+                          "instead got {0}",
+                          NumTables)));
+  }
+  if (Type != ROCPROFILER_HSA_TABLE) {
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        llvm::make_error<rocprofiler::RocprofilerError>(llvm::formatv(
+            "Expected to get HSA API table, but the API table type is {0}",
+            Type)));
+  }
+  if (LibInstance != 0) {
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        llvm::make_error<rocprofiler::RocprofilerError>(llvm::formatv(
+            LibInstance == 0, "Multiple instances of HSA library.")));
+  }
+  auto *Table = static_cast<HsaApiTable *>(Tables[0]);
+  if (Table == nullptr) {
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        llvm::make_error<rocprofiler::RocprofilerError>(
+            "HSA API table is nullptr"));
+  }
 
-  /// Check if the Tool ext API table was copied successfully
-#if defined(HSA_TOOLS_API_TABLE_MAJOR_VERSION)
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      tools_->version.major_id, "Failed to copy the Tools Ext HSA API table"));
-#endif
+  auto &Interceptor = *static_cast<HsaApiTableInterceptor *>(Data);
+  LUTHIER_REPORT_FATAL_ON_ERROR(Interceptor.Callback(*Table));
+  Interceptor.WasRegCallbackInvoked = true;
+}
+llvm::Expected<std::unique_ptr<HsaApiTableInterceptor>>
+HsaApiTableInterceptor::requestApiTable(CallbackType CB) {
+  auto Out = std::make_unique<HsaApiTableInterceptor>(std::move(CB));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
+      rocprofiler_at_intercept_table_registration(
+          HsaApiTableInterceptor::apiRegistrationCallback,
+          ROCPROFILER_HSA_TABLE, Out.get()),
+      "Failed to request HSA API tables from rocprofiler-sdk"));
+  return std::move(Out);
+}
 
-  /// Check if the Tool ext API table was copied successfully
-#if defined(HSA_PC_SAMPLING_API_TABLE_MAJOR_VERSION)
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(pc_sampling_ext_->version.major_id,
-                          "Failed to copy the PC Sampling Ext HSA API table"));
-#endif
-  return llvm::Error::success();
+HsaApiTableInterceptor::~HsaApiTableInterceptor() {
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+    WasRegCallbackInvoked,
+    "HSA Api interceptor has been destroyed before rocprofiler-sdk "
+    "performed the api table registration callback"));
 }
 
 } // namespace luthier::hsa

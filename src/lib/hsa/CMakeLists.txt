@@ -4,6 +4,7 @@ add_library(LuthierHSA OBJECT
         Executable.cpp
         ExecutableSymbol.cpp
         hsa.cpp
+        HsaApiTableInterceptor.cpp
         HsaError.cpp
         HsaObjectCache.cpp
         ISA.cpp
