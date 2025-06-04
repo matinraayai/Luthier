@@ -15,11 +15,11 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implements the \c HsaCodeObjectCache singleton.
+/// Implements the \c HsaCodeObjectCache class.
 //===----------------------------------------------------------------------===//
-#include <luthier/runtime/HsaObjectCache.h>
+#include <luthier/hsa/HsaObjectCache.h>
 
-namespace luthier {
+namespace luthier::hsa {
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 HsaCodeObjectCache::getAssociatedCodeObject(
@@ -29,14 +29,14 @@ HsaCodeObjectCache::getAssociatedCodeObject(
   if (auto It = LCOToCodeObjectMap.find(LCO); It != LCOToCodeObjectMap.end())
     return *It->second.ObjectStorage;
   /// Otherwise we have to cache the LCO's object by reading its storage memory
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(HsaVenAmdLoaderLCOGetInfo != nullptr,
-                          "The hsa_ven_amd_loader_loaded_code_object_get_info "
-                          "of ToolExecutableLoader instance is nullptr."));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      UnderlyingHsaVenAmdLoaderLCOGetInfoFn != nullptr,
+      "The hsa_ven_amd_loader_loaded_code_object_get_info "
+      "of the object cache instance is nullptr."));
   llvm::ArrayRef<uint8_t> LCOStorageMemory;
-  LUTHIER_RETURN_ON_ERROR(
-      hsa::getLCOStorageMemory(LCO, *HsaVenAmdLoaderLCOGetInfo)
-          .moveInto(LCOStorageMemory));
+  LUTHIER_RETURN_ON_ERROR(hsa::loadedCodeObjectGetStorageMemory(
+                              LCO, *UnderlyingHsaVenAmdLoaderLCOGetInfoFn)
+                              .moveInto(LCOStorageMemory));
   /// Calculate the hash of the LCO storage
   size_t StorageHash =
       llvm::DenseMapInfo<llvm::ArrayRef<uint8_t>>::getHashValue(
@@ -57,4 +57,4 @@ HsaCodeObjectCache::getAssociatedCodeObject(
   LCOToCodeObjectMap.insert({LCO, *ObjIter->getSecond()});
   return *ObjIter->getSecond()->ObjectStorage;
 }
-} // namespace luthier
+} // namespace luthier::hsa

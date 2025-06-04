@@ -17,10 +17,12 @@
 /// \file
 /// Describes the \c HsaCodeObjectCache singleton, in charge of caching a copy
 /// of the ELF code objects of \c hsa_loaded_code_object_t right after they
-/// are created.
+/// are created by the HSA runtime.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_RUNTIME_HSA_OBJECT_CACHE_H
-#define LUTHIER_RUNTIME_HSA_OBJECT_CACHE_H
+#ifndef LUTHIER_HSA_HSA_OBJECT_CACHE_H
+#define LUTHIER_HSA_HSA_OBJECT_CACHE_H
+#include "HsaError.h"
+
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseMap.h>
 #include <luthier/common/Singleton.h>
@@ -29,54 +31,61 @@
 #include <luthier/hsa/HsaApiTableInterceptor.h>
 #include <luthier/hsa/LoadedCodeObject.h>
 
-namespace luthier {
+namespace luthier::hsa {
 
+/// \brief Interface for a component in charge of caching HSA code objects
+/// once they get loaded into HSA and invalidate them once they are unloaded
 class HsaCodeObjectCache {
 protected:
   decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-      *HsaVenAmdLoaderLCOGetInfo = nullptr;
+      *UnderlyingHsaVenAmdLoaderLCOGetInfoFn = nullptr;
 
   decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-      *UnderlyingHsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn = nullptr;
+      *UnderlyingHsaVenAmdLoaderExecutableIterateLCOsFn = nullptr;
 
   std::mutex Mutex;
 
   /// We store the object and its use count in a unique pointer to this struct.
   /// This is so that the \c LCOToCodeObjectMap can reference it directly
-  /// without storing iterators that can be invalidated at any given time
-
+  /// without storing denese map iterators that can be invalidated at any given
+  /// time
   struct ObjectStorageEntry {
     /// Where the object is actually stored; We use a unique pointer to store
     /// the vector here to avoid any issues with the move constructor of
     /// the entry struct (even if we're only storing unique pointer of the
     /// entry struct anyway)
-    std::unique_ptr<std::vector<uint8_t>> ObjectStorage;
+    std::unique_ptr<std::vector<uint8_t>> ObjectStorage{nullptr};
     /// Number of LCOs that have this same object; This is so that in multi-gpu
     /// systems we don't store redundant objects that were loaded on multiple
     /// devices
-    size_t UseCount;
+    size_t UseCount{};
     /// Hash of the object; Besides being the key in \c
     /// HashToCodeObjectAndUsageMap we also store it here for quick invalidation
     /// of the entry (i.e. when the \c UseCount of this object reaches zero)
-    size_t Hash;
+    size_t Hash{};
   };
 
   /// Mapping between the hash of the code object to storage entry
   mutable llvm::DenseMap<size_t, std::unique_ptr<ObjectStorageEntry>>
-      HashToCodeObjectAndUsageMap;
+      HashToCodeObjectAndUsageMap{};
 
   /// Mapping between the \c hsa_loaded_code_object_t and its associated
   /// cached object entry
   mutable llvm::DenseMap<hsa_loaded_code_object_t, ObjectStorageEntry &>
-      LCOToCodeObjectMap;
+      LCOToCodeObjectMap{};
 
-public:
   HsaCodeObjectCache() = default;
 
+  virtual ~HsaCodeObjectCache() = default;
+
+public:
   /// Queries and returns the associated object with the <tt>LCO</tt>. If
   /// for whatever reason, the object is not found in the cache, attempts to
   /// obtain and cache it by reading the storage memory of the \p LCO via
-  /// the AMD Loader API
+  /// the AMD Loader API before giving up
+  /// \return Expects the code object associated with the <tt>LCO</tt>; If
+  /// fails to find the associated function, an \c llvm::Error is returned
+  /// instead
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
   getAssociatedCodeObject(hsa_loaded_code_object_t LCO) const;
 };
@@ -87,11 +96,8 @@ class ROCPROFILER_HIDDEN_API HsaCodeObjectCacheInstance
       Singleton<HsaCodeObjectCacheInstance<Idx>> {
 private:
   std::mutex Mutex;
-  /// Provides the HSA API table to the loader so that it can obtain the
-  /// underlying HSA functions and install wrappers over them
-  const std::unique_ptr<
-      hsa::HsaApiTableInterceptor<std::function<void(HsaApiTable &)>>>
-      HsaApiTableInterceptor;
+
+  const std::unique_ptr<HsaApiTableInterceptor> HsaApiTableInterceptor;
 
   static ROCPROFILER_HIDDEN_API decltype(hsa_executable_load_agent_code_object)
       *UnderlyingHsaExecutableLoadAgentCodeObjectFn;
@@ -108,52 +114,61 @@ private:
   static ROCPROFILER_HIDDEN_API hsa_status_t
   hsaExecutableDestroyWrapper(hsa_executable_t Executable);
 
+  HsaCodeObjectCacheInstance() = default;
+
 public:
-  static llvm::Expected<std::unique_ptr<HsaCodeObjectCache>> create() {
+  static llvm::Expected<std::unique_ptr<HsaCodeObjectCacheInstance>> create() {
 
     auto Out = std::make_unique<HsaCodeObjectCacheInstance>();
 
     auto HsaApiTableInterceptorOrErr =
-        hsa::HsaApiTableInterceptor<std::function<void(HsaApiTable &)>>::
-            requestApiTable([ObjectCache = Out.get()](::HsaApiTable &Table) {
-              /// Save the needed underlying function
-              UnderlyingHsaExecutableLoadAgentCodeObjectFn =
-                  Table.core_->hsa_executable_load_agent_code_object_fn;
-              UnderlyingHsaExecutableDestroyFn =
-                  Table.core_->hsa_executable_destroy_fn;
+        hsa::HsaApiTableInterceptor::requestApiTable([ObjectCache = Out.get()](
+                                                         ::HsaApiTable &Table) {
+          /// Save the needed underlying function
+          UnderlyingHsaExecutableLoadAgentCodeObjectFn =
+              Table.core_->hsa_executable_load_agent_code_object_fn;
+          UnderlyingHsaExecutableDestroyFn =
+              Table.core_->hsa_executable_destroy_fn;
 
-              /// Save all required loader functions
-              hsa_ven_amd_loader_1_03_pfn_t LoaderTable;
-              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-                  Table.core_->hsa_system_get_major_extension_table_fn(
-                      HSA_EXTENSION_AMD_LOADER, 1,
-                      sizeof(hsa_ven_amd_loader_1_03_pfn_t), &LoaderTable)));
-              ObjectCache.HsaVenAmdLoaderLCOGetInfo =
-                  LoaderTable.hsa_ven_amd_loader_loaded_code_object_get_info;
-              /// Install wrappers
-              Table.core_->hsa_executable_load_agent_code_object_fn =
-                  hsaExecutableLoadAgentCodeObjectWrapper;
-              Table.core_->hsa_executable_destroy_fn =
-                  hsaExecutableDestroyWrapper;
-            });
+          /// Save all required loader functions
+          hsa_ven_amd_loader_1_03_pfn_t LoaderTable;
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+              Table.core_->hsa_system_get_major_extension_table_fn(
+                  HSA_EXTENSION_AMD_LOADER, 1,
+                  sizeof(hsa_ven_amd_loader_1_03_pfn_t), &LoaderTable),
+              "Failed to get the AMD loader table"));
+          ObjectCache.UnderlyingHsaVenAmdLoaderLCOGetInfoFn =
+              LoaderTable.hsa_ven_amd_loader_loaded_code_object_get_info;
+          ObjectCache.UnderlyingHsaVenAmdLoaderExecutableIterateLCOsFn =
+              LoaderTable
+                  .hsa_ven_amd_loader_executable_iterate_loaded_code_objects;
+          /// Install wrappers
+          Table.core_->hsa_executable_load_agent_code_object_fn =
+              hsaExecutableLoadAgentCodeObjectWrapper;
+          Table.core_->hsa_executable_destroy_fn = hsaExecutableDestroyWrapper;
+          return llvm::Error::success();
+        });
     LUTHIER_RETURN_ON_ERROR(HsaApiTableInterceptorOrErr.takeError());
 
     Out->HsaApiTableInterceptor = std::move(*HsaApiTableInterceptorOrErr);
     return Out;
   }
+
+  ~HsaCodeObjectCacheInstance() override = default;
 };
 
 template <size_t Idx>
 hsa_status_t
 HsaCodeObjectCacheInstance<Idx>::hsaExecutableLoadAgentCodeObjectWrapper(
-    hsa_executable_t Executable, hsa_agent_t Agent,
-    hsa_code_object_reader_t CodeObjectReader, const char *Options,
+    const hsa_executable_t Executable, const hsa_agent_t Agent,
+    const hsa_code_object_reader_t CodeObjectReader, const char *Options,
     hsa_loaded_code_object_t *LoadedCodeObject) {
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       UnderlyingHsaExecutableLoadAgentCodeObjectFn != nullptr,
-      "The underlying hsa_executable_load_agent_code_object function of "
-      "HsaCodeObjectCache instance {0} is nullptr.",
-      Idx));
+      llvm::formatv(
+          "The underlying hsa_executable_load_agent_code_object function of "
+          "HsaCodeObjectCache instance {0} is nullptr.",
+          Idx)));
   hsa_loaded_code_object_t LCO;
   /// Call the underlying function
   hsa_status_t Out = UnderlyingHsaExecutableLoadAgentCodeObjectFn(
@@ -183,11 +198,11 @@ template <size_t Idx>
 hsa_status_t HsaCodeObjectCacheInstance<Idx>::hsaExecutableDestroyWrapper(
     hsa_executable_t Executable) {
   /// Check if the underlying function is nullptr
-  LUTHIER_REPORT_FATAL_ON_ERROR(
-      LUTHIER_ERROR_CHECK(UnderlyingHsaExecutableDestroyFn != nullptr,
-                          "The underlying hsa_executable_destroy function of "
-                          "HsaCodeObjectCache instance {0} is nullptr.",
-                          Idx));
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      UnderlyingHsaExecutableDestroyFn != nullptr,
+      llvm::formatv("The underlying hsa_executable_destroy function of "
+                    "HsaCodeObjectCache instance {0} is nullptr.",
+                    Idx)));
   /// Quick exit to the underlying function if the singleton instance is not
   /// initialized
   if (!HsaCodeObjectCacheInstance::isInitialized())
@@ -197,7 +212,7 @@ hsa_status_t HsaCodeObjectCacheInstance<Idx>::hsaExecutableDestroyWrapper(
 
   /// Obtain the loaded code objects of the executable
   llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
-  LUTHIER_REPORT_FATAL_ON_ERROR(hsa::getExecLoadedCodeObjects(
+  LUTHIER_REPORT_FATAL_ON_ERROR(hsa::loadedCodeObjectGetExecutable(
       Executable,
       ObjectCache.UnderlyingHsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
       LCOs));
@@ -230,10 +245,6 @@ hsa_status_t HsaCodeObjectCacheInstance<Idx>::hsaExecutableDestroyWrapper(
 }
 
 template <size_t Idx>
-HsaCodeObjectCacheInstance<Idx>
-    *Singleton<HsaCodeObjectCacheInstance<Idx>>::Instance{nullptr};
-
-template <size_t Idx>
 decltype(hsa_executable_load_agent_code_object) *HsaCodeObjectCacheInstance<
     Idx>::UnderlyingHsaExecutableLoadAgentCodeObjectFn = nullptr;
 
@@ -241,6 +252,6 @@ template <size_t Idx>
 decltype(hsa_executable_destroy) *
     HsaCodeObjectCacheInstance<Idx>::UnderlyingHsaExecutableDestroyFn = nullptr;
 
-} // namespace luthier
+} // namespace luthier::hsa
 
 #endif
