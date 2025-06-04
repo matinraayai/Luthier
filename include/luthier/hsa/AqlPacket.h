@@ -15,9 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the \c luthier::hsa::AqlPacket struct,
-/// a plain-old-data struct that provides an abstraction over the
-/// HSA AQL packet.
+/// Describes the \c hsa::AqlPacket struct, a plain-old-data (POD) struct
+/// that provides a convenient abstraction over the HSA AQL packet.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_AQL_PACKET_H
 #define LUTHIER_HSA_AQL_PACKET_H
