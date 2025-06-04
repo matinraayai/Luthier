@@ -20,8 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
 #define LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
-#include "luthier/types.h"
-#include <cstdint>
+#include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
 
 namespace luthier::hsa {
@@ -129,7 +128,7 @@ struct KernelDescriptor {
 
   /// \return the entrypoint of the kernel machine code i.e. the address of the
   /// first instruction of the kernel
-  [[nodiscard]] luthier::address_t getEntryPoint() const;
+  [[nodiscard]] uint64_t getEntryPoint() const;
 
   /// Returns a pointer to the kernel descriptor, given the kernel object
   /// field of the kernel dispatch packet
@@ -138,10 +137,21 @@ struct KernelDescriptor {
   /// \return the kernel descriptor of the <tt>KernelObject</tt>
   static const KernelDescriptor *fromKernelObject(uint64_t KernelObject);
 
-  /// \return a const reference to the KD's \c hsa::LoadedCodeObjectKernel on
-  /// success, or an \c llvm::Error if the KD is invalid
-  [[nodiscard]] llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
-  getLoadedCodeObjectKernelSymbol() const;
+  /// \return Expects the executable, loaded code object and the executable
+  /// symbol of the kernel descriptor on success; \c llvm::Error is returned
+  /// if the kernel descriptor is invalid or if an HSA issue is encountered
+  [[nodiscard]] llvm::Expected<std::tuple<
+      hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
+  getExecutableDefinition(
+      const decltype(hsa_ven_amd_loader_query_executable)
+          &HsaVenAmdLoaderQueryExecutableFn,
+      const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
+          &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
+      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+      decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+      const decltype(hsa_executable_symbol_get_info)
+          &HsaExecutableSymbolGetInfoFn) const;
 };
 } // namespace luthier::hsa
 

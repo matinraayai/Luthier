@@ -15,14 +15,17 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the HSA kernel descriptor POD struct methods.
+/// Implements the HSA kernel descriptor POD struct methods.
 //===----------------------------------------------------------------------===//
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
+#include <luthier/common/ErrorCheck.h>
+#include <luthier/common/GenericLuthierError.h>
+#include <luthier/hsa/Executable.h>
+#include <luthier/hsa/ExecutableSymbol.h>
+#include <luthier/hsa/HsaError.h>
 #include <luthier/hsa/KernelDescriptor.h>
-#include <luthier/hsa/LoadedCodeObjectKernel.h>
+#include <luthier/hsa/LoadedCodeObject.h>
 
 namespace luthier::hsa {
 
@@ -210,34 +213,75 @@ KernelDescriptor::getKernelCodeProperties() const {
   return Out;
 }
 
-address_t KernelDescriptor::getEntryPoint() const {
-  return reinterpret_cast<address_t>(this) + this->KernelCodeEntryByteOffset;
+uint64_t KernelDescriptor::getEntryPoint() const {
+  return reinterpret_cast<uint64_t>(this) + this->KernelCodeEntryByteOffset;
 }
 const KernelDescriptor *
 KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
   return reinterpret_cast<KernelDescriptor *>(KernelObject);
 }
 
-llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
-KernelDescriptor::getLoadedCodeObjectKernelSymbol() const {
-  auto Symbol = LoadedCodeObjectKernel::fromLoadedAddress(
-      reinterpret_cast<luthier::address_t>(this));
-  LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      *Symbol != nullptr,
-      "Failed to locate the symbol associated with loaded address {0:x}.",
-      reinterpret_cast<luthier::address_t>(this)));
+llvm::Expected<std::tuple<hsa_executable_t, hsa_loaded_code_object_t,
+                          hsa_executable_symbol_t>>
+KernelDescriptor::getExecutableDefinition(
+    const decltype(hsa_ven_amd_loader_query_executable)
+        &HsaVenAmdLoaderQueryExecutableFn,
+    const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
+        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    const decltype(hsa_executable_symbol_get_info)
+        &HsaExecutableSymbolGetInfoFn) const {
+  hsa_executable_t Executable;
+  // Check which executable this kernel object (address) belongs to
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      HsaVenAmdLoaderQueryExecutableFn(reinterpret_cast<const void *>(this),
+                                       &Executable),
+      llvm::formatv("Failed to get the executable associated with KD {0:x}.",
+                    this)));
+  // Iterate over the LCOs and find the symbol that matches the kernel
+  // descriptor address
+  llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
+  auto KDAddress = reinterpret_cast<uint64_t>(this);
+  LUTHIER_RETURN_ON_ERROR(hsa::executableGetLoadedCodeObjects(
+      Executable, HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn, LCOs));
 
-  std::unique_ptr<LoadedCodeObjectKernel> KernelSymbol =
-      llvm::unique_dyn_cast<LoadedCodeObjectKernel>(*Symbol);
-  if (!KernelSymbol) {
-    auto SymbolName = (*Symbol)->getName();
-    LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
-    return LUTHIER_CREATE_ERROR(
-        "Found symbol {0} at address {1:x} but it is not a kernel.",
-        *SymbolName, reinterpret_cast<luthier::address_t>(this));
+  for (const auto &LCO : LCOs) {
+    // Get the agent of the current LCO
+    llvm::Expected<hsa_agent_t> AgentOrErr = hsa::loadedCodeObjectGetAgent(
+        LCO, HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+    LUTHIER_RETURN_ON_ERROR(AgentOrErr.takeError());
+    // Find the first executable that matches the address of the KD
+    llvm::Expected<std::optional<hsa_executable_symbol_t>>
+        KDSymbolIfPresentOrErr = hsa::executableFindFirstAgentSymbol(
+            Executable, SymbolIterFn, *AgentOrErr,
+            [&](hsa_executable_symbol_t S) -> llvm::Expected<bool> {
+              llvm::Expected<uint64_t> SymAddrOrErr =
+                  hsa::executableSymbolGetAddress(S,
+                                                  HsaExecutableSymbolGetInfoFn);
+              LUTHIER_RETURN_ON_ERROR(SymAddrOrErr.takeError());
+              return *SymAddrOrErr == KDAddress;
+            });
+    LUTHIER_RETURN_ON_ERROR(KDSymbolIfPresentOrErr.takeError());
+    if (KDSymbolIfPresentOrErr->has_value()) {
+      hsa_executable_symbol_t KDSymbol = **KDSymbolIfPresentOrErr;
+      hsa_symbol_kind_t SymbolKind;
+      LUTHIER_RETURN_ON_ERROR(
+          hsa::executableSymbolGetType(KDSymbol, HsaExecutableSymbolGetInfoFn)
+              .moveInto(SymbolKind));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+          SymbolKind == HSA_SYMBOL_KIND_KERNEL,
+          llvm::formatv("Found HSA executable symbol handle {0:x} to be loaded "
+                        "at address "
+                        "{1:x} but it is not a kernel descriptor",
+                        KDSymbol.handle, KDAddress)));
+      return std::make_tuple(Executable, LCO, KDSymbol);
+    }
   }
-  return KernelSymbol;
+  return llvm::make_error<hsa::HsaError>(llvm::formatv(
+      "Failed to find the executable definition of Kernel Descriptor {0:x}",
+      KDAddress));
 }
 
 } // namespace luthier::hsa
