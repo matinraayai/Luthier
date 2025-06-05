@@ -19,6 +19,7 @@
 #include <luthier/common/ErrorCheck.h>
 #include <luthier/hsa/HsaApiTableInterceptor.h>
 #include <luthier/rocprofiler/RocprofilerError.h>
+#include <rocprofiler-sdk/registration.h>
 
 namespace luthier::hsa {
 
@@ -67,8 +68,12 @@ HsaApiTableInterceptor::requestApiTable(CallbackType CB) {
 }
 
 HsaApiTableInterceptor::~HsaApiTableInterceptor() {
+  int RocprofilerFiniStatus;
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
+      rocprofiler_is_finalized(&RocprofilerFiniStatus),
+      "Failed to check if rocprofiler is finalized."));
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-    WasRegCallbackInvoked,
+    WasRegCallbackInvoked || RocprofilerFiniStatus != 0,
     "HSA Api interceptor has been destroyed before rocprofiler-sdk "
     "performed the api table registration callback"));
 }

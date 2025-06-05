@@ -111,6 +111,9 @@ public:
   }
 
   [[nodiscard]] const ::HsaApiTable &getSnapshot() const {
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        IsSnapshotInitialized,
+        "The HSA API table snapshot has not been initialized"));
     return ApiTable.root;
   }
 
