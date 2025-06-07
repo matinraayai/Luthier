@@ -15,31 +15,78 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Describes the \c HsaPacketMonitor singleton, in charge of monitoring
-/// packets submitted to all devices at runtime, modifying them, and providing
-/// event handlers to wait on packet's doorbells.
+/// Describes the \c PacketMonitor interface and its instance singleton, in
+/// charge of monitoring packets submitted to all devices at runtime, modifying
+/// them, and providing event handlers to wait on packet's doorbells.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_RUNTIME_HSA_PACKET_MONITOR_H
-#define LUTHIER_RUNTIME_HSA_PACKET_MONITOR_H
-#include "HsaError.h"
-
+#ifndef LUTHIER_HSA_PACKET_MONITOR_H
+#define LUTHIER_HSA_PACKET_MONITOR_H
 #include <hsa/hsa_api_trace.h>
+#include <hsa/hsa_ven_amd_loader.h>
 #include <luthier/common/Singleton.h>
+#include <luthier/hsa/ApiTable.h>
 #include <luthier/hsa/AqlPacket.h>
-#include <luthier/hsa/HsaApiTableInterceptor.h>
+#include <luthier/hsa/HsaError.h>
 
 namespace luthier::hsa {
 
-template <size_t Idx>
-class ROCPROFILER_HIDDEN_API HsaPacketMonitorInstance
-    : public Singleton<HsaPacketMonitorInstance<Idx>> {
-private:
-  std::function<void(const hsa_queue_t &, uint64_t,
-                     llvm::ArrayRef<hsa::AqlPacket>,
-                     hsa_amd_queue_intercept_packet_writer)>
-      CB;
+class PacketMonitor {
+protected:
+  const hsa::ApiTableSnapshot &HsaApiTable;
 
-  const std::unique_ptr<HsaApiTableInterceptor> HsaApiTableInterceptor;
+  const std::unique_ptr<hsa::ApiTableRegistrationCallbackProvider>
+      LoaderTableCallback;
+
+  std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t> LoaderTable{nullptr};
+
+  explicit PacketMonitor(const hsa::ApiTableSnapshot &HsaApiTable,
+                         llvm::Error &Err)
+      : HsaApiTable(HsaApiTable),
+        LoaderTableCallback([&] -> decltype(LoaderTableCallback) {
+          auto LoaderTableCallbackOrErr =
+              hsa::ApiTableRegistrationCallbackProvider::requestCallback(
+                  [&](const ::HsaApiTable &) {
+                    LoaderTable =
+                        std::make_unique<hsa_ven_amd_loader_1_03_pfn_t>();
+                    /// Save all required loader functions
+                    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+                        HsaApiTable.getFunction<
+                            &::CoreApiTable::
+                                hsa_system_get_major_extension_table_fn>()(
+                            HSA_EXTENSION_AMD_LOADER, 1,
+                            sizeof(hsa_ven_amd_loader_1_03_pfn_t),
+                            &LoaderTable),
+                        "Failed to get the AMD loader table"));
+                  });
+          Err = LoaderTableCallbackOrErr.takeError();
+          if (Err) {
+            Err = std::move(Err);
+            return nullptr;
+          }
+          return std::move(*LoaderTableCallbackOrErr);
+        }()) {};
+
+public:
+  /// \return the executable, the loaded code object, and the executable
+  /// symbol associated with the \p KernelObject
+  [[nodiscard]] llvm::Expected<std::tuple<
+      hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
+  getKernelObjectDefinition(uint64_t KernelObject) const;
+};
+
+template <size_t Idx>
+class ROCPROFILER_HIDDEN_API PacketMonitorInstance
+    : public PacketMonitor,
+      public Singleton<PacketMonitorInstance<Idx>> {
+private:
+  typedef std::function<void(const hsa_queue_t &, uint64_t,
+                             llvm::ArrayRef<hsa::AqlPacket>,
+                             hsa_amd_queue_intercept_packet_writer)>
+      CallbackType;
+
+  CallbackType CB;
+
+  const std::unique_ptr<ApiTableWrapperInstaller> HsaApiTableInterceptor;
 
   static ROCPROFILER_HIDDEN_API decltype(hsa_queue_create)
       *UnderlyingHsaQueueCreateFn;
@@ -59,41 +106,44 @@ private:
       hsa_queue_t **Queue);
 
   static ROCPROFILER_HIDDEN_API void
-  InterceptQueuePacketHandler(const void *Packets, uint64_t PacketCount,
+  interceptQueuePacketHandler(const void *Packets, uint64_t PacketCount,
                               uint64_t UserPacketIdx, void *Data,
                               hsa_amd_queue_intercept_packet_writer Writer);
 
+  PacketMonitorInstance(const hsa::ApiTableSnapshot &HsaApiTableSnapshot,
+                        llvm::Error &Err)
+      : PacketMonitor(HsaApiTableSnapshot, Err),
+        HsaApiTableInterceptor([&] -> decltype(HsaApiTableInterceptor) {
+          auto WrapperInstallerOrErr =
+              hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
+                  {&::CoreApiTable::hsa_queue_create_fn,
+                   UnderlyingHsaQueueCreateFn, hsaQueueCreateWrapper});
+          Err = WrapperInstallerOrErr.takeError();
+          if (Err) {
+            Err = std::move(Err);
+            return nullptr;
+          }
+          return std::move(*WrapperInstallerOrErr);
+        }()) {};
+
 public:
-  static llvm::Expected<std::unique_ptr<HsaPacketMonitorInstance>> create() {
-    auto Out = std::make_unique<HsaPacketMonitorInstance>();
+  static llvm::Expected<std::unique_ptr<PacketMonitorInstance>>
+  create(const hsa::ApiTableSnapshot &HsaApiTable) {
+    llvm::Error Err = llvm::Error::success();
+    auto Out = std::make_unique<PacketMonitorInstance>(HsaApiTable, Err);
+    if (Err)
+      return std::move(Err);
 
-    auto HsaApiTableInterceptorOrErr =
-        hsa::HsaApiTableInterceptor::requestApiTable(
-            [PacketMonitor = Out.get()](::HsaApiTable &Table) {
-              /// Save the needed underlying function
-              UnderlyingHsaQueueCreateFn = Table.core_->hsa_queue_create_fn;
-              PacketMonitor->UnderlyingHsaAmdQueueInterceptCreateFn =
-                  Table.amd_ext_->hsa_amd_queue_intercept_create_fn;
-              PacketMonitor->UnderlyingHsaAmdQueueInterceptRegisterFn =
-                  Table.amd_ext_->hsa_amd_queue_intercept_register_fn;
-              PacketMonitor->UnderlyingHsaQueueDestroyFn =
-                  Table.core_->hsa_queue_destroy_fn;
-              /// Install wrappers
-              Table.core_->hsa_queue_create_fn = hsaQueueCreateWrapper;
-            });
-    LUTHIER_RETURN_ON_ERROR(HsaApiTableInterceptorOrErr.takeError());
-
-    Out->HsaApiTableInterceptor = std::move(*HsaApiTableInterceptorOrErr);
     return Out;
   }
 };
 
 template <size_t Idx>
 decltype(hsa_queue_create)
-    *HsaPacketMonitorInstance<Idx>::UnderlyingHsaQueueCreateFn = nullptr;
+    *PacketMonitorInstance<Idx>::UnderlyingHsaQueueCreateFn = nullptr;
 
 template <size_t Idx>
-hsa_status_t HsaPacketMonitorInstance<Idx>::hsaQueueCreateWrapper(
+hsa_status_t PacketMonitorInstance<Idx>::hsaQueueCreateWrapper(
     hsa_agent_t Agent, uint32_t Size, hsa_queue_type32_t Type,
     void (*Callback)(hsa_status_t, hsa_queue_t *, void *), void *Data,
     uint32_t PrivateSegmentSize, uint32_t GroupSegmentSize,
@@ -110,10 +160,10 @@ hsa_status_t HsaPacketMonitorInstance<Idx>::hsaQueueCreateWrapper(
                                  PrivateSegmentSize, GroupSegmentSize, Queue);
   /// If the packet monitor is not initialized or if the queue creation
   /// encountered an issue, then return right away
-  if (!HsaPacketMonitorInstance::isInitialized() || Out != HSA_STATUS_SUCCESS) {
+  if (!PacketMonitorInstance::isInitialized() || Out != HSA_STATUS_SUCCESS) {
     return Out;
   }
-  auto &PacketMonitor = HsaPacketMonitorInstance::instance();
+  auto &PacketMonitor = PacketMonitorInstance::instance();
   /// Make sure the intercept queue creation and event handler register
   /// functions are not nullptr
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
@@ -128,21 +178,26 @@ hsa_status_t HsaPacketMonitorInstance<Idx>::hsaQueueCreateWrapper(
                     Idx)));
 
   /// Try to install an event handler on the newly created queue
-  hsa_status_t EventHandlerStatus =
-      PacketMonitor.UnderlyingHsaAmdQueueInterceptRegister(
-          *Queue, InterceptQueuePacketHandler, *Queue);
+  const hsa_status_t EventHandlerStatus =
+      PacketMonitor.HsaApiTable.template getFunction<
+          &::AmdExtTable::hsa_amd_queue_intercept_register_fn>()(
+          *Queue, interceptQueuePacketHandler, *Queue);
   /// If we fail to install an event handler, the queue was
   /// a normal queue; Destroy it, and recreate an intercept queue in its place
   if (EventHandlerStatus == HSA_STATUS_ERROR_INVALID_QUEUE) {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-        PacketMonitor.UnderlyingHsaQueueDestroyFn(*Queue)));
+        PacketMonitor.HsaApiTable
+            .template getFunction<&::CoreApiTable::hsa_queue_destroy_fn>()(
+                *Queue)));
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-        PacketMonitor.UnderlyingHsaAmdQueueInterceptCreateFn(
+        PacketMonitor.template getFunction<
+            &::AmdExtTable::hsa_amd_queue_intercept_create_fn>()(
             Agent, Size, Type, Callback, Data, PrivateSegmentSize,
             GroupSegmentSize, Queue)));
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        PacketMonitor.UnderlyingHsaAmdQueueInterceptRegister(
-            *Queue, InterceptQueuePacketHandler, *Queue));
+        PacketMonitor.template getFunction<
+            &::AmdExtTable::hsa_amd_queue_intercept_register_fn>()(
+            *Queue, interceptQueuePacketHandler, *Queue));
   } else {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
         EventHandlerStatus, "Failed to install HSA queue intercept handler to "
@@ -152,16 +207,16 @@ hsa_status_t HsaPacketMonitorInstance<Idx>::hsaQueueCreateWrapper(
 }
 
 template <size_t Idx>
-void HsaPacketMonitorInstance<Idx>::InterceptQueuePacketHandler(
+void PacketMonitorInstance<Idx>::interceptQueuePacketHandler(
     const void *Packets, uint64_t PacketCount, uint64_t UserPacketIdx,
     void *Data, hsa_amd_queue_intercept_packet_writer Writer) {
   // Call the writer directly and return if the packet monitor is not
   // initialized
-  if (!HsaPacketMonitorInstance::isInitialized()) {
+  if (!PacketMonitorInstance::isInitialized()) {
     Writer(Packets, PacketCount);
     return;
   }
-  auto &PacketMonitor = HsaPacketMonitorInstance::instance();
+  auto &PacketMonitor = PacketMonitorInstance::instance();
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Data != nullptr, "Failed to get the queue used to dispatch packets."));
   auto &Queue = *static_cast<hsa_queue_t *>(Data);
@@ -171,6 +226,9 @@ void HsaPacketMonitorInstance<Idx>::InterceptQueuePacketHandler(
       llvm::ArrayRef(static_cast<const AqlPacket *>(Packets), PacketCount),
       Writer);
 }
+
+#define LUTHIER_CREATE_NEW_PACKET_MONITOR_INSTANCE(...)                        \
+  luthier::hsa::PacketMonitorInstance<__COUNTER__>(__VA_ARGS__)
 
 } // namespace luthier::hsa
 
