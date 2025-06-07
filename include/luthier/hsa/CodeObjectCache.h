@@ -84,6 +84,7 @@ protected:
           auto LoaderApiCallbackOrErr =
               ApiTableRegistrationCallbackProvider::requestCallback(
                   [&](const ::HsaApiTable &) {
+                    std::lock_guard Lock(Mutex);
                     LoaderTable =
                         std::make_unique<hsa_ven_amd_loader_1_03_pfn_t>();
                     /// Save all required loader functions
@@ -93,7 +94,7 @@ protected:
                                 hsa_system_get_major_extension_table_fn>()(
                             HSA_EXTENSION_AMD_LOADER, 1,
                             sizeof(hsa_ven_amd_loader_1_03_pfn_t),
-                            &LoaderTable),
+                            LoaderTable.get()),
                         "Failed to get the AMD loader table"));
                   });
           Err = LoaderApiCallbackOrErr.takeError();
