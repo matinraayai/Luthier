@@ -7,7 +7,7 @@ add_library(LuthierHSA OBJECT
         ExecutableSymbol.cpp
         hsa.cpp
         HsaError.cpp
-        HsaPacketMonitor.cpp
+        PacketMonitor.cpp
         ISA.cpp
         KernelDescriptor.cpp
         LoadedCodeObject.cpp
