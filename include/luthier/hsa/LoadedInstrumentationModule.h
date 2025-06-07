@@ -24,7 +24,7 @@
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
-#include <luthier/tooling/InstrumentationModule.h>
+#include <luthier/instrumentation/InstrumentationModule.h>
 
 namespace luthier::hsa {
 
