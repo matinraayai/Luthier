@@ -294,21 +294,23 @@ private:
   void installWrapperEntry(
       ::HsaApiTable &Table,
       const std::tuple<decltype(Func), auto *&, auto &> &WrapperSpec) {
-    auto &[ExtTable, ExtEntry, UnderlyingStoreLocation, WrapperFunc] =
-        WrapperSpec;
-    if (!tableHasEntry(Table, ExtTable)) {
+    auto &[FuncEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
+    using ExtTableType = typename remove_member_pointer<decltype(Func)>::outer;
+    auto constexpr ExtTableRootAccessor =
+        typename ApiTableInfo<ExtTableType>::PointerToMemberRootAccessor;
+    if (!apiTableHasEntry<ExtTableRootAccessor>(Table)) {
       LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HsaError>(llvm::formatv(
           "Failed to find entry inside the HSA API table at offset {0:x}.",
-          static_cast<size_t>(&(Table.*ExtTable)))));
+          static_cast<size_t>(&(Table.*ExtTableRootAccessor)))));
     }
-    if (!tableHasEntry(Table.*ExtTable, ExtEntry)) {
-      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HsaError>(
-          llvm::formatv("Failed to find entry inside the HSA "
-                        "extension table at offset {0:x}",
-                        static_cast<size_t>(&(Table.*ExtTable.*ExtEntry)))));
+    if (!apiTableHasEntry<FuncEntry>(Table.*ExtTableRootAccessor)) {
+      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HsaError>(llvm::formatv(
+          "Failed to find entry inside the HSA "
+          "extension table at offset {0:x}",
+          static_cast<size_t>(&(Table.*ExtTableRootAccessor->*FuncEntry)))));
     }
-    UnderlyingStoreLocation = Table.*ExtTable->*ExtEntry;
-    Table.*ExtTable->*ExtEntry = WrapperFunc;
+    UnderlyingStoreLocation = Table.*ExtTableRootAccessor->*FuncEntry;
+    Table.*ExtTableRootAccessor->*FuncEntry = WrapperFunc;
   }
 
 public:
