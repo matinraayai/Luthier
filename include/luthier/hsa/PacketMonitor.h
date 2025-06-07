@@ -91,14 +91,6 @@ private:
   static ROCPROFILER_HIDDEN_API decltype(hsa_queue_create)
       *UnderlyingHsaQueueCreateFn;
 
-  decltype(hsa_amd_queue_intercept_create)
-      *UnderlyingHsaAmdQueueInterceptCreateFn = nullptr;
-
-  decltype(hsa_amd_queue_intercept_register)
-      *UnderlyingHsaAmdQueueInterceptRegisterFn = nullptr;
-
-  decltype(hsa_queue_destroy) *UnderlyingHsaQueueDestroyFn = nullptr;
-
   static ROCPROFILER_HIDDEN_API hsa_status_t hsaQueueCreateWrapper(
       hsa_agent_t Agent, uint32_t Size, hsa_queue_type32_t Type,
       void (*Callback)(hsa_status_t Status, hsa_queue_t *Source, void *Data),
@@ -164,18 +156,6 @@ hsa_status_t PacketMonitorInstance<Idx>::hsaQueueCreateWrapper(
     return Out;
   }
   auto &PacketMonitor = PacketMonitorInstance::instance();
-  /// Make sure the intercept queue creation and event handler register
-  /// functions are not nullptr
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      PacketMonitor.UnderlyingHsaAmdQueueInterceptCreateFn != nullptr,
-      llvm::formatv("The underlying hsa_amd_queue_intercept_create "
-                    "function of hsaPacketMonitorInstance {0} is nullptr",
-                    Idx)));
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
-      PacketMonitor.UnderlyingHsaAmdQueueInterceptRegister != nullptr,
-      llvm::formatv("The underlying hsa_amd_queue_intercept_register "
-                    "function of hsaPacketMonitorInstance {0} is nullptr",
-                    Idx)));
 
   /// Try to install an event handler on the newly created queue
   const hsa_status_t EventHandlerStatus =
@@ -227,8 +207,8 @@ void PacketMonitorInstance<Idx>::interceptQueuePacketHandler(
       Writer);
 }
 
-#define LUTHIER_CREATE_NEW_PACKET_MONITOR_INSTANCE(...)                        \
-  luthier::hsa::PacketMonitorInstance<__COUNTER__>(__VA_ARGS__)
+#define LUTHIER_CREATE_NEW_HSA_PACKET_MONITOR_INSTANCE(...)                    \
+  luthier::hsa::PacketMonitorInstance<__COUNTER__>::create(__VA_ARGS__)
 
 } // namespace luthier::hsa
 
