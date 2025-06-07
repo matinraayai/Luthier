@@ -103,7 +103,8 @@ protected:
   const std::unique_ptr<hsa::ApiTableRegistrationCallbackProvider>
       LoaderTableInitCallback;
 
-  std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t> LoaderTable{nullptr};
+  std::atomic<std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t>> LoaderTable{
+      nullptr};
 
   /// Checks whether the freshly loaded \p LCO by the application is loaded by
   /// HIP and is an instrumentation module; If so, registers it with the tool
@@ -138,7 +139,7 @@ protected:
           auto LoaderApiInitCallbackOrErr =
               hsa::ApiTableRegistrationCallbackProvider::requestCallback(
                   [&](const ::HsaApiTable &) {
-                    LoaderTable =
+                    auto NewLoaderTable =
                         std::make_unique<hsa_ven_amd_loader_1_03_pfn_t>();
                     Err = LUTHIER_HSA_CALL_ERROR_CHECK(
                         TableSnapshot.getFunction<
@@ -146,8 +147,9 @@ protected:
                                 hsa_system_get_major_extension_table_fn>()(
                             HSA_EXTENSION_AMD_LOADER, 1,
                             sizeof(hsa_ven_amd_loader_1_03_pfn_t),
-                            LoaderTable.get()),
+                            NewLoaderTable.get()),
                         "Failed to get the HSA loader table");
+                    LoaderTable.store(std::move(NewLoaderTable));
                   });
           Err = LoaderApiInitCallbackOrErr.takeError();
           if (Err) {
