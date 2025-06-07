@@ -23,7 +23,7 @@
 
 namespace luthier::hsa {
 
-void ApiTableWrapperInstaller::apiRegistrationCallback(
+void ApiTableRegistrationCallbackProvider::apiRegistrationCallback(
     rocprofiler_intercept_table_t Type, uint64_t LibVersion,
     uint64_t LibInstance, void **Tables, uint64_t NumTables, void *Data) {
   /// Check for errors
@@ -42,8 +42,8 @@ void ApiTableWrapperInstaller::apiRegistrationCallback(
   }
   if (LibInstance != 0) {
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        llvm::make_error<rocprofiler::RocprofilerError>(llvm::formatv(
-            LibInstance == 0, "Multiple instances of HSA library.")));
+        llvm::make_error<rocprofiler::RocprofilerError>(
+            "Multiple instances of HSA library."));
   }
   auto *Table = static_cast<HsaApiTable *>(Tables[0]);
   if (Table == nullptr) {
@@ -52,20 +52,31 @@ void ApiTableWrapperInstaller::apiRegistrationCallback(
             "HSA API table is nullptr"));
   }
 
-  auto &Interceptor = *static_cast<ApiTableWrapperInstaller *>(Data);
-  Interceptor.Callback(*Table);
-  Interceptor.WasRegCallbackInvoked = true;
+  auto &RegProvider =
+      *static_cast<ApiTableRegistrationCallbackProvider *>(Data);
+  RegProvider.WasRegistrationInvoked.store(true);
+  RegProvider.Callback(*Table);
 }
 
-ApiTableWrapperInstaller::~ApiTableWrapperInstaller() {
+llvm::Expected<std::unique_ptr<ApiTableRegistrationCallbackProvider>>
+  ApiTableRegistrationCallbackProvider::requestCallback(CallbackType CB) {
+  llvm::Error Err = llvm::Error::success();
+  auto Out = std::make_unique<ApiTableRegistrationCallbackProvider>(
+      std::move(CB), Err);
+  if (Err)
+    return std::move(Err);
+  return std::move(Out);
+}
+
+ApiTableRegistrationCallbackProvider::~ApiTableRegistrationCallbackProvider() {
   int RocprofilerFiniStatus;
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
       rocprofiler_is_finalized(&RocprofilerFiniStatus),
-      "Failed to check if rocprofiler is finalized."));
+      "Failed to check rocprofiler's finalization status."));
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      WasRegCallbackInvoked || RocprofilerFiniStatus != 0,
-      "HSA Api interceptor has been destroyed before rocprofiler-sdk "
-      "performed the api table registration callback"));
+      WasRegistrationInvoked || RocprofilerFiniStatus != 0,
+      "HSA Api table snapshot has been destroyed before rocprofiler-sdk "
+      "could perform the api table registration callback"));
 }
 
 } // namespace luthier::hsa
