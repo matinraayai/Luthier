@@ -1,12 +1,13 @@
 add_library(LuthierHSA OBJECT
         Agent.cpp
+        ApiTable.cpp
         CodeObjectReader.cpp
         Executable.cpp
         ExecutableSymbol.cpp
         hsa.cpp
-        HsaApiTableInterceptor.cpp
         HsaError.cpp
         HsaObjectCache.cpp
+        HsaPacketMonitor.cpp
         ISA.cpp
         KernelDescriptor.cpp
         LoadedCodeObject.cpp

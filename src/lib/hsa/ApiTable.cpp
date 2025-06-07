@@ -17,13 +17,13 @@
 /// Implements the HsaApiTableInterceptor class.
 //===----------------------------------------------------------------------===//
 #include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/HsaApiTableInterceptor.h>
+#include <luthier/hsa/ApiTable.h>
 #include <luthier/rocprofiler/RocprofilerError.h>
 #include <rocprofiler-sdk/registration.h>
 
 namespace luthier::hsa {
 
-void HsaApiTableInterceptor::apiRegistrationCallback(
+void ApiTableWrapperInstaller::apiRegistrationCallback(
     rocprofiler_intercept_table_t Type, uint64_t LibVersion,
     uint64_t LibInstance, void **Tables, uint64_t NumTables, void *Data) {
   /// Check for errors
@@ -52,30 +52,20 @@ void HsaApiTableInterceptor::apiRegistrationCallback(
             "HSA API table is nullptr"));
   }
 
-  auto &Interceptor = *static_cast<HsaApiTableInterceptor *>(Data);
-  LUTHIER_REPORT_FATAL_ON_ERROR(Interceptor.Callback(*Table));
+  auto &Interceptor = *static_cast<ApiTableWrapperInstaller *>(Data);
+  Interceptor.Callback(*Table);
   Interceptor.WasRegCallbackInvoked = true;
 }
-llvm::Expected<std::unique_ptr<HsaApiTableInterceptor>>
-HsaApiTableInterceptor::requestApiTable(CallbackType CB) {
-  auto Out = std::make_unique<HsaApiTableInterceptor>(std::move(CB));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
-      rocprofiler_at_intercept_table_registration(
-          HsaApiTableInterceptor::apiRegistrationCallback,
-          ROCPROFILER_HSA_TABLE, Out.get()),
-      "Failed to request HSA API tables from rocprofiler-sdk"));
-  return std::move(Out);
-}
 
-HsaApiTableInterceptor::~HsaApiTableInterceptor() {
+ApiTableWrapperInstaller::~ApiTableWrapperInstaller() {
   int RocprofilerFiniStatus;
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
       rocprofiler_is_finalized(&RocprofilerFiniStatus),
       "Failed to check if rocprofiler is finalized."));
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-    WasRegCallbackInvoked || RocprofilerFiniStatus != 0,
-    "HSA Api interceptor has been destroyed before rocprofiler-sdk "
-    "performed the api table registration callback"));
+      WasRegCallbackInvoked || RocprofilerFiniStatus != 0,
+      "HSA Api interceptor has been destroyed before rocprofiler-sdk "
+      "performed the api table registration callback"));
 }
 
 } // namespace luthier::hsa
