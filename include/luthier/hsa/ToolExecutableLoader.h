@@ -27,12 +27,13 @@
 #include <llvm/ADT/StringMap.h>
 #include <luthier/common/Singleton.h>
 #include <luthier/consts.h>
-#include <luthier/hip/HipCompilerApiTableInterceptor.h>
+#include <luthier/hip/ApiTable.h>
+#include <luthier/hsa/ApiTable.h>
 #include <luthier/hsa/Executable.h>
-#include <luthier/hsa/HsaApiTableInterceptor.h>
 #include <luthier/hsa/HsaError.h>
 #include <luthier/hsa/LoadedInstrumentationModule.h>
 #include <luthier/hsa/hsa.h>
+#include <mutex>
 
 namespace luthier::hsa {
 
@@ -48,6 +49,8 @@ template <size_t Idx> class ToolExecutableLoaderInstance;
 /// \sa ToolExecutableLoaderInstance
 class ToolExecutableLoader {
 protected:
+  const ApiTableSnapshot &TableSnapshot;
+
   /// Holds info regarding HIP Hook Function handles loaded into the HIP runtime
   struct HipHookFuncInfo {
     /// The Fat binary info this hook function handle belongs to
@@ -97,182 +100,68 @@ protected:
   /// are managed by the loader
   llvm::SmallDenseSet<DynamicallyLoadedInstrumentationModule *> DynModules{};
 
+  const std::unique_ptr<hsa::ApiTableRegistrationCallbackProvider>
+      LoaderTableInitCallback;
+
+  std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t> LoaderTable{nullptr};
+
   /// Checks whether the freshly loaded \p LCO by the application is loaded by
   /// HIP and is an instrumentation module; If so, registers it with the tool
   /// executable loader in \c HipLoadedIMsPerAgent to keep track of it
   /// \param LCO a loaded code object loaded by the application
-  /// \param LoadedCodeObjectGetInfoFun the underlying \c
-  /// hsa_ven_amd_loader_loaded_code_object_get_info function
-  /// \param HsaExecutableGetInfo the underlying \c hsa_executable_get_info
-  /// function
-  /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
-  /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
   /// \note As this function peaks into the storage memory of the \p LCO
   /// it is only safe to call right after the application has loaded it
   /// via \c hsa_executable_load_agent_code_object
   /// \return \c llvm::Error indicating the success or failure of the operation
-  llvm::Error registerIfHipLoadedInstrumentationModule(
-      hsa_loaded_code_object_t LCO,
-      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-          &LoadedCodeObjectGetInfoFun,
-      const decltype(hsa_executable_get_info) &HsaExecutableGetInfo,
-      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+  llvm::Error
+  registerIfHipLoadedInstrumentationModule(hsa_loaded_code_object_t LCO);
 
   /// Checks if the \p Exec that is about to be destroyed by the application is
   /// a \c HipLoadedInstrumentationModule and if so, unregisters it from its
   /// \c HipLoadedIMsPerAgent map
   /// \param Exec the HSA executable that is about to be destroyed by the
   /// application
-  /// \param ExecSymbolLookupFn the underlying
-  /// \c hsa_executable_get_symbol_by_name
-  /// \param LCOIteratorFn the underlying
-  /// \c hsa_ven_amd_loader_executable_iterate_loaded_code_objects
-  /// \param LCOGetInfoFn the underlying
-  /// \c hsa_ven_amd_loader_loaded_code_object_get_info
-  /// \param SymbolIterFn the underlying \c hsa_executable_iterate_agent_symbols
-  /// \param SymbolInfoGetterFn the underlying \c hsa_executable_symbol_get_info
-  /// function
   /// \return \c llvm::Error indicating the success or failure of the operation
-  llvm::Error unregisterIfHipLoadedIModuleExec(
-      hsa_executable_t Exec,
-      const decltype(hsa_executable_get_symbol_by_name) &ExecSymbolLookupFn,
-      const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-          &LCOIteratorFn,
-      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-          &LCOGetInfoFn,
-      const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
-      const decltype(hsa_executable_symbol_get_info) &SymbolInfoGetterFn);
+  llvm::Error unregisterIfHipLoadedIModuleExec(hsa_executable_t Exec);
 
   /// Destroys all instrumented executable copies associated with the given
   /// \p Exec if they exist, and removes them from the
   /// \c ApplicationToInstrumentedExecutablesMap multimap
   /// \param Exec the application executable
-  /// \param ExecutableDestroyFn the underlying \c hsa_executable_destroy
-  /// function
   /// \return \c llvm::Error indicating the success or failure of the operation
-  llvm::Error destroyInstrumentedCopiesOfExecutable(
-      hsa_executable_t Exec,
-      const decltype(hsa_executable_destroy) &ExecutableDestroyFn);
+  llvm::Error destroyInstrumentedCopiesOfExecutable(hsa_executable_t Exec);
 
-  /// Loads the \p CodeObject containing an \c InstrumentationModule onto
-  /// the given HSA \p Agent. The operation will fail if the \p CodeObject
-  /// is not a valid instrumentation module
-  /// \param CodeObject an ELF containing an instrumentation module
-  /// \param Agent the target agent
-  /// \param HsaExecutableCreateAltFn the underlying
-  /// \c hsa_executable_create_alt function
-  /// \param HsaCodeObjectReaderCreateFromMemory the underlying
-  /// \c hsa_code_object_reader_create_from_memory function
-  /// \param HsaExecutableLoadAgentCodeObjectFn the underlying
-  /// \c hsa_executable_load_agent_code_object function
-  /// \param HsaExecutableFreezeFn the underlying
-  /// \c hsa_executable_freeze function
-  /// \param HsaCodeObjectReaderDestroyFn the underlying \c
-  /// hsa_code_object_reader_destroy function
-  /// \param HsaExecutableDestroyFn the underlying
-  /// \c hsa_executable_destroy function
-  /// \param HsaExecutableGetInfo the underlying \c hsa_executable_get_info
-  /// \param HsaVenAmdLoaderLoadedCodeObjectGetInfoFn the underlying
-  /// \c hsa_ven_amd_loader_loaded_code_object_get_info
-  /// \return Expects a newly constructed instance of
-  /// \c DynamicallyLoadedInstrumentationModule
-  llvm::Expected<DynamicallyLoadedInstrumentationModule &> loadDynamicIModule(
-      std::vector<uint8_t> CodeObject, hsa_agent_t Agent,
-      const decltype(hsa_executable_create_alt) &HsaExecutableCreateAltFn,
-      const decltype(hsa_code_object_reader_create_from_memory)
-          &HsaCodeObjectReaderCreateFromMemory,
-      const decltype(hsa_executable_load_agent_code_object)
-          &HsaExecutableLoadAgentCodeObjectFn,
-      const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn,
-      const decltype(hsa_code_object_reader_destroy)
-          &HsaCodeObjectReaderDestroyFn,
-      const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn,
-      const decltype(hsa_executable_get_info) &HsaExecutableGetInfo,
-      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
-
-  /// Loads an instrumented version of \p OriginalLoadedCodeObject in to
-  /// a new executable and freezes it
-  /// \param InstrumentedElf the instrumented version of the
-  /// \p OriginalLoadedCodeObject
-  /// \param OriginalLoadedCodeObject the original version of the
-  /// \p InstrumentedElf
-  /// \param ExternVariables a mapping between the name of all external
-  /// variables not defined \p InstrumentedElf to their loaded address.
-  /// The variables must all be accessible from the agent of the
-  /// \p OriginalLoadedCodeObject
-  /// \param LCOInfoQueryFn the underlying
-  /// \c hsa_ven_amd_loader_loaded_code_object_get_info function
-  /// \param HsaExecutableAgentGlobalVariableDefineFn the underlying
-  /// \c hsa_executable_agent_global_variable_define function
-  /// \param HsaExecutableCreateAltFn the underlying
-  /// \c hsa_executable_create_alt function
-  /// \param HsaCodeObjectReaderCreateFromMemory the underlying
-  /// \c hsa_executable_load_agent_code_object function
-  /// \param HsaExecutableLoadAgentCodeObjectFn the underlying
-  /// \c hsa_executable_load_agent_code_object function
-  /// \param HsaExecutableFreezeFn the underlying
-  /// \c hsa_executable_freeze function
-  /// \param HsaCodeObjectReaderDestroyFn the underlying
-  /// \c hsa_code_object_reader_destroy function
-  /// \return Expects a newly frozen executable containing the loaded version
-  /// of \p InstrumentedElf
-  llvm::Expected<hsa_executable_t> loadInstrumentedCodeObject(
-      llvm::ArrayRef<uint8_t> InstrumentedElf,
-      hsa_loaded_code_object_t OriginalLoadedCodeObject,
-      const llvm::StringMap<const void *> &ExternVariables,
-      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-          &LCOInfoQueryFn,
-      const decltype(hsa_executable_agent_global_variable_define)
-          &HsaExecutableAgentGlobalVariableDefineFn,
-      decltype(hsa_executable_create_alt) &HsaExecutableCreateAltFn,
-      decltype(hsa_code_object_reader_create_from_memory)
-          &HsaCodeObjectReaderCreateFromMemory,
-      decltype(hsa_executable_load_agent_code_object)
-          &HsaExecutableLoadAgentCodeObjectFn,
-      decltype(hsa_executable_freeze) &HsaExecutableFreezeFn,
-      decltype(hsa_code_object_reader_destroy) &HsaCodeObjectReaderDestroyFn);
-
-  ToolExecutableLoader() = default;
+  ToolExecutableLoader(const hsa::ApiTableSnapshot &TableSnapshot,
+                       llvm::Error &Err)
+      : TableSnapshot(TableSnapshot),
+        LoaderTableInitCallback([&] -> decltype(LoaderTableInitCallback) {
+          auto LoaderApiInitCallbackOrErr =
+              hsa::ApiTableRegistrationCallbackProvider::requestCallback(
+                  [&](const ::HsaApiTable &) {
+                    LoaderTable =
+                        std::make_unique<hsa_ven_amd_loader_1_03_pfn_t>();
+                    Err = LUTHIER_HSA_CALL_ERROR_CHECK(
+                        TableSnapshot.getFunction<
+                            &::CoreApiTable::
+                                hsa_system_get_major_extension_table_fn>()(
+                            HSA_EXTENSION_AMD_LOADER, 1,
+                            sizeof(hsa_ven_amd_loader_1_03_pfn_t),
+                            LoaderTable.get()),
+                        "Failed to get the HSA loader table");
+                  });
+          Err = LoaderApiInitCallbackOrErr.takeError();
+          if (Err) {
+            Err = std::move(Err);
+            return nullptr;
+          }
+          return std::move(*LoaderApiInitCallbackOrErr);
+        }()) {};
 
 public:
   virtual ~ToolExecutableLoader() {
     for (auto *DynMod : DynModules) {
       delete DynMod;
     }
-  }
-
-  /// \return Expects the \c HipLoadedInstrumentationModule and the
-  /// name of the hook associated with \p HostHandle loaded on \p Agent
-  [[nodiscard]] llvm::Expected<
-      std::pair<const HipLoadedInstrumentationModule &, std::string>>
-  getHipLoadedHook(void *HostHandle, hsa_agent_t Agent) const;
-
-  /// Loads the \p CodeObject containing an \c InstrumentationModule into
-  /// the \p Agent
-  /// The operation will fail if \p CodeObject is not a valid instrumentation
-  /// module
-  /// \param CodeObject a code object containing an instrumentation module
-  /// \param Agent the target \c hsa_agent_t the module will be loaded on
-  /// \return Expects a handle to the newly created
-  /// \c DynamicallyLoadedInstrumentationModule
-  virtual llvm::Expected<DynamicallyLoadedInstrumentationModule &>
-  loadInstrumentationModule(std::vector<uint8_t> CodeObject,
-                            hsa_agent_t Agent) = 0;
-
-  /// Unloads the \p IModule handle. The operation fails if the handle is
-  /// not managed by the current loader
-  /// \return \c success indicating the success or failure of the operation
-  llvm::Error
-  unloadInstrumentationModule(DynamicallyLoadedInstrumentationModule &IModule) {
-    std::lock_guard Lock(DynamicModuleMutex);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        DynModules.contains(&IModule),
-        "Invalid dynamic instrumentation module handle."));
-    DynModules.erase(&IModule);
-    delete &IModule;
-    return llvm::Error::success();
   }
 
   /// Loads \p InstrumentedElf (the instrumented version of
@@ -293,13 +182,41 @@ public:
   /// \p OriginalLoadedCodeObject
   /// \return Expects the newly created executable containing the loaded
   /// instrumented code object.
-  virtual llvm::Expected<hsa_executable_t> loadInstrumentedCodeObject(
+  llvm::Expected<hsa_executable_t> loadInstrumentedCodeObject(
       llvm::ArrayRef<uint8_t> InstrumentedElf,
       hsa_loaded_code_object_t OriginalLoadedCodeObject,
-      const llvm::StringMap<const void *> &ExternVariables) = 0;
+      const llvm::StringMap<const void *> &ExternVariables);
 
-  /// Creates an returns the default \c ToolExecutableLoaderInstance
-  static inline llvm::Expected<std::unique_ptr<ToolExecutableLoader>> create();
+  /// \return Expects the \c HipLoadedInstrumentationModule and the
+  /// name of the hook associated with \p HostHandle loaded on \p Agent
+  [[nodiscard]] llvm::Expected<
+      std::pair<const HipLoadedInstrumentationModule &, std::string>>
+  getHipLoadedHook(void *HostHandle, hsa_agent_t Agent) const;
+
+  /// Loads the \p CodeObject containing an \c InstrumentationModule into
+  /// the \p Agent
+  /// The operation will fail if \p CodeObject is not a valid instrumentation
+  /// module
+  /// \param CodeObject a code object containing an instrumentation module
+  /// \param Agent the target \c hsa_agent_t the module will be loaded on
+  /// \return Expects a handle to the newly created
+  /// \c DynamicallyLoadedInstrumentationModule
+  llvm::Expected<DynamicallyLoadedInstrumentationModule &>
+  loadInstrumentationModule(std::vector<uint8_t> CodeObject, hsa_agent_t Agent);
+
+  /// Unloads the \p IModule handle. The operation fails if the handle is
+  /// not managed by the current loader
+  /// \return \c success indicating the success or failure of the operation
+  llvm::Error
+  unloadInstrumentationModule(DynamicallyLoadedInstrumentationModule &IModule) {
+    std::lock_guard Lock(DynamicModuleMutex);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        DynModules.contains(&IModule),
+        "Invalid dynamic instrumentation module handle."));
+    DynModules.erase(&IModule);
+    delete &IModule;
+    return llvm::Error::success();
+  }
 };
 
 /// \brief Concrete singleton implementation of \c ToolExecutableLoader
@@ -318,13 +235,11 @@ class ROCPROFILER_HIDDEN_API ToolExecutableLoaderInstance
       public Singleton<ToolExecutableLoaderInstance<Idx>> {
 private:
   /// Provides the HSA runtime API table to the loader
-  const std::unique_ptr<hsa::HsaApiTableInterceptor> HsaApiTableInterceptor{
-      nullptr};
+  const std::unique_ptr<hsa::ApiTableWrapperInstaller> HsaApiTableInterceptor;
 
   /// Provides the HIP Compiler API table to the loader
-  const std::unique_ptr<hip::HipCompilerApiTableInterceptor<
-      std::function<void(HipCompilerDispatchTable &)>>>
-      HipCompilerApiTableInterceptor{nullptr};
+  const std::unique_ptr<hip::HipCompilerApiTableWrapperInstaller>
+      HipCompilerApiTableInterceptor;
 
   //===--------------------------------------------------------------------===//
   // Underlying functions that the loader wraps over. They are static since
@@ -349,45 +264,6 @@ private:
 
   static ROCPROFILER_HIDDEN_API t___hipUnregisterFatBinary
       UnderlyingHipUnregisterFatBinaryFn;
-
-  //===--------------------------------------------------------------------===//
-  // A set of underlying functions that the loader needs for its operations.
-  // Unlike the previous functions they aren't static since they don't need
-  // to remain valid after the loader is destroyed
-  //===--------------------------------------------------------------------===//
-
-  decltype(hsa_iterate_agents) *UnderlyingHsaIterateAgentsFn{nullptr};
-
-  decltype(hsa_executable_create_alt) *UnderlyingHsaExecutableCreateAltFn{
-      nullptr};
-
-  decltype(hsa_executable_get_info) *UnderlyingHsaExecutableGetInfoFn{nullptr};
-
-  decltype(hsa_code_object_reader_create_from_memory)
-      *UnderlyingHsaCodeObjectReaderCreateFromMemoryFn{nullptr};
-
-  decltype(hsa_code_object_reader_destroy)
-      *UnderlyingHsaCodeObjectReaderDestroyFn{nullptr};
-
-  decltype(hsa_executable_agent_global_variable_define)
-      *UnderlyingHsaExecutableAgentGlobalVariableDefineFn{nullptr};
-
-  decltype(hsa_executable_freeze) *UnderlyingHsaExecutableFreezeFn{nullptr};
-
-  decltype(hsa_executable_symbol_get_info) *UnderlyingHsaSymbolGetInfoFn{
-      nullptr};
-
-  decltype(hsa_executable_iterate_agent_symbols)
-      *UnderlyingHsaExecutableIterateAgentSymbolsFn{nullptr};
-
-  decltype(hsa_executable_get_symbol_by_name)
-      *UnderlyingHsaExecutableGetSymbolByNameFn{nullptr};
-
-  decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-      *HsaVenAmdLoaderExecutableIterateLCOsFn{nullptr};
-
-  decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-      *HsaVenAmdLoaderLCOGetInfoFn{nullptr};
 
   //===--------------------------------------------------------------------===//
   // A set of wrapper functions that will be installed by the loader once
@@ -422,190 +298,57 @@ private:
   ROCPROFILER_HIDDEN_API static void
   hipUnregisterFatBinaryWrapper(void **Modules);
 
-  ToolExecutableLoaderInstance() : ToolExecutableLoader() {};
+  ToolExecutableLoaderInstance(const hsa::ApiTableSnapshot &TableSnapshot,
+                               llvm::Error &Err)
+      : ToolExecutableLoader(TableSnapshot, Err), HsaApiTableInterceptor([&] {
+          /// Install wrappers
+          auto HsaApiTableInterceptorOrErr =
+              hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
+                  {&::CoreApiTable::hsa_executable_load_agent_code_object_fn,
+                   UnderlyingHsaExecutableLoadAgentCodeObjectFn,
+                   hsaExecutableLoadAgentCodeObjectWrapper},
+                  {&::CoreApiTable::hsa_executable_destroy_fn,
+                   UnderlyingHsaExecutableDestroy,
+                   hsaExecutableDestroyWrapper});
+          Err = HsaApiTableInterceptorOrErr.takeError();
+          if (Err) {
+            Err = std::move(Err);
+            return nullptr;
+          }
+          return std::move(*HsaApiTableInterceptorOrErr);
+        }()),
+        HipCompilerApiTableInterceptor([&] {
+          auto HipCompilerApiInterceptorOrErr = hip::
+              HipCompilerApiTableWrapperInstaller::requestWrapperInstallation(
+                  {&::HipCompilerDispatchTable::__hipRegisterFunction_fn,
+                   UnderlyingHipRegisterFunctionFn, hipRegisterFunctionWrapper},
+                  {&::HipCompilerDispatchTable::__hipRegisterVar_fn,
+                   UnderlyingHipRegisterVarFn, hipRegisterVarWrapper},
+                  {&::HipCompilerDispatchTable::__hipRegisterManagedVar_fn,
+                   UnderlyingHipRegisterManagedVarFn,
+                   hipRegisterManagedVarWrapper},
+                  {&::HipCompilerDispatchTable::__hipUnregisterFatBinary_fn,
+                   UnderlyingHipUnregisterFatBinaryFn,
+                   hipUnregisterFatBinaryWrapper});
+          Err = HipCompilerApiInterceptorOrErr.takeError();
+          if (Err) {
+            Err = std::move(Err);
+            return nullptr;
+          }
+          return std::move(*HipCompilerApiInterceptorOrErr);
+        }()) {};
 
 public:
   /// Creates and returns a new \c ToolExecutableLoaderInstance
   static llvm::Expected<std::unique_ptr<ToolExecutableLoaderInstance>>
-  create() {
-    auto Out = std::make_unique<ToolExecutableLoaderInstance>();
-
-    auto HsaApiTableInterceptorOrErr =
-        hsa::HsaApiTableInterceptor::requestApiTable([TEL = *Out](
-                                                         ::HsaApiTable &Table) {
-          /// Save the needed underlying function
-          TEL.UnderlyingHsaIterateAgentsFn = Table.core_->hsa_iterate_agents_fn;
-          TEL.UnderlyingHsaExecutableGetInfoFn =
-              Table.core_->hsa_executable_get_info_fn;
-          TEL.UnderlyingHsaExecutableCreateAltFn =
-              Table.core_->hsa_executable_create_alt_fn;
-          TEL.UnderlyingHsaCodeObjectReaderCreateFromMemoryFn =
-              Table.core_->hsa_code_object_reader_create_from_memory_fn;
-
-          TEL.UnderlyingHsaCodeObjectReaderDestroyFn =
-              Table.core_->hsa_code_object_reader_destroy_fn;
-          TEL.UnderlyingHsaExecutableAgentGlobalVariableDefineFn =
-              Table.core_->hsa_executable_agent_global_variable_define_fn;
-          TEL.UnderlyingHsaExecutableFreezeFn =
-              Table.core_->hsa_executable_freeze_fn;
-
-          TEL.UnderlyingHsaSymbolGetInfoFn =
-              Table.core_->hsa_executable_symbol_get_info_fn;
-          TEL.UnderlyingHsaExecutableIterateAgentSymbolsFn =
-              Table.core_->hsa_executable_iterate_agent_symbols_fn;
-          TEL.UnderlyingHsaExecutableGetSymbolByNameFn =
-              Table.core_->hsa_executable_get_symbol_by_name_fn;
-          UnderlyingHsaExecutableLoadAgentCodeObjectFn =
-              Table.core_->hsa_executable_load_agent_code_object_fn;
-          UnderlyingHsaExecutableDestroy =
-              Table.core_->hsa_executable_destroy_fn;
-          /// Save all required loader functions
-          hsa_ven_amd_loader_1_03_pfn_t LoaderTable;
-          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-              Table.core_->hsa_system_get_major_extension_table_fn(
-                  HSA_EXTENSION_AMD_LOADER, 1,
-                  sizeof(hsa_ven_amd_loader_1_03_pfn_t), &LoaderTable),
-              "Failed to get the HSA loader table"));
-          TEL.HsaVenAmdLoaderExecutableIterateLCOsFn =
-              LoaderTable
-                  .hsa_ven_amd_loader_executable_iterate_loaded_code_objects;
-          TEL.HsaVenAmdLoaderLCOGetInfoFn =
-              LoaderTable.hsa_ven_amd_loader_loaded_code_object_get_info;
-          /// Install wrappers
-          Table.core_->hsa_executable_load_agent_code_object_fn =
-              hsaExecutableLoadAgentCodeObjectWrapper;
-          Table.core_->hsa_executable_destroy_fn = hsaExecutableDestroyWrapper;
-          return llvm::Error::success();
-        });
-    LUTHIER_RETURN_ON_ERROR(HsaApiTableInterceptorOrErr.takeError());
-
-    auto HipCompilerApiInterceptorOrErr = hip::HipCompilerApiTableInterceptor<
-        std::function<void(HipCompilerDispatchTable & Table)>>::
-        requestApiTable([](HipCompilerDispatchTable &Table) {
-          UnderlyingHipRegisterFunctionFn = Table.__hipRegisterFunction_fn;
-          UnderlyingHipRegisterVarFn = Table.__hipRegisterVar_fn;
-          UnderlyingHipRegisterManagedVarFn = Table.__hipRegisterManagedVar_fn;
-          UnderlyingHipUnregisterFatBinaryFn =
-              Table.__hipUnregisterFatBinary_fn;
-          Table.__hipRegisterFunction_fn = hipRegisterFunctionWrapper;
-          Table.__hipRegisterVar_fn = hipRegisterVarWrapper;
-          Table.__hipRegisterManagedVar_fn = hipRegisterManagedVarWrapper;
-          Table.__hipUnregisterFatBinary_fn = hipUnregisterFatBinaryWrapper;
-        });
-    LUTHIER_RETURN_ON_ERROR(HipCompilerApiInterceptorOrErr.takeError());
-
-    Out->HsaApiTableInterceptor = std::move(*HsaApiTableInterceptorOrErr);
-    Out->HipCompilerApiTableInterceptor =
-        std::move(*HipCompilerApiInterceptorOrErr);
-
+  create(hsa::ApiTableSnapshot &HsaApiSnapshot) {
+    llvm::Error Err = llvm::Error::success();
+    auto Out =
+        std::make_unique<ToolExecutableLoaderInstance>(HsaApiSnapshot, Err);
     return Out;
   }
 
   ~ToolExecutableLoaderInstance() override = default;
-
-  llvm::Expected<DynamicallyLoadedInstrumentationModule &>
-  loadInstrumentationModule(std::vector<uint8_t> CodeObject,
-                            hsa_agent_t Agent) override {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableCreateAltFn != nullptr,
-        llvm::formatv("Underlying hsa_executable_create_alt of Tool "
-                      "Executable Loader Instance {0} is nullptr",
-                      Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaCodeObjectReaderCreateFromMemoryFn != nullptr,
-        llvm::formatv(
-            "Underlying hsa_code_object_reader_create_from_memory of Tool "
-            "Executable Loader Instance {0} is nullptr",
-            Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableLoadAgentCodeObjectFn != nullptr,
-        llvm::formatv(
-            "Underlying hsa_executable_load_agent_code_object of Tool "
-            "Executable Loader Instance {0} is nullptr",
-            Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableFreezeFn != nullptr,
-        llvm::formatv("Underlying hsa_executable_freeze of Tool "
-                      "Executable Loader Instance {0} is nullptr",
-                      Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaCodeObjectReaderDestroyFn != nullptr,
-        llvm::formatv("Underlying hsa_code_object_reader_destroy of Tool "
-                      "Executable Loader Instance {0} is nullptr",
-                      Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableDestroy != nullptr,
-        llvm::formatv("Underlying hsa_executable_destroy of Tool "
-                      "Executable Loader Instance {0} is nullptr",
-                      Idx)));
-
-    return loadDynamicIModule(
-        std::move(CodeObject), Agent, *UnderlyingHsaExecutableCreateAltFn,
-        *UnderlyingHsaCodeObjectReaderCreateFromMemoryFn,
-        *UnderlyingHsaExecutableLoadAgentCodeObjectFn,
-        *UnderlyingHsaExecutableFreezeFn,
-        *UnderlyingHsaCodeObjectReaderDestroyFn,
-        *UnderlyingHsaExecutableDestroy, *UnderlyingHsaExecutableGetInfoFn,
-        *HsaVenAmdLoaderLCOGetInfoFn);
-  }
-
-  llvm::Expected<hsa_executable_t> loadInstrumentedCodeObject(
-      llvm::ArrayRef<uint8_t> InstrumentedElf,
-      hsa_loaded_code_object_t OriginalLoadedCodeObject,
-      const llvm::StringMap<const void *> &ExternVariables) override {
-
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        HsaVenAmdLoaderLCOGetInfoFn != nullptr,
-        llvm::formatv(
-            "Underlying hsa_ven_amd_loader_loaded_code_object_get_info of Tool "
-            "Executable Loader Instance {0} is nullptr",
-            Idx)));
-
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableAgentGlobalVariableDefineFn != nullptr,
-        llvm::formatv(
-            "Underlying hsa_executable_agent_global_variable_define of Tool "
-            "Executable Loader Instance {0} is nullptr",
-            Idx)));
-
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableCreateAltFn != nullptr,
-        llvm::formatv("Underlying hsa_executable_create_alt of Tool "
-                      "Executable Loader Instance {0} is nullptr",
-                      Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaCodeObjectReaderCreateFromMemoryFn != nullptr,
-        llvm::formatv(
-            "Underlying hsa_code_object_reader_create_from_memory of Tool "
-            "Executable Loader Instance {0} is nullptr",
-            Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableLoadAgentCodeObjectFn != nullptr,
-        llvm::formatv(
-            "Underlying hsa_executable_load_agent_code_object of Tool "
-            "Executable Loader Instance {0} is nullptr",
-            Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaExecutableFreezeFn != nullptr,
-        llvm::formatv("Underlying hsa_executable_freeze of Tool "
-                      "Executable Loader Instance {0} is nullptr",
-                      Idx)));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        UnderlyingHsaCodeObjectReaderDestroyFn != nullptr,
-        llvm::formatv("Underlying hsa_code_object_reader_destroy of Tool "
-                      "Executable Loader Instance {0} is nullptr",
-                      Idx)));
-
-    return loadInstrumentedCodeObject(
-        InstrumentedElf, OriginalLoadedCodeObject, ExternVariables,
-        *HsaVenAmdLoaderLCOGetInfoFn,
-        *UnderlyingHsaExecutableAgentGlobalVariableDefineFn,
-        *UnderlyingHsaExecutableCreateAltFn,
-        *UnderlyingHsaCodeObjectReaderCreateFromMemoryFn,
-        *UnderlyingHsaExecutableLoadAgentCodeObjectFn,
-        *UnderlyingHsaExecutableFreezeFn,
-        *UnderlyingHsaCodeObjectReaderDestroyFn);
-  }
 };
 
 template <size_t Idx>
@@ -638,13 +381,8 @@ ToolExecutableLoaderInstance<Idx>::hsaExecutableLoadAgentCodeObjectWrapper(
   /// Check if this LCO is a HIP loaded IModule and register it
   auto &TEL = ToolExecutableLoaderInstance::instance();
 
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      TEL.HsaVenAmdLoaderLCOGetInfoFn != nullptr,
-      llvm::formatv("The hsa_ven_amd_loader_loaded_code_object_get_info "
-                    "of ToolExecutableLoader instance {0} is nullptr",
-                    Idx)));
-  LUTHIER_REPORT_FATAL_ON_ERROR(TEL.registerIfHipLoadedInstrumentationModule(
-      LCO, *TEL.HsaVenAmdLoaderLCOGetInfoFn));
+  LUTHIER_REPORT_FATAL_ON_ERROR(
+      TEL.registerIfHipLoadedInstrumentationModule(LCO));
 
   return Out;
 }
@@ -669,8 +407,8 @@ hsa_status_t ToolExecutableLoaderInstance<Idx>::hsaExecutableDestroyWrapper(
       TEL.unregisterIfHipLoadedIModuleExec(Executable));
   /// If an application executable, destroy any instrumented executable
   /// associated with it
-  LUTHIER_REPORT_FATAL_ON_ERROR(TEL.destroyInstrumentedCopiesOfExecutable(
-      Executable, UnderlyingHsaExecutableDestroy));
+  LUTHIER_REPORT_FATAL_ON_ERROR(
+      TEL.destroyInstrumentedCopiesOfExecutable(Executable));
   /// Call the original function
   return UnderlyingHsaExecutableDestroy(Executable);
 }
@@ -772,8 +510,10 @@ void ToolExecutableLoaderInstance<Idx>::hipRegisterManagedVarWrapper(
                             "Underlying hsa_iterate_agents is nullptr"));
 
     llvm::SmallVector<hsa_agent_t, 4> Agents;
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        hsa::getGpuAgents(*TEL.UnderlyingHsaIterateAgentsFn, Agents));
+    LUTHIER_REPORT_FATAL_ON_ERROR(hsa::getGpuAgents(
+        TEL.TableSnapshot
+            .template getFunction<&::CoreApiTable::hsa_iterate_agents_fn>(),
+        Agents));
 
     for (const hsa_agent_t &Agent : Agents) {
       TEL.HipLoadedIMsPerAgent.insert(
@@ -805,6 +545,7 @@ void ToolExecutableLoaderInstance<Idx>::hipUnregisterFatBinaryWrapper(
   }
   UnderlyingHipUnregisterFatBinaryFn(Modules);
 }
+
 template <size_t Idx>
 decltype(hsa_executable_load_agent_code_object) *ToolExecutableLoaderInstance<
     Idx>::UnderlyingHsaExecutableLoadAgentCodeObjectFn = nullptr;
@@ -832,10 +573,8 @@ t___hipUnregisterFatBinary
     ToolExecutableLoaderInstance<Idx>::UnderlyingHipUnregisterFatBinaryFn =
         nullptr;
 
-llvm::Expected<std::unique_ptr<ToolExecutableLoader>>
-ToolExecutableLoader::create() {
-  return ToolExecutableLoaderInstance<0>::create();
-}
+#define LUTHIER_CREATE_NEW_HSA_TOOL_EXEC_LOADER(...)                           \
+  luthier::hsa::ToolExecutableLoaderInstance<__COUNTER__>::create(__VA_ARGS__)
 
 }; // namespace luthier::hsa
 
