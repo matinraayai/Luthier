@@ -15,50 +15,32 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c luthier::HipError class.
+/// Implements the \c luthier::HipError class.
 //===----------------------------------------------------------------------===//
-#include "hip/HipRuntimeApiInterceptor.hpp"
 #include <llvm/Support/Signals.h>
 #include <luthier/hip/HipError.h>
+#include <stacktrace>
 
-namespace luthier {
+namespace luthier::hip {
 
 char HipError::ID = 0;
 
-llvm::Error HipError::HipErrorCheck(llvm::StringRef FileName, int LineNumber,
-                                    hipError_t Expr, llvm::StringRef ExprStr,
-                                    hipError_t Expected) {
-  if (Expr != Expected) {
-    std::string StackTrace;
-    llvm::raw_string_ostream STStream(StackTrace);
-    llvm::sys::PrintStackTrace(STStream);
-    return llvm::make_error<HipError>(FileName, LineNumber, StackTrace, Expr,
-                                      ExprStr);
-  }
-  return llvm::Error::success();
+void HipError::log(llvm::raw_ostream &OS) const {
+  OS << "HIP ";
+  if (Error.has_value())
+    OS << "error code" << *Error;
+  else
+    OS << "error";
+  OS << " encountered in file " << ErrorLocation.file_name() << ", function "
+     << ErrorLocation.function_name() << ", at " << ErrorLocation.line() << ": "
+     << ErrorMsg << ".\n";
+  OS << "Stack trace: \n";
+#ifdef __cpp_lib_stacktrace
+  OS << std::to_string(StackTrace);
+#else
+  OS << StackTrace;
+#endif
+  OS << "\n";
 }
 
-void luthier::HipError::log(llvm::raw_ostream &OS) const {
-  OS << "HIP error encountered in file " << File << ", line: " << LineNumber
-     << ": ";
-  OS << "HIP call in expression " << Expression << " failed with error code ";
-  OS << Error;
-  if (hip::HipRuntimeApiInterceptor::isInitialized()) {
-    // Try to get the Error name if the hip runtime interceptor is
-    // initialized.
-    const auto &DispatchAPITable =
-        hip::HipRuntimeApiInterceptor::instance().getSavedApiTableContainer();
-    OS << ", ";
-    const char *ErrorName = DispatchAPITable.hipGetErrorName_fn(Error);
-    if (ErrorName != nullptr) {
-      OS << ErrorName << ".\n";
-    } else {
-      OS << "Unknown Error.\n";
-    }
-  } else {
-    OS << ".\n";
-  }
-  OS << "Stacktrace: \n" << StackTrace << "\n";
-}
-
-} // namespace luthier
+} // namespace luthier::hip
