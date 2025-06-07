@@ -273,6 +273,9 @@ template <size_t Idx>
 decltype(hsa_executable_destroy)
     *CodeObjectCacheInstance<Idx>::UnderlyingHsaExecutableDestroyFn = nullptr;
 
+#define LUTHIER_CREATE_NEW_HSA_CODE_OBJECT_CACHE_INSTANCE(...)                 \
+  luthier::hsa::CodeObjectCacheInstance<__COUNTER__>::create(__VA_ARGS__)
+
 } // namespace luthier::hsa
 
 #endif
