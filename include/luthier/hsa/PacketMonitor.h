@@ -26,45 +26,25 @@
 #include <luthier/common/Singleton.h>
 #include <luthier/hsa/ApiTable.h>
 #include <luthier/hsa/AqlPacket.h>
+#include <luthier/hsa/ExecutableSymbol.h>
 #include <luthier/hsa/HsaError.h>
 
 namespace luthier::hsa {
 
 class PacketMonitor {
 protected:
-  const hsa::ApiTableSnapshot &HsaApiTable;
+  const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
 
-  const std::unique_ptr<hsa::ApiTableRegistrationCallbackProvider>
-      LoaderTableCallback;
+  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &LoaderApiSnapshot;
 
   std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t> LoaderTable{nullptr};
 
-  explicit PacketMonitor(const hsa::ApiTableSnapshot &HsaApiTable,
-                         llvm::Error &Err)
-      : HsaApiTable(HsaApiTable),
-        LoaderTableCallback([&] -> decltype(LoaderTableCallback) {
-          auto LoaderTableCallbackOrErr =
-              hsa::ApiTableRegistrationCallbackProvider::requestCallback(
-                  [&](const ::HsaApiTable &) {
-                    LoaderTable =
-                        std::make_unique<hsa_ven_amd_loader_1_03_pfn_t>();
-                    /// Save all required loader functions
-                    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-                        HsaApiTable.getFunction<
-                            &::CoreApiTable::
-                                hsa_system_get_major_extension_table_fn>()(
-                            HSA_EXTENSION_AMD_LOADER, 1,
-                            sizeof(hsa_ven_amd_loader_1_03_pfn_t),
-                            &LoaderTable),
-                        "Failed to get the AMD loader table"));
-                  });
-          Err = LoaderTableCallbackOrErr.takeError();
-          if (Err) {
-            Err = std::move(Err);
-            return nullptr;
-          }
-          return std::move(*LoaderTableCallbackOrErr);
-        }()) {};
+  PacketMonitor(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+                const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+                    &LoaderApiSnapshot)
+      : CoreApiSnapshot(CoreApiSnapshot),
+        LoaderApiSnapshot(LoaderApiSnapshot) {};
 
 public:
   /// \return the executable, the loaded code object, and the executable
@@ -72,6 +52,27 @@ public:
   [[nodiscard]] llvm::Expected<std::tuple<
       hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
   getKernelObjectDefinition(uint64_t KernelObject) const;
+
+  template <typename... Args>
+  llvm::Expected<hsa_kernel_dispatch_packet_t>
+  overrideLaunchParameters(const hsa_kernel_dispatch_packet_t &OriginalPacket,
+                           hsa_executable_symbol_t NewKernel) {
+    hsa_kernel_dispatch_packet_t OutPacket = OriginalPacket;
+
+    /// Override the kernel
+    llvm::Expected<uint64_t> NewKDOrErr = hsa::executableSymbolGetAddress(
+        NewKernel,
+        CoreApiSnapshot
+            .getFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>());
+    LUTHIER_RETURN_ON_ERROR(NewKDOrErr.takeError());
+    OutPacket.kernel_object = *NewKDOrErr;
+
+    auto InstrumentedKernelMD = InstrumentedKernel->getKernelMetadata();
+
+    Packet.private_segment_size = InstrumentedKernelMD.PrivateSegmentFixedSize;
+
+    return OutPacket;
+  }
 };
 
 template <size_t Idx>
@@ -102,9 +103,12 @@ private:
                               uint64_t UserPacketIdx, void *Data,
                               hsa_amd_queue_intercept_packet_writer Writer);
 
-  PacketMonitorInstance(const hsa::ApiTableSnapshot &HsaApiTableSnapshot,
-                        llvm::Error &Err)
-      : PacketMonitor(HsaApiTableSnapshot, Err),
+  PacketMonitorInstance(
+      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot,
+      CallbackType CB, llvm::Error &Err)
+      : PacketMonitor(CoreApiSnapshot, LoaderApiSnapshot), CB(std::move(CB)),
         HsaApiTableInterceptor([&] -> decltype(HsaApiTableInterceptor) {
           auto WrapperInstallerOrErr =
               hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
@@ -120,9 +124,13 @@ private:
 
 public:
   static llvm::Expected<std::unique_ptr<PacketMonitorInstance>>
-  create(const hsa::ApiTableSnapshot &HsaApiTable) {
+  create(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+         const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+             &LoaderApiSnapshot,
+         const CallbackType &CB) {
     llvm::Error Err = llvm::Error::success();
-    auto Out = std::make_unique<PacketMonitorInstance>(HsaApiTable, Err);
+    auto Out = std::make_unique<PacketMonitorInstance>(
+        CoreApiSnapshot, LoaderApiSnapshot, CB, Err);
     if (Err)
       return std::move(Err);
 

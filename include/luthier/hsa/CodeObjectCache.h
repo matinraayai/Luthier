@@ -27,7 +27,6 @@
 #include <luthier/hip/ApiTable.h>
 #include <luthier/hsa/ApiTable.h>
 #include <luthier/hsa/Executable.h>
-#include <luthier/hsa/HsaError.h>
 #include <luthier/hsa/LoadedCodeObject.h>
 
 namespace luthier::hsa {
@@ -36,14 +35,10 @@ namespace luthier::hsa {
 /// once they get loaded into HSA and invalidate them once they are unloaded
 class CodeObjectCache {
 protected:
-  const hsa::ApiTableSnapshot &HsaTableSnapshot;
+  const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
 
-  std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t> LoaderTable{nullptr};
-
-  /// Callback used to initialize the \c LoaderApi once the snapshot has been
-  /// initialized
-  const std::unique_ptr<ApiTableRegistrationCallbackProvider>
-      LoaderApiTableCallback{nullptr};
+  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &LoaderApiSnapshot;
 
   std::mutex Mutex;
 
@@ -76,34 +71,11 @@ protected:
   mutable llvm::DenseMap<hsa_loaded_code_object_t, ObjectStorageEntry &>
       LCOToCodeObjectMap{};
 
-  CodeObjectCache(const hsa::ApiTableSnapshot &HsaTableSnapshot,
-                  llvm::Error &Err)
-      : HsaTableSnapshot(HsaTableSnapshot),
-        LoaderApiTableCallback([&] -> std::unique_ptr<
-                                       ApiTableRegistrationCallbackProvider> {
-          auto LoaderApiCallbackOrErr =
-              ApiTableRegistrationCallbackProvider::requestCallback(
-                  [&](const ::HsaApiTable &) {
-                    std::lock_guard Lock(Mutex);
-                    LoaderTable =
-                        std::make_unique<hsa_ven_amd_loader_1_03_pfn_t>();
-                    /// Save all required loader functions
-                    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-                        HsaTableSnapshot.getFunction<
-                            &::CoreApiTable::
-                                hsa_system_get_major_extension_table_fn>()(
-                            HSA_EXTENSION_AMD_LOADER, 1,
-                            sizeof(hsa_ven_amd_loader_1_03_pfn_t),
-                            LoaderTable.get()),
-                        "Failed to get the AMD loader table"));
-                  });
-          Err = LoaderApiCallbackOrErr.takeError();
-          if (Err) {
-            Err = std::move(Err);
-            return nullptr;
-          }
-          return std::move(*LoaderApiCallbackOrErr);
-        }()) {};
+  CodeObjectCache(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+                  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+                      &LoaderApiSnapshot)
+      : CoreApiSnapshot(CoreApiSnapshot),
+        LoaderApiSnapshot(LoaderApiSnapshot) {};
 
   virtual ~CodeObjectCache() = default;
 
@@ -143,8 +115,12 @@ private:
   hsaExecutableDestroyWrapper(hsa_executable_t Executable);
 
   explicit CodeObjectCacheInstance(
-      const hsa::ApiTableSnapshot &HsaTableSnapshot, llvm::Error &Err)
-      : CodeObjectCache(HsaTableSnapshot, Err), HsaApiTableInterceptor([&]() {
+      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot,
+      llvm::Error &Err)
+      : CodeObjectCache(CoreApiSnapshot, LoaderApiSnapshot),
+        HsaApiTableInterceptor([&]() {
           auto HsaApiTableWrapperInstallerOrErr =
               hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
                   {&::CoreApiTable::hsa_executable_load_agent_code_object_fn,
@@ -163,9 +139,12 @@ private:
 
 public:
   static llvm::Expected<std::unique_ptr<CodeObjectCacheInstance>>
-  create(const hsa::ApiTableSnapshot &HsaTableSnapshot) {
+  create(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+         const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+             &LoaderApiSnapshot) {
     llvm::Error Err = llvm::Error::success();
-    auto Out = std::make_unique<CodeObjectCacheInstance>(HsaTableSnapshot, Err);
+    auto Out = std::make_unique<CodeObjectCacheInstance>(
+        CoreApiSnapshot, LoaderApiSnapshot, Err);
     if (Err)
       return std::move(Err);
     return Out;
@@ -226,16 +205,13 @@ hsa_status_t CodeObjectCacheInstance<Idx>::hsaExecutableDestroyWrapper(
 
   auto &ObjectCache = CodeObjectCacheInstance::instance();
 
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      ObjectCache.LoaderTable != nullptr,
-      "The Code object cache's HSA loader table is not initialized"));
-
   /// Obtain the loaded code objects of the executable
   llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
   LUTHIER_REPORT_FATAL_ON_ERROR(hsa::loadedCodeObjectGetExecutable(
       Executable,
-      *ObjectCache.LoaderTable
-           ->hsa_ven_amd_loader_loaded_code_object_get_info_fn,
+      ObjectCache.LoaderApiSnapshot.template getFunction<
+          &ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType::
+              hsa_ven_amd_loader_loaded_code_object_get_info>(),
       LCOs));
   {
     /// For each LCO, decrement its use count

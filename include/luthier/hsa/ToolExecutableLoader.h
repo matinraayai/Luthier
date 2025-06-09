@@ -30,7 +30,6 @@
 #include <luthier/hip/ApiTable.h>
 #include <luthier/hsa/ApiTable.h>
 #include <luthier/hsa/Executable.h>
-#include <luthier/hsa/HsaError.h>
 #include <luthier/hsa/LoadedInstrumentationModule.h>
 #include <luthier/hsa/hsa.h>
 #include <mutex>
@@ -49,7 +48,10 @@ template <size_t Idx> class ToolExecutableLoaderInstance;
 /// \sa ToolExecutableLoaderInstance
 class ToolExecutableLoader {
 protected:
-  const ApiTableSnapshot &TableSnapshot;
+  const hsa::ApiTableSnapshot<::CoreApiTable> &CoreTableSnapshot;
+
+  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &LoaderApiSnapshot;
 
   /// Holds info regarding HIP Hook Function handles loaded into the HIP runtime
   struct HipHookFuncInfo {
@@ -100,12 +102,6 @@ protected:
   /// are managed by the loader
   llvm::SmallDenseSet<DynamicallyLoadedInstrumentationModule *> DynModules{};
 
-  const std::unique_ptr<hsa::ApiTableRegistrationCallbackProvider>
-      LoaderTableInitCallback;
-
-  std::atomic<std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t>> LoaderTable{
-      nullptr};
-
   /// Checks whether the freshly loaded \p LCO by the application is loaded by
   /// HIP and is an instrumentation module; If so, registers it with the tool
   /// executable loader in \c HipLoadedIMsPerAgent to keep track of it
@@ -132,32 +128,12 @@ protected:
   /// \return \c llvm::Error indicating the success or failure of the operation
   llvm::Error destroyInstrumentedCopiesOfExecutable(hsa_executable_t Exec);
 
-  ToolExecutableLoader(const hsa::ApiTableSnapshot &TableSnapshot,
-                       llvm::Error &Err)
-      : TableSnapshot(TableSnapshot),
-        LoaderTableInitCallback([&] -> decltype(LoaderTableInitCallback) {
-          auto LoaderApiInitCallbackOrErr =
-              hsa::ApiTableRegistrationCallbackProvider::requestCallback(
-                  [&](const ::HsaApiTable &) {
-                    auto NewLoaderTable =
-                        std::make_unique<hsa_ven_amd_loader_1_03_pfn_t>();
-                    Err = LUTHIER_HSA_CALL_ERROR_CHECK(
-                        TableSnapshot.getFunction<
-                            &::CoreApiTable::
-                                hsa_system_get_major_extension_table_fn>()(
-                            HSA_EXTENSION_AMD_LOADER, 1,
-                            sizeof(hsa_ven_amd_loader_1_03_pfn_t),
-                            NewLoaderTable.get()),
-                        "Failed to get the HSA loader table");
-                    LoaderTable.store(std::move(NewLoaderTable));
-                  });
-          Err = LoaderApiInitCallbackOrErr.takeError();
-          if (Err) {
-            Err = std::move(Err);
-            return nullptr;
-          }
-          return std::move(*LoaderApiInitCallbackOrErr);
-        }()) {};
+  ToolExecutableLoader(
+      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot)
+      : CoreTableSnapshot(CoreApiSnapshot),
+        LoaderApiSnapshot(LoaderApiSnapshot) {};
 
 public:
   virtual ~ToolExecutableLoader() {
@@ -300,9 +276,17 @@ private:
   ROCPROFILER_HIDDEN_API static void
   hipUnregisterFatBinaryWrapper(void **Modules);
 
-  ToolExecutableLoaderInstance(const hsa::ApiTableSnapshot &TableSnapshot,
-                               llvm::Error &Err)
-      : ToolExecutableLoader(TableSnapshot, Err), HsaApiTableInterceptor([&] {
+  ToolExecutableLoaderInstance(
+      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot,
+      llvm::Error &Err)
+      : ToolExecutableLoader(CoreApiSnapshot, LoaderApiSnapshot),
+        HsaApiTableInterceptor([&] {
+          llvm::ErrorAsOutParameter EAO(Err);
+          if (Err)
+            return nullptr;
+
           /// Install wrappers
           auto HsaApiTableInterceptorOrErr =
               hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
@@ -312,12 +296,10 @@ private:
                   {&::CoreApiTable::hsa_executable_destroy_fn,
                    UnderlyingHsaExecutableDestroy,
                    hsaExecutableDestroyWrapper});
-          Err = HsaApiTableInterceptorOrErr.takeError();
-          if (Err) {
-            Err = std::move(Err);
-            return nullptr;
-          }
-          return std::move(*HsaApiTableInterceptorOrErr);
+          if (HsaApiTableInterceptorOrErr)
+            return std::move(*HsaApiTableInterceptorOrErr);
+          Err = std::move(HsaApiTableInterceptorOrErr.takeError());
+          return nullptr;
         }()),
         HipCompilerApiTableInterceptor([&] {
           auto HipCompilerApiInterceptorOrErr = hip::
@@ -343,10 +325,12 @@ private:
 public:
   /// Creates and returns a new \c ToolExecutableLoaderInstance
   static llvm::Expected<std::unique_ptr<ToolExecutableLoaderInstance>>
-  create(hsa::ApiTableSnapshot &HsaApiSnapshot) {
+  create(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+         const hsa::ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>
+             &LoaderApiSnapshot) {
     llvm::Error Err = llvm::Error::success();
-    auto Out =
-        std::make_unique<ToolExecutableLoaderInstance>(HsaApiSnapshot, Err);
+    auto Out = std::make_unique<ToolExecutableLoaderInstance>(
+        CoreApiSnapshot, LoaderApiSnapshot, Err);
     return Out;
   }
 

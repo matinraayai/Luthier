@@ -21,8 +21,11 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_API_TABLE_H
 #define LUTHIER_HSA_API_TABLE_H
+#include "luthier/consts.h"
+
 #include <atomic>
 #include <hsa/hsa_api_trace.h>
+#include <hsa/hsa_ven_amd_loader.h>
 #include <luthier/common/ErrorCheck.h>
 #include <luthier/common/GenericLuthierError.h>
 #include <luthier/hsa/HsaError.h>
@@ -80,18 +83,21 @@ template <auto Entry> bool apiTableHasEntry(const auto &Table) {
 template <typename ApiTableType> struct ApiTableInfo;
 
 template <> struct ApiTableInfo<::CoreApiTable> {
+  static constexpr auto Name = "core";
   static constexpr auto PointerToMemberRootAccessor = &::HsaApiTable::core_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::core;
 };
 
 template <> struct ApiTableInfo<::AmdExtTable> {
+  static constexpr auto Name = "amd";
   static constexpr auto PointerToMemberRootAccessor = &::HsaApiTable::amd_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::amd_ext;
 };
 
 template <> struct ApiTableInfo<::FinalizerExtTable> {
+  static constexpr auto Name = "finalizer";
   static constexpr auto PointerToMemberRootAccessor =
       &::HsaApiTable::finalizer_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
@@ -99,6 +105,7 @@ template <> struct ApiTableInfo<::FinalizerExtTable> {
 };
 
 template <> struct ApiTableInfo<::ImageExtTable> {
+  static constexpr auto Name = "image";
   static constexpr auto PointerToMemberRootAccessor =
       &::HsaApiTable::image_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
@@ -106,16 +113,44 @@ template <> struct ApiTableInfo<::ImageExtTable> {
 };
 
 template <> struct ApiTableInfo<::ToolsApiTable> {
+  static constexpr auto Name = "tools";
   static constexpr auto PointerToMemberRootAccessor = &::HsaApiTable::tools_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::tools;
 };
 
 template <> struct ApiTableInfo<::PcSamplingExtTable> {
+  static constexpr auto Name = "pc sampling";
   static constexpr auto PointerToMemberRootAccessor =
       &::HsaApiTable::pc_sampling_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::pc_sampling_ext;
+};
+
+template <hsa_extension_t ExtType> struct ExtensionApiTableInfo;
+
+template <> struct ExtensionApiTableInfo<HSA_EXTENSION_FINALIZER> {
+  using TableType = hsa_ext_finalizer_1_00_pfn_t;
+  static constexpr auto MajorVer = HSA_FINALIZER_API_TABLE_MAJOR_VERSION;
+  static constexpr auto StepVer = HSA_FINALIZER_API_TABLE_STEP_VERSION;
+};
+
+template <> struct ExtensionApiTableInfo<HSA_EXTENSION_IMAGES> {
+  using TableType = hsa_ext_images_1_pfn_t;
+  static constexpr auto MajorVer = HSA_IMAGE_API_TABLE_MAJOR_VERSION;
+  static constexpr auto StepVer = HSA_IMAGE_API_TABLE_STEP_VERSION;
+};
+
+template <> struct ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER> {
+  using TableType = hsa_ven_amd_loader_1_03_pfn_t;
+  static constexpr auto MajorVer = 1;
+  static constexpr auto StepVer = 3;
+};
+
+template <> struct ExtensionApiTableInfo<HSA_EXTENSION_AMD_PC_SAMPLING> {
+  using TableType = hsa_ven_amd_pc_sampling_1_00_pfn_t;
+  static constexpr auto MajorVer = HSA_PC_SAMPLING_API_TABLE_MAJOR_VERSION;
+  static constexpr auto StepVer = HSA_PC_SAMPLING_API_TABLE_STEP_VERSION;
 };
 
 /// \brief a generic class used to request a callback to be invoked when the
@@ -201,25 +236,42 @@ public:
 /// result in a fatal error.
 /// \note \c ApiTableSnapshot is not thread-safe and is meant to be used
 /// inside a single thread
+template <typename ApiTableType>
 class ApiTableSnapshot final : public ApiTableRegistrationCallbackProvider {
 private:
   /// Where the snapshot of the HSA API Table is stored
-  ::HsaApiTableContainer ApiTable{};
+  ApiTableType ApiTable{};
 
   explicit ApiTableSnapshot(llvm::Error &Err)
       : ApiTableRegistrationCallbackProvider(
             [&](const ::HsaApiTable &Table) {
-              ::copyTables(&Table, &ApiTable.root);
+              if (Table.version.major_id != HSA_API_TABLE_MAJOR_VERSION) {
+                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<
+                                              hsa::HsaError>(llvm::formatv(
+                    "Expected HSA API table major version to be {0}, got {1} "
+                    "instead.",
+                    HSA_API_TABLE_MAJOR_VERSION, Table.version.major_id)));
+              }
+
+              constexpr auto RootAccessor =
+                  ApiTableInfo<ApiTableType>::PointerToMemberRootAccessor;
+              if (!apiTableHasEntry<RootAccessor>(Table)) {
+                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
+                    "Captured HSA table doesn't support extension {0}",
+                    ApiTableInfo<ApiTableType>::Name));
+              }
+              ::copyElement(&Table, &ApiTable.root.*RootAccessor);
 
               /// Check if the API table copy has been performed by the copy
               /// constructor
-              const ApiTableVersion &DestApiTableVersion =
-                  ApiTable.root.version;
+              const ApiTableVersion &DestApiTableVersion = Table.version;
               if (DestApiTableVersion.major_id == 0 ||
                   DestApiTableVersion.minor_id == 0 ||
                   DestApiTableVersion.step_id) {
-                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HsaError>(
-                    "Failed to correctly copy the HSA API tables"));
+                LUTHIER_REPORT_FATAL_ON_ERROR(
+                    llvm::make_error<HsaError>(llvm::formatv(
+                        "Failed to correctly copy the HSA {0} extension",
+                        ApiTableInfo<ApiTableType>::Name)));
               }
             },
             Err) {};
@@ -239,46 +291,87 @@ public:
 
   ~ApiTableSnapshot() override = default;
 
-  /// \brief Checks if the HSA API table snapshot contains the \p
-  /// ExtApiTableType extension table
-  /// \tparam ExtApiTableType Type of the extension table (e.g.
-  /// <tt>::CoreApiTable</tt>)
-  /// \return \c true if the snapshot supports the <tt>ExtApiTableType</tt>,
-  /// \c false otherwise. Reports a fatal error if the snapshot
-  /// has not been initialized by rocprofiler-sdk
-  template <typename ExtApiTableType>
-  [[nodiscard]] bool tableSupportsExtension() const {
-    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        wasRegistrationCallbackInvoked(), "Snapshot is not initialized"));
-    return apiTableHasEntry<
-        ApiTableInfo<ExtApiTableType>::PointerToMemberRootAccessor>(
-        ApiTable.root);
-  }
-
   /// \brief Checks if the \c Func is present in the API table snapshot
   /// \tparam Func pointer-to-member of the function entry inside the
   /// extension table being queried
   /// \return \c true if the function is available inside the
   /// API table, \c false otherwise. Reports a fatal error
   /// if the snapshot has not been initialized by rocprofiler-sdk
-  template <auto Func> [[nodiscard]] bool tableSupportsFunction() const {
-    using ExtTableType = typename RemoveMemberPointer<decltype(Func)>::outer;
-    return tableSupportsExtension<ExtTableType>() &&
-           apiTableHasEntry<Func>(
-               ApiTable.*
-               ApiTableInfo<ExtTableType>::PointerToMemberContainerAccessor);
+  template <auto ApiTableType::*Func>
+  [[nodiscard]] bool tableSupportsFunction() const {
+    return apiTableHasEntry<Func>(ApiTable);
   }
 
   /// \returns the function inside the snapshot associated with the
   /// pointer-to-member accessor \c Func
-  template <auto Func> const auto &getFunction() const {
+  template <auto ApiTableType::*Func> const auto &getFunction() const {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         (tableSupportsFunction<Func>()),
         "The passed function is not inside the table."));
-    using ExtTableType = typename RemoveMemberPointer<decltype(Func)>::outer;
-    return *(
-        ApiTable.*
-        (ApiTableInfo<ExtTableType>::PointerToMemberContainerAccessor)->*Func);
+    return *(ApiTable.*Func);
+  }
+};
+
+template <hsa_extension_t ExtensionType,
+          typename ExtensionApiTableType =
+              typename ExtensionApiTableInfo<ExtensionType>::TableType>
+class ExtensionTableSnapshot final
+    : public ApiTableRegistrationCallbackProvider {
+
+  ExtensionApiTableType ExtensionTable;
+
+  explicit ExtensionTableSnapshot(llvm::Error &Err)
+      : ApiTableRegistrationCallbackProvider(
+            [&](const ::HsaApiTable &Table) {
+              if (Table.version.major_id != HSA_API_TABLE_MAJOR_VERSION) {
+                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<
+                                              hsa::HsaError>(llvm::formatv(
+                    "Expected HSA API table major version to be {0}, got {1} "
+                    "instead.",
+                    HSA_API_TABLE_MAJOR_VERSION, Table.version.major_id)));
+              }
+              if (!apiTableHasEntry<&::HsaApiTable::core_>(Table)) {
+                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
+                    "Captured HSA table doesn't support the core extension"));
+              }
+              if (!apiTableHasEntry<
+                      &::CoreApiTable::hsa_system_get_extension_table_fn>(
+                      Table.core_)) {
+                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
+                    "Captured HSA API table doesn't have "
+                    "hsa_system_get_extension_table function"));
+              }
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+                  Table.core_->hsa_system_get_extension_table_fn(
+                      ExtensionType, 1, sizeof(ExtensionApiTableType),
+                      &ExtensionTable),
+                  "Failed to get the extension table"));
+            },
+            Err) {};
+
+public:
+  /// Requests a snapshot of the HSA API table to be provided by
+  /// rocprofiler-sdk; Must only be invoked during rocprofiler-sdk's
+  /// configuration stage
+  /// \return Expects a new instance of \c ApiTableSnapshot
+  static llvm::Expected<std::unique_ptr<ExtensionTableSnapshot>>
+  requestSnapshot() {
+    llvm::Error Err = llvm::Error::success();
+    auto Out = std::make_unique<ExtensionTableSnapshot>(Err);
+    if (Err)
+      return std::move(Err);
+    return Out;
+  }
+
+  ~ExtensionTableSnapshot() override = default;
+
+  /// \returns the function inside the snapshot associated with the
+  /// pointer-to-member accessor \c Func
+  template <auto ExtensionApiTableInfo<ExtensionType>::TableType::*Func>
+  const auto &getFunction() const {
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        wasRegistrationCallbackInvoked(), "Snapshot is not initialized"));
+    return *(ExtensionTable.*Func);
   }
 };
 
@@ -294,13 +387,15 @@ private:
             },
             Err){};
 
-  /// Installs a wrapper for an entry inside an extension table of \p Table
-  /// \p WrapperSpec is a 4-entry tuple, containing the pointer to member
-  /// accessor for the extension table inside <tt>::HsaApiTable</tt>, pointer
-  /// to member accessor function for the entry inside the extension, reference
-  /// to where the underlying function entry will be saved to, and a function
-  /// pointer to the wrapper being installed. Reports a fatal error if
-  /// the entry is not present in the table
+  /// Installs a wrapper for an entry inside an extension table of
+  /// \p Table
+  /// \p WrapperSpec is a 4-entry tuple, containing the pointer to
+  /// member accessor for the extension table inside
+  /// <tt>::HsaApiTable</tt>, pointer to member accessor function
+  /// for the entry inside the extension, reference to where the
+  /// underlying function entry will be saved to, and a function
+  /// pointer to the wrapper being installed. Reports a fatal error
+  /// if the entry is not present in the table
   template <auto Func>
   void installWrapperEntry(
       ::HsaApiTable &Table,
@@ -310,9 +405,10 @@ private:
     auto constexpr ExtTableRootAccessor =
         typename ApiTableInfo<ExtTableType>::PointerToMemberRootAccessor;
     if (!apiTableHasEntry<ExtTableRootAccessor>(Table)) {
-      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HsaError>(llvm::formatv(
-          "Failed to find entry inside the HSA API table at offset {0:x}.",
-          static_cast<size_t>(&(Table.*ExtTableRootAccessor)))));
+      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HsaError>(
+          llvm::formatv("Failed to find entry inside the HSA API "
+                        "table at offset {0:x}.",
+                        static_cast<size_t>(&(Table.*ExtTableRootAccessor)))));
     }
     if (!apiTableHasEntry<FuncEntry>(Table.*ExtTableRootAccessor)) {
       LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HsaError>(llvm::formatv(
@@ -325,7 +421,6 @@ private:
   }
 
 public:
-  // Variadic template function to accept a variable-length list of tuples
   template <typename... Tuples>
   llvm::Expected<std::unique_ptr<ApiTableWrapperInstaller>>
   requestWrapperInstallation(const Tuples &...WrapperSpecs) {
