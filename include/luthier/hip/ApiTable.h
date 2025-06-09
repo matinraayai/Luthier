@@ -134,6 +134,18 @@ public:
   [[nodiscard]] bool wasRegistrationCallbackInvoked() const {
     return WasRegistrationInvoked.load();
   }
+
+  /// If the table of the HIP runtime is not initialized, forces
+  /// the initialization of the HIP runtime table by calling a "harmless"
+  /// library function
+  /// \note Must only be used sparingly, when absolutely sure the library
+  /// is not going to be initialized otherwise
+  template <std::enable_if<TableType == ROCPROFILER_HIP_RUNTIME_TABLE>>
+  void forceTriggerApiTableCallback() {
+    if (!WasRegistrationInvoked.load()) {
+      (void)hipApiName(0);
+    }
+  }
 };
 
 using HipCompilerApiTableRegistrationCallbackProvider =

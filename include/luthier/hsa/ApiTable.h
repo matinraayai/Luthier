@@ -140,7 +140,8 @@ protected:
   explicit ApiTableRegistrationCallbackProvider(CallbackType CB,
                                                 llvm::Error &Err)
       : Callback(std::move(CB)) {
-    Err = LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
+    llvm::ErrorAsOutParameter EAO(Err);
+    auto ErrInner = LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
         rocprofiler_at_intercept_table_registration(
             ApiTableRegistrationCallbackProvider::apiRegistrationCallback,
             ROCPROFILER_HSA_TABLE, this),
@@ -150,11 +151,11 @@ protected:
 
   /// Utility used to extract the type of the member pointer and the class
   /// it belongs to
-  template <typename T> struct remove_member_pointer {
+  template <typename T> struct RemoveMemberPointer {
     using type = T;
   };
 
-  template <typename C, typename T> struct remove_member_pointer<T C::*> {
+  template <typename C, typename T> struct RemoveMemberPointer<T C::*> {
     using type = T;
     using outer = C;
   };
@@ -168,6 +169,16 @@ public:
   /// Checks whether rocprofiler-sdk has invoked the registration callback
   [[nodiscard]] bool wasRegistrationCallbackInvoked() const {
     return WasRegistrationInvoked.load();
+  }
+
+  /// If the HSA table is not initialized, forces its initialization by directly
+  /// calling a "harmless" library function directly
+  /// \note Must only be used sparingly, when absolutely sure the library
+  /// is not going to be initialized otherwise
+  void forceTriggerApiTableCallback() {
+    if (!WasRegistrationInvoked.load()) {
+      (void)hsa_status_string(HSA_STATUS_SUCCESS, nullptr);
+    }
   }
 };
 
@@ -251,7 +262,7 @@ public:
   /// API table, \c false otherwise. Reports a fatal error
   /// if the snapshot has not been initialized by rocprofiler-sdk
   template <auto Func> [[nodiscard]] bool tableSupportsFunction() const {
-    using ExtTableType = typename remove_member_pointer<decltype(Func)>::outer;
+    using ExtTableType = typename RemoveMemberPointer<decltype(Func)>::outer;
     return tableSupportsExtension<ExtTableType>() &&
            apiTableHasEntry<Func>(
                ApiTable.*
@@ -264,7 +275,7 @@ public:
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         (tableSupportsFunction<Func>()),
         "The passed function is not inside the table."));
-    using ExtTableType = typename remove_member_pointer<decltype(Func)>::outer;
+    using ExtTableType = typename RemoveMemberPointer<decltype(Func)>::outer;
     return *(
         ApiTable.*
         (ApiTableInfo<ExtTableType>::PointerToMemberContainerAccessor)->*Func);
@@ -295,7 +306,7 @@ private:
       ::HsaApiTable &Table,
       const std::tuple<decltype(Func), auto *&, auto &> &WrapperSpec) {
     auto &[FuncEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
-    using ExtTableType = typename remove_member_pointer<decltype(Func)>::outer;
+    using ExtTableType = typename RemoveMemberPointer<decltype(Func)>::outer;
     auto constexpr ExtTableRootAccessor =
         typename ApiTableInfo<ExtTableType>::PointerToMemberRootAccessor;
     if (!apiTableHasEntry<ExtTableRootAccessor>(Table)) {
