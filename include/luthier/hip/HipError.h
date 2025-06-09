@@ -50,7 +50,7 @@ public:
 
 #define LUTHIER_HIP_CALL_ERROR_CHECK(Expr, ErrorMsg)                           \
   [&]() {                                                                      \
-    if (const hsa_status_t Status = Expr; Status != HipSuccess) {              \
+    if (const hipError_t Status = Expr; Status != hipSuccess) {                \
       return llvm::make_error<luthier::hip::HipError>(ErrorMsg, Status);       \
     }                                                                          \
     return llvm::Error::success();                                             \
