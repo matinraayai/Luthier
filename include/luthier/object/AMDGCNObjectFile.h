@@ -1,13 +1,33 @@
-#ifndef LUTHIER_COMMON_AMDGCN_OBJECT_FILE_H
-#define LUTHIER_COMMON_AMDGCN_OBJECT_FILE_H
-#include "ELFObjectUtils.h"
+//===-- AMDGCNObjectFile.h - AMDGPU Object File Utilities -------*- C++ -*-===//
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+/// \file
+/// Defines a set of utilities and wrappers regarding an ELF targeting AMDGPU
+/// devices.
+//===----------------------------------------------------------------------===//
+#ifndef LUTHIER_OBJECT_AMDGCN_OBJECT_FILE_H
+#define LUTHIER_OBJECT_AMDGCN_OBJECT_FILE_H
+#include <llvm/BinaryFormat/MsgPackDocument.h>
+#include <luthier/object/ELFObjectUtils.h>
 
-namespace luthier {
+namespace luthier::object {
 
 class AMDGCNObjectFile;
 
-/// \brief Wrapper around a \c ELFSymbolRefWrapper representing a
-/// symbol inside a \c AMDGCNObjectFile
+/// \brief Wrapper around a \c ELFSymbolRef for symbols inside a
+/// \c AMDGCNObjectFile
 class AMDGCNElfSymbolRef : public llvm::object::ELFSymbolRef {
   /// \c AMDGCNObjectFile can skip checks on \c ELFSymbolRefWrapper
   friend AMDGCNObjectFile;
@@ -30,33 +50,32 @@ public:
       return std::nullopt;
   }
 
-  const luthier::AMDGCNObjectFile *getObject() const {
-    return llvm::cast<luthier::AMDGCNObjectFile>(
+  const luthier::object::AMDGCNObjectFile *getObject() const {
+    return llvm::cast<luthier::object::AMDGCNObjectFile>(
         llvm::object::ELFSymbolRef::getObject());
   }
 
-  /// \returns \c true if the symbol is a kernel descriptor, \c false if not,
-  /// \c llvm::Error if an error was encountered
+  /// \returns Expects \c true if the symbol is a kernel descriptor,
+  /// \c false otherwise
   [[nodiscard]] llvm::Expected<bool> isKernelDescriptor() const;
 
-  /// \returns \c true if the symbol is a global or local variable, \c false
-  /// if not, \c llvm::Error if an error was encountered
+  /// \returns Expects \c true if the symbol is a global or local variable,
+  /// \c false otherwise
   [[nodiscard]] llvm::Expected<bool> isVariable() const;
 
-  /// \returns \c true if the symbol contains the device code of a kernel
-  /// descriptor, \c false if not, \c llvm::Error if an error was encountered
+  /// \returns Expects \c true if the symbol contains the device code of a
+  /// kernel descriptor, \c false otherwise
   [[nodiscard]] llvm::Expected<bool> isKernelFunction() const;
 
-  /// \returns \c true if the symbol is a function that can only be invoked on
-  /// the device side, \c false if not, \c llvm::Error if an error was
-  /// encountered
+  /// \returns Expects \c true if the symbol is a function that can only be
+  /// invoked on the device side, \c false otherwise
   [[nodiscard]] llvm::Expected<bool> isDeviceFunction() const;
 };
 
 class amdgcn_elf_symbol_iterator : public llvm::object::elf_symbol_iterator {
 private:
   /// This is so that the implicit constructor from
-  /// \c llvm::object::basic_symbol_iterator works without hassle
+  /// \c llvm::object::basic_symbol_iterator can work
   friend AMDGCNObjectFile;
 
   // NOLINTBEGIN(google-explicit-constructor)
@@ -68,7 +87,7 @@ private:
 public:
   // NOLINTBEGIN(google-explicit-constructor)
   /* implicit */ amdgcn_elf_symbol_iterator(
-      const luthier::AMDGCNElfSymbolRef &S)
+      const luthier::object::AMDGCNElfSymbolRef &S)
       : llvm::object::elf_symbol_iterator(S) {}
   // NOLINTEND(google-explicit-constructor)
 
@@ -111,7 +130,8 @@ public:
 
 #define IMPLEMENT_AMDGCN_ITERATOR_INCREMENT_OPERATOR(IteratorName, SymbolType, \
                                                      SymbolChecker)            \
-  IteratorName::content_iterator IteratorName::&operator++() {                 \
+  inline IteratorName::content_iterator &IteratorName::operator++() {          \
+    llvm::ErrorAsOutParameter EAO(this->Err);                                  \
     auto EndSymbolIter = (*this)->getObject()->symbol_end();                   \
                                                                                \
     while (*this != EndSymbolIter) {                                           \
@@ -236,10 +256,19 @@ protected:
     llvm::Expected<llvm::object::ELF64LEObjectFile> Elf64LEObj =
         llvm::object::ELF64LEObjectFile::create(Object, InitContent);
     LUTHIER_RETURN_ON_ERROR(Elf64LEObj.takeError());
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ERROR_CHECK(Elf64LEObj->makeTriple().isAMDGCN(),
-                            "Passed ELF object is not for an amdgcn target."));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        Elf64LEObj->makeTriple().isAMDGCN(),
+        "Passed ELF object is not for an amdgcn target."));
     return AMDGCNObjectFile{std::move(*Elf64LEObj)};
+  }
+
+  static bool parseNoteSectionMD(const llvm::object::ELF64LE::Note &Note,
+                                 llvm::msgpack::Document &Doc) {
+    if (Note.getName() == "AMDGPU" &&
+        Note.getType() == llvm::ELF::NT_AMDGPU_METADATA) {
+      return Doc.readFromBlob(Note.getDescAsStringRef(4), false);
+    } else
+      return false;
   }
 
 public:
@@ -274,15 +303,18 @@ public:
     return createAMDGCNObjectFile(llvm::toStringRef(Elf));
   }
 
-  llvm::Expected<std::optional<luthier::AMDGCNElfSymbolRef>>
+  llvm::Expected<std::optional<luthier::object::AMDGCNElfSymbolRef>>
   lookupSymbol(llvm::StringRef SymbolName) const {
-    auto Out = luthier::lookupSymbolByName(*this, SymbolName);
+    auto Out = luthier::object::lookupSymbolByName(*this, SymbolName);
     LUTHIER_RETURN_ON_ERROR(Out.takeError());
     if (Out->has_value())
       return AMDGCNElfSymbolRef{**Out};
     else
       return std::nullopt;
   }
+
+  llvm::Expected<std::unique_ptr<llvm::msgpack::Document>>
+  getMetadataDocument() const;
 
   amdgcn_elf_symbol_iterator_range symbols() const {
     return amdgcn_elf_symbol_iterator_range(symbol_begin(), symbol_end());
@@ -342,7 +374,7 @@ public:
 // Implementation Details
 //===----------------------------------------------------------------------===//
 
-llvm::Expected<bool> AMDGCNElfSymbolRef::isKernelDescriptor() const {
+inline llvm::Expected<bool> AMDGCNElfSymbolRef::isKernelDescriptor() const {
   llvm::Expected<llvm::StringRef> SymNameOrErr = getName();
   LUTHIER_RETURN_ON_ERROR(SymNameOrErr.takeError());
   uint8_t Binding = getBinding();
@@ -352,13 +384,13 @@ llvm::Expected<bool> AMDGCNElfSymbolRef::isKernelDescriptor() const {
          (Binding == llvm::ELF::STT_AMDGPU_HSA_KERNEL && Size == 64);
 }
 
-llvm::Expected<bool> AMDGCNElfSymbolRef::isVariable() const {
+inline llvm::Expected<bool> AMDGCNElfSymbolRef::isVariable() const {
   llvm::Expected<bool> IsKdOrErr = isKernelDescriptor();
   LUTHIER_RETURN_ON_ERROR(IsKdOrErr.takeError());
   return getBinding() == llvm::ELF::STT_OBJECT && !*IsKdOrErr;
 }
 
-llvm::Expected<bool> AMDGCNElfSymbolRef::isKernelFunction() const {
+inline llvm::Expected<bool> AMDGCNElfSymbolRef::isKernelFunction() const {
   if (getELFType() != llvm::ELF::STT_FUNC)
     return false;
 
@@ -372,13 +404,13 @@ llvm::Expected<bool> AMDGCNElfSymbolRef::isKernelFunction() const {
   return KDSymbolIfFoundOrError->has_value();
 }
 
-llvm::Expected<bool> AMDGCNElfSymbolRef::isDeviceFunction() const {
+inline llvm::Expected<bool> AMDGCNElfSymbolRef::isDeviceFunction() const {
   if (getELFType() != llvm::ELF::STT_FUNC)
     return false;
   return !*isKernelFunction();
 }
 
-llvm::Expected<std::optional<AMDGCNVariableSymbolRef>>
+inline llvm::Expected<std::optional<AMDGCNVariableSymbolRef>>
 AMDGCNVariableSymbolRef::getAsAMDGCNVariableSymbol(
     const llvm::object::SymbolRef &S) {
   std::optional<AMDGCNElfSymbolRef> AsGCNSymRef =
@@ -388,11 +420,11 @@ AMDGCNVariableSymbolRef::getAsAMDGCNVariableSymbol(
     LUTHIER_REPORT_FATAL_ON_ERROR(IsVarOrErr.takeError());
     if (*IsVarOrErr)
       return AMDGCNVariableSymbolRef{*AsGCNSymRef};
-  } else
-    return std::nullopt;
+  }
+  return std::nullopt;
 }
 
-llvm::Expected<std::optional<AMDGCNKernelDescSymbolRef>>
+inline llvm::Expected<std::optional<AMDGCNKernelDescSymbolRef>>
 AMDGCNKernelDescSymbolRef::getAsAMDGCNKernelDescSymbol(
     const llvm::object::SymbolRef &S) {
   std::optional<AMDGCNElfSymbolRef> AsGCNSymRef =
@@ -402,11 +434,11 @@ AMDGCNKernelDescSymbolRef::getAsAMDGCNKernelDescSymbol(
     LUTHIER_REPORT_FATAL_ON_ERROR(IsKDOrErr.takeError());
     if (*IsKDOrErr)
       return AMDGCNKernelDescSymbolRef{*AsGCNSymRef};
-  } else
-    return std::nullopt;
+  }
+  return std::nullopt;
 }
 
-llvm::Expected<AMDGCNKernelDescSymbolRef>
+inline llvm::Expected<AMDGCNKernelDescSymbolRef>
 AMDGCNKernelDescSymbolRef::fromKernelFunction(
     const AMDGCNKernelFuncSymbolRef &S) {
   llvm::Expected<llvm::StringRef> NameOrErr = S.getName();
@@ -415,7 +447,7 @@ AMDGCNKernelDescSymbolRef::fromKernelFunction(
       S.getObject()->lookupSymbol((*NameOrErr + ".kd").str());
   LUTHIER_RETURN_ON_ERROR(ExpectedKernelDescSym.takeError());
 
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ExpectedKernelDescSym->has_value(),
       "Failed to find the kernel descriptor associated with "
       "kernel function {0}.",
@@ -423,12 +455,12 @@ AMDGCNKernelDescSymbolRef::fromKernelFunction(
   return AMDGCNKernelDescSymbolRef{**ExpectedKernelDescSym};
 }
 
-llvm::Expected<AMDGCNKernelFuncSymbolRef>
+inline llvm::Expected<AMDGCNKernelFuncSymbolRef>
 AMDGCNKernelDescSymbolRef::getKernelFunctionSymbol() const {
   return AMDGCNKernelFuncSymbolRef::fromKernelDescriptor(*this);
 }
 
-llvm::Expected<std::optional<AMDGCNKernelFuncSymbolRef>>
+inline llvm::Expected<std::optional<AMDGCNKernelFuncSymbolRef>>
 AMDGCNKernelFuncSymbolRef::getAsAMDGCNKernelFuncSymbol(
     const llvm::object::SymbolRef &S) {
   auto AsGCNSymRef = AMDGCNElfSymbolRef::getIfAMDGCNSymbolRef(S);
@@ -441,7 +473,7 @@ AMDGCNKernelFuncSymbolRef::getAsAMDGCNKernelFuncSymbol(
   return std::nullopt;
 }
 
-llvm::Expected<AMDGCNKernelFuncSymbolRef>
+inline llvm::Expected<AMDGCNKernelFuncSymbolRef>
 AMDGCNKernelFuncSymbolRef::fromKernelDescriptor(
     const AMDGCNKernelDescSymbolRef &S) {
   llvm::Expected<llvm::StringRef> NameOrErr = S.getName();
@@ -451,16 +483,16 @@ AMDGCNKernelFuncSymbolRef::fromKernelDescriptor(
           NameOrErr->substr(0, NameOrErr->rfind(".kd")));
   LUTHIER_RETURN_ON_ERROR(ExpectedKernelFuncSym.takeError());
 
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(ExpectedKernelFuncSym->has_value(),
-                          "Failed to find the kernel function associated with "
-                          "kernel descriptor {0}.",
-                          *NameOrErr));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      ExpectedKernelFuncSym->has_value(),
+      "Failed to find the kernel function associated with "
+      "kernel descriptor {0}.",
+      *NameOrErr));
 
   return AMDGCNKernelFuncSymbolRef{**ExpectedKernelFuncSym};
 }
 
-llvm::Expected<std::optional<AMDGCNDeviceFuncSymbolRef>>
+inline llvm::Expected<std::optional<AMDGCNDeviceFuncSymbolRef>>
 AMDGCNDeviceFuncSymbolRef::getAsAMDGCNDeviceFuncSymbol(
     const llvm::object::SymbolRef &S) {
   auto AsGCNSymRef = AMDGCNElfSymbolRef::getIfAMDGCNSymbolRef(S);
@@ -471,6 +503,44 @@ AMDGCNDeviceFuncSymbolRef::getAsAMDGCNDeviceFuncSymbol(
       return AMDGCNDeviceFuncSymbolRef{*AsGCNSymRef};
   }
   return std::nullopt;
+}
+
+inline llvm::Expected<std::unique_ptr<llvm::msgpack::Document>>
+AMDGCNObjectFile::getMetadataDocument() const {
+  /// First try to find the note program header and parse it
+  auto Doc = std::make_unique<llvm::msgpack::Document>();
+  const auto &ELFFile = getELFFile();
+  auto ProgramHeaders = ELFFile.program_headers();
+  LUTHIER_RETURN_ON_ERROR(ProgramHeaders.takeError());
+  for (const auto &Phdr : *ProgramHeaders) {
+    if (Phdr.p_type == llvm::ELF::PT_NOTE) {
+      for (llvm::Error Err = llvm::Error::success();
+           const auto &Note : ELFFile.notes(Phdr, Err)) {
+        LUTHIER_RETURN_ON_ERROR(Err);
+        if (parseNoteSectionMD(Note, *Doc)) {
+          return std::move(Doc);
+        }
+      }
+    }
+  }
+  /// Try to find the note section and parse it
+  auto Sections = ELFFile.sections();
+  LUTHIER_RETURN_ON_ERROR(Sections.takeError());
+
+  for (const auto &Shdr : *Sections) {
+    if (Shdr.sh_type == llvm::ELF::SHT_NOTE) {
+      for (llvm::Error Err = llvm::Error::success();
+           const auto &Note : ELFFile.notes(Shdr, Err)) {
+        LUTHIER_RETURN_ON_ERROR(Err);
+        if (parseNoteSectionMD(Note, *Doc)) {
+          return std::move(Doc);
+        }
+      }
+    }
+  }
+
+  return llvm::make_error<GenericLuthierError>(
+      "Failed to find the note section to parse its metadata.");
 }
 
 IMPLEMENT_AMDGCN_ITERATOR_INCREMENT_OPERATOR(amdgcn_variable_symbol_iterator,
@@ -491,6 +561,6 @@ IMPLEMENT_AMDGCN_ITERATOR_INCREMENT_OPERATOR(amdgcn_device_function_iterator,
 
 #undef IMPLEMENT_AMDGCN_ITERATOR_INCREMENT_OPERATOR
 
-} // namespace luthier
+} // namespace luthier::object
 
 #endif
