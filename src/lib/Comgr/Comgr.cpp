@@ -23,8 +23,8 @@
 #include <llvm/Support/TimeProfiler.h>
 #include <luthier/Comgr/Comgr.h>
 #include <luthier/Comgr/ComgrError.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/object/ObjectUtils.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Object/ObjectUtils.h>
 
 namespace luthier::comgr {
 
