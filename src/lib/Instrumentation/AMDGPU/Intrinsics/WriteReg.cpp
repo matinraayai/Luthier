@@ -2,7 +2,7 @@
 #include "AMDGPUTargetMachine.h"
 #include "SIRegisterInfo.h"
 #include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
+#include "luthier/common/GenericLuthierError.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
