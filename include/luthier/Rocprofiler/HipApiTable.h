@@ -1,4 +1,4 @@
-//===-- ApiTable.h ----------------------------------------------*- C++ -*-===//
+//===-- HipApiTable.h -------------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,42 +17,42 @@
 /// Implements utilities for obtaining a snapshot of the HIP API tables from
 /// rocprofiler-sdk as well as installing wrappers inside it.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HIP_API_TABLE_H
-#define LUTHIER_HIP_API_TABLE_H
+#ifndef LUTHIER_ROCPROFILER_HIP_API_TABLE_H
+#define LUTHIER_ROCPROFILER_HIP_API_TABLE_H
 #include <hip/amd_detail/hip_api_trace.hpp>
-#include <luthier/common/Singleton.h>
-#include <luthier/hip/HipError.h>
-#include <luthier/rocprofiler/RocprofilerError.h>
+#include <luthier/Common/Singleton.h>
+#include <luthier/HIP/HipError.h>
+#include <luthier/Rocprofiler/RocprofilerError.h>
 #include <rocprofiler-sdk/intercept_table.h>
 #include <rocprofiler-sdk/registration.h>
 
-namespace luthier::hip {
+namespace luthier::rocprofiler {
 
-template <auto Entry> bool apiTableHasEntry(const auto &Table) {
+template <auto Entry> bool hipApiTableHasEntry(const auto &Table) {
   return static_cast<size_t>(&(Table.*Entry)) < Table.size;
 }
 
-template <rocprofiler_intercept_table_t TableType> struct ApiTableEnumInfo;
+template <rocprofiler_intercept_table_t TableType> struct HipApiTableEnumInfo;
 
-template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_COMPILER_TABLE> {
+template <> struct HipApiTableEnumInfo<ROCPROFILER_HIP_COMPILER_TABLE> {
   using ApiTableType = ::HipCompilerDispatchTable;
 };
 
-template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_RUNTIME_TABLE> {
+template <> struct HipApiTableEnumInfo<ROCPROFILER_HIP_RUNTIME_TABLE> {
   using ApiTableType = ::HipDispatchTable;
 };
 
 /// \brief a generic class used to request a callback to be invoked when the
 /// \c ::HsaApiTable is registered with rocprofiler-sdk
 template <rocprofiler_intercept_table_t TableType>
-class ApiTableRegistrationCallbackProvider {
+class HipApiTableRegistrationCallbackProvider {
 protected:
   /// Keeps track of whether the registration callback has been invoked by
   /// rocprofiler-sdk
   std::atomic<bool> WasRegistrationInvoked{false};
 
-  using CallbackType =
-      std::function<void(typename ApiTableEnumInfo<TableType>::ApiTableType)>;
+  using CallbackType = std::function<void(
+      typename HipApiTableEnumInfo<TableType>::ApiTableType)>;
 
   /// Callback invoked inside the registration callback
   const CallbackType Callback;
@@ -83,7 +83,7 @@ protected:
               "Multiple instances of HIP library."));
     }
     auto *Table =
-        static_cast<typename ApiTableEnumInfo<TableType>::ApiTableType *>(
+        static_cast<typename HipApiTableEnumInfo<TableType>::ApiTableType *>(
             Tables[0]);
     if (Table == nullptr) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -92,34 +92,35 @@ protected:
     }
 
     auto &RegProvider =
-        *static_cast<ApiTableRegistrationCallbackProvider *>(Data);
+        *static_cast<HipApiTableRegistrationCallbackProvider *>(Data);
     RegProvider.WasRegistrationInvoked.store(true);
     RegProvider.Callback(*Table);
   }
 
-  explicit ApiTableRegistrationCallbackProvider(CallbackType CB,
-                                                llvm::Error &Err)
+  explicit HipApiTableRegistrationCallbackProvider(CallbackType CB,
+                                                   llvm::Error &Err)
       : Callback(std::move(CB)) {
     Err = LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
         rocprofiler_at_intercept_table_registration(
-            ApiTableRegistrationCallbackProvider::apiRegistrationCallback,
+            HipApiTableRegistrationCallbackProvider::apiRegistrationCallback,
             TableType, this),
         "Failed to request a callback on HIP API table initialization from "
         "rocprofiler-sdk");
   };
 
 public:
-  static llvm::Expected<std::unique_ptr<ApiTableRegistrationCallbackProvider>>
+  static llvm::Expected<
+      std::unique_ptr<HipApiTableRegistrationCallbackProvider>>
   requestCallback(CallbackType CB) {
     llvm::Error Err = llvm::Error::success();
-    auto Out = std::make_unique<ApiTableRegistrationCallbackProvider>(
+    auto Out = std::make_unique<HipApiTableRegistrationCallbackProvider>(
         std::move(CB), Err);
     if (Err)
       return std::move(Err);
     return std::move(Out);
   }
 
-  virtual ~ApiTableRegistrationCallbackProvider() {
+  virtual ~HipApiTableRegistrationCallbackProvider() {
     int RocprofilerFiniStatus;
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
         rocprofiler_is_finalized(&RocprofilerFiniStatus),
@@ -149,9 +150,9 @@ public:
 };
 
 using HipCompilerApiTableRegistrationCallbackProvider =
-    ApiTableRegistrationCallbackProvider<ROCPROFILER_HIP_COMPILER_TABLE>;
+    HipApiTableRegistrationCallbackProvider<ROCPROFILER_HIP_COMPILER_TABLE>;
 using HipRuntimeApiTableRegistrationCallbackProvider =
-    ApiTableRegistrationCallbackProvider<ROCPROFILER_HIP_RUNTIME_TABLE>;
+    HipApiTableRegistrationCallbackProvider<ROCPROFILER_HIP_RUNTIME_TABLE>;
 
 /// \brief Provides a snapshot of the HSA API table to other components
 /// using rocprofiler-sdk
@@ -173,15 +174,15 @@ using HipRuntimeApiTableRegistrationCallbackProvider =
 /// \note \c ApiTableSnapshot is not thread-safe and is meant to be used
 /// inside a single thread
 template <rocprofiler_intercept_table_t TableType>
-class ApiTableSnapshot final
-    : public ApiTableRegistrationCallbackProvider<TableType> {
+class HipApiTableSnapshot final
+    : public HipApiTableRegistrationCallbackProvider<TableType> {
 private:
   /// Where the snapshot of the HSA API Table is stored
-  typename ApiTableEnumInfo<TableType>::ApiTableType ApiTable{};
+  typename HipApiTableEnumInfo<TableType>::ApiTableType ApiTable{};
 
-  explicit ApiTableSnapshot(llvm::Error &Err)
-      : ApiTableRegistrationCallbackProvider<TableType>(
-            [&](typename ApiTableEnumInfo<TableType>::ApiTableType &Table) {
+  explicit HipApiTableSnapshot(llvm::Error &Err)
+      : HipApiTableRegistrationCallbackProvider<TableType>(
+            [&](typename HipApiTableEnumInfo<TableType>::ApiTableType &Table) {
               std::memcpy(&Table, &ApiTable, ApiTable.size);
             },
             Err) {};
@@ -191,15 +192,15 @@ public:
   /// rocprofiler-sdk; Must only be invoked during rocprofiler-sdk's
   /// configuration stage
   /// \return Expects a new instance of \c ApiTableSnapshot
-  static llvm::Expected<std::unique_ptr<ApiTableSnapshot>> requestSnapshot() {
+  static llvm::Expected<std::unique_ptr<HipApiTableSnapshot>> requestSnapshot() {
     llvm::Error Err = llvm::Error::success();
-    auto Out = std::make_unique<ApiTableSnapshot>(Err);
+    auto Out = std::make_unique<HipApiTableSnapshot>(Err);
     if (Err)
       return std::move(Err);
     return Out;
   }
 
-  ~ApiTableSnapshot() override = default;
+  ~HipApiTableSnapshot() override = default;
 
   /// \brief Checks if the \c Func is present in the API table snapshot
   /// \tparam Func pointer-to-member of the function entry inside the
@@ -209,10 +210,10 @@ public:
   /// if the snapshot has not been initialized by rocprofiler-sdk
   template <auto Func> [[nodiscard]] bool tableSupportsFunction() const {
     LUTHIER_REPORT_FATAL_ON_ERROR(
-        ApiTableRegistrationCallbackProvider<
+        HipApiTableRegistrationCallbackProvider<
             TableType>::wasRegistrationCallbackInvoked(),
         "Snapshot is not initialized");
-    return apiTableHasEntry<Func>(ApiTable);
+    return hipApiTableHasEntry<Func>(ApiTable);
   }
 
   /// \returns the function inside the snapshot associated with the
@@ -226,19 +227,19 @@ public:
 };
 
 using HipCompilerApiTableSnapshot =
-    ApiTableSnapshot<ROCPROFILER_HIP_COMPILER_TABLE>;
+    HipApiTableSnapshot<ROCPROFILER_HIP_COMPILER_TABLE>;
 using HipRuntimeApiTableSnapshot =
-    ApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>;
+    HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>;
 
 template <rocprofiler_intercept_table_t TableType>
-class ApiTableWrapperInstaller final
-    : public ApiTableRegistrationCallbackProvider<TableType> {
+class HipApiTableWrapperInstaller final
+    : public HipApiTableRegistrationCallbackProvider<TableType> {
 private:
   template <typename... Tuples>
-  explicit ApiTableWrapperInstaller(llvm::Error &Err,
+  explicit HipApiTableWrapperInstaller(llvm::Error &Err,
                                     const Tuples &...WrapperSpecs)
-      : ApiTableRegistrationCallbackProvider<TableType>(
-            [&](typename ApiTableEnumInfo<TableType>::ApiTableType &Table) {
+      : HipApiTableRegistrationCallbackProvider<TableType>(
+            [&](typename HipApiTableEnumInfo<TableType>::ApiTableType &Table) {
               (installWrapperEntry(Table, WrapperSpecs), ...);
             },
             Err){};
@@ -252,13 +253,14 @@ private:
   /// the entry is not present in the table
   template <auto Func>
   void installWrapperEntry(
-      typename ApiTableEnumInfo<TableType>::ApiTableType &Table,
+      typename HipApiTableEnumInfo<TableType>::ApiTableType &Table,
       const std::tuple<decltype(Func), auto *&, auto &> &WrapperSpec) {
     auto &[ExtEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
     if (!tableHasEntry<ExtEntry>(Table)) {
-      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<HipError>(llvm::formatv(
-          "Failed to find entry inside the HSA API table at offset {0:x}.",
-          static_cast<size_t>(&(Table.*ExtEntry)))));
+      LUTHIER_REPORT_FATAL_ON_ERROR(
+          llvm::make_error<hip::HipError>(llvm::formatv(
+              "Failed to find entry inside the HSA API table at offset {0:x}.",
+              static_cast<size_t>(&(Table.*ExtEntry)))));
     }
     UnderlyingStoreLocation = Table.*ExtEntry;
     Table.*ExtEntry = WrapperFunc;
@@ -267,23 +269,23 @@ private:
 public:
   // Variadic template function to accept a variable-length list of tuples
   template <typename... Tuples>
-  llvm::Expected<std::unique_ptr<ApiTableWrapperInstaller>>
+  llvm::Expected<std::unique_ptr<HipApiTableWrapperInstaller>>
   requestWrapperInstallation(const Tuples &...WrapperSpecs) {
     llvm::Error Err = llvm::Error::success();
-    auto Out = std::make_unique<ApiTableWrapperInstaller>(Err, WrapperSpecs...);
+    auto Out = std::make_unique<HipApiTableWrapperInstaller>(Err, WrapperSpecs...);
     if (Err)
       return std::move(Err);
     return Out;
   }
 
-  ~ApiTableWrapperInstaller() override = default;
+  ~HipApiTableWrapperInstaller() override = default;
 };
 
 using HipCompilerApiTableWrapperInstaller =
-    ApiTableWrapperInstaller<ROCPROFILER_HIP_COMPILER_TABLE>;
+    HipApiTableWrapperInstaller<ROCPROFILER_HIP_COMPILER_TABLE>;
 using HipRuntimeApiTableWrapperInstaller =
-    ApiTableWrapperInstaller<ROCPROFILER_HIP_RUNTIME_TABLE>;
+    HipApiTableWrapperInstaller<ROCPROFILER_HIP_RUNTIME_TABLE>;
 
-} // namespace luthier::hip
+} // namespace luthier::rocprofiler
 
 #endif

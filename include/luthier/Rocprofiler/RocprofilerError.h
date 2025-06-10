@@ -21,7 +21,7 @@
 #ifndef LUTHIER_ERROR_ROCPROFILER_ERROR_H
 #define LUTHIER_ERROR_ROCPROFILER_ERROR_H
 #include <llvm/Support/Error.h>
-#include <luthier/common/ROCmLibraryError.h>
+#include <luthier/Common/ROCmLibraryError.h>
 #include <rocprofiler-sdk/fwd.h>
 
 namespace luthier::rocprofiler {
@@ -29,20 +29,20 @@ class RocprofilerError final : RocmLibraryError {
   const std::optional<rocprofiler_status_t> Error;
 
 public:
-  explicit RocprofilerError(std::string ErrorMsg,
-                            const std::optional<rocprofiler_status_t> Error,
-                            const std::source_location ErrorLocation =
-                                std::source_location::current(),
-                            StackTraceType StackTrace = StackTraceInitializer())
+  RocprofilerError(std::string ErrorMsg,
+                   const std::optional<rocprofiler_status_t> Error,
+                   const std::source_location ErrorLocation =
+                       std::source_location::current(),
+                   StackTraceType StackTrace = StackTraceInitializer())
       : RocmLibraryError(std::move(ErrorMsg), ErrorLocation,
                          std::move(StackTrace)),
         Error(Error) {};
 
-  explicit RocprofilerError(const llvm::formatv_object_base &ErrorMsg,
-                            const std::optional<rocprofiler_status_t> Error,
-                            const std::source_location ErrorLocation =
-                                std::source_location::current(),
-                            StackTraceType StackTrace = StackTraceInitializer())
+  RocprofilerError(const llvm::formatv_object_base &ErrorMsg,
+                   const std::optional<rocprofiler_status_t> Error,
+                   const std::source_location ErrorLocation =
+                       std::source_location::current(),
+                   StackTraceType StackTrace = StackTraceInitializer())
       : RocmLibraryError(ErrorMsg.str(), ErrorLocation, std::move(StackTrace)),
         Error(Error) {};
 
@@ -55,7 +55,8 @@ public:
   [&]() {                                                                      \
     if (const rocprofiler_status_t Status = Expr;                              \
         Status != ROCPROFILER_STATUS_SUCCESS) {                                \
-      return llvm::make_error<RocprofilerError>(ErrorMsg, Status);             \
+      return llvm::make_error<luthier::rocprofiler::RocprofilerError>(         \
+          ErrorMsg, Status);                                                   \
     }                                                                          \
     return llvm::Error::success();                                             \
   }()

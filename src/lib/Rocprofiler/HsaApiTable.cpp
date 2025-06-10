@@ -16,14 +16,14 @@
 /// \file
 /// Implements the HsaApiTableInterceptor class.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/ApiTable.h>
-#include <luthier/rocprofiler/RocprofilerError.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Rocprofiler/HsaApiTable.h>
+#include <luthier/Rocprofiler/RocprofilerError.h>
 #include <rocprofiler-sdk/registration.h>
 
-namespace luthier::hsa {
+namespace luthier::rocprofiler {
 
-void ApiTableRegistrationCallbackProvider::apiRegistrationCallback(
+void HsaApiTableRegistrationCallbackProvider::apiRegistrationCallback(
     rocprofiler_intercept_table_t Type, uint64_t LibVersion,
     uint64_t LibInstance, void **Tables, uint64_t NumTables, void *Data) {
   /// Check for errors
@@ -53,22 +53,23 @@ void ApiTableRegistrationCallbackProvider::apiRegistrationCallback(
   }
 
   auto &RegProvider =
-      *static_cast<ApiTableRegistrationCallbackProvider *>(Data);
+      *static_cast<HsaApiTableRegistrationCallbackProvider *>(Data);
   RegProvider.WasRegistrationInvoked.store(true);
   RegProvider.Callback(*Table);
 }
 
-llvm::Expected<std::unique_ptr<ApiTableRegistrationCallbackProvider>>
-  ApiTableRegistrationCallbackProvider::requestCallback(CallbackType CB) {
+llvm::Expected<std::unique_ptr<HsaApiTableRegistrationCallbackProvider>>
+HsaApiTableRegistrationCallbackProvider::requestCallback(CallbackType CB) {
   llvm::Error Err = llvm::Error::success();
-  auto Out = std::make_unique<ApiTableRegistrationCallbackProvider>(
+  auto Out = std::make_unique<HsaApiTableRegistrationCallbackProvider>(
       std::move(CB), Err);
   if (Err)
     return std::move(Err);
   return std::move(Out);
 }
 
-ApiTableRegistrationCallbackProvider::~ApiTableRegistrationCallbackProvider() {
+HsaApiTableRegistrationCallbackProvider::
+    ~HsaApiTableRegistrationCallbackProvider() {
   int RocprofilerFiniStatus;
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
       rocprofiler_is_finalized(&RocprofilerFiniStatus),
@@ -79,4 +80,4 @@ ApiTableRegistrationCallbackProvider::~ApiTableRegistrationCallbackProvider() {
       "could perform the api table registration callback"));
 }
 
-} // namespace luthier::hsa
+} // namespace luthier::rocprofiler
