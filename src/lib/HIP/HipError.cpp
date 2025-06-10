@@ -18,7 +18,7 @@
 /// Implements the \c luthier::HipError class.
 //===----------------------------------------------------------------------===//
 #include <llvm/Support/Signals.h>
-#include <luthier/hip/HipError.h>
+#include <luthier/HIP/HipError.h>
 #include <stacktrace>
 
 namespace luthier::hip {

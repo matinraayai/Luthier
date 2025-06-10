@@ -20,7 +20,7 @@
 #ifndef LUTHIER_HIP_HIP_ERROR_H
 #define LUTHIER_HIP_HIP_ERROR_H
 #include <hip/hip_runtime_api.h>
-#include <luthier/common/ROCmLibraryError.h>
+#include <luthier/Common/ROCmLibraryError.h>
 
 namespace luthier::hip {
 class HipError final : RocmLibraryError {
