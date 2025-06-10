@@ -21,8 +21,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "EmbedInstrumentationModuleBitcodePass.hpp"
-#include "luthier/consts.h"
-#include "luthier/intrinsic/IntrinsicCalls.h"
 #include "llvm/Passes/PassPlugin.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Analysis/ValueTracking.h>
@@ -34,6 +32,8 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
+#include <luthier/Instrumentation/IntrinsicCalls.h>
+#include <luthier/Instrumentation/consts.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-embed-imodule-bitcode-pass"
@@ -204,7 +204,7 @@ EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
   // Extract the CUID for identification
   for (auto &GV : llvm::make_early_inc_range(ClonedModule->globals())) {
     auto GVName = GV.getName();
-    if (GVName.ends_with(".managed") || GVName == ReservedManagedVar ||
+    if (GVName.ends_with(".managed") || GVName == IModuleReservedManagedVar ||
         GV.getSection() == "llvm.metadata") {
       GV.dropAllReferences();
       GV.eraseFromParent();
@@ -259,7 +259,7 @@ EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
 
   llvm::embedBufferInModule(
       M, llvm::MemoryBufferRef(llvm::toStringRef(Data), "ModuleData"),
-      ".llvmbc");
+      IModuleBCSectionName);
 
   return PA;
 }
