@@ -17,8 +17,8 @@
 /// \file
 /// Implements the \c PacketMonitor interface.
 //===----------------------------------------------------------------------===//
-#include <luthier/hsa/KernelDescriptor.h>
-#include <luthier/hsa/PacketMonitor.h>
+#include <luthier/HSA/KernelDescriptor.h>
+#include <luthier/HSARuntime/PacketMonitor.h>
 
 namespace luthier::hsa {
 
@@ -28,7 +28,7 @@ PacketMonitor::getKernelObjectDefinition(const uint64_t KernelObject) const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       KernelObject != 0, "Kernel object cannot be zero"));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      HsaApiTable.wasRegistrationCallbackInvoked(),
+      CoreApiSnapshot.wasRegistrationCallbackInvoked(),
       "The API table snapshot is not yet initialized"));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       LoaderTable != nullptr, "The Loader table is not yet initialized"));
@@ -38,9 +38,9 @@ PacketMonitor::getKernelObjectDefinition(const uint64_t KernelObject) const {
           *LoaderTable
                ->hsa_ven_amd_loader_executable_iterate_loaded_code_objects,
           *LoaderTable->hsa_ven_amd_loader_loaded_code_object_get_info,
-          *HsaApiTable.getFunction<
+          *CoreApiSnapshot.getFunction<
               &::CoreApiTable::hsa_executable_iterate_agent_symbols_fn>(),
-          *HsaApiTable.getFunction<
+          *CoreApiSnapshot.getFunction<
               &::CoreApiTable::hsa_executable_symbol_get_info_fn>());
 }
 

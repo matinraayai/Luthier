@@ -20,18 +20,17 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_TOOL_EXECUTABLE_LOADER_H
 #define LUTHIER_HSA_TOOL_EXECUTABLE_LOADER_H
-#include <hip/amd_detail/amd_hip_vector_types.h>
 #include <hip/hip_runtime.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
-#include <luthier/common/Singleton.h>
-#include <luthier/consts.h>
-#include <luthier/hip/ApiTable.h>
-#include <luthier/hsa/ApiTable.h>
-#include <luthier/hsa/Executable.h>
-#include <luthier/hsa/LoadedInstrumentationModule.h>
-#include <luthier/hsa/hsa.h>
+#include <luthier/Common/Singleton.h>
+#include <luthier/HSA/Executable.h>
+#include <luthier/HSA/hsa.h>
+#include <luthier/HSARuntime/LoadedInstrumentationModule.h>
+#include <luthier/Instrumentation/consts.h>
+#include <luthier/Rocprofiler/HIPApiTable.h>
+#include <luthier/Rocprofiler/HSAApiTable.h>
 #include <mutex>
 
 namespace luthier::hsa {
@@ -48,7 +47,7 @@ template <size_t Idx> class ToolExecutableLoaderInstance;
 /// \sa ToolExecutableLoaderInstance
 class ToolExecutableLoader {
 protected:
-  const hsa::ApiTableSnapshot<::CoreApiTable> &CoreTableSnapshot;
+  const ApiTableSnapshot<::CoreApiTable> &CoreTableSnapshot;
 
   const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &LoaderApiSnapshot;

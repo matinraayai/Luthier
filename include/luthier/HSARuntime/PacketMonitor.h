@@ -19,15 +19,15 @@
 /// charge of monitoring packets submitted to all devices at runtime, modifying
 /// them, and providing event handlers to wait on packet's doorbells.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_PACKET_MONITOR_H
-#define LUTHIER_HSA_PACKET_MONITOR_H
+#ifndef LUTHIER_HSA_RUNTIME_PACKET_MONITOR_H
+#define LUTHIER_HSA_RUNTIME_PACKET_MONITOR_H
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
-#include <luthier/common/Singleton.h>
-#include <luthier/hsa/ApiTable.h>
-#include <luthier/hsa/AqlPacket.h>
-#include <luthier/hsa/ExecutableSymbol.h>
-#include <luthier/hsa/HsaError.h>
+#include <luthier/Common/Singleton.h>
+#include <luthier/HSA/AqlPacket.h>
+#include <luthier/HSA/ExecutableSymbol.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/Rocprofiler/HSAApiTable.h>
 
 namespace luthier::hsa {
 
@@ -57,21 +57,21 @@ public:
   llvm::Expected<hsa_kernel_dispatch_packet_t>
   overrideLaunchParameters(const hsa_kernel_dispatch_packet_t &OriginalPacket,
                            hsa_executable_symbol_t NewKernel) {
-    hsa_kernel_dispatch_packet_t OutPacket = OriginalPacket;
-
-    /// Override the kernel
-    llvm::Expected<uint64_t> NewKDOrErr = hsa::executableSymbolGetAddress(
-        NewKernel,
-        CoreApiSnapshot
-            .getFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>());
-    LUTHIER_RETURN_ON_ERROR(NewKDOrErr.takeError());
-    OutPacket.kernel_object = *NewKDOrErr;
-
-    auto InstrumentedKernelMD = InstrumentedKernel->getKernelMetadata();
-
-    Packet.private_segment_size = InstrumentedKernelMD.PrivateSegmentFixedSize;
-
-    return OutPacket;
+    // hsa_kernel_dispatch_packet_t OutPacket = OriginalPacket;
+    //
+    // /// Override the kernel
+    // llvm::Expected<uint64_t> NewKDOrErr = hsa::executableSymbolGetAddress(
+    //     NewKernel,
+    //     CoreApiSnapshot
+    //         .getFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>());
+    // LUTHIER_RETURN_ON_ERROR(NewKDOrErr.takeError());
+    // OutPacket.kernel_object = *NewKDOrErr;
+    //
+    // auto InstrumentedKernelMD = InstrumentedKernel->getKernelMetadata();
+    //
+    // Packet.private_segment_size = InstrumentedKernelMD.PrivateSegmentFixedSize;
+    //
+    // return OutPacket;
   }
 };
 

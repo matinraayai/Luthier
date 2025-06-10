@@ -19,15 +19,15 @@
 /// of the ELF code objects of \c hsa_loaded_code_object_t right after they
 /// are created by the HSA runtime.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_CODE_OBJECT_CACHE_H
-#define LUTHIER_HSA_CODE_OBJECT_CACHE_H
+#ifndef LUTHIER_HSA_RUNTIME_CODE_OBJECT_CACHE_H
+#define LUTHIER_HSA_RUNTIME_CODE_OBJECT_CACHE_H
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseMap.h>
-#include <luthier/common/Singleton.h>
-#include <luthier/hip/ApiTable.h>
-#include <luthier/hsa/ApiTable.h>
-#include <luthier/hsa/Executable.h>
-#include <luthier/hsa/LoadedCodeObject.h>
+#include <luthier/Common/Singleton.h>
+#include <luthier/HSA/Executable.h>
+#include <luthier/HSA/LoadedCodeObject.h>
+#include <luthier/Rocprofiler/HIPApiTable.h>
+#include <luthier/Rocprofiler/HSAApiTable.h>
 
 namespace luthier::hsa {
 

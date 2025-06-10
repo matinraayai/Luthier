@@ -19,27 +19,27 @@
 /// singleton.
 //===----------------------------------------------------------------------===//
 #include <llvm/ADT/SmallVector.h>
-#include <luthier/consts.h>
-#include <luthier/hsa/ApiTable.h>
-#include <luthier/hsa/CodeObjectReader.h>
-#include <luthier/hsa/ExecutableSymbol.h>
-#include <luthier/hsa/LoadedCodeObject.h>
-#include <luthier/hsa/ToolExecutableLoader.h>
+#include <luthier/HSA/CodeObjectReader.h>
+#include <luthier/HSA/ExecutableSymbol.h>
+#include <luthier/HSA/LoadedCodeObject.h>
+#include <luthier/HSARuntime/ToolExecutableLoader.h>
+#include <luthier/Instrumentation/consts.h>
+#include <luthier/Rocprofiler/HSAApiTable.h>
 #include <vector>
 
 namespace luthier::hsa {
 
 llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
     hsa_loaded_code_object_t LCO) {
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_GENERIC_ERROR_CHECK(LoaderTable.load() != nullptr,
-                                  "The Loader API table is not initialized"));
+  using LoaderTable =
+      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
   // Get the LCO's storage memory
   llvm::ArrayRef<uint8_t> StorageMemory;
   LUTHIER_RETURN_ON_ERROR(
       hsa::loadedCodeObjectGetStorageMemory(
-          LCO, *LoaderTable.load(std::memory_order_relaxed)
-                    ->hsa_ven_amd_loader_loaded_code_object_get_info)
+          LCO,
+          LoaderApiSnapshot.getFunction<
+              &LoaderTable::hsa_ven_amd_loader_loaded_code_object_get_info>())
           .moveInto(StorageMemory));
 
   // Check if the LCO is indeed a loaded instrumentation module
@@ -57,8 +57,9 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
     hsa_executable_t Exec;
     LUTHIER_RETURN_ON_ERROR(
         hsa::loadedCodeObjectGetExecutable(
-            LCO, *LoaderTable.load(std::memory_order_relaxed)
-                      ->hsa_ven_amd_loader_loaded_code_object_get_info)
+            LCO,
+            LoaderApiSnapshot.getFunction<
+                &LoaderTable::hsa_ven_amd_loader_loaded_code_object_get_info>())
             .moveInto(Exec));
     /// Get the CUID of the Module
     size_t CUID = IModuleOrErr.get()->getCUID();
@@ -66,8 +67,9 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
     hsa_agent_t Agent;
     LUTHIER_RETURN_ON_ERROR(
         hsa::loadedCodeObjectGetAgent(
-            LCO, *LoaderTable.load(std::memory_order_relaxed)
-                      ->hsa_ven_amd_loader_loaded_code_object_get_info)
+            LCO,
+            LoaderApiSnapshot.getFunction<
+                &LoaderTable::hsa_ven_amd_loader_loaded_code_object_get_info>())
             .moveInto(Agent));
     /// If the CUID and the agent of the module indicate that we were expecting
     /// it, register it; Otherwise, the LCO must have been a dynamically loaded
@@ -86,10 +88,11 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
         // module
         ModuleIter->second.reset(new HipLoadedInstrumentationModule(
             Exec, LCO, std::move(*IModuleOrErr),
-            TableSnapshot
+            CoreTableSnapshot
                 .getFunction<&::CoreApiTable::hsa_executable_get_info_fn>(),
-            *LoaderTable.load(std::memory_order_relaxed)
-                 ->hsa_ven_amd_loader_loaded_code_object_get_info));
+            LoaderApiSnapshot.getFunction<
+                &LoaderTable::
+                    hsa_ven_amd_loader_loaded_code_object_get_info>()));
       }
     }
   }
@@ -98,24 +101,25 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
 
 llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
     const hsa_executable_t Exec) {
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_GENERIC_ERROR_CHECK(LoaderTable.load() != nullptr,
-                                  "The Loader API table is not initialized"));
+  using LoaderTable =
+      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
   /// Iterate over the LCOs of the executable and check if they were HIP-laoded
   /// IModules
   llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
   LUTHIER_RETURN_ON_ERROR(hsa::executableGetLoadedCodeObjects(
       Exec,
-      *LoaderTable.load(std::memory_order_relaxed)
-           ->hsa_ven_amd_loader_executable_iterate_loaded_code_objects,
+      LoaderApiSnapshot.getFunction<
+          &LoaderTable::
+              hsa_ven_amd_loader_executable_iterate_loaded_code_objects>(),
       LCOs));
   for (const hsa_loaded_code_object_t LCO : LCOs) {
     /// Get the agent of the LCO
     hsa_agent_t Agent;
     LUTHIER_RETURN_ON_ERROR(
         hsa::loadedCodeObjectGetAgent(
-            LCO, *LoaderTable.load(std::memory_order_relaxed)
-                      ->hsa_ven_amd_loader_loaded_code_object_get_info)
+            LCO,
+            LoaderApiSnapshot.getFunction<
+                &LoaderTable::hsa_ven_amd_loader_loaded_code_object_get_info>())
             .moveInto(Agent));
 
     /// Look for the IModule reserved symbol inside the executable
@@ -123,7 +127,7 @@ llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
     LUTHIER_RETURN_ON_ERROR(
         hsa::executableGetSymbolByName(
             Exec,
-            TableSnapshot.getFunction<
+            CoreTableSnapshot.getFunction<
                 &::CoreApiTable::hsa_executable_get_symbol_by_name_fn>(),
             IModuleReservedManagedVar, Agent)
             .moveInto(ReservedMangedVar));
@@ -135,7 +139,7 @@ llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
           [&](hsa_executable_symbol_t S) -> llvm::Expected<bool> {
         llvm::Expected<llvm::StringRef> SymbolNameOrErr =
             executableSymbolGetName(
-                S, TableSnapshot.getFunction<
+                S, CoreTableSnapshot.getFunction<
                        &::CoreApiTable::hsa_executable_symbol_get_info_fn>());
         LUTHIER_RETURN_ON_ERROR(SymbolNameOrErr.takeError());
 
@@ -157,7 +161,7 @@ llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
       LUTHIER_RETURN_ON_ERROR(
           hsa::executableFindFirstAgentSymbol(
               Exec,
-              TableSnapshot.getFunction<
+              CoreTableSnapshot.getFunction<
                   &::CoreApiTable::hsa_executable_iterate_agent_symbols_fn>(),
               Agent, ExtractCUIDFromSymbolCB)
               .takeError());
@@ -176,8 +180,8 @@ llvm::Error ToolExecutableLoader::destroyInstrumentedCopiesOfExecutable(
     return llvm::Error::success();
   for (auto It = Beg; It != End; ++It)
     LUTHIER_RETURN_ON_ERROR(hsa::executableDestroy(
-        Exec,
-        TableSnapshot.getFunction<&CoreApiTable::hsa_executable_destroy_fn>()));
+        Exec, CoreTableSnapshot
+                  .getFunction<&CoreApiTable::hsa_executable_destroy_fn>()));
   ApplicationToInstrumentedExecutablesMap.erase(Exec);
   return llvm::Error::success();
 }
@@ -186,9 +190,8 @@ llvm::Expected<DynamicallyLoadedInstrumentationModule &>
 ToolExecutableLoader::loadInstrumentationModule(std::vector<uint8_t> CodeObject,
                                                 hsa_agent_t Agent) {
   std::lock_guard Lock(DynamicModuleMutex);
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_GENERIC_ERROR_CHECK(LoaderTable.load() != nullptr,
-                                  "The Loader API table is not initialized"));
+  using LoaderTable =
+      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
 
   std::unique_ptr<InstrumentationModule> IModule;
   LUTHIER_RETURN_ON_ERROR(
@@ -198,7 +201,7 @@ ToolExecutableLoader::loadInstrumentationModule(std::vector<uint8_t> CodeObject,
   hsa_executable_t Exec{};
   LUTHIER_RETURN_ON_ERROR(
       hsa::executableCreate(
-          TableSnapshot
+          CoreTableSnapshot
               .getFunction<&::CoreApiTable::hsa_executable_create_alt_fn>())
           .moveInto(Exec));
 
@@ -206,7 +209,7 @@ ToolExecutableLoader::loadInstrumentationModule(std::vector<uint8_t> CodeObject,
   hsa_code_object_reader_t Reader{};
   LUTHIER_RETURN_ON_ERROR(
       hsa::codeObjectReaderCreateFromMemory(
-          TableSnapshot.getFunction<
+          CoreTableSnapshot.getFunction<
               &::CoreApiTable::hsa_code_object_reader_create_from_memory_fn>(),
           CodeObject)
           .moveInto(Reader));
@@ -214,27 +217,29 @@ ToolExecutableLoader::loadInstrumentationModule(std::vector<uint8_t> CodeObject,
   LUTHIER_RETURN_ON_ERROR(
       hsa::executableLoadAgentCodeObject(
           Exec,
-          TableSnapshot.getFunction<
+          CoreTableSnapshot.getFunction<
               &::CoreApiTable::hsa_executable_load_agent_code_object_fn>(),
           Reader, Agent)
           .moveInto(LCO));
   // Freeze the executable
   LUTHIER_RETURN_ON_ERROR(hsa::executableFreeze(
-      Exec,
-      TableSnapshot.getFunction<&::CoreApiTable::hsa_executable_freeze_fn>()));
+      Exec, CoreTableSnapshot
+                .getFunction<&::CoreApiTable::hsa_executable_freeze_fn>()));
 
   // Destroy the code object reader
   LUTHIER_RETURN_ON_ERROR(hsa::codeObjectReaderDestroy(
       Reader,
-      TableSnapshot
+      CoreTableSnapshot
           .getFunction<&CoreApiTable::hsa_code_object_reader_destroy_fn>()));
 
   auto *Out = new DynamicallyLoadedInstrumentationModule(
       Exec, LCO, std::move(IModule),
-      TableSnapshot.getFunction<&::CoreApiTable::hsa_executable_get_info_fn>(),
-      *LoaderTable.load(std::memory_order_relaxed)
-           ->hsa_ven_amd_loader_loaded_code_object_get_info,
-      TableSnapshot.getFunction<&CoreApiTable::hsa_executable_destroy_fn>());
+      CoreTableSnapshot
+          .getFunction<&::CoreApiTable::hsa_executable_get_info_fn>(),
+      LoaderApiSnapshot.getFunction<
+          &LoaderTable::hsa_ven_amd_loader_loaded_code_object_get_info>(),
+      CoreTableSnapshot
+          .getFunction<&CoreApiTable::hsa_executable_destroy_fn>());
 
   DynModules.insert(Out);
 
@@ -246,32 +251,30 @@ ToolExecutableLoader::loadInstrumentedCodeObject(
     llvm::ArrayRef<uint8_t> InstrumentedElf,
     hsa_loaded_code_object_t OriginalLoadedCodeObject,
     const llvm::StringMap<const void *> &ExternVariables) {
-
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_GENERIC_ERROR_CHECK(LoaderTable.load() != nullptr,
-                                  "The Loader API table is not initialized"));
+  using LoaderTable =
+      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
   /// Get the Agent of the original LCO
   hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(
       hsa::loadedCodeObjectGetAgent(
           OriginalLoadedCodeObject,
-          *LoaderTable.load(std::memory_order_relaxed)
-               ->hsa_ven_amd_loader_loaded_code_object_get_info)
+          LoaderApiSnapshot.getFunction<
+              &LoaderTable::hsa_ven_amd_loader_loaded_code_object_get_info>())
           .moveInto(Agent));
   /// Get the executable of the original LCO
   hsa_executable_t OriginalExecutable;
   LUTHIER_RETURN_ON_ERROR(
       hsa::loadedCodeObjectGetExecutable(
           OriginalLoadedCodeObject,
-          *LoaderTable.load(std::memory_order_relaxed)
-               ->hsa_ven_amd_loader_loaded_code_object_get_info)
+          LoaderApiSnapshot.getFunction<
+              &LoaderTable::hsa_ven_amd_loader_loaded_code_object_get_info>())
           .moveInto(OriginalExecutable));
 
   // Create the instrumented executable
   hsa_executable_t InstrumentedExec{};
   LUTHIER_RETURN_ON_ERROR(
       hsa::executableCreate(
-          TableSnapshot
+          CoreTableSnapshot
               .getFunction<&::CoreApiTable::hsa_executable_create_alt_fn>())
           .moveInto(InstrumentedExec));
 
@@ -279,7 +282,7 @@ ToolExecutableLoader::loadInstrumentedCodeObject(
   for (const auto &[EVName, EVAddress] : ExternVariables) {
     LUTHIER_RETURN_ON_ERROR(hsa::executableDefineExternalAgentGlobalVariable(
         InstrumentedExec,
-        TableSnapshot.getFunction<
+        CoreTableSnapshot.getFunction<
             &::CoreApiTable::hsa_executable_agent_global_variable_define_fn>(),
         Agent, EVName, EVAddress));
   }
@@ -288,7 +291,7 @@ ToolExecutableLoader::loadInstrumentedCodeObject(
   hsa_code_object_reader_t Reader{};
   LUTHIER_RETURN_ON_ERROR(
       hsa::codeObjectReaderCreateFromMemory(
-          TableSnapshot.getFunction<
+          CoreTableSnapshot.getFunction<
               &::CoreApiTable::hsa_code_object_reader_create_from_memory_fn>(),
           InstrumentedElf)
           .moveInto(Reader));
@@ -296,19 +299,20 @@ ToolExecutableLoader::loadInstrumentedCodeObject(
   LUTHIER_RETURN_ON_ERROR(
       hsa::executableLoadAgentCodeObject(
           InstrumentedExec,
-          TableSnapshot.getFunction<
+          CoreTableSnapshot.getFunction<
               &::CoreApiTable::hsa_executable_load_agent_code_object_fn>(),
           Reader, Agent)
           .moveInto(InstrumentedLCO));
   // Freeze the executable
   LUTHIER_RETURN_ON_ERROR(hsa::executableFreeze(
       InstrumentedExec,
-      TableSnapshot.getFunction<&CoreApiTable::hsa_executable_freeze_fn>()));
+      CoreTableSnapshot
+          .getFunction<&CoreApiTable::hsa_executable_freeze_fn>()));
 
   // Destroy the code object reader
   LUTHIER_RETURN_ON_ERROR(hsa::codeObjectReaderDestroy(
       Reader,
-      TableSnapshot
+      CoreTableSnapshot
           .getFunction<&CoreApiTable::hsa_code_object_reader_destroy_fn>()));
 
   std::lock_guard Lock(InstrumentedExecMutex);

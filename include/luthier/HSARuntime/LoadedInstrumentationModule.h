@@ -19,12 +19,12 @@
 /// \c InstrumentationModule that has been loaded onto a GPU device in the HSA
 /// runtime.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_LOADED_INSTRUMENTATION_MODULE_H
-#define LUTHIER_HSA_LOADED_INSTRUMENTATION_MODULE_H
+#ifndef LUTHIER_HSA_RUNTIME_LOADED_INSTRUMENTATION_MODULE_H
+#define LUTHIER_HSA_RUNTIME_LOADED_INSTRUMENTATION_MODULE_H
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
-#include <luthier/instrumentation/InstrumentationModule.h>
+#include <luthier/Instrumentation/InstrumentationModule.h>
 
 namespace luthier::hsa {
 
