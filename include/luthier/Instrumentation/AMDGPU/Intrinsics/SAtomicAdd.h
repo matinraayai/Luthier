@@ -1,4 +1,4 @@
-//===-- SAtomicAdd.hpp - Luthier Scalar Atomic Add ------------------------===//
+//===-- SAtomicAdd.h - Luthier Scalar Atomic Add ----------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,13 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's <tt>sAtomicAdd</tt> intrinsic, and how it
+/// Describes Luthier's <tt>sAtomicAdd</tt> intrinsic, and how it
 /// should be transformed from an extern function call into a set of
 /// <tt>llvm::MachineInstr</tt>s.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_S_ATOMIC_ADD_HPP
-#define LUTHIER_TOOLING_COMMON_INTRINSIC_S_ATOMIC_ADD_HPP
-
-#include "luthier/intrinsic/IntrinsicProcessor.h"
+#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_INTRINSICS_S_ATOMIC_ADD_H
+#define LUTHIER_INSTRUMENTATION_AMDGPU_INTRINSICS_S_ATOMIC_ADD_H
+#include <luthier/Instrumentation/IntrinsicProcessor.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Support/Error.h>

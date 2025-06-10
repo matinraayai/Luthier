@@ -1,13 +1,31 @@
-#include "AMDGPUTargetMachine.h"
-#include "SIRegisterInfo.h"
-#include "intrinsic/WriteReg.hpp"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
-#include "luthier/llvm/streams.h"
+//===-- SAtomicAdd.cpp - Luthier Scalar Atomic Add ------------------------===//
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// Implements Luthier's <tt>sAtomicAdd</tt> intrinsic.
+//===----------------------------------------------------------------------===//
+#include <AMDGPUTargetMachine.h>
+#include <SIRegisterInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/Instrumentation/AMDGPU/Intrinsics/SAtomicAdd.h>
 
 namespace luthier {
 
@@ -16,11 +34,11 @@ sAtomicAddIRProcessor(const llvm::Function &Intrinsic,
                       const llvm::CallInst &User,
                       const llvm::GCNTargetMachine &TM) {
   // The User must only have 2 operands
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(User.arg_size() == 2,
-                          "Expected two operands to be passed to the "
-                          "luthier::sAtomicAdd intrinsic '{0}', got {1}.",
-                          User, User.arg_size()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      User.arg_size() == 2,
+      llvm::formatv("Expected two operands to be passed to the "
+                    "luthier::sAtomicAdd intrinsic '{0}', got {1}.",
+                    User, User.arg_size())));
 
   luthier::IntrinsicIRLoweringInfo Out;
 
@@ -46,20 +64,21 @@ llvm::Error sAtomicAddMIRProcessor(
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
   // There should be three virtual register involved in the operation
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args.size() == 3,
-      "Expected only a single virtual register to be passed down to the "
-      "MIR lowering stage of luthier::sAtomicAdd, instead got {0}",
-      Args.size()));
+      llvm::formatv(
+          "Expected only a single virtual register to be passed down to the "
+          "MIR lowering stage of luthier::sAtomicAdd, instead got {0}",
+          Args.size())));
   // The first arg should be of reg def kind
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(), "The first virtual register argument for "
                                     "luthier::sAtomicAdd is not a def."));
   // The second and third should be of reg def kind
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[1].first.isRegUseKind(), "The second virtual register argument for "
                                     "luthier::sAtomicAdd is not a use."));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[2].first.isRegUseKind(), "The third virtual register argument for "
                                     "luthier::sAtomicAdd is not a use."));
   // Get all the involved registers
@@ -71,11 +90,11 @@ llvm::Error sAtomicAddMIRProcessor(
 
   auto OutputRegSize = TRI.getRegSizeInBits(Output, MRI);
 
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(OutputRegSize == 64 || OutputRegSize == 32,
-                          "Output register size of luthier::sAtomicAdd must be "
-                          "either 64 or 32 bits, got {0} instead.",
-                          OutputRegSize));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      OutputRegSize == 64 || OutputRegSize == 32,
+      llvm::formatv("Output register size of luthier::sAtomicAdd must be "
+                    "either 64 or 32 bits, got {0} instead.",
+                    OutputRegSize)));
   uint16_t SAtomicAddOpcode = OutputRegSize == 64
                                   ? llvm::AMDGPU::S_ATOMIC_ADD_X2_IMM_RTN
                                   : llvm::AMDGPU::S_ATOMIC_ADD_IMM_RTN;
