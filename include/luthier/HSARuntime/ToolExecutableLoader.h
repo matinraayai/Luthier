@@ -29,8 +29,8 @@
 #include <luthier/HSA/hsa.h>
 #include <luthier/HSARuntime/LoadedInstrumentationModule.h>
 #include <luthier/Instrumentation/consts.h>
-#include <luthier/Rocprofiler/HIPApiTable.h>
-#include <luthier/Rocprofiler/HSAApiTable.h>
+#include <luthier/Rocprofiler/HipApiTable.h>
+#include <luthier/Rocprofiler/HsaApiTable.h>
 #include <mutex>
 
 namespace luthier::hsa {
@@ -47,9 +47,9 @@ template <size_t Idx> class ToolExecutableLoaderInstance;
 /// \sa ToolExecutableLoaderInstance
 class ToolExecutableLoader {
 protected:
-  const ApiTableSnapshot<::CoreApiTable> &CoreTableSnapshot;
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreTableSnapshot;
 
-  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &LoaderApiSnapshot;
 
   /// Holds info regarding HIP Hook Function handles loaded into the HIP runtime
@@ -128,8 +128,8 @@ protected:
   llvm::Error destroyInstrumentedCopiesOfExecutable(hsa_executable_t Exec);
 
   ToolExecutableLoader(
-      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &LoaderApiSnapshot)
       : CoreTableSnapshot(CoreApiSnapshot),
         LoaderApiSnapshot(LoaderApiSnapshot) {};
@@ -212,10 +212,11 @@ class ROCPROFILER_HIDDEN_API ToolExecutableLoaderInstance
       public Singleton<ToolExecutableLoaderInstance<Idx>> {
 private:
   /// Provides the HSA runtime API table to the loader
-  const std::unique_ptr<hsa::ApiTableWrapperInstaller> HsaApiTableInterceptor;
+  const std::unique_ptr<rocprofiler::HsaApiTableWrapperInstaller>
+      HsaApiTableInterceptor;
 
   /// Provides the HIP Compiler API table to the loader
-  const std::unique_ptr<hip::HipCompilerApiTableWrapperInstaller>
+  const std::unique_ptr<rocprofiler::HipCompilerApiTableWrapperInstaller>
       HipCompilerApiTableInterceptor;
 
   //===--------------------------------------------------------------------===//
@@ -276,8 +277,8 @@ private:
   hipUnregisterFatBinaryWrapper(void **Modules);
 
   ToolExecutableLoaderInstance(
-      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &LoaderApiSnapshot,
       llvm::Error &Err)
       : ToolExecutableLoader(CoreApiSnapshot, LoaderApiSnapshot),
@@ -287,8 +288,8 @@ private:
             return nullptr;
 
           /// Install wrappers
-          auto HsaApiTableInterceptorOrErr =
-              hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
+          auto HsaApiTableInterceptorOrErr = rocprofiler::
+              HsaApiTableWrapperInstaller::requestWrapperInstallation(
                   {&::CoreApiTable::hsa_executable_load_agent_code_object_fn,
                    UnderlyingHsaExecutableLoadAgentCodeObjectFn,
                    hsaExecutableLoadAgentCodeObjectWrapper},
@@ -301,7 +302,7 @@ private:
           return nullptr;
         }()),
         HipCompilerApiTableInterceptor([&] {
-          auto HipCompilerApiInterceptorOrErr = hip::
+          auto HipCompilerApiInterceptorOrErr = rocprofiler::
               HipCompilerApiTableWrapperInstaller::requestWrapperInstallation(
                   {&::HipCompilerDispatchTable::__hipRegisterFunction_fn,
                    UnderlyingHipRegisterFunctionFn, hipRegisterFunctionWrapper},
@@ -323,10 +324,10 @@ private:
 
 public:
   /// Creates and returns a new \c ToolExecutableLoaderInstance
-  static llvm::Expected<std::unique_ptr<ToolExecutableLoaderInstance>>
-  create(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-         const hsa::ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>
-             &LoaderApiSnapshot) {
+  static llvm::Expected<std::unique_ptr<ToolExecutableLoaderInstance>> create(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot) {
     llvm::Error Err = llvm::Error::success();
     auto Out = std::make_unique<ToolExecutableLoaderInstance>(
         CoreApiSnapshot, LoaderApiSnapshot, Err);

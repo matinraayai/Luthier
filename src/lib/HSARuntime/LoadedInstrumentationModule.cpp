@@ -18,12 +18,12 @@
 /// Implements Luthier's HSA Loaded Instrumentation Module and its variants.
 //===----------------------------------------------------------------------===//
 #include <llvm/Bitcode/BitcodeWriter.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/Executable.h>
-#include <luthier/hsa/LoadedCodeObject.h>
-#include <luthier/hsa/LoadedInstrumentationModule.h>
-#include <luthier/hsa/ToolExecutableLoader.h>
-#include <luthier/object/ELFObjectUtils.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/HSA/Executable.h>
+#include <luthier/HSA/LoadedCodeObject.h>
+#include <luthier/HSARuntime/LoadedInstrumentationModule.h>
+#include <luthier/HSARuntime/ToolExecutableLoader.h>
+#include <luthier/Object/ELFObjectUtils.h>
 
 namespace luthier::hsa {
 

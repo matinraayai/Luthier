@@ -18,14 +18,13 @@
 /// Implements the \c HsaCodeObjectCache class.
 //===----------------------------------------------------------------------===//
 #include <luthier/HSARuntime/CodeObjectCache.h>
-#include <luthier/Rocprofiler/HSAApiTable.h>
 
 namespace luthier::hsa {
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 CodeObjectCache::getAssociatedCodeObject(hsa_loaded_code_object_t LCO) const {
-  using LoaderTableType =
-      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
+  using LoaderTableType = rocprofiler::HsaExtensionApiTableInfo<
+      HSA_EXTENSION_AMD_LOADER>::TableType;
   std::lock_guard Lock(Mutex);
   /// Return the associated object we have it already
   if (auto It = LCOToCodeObjectMap.find(LCO); It != LCOToCodeObjectMap.end())

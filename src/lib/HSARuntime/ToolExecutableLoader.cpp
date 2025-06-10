@@ -24,15 +24,15 @@
 #include <luthier/HSA/LoadedCodeObject.h>
 #include <luthier/HSARuntime/ToolExecutableLoader.h>
 #include <luthier/Instrumentation/consts.h>
-#include <luthier/Rocprofiler/HSAApiTable.h>
+#include <luthier/Rocprofiler/HsaApiTable.h>
 #include <vector>
 
 namespace luthier::hsa {
 
 llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
     hsa_loaded_code_object_t LCO) {
-  using LoaderTable =
-      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
+  using LoaderTable = rocprofiler::HsaExtensionApiTableInfo<
+      HSA_EXTENSION_AMD_LOADER>::TableType;
   // Get the LCO's storage memory
   llvm::ArrayRef<uint8_t> StorageMemory;
   LUTHIER_RETURN_ON_ERROR(
@@ -101,8 +101,8 @@ llvm::Error ToolExecutableLoader::registerIfHipLoadedInstrumentationModule(
 
 llvm::Error ToolExecutableLoader::unregisterIfHipLoadedIModuleExec(
     const hsa_executable_t Exec) {
-  using LoaderTable =
-      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
+  using LoaderTable = rocprofiler::HsaExtensionApiTableInfo<
+      HSA_EXTENSION_AMD_LOADER>::TableType;
   /// Iterate over the LCOs of the executable and check if they were HIP-laoded
   /// IModules
   llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
@@ -190,8 +190,8 @@ llvm::Expected<DynamicallyLoadedInstrumentationModule &>
 ToolExecutableLoader::loadInstrumentationModule(std::vector<uint8_t> CodeObject,
                                                 hsa_agent_t Agent) {
   std::lock_guard Lock(DynamicModuleMutex);
-  using LoaderTable =
-      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
+  using LoaderTable = rocprofiler::HsaExtensionApiTableInfo<
+      HSA_EXTENSION_AMD_LOADER>::TableType;
 
   std::unique_ptr<InstrumentationModule> IModule;
   LUTHIER_RETURN_ON_ERROR(
@@ -211,7 +211,7 @@ ToolExecutableLoader::loadInstrumentationModule(std::vector<uint8_t> CodeObject,
       hsa::codeObjectReaderCreateFromMemory(
           CoreTableSnapshot.getFunction<
               &::CoreApiTable::hsa_code_object_reader_create_from_memory_fn>(),
-          CodeObject)
+          IModule->getCodeObject())
           .moveInto(Reader));
   hsa_loaded_code_object_t LCO{};
   LUTHIER_RETURN_ON_ERROR(
@@ -251,8 +251,8 @@ ToolExecutableLoader::loadInstrumentedCodeObject(
     llvm::ArrayRef<uint8_t> InstrumentedElf,
     hsa_loaded_code_object_t OriginalLoadedCodeObject,
     const llvm::StringMap<const void *> &ExternVariables) {
-  using LoaderTable =
-      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
+  using LoaderTable = rocprofiler::HsaExtensionApiTableInfo<
+      HSA_EXTENSION_AMD_LOADER>::TableType;
   /// Get the Agent of the original LCO
   hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(

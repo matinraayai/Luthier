@@ -27,22 +27,23 @@
 #include <luthier/HSA/AqlPacket.h>
 #include <luthier/HSA/ExecutableSymbol.h>
 #include <luthier/HSA/HsaError.h>
-#include <luthier/Rocprofiler/HSAApiTable.h>
+#include <luthier/Rocprofiler/HsaApiTable.h>
 
 namespace luthier::hsa {
 
 class PacketMonitor {
 protected:
-  const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
 
-  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &LoaderApiSnapshot;
 
   std::unique_ptr<hsa_ven_amd_loader_1_03_pfn_t> LoaderTable{nullptr};
 
-  PacketMonitor(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-                const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-                    &LoaderApiSnapshot)
+  PacketMonitor(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot)
       : CoreApiSnapshot(CoreApiSnapshot),
         LoaderApiSnapshot(LoaderApiSnapshot) {};
 
@@ -69,7 +70,8 @@ public:
     //
     // auto InstrumentedKernelMD = InstrumentedKernel->getKernelMetadata();
     //
-    // Packet.private_segment_size = InstrumentedKernelMD.PrivateSegmentFixedSize;
+    // Packet.private_segment_size =
+    // InstrumentedKernelMD.PrivateSegmentFixedSize;
     //
     // return OutPacket;
   }
@@ -87,7 +89,8 @@ private:
 
   CallbackType CB;
 
-  const std::unique_ptr<ApiTableWrapperInstaller> HsaApiTableInterceptor;
+  const std::unique_ptr<rocprofiler::HsaApiTableWrapperInstaller>
+      HsaApiTableInterceptor;
 
   static ROCPROFILER_HIDDEN_API decltype(hsa_queue_create)
       *UnderlyingHsaQueueCreateFn;
@@ -104,14 +107,14 @@ private:
                               hsa_amd_queue_intercept_packet_writer Writer);
 
   PacketMonitorInstance(
-      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &LoaderApiSnapshot,
       CallbackType CB, llvm::Error &Err)
       : PacketMonitor(CoreApiSnapshot, LoaderApiSnapshot), CB(std::move(CB)),
         HsaApiTableInterceptor([&] -> decltype(HsaApiTableInterceptor) {
           auto WrapperInstallerOrErr =
-              hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
+              rocprofiler::HsaApiTableWrapperInstaller::requestWrapperInstallation(
                   {&::CoreApiTable::hsa_queue_create_fn,
                    UnderlyingHsaQueueCreateFn, hsaQueueCreateWrapper});
           Err = WrapperInstallerOrErr.takeError();
@@ -124,8 +127,8 @@ private:
 
 public:
   static llvm::Expected<std::unique_ptr<PacketMonitorInstance>>
-  create(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-         const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+  create(const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+         const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
              &LoaderApiSnapshot,
          const CallbackType &CB) {
     llvm::Error Err = llvm::Error::success();

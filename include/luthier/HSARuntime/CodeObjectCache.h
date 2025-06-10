@@ -26,8 +26,8 @@
 #include <luthier/Common/Singleton.h>
 #include <luthier/HSA/Executable.h>
 #include <luthier/HSA/LoadedCodeObject.h>
-#include <luthier/Rocprofiler/HIPApiTable.h>
-#include <luthier/Rocprofiler/HSAApiTable.h>
+#include <luthier/Rocprofiler/HipApiTable.h>
+#include <luthier/Rocprofiler/HsaApiTable.h>
 
 namespace luthier::hsa {
 
@@ -35,16 +35,16 @@ namespace luthier::hsa {
 /// once they get loaded into HSA and invalidate them once they are unloaded
 class CodeObjectCache {
 protected:
-  const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
 
-  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &LoaderApiSnapshot;
 
   std::mutex Mutex;
 
   /// We store the object and its use count in a unique pointer to this struct.
   /// This is so that the \c LCOToCodeObjectMap can reference it directly
-  /// without storing denese map iterators that can be invalidated at any given
+  /// without storing dense map iterators that can be invalidated at any given
   /// time
   struct ObjectStorageEntry {
     /// Where the object is actually stored; We use a unique pointer to store
@@ -71,9 +71,10 @@ protected:
   mutable llvm::DenseMap<hsa_loaded_code_object_t, ObjectStorageEntry &>
       LCOToCodeObjectMap{};
 
-  CodeObjectCache(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-                  const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-                      &LoaderApiSnapshot)
+  CodeObjectCache(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot)
       : CoreApiSnapshot(CoreApiSnapshot),
         LoaderApiSnapshot(LoaderApiSnapshot) {};
 
@@ -96,8 +97,8 @@ class ROCPROFILER_HIDDEN_API CodeObjectCacheInstance
     : public CodeObjectCache,
       Singleton<CodeObjectCacheInstance<Idx>> {
 private:
-  const std::unique_ptr<ApiTableWrapperInstaller> HsaApiTableInterceptor{
-      nullptr};
+  const std::unique_ptr<rocprofiler::HsaApiTableWrapperInstaller>
+      HsaApiTableInterceptor{nullptr};
 
   static ROCPROFILER_HIDDEN_API decltype(hsa_executable_load_agent_code_object)
       *UnderlyingHsaExecutableLoadAgentCodeObjectFn;
@@ -115,14 +116,14 @@ private:
   hsaExecutableDestroyWrapper(hsa_executable_t Executable);
 
   explicit CodeObjectCacheInstance(
-      const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-      const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &LoaderApiSnapshot,
       llvm::Error &Err)
       : CodeObjectCache(CoreApiSnapshot, LoaderApiSnapshot),
         HsaApiTableInterceptor([&]() {
-          auto HsaApiTableWrapperInstallerOrErr =
-              hsa::ApiTableWrapperInstaller::requestWrapperInstallation(
+          auto HsaApiTableWrapperInstallerOrErr = rocprofiler::
+              HsaApiTableWrapperInstaller::requestWrapperInstallation(
                   {&::CoreApiTable::hsa_executable_load_agent_code_object_fn,
                    UnderlyingHsaExecutableLoadAgentCodeObjectFn,
                    hsaExecutableLoadAgentCodeObjectWrapper},
@@ -138,10 +139,10 @@ private:
         }()) {};
 
 public:
-  static llvm::Expected<std::unique_ptr<CodeObjectCacheInstance>>
-  create(const hsa::ApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
-         const hsa::ExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-             &LoaderApiSnapshot) {
+  static llvm::Expected<std::unique_ptr<CodeObjectCacheInstance>> create(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot) {
     llvm::Error Err = llvm::Error::success();
     auto Out = std::make_unique<CodeObjectCacheInstance>(
         CoreApiSnapshot, LoaderApiSnapshot, Err);
@@ -210,8 +211,8 @@ hsa_status_t CodeObjectCacheInstance<Idx>::hsaExecutableDestroyWrapper(
   LUTHIER_REPORT_FATAL_ON_ERROR(hsa::loadedCodeObjectGetExecutable(
       Executable,
       ObjectCache.LoaderApiSnapshot.template getFunction<
-          &ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType::
-              hsa_ven_amd_loader_loaded_code_object_get_info>(),
+          &rocprofiler::HsaExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::
+              TableType::hsa_ven_amd_loader_loaded_code_object_get_info>(),
       LCOs));
   {
     /// For each LCO, decrement its use count
