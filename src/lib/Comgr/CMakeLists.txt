@@ -1,5 +1,5 @@
 add_library(LuthierComgr OBJECT
-        comgr.cpp
+        Comgr.cpp
         ComgrError.cpp
 )
 

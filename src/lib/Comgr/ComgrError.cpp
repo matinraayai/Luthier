@@ -1,4 +1,4 @@
-//===-- comgr.hpp - AMD CoMGR High-level Wrapper --------------------------===//
+//===-- ComgrError.cpp - Luthier Comgr Error Type -------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,23 +15,32 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This files defines wrappers around AMD CoMGR functionality frequently
-/// used by Luthier.
+/// Implements the \c luthier::ComgrError class.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_COMGR_COMGR_HPP
-#define LUTHIER_COMGR_COMGR_HPP
-#include <llvm/Support/Error.h>
+#include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/Signals.h>
+#include <luthier/Comgr/ComgrError.h>
 
-namespace luthier::comgr {
+namespace luthier {
 
-/// Links the relocatable object file \p Code to an executable,
-/// which can then be loaded into the HSA runtime
-/// \param [in] Code the relocatable file
-/// \param [out] Out the linked executable
-/// \return an \c llvm::Error indicating the success or failure of the operation
-llvm::Error linkRelocatableToExecutable(llvm::ArrayRef<char> Code,
-                                        llvm::SmallVectorImpl<char> &Out);
+char ComgrError::ID = 0;
 
-} // namespace luthier::comgr
-
+void ComgrError::log(llvm::raw_ostream &OS) const {
+  OS << "Comgr ";
+  if (Error.has_value())
+    OS << "error code" << *Error;
+  else
+    OS << "error";
+  OS << " encountered in file " << ErrorLocation.file_name() << ", function "
+     << ErrorLocation.function_name() << ", at " << ErrorLocation.line() << ": "
+     << ErrorMsg << ".\n";
+  OS << "Stack trace: \n";
+#ifdef __cpp_lib_stacktrace
+  OS << std::to_string(StackTrace);
+#else
+  OS << StackTrace;
 #endif
+  OS << "\n";
+}
+
+} // namespace luthier
