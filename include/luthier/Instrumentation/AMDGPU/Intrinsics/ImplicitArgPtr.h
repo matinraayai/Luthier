@@ -19,12 +19,12 @@
 /// should be transformed from an extern function call into a set of
 /// <tt>llvm::MachineInstr</tt>s.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_IMPLICIT_ARG_PTR_HPP
-#define LUTHIER_TOOLING_COMMON_INTRINSIC_IMPLICIT_ARG_PTR_HPP
-#include "luthier/intrinsic/IntrinsicProcessor.h"
+#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_INTRINSICS_IMPLICIT_ARG_PTR_H
+#define LUTHIER_INSTRUMENTATION_AMDGPU_INTRINSICS_IMPLICIT_ARG_PTR_H
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Support/Error.h>
+#include <luthier/Instrumentation/IntrinsicProcessor.h>
 
 namespace luthier {
 
@@ -39,7 +39,7 @@ llvm::Error implicitArgPtrMIRProcessor(
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
-    const std::function<llvm::Register(KernelArgumentType)> & KernArgAccessor,
+    const std::function<llvm::Register(KernelArgumentType)> &KernArgAccessor,
     const llvm::MachineFunction &MF,
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten);
