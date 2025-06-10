@@ -22,8 +22,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_SINGLETON_H
 #define LUTHIER_COMMON_SINGLETON_H
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/common/GenericLuthierError.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
 
 namespace luthier {
 

@@ -1,4 +1,4 @@
-//===-- RocmLibraryError.cpp ----------------------------------------------===//
+//===-- LuthierError.cpp --------------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implements the \c RocmLibraryError class.
+/// Implements concrete portions of the <tt>LuthierError</tt> class.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/ROCmLibraryError.h>
+#include <luthier/Common/LuthierError.h>
 
 namespace luthier {
 
-char RocmLibraryError::ID;
+char LuthierError::ID;
 
 }

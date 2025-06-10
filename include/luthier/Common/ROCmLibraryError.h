@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_ROCM_LIBRARY_ERROR_H
 #define LUTHIER_COMMON_ROCM_LIBRARY_ERROR_H
-#include <luthier/common/LuthierError.h>
+#include <luthier/Common/LuthierError.h>
 
 namespace luthier {
 

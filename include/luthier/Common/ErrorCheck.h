@@ -1,4 +1,4 @@
-//===-- ErrorCheck.h - Luthier Error Checking Macros  -----------*- C++ -*-===//
+//===-- ErrorCheck.h - Error Checking Macros  -------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,10 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains useful macros to check for <tt>llvm::Error</tt>s
-/// in Luthier.
+/// Defines useful macros to check <tt>llvm::Error</tt>s.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_ERROR_CHECK_H
-#define LUTHIER_ERROR_CHECK_H
+#ifndef LUTHIER_COMMON_ERROR_CHECK_H
+#define LUTHIER_COMMON_ERROR_CHECK_H
 
 /// \brief Reports a fatal error if the passed \p llvm::Error argument is not
 /// equal to \c llvm::Error::success()

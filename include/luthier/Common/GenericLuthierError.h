@@ -21,7 +21,7 @@
 #ifndef LUTHIER_COMMON_GENERIC_LUTHIER_ERROR_H
 #define LUTHIER_COMMON_GENERIC_LUTHIER_ERROR_H
 #include <llvm/Support/FormatVariadic.h>
-#include <luthier/common/LuthierError.h>
+#include <luthier/Common/LuthierError.h>
 
 namespace luthier {
 

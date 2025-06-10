@@ -1,4 +1,4 @@
-//===-- GenericLuthierError.cpp -------------------------------------------===//
+//===-- RocmLibraryError.cpp ----------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,25 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implements the GenericLuthierError class.
+/// Implements the \c RocmLibraryError class.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/GenericLuthierError.h>
+#include <luthier/Common/ROCmLibraryError.h>
 
 namespace luthier {
 
-char GenericLuthierError::ID = 0;
+char RocmLibraryError::ID;
 
-void GenericLuthierError::log(llvm::raw_ostream &OS) const {
-  OS << "Error encountered in file " << ErrorLocation.file_name() << ", function "
-     << ErrorLocation.function_name() << ", at " << ErrorLocation.line() << ": "
-     << ErrorMsg << ".\n";
-  OS << "Stack trace: \n";
-#ifdef __cpp_lib_stacktrace
-  OS << std::to_string(StackTrace);
-#else
-  OS << StackTrace;
-#endif
-  OS << "\n";
 }
-
-} // namespace luthier
