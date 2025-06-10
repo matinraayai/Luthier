@@ -36,32 +36,14 @@ createObjectFile(llvm::StringRef ObjFile, bool InitContent = true);
 llvm::Expected<std::string>
 getObjectFileTarget(const llvm::object::ObjectFile &ObjFile);
 
+/// Returns a mapping between the name of each symbol in the \p ObjFile and its
+/// load offset
+/// \param ObjFile the object file being inspected
+/// \return Expects a \c llvm::StringMap containing the load offset of each
+/// symbol inside \p ObjFile
+llvm::Expected<llvm::StringMap<uint64_t>>
+getSymbolLoadOffsetsMap(const llvm::object::ObjectFile &ObjFile);
+
 } // namespace luthier::object
-
-
-namespace llvm {
-
-/// Similar to \c llvm::DenseMapInfo for \c llvm::object::SectionRef
-template <> struct DenseMapInfo<object::SymbolRef> {
-  static bool isEqual(const object::SymbolRef &A, const object::SymbolRef &B) {
-    return A == B;
-  }
-
-  static object::SymbolRef getEmptyKey() {
-    return object::SymbolRef{{}, nullptr};
-  }
-
-  static object::SymbolRef getTombstoneKey() {
-    object::DataRefImpl TS;
-    TS.p = (uintptr_t)-1;
-    return object::SymbolRef{TS, nullptr};
-  }
-  static unsigned getHashValue(const object::SymbolRef &Sym) {
-    object::DataRefImpl Raw = Sym.getRawDataRefImpl();
-    return hash_combine(Raw.p, Raw.d.a, Raw.d.b);
-  }
-};
-
-}; // namespace llvm
 
 #endif

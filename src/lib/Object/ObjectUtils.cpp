@@ -17,9 +17,10 @@
 /// \file
 /// This file implements a set of object utilities used frequently by Luthier.
 //===----------------------------------------------------------------------===//
+#include <llvm/ADT/StringMap.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/object/ObjectUtils.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Object/ObjectUtils.h>
 
 namespace luthier::object {
 
@@ -46,6 +47,22 @@ getObjectFileTarget(const llvm::object::ObjectFile &ObjFile) {
   std::string FeatureString = SubTargetFeaturesOrErr->getString();
   if (!FeatureString.empty())
     Out += ":" + SubTargetFeaturesOrErr->getString();
+  return Out;
+}
+
+llvm::Expected<llvm::StringMap<uint64_t>>
+getSymbolLoadOffsetsMap(const llvm::object::ObjectFile &ObjFile) {
+  llvm::StringMap<uint64_t> Out;
+  for (const llvm::object::SymbolRef &Symbol : ObjFile.symbols()) {
+    llvm::Expected<llvm::StringRef> SymNamOrErr = Symbol.getName();
+    LUTHIER_RETURN_ON_ERROR(SymNamOrErr.takeError());
+
+    llvm::Expected<uint64_t> SymAddrOrErr = Symbol.getAddress();
+    LUTHIER_RETURN_ON_ERROR(SymAddrOrErr.takeError());
+
+    Out.insert({*SymNamOrErr, *SymAddrOrErr});
+  }
+
   return Out;
 }
 

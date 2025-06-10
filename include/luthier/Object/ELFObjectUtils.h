@@ -19,9 +19,9 @@
 #ifndef LUTHIER_COMMON_ELF_OBJECT_FILE_H
 #define LUTHIER_COMMON_ELF_OBJECT_FILE_H
 #include <llvm/Object/ELFObjectFile.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/common/LuthierError.h>
-#include <luthier/llvm/LLVMError.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/LLVM/LLVMError.h>
 
 namespace luthier::object {
 
@@ -69,7 +69,7 @@ getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
 llvm::Expected<std::optional<uint64_t>>
 getLoadOffset(const llvm::object::ELFSectionRef &Sec) {
   const llvm::object::ELFObjectFileBase *ObjFile = Sec.getObject();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ObjFile != nullptr, "Object file of section is nullptr."));
 
   if (const auto *ELF64LE =
@@ -140,28 +140,28 @@ getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
 llvm::Expected<std::optional<uint64_t>>
 getLoadOffset(const llvm::object::ELFSymbolRef &SymbolRef) {
   const llvm::object::ELFObjectFileBase *ObjFile = SymbolRef.getObject();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ObjFile != nullptr, "Object file of symbol is nullptr."));
 
   if (const auto *ELF64LE =
           llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ObjFile)) {
     auto ElfSymOrErr = ELF64LE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
     return getLoadOffset(ELF64LE->getELFFile(), **ElfSymOrErr);
   } else if (const auto *ELF64BE =
                  llvm::dyn_cast<llvm::object::ELF64BEObjectFile>(ObjFile)) {
     auto ElfSymOrErr = ELF64BE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
     return getLoadOffset(ELF64BE->getELFFile(), **ElfSymOrErr);
   } else if (const auto *ELF32LE =
                  llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ObjFile)) {
     auto ElfSymOrErr = ELF32LE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
     return getLoadOffset(ELF32LE->getELFFile(), **ElfSymOrErr);
   } else {
     auto *ELF32BE = llvm::cast<llvm::object::ELF32BEObjectFile>(ObjFile);
     auto ElfSymOrErr = ELF32BE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
     return getLoadOffset(ELF32BE->getELFFile(), **ElfSymOrErr);
   }
 }
@@ -176,7 +176,7 @@ getLoadOffset(const llvm::object::ELFSymbolRef &SymbolRef) {
 llvm::Expected<llvm::ArrayRef<uint8_t>>
 getContents(const llvm::object::ELFSymbolRef &SymbolRef) {
   const llvm::object::ELFObjectFileBase *ObjFile = SymbolRef.getObject();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ObjFile != nullptr, "Object file of symbol is nullptr."));
 
   /// Get everything needed to calculate where the contents of the symbol
@@ -184,27 +184,28 @@ getContents(const llvm::object::ELFSymbolRef &SymbolRef) {
   bool IsRelocatable = ObjFile->isRelocatableObject();
 
   llvm::Expected<uint64_t> SymValueOrErr = SymbolRef.getValue();
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SymValueOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(SymValueOrErr.takeError()));
   size_t SymbolSize = SymbolRef.getSize();
 
   llvm::Expected<llvm::object::section_iterator> SectionOrErr =
       SymbolRef.getSection();
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SectionOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(SectionOrErr.takeError()));
 
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(*SectionOrErr != ObjFile->section_end(),
-                          "Failed to find the symbol's section"));
+      LUTHIER_GENERIC_ERROR_CHECK(*SectionOrErr != ObjFile->section_end(),
+                                  "Failed to find the symbol's section"));
 
   llvm::Expected<llvm::StringRef> SectionContentsOrErr =
       (**SectionOrErr).getContents();
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SectionContentsOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_LLVM_ERROR_CHECK(SectionContentsOrErr.takeError()));
 
   uint64_t SymbolOffset;
 
   if (IsRelocatable) {
     llvm::Expected<uint32_t> SymbolFlagsOrErr = SymbolRef.getFlags();
     LUTHIER_RETURN_ON_ERROR(SymbolFlagsOrErr.takeError());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         !(*SymbolFlagsOrErr & llvm::object::SymbolRef::SF_Common),
         "Symbol has common linkage inside the relocatable; Cannot infer its "
         "contents using the st_value field."));
