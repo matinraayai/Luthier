@@ -1,13 +1,32 @@
-#include "intrinsic/ReadReg.hpp"
-#include "AMDGPUTargetMachine.h"
-#include "GCNSubtarget.h"
-#include "SIRegisterInfo.h"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
+//===-- ReadReg.cpp - Luthier ReadReg Intrinsic  --------------------------===//
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// Implements Luthier's <tt>ReadReg</tt> intrinsic.
+//===----------------------------------------------------------------------===//
+#include <AMDGPUTargetMachine.h>
+#include <GCNSubtarget.h>
+#include <SIRegisterInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/Instrumentation/AMDGPU/Intrinsics/ReadReg.h>
 
 namespace luthier {
 
@@ -15,28 +34,28 @@ llvm::Expected<IntrinsicIRLoweringInfo>
 readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
                    const llvm::GCNTargetMachine &TM) {
   // The User must only have 1 operand
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(User.arg_size() == 1,
-                          "Expected one operand to be passed to the "
-                          "luthier::readReg intrinsic '{0}', got {1}.",
-                          User, User.arg_size()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      User.arg_size() == 1,
+      llvm::formatv("Expected one operand to be passed to the "
+                    "luthier::readReg intrinsic '{0}', got {1}.",
+                    User, User.arg_size())));
 
   auto *TRI = TM.getSubtargetImpl(Intrinsic)->getRegisterInfo();
   // The first argument specifies the MCRegister Enum that will be read
   // The enum value should be constant; A different intrinsic should be used
   // if reg indexing is needed at runtime
   auto *Arg = llvm::dyn_cast<llvm::ConstantInt>(User.getArgOperand(0));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Arg != nullptr, "The first argument of the luthier::readReg intrinsic is "
                       "not a constant integer."));
   // Get the MCRegister from the first argument's content
   llvm::MCRegister Reg(Arg->getZExtValue());
   // Check if the enum value is indeed a physical register
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(llvm::MCRegister::isPhysicalRegister(Reg.id()),
-                          "The first argument of the luthier::readReg {0}"
-                          "intrinsic is not an LLVM MCRegister.",
-                          Reg.id()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      llvm::MCRegister::isPhysicalRegister(Reg.id()),
+      llvm::formatv("The first argument of the luthier::readReg {0}"
+                    "intrinsic is not an LLVM MCRegister.",
+                    Reg.id())));
   // Get the type of the read register and encode its inline asm constraint
   auto *PhysRegClass = TRI->getPhysRegBaseClass(Reg);
   std::string Constraint;
@@ -47,10 +66,10 @@ readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
   else if (llvm::SIRegisterInfo::isSGPRClass(PhysRegClass))
     Constraint = "s";
   else
-    return LUTHIER_CREATE_ERROR(
-        "Unable to find a suitable register class for reading "
-        "the MC Register {0}.",
-        Reg.id());
+    return llvm::make_error<GenericLuthierError>(
+        llvm::formatv("Unable to find a suitable register class for reading "
+                      "the MC Register {0}.",
+                      Reg.id()));
 
   luthier::IntrinsicIRLoweringInfo Out;
   // Set the output's constraint
@@ -73,13 +92,12 @@ llvm::Error readRegMIRProcessor(
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
   // There should be only a single virtual register involved in the operation
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(Args.size() == 1,
-                          "Number of virtual register arguments "
-                          "involved in the MIR lowering stage of "
-                          "luthier::readReg is {0} instead of 1.",
-                          Args.size()));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Args.size() == 1, llvm::formatv("Number of virtual register arguments "
+                                      "involved in the MIR lowering stage of "
+                                      "luthier::readReg is {0} instead of 1.",
+                                      Args.size())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(),
       "The register argument of luthier::readReg is not a definition."));
   llvm::Register Output = Args[0].second;
