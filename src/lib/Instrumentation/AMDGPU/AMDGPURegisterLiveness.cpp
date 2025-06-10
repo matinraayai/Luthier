@@ -17,11 +17,9 @@
 /// \file
 /// This file implements the \c AMDGPURegisterLiveness class and its pass.
 //===----------------------------------------------------------------------===//
+#include <luthier/Instrumentation/amdgpu/VectorCFG.h>
+#include <luthier/Instrumentation/amdgpu/AMDGPURegisterLiveness.h>
 #include <llvm/Support/TimeProfiler.h>
-#include <luthier/llvm/streams.h>
-#include <luthier/tooling/AMDGPURegisterLiveness.h>
-#include <luthier/tooling/LiftedRepresentation.h>
-#include <luthier/tooling/VectorCFG.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-lr-register-liveness"
