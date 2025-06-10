@@ -17,7 +17,7 @@
 /// \file
 /// Implements the \c llvm::ErrorInfo for HSA.
 //===----------------------------------------------------------------------===//
-#include <luthier/hsa/HsaError.h>
+#include <luthier/HSA/HsaError.h>
 
 namespace luthier::hsa {
 

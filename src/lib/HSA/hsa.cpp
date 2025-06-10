@@ -19,9 +19,9 @@
 /// of the HSA runtime.
 //===----------------------------------------------------------------------===//
 #include <llvm/ADT/StringExtras.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/HsaError.h>
-#include <luthier/hsa/hsa.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/HSA/hsa.h>
 
 namespace luthier::hsa {
 

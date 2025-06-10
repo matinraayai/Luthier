@@ -18,8 +18,8 @@
 /// Implements a set of commonly used functionality for the
 /// \c hsa_executable_symbol_t handle in HSA.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/HsaError.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/HSA/HsaError.h>
 
 namespace luthier::hsa {
 

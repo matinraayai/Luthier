@@ -18,9 +18,9 @@
 /// Implements commonly used functionality for the \c hsa_loaded_code_object
 /// type in HSA.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/HsaError.h>
-#include <luthier/hsa/LoadedCodeObject.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/HSA/LoadedCodeObject.h>
 
 namespace luthier::hsa {
 

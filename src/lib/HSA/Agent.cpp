@@ -18,9 +18,9 @@
 /// Implements a set of commonly used functionality around the \c hsa_agent_t
 /// handle in HSA.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/Agent.h>
-#include <luthier/hsa/HsaError.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/HSA/Agent.h>
+#include <luthier/HSA/HsaError.h>
 
 namespace luthier::hsa {
 

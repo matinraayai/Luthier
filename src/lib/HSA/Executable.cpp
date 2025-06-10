@@ -18,9 +18,9 @@
 /// Implements a set of commonly used functionality for the \c
 /// hsa_executable_t in HSA.
 //===----------------------------------------------------------------------===//
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/Executable.h>
-#include <luthier/hsa/HsaError.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/HSA/Executable.h>
+#include <luthier/HSA/HsaError.h>
 
 namespace luthier::hsa {
 

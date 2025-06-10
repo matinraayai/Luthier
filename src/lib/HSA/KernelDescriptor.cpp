@@ -19,13 +19,13 @@
 //===----------------------------------------------------------------------===//
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/common/GenericLuthierError.h>
-#include <luthier/hsa/Executable.h>
-#include <luthier/hsa/ExecutableSymbol.h>
-#include <luthier/hsa/HsaError.h>
-#include <luthier/hsa/KernelDescriptor.h>
-#include <luthier/hsa/LoadedCodeObject.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/HSA/Executable.h>
+#include <luthier/HSA/ExecutableSymbol.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/HSA/KernelDescriptor.h>
+#include <luthier/HSA/LoadedCodeObject.h>
 
 namespace luthier::hsa {
 

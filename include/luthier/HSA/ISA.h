@@ -23,8 +23,8 @@
 #include <llvm/Support/Error.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
 #include <llvm/TargetParser/Triple.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hsa/HsaError.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/HSA/HsaError.h>
 
 namespace luthier::hsa {
 /// Queries the \c ISA handle associated with the \p FullIsaName

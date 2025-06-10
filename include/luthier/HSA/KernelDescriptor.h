@@ -25,8 +25,6 @@
 
 namespace luthier::hsa {
 
-class LoadedCodeObjectKernel;
-
 /// \brief POD (plain-old-data) struct to provide an abstraction over the kernel
 /// descriptor, plus some convenience methods
 /// \details To inspect the contents of a kernel descriptor, simply use

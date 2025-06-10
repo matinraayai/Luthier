@@ -21,7 +21,7 @@
 #ifndef LUTHIER_HSA_HSA_ERROR_H
 #define LUTHIER_HSA_HSA_ERROR_H
 #include <hsa/hsa.h>
-#include <luthier/common/ROCmLibraryError.h>
+#include <luthier/Common/ROCmLibraryError.h>
 
 namespace luthier::hsa {
 class HsaError final : RocmLibraryError {

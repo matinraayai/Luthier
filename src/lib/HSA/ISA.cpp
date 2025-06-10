@@ -20,9 +20,9 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringRef.h>
-#include <luthier/common/GenericLuthierError.h>
-#include <luthier/hsa/HsaError.h>
-#include <luthier/hsa/ISA.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/HSA/ISA.h>
 
 namespace luthier::hsa {
 

@@ -19,8 +19,8 @@
 /// \c hsa_code_object_reader_t handle in HSA.
 //===----------------------------------------------------------------------===//
 #include <llvm/ADT/StringExtras.h>
-#include <luthier/hsa/CodeObjectReader.h>
-#include <luthier/hsa/HsaError.h>
+#include <luthier/HSA/CodeObjectReader.h>
+#include <luthier/HSA/HsaError.h>
 
 namespace luthier::hsa {
 
