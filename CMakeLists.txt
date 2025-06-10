@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(luthier
-        VERSION 0.1.0
+        VERSION 0.2.0
         LANGUAGES CXX
         DESCRIPTION "Dynamic Binary Instrumentation for AMD GPUs"
         HOMEPAGE_URL "https://github.com/matinraayai/Luthier"
 )
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "the C++ standard to use with Luthier.")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # User Options =========================================================================================================

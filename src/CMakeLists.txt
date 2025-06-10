@@ -27,6 +27,10 @@ get_target_property(amd_comgr_INCLUDE_DIRS amd_comgr INTERFACE_INCLUDE_DIRECTORI
 # Get the include directory of hsa-runtime64
 get_target_property(hsa-runtime64_INCLUDE_DIRS hsa-runtime64::hsa-runtime64 INTERFACE_INCLUDE_DIRECTORIES)
 
+# Get the include directory and defines of hip::host
+get_target_property(hip_INCLUDE_DIRS hip::amdhip64 INTERFACE_INCLUDE_DIRECTORIES)
+
+get_target_property(hip_DEFINES hip::host INTERFACE_COMPILE_DEFINITIONS)
 add_subdirectory(bin)
 add_subdirectory(lib)
 
