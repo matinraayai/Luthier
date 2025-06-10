@@ -1,4 +1,4 @@
-//===-- Cloning.cpp - IR and MIR Cloning Utilities ------------------------===//
+//===-- Clone.cpp - IR and MIR Cloning Utilities --------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements utility functions used to clone LLVM MIR constructs.
+/// Implements utility functions used to clone LLVM MIR constructs.
 //===----------------------------------------------------------------------===//
-#include "llvm/Cloning.hpp"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -28,6 +25,9 @@
 #include <llvm/CodeGen/PseudoSourceValueManager.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
 #include <llvm/Target/TargetMachine.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/Instrumentation/Clone.h>
 
 namespace luthier {
 
@@ -174,7 +174,8 @@ static llvm::Error cloneMemOperands(llvm::MachineInstr &DstMI,
       case llvm::PseudoSourceValue::TargetCustom:
       default:
         // FIXME: We have no generic interface for allocating custom PSVs.
-        return LUTHIER_CREATE_ERROR("Cloning TargetCustom PSV not handled");
+        return llvm::make_error<GenericLuthierError>(
+            "Cloning TargetCustom PSV not handled");
       }
     }
 
@@ -197,11 +198,11 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
   // Find the destination function entry in the value map
   auto &SrcF = SrcMF->getFunction();
   auto DestFMapEntry = VMap.find(&SrcF);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       DestFMapEntry != VMap.end(),
-      "Failed to find the corresponding value for function {0} "
-      "in the cloned value map.",
-      SrcF.getName()));
+      llvm::formatv("Failed to find the corresponding value for function {0} "
+                    "in the cloned value map.",
+                    SrcF.getName())));
   llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
 
   // Construct the destination machine function
@@ -343,11 +344,11 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
           }
         } else if (DstMO.isGlobal()) {
           auto GVEntry = VMap.find(DstMO.getGlobal());
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
               GVEntry != VMap.end(),
-              "Failed to find the corresponding value for {0} "
-              "in the cloned value map.",
-              DstMO.getGlobal()->getName()));
+              llvm::formatv("Failed to find the corresponding value for {0} "
+                            "in the cloned value map.",
+                            DstMO.getGlobal()->getName())));
           auto *DestGV = cast<llvm::GlobalValue>(GVEntry->second);
           DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
         }
@@ -372,7 +373,7 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
   if (!SrcMF->getFrameInstructions().empty() ||
       !SrcMF->getLongjmpTargets().empty() ||
       !SrcMF->getCatchretTargets().empty())
-    return LUTHIER_CREATE_ERROR(
+    return llvm::make_error<GenericLuthierError>(
         "cloning not implemented for machine function property");
 
   DstMF->setCallsEHReturn(SrcMF->callsEHReturn());
@@ -387,13 +388,13 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
       !SrcMF->getTypeInfos().empty() || !SrcMF->getFilterIds().empty() ||
       SrcMF->hasAnyWasmLandingPadIndex() || SrcMF->hasAnyCallSiteLandingPad() ||
       SrcMF->hasAnyCallSiteLabel() || !SrcMF->getCallSitesInfo().empty())
-    return LUTHIER_CREATE_ERROR(
+    return llvm::make_error<GenericLuthierError>(
         "cloning not implemented for machine function property");
 
   DstMF->setDebugInstrNumberingCount(SrcMF->DebugInstrNumberingCount);
 
   if (!DstMF->cloneInfoFrom(*SrcMF, Src2DstMBB))
-    return LUTHIER_CREATE_ERROR(
+    return llvm::make_error<GenericLuthierError>(
         "target does not implement MachineFunctionInfo cloning");
   DstMRI->freezeReservedRegs();
   //  bool Verified = DstMF->verify(nullptr, "", /*AbortOnError=*/true);
@@ -407,17 +408,17 @@ llvm::Error cloneMMI(
     llvm::DenseMap<llvm::MachineInstr *, llvm::MachineInstr *> *SrcToDstMIMap) {
   for (const llvm::Function &SrcF : SrcModule) {
     llvm::MachineFunction *SrcMF = SrcMMI.getMachineFunction(SrcF);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         SrcMF != nullptr,
-        "Failed to find the Machine Function associated with "
-        "Function {0} inside the MMI during cloning.",
-        SrcF.getName()));
+        llvm::formatv("Failed to find the Machine Function associated with "
+                      "Function {0} inside the MMI during cloning.",
+                      SrcF.getName())));
     auto DestFMapEntry = VMap.find(&SrcF);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         DestFMapEntry != VMap.end(),
-        "Failed to find the corresponding value for function {0} "
-        "in the cloned value map.",
-        SrcF.getName()));
+        llvm::formatv("Failed to find the corresponding value for function {0} "
+                      "in the cloned value map.",
+                      SrcF.getName())));
     llvm::Function &DestF = *cast<llvm::Function>(DestFMapEntry->second);
     auto DestMF = cloneMF(SrcMF, VMap, DestMMI, SrcToDstMIMap);
     LUTHIER_RETURN_ON_ERROR(DestMF.takeError());

@@ -19,9 +19,8 @@
 /// used frequently by Luthier components involved in the code generation
 /// process. It is essentially a modified version of llvm-reduce.
 //===----------------------------------------------------------------------===//
-
-#ifndef LUTHIER_COMMON_CLONING_HPP
-#define LUTHIER_COMMON_CLONING_HPP
+#ifndef LUTHIER_INSTRUMENTATION_CLONE_H
+#define LUTHIER_INSTRUMENTATION_CLONE_H
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Module.h>
