@@ -38,4 +38,11 @@
     }                                                                          \
   } while (false)
 
+#define LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, Error)                              \
+  do {                                                                         \
+    if (auto ___E = std::move(Error)) {                                        \
+      (Ctx).emitError(llvm::toString(std::move(___E)));                        \
+    }                                                                          \
+  } while (false)
+
 #endif
