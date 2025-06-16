@@ -18,12 +18,10 @@
 /// This file describes the HSA kernel descriptor, a POD struct in addition to
 /// some convenience methods.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
-#define LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
-#include <hsa/hsa_ven_amd_loader.h>
-#include <llvm/Support/Error.h>
+#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_HSA_KERNEL_DESCRIPTOR_H
+#define LUTHIER_INSTRUMENTATION_AMDGPU_HSA_KERNEL_DESCRIPTOR_H
 
-namespace luthier::hsa {
+namespace luthier::amdgpu::hsa {
 
 /// \brief POD (plain-old-data) struct to provide an abstraction over the kernel
 /// descriptor, plus some convenience methods
@@ -70,6 +68,7 @@ struct KernelDescriptor {
   /// a struct for easier access to the RSRC2 register without using individual
   /// bit-wise operations
   typedef struct {
+    uint32_t EnableSgprPrivateSegmentWaveByteOffset;
     uint32_t UserSgprCount;
     uint32_t EnableTrapHandler;
     uint32_t EnableSgprWorkgroupIdX;
@@ -88,7 +87,6 @@ struct KernelDescriptor {
     uint32_t EnableExceptionIEEE754FPInexact;
     uint32_t EnableExceptionIntDivisionByZero;
     uint32_t Reserved1;
-    uint32_t EnableSgprPrivateSegmentWaveByteOffset;
   } Rsrc2Info;
 
   /// a struct for easier access to the kernel code properties register without
@@ -135,21 +133,6 @@ struct KernelDescriptor {
   /// \return the kernel descriptor of the <tt>KernelObject</tt>
   static const KernelDescriptor *fromKernelObject(uint64_t KernelObject);
 
-  /// \return Expects the executable, loaded code object and the executable
-  /// symbol of the kernel descriptor on success; \c llvm::Error is returned
-  /// if the kernel descriptor is invalid or if an HSA issue is encountered
-  [[nodiscard]] llvm::Expected<std::tuple<
-      hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
-  getExecutableDefinition(
-      const decltype(hsa_ven_amd_loader_query_executable)
-          &HsaVenAmdLoaderQueryExecutableFn,
-      const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-          &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
-      const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-          &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
-      decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
-      const decltype(hsa_executable_symbol_get_info)
-          &HsaExecutableSymbolGetInfoFn) const;
 };
 } // namespace luthier::hsa
 
