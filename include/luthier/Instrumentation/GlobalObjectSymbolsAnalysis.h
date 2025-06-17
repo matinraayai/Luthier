@@ -61,13 +61,13 @@ public:
   };
 
 private:
-  Result GlobalValueSymbols;
+  Result GlobalObjectSymbols;
 
 public:
   GlobalObjectSymbolsAnalysis() = default;
 
   Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
-    return GlobalValueSymbols;
+    return GlobalObjectSymbols;
   }
 };
 
