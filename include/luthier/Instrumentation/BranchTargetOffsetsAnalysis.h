@@ -15,13 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes <tt>BranchTargetOffsetsAnalysis</tt>, which
-/// provides the offsets of the branch instruction targets in a lifted
-/// module.
+/// Describes \c BranchTargetOffsetsAnalysis class. It provides the load offsets
+/// of the branch instruction targets inside the symbol of a
+/// <tt>llvm::MachineFunction</tt>.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INSTRUMENTATION_BRANCH_TARGET_OFFSETS_ANALYSIS_H
 #define LUTHIER_INSTRUMENTATION_BRANCH_TARGET_OFFSETS_ANALYSIS_H
 #include <llvm/ADT/DenseSet.h>
+#include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
@@ -41,22 +42,24 @@ public:
     Result() = default;
 
   public:
-    using iterator = decltype(BranchTargetOffsets)::const_iterator;
+    using const_iterator = decltype(BranchTargetOffsets)::const_iterator;
 
-    iterator begin() { return BranchTargetOffsets.begin(); }
+    const_iterator begin() { return BranchTargetOffsets.begin(); }
 
-    iterator end() { return BranchTargetOffsets.end(); }
+    const_iterator end() { return BranchTargetOffsets.end(); }
 
     [[nodiscard]] bool empty() const { return BranchTargetOffsets.empty(); }
 
     [[nodiscard]] unsigned size() const { return BranchTargetOffsets.size(); }
 
-    iterator find(uint64_t Offset) { return BranchTargetOffsets.find(Offset); }
+    bool contains(uint64_t Offset) const {
+      return BranchTargetOffsets.contains(Offset);
+    }
 
     /// Prevents invalidation of the analysis result
     __attribute__((used)) bool
-    invalidate(llvm::Function &, const llvm::PreservedAnalyses &,
-               llvm::FunctionAnalysisManager::Invalidator &) {
+    invalidate(llvm::MachineFunction &, const llvm::PreservedAnalyses &,
+               llvm::MachineFunctionAnalysisManager::Invalidator &) {
       return false;
     }
   };
@@ -64,7 +67,8 @@ public:
   /// Default constructor
   BranchTargetOffsetsAnalysis() = default;
 
-  Result run(llvm::Function &F, llvm::FunctionAnalysisManager &FAM);
+  Result run(llvm::MachineFunction &MF,
+             llvm::MachineFunctionAnalysisManager &MFAM);
 };
 
 } // namespace luthier

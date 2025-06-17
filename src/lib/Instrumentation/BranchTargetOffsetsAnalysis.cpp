@@ -18,9 +18,12 @@
 /// Implements the \c BranchTargetOffsetsAnalysis class.
 //===----------------------------------------------------------------------===//
 #include <llvm/CodeGen/MachineModuleInfo.h>
-#include <llvm/IR/Function.h>
+#include <llvm/CodeGen/TargetInstrInfo.h>
+#include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/MC/MCInst.h>
+#include <llvm/MC/MCInstrAnalysis.h>
 #include <llvm/MC/MCInstrInfo.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Target/TargetMachine.h>
 #include <luthier/Instrumentation/BranchTargetOffsetsAnalysis.h>
 #include <luthier/Instrumentation/DisassembleAnalysisPass.h>
@@ -29,37 +32,22 @@
 #define DEBUG_TYPE "luthier-target-offsets-analysis"
 
 namespace luthier {
-static bool evaluateBranch(const llvm::MCInst &Inst, uint64_t Addr,
-                           uint64_t Size, uint64_t &Target) {
-  if (!Inst.getOperand(0).isImm())
-    return false;
-  int64_t Imm = Inst.getOperand(0).getImm();
-  // Our branches take a simm16.
-  Target = llvm::SignExtend64<16>(Imm) * 4 + Addr + 4;
-  return true;
-}
+
+llvm::AnalysisKey BranchTargetOffsetsAnalysis::Key;
 
 BranchTargetOffsetsAnalysis::Result
-BranchTargetOffsetsAnalysis::run(llvm::Function &F,
-                                 llvm::FunctionAnalysisManager &FAM) {
+BranchTargetOffsetsAnalysis::run(llvm::MachineFunction &MF,
+                                 llvm::MachineFunctionAnalysisManager &MFAM) {
   Result Out;
   llvm::ArrayRef<Instr> Instructions =
-      FAM.getResult<DisassemblerAnalysisPass>(F).getInstructions();
+      MFAM.getResult<DisassemblerAnalysisPass>(MF).getInstructions();
   if (Instructions.empty())
     return Out;
-  auto &MAMProxy = FAM.getResult<llvm::ModuleAnalysisManagerFunctionProxy>(F);
-  llvm::LLVMContext &Ctx = F.getContext();
-  llvm::Module &M = *F.getParent();
 
-  /// Get the MCInstrInfo of the current function
-  LUTHIER_EMIT_ERROR_IN_CONTEXT(
-      Ctx, LUTHIER_GENERIC_ERROR_CHECK(
-               MAMProxy.cachedResultExists<llvm::MachineModuleAnalysis>(M),
-               "MAM does not have a Machine Module Info analysis"));
-  llvm::MachineModuleInfo &MMI =
-      MAMProxy.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI();
-  const llvm::TargetMachine &TM = MMI.getTarget();
-  const llvm::MCInstrInfo &MII = *TM.getMCInstrInfo();
+  const llvm::TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+  const llvm::TargetMachine &TM = MF.getTarget();
+  auto MIA = std::unique_ptr<llvm::MCInstrAnalysis>(
+      TM.getTarget().createMCInstrAnalysis(TM.getMCInstrInfo()));
 
   uint64_t PrevInstOffset = Instructions[0].getOffset();
 
@@ -67,7 +55,7 @@ BranchTargetOffsetsAnalysis::run(llvm::Function &F,
     llvm::MCInst Inst = Instructions[I].getMCInst();
     uint64_t Offset = Instructions[I].getOffset();
     size_t Size = Instructions[I].getSize();
-    if (MII.get(Inst.getOpcode()).isBranch()) {
+    if (TII.get(Inst.getOpcode()).isBranch()) {
       LLVM_DEBUG(
 
           llvm::dbgs() << "Instruction ";
@@ -78,8 +66,7 @@ BranchTargetOffsetsAnalysis::run(llvm::Function &F,
               I, Offset, Size);
 
       );
-      uint64_t Target;
-      if (evaluateBranch(Inst, Offset, Size, Target)) {
+      if (uint64_t Target; MIA->evaluateBranch(Inst, Offset, 4, Target)) {
         LLVM_DEBUG(
             llvm::dbgs() << llvm::formatv(
                 "Evaluated offset {0:x} as the branch target.\n", Target););
