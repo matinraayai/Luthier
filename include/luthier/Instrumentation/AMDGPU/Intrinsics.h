@@ -1,4 +1,4 @@
-//===-- Intrinsics.h - Luthier's built-in Intrinsics ------------*- C++ -*-===//
+//===-- Intrinsics.h - Luthier's AMDGPU built-in Intrinsics -----*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,11 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes utilities to write device code bindings to Luthier
-/// intrinsics, as well as a set of bindings to Luthier's built-in intrinsics.
+/// Describes utilities to write device code bindings to Luthier intrinsics,
+/// as well as a set of bindings to Luthier's built-in intrinsics.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INTRINSIC_INTRINSICS_H
-#define LUTHIER_INTRINSIC_INTRINSICS_H
+#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_INTRINSICS_H
+#define LUTHIER_INSTRUMENTATION_AMDGPU_INTRINSICS_H
 #include "luthier/consts.h"
 #include <llvm/MC/MCRegister.h>
 
