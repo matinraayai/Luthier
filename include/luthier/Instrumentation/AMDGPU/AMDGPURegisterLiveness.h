@@ -14,13 +14,13 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// This file describes the \c AMDGPURegisterLiveness class and its pass,
+/// Describes the \c AMDGPURegisterLiveness class and its pass,
 /// which calculates the register live-in sets for each \c llvm::MachineInstr
-/// of all <tt>llvm::MachineFunction</tt>s inside a
-/// <tt>llvm::MachineModuleInfo</tt>.
+/// of a <tt>llvm::MachineFunction</tt>.
+/// TODO: Investigate making this a MF Analysis pass.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_AMDGPU_REGISTER_LIVENESS_H
-#define LUTHIER_AMDGPU_REGISTER_LIVENESS_H
+#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_REGISTER_LIVENESS_H
+#define LUTHIER_INSTRUMENTATION_AMDGPU_REGISTER_LIVENESS_H
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineInstr.h>

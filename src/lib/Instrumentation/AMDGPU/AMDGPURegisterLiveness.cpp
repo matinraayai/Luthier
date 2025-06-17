@@ -15,14 +15,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c AMDGPURegisterLiveness class and its pass.
+/// Implements the \c AMDGPURegisterLiveness class and its pass.
 //===----------------------------------------------------------------------===//
-#include <luthier/Instrumentation/amdgpu/VectorCFG.h>
-#include <luthier/Instrumentation/amdgpu/AMDGPURegisterLiveness.h>
+#include <luthier/Instrumentation/AMDGPU/VectorCFG.h>
+#include <luthier/Instrumentation/AMDGPU/AMDGPURegisterLiveness.h>
 #include <llvm/Support/TimeProfiler.h>
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-lr-register-liveness"
+#define DEBUG_TYPE "luthier-amdgpu-register-liveness"
 
 namespace luthier {
 
