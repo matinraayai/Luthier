@@ -102,15 +102,13 @@ DisassemblerAnalysis::run(llvm::MachineFunction &MF,
 
   llvm::Expected<llvm::object::SymbolRef::Type> FuncSymTypeOrErr =
       SymRef->getType();
-  if (llvm::Error Err =
-          LUTHIER_LLVM_ERROR_CHECK(FuncSymTypeOrErr.takeError())) {
-    Ctx.emitError(llvm::toString(std::move(Err)));
-  }
-  if (*FuncSymTypeOrErr != llvm::object::SymbolRef::ST_Function) {
-    Ctx.emitError(
-        llvm::formatv("Symbol associated with function {0} is not a function.",
-                      MF.getName()));
-  }
+  LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, FuncSymTypeOrErr.takeError());
+  LUTHIER_EMIT_ERROR_IN_CONTEXT(
+      Ctx, LUTHIER_GENERIC_ERROR_CHECK(
+               *FuncSymTypeOrErr != llvm::object::SymbolRef::ST_Function,
+               llvm::formatv(
+                   "Symbol associated with function {0} is not a function.",
+                   MF.getName())));
 
   /// Create a disassembler and disassemble the symbol's contents
   std::unique_ptr<llvm::MCDisassembler> DisAsm(
@@ -118,10 +116,12 @@ DisassemblerAnalysis::run(llvm::MachineFunction &MF,
 
   const llvm::object::ObjectFile *ObjFile = SymRef->getObject();
 
-  if (!ObjFile)
-    Ctx.emitError(llvm::formatv(
-        "Object file of the symbol ref for function {0} is nullptr",
-        MF.getName()));
+  LUTHIER_EMIT_ERROR_IN_CONTEXT(
+      Ctx, LUTHIER_GENERIC_ERROR_CHECK(
+               ObjFile != nullptr,
+               llvm::formatv(
+                   "Object file of the symbol ref for function {0} is nullptr",
+                   MF.getName())));
 
   std::optional<const uint8_t *> LoadBase{std::nullopt};
 
