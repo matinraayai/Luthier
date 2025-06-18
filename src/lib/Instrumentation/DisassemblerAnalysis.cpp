@@ -1,4 +1,4 @@
-//===-- DisassembleAnalysisPass.cpp ---------------------------------------===//
+//===-- DisassemblerAnalysis.cpp ------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implements the \c DisassemblerAnalysisPass class.
+/// Implements the \c DisassemblerAnalysis pass.
 //===----------------------------------------------------------------------===//
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Function.h>
@@ -25,14 +25,14 @@
 #include <llvm/Target/TargetMachine.h>
 #include <luthier/Common/ErrorCheck.h>
 #include <luthier/Common/GenericLuthierError.h>
-#include <luthier/Instrumentation/DisassembleAnalysisPass.h>
-#include <luthier/Instrumentation/GlobalValueSymbols.h>
+#include <luthier/Instrumentation/DisassemblerAnalysis.h>
+#include <luthier/Instrumentation/GlobalObjectSymbolsAnalysis.h>
 #include <luthier/Instrumentation/LoadedContentsAnalysisPass.h>
 #include <luthier/Object/ELFObjectUtils.h>
 
 namespace luthier {
 
-llvm::AnalysisKey DisassemblerAnalysisPass::Key;
+llvm::AnalysisKey DisassemblerAnalysis::Key;
 
 static llvm::Expected<std::vector<Instr>>
 disassemble(const llvm::object::ELFSymbolRef &Sym,
@@ -77,30 +77,28 @@ disassemble(const llvm::object::ELFSymbolRef &Sym,
   return Instructions;
 }
 
-DisassemblerAnalysisPass::Result
-DisassemblerAnalysisPass::run(llvm::Function &F,
-                              llvm::FunctionAnalysisManager &FAM) {
+DisassemblerAnalysis::Result
+DisassemblerAnalysis::run(llvm::MachineFunction &MF,
+                          llvm::MachineFunctionAnalysisManager &MFAM) {
   /// Get the Module analysis
-  const llvm::Module &M = *F.getParent();
+  const llvm::Module &M = *MF.getFunction().getParent();
   llvm::LLVMContext &Ctx = M.getContext();
   const auto &MAMProxy =
-      FAM.getResult<llvm::ModuleAnalysisManagerFunctionProxy>(F);
-  /// Get the MMI, the target machine and the MC Context
-  auto &MMI =
-      MAMProxy.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI();
-  const llvm::TargetMachine &TM = MMI.getTarget();
-  llvm::MCContext &MCCtx = MMI.getContext();
+      MFAM.getResult<llvm::ModuleAnalysisManagerMachineFunctionProxy>(MF);
+  /// Get the target machine and the MC Context
+  const llvm::TargetMachine &TM = MF.getTarget();
+  llvm::MCContext &MCCtx = MF.getContext();
   /// Get the symbol associated with the function
   auto GlobalValueSymbols =
-      MAMProxy.getCachedResult<GlobalValueSymbolsAnalysisPass>(M);
+      MAMProxy.getCachedResult<GlobalObjectSymbolsAnalysis>(M);
   if (!GlobalValueSymbols)
     Ctx.emitError("Failed to get the global value symbols analysis");
   std::optional<llvm::object::SymbolRef> SymRef =
-      GlobalValueSymbols->getSymbolRef(F);
+      GlobalValueSymbols->getSymbolRef(MF.getFunction());
   if (!SymRef.has_value())
     Ctx.emitError(llvm::formatv(
         "Failed to obtain the object symbol ref associated with function {0}",
-        F.getName()));
+        MF.getName()));
 
   llvm::Expected<llvm::object::SymbolRef::Type> FuncSymTypeOrErr =
       SymRef->getType();
@@ -109,8 +107,9 @@ DisassemblerAnalysisPass::run(llvm::Function &F,
     Ctx.emitError(llvm::toString(std::move(Err)));
   }
   if (*FuncSymTypeOrErr != llvm::object::SymbolRef::ST_Function) {
-    Ctx.emitError(llvm::formatv(
-        "Symbol associated with function {0} is not a function.", F.getName()));
+    Ctx.emitError(
+        llvm::formatv("Symbol associated with function {0} is not a function.",
+                      MF.getName()));
   }
 
   /// Create a disassembler and disassemble the symbol's contents
@@ -122,7 +121,7 @@ DisassemblerAnalysisPass::run(llvm::Function &F,
   if (!ObjFile)
     Ctx.emitError(llvm::formatv(
         "Object file of the symbol ref for function {0} is nullptr",
-        F.getName()));
+        MF.getName()));
 
   std::optional<const uint8_t *> LoadBase{std::nullopt};
 
@@ -130,35 +129,16 @@ DisassemblerAnalysisPass::run(llvm::Function &F,
           MAMProxy.getCachedResult<LoadedContentsAnalysisPass>(M)) {
     LoadBase = LoadedContentsResult->getLoadedContents().data();
   }
-
-  llvm::Error Err = llvm::Error::success();
   std::vector<Instr> Instructions;
 
-  switch (ObjFile->getType()) {
-  case llvm::object::ID_ELF32L:
-  case llvm::object::ID_ELF32B: // ELF 32-bit, big endian
-  case llvm::object::ID_ELF64L: // ELF 64-bit, little endian
-  case llvm::object::ID_ELF64B: // ELF 64-bit, big endian
-    Err = disassemble(*SymRef, *DisAsm, *TM.getMCAsmInfo(), LoadBase)
-              .moveInto(Instructions);
-    break;
-  case llvm::object::ID_COFF:
-  case llvm::object::ID_XCOFF32:  // AIX XCOFF 32-bit
-  case llvm::object::ID_XCOFF64:  // AIX XCOFF 64-bit
-  case llvm::object::ID_MachO32L: // MachO 32-bit, little endian
-  case llvm::object::ID_MachO32B: // MachO 32-bit, big endian
-  case llvm::object::ID_MachO64L: // MachO 64-bit, little endian
-  case llvm::object::ID_MachO64B: // MachO 64-bit, big endian
-  case llvm::object::ID_GOFF:
-  case llvm::object::ID_Wasm:
-  default:
+  if (llvm::isa<llvm::object::ELFObjectFileBase>(ObjFile)) {
+    LUTHIER_EMIT_ERROR_IN_CONTEXT(
+        Ctx, disassemble(*SymRef, *DisAsm, *TM.getMCAsmInfo(), LoadBase)
+                 .moveInto(Instructions));
+  } else {
     Ctx.emitError(llvm::formatv(
         "Not yet implemented disassembly logic for object type {0}",
         ObjFile->getType()));
-    ;
-  }
-  if (Err) {
-    Ctx.emitError(llvm::toString(std::move(Err)));
   }
   return Instructions;
 }
