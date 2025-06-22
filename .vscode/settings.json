@@ -1,0 +1,16 @@
+{
+    "cmake.configureArgs": [
+        "-DCMAKE_HIP_ARCHITECTURES=gfx908",
+        "-DCMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++",
+        "-DCMAKE_PREFIX_PATH='/opt/rocm/'",
+        "-DLLVM_DIR=/opt/rocm/llvm/lib/cmake/llvm/",
+        "-DLUTHIER_BUILD_UNIT_TESTS=ON",
+        "-DLUTHIER_BUILD_EXAMPLES=ON"
+    ],
+    "files.associations": {
+        "*.hip": "cpp",
+        "compare": "cpp",
+        "cstdint": "cpp",
+        "format": "cpp"
+    }
+}
