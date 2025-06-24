@@ -101,6 +101,24 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(
     const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
     llvm::StringRef Code);
 
+/// \return Expects the executable, loaded code object and the executable
+/// symbol of the device \p Address on success; \c llvm::Error is returned
+/// if the address is not part of an executable or if an HSA issue is
+/// encountered
+[[nodiscard]] llvm::Expected<std::tuple<
+    hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
+getExecutableDefinition(
+    uint64_t Address,
+    const decltype(hsa_ven_amd_loader_query_executable)
+        &HsaVenAmdLoaderQueryExecutableFn,
+    const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
+        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+    decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    const decltype(hsa_executable_symbol_get_info)
+        &HsaExecutableSymbolGetInfoFn);
+
 /// Decreases the reference count of the HSA runtime instance; Shuts down the
 /// HSA runtime if the counter reaches zero
 /// \param HsaShutdownFn the underlying \c hsa_shut_down function used to

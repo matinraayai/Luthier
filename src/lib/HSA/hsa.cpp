@@ -20,7 +20,11 @@
 //===----------------------------------------------------------------------===//
 #include <llvm/ADT/StringExtras.h>
 #include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/HSA/Executable.h>
+#include <luthier/HSA/ExecutableSymbol.h>
 #include <luthier/HSA/HsaError.h>
+#include <luthier/HSA/LoadedCodeObject.h>
 #include <luthier/HSA/hsa.h>
 
 namespace luthier::hsa {
@@ -84,6 +88,63 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(
       convertToHostEquivalent(QueryHostFn, llvm::arrayRefFromStringRef(Code));
   LUTHIER_RETURN_ON_ERROR(HostAccessibleCodeOrErr.takeError());
   return llvm::toStringRef(*HostAccessibleCodeOrErr);
+}
+
+llvm::Expected<std::tuple<hsa_executable_t, hsa_loaded_code_object_t,
+                          hsa_executable_symbol_t>>
+getExecutableDefinition(
+    uint64_t Address,
+    const decltype(hsa_ven_amd_loader_query_executable)
+        &HsaVenAmdLoaderQueryExecutableFn,
+    const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
+        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
+    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
+        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
+    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    const decltype(hsa_executable_symbol_get_info)
+        &HsaExecutableSymbolGetInfoFn) {
+  hsa_executable_t Executable;
+  // Check which executable this kernel object (address) belongs to
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      HsaVenAmdLoaderQueryExecutableFn(reinterpret_cast<const void *>(Address),
+                                       &Executable),
+      llvm::formatv(
+          "Failed to get the executable associated with address {0:x}.",
+          Address)));
+  // Iterate over the LCOs and find the symbol that matches the kernel
+  // descriptor address
+  llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
+  LUTHIER_RETURN_ON_ERROR(hsa::executableGetLoadedCodeObjects(
+      Executable, HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn, LCOs));
+
+  for (const auto &LCO : LCOs) {
+    // Get the agent of the current LCO
+    llvm::Expected<hsa_agent_t> AgentOrErr = hsa::loadedCodeObjectGetAgent(
+        LCO, HsaVenAmdLoaderLoadedCodeObjectGetInfoFn);
+    LUTHIER_RETURN_ON_ERROR(AgentOrErr.takeError());
+    // Find the first executable that matches the address
+    llvm::Expected<std::optional<hsa_executable_symbol_t>>
+        SymbolIfPresentOrErr = hsa::executableFindFirstAgentSymbol(
+            Executable, SymbolIterFn, *AgentOrErr,
+            [&](hsa_executable_symbol_t S) -> llvm::Expected<bool> {
+              llvm::Expected<uint64_t> SymAddrOrErr =
+                  hsa::executableSymbolGetAddress(S,
+                                                  HsaExecutableSymbolGetInfoFn);
+              LUTHIER_RETURN_ON_ERROR(SymAddrOrErr.takeError());
+              llvm::Expected<size_t> SymSizeOrErr =
+                  hsa::executableSymbolGetSymbolSize(
+                      S, HsaExecutableSymbolGetInfoFn);
+              LUTHIER_RETURN_ON_ERROR(SymSizeOrErr.takeError());
+              return *SymAddrOrErr <= Address &&
+                     Address < *SymAddrOrErr + *SymSizeOrErr;
+            });
+    LUTHIER_RETURN_ON_ERROR(SymbolIfPresentOrErr.takeError());
+    if (SymbolIfPresentOrErr->has_value()) {
+      return std::make_tuple(Executable, LCO, **SymbolIfPresentOrErr);
+    }
+  }
+  return llvm::make_error<hsa::HsaError>(llvm::formatv(
+      "Failed to find the executable definition of address {0:x}", Address));
 }
 
 llvm::Error shutdown(const decltype(hsa_shut_down) &HsaShutdownFn) {
