@@ -24,7 +24,7 @@
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
-#include <luthier/Instrumentation/InstrumentationModule.h>
+#include <luthier/Instrumentation/CompiledInstrumentationModule.h>
 
 namespace luthier::hsa {
 
@@ -41,7 +41,7 @@ protected:
   const hsa_loaded_code_object_t LCO;
 
   /// The instrumentation module loaded
-  std::unique_ptr<InstrumentationModule> IModule;
+  std::unique_ptr<CompiledInstrumentationModule> IModule;
 
   //===--------------------------------------------------------------------===//
   // A set of underlying functions that the \c ToolExecutableLoader will
@@ -55,7 +55,7 @@ protected:
 
   LoadedInstrumentationModule(
       hsa_executable_t Exec, hsa_loaded_code_object_t LCO,
-      std::unique_ptr<InstrumentationModule> IModule,
+      std::unique_ptr<CompiledInstrumentationModule> IModule,
       const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn,
       const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
           &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn)
@@ -73,7 +73,7 @@ public:
   llvm::Expected<bool> isLoaded() const;
 
   /// \returns the \c InstrumentationModule of this loaded module
-  [[nodiscard]] const InstrumentationModule &getIModule() const {
+  [[nodiscard]] const CompiledInstrumentationModule &getIModule() const {
     return *IModule;
   }
 
@@ -93,7 +93,7 @@ class HipLoadedInstrumentationModule final
 
   HipLoadedInstrumentationModule(
       const hsa_executable_t Exec, const hsa_loaded_code_object_t LCO,
-      std::unique_ptr<InstrumentationModule> IModule,
+      std::unique_ptr<CompiledInstrumentationModule> IModule,
       const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn,
       const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
           &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn)
@@ -115,7 +115,7 @@ class DynamicallyLoadedInstrumentationModule final
 
   DynamicallyLoadedInstrumentationModule(
       hsa_executable_t Exec, hsa_loaded_code_object_t LCO,
-      std::unique_ptr<InstrumentationModule> IModule,
+      std::unique_ptr<CompiledInstrumentationModule> IModule,
       const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn,
       const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
           &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
