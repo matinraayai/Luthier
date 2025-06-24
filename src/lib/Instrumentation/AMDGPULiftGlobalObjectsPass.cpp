@@ -16,20 +16,20 @@
 /// \file
 /// Implements the <tt>AMDGPULiftGlobalObjectsPass</tt> class.
 //===----------------------------------------------------------------------===//
-#include "luthier/Instrumentation/ELFRelocationResolverAnalysisPass.h"
-#include "luthier/Instrumentation/GlobalObjectOffsetsAnalysis.h"
-
+#include <SIMachineFunctionInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Target/TargetMachine.h>
-#include <luthier/Instrumentation/AMDGPU/AMDGPULiftGlobalObjectsPass.h>
-#include <luthier/Instrumentation/AMDGPU/KernelDescriptor.h>
-#include <luthier/Instrumentation/AMDGPU/LiftedKernelSymbolAnalysisPass.h>
-#include <luthier/Instrumentation/AMDGPU/Metadata.h>
+#include <luthier/Instrumentation/AMDGPULiftGlobalObjectsPass.h>
+#include <luthier/Instrumentation/ELFRelocationResolverAnalysisPass.h>
+#include <luthier/Instrumentation/GlobalObjectOffsetsAnalysis.h>
 #include <luthier/Instrumentation/GlobalObjectSymbolsAnalysis.h>
+#include <luthier/Instrumentation/KernelDescriptor.h>
+#include <luthier/Instrumentation/LiftedKernelSymbolAnalysisPass.h>
+#include <luthier/Instrumentation/Metadata.h>
 #include <luthier/Instrumentation/ObjectFileAnalysisPass.h>
 #include <luthier/Object/AMDGCNObjectFile.h>
 
@@ -239,7 +239,7 @@ initLiftedKernelEntry(object::AMDGCNKernelDescSymbolRef KernelSym,
 
   auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
       TM.getSubtargetImpl(*F)->getRegisterInfo());
-  auto MFI = MF.template getInfo<llvm::SIMachineFunctionInfo>();
+  auto MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
   if (KCP.EnableSgprDispatchPtr == 1) {
     MFI->addDispatchPtr(*TRI);
   }
