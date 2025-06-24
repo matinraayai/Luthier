@@ -15,13 +15,13 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines methods used to insert calls to Luthier intrinsics.
+/// Defines methods used to insert generic calls to Luthier intrinsics.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INTRINSIC_CALLS_H
-#define LUTHIER_INTRINSIC_CALLS_H
-#include "luthier/consts.h"
+#ifndef LUTHIER_INSTRUMENTATION_INTRINSIC_CALLS_H
+#define LUTHIER_INSTRUMENTATION_INTRINSIC_CALLS_H
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include <luthier/Instrumentation/consts.h>
 
 namespace luthier {
 
