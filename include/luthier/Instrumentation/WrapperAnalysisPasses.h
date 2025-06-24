@@ -1,4 +1,4 @@
-//===-- WrapperAnalysisPasses.hpp -----------------------------------------===//
+//===-- WrapperAnalysisPasses.h ---------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,61 +15,19 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes a set of analysis passes that wrap around data
-/// structures commonly used by the instrumentation passes in Luthier.
+/// Describes a set of analysis passes that provide commonly used data
+/// structures by the instrumentation passes in Luthier.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_WRAPPER_ANALYSIS_PASSES_HPP
-#define LUTHIER_TOOLING_COMMON_WRAPPER_ANALYSIS_PASSES_HPP
-#include "hsa/LoadedCodeObject.hpp"
-#include "luthier/tooling/LiftedRepresentation.h"
+#ifndef LUTHIER_INSTRUMENTATION_WRAPPER_ANALYSIS_PASSES_H
+#define LUTHIER_INSTRUMENTATION_WRAPPER_ANALYSIS_PASSES_H
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/intrinsic/IntrinsicProcessor.h>
+#include <luthier/Instrumentation/IntrinsicProcessor.h>
 
 namespace luthier {
 
-/// \brief Produces the map which holds the processors for all intrinsics
-class IntrinsicsProcessorsAnalysis
-    : public llvm::AnalysisInfoMixin<IntrinsicsProcessorsAnalysis> {
-private:
-  friend llvm::AnalysisInfoMixin<IntrinsicsProcessorsAnalysis>;
-
-  static llvm::AnalysisKey Key;
-
-  const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessorMap;
-
-public:
-  class Result {
-    friend class IntrinsicsProcessorsAnalysis;
-
-    const llvm::StringMap<IntrinsicProcessor> &Map;
-
-    explicit Result(const llvm::StringMap<IntrinsicProcessor> &Map)
-        : Map(Map) {}
-
-  public:
-    const llvm::StringMap<IntrinsicProcessor> &getProcessors() { return Map; }
-
-    /// Prevents invalidation of the analysis result
-    __attribute__((used)) bool
-    invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-               llvm::ModuleAnalysisManager::Invalidator &) {
-      return false;
-    }
-  };
-
-  /// constructor
-  explicit IntrinsicsProcessorsAnalysis(
-      const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessorMap)
-      : IntrinsicProcessorMap(IntrinsicProcessorMap) {};
-
-  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
-    return Result{IntrinsicProcessorMap};
-  }
-};
-
-/// \brief holds the mapping between the intrinsic inline assembly place holder
+/// \brief holds the mapping between the intrinsic inline assembly placeholder
 /// indices and their \c IntrinsicIRLoweringInfo
 class IntrinsicIRLoweringInfoMapAnalysis
     : public llvm::AnalysisInfoMixin<IntrinsicIRLoweringInfoMapAnalysis> {
@@ -153,67 +111,6 @@ public:
 
   Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
     return {TargetAppMAM, TargetAppModule};
-  }
-};
-
-/// \brief
-class LiftedRepresentationAnalysis
-    : public llvm::AnalysisInfoMixin<LiftedRepresentationAnalysis> {
-private:
-  friend llvm::AnalysisInfoMixin<LiftedRepresentationAnalysis>;
-
-  static llvm::AnalysisKey Key;
-  /// The \c LiftedRepresentation being worked on
-  LiftedRepresentation &LR;
-
-public:
-  class Result {
-    LiftedRepresentation &LR;
-    explicit Result(LiftedRepresentation &LR) : LR(LR) {}
-    friend class LiftedRepresentationAnalysis;
-
-  public:
-    LiftedRepresentation &getLR() { return LR; }
-
-    bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-                    llvm::ModuleAnalysisManager::Invalidator &) {
-      return false;
-    }
-  };
-
-  explicit LiftedRepresentationAnalysis(LiftedRepresentation &LR) : LR(LR) {}
-
-  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
-    return Result{LR};
-  }
-};
-
-/// \brief An analysis pass which returns the \c hsa::LoadedCodeObject being
-/// worked on during instrumentation
-class LoadedCodeObjectAnalysis
-    : public llvm::AnalysisInfoMixin<LoadedCodeObjectAnalysis> {
-private:
-  friend llvm::AnalysisInfoMixin<LoadedCodeObjectAnalysis>;
-
-  static llvm::AnalysisKey Key;
-
-  /// The \c hsa::LoadedCodeObject inside the lifted representation being worked
-  /// on
-  const hsa::LoadedCodeObject LCO;
-
-public:
-  using Result = const hsa::LoadedCodeObject;
-
-  explicit LoadedCodeObjectAnalysis(hsa::LoadedCodeObject LCO)
-      : LCO(std::move(LCO)) {}
-
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &) { return LCO; }
-
-  /// Never invalidate the results
-  __attribute__((used)) bool
-  invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-             llvm::ModuleAnalysisManager::Invalidator &) {
-    return false;
   }
 };
 

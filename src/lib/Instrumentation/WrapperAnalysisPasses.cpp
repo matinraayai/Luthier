@@ -15,32 +15,27 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements a set of analysis passes that wrap around data
-/// structures commonly used by the instrumentation passes in Luthier.
+/// Implements a set of analysis passes that provide commonly used data
+/// structures by the instrumentation passes in Luthier.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/WrapperAnalysisPasses.hpp"
+#include <luthier/Instrumentation/WrapperAnalysisPasses.h>
 
 namespace luthier {
-
-llvm::AnalysisKey IntrinsicsProcessorsAnalysis::Key;
 
 llvm::AnalysisKey IntrinsicIRLoweringInfoMapAnalysis::Key;
 
 llvm::AnalysisKey TargetAppModuleAndMAMAnalysis::Key;
 
-llvm::AnalysisKey LiftedRepresentationAnalysis::Key;
-
-llvm::AnalysisKey LoadedCodeObjectAnalysis::Key;
-
 llvm::AnalysisKey IModulePMAnalysis::Key;
 
 static void *
 initializeIModuleMAMWrapperPassPassOnce(llvm::PassRegistry &Registry) {
-  auto *PI = new llvm::PassInfo(
-      "imam-wrapper-pass", "Instrumentation Module MAM Wrapper Pass",
-      (void *)&IModulePMAnalysis::ID,
-      llvm::PassInfo::NormalCtor_t(llvm::callDefaultCtor<IModulePMAnalysis>),
-      false, true);
+  auto *PI = new llvm::PassInfo("imam-wrapper-pass",
+                                "Instrumentation Module MAM Wrapper Pass",
+                                (void *)&IModulePMAnalysis::ID,
+                                static_cast<llvm::PassInfo::NormalCtor_t>(
+                                    llvm::callDefaultCtor<IModulePMAnalysis>),
+                                false, true);
   Registry.registerPass(*PI, true);
   return PI;
 }
@@ -55,8 +50,7 @@ char IModuleMAMWrapperPass::ID;
 
 IModuleMAMWrapperPass::IModuleMAMWrapperPass(llvm::ModuleAnalysisManager *IMAM)
     : llvm::ImmutablePass(ID), IMAM(*IMAM) {
-  initializeIModulePMAnalysisPass(
-      *llvm::PassRegistry::getPassRegistry());
+  initializeIModulePMAnalysisPass(*llvm::PassRegistry::getPassRegistry());
 }
 
 } // namespace luthier
