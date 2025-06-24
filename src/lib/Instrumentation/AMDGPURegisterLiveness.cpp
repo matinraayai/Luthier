@@ -17,9 +17,10 @@
 /// \file
 /// Implements the \c AMDGPURegisterLiveness class and its pass.
 //===----------------------------------------------------------------------===//
-#include <luthier/Instrumentation/AMDGPU/VectorCFG.h>
-#include <luthier/Instrumentation/AMDGPU/AMDGPURegisterLiveness.h>
+#include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/Instrumentation/AMDGPURegisterLiveness.h>
+#include <luthier/Instrumentation/VectorCFG.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-amdgpu-register-liveness"
@@ -100,7 +101,7 @@ static void recomputeLiveIns(
 
 AMDGPURegisterLiveness::AMDGPURegisterLiveness(
     const llvm::Module &M, const llvm::MachineModuleInfo &MMI,
-    const LRCallGraph &CG)
+    const MIRCallgraph &CG)
     : CG(CG) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
   for (const auto &F : M) {
@@ -122,7 +123,7 @@ AMDGPURegLivenessAnalysis::Result
 AMDGPURegLivenessAnalysis::run(llvm::Module &M,
                                llvm::ModuleAnalysisManager &MAM) {
   return {M, MAM.getResult<llvm::MachineModuleAnalysis>(M).getMMI(),
-          MAM.getResult<LRCallGraphAnalysis>(M)};
+          MAM.getResult<MIRCallgraphAnalysis>(M)};
 }
 
 } // namespace luthier

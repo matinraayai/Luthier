@@ -17,7 +17,6 @@
 /// Describes the \c AMDGPURegisterLiveness class and its pass,
 /// which calculates the register live-in sets for each \c llvm::MachineInstr
 /// of a <tt>llvm::MachineFunction</tt>.
-/// TODO: Investigate making this a MF Analysis pass.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INSTRUMENTATION_AMDGPU_REGISTER_LIVENESS_H
 #define LUTHIER_INSTRUMENTATION_AMDGPU_REGISTER_LIVENESS_H
@@ -26,7 +25,7 @@
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/Instrumentation/LRCallgraph.h>
+#include <luthier/Instrumentation/MIRCallgraphAnalysis.h>
 
 namespace luthier {
 
@@ -34,7 +33,7 @@ class AMDGPURegisterLiveness {
 private:
   /// The callgraph analysis result of the MMI
   /// TODO: Use call graph to calculate liveness at a global level
-  const LRCallGraph &CG;
+  const MIRCallgraph &CG;
 
   /// A mapping between an \c llvm::MachineInstr of the MMI and the set of
   /// physical registers that are live right before it is executed.
@@ -49,7 +48,7 @@ private:
 public:
   AMDGPURegisterLiveness(const llvm::Module &M,
                          const llvm::MachineModuleInfo &MMI,
-                         const LRCallGraph &CG);
+                         const MIRCallgraph &CG);
 
   /// \returns the set of physical registers that are live before executing
   /// the instruction \p MI at the function level, or nullptr if the
