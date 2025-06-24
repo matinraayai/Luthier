@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the \c LiftedKernelSymbolAnalysisPass class.
+/// Implements the \c AMDGPULiftedKernelSymbolAnalysisPass class.
 //===----------------------------------------------------------------------===//
-#include <luthier/Instrumentation/AMDGPU/LiftedKernelSymbolAnalysisPass.h>
+#include <luthier/Instrumentation/AMDGPULiftedKernelSymbolAnalysisPass.h>
 
 namespace luthier {
 
