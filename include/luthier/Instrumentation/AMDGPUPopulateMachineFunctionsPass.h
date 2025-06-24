@@ -14,13 +14,13 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the <tt>AMDGPUPopulateMachineFunctionsPass</tt> pass in charge
+/// Defines the <tt>AMDGPUPopulateMachineFunctionsPass</tt> class in charge
 /// of populating the machine functions inside the target module with
 /// lifted machine instructions and basic blocks.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_AMDGPU_LIFT_FUNCTIONS_PASS_H
-#define LUTHIER_INSTRUMENTATION_AMDGPU_AMDGPU_LIFT_FUNCTIONS_PASS_H
-#include <llvm/IR/PassManager.h>
+#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_LIFT_FUNCTIONS_PASS_H
+#define LUTHIER_INSTRUMENTATION_AMDGPU_LIFT_FUNCTIONS_PASS_H
+#include <llvm/CodeGen/MachinePassManager.h>
 
 namespace luthier {
 class AMDGPUPopulateMachineFunctionsPass

@@ -1,7 +1,26 @@
+//===-- AMDGPUPopulateMachineFunctionsPass.h --------------------*- C++ -*-===//
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+/// \file
+/// Implements the <tt>AMDGPUPopulateMachineFunctionsPass</tt> pass in charge
+/// of populating the machine functions inside the target module with
+/// lifted machine instructions and basic blocks.
+//===----------------------------------------------------------------------===//
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
-#include "luthier/Instrumentation/AMDGPU/Metadata.h"
-
+#include <SIInstrInfo.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
@@ -14,17 +33,18 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Target/TargetMachine.h>
-#include <luthier/Instrumentation/AMDGPU/AMDGPUPopulateMachineFunctionsPass.h>
+#include <luthier/Instrumentation/AMDGPUPopulateMachineFunctionsPass.h>
 #include <luthier/Instrumentation/BranchTargetOffsetsAnalysis.h>
-#include <luthier/Instrumentation/DisassembleAnalysisPass.h>
+#include <luthier/Instrumentation/DisassemblerAnalysis.h>
 #include <luthier/Instrumentation/ELFRelocationResolverAnalysisPass.h>
 #include <luthier/Instrumentation/GlobalObjectSymbolsAnalysis.h>
 #include <luthier/Instrumentation/MIToMCAnalysis.h>
+#include <luthier/Instrumentation/Metadata.h>
 #include <luthier/Instrumentation/ObjectFileAnalysisPass.h>
 #include <luthier/Object/AMDGCNObjectFile.h>
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-code-lifter"
+#define DEBUG_TYPE "luthier-populate-machine-functions"
 
 namespace luthier {
 
@@ -435,7 +455,7 @@ llvm::PreservedAnalyses AMDGPUPopulateMachineFunctionsPass::run(
 
   /// Get the disassembler and disassemble its instructions
   llvm::ArrayRef<Instr> Instructions =
-      MFAM.getResult<DisassemblerAnalysisPass>(MF).getInstructions();
+      MFAM.getResult<DisassemblerAnalysis>(MF).getInstructions();
 
   /// Get the relocation resolver
   LUTHIER_EMIT_ERROR_IN_CONTEXT(
@@ -474,10 +494,10 @@ llvm::PreservedAnalyses AMDGPUPopulateMachineFunctionsPass::run(
                             << KernelMD.PrivateSegmentFixedSize << "\n");
     if (KernelMD.PrivateSegmentFixedSize != 0) {
       MF.getFrameInfo().CreateFixedObject(KernelMD.PrivateSegmentFixedSize, 0,
-                                           true);
+                                          true);
       MF.getFrameInfo().setStackSize(KernelMD.PrivateSegmentFixedSize);
-      LLVM_DEBUG(llvm::dbgs() << "Stack size: "
-                              << MF.getFrameInfo().getStackSize() << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Stack size: " << MF.getFrameInfo().getStackSize() << "\n");
     }
   }
   return llvm::PreservedAnalyses::all();
