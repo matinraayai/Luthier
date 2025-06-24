@@ -15,13 +15,11 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's Intrinsic Processor structs and functions,
-/// required to define custom Luthier intrinsics by a tool.
+/// Describes Luthier's Intrinsic Processor structs and functions, required to
+/// define custom Luthier intrinsics by a tool.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INTRINSIC_INTRINSIC_PROCESSOR_H
-#define LUTHIER_INTRINSIC_INTRINSIC_PROCESSOR_H
-
-#include "luthier/types.h"
+#ifndef LUTHIER_INSTRUMENTATION_INTRINSIC_PROCESSOR_H
+#define LUTHIER_INSTRUMENTATION_INTRINSIC_PROCESSOR_H
 #include <functional>
 #include <llvm/ADT/Any.h>
 #include <llvm/ADT/ArrayRef.h>

@@ -15,12 +15,13 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements part of Luthier's Intrinsic Processor functions
-/// not already defined by its header.
+/// Implements part of Luthier's Intrinsic Processor functions not already
+/// defined by its header.
 //===----------------------------------------------------------------------===//
-#include "luthier/common/LuthierError.h"
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/Support/Error.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/Instrumentation/IntrinsicProcessor.h>
 
 namespace luthier {
 
@@ -37,7 +38,7 @@ getIntrinsicInlineAsmPlaceHolderIdx(const llvm::MachineInstr &MI) {
       unsigned int IntrinsicIdx = std::stoul(IntrinsicIdxAsString);
       return IntrinsicIdx;
     } catch (const std::exception &Exception) {
-      return LUTHIER_CREATE_ERROR(
+      return llvm::make_error<GenericLuthierError>(
           "Caught an exception when getting the intrinsic index of the "
           "inline assembly instruction "
           "{0}. The exception: {1}.",
