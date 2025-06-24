@@ -1,4 +1,4 @@
-//===-- InstrumentationModule.h ---------------------------------*- C++ -*-===//
+//===-- CompiledInstrumentationModule.h -------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,24 +15,24 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Describes the \c InstrumentationModule class, which encapsulates a single
-/// instrumentation shared object file with its instrumentation LLVM bitcode
-/// embedded inside it.
+/// Describes the \c CompiledInstrumentationModule class, which encapsulates
+/// the compiled shared object of an instrumentation module with its LLVM
+/// bitcode embedded inside it.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_INSTRUMENTATION_MODULE_H
-#define LUTHIER_TOOLING_INSTRUMENTATION_MODULE_H
+#ifndef LUTHIER_INSTRUMENTATION_COMPILED_INSTRUMENTATION_MODULE_H
+#define LUTHIER_INSTRUMENTATION_COMPILED_INSTRUMENTATION_MODULE_H
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Support/Error.h>
-#include <luthier/object/ELFObjectUtils.h>
-#include <luthier/object/ObjectUtils.h>
+#include <luthier/Object/ELFObjectUtils.h>
+#include <luthier/Object/ObjectUtils.h>
 
 namespace luthier {
 
-/// \brief Encapsulates a Luthier instrumentation module, consisting of
+/// \brief Encapsulates a compiled Luthier instrumentation module, consisting of
 /// a single instrumentation shared object file with its instrumentation
 /// LLVM bitcode embedded inside its \c IModuleBCSectionName section
-class InstrumentationModule {
+class CompiledInstrumentationModule {
   /// A host copy of the code object used to load the module
   const std::vector<uint8_t> CodeObject;
 
@@ -46,10 +46,10 @@ class InstrumentationModule {
   /// module
   size_t CUID;
 
-  InstrumentationModule(std::vector<uint8_t> CodeObject,
-                        std::unique_ptr<llvm::object::ObjectFile> ObjectFile,
-                        std::unique_ptr<llvm::MemoryBuffer> BCBuffer,
-                        size_t CUID)
+  CompiledInstrumentationModule(
+      std::vector<uint8_t> CodeObject,
+      std::unique_ptr<llvm::object::ObjectFile> ObjectFile,
+      std::unique_ptr<llvm::MemoryBuffer> BCBuffer, size_t CUID)
       : CodeObject(std::move(CodeObject)), ObjectFile(std::move(ObjectFile)),
         BCBuffer(std::move(BCBuffer)), CUID(CUID) {}
 
@@ -68,13 +68,18 @@ public:
   /// its instrumentation bitcode embedded inside it
   /// \returns Expects a new instance of \c InstrumentationModule on success;
   /// \c llvm::Error if \p CodeObject is not a valid instrumentation module
-  static llvm::Expected<std::unique_ptr<InstrumentationModule>>
+  static llvm::Expected<std::unique_ptr<CompiledInstrumentationModule>>
   get(std::vector<uint8_t> CodeObject);
 
   /// \returns the parsed object file representation of the instrumentation
   /// module
   [[nodiscard]] const llvm::object::ObjectFile &getObject() const {
     return *ObjectFile;
+  }
+
+  /// \returns the code object of the instrumentation module
+  [[nodiscard]] llvm::ArrayRef<uint8_t> getCodeObject() const {
+    return CodeObject;
   }
 
   /// Reads the bitcode of this InstrumentationModule into a new
@@ -87,7 +92,7 @@ public:
     return llvm::parseBitcodeFile(*BCBuffer, Ctx);
   }
 
-  /// \return Expects the symbol load offsets of this module
+  /// \return Expects the mapping between symbol names and their load offsets
   llvm::Expected<llvm::StringMap<uint64_t>> getSymbolLoadOffsetsMap() const {
     return object::getSymbolLoadOffsetsMap(*ObjectFile);
   }
