@@ -303,6 +303,13 @@ public:
     return createAMDGCNObjectFile(llvm::toStringRef(Elf));
   }
 
+  static bool classof(const llvm::object::Binary *V) {
+    return llvm::object::ELF64LEObjectFile::classof(V) &&
+           llvm::cast<llvm::object::ELF64LEObjectFile>(V)
+               ->makeTriple()
+               .isAMDGCN();
+  }
+
   llvm::Expected<std::optional<luthier::object::AMDGCNElfSymbolRef>>
   lookupSymbol(llvm::StringRef SymbolName) const {
     auto Out = luthier::object::lookupSymbolByName(*this, SymbolName);
