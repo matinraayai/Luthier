@@ -14,12 +14,15 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file This file describes the \c VectorCFG class and its basic blocks.
+/// \file
+/// Describes the \c VectorCFG class and its basic blocks.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_VECTOR_CFG_H
-#define LUTHIER_VECTOR_CFG_H
+#ifndef LUTHIER_INSTRUMENTATION_VECTOR_CFG_H
+#define LUTHIER_INSTRUMENTATION_VECTOR_CFG_H
 #include <llvm/ADT/DenseSet.h>
+#include <llvm/ADT/Twine.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
+#include <llvm/CodeGen/MachineFunction.h>
 
 namespace llvm {
 

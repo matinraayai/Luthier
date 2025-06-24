@@ -14,16 +14,16 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file This file implements the \c VectorMBB and \c VectorCFG classes.
+/// \file
+/// Implements the \c VectorMBB and \c VectorCFG classes.
 //===----------------------------------------------------------------------===//
+#include <luthier/Instrumentation/CodeGenHelpers.h>
+#include <luthier/Instrumentation/VectorCFG.h>
 #include <SIInstrInfo.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Support/FormatVariadic.h>
-#include <luthier/llvm/CodeGenHelpers.h>
-#include <luthier/llvm/streams.h>
-#include <luthier/tooling/VectorCFG.h>
 
 namespace luthier {
 
