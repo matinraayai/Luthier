@@ -20,12 +20,12 @@
 /// info not included in the \c llvm::MCInst class, including its function
 /// symbol, its offset from the symbol start, and its size in bytes.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_INSTR_H
-#define LUTHIER_TOOLING_INSTR_H
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
+#ifndef LUTHIER_INSTRUMENTATION_INSTR_H
+#define LUTHIER_INSTRUMENTATION_INSTR_H
 #include <llvm/MC/MCInst.h>
 #include <llvm/Object/ObjectFile.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
 
 namespace luthier {
 
@@ -38,7 +38,7 @@ private:
   const llvm::MCInst Inst;
   /// The symbol it belongs to
   const llvm::object::SymbolRef Symbol;
-  /// The offset from base which this instruction resides
+  /// The offset of the instruction from the base of the symbol
   const uint64_t Offset;
   /// Size of the instruction
   const size_t Size;
@@ -60,9 +60,9 @@ public:
                                       size_t Offset, size_t Size) {
     llvm::Expected<llvm::object::SymbolRef::Type> TypeOrErr = Symbol.getType();
     LUTHIER_RETURN_ON_ERROR(TypeOrErr.takeError());
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ERROR_CHECK(*TypeOrErr != llvm::object::SymbolRef::ST_Function,
-                            "Instr Symbol is not a function."));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        *TypeOrErr != llvm::object::SymbolRef::ST_Function,
+        "Instr Symbol is not a function."));
     return Instr{Inst, Symbol, Offset, Size};
   }
 
