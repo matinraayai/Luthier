@@ -15,8 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the HSA kernel descriptor, a POD struct in addition to
-/// some convenience methods.
+/// Describes the HSA kernel descriptor POD struct in addition to some
+/// convenience methods.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INSTRUMENTATION_AMDGPU_HSA_KERNEL_DESCRIPTOR_H
 #define LUTHIER_INSTRUMENTATION_AMDGPU_HSA_KERNEL_DESCRIPTOR_H
@@ -24,14 +24,18 @@
 namespace luthier::amdgpu::hsa {
 
 /// \brief POD (plain-old-data) struct to provide an abstraction over the kernel
-/// descriptor, plus some convenience methods
-/// \details To inspect the contents of a kernel descriptor, simply use
-/// <tt>reinterpret_cast</tt> over its address:
+/// descriptor, plus some convenience methods for inspecting its fields
+/// \details As is the case for any POD struct, the contents of a
+/// kernel descriptor can be inspected via <tt>reinterpret_cast</tt>-ing its
+/// address to <tt>KernelDescriptor</tt>:
 /// \code
 /// const auto* KD = reinterpret_cast<const KernelDescriptor*>(KDAddress);
 /// \endcode
-/// \warning Kernel descriptors in a \c hsa_loaded_code_object_t should never
-/// be modified using this struct (both on host or device memory)
+/// \note If the kernel descriptor is loaded onto the device
+/// memory, its host-accessible memory must be obtained using
+/// \c luthier::hsa::convertToHostEquivalent before its fields are inspected
+/// \note This struct is meant for inspecting kernel descriptor fields,
+/// and is not meant to carry out any modifications to the kernel descriptor.
 struct KernelDescriptor {
   uint32_t GroupSegmentFixedSize;
   uint32_t PrivateSegmentFixedSize;
@@ -126,14 +130,13 @@ struct KernelDescriptor {
   /// first instruction of the kernel
   [[nodiscard]] uint64_t getEntryPoint() const;
 
-  /// Returns a pointer to the kernel descriptor, given the kernel object
+  /// Returns a pointer to the kernel descriptor, given the \p KernelObject
   /// field of the kernel dispatch packet
   /// \param KernelObject obtained from the \c kernel_object field in the
   /// \c hsa_kernel_dispatch_packet_t
   /// \return the kernel descriptor of the <tt>KernelObject</tt>
   static const KernelDescriptor *fromKernelObject(uint64_t KernelObject);
-
 };
-} // namespace luthier::hsa
+} // namespace luthier::amdgpu::hsa
 
 #endif

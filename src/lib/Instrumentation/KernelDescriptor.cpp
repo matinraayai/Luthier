@@ -20,13 +20,13 @@
 #include <hsa/amd_hsa_common.h>
 #include <hsa/amd_hsa_kernel_code.h>
 #include <luthier/HSA/Executable.h>
-#include <luthier/Instrumentation/AMDGPU/KernelDescriptor.h>
+#include <luthier/Instrumentation/KernelDescriptor.h>
 
 namespace luthier::amdgpu::hsa {
 
 KernelDescriptor::Rsrc1Info KernelDescriptor::getRsrc1() const {
   Rsrc1Info Out;
-  Out.GranulatedWaveFrontSGPRCount =
+  Out.GranulatedWorkItemVGPRCount =
       AMD_HSA_BITS_GET(this->ComputePgmRsrc1,
                        AMD_COMPUTE_PGM_RSRC_ONE_GRANULATED_WORKITEM_VGPR_COUNT);
   Out.GranulatedWaveFrontSGPRCount = AMD_HSA_BITS_GET(
@@ -211,6 +211,7 @@ KernelDescriptor::getKernelCodeProperties() const {
 uint64_t KernelDescriptor::getEntryPoint() const {
   return reinterpret_cast<uint64_t>(this) + this->KernelCodeEntryByteOffset;
 }
+
 const KernelDescriptor *
 KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
   return reinterpret_cast<KernelDescriptor *>(KernelObject);
