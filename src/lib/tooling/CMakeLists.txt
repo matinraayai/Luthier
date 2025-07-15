@@ -1,6 +1,6 @@
 add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierComgr>
-        $<TARGET_OBJECTS:LuthierCommon>
+        $<TARGET_OBJECTS:LuthierObject>
         $<TARGET_OBJECTS:LuthierRocprofilerSDK>
         $<TARGET_OBJECTS:LuthierHSA>
         $<TARGET_OBJECTS:LuthierHIP>
