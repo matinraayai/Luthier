@@ -1,4 +1,4 @@
-//===-- consts.h ------------------------------------------------*- C++ -*-===//
+//===-- PrefixAndAttributeNames.h -------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,11 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines some constants used throughout both Luthier and the
-/// compiler plugins projects.
+/// Defines a set of constant prefix and attribute names used in the Luthier's
+/// programming model.
 //===----------------------------------------------------------------------===//
-
-#ifndef LUTHIER_CONSTS_H
-#define LUTHIER_CONSTS_H
+#ifndef LUTHIER_INSTRUMENTATION_PREFIX_AND_ATTRIBUTE_NAMES_H
+#define LUTHIER_INSTRUMENTATION_PREFIX_AND_ATTRIBUTE_NAMES_H
 
 namespace luthier {
 
@@ -58,10 +57,14 @@ namespace luthier {
 /// have this attribute
 #define LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE luthier_injected_payload
 
+/// Name of the section the Luthier bitcode of an instrumentation module is
+/// embedded in the object code
+#define LUTHIER_IMODULE_BC_SECTION_NAME ".llvmbc"
+
 static constexpr const char *HookHandlePrefix =
     LUTHIER_STRINGIFY(LUTHIER_HOOK_HANDLE_PREFIX);
 
-static constexpr const char *ReservedManagedVar =
+static constexpr const char *IModuleReservedManagedVar =
     LUTHIER_STRINGIFY(LUTHIER_RESERVED_MANAGED_VAR);
 
 static constexpr const char *HipCUIDPrefix =
@@ -75,6 +78,14 @@ static constexpr const char *IntrinsicAttribute =
 
 static constexpr const char *InjectedPayloadAttribute =
     LUTHIER_STRINGIFY(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE);
+
+static constexpr const char *IModuleBCSectionName =
+    LUTHIER_STRINGIFY(LUTHIER_IMODULE_BC_SECTION_NAME);
+
+#undef LUTHIER_PRIMITIVE_CAT
+#undef LUTHIER_PRIMITIVE_STR
+#undef LUTHIER_STRINGIFY
+#undef LUTHIER_CAT
 
 } // namespace luthier
 
