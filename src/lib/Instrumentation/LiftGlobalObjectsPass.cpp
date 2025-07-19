@@ -1,4 +1,4 @@
-//===-- AMDGPULiftGlobalObjectsPass.cpp -----------------------------------===//
+//===-- LiftGlobalObjectsPass.cpp -----------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +14,17 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the <tt>AMDGPULiftGlobalObjectsPass</tt> class.
+/// Implements the \c LiftGlobalObjectsPass class.
 //===----------------------------------------------------------------------===//
+#include "luthier/Instrumentation/LiftGlobalObjectsPass.h"
+#include "luthier/Instrumentation/ELFRelocationResolverAnalysisPass.h"
+#include "luthier/Instrumentation/EntryPointKernelAnalysis.h"
+#include "luthier/Instrumentation/GlobalObjectOffsetsAnalysis.h"
+#include "luthier/Instrumentation/GlobalObjectSymbolsAnalysis.h"
+#include "luthier/Instrumentation/KernelDescriptor.h"
+#include "luthier/Instrumentation/Metadata.h"
+#include "luthier/Instrumentation/ObjectFileAnalysisPass.h"
+#include "luthier/Object/AMDGCNObjectFile.h"
 #include <SIMachineFunctionInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -23,15 +32,6 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Target/TargetMachine.h>
-#include <luthier/Instrumentation/AMDGPULiftGlobalObjectsPass.h>
-#include <luthier/Instrumentation/ELFRelocationResolverAnalysisPass.h>
-#include <luthier/Instrumentation/GlobalObjectOffsetsAnalysis.h>
-#include <luthier/Instrumentation/GlobalObjectSymbolsAnalysis.h>
-#include <luthier/Instrumentation/KernelDescriptor.h>
-#include <luthier/Instrumentation/LiftedKernelSymbolAnalysisPass.h>
-#include <luthier/Instrumentation/Metadata.h>
-#include <luthier/Instrumentation/ObjectFileAnalysisPass.h>
-#include <luthier/Object/AMDGCNObjectFile.h>
 
 namespace luthier {
 
@@ -315,7 +315,7 @@ initLiftedDeviceFunctionEntry(object::AMDGCNDeviceFuncSymbolRef FuncSym,
 }
 
 llvm::PreservedAnalyses
-AMDGPULiftGlobalObjectsPass::run(llvm::Module &TargetModule,
+LiftGlobalObjectsPass::run(llvm::Module &TargetModule,
                                  llvm::ModuleAnalysisManager &TargetMAM) {
   llvm::LLVMContext &Ctx = TargetModule.getContext();
   /// Get the AMDGCN object file
@@ -363,8 +363,7 @@ AMDGPULiftGlobalObjectsPass::run(llvm::Module &TargetModule,
       /// If the kernel is the same as the one being lifted, create a new
       /// function for it; Otherwise, it will become an external variable
       object::AMDGCNKernelDescSymbolRef LiftedKernelSymbol =
-          TargetMAM
-              .getResult<AMDGPULiftedKernelSymbolAnalysisPass>(TargetModule)
+          TargetMAM.getResult<EntryPointKernelAnalysis>(TargetModule)
               .getSymbol();
       llvm::Expected<bool> IsLiftedKernelOrErr = object::areSymbolsEqual(
           AMDGCNObjFile, LiftedKernelSymbol.getRawDataRefImpl(),
