@@ -14,12 +14,14 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file Defines a set of frequently-used helper functions used in the AMDGPU
+/// \file
+/// Defines a set of frequently-used helper functions used in the AMDGPU
 /// backend.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_CODEGEN_HELPERS_H
-#define LUTHIER_INSTRUMENTATION_AMDGPU_CODEGEN_HELPERS_H
+#ifndef LUTHIER_INSTRUMENTATION_CODEGEN_HELPERS_H
+#define LUTHIER_INSTRUMENTATION_CODEGEN_HELPERS_H
 #include <functional>
+#include <llvm/CodeGen/MachineBasicBlock.h>
 
 namespace llvm {
 class MCRegister;
