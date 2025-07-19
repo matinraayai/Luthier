@@ -1,4 +1,4 @@
-//===-- LiftedKernelSymbolAnalysisPass.cpp --------------------------------===//
+//===-- EntryPointKernelAnalysis.cpp --------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,12 +14,12 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the \c AMDGPULiftedKernelSymbolAnalysisPass class.
+/// Implements the \c EntryPointKernelAnalysis class.
 //===----------------------------------------------------------------------===//
-#include <luthier/Instrumentation/AMDGPULiftedKernelSymbolAnalysisPass.h>
+#include <luthier/Instrumentation/EntryPointKernelAnalysis.h>
 
 namespace luthier {
 
-llvm::AnalysisKey AMDGPULiftedKernelSymbolAnalysisPass::Key;
+llvm::AnalysisKey EntryPointKernelAnalysis::Key;
 
 }

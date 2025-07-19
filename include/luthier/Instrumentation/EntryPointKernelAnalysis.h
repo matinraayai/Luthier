@@ -1,4 +1,4 @@
-//===-- LiftedKernelSymbolAnalysisPass.h ------------------------*- C++ -*-===//
+//===-- EntryPointKernelAnalysis.h ------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,17 +14,17 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines an analysis pass providing access to the current kernel's symbol
-/// being instrumented.
+/// Defines the \c EntryPointKernelAnalysis class, which provide the symbol
+/// of the entry kernel executed in the current instrumentation task.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_LIFTED_KERNEL_SYMBOL_ANALYSIS_PASS_H
-#define LUTHIER_INSTRUMENTATION_AMDGPU_LIFTED_KERNEL_SYMBOL_ANALYSIS_PASS_H
+#ifndef LUTHIER_INSTRUMENTATION_ENTRY_POINT_KERNEL_ANALYSIS_H
+#define LUTHIER_INSTRUMENTATION_ENTRY_POINT_KERNEL_ANALYSIS_H
 #include <llvm/IR/PassManager.h>
 #include <luthier/Object/AMDGCNObjectFile.h>
 
 namespace luthier {
-class AMDGPULiftedKernelSymbolAnalysisPass
-    : public llvm::AnalysisInfoMixin<AMDGPULiftedKernelSymbolAnalysisPass> {
+class EntryPointKernelAnalysis
+    : public llvm::AnalysisInfoMixin<EntryPointKernelAnalysis> {
   friend AnalysisInfoMixin;
 
   static llvm::AnalysisKey Key;
@@ -50,7 +50,7 @@ public:
 
   Result KernelSymbolRes;
 
-  explicit AMDGPULiftedKernelSymbolAnalysisPass(
+  explicit EntryPointKernelAnalysis(
       object::AMDGCNKernelDescSymbolRef KernelSymbol)
       : KernelSymbolRes(KernelSymbol) {};
 
