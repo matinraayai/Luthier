@@ -1,4 +1,4 @@
-//===-- RunIRPassesOnIModulePass.hpp --------------------------------------===//
+//===-- RunIRPassesOnIModulePass.h ------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,34 +15,37 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the <tt>RunIRPassesOnIModulePass</tt>,
-/// in charge of running all IR passes on the instrumentation module.
+/// Describes the \c RunIRPassesOnIModulePass in charge of running the
+/// IR passes of the instrumentation module as part of the target application
+/// instrumentation pipeline.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_RUN_IR_PASSES_ON_IMODULE_PASS_HPP
-#define LUTHIER_TOOLING_COMMON_RUN_IR_PASSES_ON_IMODULE_PASS_HPP
-#include "luthier/intrinsic/IntrinsicProcessor.h"
-#include "luthier/tooling/InstrumentationTask.h"
+#ifndef LUTHIER_INSTRUMENTATION_RUN_IR_PASSES_ON_IMODULE_PASS_H
+#define LUTHIER_INSTRUMENTATION_RUN_IR_PASSES_ON_IMODULE_PASS_H
 #include <llvm/IR/PassManager.h>
-#include <llvm/Target/TargetMachine.h>
+#include <llvm/Passes/OptimizationLevel.h>
 
 namespace luthier {
 
+/// \brief Runs the IR pipeline of the instrumentation module as part of the
+/// target application pipeline
 class RunIRPassesOnIModulePass
     : public llvm::PassInfoMixin<RunIRPassesOnIModulePass> {
 private:
-  llvm::GCNTargetMachine &TM;
-  const InstrumentationTask &Task;
-  const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessors;
+  /// The instrumentation module being operated on
   llvm::Module &IModule;
 
+  /// The optimization level applied to the IR
+  llvm::OptimizationLevel OptLevel;
+
 public:
-  RunIRPassesOnIModulePass(
-      const InstrumentationTask &Task,
-      const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessors,
-      llvm::GCNTargetMachine &TM, llvm::Module &IModule);
+  RunIRPassesOnIModulePass(llvm::Module &IModule,
+                           llvm::OptimizationLevel OptLevel)
+      : IModule(IModule), OptLevel(OptLevel) {};
+
+  static llvm::StringRef name() { return "LuthierRunIRPassesOnIModulePass"; }
 
   llvm::PreservedAnalyses run(llvm::Module &TargetAppM,
-                              llvm::ModuleAnalysisManager &);
+                              llvm::ModuleAnalysisManager &TargetMAM);
 };
 } // namespace luthier
 

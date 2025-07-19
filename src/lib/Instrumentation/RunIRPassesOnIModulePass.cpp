@@ -15,17 +15,19 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the <tt>RunIRPassesOnIModulePass</tt>.
+/// Implements the \c RunIRPassesOnIModulePass class.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/RunIRPassesOnIModulePass.hpp"
-#include "tooling_common/IModuleIRGeneratorPass.hpp"
-#include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
-#include "tooling_common/ProcessIntrinsicsAtIRLevelPass.hpp"
-#include "tooling_common/WrapperAnalysisPasses.hpp"
-#include <llvm/Analysis/LoopAnalysisManager.h>
+#include "luthier/Instrumentation/RunIRPassesOnIModulePass.h"
+#include "luthier/Instrumentation/IModuleGenerationPass.h"
+#include "luthier/Instrumentation/IntrinsicIRLoweringInfoAnalysis.h"
+#include "luthier/Instrumentation/ProcessIntrinsicsAtIRLevelPass.h"
+#include "luthier/Instrumentation/WrapperAnalysisPasses.h"
+
+#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/Instrumentation/IntrinsicProcessorsAnalysis.h>
 
 #undef DEBUG_TYPE
 
@@ -33,16 +35,15 @@
 
 namespace luthier {
 
-RunIRPassesOnIModulePass::RunIRPassesOnIModulePass(
-    const InstrumentationTask &Task,
-    const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessors,
-    llvm::GCNTargetMachine &TM, llvm::Module &IModule)
-    : TM(TM), Task(Task), IModule(IModule),
-      IntrinsicProcessors(IntrinsicProcessors) {}
-
 llvm::PreservedAnalyses
 RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
                               llvm::ModuleAnalysisManager &TargetAppMAM) {
+  /// Get the target machine of the target application
+  auto &TM = const_cast<llvm::TargetMachine &>(
+      TargetAppMAM.getResult<llvm::MachineModuleAnalysis>(TargetAppM)
+          .getMMI()
+          .getTarget());
+
   auto &IModulePMRes = TargetAppMAM.getResult<IModulePMAnalysis>(TargetAppM);
   // Get the instrumentation analysis managers
   auto &LAM = IModulePMRes.getLAM();
@@ -57,13 +58,9 @@ RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
   {
     llvm::TimeTraceScope Scope("Instrumentation Module IR Optimization");
     // Add the Intrinsic Lowering Info analysis pass
-    IMAM.registerPass([&]() { return IntrinsicIRLoweringInfoMapAnalysis(); });
+    IMAM.registerPass([&]() { return IntrinsicIRLoweringInfoAnalysis(); });
     // Add the Intrinsic processors Map analysis pass
-    IMAM.registerPass(
-        [&]() { return IntrinsicsProcessorsAnalysis(IntrinsicProcessors); });
-    // Add the analysis that accumulates the physical registers accessed that
-    // are not in live-ins sets
-    IMAM.registerPass([&]() { return PhysRegsNotInLiveInsAnalysis(); });
+    IMAM.registerPass([&]() { return IntrinsicsProcessorsAnalysis(); });
     // Add the Target app's MAM as an analysis pass
     IMAM.registerPass([&]() {
       return TargetAppModuleAndMAMAnalysis(TargetAppMAM, TargetAppM);
@@ -79,11 +76,11 @@ RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
     PB.registerLoopAnalyses(LAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, IMAM);
     // Add the pass that generates the IR for the instrumentation module
-    IMPM.addPass(IModuleIRGeneratorPass(Task));
+    IMPM.addPass(IModuleGenerationPass());
     // Add the IR optimization pipeline
     IMPM.addPass(PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3));
     // Add the Intrinsic Processing IR stage pass
-    IMPM.addPass(ProcessIntrinsicsAtIRLevelPass(TM));
+    IMPM.addPass(ProcessIntrinsicsAtIRLevelPass());
     // Run the scheduled IR passes
     IMPM.run(IModule, IMAM);
   }
