@@ -15,12 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes <tt>ELFRelocationResolverAnalysisPass</tt>, which
+/// Describes the \c ELFRelocationResolverAnalysis class, which
 /// resolves queries regarding relocation information present inside the
 /// ELF object file being lifted.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_ELF_RELOCATION_RESOLVER_ANALYSIS_PASS_HPP
-#define LUTHIER_TOOLING_COMMON_ELF_RELOCATION_RESOLVER_ANALYSIS_PASS_HPP
+#ifndef LUTHIER_INSTRUMENTATION_ELF_RELOCATION_RESOLVER_ANALYSIS_PASS_H
+#define LUTHIER_INSTRUMENTATION_ELF_RELOCATION_RESOLVER_ANALYSIS_PASS_H
 #include <llvm/IR/PassManager.h>
 #include <llvm/Object/ELFObjectFile.h>
 
@@ -29,19 +29,19 @@ namespace luthier {
 /// \brief Analysis pass used to parse relocation information from the
 /// ELF object file being lifted and provide that information to other lifting
 /// passes
-class ELFRelocationResolverAnalysisPass
-    : public llvm::AnalysisInfoMixin<ELFRelocationResolverAnalysisPass> {
+class ELFRelocationResolverAnalysis
+    : public llvm::AnalysisInfoMixin<ELFRelocationResolverAnalysis> {
   friend AnalysisInfoMixin;
 
   static llvm::AnalysisKey Key;
 
 public:
   class Result {
-    friend class ELFRelocationResolverAnalysisPass;
+    friend class ELFRelocationResolverAnalysis;
 
     using RelocationMap =
-        llvm::DenseMap<std::pair<llvm::object::SymbolRef, uint64_t>,
-                       llvm::object::ELFRelocationRef>;
+        llvm::DenseMap<uint64_t, std::pair<const llvm::GlobalObject &,
+                                           llvm::object::ELFRelocationRef>>;
 
     /// Mapping between [object symbol, offset from start of the symbol] ->
     /// relocation section ref of the offset
@@ -50,18 +50,18 @@ public:
     Result() = default;
 
   public:
-    using iterator = RelocationMap::const_iterator;
+    using const_iterator = RelocationMap::const_iterator;
 
-    iterator begin() { return Relocations.begin(); }
+    const_iterator begin() const { return Relocations.begin(); }
 
-    iterator end() { return Relocations.end(); }
+    const_iterator end() const { return Relocations.end(); }
 
     [[nodiscard]] bool empty() const { return Relocations.empty(); }
 
     [[nodiscard]] unsigned size() const { return Relocations.size(); }
 
-    iterator find(llvm::object::ELFSymbolRef Symbol, uint64_t Offset) {
-      return Relocations.find({Symbol, Offset});
+    const_iterator find(uint64_t Offset) const {
+      return Relocations.find(Offset);
     }
 
     /// Prevents invalidation of the analysis result
@@ -72,8 +72,8 @@ public:
     }
   };
 
-  /// deafult constructor
-  ELFRelocationResolverAnalysisPass() = default;
+  /// Default constructor
+  ELFRelocationResolverAnalysis() = default;
 
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 };
