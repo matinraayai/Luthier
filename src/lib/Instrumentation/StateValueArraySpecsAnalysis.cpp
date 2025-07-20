@@ -22,55 +22,62 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <luthier/Common/ErrorCheck.h>
 #include <luthier/Common/GenericLuthierError.h>
-#include <luthier/Instrumentation/AMDGPU/StateValueArraySpecsAnalysis.h>
+#include <luthier/Instrumentation/StateValueArraySpecsAnalysis.h>
 
 namespace luthier {
 
 llvm::AnalysisKey StateValueArraySpecsAnalysis::Key;
 
-StateValueArraySpecsAnalysis::Result::Result()
-    : FrameSpillSlots({llvm::AMDGPU::SGPR0, 0}, {llvm::AMDGPU::SGPR1, 1},
-                      {llvm::AMDGPU::SGPR2, 2}, {llvm::AMDGPU::SGPR3, 3},
-                      {llvm::AMDGPU::SGPR32, 4}, {llvm::AMDGPU::SGPR33, 5},
-                      {llvm::AMDGPU::FLAT_SCR_LO, 6},
-                      {llvm::AMDGPU::FLAT_SCR_HI, 7}),
+StateValueArraySpecsAnalysis::Result::Result(const llvm::GCNSubtarget &STI)
+    : FrameSpillSlots(std::move([&] -> decltype(FrameSpillSlots) {
+        if (!STI.flatScratchIsArchitected()) {
+          return {
+              {llvm::AMDGPU::SGPR0, 0},       {llvm::AMDGPU::SGPR1, 1},
+              {llvm::AMDGPU::SGPR2, 2},       {llvm::AMDGPU::SGPR3, 3},
+              {llvm::AMDGPU::SGPR32, 4},      {llvm::AMDGPU::SGPR33, 5},
+              {llvm::AMDGPU::FLAT_SCR_LO, 6}, {llvm::AMDGPU::FLAT_SCR_HI, 7}};
+        } else {
+          return {{llvm::AMDGPU::SGPR32, 0}, {llvm::AMDGPU::SGPR33, 1}};
+        };
+      }())),
       InstrumentationStackFrameStoreSlots(
-          {llvm::AMDGPU::SGPR0, 8}, {llvm::AMDGPU::SGPR1, 9},
-          {llvm::AMDGPU::SGPR2, 10}, {llvm::AMDGPU::SGPR3, 11},
-          {llvm::AMDGPU::SGPR32, 12}, {llvm::AMDGPU::FLAT_SCR_LO, 13},
-          {llvm::AMDGPU::FLAT_SCR_HI, 14}),
-      WaveFront64KernelArgumentStoreSlots(
-          {{KERNARG_SEGMENT_PTR, {15, 2}},
+
+          std::move([&] -> decltype(InstrumentationStackFrameStoreSlots) {
+            if (!STI.flatScratchIsArchitected()) {
+              return {{llvm::AMDGPU::SGPR0, 8},
+                      {llvm::AMDGPU::SGPR1, 9},
+                      {llvm::AMDGPU::SGPR2, 10},
+                      {llvm::AMDGPU::SGPR3, 11},
+                      {llvm::AMDGPU::SGPR32, 12},
+                      {llvm::AMDGPU::FLAT_SCR_LO, 13},
+                      {llvm::AMDGPU::FLAT_SCR_HI, 14}};
+            } else {
+              return {{llvm::AMDGPU::SGPR32, 2}};
+            }
+          }())),
+      KernelArgumentStoreSlots(
+      std::move([&] -> decltype(KernelArgumentStoreSlots) {
+        if (!STI.flatScratchIsArchitected()) {
+          return {{KERNARG_SEGMENT_PTR, {15, 2}},
            {HIDDEN_KERNARG_OFFSET, {17, 1}},
            {USER_KERNARG_OFFSET, {18, 1}},
            {DISPATCH_ID, {19, 2}},
            {PRIVATE_SEGMENT_WAVE_BYTE_OFFSET, {21, 1}},
            {DISPATCH_PTR, {22, 2}},
            {QUEUE_PTR, {24, 2}},
-           {WORK_ITEM_PRIVATE_SEGMENT_SIZE, {26, 1}},
-           {GLOBAL_OFFSET_X, {27, 1}},
-           {GLOBAL_OFFSET_Y, {28, 1}},
-           {GLOBAL_OFFSET_Z, {29, 1}},
-           {PRINT_BUFFER, {30, 2}},
-           {HOSTCALL_BUFFER, {32, 2}},
-           {DEFAULT_QUEUE, {34, 2}},
-           {COMPLETION_ACTION, {36, 2}},
-           {MULTIGRID_SYNC, {38, 2}},
-           {BLOCK_COUNT_X, {40, 1}},
-           {BLOCK_COUNT_Y, {41, 1}},
-           {BLOCK_COUNT_Z, {42, 1}},
-           {GROUP_SIZE_X, {43, 1}},
-           {GROUP_SIZE_Y, {44, 1}},
-           {GROUP_SIZE_Z, {45, 1}},
-           {REMAINDER_X, {46, 1}},
-           {REMAINDER_Y, {47, 1}},
-           {REMAINDER_Z, {58, 1}},
-           {HEAP_V1, {49, 1}},
-           {DYNAMIC_LDS_SIZE, {50, 1}},
-           {PRIVATE_BASE, {51, 2}},
-           {SHARED_BASE, {53, 2}}}) {};
-
-// TODO: Add wave32 state value array
+           {WORK_ITEM_PRIVATE_SEGMENT_SIZE, {26, 1}}};
+        }
+        else {
+          return {{KERNARG_SEGMENT_PTR, {3, 2}},
+           {HIDDEN_KERNARG_OFFSET, {5, 1}},
+           {USER_KERNARG_OFFSET, {6, 1}},
+           {DISPATCH_ID, {7, 2}},
+           {PRIVATE_SEGMENT_WAVE_BYTE_OFFSET, {9, 1}},
+           {DISPATCH_PTR, {10, 2}},
+           {QUEUE_PTR, {12, 2}},
+           {WORK_ITEM_PRIVATE_SEGMENT_SIZE, {14, 1}}};
+        }
+      }())) {};
 
 bool StateValueArraySpecsAnalysis::Result::isFrameSpillSlot(
     llvm::MCRegister Reg) const {
@@ -104,20 +111,22 @@ llvm::Expected<unsigned short> StateValueArraySpecsAnalysis::Result::
     getKernelArgumentLaneIdStoreSlotBeginForWave64(
         KernelArgumentType Arg) const {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      WaveFront64KernelArgumentStoreSlots.contains(Arg),
+      KernelArgumentStoreSlots.contains(Arg),
       llvm::formatv("Arg enum {0} does not have an entry in the wave64 state "
                     "value array.",
                     Arg)));
-  return WaveFront64KernelArgumentStoreSlots.at(Arg).first;
+  return KernelArgumentStoreSlots.at(Arg).first;
 }
 
 llvm::Expected<unsigned short>
 StateValueArraySpecsAnalysis::Result::getKernelArgumentStoreSlotSizeForWave64(
     KernelArgumentType Arg) const {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      WaveFront64KernelArgumentStoreSlots.contains(Arg),
-      "Arg enum {0} does not have an entry in the wave64 state value array."));
-  return WaveFront64KernelArgumentStoreSlots.at(Arg).second;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      KernelArgumentStoreSlots.contains(Arg),
+      llvm::formatv("Arg enum {0} does not have an entry in the wave64 state "
+                    "value array.",
+                    Arg)));
+  return KernelArgumentStoreSlots.at(Arg).second;
 }
 
 }; // namespace luthier

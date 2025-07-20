@@ -20,12 +20,17 @@
 /// value array (e.g. frame spill slots, where the kernel arguments are
 /// stored, etc).
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_STATE_VALUE_ARRAY_SPECS_H
-#define LUTHIER_INSTRUMENTATION_AMDGPU_STATE_VALUE_ARRAY_SPECS_H
+#ifndef LUTHIER_INSTRUMENTATION_STATE_VALUE_ARRAY_SPECS_H
+#define LUTHIER_INSTRUMENTATION_STATE_VALUE_ARRAY_SPECS_H
+#include <GCNSubtarget.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCRegister.h>
 #include <llvm/Support/Error.h>
 #include <luthier/Instrumentation/IntrinsicProcessor.h>
+
+namespace llvm {
+class GCNSubtarget;
+}
 
 namespace luthier {
 
@@ -37,6 +42,7 @@ class StateValueArraySpecsAnalysis
 
 public:
   class Result {
+    friend StateValueArraySpecsAnalysis;
 
     /// A mapping between the application registers that need to be spilled
     /// before
@@ -53,18 +59,19 @@ public:
     /// A mapping between the kernel arguments and the lane ID of where they
     /// will be stored in the state value array, as well as
     /// Intended for use for when the kernel's wavefront size is 64
-    const llvm::SmallDenseMap<KernelArgumentType, std::pair<short, short>, 32>
-        WaveFront64KernelArgumentStoreSlots;
+    const llvm::SmallDenseMap<KernelArgumentType, std::pair<short, short>, 16>
+        KernelArgumentStoreSlots;
 
-    Result();
+    explicit Result(const llvm::GCNSubtarget &STI);
 
   public:
     /// \return \c true if \p Reg belongs to a spill slot on the state value
     /// array,
     /// \c false otherwise
-    bool isFrameSpillSlot(llvm::MCRegister Reg) const;
+    [[nodiscard]] bool isFrameSpillSlot(llvm::MCRegister Reg) const;
 
-    llvm::iterator_range<decltype(FrameSpillSlots)::const_iterator>
+    [[nodiscard]] llvm::iterator_range<
+        decltype(FrameSpillSlots)::const_iterator>
     getFrameSpillSlots() const;
 
     /// \param Reg SGPRs that clobber the frame of an AMD GPU device function
@@ -73,35 +80,37 @@ public:
     /// \return the lane ID in the state value array where the SGPR is spilled,
     /// or 255 if the register doesn't get clobbered by a device function's
     /// stack frame
-    unsigned short getFrameSpillSlotLaneId(llvm::MCRegister Reg) const;
+    [[nodiscard]] unsigned short
+    getFrameSpillSlotLaneId(llvm::MCRegister Reg) const;
 
-    unsigned short
+    [[nodiscard]] unsigned short
     getInstrumentationStackFrameLaneIdStoreSlot(llvm::MCRegister Reg) const;
 
-    llvm::iterator_range<
+    [[nodiscard]] llvm::iterator_range<
         decltype(InstrumentationStackFrameStoreSlots)::const_iterator>
     getFrameStoreSlots() const;
 
-    llvm::Expected<unsigned short>
+    [[nodiscard]] llvm::Expected<unsigned short>
     getKernelArgumentLaneIdStoreSlotBeginForWave64(
         KernelArgumentType Arg) const;
 
-    llvm::Expected<unsigned short>
+    [[nodiscard]] llvm::Expected<unsigned short>
     getKernelArgumentStoreSlotSizeForWave64(KernelArgumentType Arg) const;
 
     /// Prevents invalidation of the analysis result
     __attribute__((used)) bool
-    invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-               llvm::ModuleAnalysisManager::Invalidator &) {
+    invalidate(llvm::MachineFunction &, const llvm::PreservedAnalyses &,
+               llvm::MachineFunctionAnalysisManager::Invalidator &) {
       return false;
     }
   };
 
-  Result SVASpecs;
+  StateValueArraySpecsAnalysis();
 
-  StateValueArraySpecsAnalysis() = default;
-
-  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) { return SVASpecs; }
+  Result run(llvm::MachineFunction &MF,
+             llvm::MachineFunctionAnalysisManager &) {
+    return Result(MF.getSubtarget<llvm::GCNSubtarget>());
+  }
 };
 
 } // namespace luthier
