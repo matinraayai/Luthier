@@ -15,15 +15,15 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the <tt>RunMIRPassesOnIModulePass</tt>.
+/// Implements the \c RunMIRPassesOnIModulePass class.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/RunMIRPassesOnIModulePass.hpp"
-#include "tooling_common/InjectedPayloadPEIPass.hpp"
-#include "tooling_common/IntrinsicMIRLoweringPass.hpp"
-#include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
-#include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/Instrumentation/InjectedPayloadPEIPass.h>
+#include <luthier/Instrumentation/IntrinsicMIRLoweringPass.h>
+#include <luthier/Instrumentation/PhysicalRegAccessVirtualizationPass.h>
+#include <luthier/Instrumentation/RunMIRPassesOnIModulePass.h>
+#include <luthier/Instrumentation/WrapperAnalysisPasses.h>
 
 namespace luthier {
 
@@ -40,7 +40,7 @@ RunMIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
 
   ILegacyPM.add(new llvm::TargetLibraryInfoWrapperPass(TLII));
 
-  ILegacyPM.add(new IModuleMAMWrapperPass(&IMAM));
+  ILegacyPM.add(new IModuleAnalysisWrapperPass(&IMAM));
 
   auto *TPC = TM.createPassConfig(ILegacyPM);
 

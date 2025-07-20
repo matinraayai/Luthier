@@ -1,4 +1,4 @@
-//===-- RunMIRPassesOnIModulePass.hpp -------------------------------------===//
+//===-- RunMIRPassesOnIModulePass.h -----------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,13 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the <tt>RunMIRPassesOnIModulePass</tt>, which
-/// runs the modified code gen pipeline on the instrumentation module to
+/// Describes the \c RunMIRPassesOnIModulePass class, which
+/// runs a modified code gen pipeline on the instrumentation module to
 /// generate machine IR that will later be patched into the target module.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_RUN_MIR_PASSES_ON_IMODULE_PASS_HPP
-#define LUTHIER_TOOLING_COMMON_RUN_MIR_PASSES_ON_IMODULE_PASS_HPP
-#include "luthier/intrinsic/IntrinsicProcessor.h"
+#ifndef LUTHIER_TOOLING_COMMON_RUN_MIR_PASSES_ON_IMODULE_PASS_H
+#define LUTHIER_TOOLING_COMMON_RUN_MIR_PASSES_ON_IMODULE_PASS_H
+#include "luthier/Instrumentation/IntrinsicProcessor.h"
 #include <AMDGPUTargetMachine.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/PassManager.h>
@@ -55,5 +55,4 @@ public:
 };
 
 } // namespace luthier
-
 #endif
