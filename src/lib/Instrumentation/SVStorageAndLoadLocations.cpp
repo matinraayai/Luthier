@@ -17,23 +17,23 @@
 /// \file
 /// This file implements the State Value Location Intervals Pass.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/SVStorageAndLoadLocations.hpp"
-#include "luthier/common/LuthierError.h"
-#include "luthier/tooling/AMDGPURegisterLiveness.h"
-#include "luthier/tooling/LRCallgraph.h"
-#include "tooling_common/IModuleIRGeneratorPass.hpp"
-#include "tooling_common/MMISlotIndexesAnalysis.hpp"
-#include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
-#include "tooling_common/StateValueArrayStorage.hpp"
-#include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/Instrumentation/AMDGPURegisterLiveness.h>
+#include <luthier/Instrumentation/IModuleGenerationPass.h>
+#include <luthier/Instrumentation/MMISlotIndexesAnalysis.h>
+#include <luthier/Instrumentation/MachineCallGraph.h>
+#include <luthier/Instrumentation/PhysRegsNotInLiveInsAnalysis.h>
+#include <luthier/Instrumentation/SVStorageAndLoadLocations.h>
+#include <luthier/Instrumentation/StateValueArrayStorage.h>
+#include <luthier/Instrumentation/WrapperAnalysisPasses.h>
 
 #include <utility>
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-lr-state-value-storage-and-load"
+#define DEBUG_TYPE "luthier-state-value-storage-and-load"
 
 namespace luthier {
 
@@ -194,7 +194,7 @@ selectVGPRLoadLocationForInjectedPayload(
   bool ClobbersAppRegister{false};
   // if the state value array already in a VGPR, then select the same VGPR
   // to be the load destination
-  if (!SVS.requiresLoadAndStoreBeforeUse())
+  if (!SVS.getScheme()->requiresLoadAndStoreBeforeUse())
     AVGPRLocation = SVS.getStateValueStorageReg();
   else {
     if (!ScavengeDeadAVGPRs) {
@@ -256,7 +256,7 @@ selectVGPRLoadLocationForInjectedPayload(
 /// or not.
 static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
     llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
-    llvm::ArrayRef<StateValueArrayStorage::StorageKind> SupportedStorage,
+    llvm::ArrayRef<std::unique_ptr<SVAStorageScheme>> SupportedStorage,
     int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
   // Find the next VGPR available to hold the value state array
@@ -290,16 +290,12 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
     );
 
     // Loop over all possible supported storage schemes and select the best
-    // preferred one which we can use
+    // one we can use
     for (const auto &StorageScheme : SupportedStorage) {
-      if (StorageScheme == StateValueArrayStorage::SVS_SINGLE_VGPR)
+      if (llvm::isa<SingleVGPRSVAStorageScheme>(*StorageScheme))
         continue;
-      LLVM_DEBUG(llvm::dbgs() << "Evaluating fixed " << StorageScheme
-                              << " storage scheme.\n";);
-      int NumAGPRsUsedByStorage =
-          StateValueArrayStorage::getNumAGPRsUsed(StorageScheme);
-      int NumSGPRsUsedByStorage =
-          StateValueArrayStorage::getNumSGPRsUsed(StorageScheme);
+      int NumAGPRsUsedByStorage = StorageScheme->getNumAGPRsUsed();
+      int NumSGPRsUsedByStorage = StorageScheme->getNumSGPRsUsed();
       LLVM_DEBUG(llvm::dbgs() << "Number of ARGPs required by the scheme: "
                               << NumAGPRsUsedByStorage << "\n";
                  llvm::dbgs() << "Number of SGPRs required by the scheme: "
@@ -308,7 +304,7 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
           NumAGPRsUsedByStorage <= AGPRsScavenged.size()) {
         LLVM_DEBUG(llvm::dbgs() << "Found a suitable fixed storage scheme!\n";);
         auto Out = StateValueArrayStorage::createSVAStorage(
-            {}, AGPRsScavenged, SGPRsScavenged, StorageScheme);
+            {}, AGPRsScavenged, SGPRsScavenged, *StorageScheme);
         if (Out.takeError()) {
           return nullptr;
         }
@@ -326,7 +322,7 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
 static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
     const llvm::MachineRegisterInfo &MRI, const llvm::LivePhysRegs &MILiveIns,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
-    llvm::ArrayRef<StateValueArrayStorage::StorageKind> SupportedStorage,
+    llvm::ArrayRef<std::unique_ptr<SVAStorageScheme>> SupportedStorage,
     int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage) {
   // Find the next VGPR available to hold the value state array
   llvm::MCRegister StateValueArrayVGPRLocation =
@@ -360,16 +356,14 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
     // Loop over all possible supported storage schemes and select the best
     // preferred one which we can use
     for (const auto &StorageScheme : SupportedStorage) {
-      if (StorageScheme == StateValueArrayStorage::SVS_SINGLE_VGPR)
+      if (llvm::isa<SingleVGPRSVAStorageScheme>(*StorageScheme))
         continue;
-      int NumAGPRsUsedByStorage =
-          StateValueArrayStorage::getNumAGPRsUsed(StorageScheme);
-      int NumSGPRsUsedByStorage =
-          StateValueArrayStorage::getNumSGPRsUsed(StorageScheme);
+      int NumAGPRsUsedByStorage = StorageScheme->getNumAGPRsUsed();
+      int NumSGPRsUsedByStorage = StorageScheme->getNumSGPRsUsed();
       if (NumSGPRsUsedByStorage <= SGPRsScavenged.size() &&
           NumAGPRsUsedByStorage <= AGPRsScavenged.size()) {
         auto Out = StateValueArrayStorage::createSVAStorage(
-            {}, AGPRsScavenged, SGPRsScavenged, StorageScheme);
+            {}, AGPRsScavenged, SGPRsScavenged, *StorageScheme);
         if (Out.takeError()) {
           return nullptr;
         }
@@ -408,7 +402,8 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
     const MMISlotIndexesAnalysis::Result &SlotIndexes,
     const AMDGPURegisterLiveness &RegLiveness,
-    const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
+    const InjectedPayloadAndInstPointsInfo &IPIP,
+    FunctionSVAResourceDescriptor &FPD,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
   llvm::SmallVector<llvm::MachineFunction *, 4> MFs;
   for (const auto &F : TargetM) {
@@ -423,24 +418,22 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   // Get all the possible state value array storage for the sub-target being
   // used and check if we have at least only one method for storage
   const auto &ST = MFs[0]->getSubtarget<llvm::GCNSubtarget>();
-  llvm::SmallVector<StateValueArrayStorage::StorageKind, 6> SupportedStorage;
+  llvm::SmallVector<std::unique_ptr<SVAStorageScheme>, 6> SupportedStorage;
   getSupportedSVAStorageList(ST, SupportedStorage);
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(!SupportedStorage.empty(),
-                          "Failed to find compatible state value array storage "
-                          "for ST {0}, CPU {1}.",
-                          ST.getTargetTriple().str(), ST.getCPU()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      !SupportedStorage.empty(),
+      llvm::formatv("Failed to find compatible state value array storage "
+                    "for ST {0}, CPU {1}.",
+                    ST.getTargetTriple().str(), ST.getCPU())));
   // Query the maximum number of SGPRs and AGPRs in all storage methods;
   // This saves us time during register scavenging
   int MaxNumAGPRsUsedByAllStorage = 0;
   int MaxNumSGPRsUsedByAllStorage = 0;
   for (const auto &StorageScheme : SupportedStorage) {
-    int MaxNumAGPRsUsedByStorage =
-        StateValueArrayStorage::getNumAGPRsUsed(StorageScheme);
+    int MaxNumAGPRsUsedByStorage = StorageScheme->getNumAGPRsUsed();
     if (MaxNumAGPRsUsedByStorage > MaxNumAGPRsUsedByAllStorage)
       MaxNumAGPRsUsedByAllStorage = MaxNumAGPRsUsedByStorage;
-    int MaxNumSGPRsUsedByStorage =
-        StateValueArrayStorage::getNumSGPRsUsed(StorageScheme);
+    int MaxNumSGPRsUsedByStorage = StorageScheme->getNumSGPRsUsed();
     if (MaxNumSGPRsUsedByStorage > MaxNumSGPRsUsedByAllStorage)
       MaxNumSGPRsUsedByAllStorage = MaxNumSGPRsUsedByStorage;
   }
@@ -460,41 +453,33 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       for (const auto &MBB : *MF) {
         auto &Segments =
             StateValueStorageIntervals
-                .insert({&MBB, llvm::SmallVector<StateValueStorageSegment>{}})
+                .insert(
+                    {&MBB, llvm::SmallVector<StateValueStorageSegment, 0>{}})
                 .first->getSecond();
         Segments.emplace_back(SlotIndexes.at(*MF).getMBBStartIdx(&MBB),
                               SlotIndexes.at(*MF).getMBBEndIdx(&MBB),
                               StateValueFixedLocation);
       }
-      if (MF->getFunction().getCallingConv() !=
-          llvm::CallingConv::AMDGPU_KERNEL) {
-        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = false;
-      }
     }
     for (const auto &[InsertionPointMI, HookFunction] : IPIP.mi_payload()) {
-      auto *HookLiveRegs =
-          RegLiveness.getMFLevelInstrLiveIns(*InsertionPointMI);
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      auto *HookLiveRegs = RegLiveness.getMFLevelInstrLiveIns(InsertionPointMI);
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           HookLiveRegs != nullptr,
           "Failed to get the Live Physical register set for MI {0}.",
           *InsertionPointMI));
       auto [VGPRLocation, ClobbersAppReg] =
           selectVGPRLoadLocationForInjectedPayload(
-              *InsertionPointMI, *StateValueFixedLocation, *HookLiveRegs,
+              InsertionPointMI, *StateValueFixedLocation, *HookLiveRegs,
               AccessedPhysicalRegistersNotInLiveIns, true);
 
       InstPointSVSLoadPlans.insert(
-          {InsertionPointMI, InstPointSVALoadPlan{VGPRLocation, ClobbersAppReg,
-                                                  *StateValueFixedLocation}});
+          {&InsertionPointMI, InstPointSVALoadPlan{VGPRLocation, ClobbersAppReg,
+                                                   *StateValueFixedLocation}});
     }
   } else {
     // If not, we'll have to shuffle between possible state value array
     // storage schemes
     for (const auto &MF : MFs) {
-      if (MF->getFunction().getCallingConv() ==
-          llvm::CallingConv::AMDGPU_KERNEL) {
-        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = true;
-      }
       auto &MRI = MF->getRegInfo();
       // Pick the highest numbered VGPR not accessed by the Hooks
       // to hold the value state
@@ -504,10 +489,10 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       // to the last available SGPR/VGPR/AGPR
       auto FirstMILiveIns =
           RegLiveness.getMFLevelInstrLiveIns(*MF->begin()->begin());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           FirstMILiveIns != nullptr,
-          "Failed to obtain the live physical regs for MI {0}.",
-          *MF->begin()->begin()));
+          llvm::formatv("Failed to obtain the live physical regs for MI {0}.",
+                        *MF->begin()->begin())));
 
       // The current location of the state value register
       std::shared_ptr<StateValueArrayStorage> SVS =
@@ -516,12 +501,12 @@ llvm::Error SVStorageAndLoadLocations::calculate(
               SupportedStorage, MaxNumAGPRsUsedByAllStorage,
               MaxNumSGPRsUsedByAllStorage);
 
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           SVS != nullptr,
           "Failed to get a state value array storage for MI {0}.",
           *MF->begin()->begin()));
 
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           llvm::isa<VGPRStateValueArrayStorage>(SVS.get()) ||
               llvm::isa<SingleAGPRStateValueArrayStorage>(SVS.get()),
           "The entry SVS must be stored in a VGPR or an AGPR."));
@@ -540,7 +525,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
           if (IPIP.contains(MI))
             HookInsertionPointsInCurrentSegment.insert(&MI);
           auto *InstrLiveRegs = RegLiveness.getMFLevelInstrLiveIns(MI);
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
               InstrLiveRegs != nullptr,
               "Failed to get the live physical register set for MI {0}.", MI));
           // - If we have spilled the state value reg and this instruction
@@ -588,7 +573,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
                 MRI, *FirstMILiveIns, AccessedPhysicalRegistersNotInLiveIns,
                 SupportedStorage, MaxNumAGPRsUsedByAllStorage,
                 MaxNumSGPRsUsedByAllStorage);
-            LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+            LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
                 SVS != nullptr, "Failed to relocate the SVA storage."));
           }
         }
@@ -614,11 +599,11 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
       TargetModule, TargetMAM.getResult<MMISlotIndexesAnalysis>(TargetModule),
       *TargetMAM.getCachedResult<AMDGPURegLivenessAnalysis>(TargetModule),
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule),
-      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule),
+      TargetMAM.getResult<FunctionSVAResourceDescriptorAnalysis>(TargetModule),
       IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
           .getPhysRegsNotInLiveIns());
   if (Err)
-    TargetModule.getContext().emitError(toString(std::move(Err)));
+    TargetModule.getContext().emitError(llvm::toString(std::move(Err)));
 
   return Out;
 }

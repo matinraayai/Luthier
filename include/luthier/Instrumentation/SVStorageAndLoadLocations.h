@@ -1,4 +1,4 @@
-//===-- SVStorageAndLoadLocations.hpp -------------------------------------===//
+//===-- SVStorageAndLoadLocations.h -----------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,24 +15,19 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the Lifted Representation State Value Storage and Load
+/// Describes the Lifted Representation State Value Storage and Load
 /// Locations, which calculates the storage locations of the state value
 /// register at each slot index interval of a <tt>LiftedRepresentation</tt>, as
 /// well as the VGPR it will be loaded to at each instrumentation point.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_SV_STORAGE_AND_LOAD_LOCATIONS_HPP
-#define LUTHIER_TOOLING_COMMON_SV_STORAGE_AND_LOAD_LOCATIONS_HPP
-#include "IModuleIRGeneratorPass.hpp"
-#include "MMISlotIndexesAnalysis.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-#include "luthier/tooling/AMDGPURegisterLiveness.h"
-#include "luthier/tooling/LiftedRepresentation.h"
-#include "tooling_common/PrePostAmbleEmitter.hpp"
-#include "tooling_common/StateValueArrayStorage.hpp"
+#ifndef LUTHIER_INSTRUMENTATION_SV_STORAGE_AND_LOAD_LOCATIONS_H
+#define LUTHIER_INSTRUMENTATION_SV_STORAGE_AND_LOAD_LOCATIONS_H
+#include "luthier/Instrumentation/AMDGPURegisterLiveness.h"
+#include "luthier/Instrumentation/MMISlotIndexesAnalysis.h"
+#include "luthier/Instrumentation/PrePostAmbleEmitter.h"
+#include "luthier/Instrumentation/StateValueArrayStorage.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
-#include <luthier/hsa/LoadedCodeObjectKernel.h>
 
 namespace luthier {
 
@@ -126,12 +121,14 @@ public:
   /// calculates the storage and load locations of the state value array
   /// \return an \c llvm::Error indication the success of failure of the
   /// operation
-  llvm::Error calculate(
-      const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
-      const MMISlotIndexesAnalysis::Result &SlotIndexes,
-      const AMDGPURegisterLiveness &RegLiveness,
-      const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
-      const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns);
+  llvm::Error
+  calculate(const llvm::MachineModuleInfo &TargetMMI,
+            const llvm::Module &TargetM,
+            const MMISlotIndexesAnalysis::Result &SlotIndexes,
+            const AMDGPURegisterLiveness &RegLiveness,
+            const InjectedPayloadAndInstPointsInfo &IPIP,
+            FunctionSVAResourceDescriptor &FPD,
+            const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns);
 
   /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
   /// analysis, returns the state value array storage of every instruction
@@ -166,7 +163,8 @@ class LRStateValueStorageAndLoadLocationsAnalysis
 public:
   using Result = SVStorageAndLoadLocations;
 
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
+  Result run(llvm::Module &TargetModule,
+             llvm::ModuleAnalysisManager &TargetMAM);
 };
 
 } // namespace luthier
