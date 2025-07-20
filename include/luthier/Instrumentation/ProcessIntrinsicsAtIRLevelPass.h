@@ -1,4 +1,4 @@
-//===-- ProcessIntrinsicsAtIRLevelPass.hpp --------------------------------===//
+//===-- ProcessIntrinsicsAtIRLevelPass.h ------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the <tt>ProcessIntrinsicsAtIRLevelPass</tt>,
-/// in charge of running the IR processing stage of Luthier intrinsics in
-/// the instrumentation module.
+/// Describes the \c ProcessIntrinsicsAtIRLevelPass in charge of running the
+/// IR processing function associated with each use of a Luthier intrinsic
+/// inside the instrumentation module.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_PROCESS_INTRINSICS_AT_IR_LEVEL_PASS_HPP
-#define LUTHIER_TOOLING_COMMON_PROCESS_INTRINSICS_AT_IR_LEVEL_PASS_HPP
+#ifndef LUTHIER_INSTRUMENTATION_PROCESS_INTRINSICS_AT_IR_LEVEL_PASS_H
+#define LUTHIER_INSTRUMENTATION_PROCESS_INTRINSICS_AT_IR_LEVEL_PASS_H
 #include <GCNSubtarget.h>
 #include <llvm/IR/PassManager.h>
 

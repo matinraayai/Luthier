@@ -17,12 +17,14 @@
 /// \file
 /// This file implements the <tt>ProcessIntrinsicsAtIRLevelPass</tt>.
 //===----------------------------------------------------------------------===//
-
-#include "tooling_common/ProcessIntrinsicsAtIRLevelPass.hpp"
-#include "luthier/consts.h"
-#include "tooling_common/WrapperAnalysisPasses.hpp"
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/ScopedPrinter.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Common/GenericLuthierError.h>
+#include <luthier/Instrumentation/IntrinsicIRLoweringInfoAnalysis.h>
+#include <luthier/Instrumentation/IntrinsicProcessorsAnalysis.h>
+#include <luthier/Instrumentation/PrefixAndAttributeNames.h>
+#include <luthier/Instrumentation/ProcessIntrinsicsAtIRLevelPass.h>
 
 #undef DEBUG_TYPE
 
@@ -30,12 +32,13 @@
 
 llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
     llvm::Module &IModule, llvm::ModuleAnalysisManager &IMAM) {
+  auto &Context = IModule.getContext();
+
   auto &IntrinsicLoweringInfoVec =
-      IMAM.getResult<IntrinsicIRLoweringInfoMapAnalysis>(IModule)
-          .getLoweringInfo();
+      IMAM.getResult<IntrinsicIRLoweringInfoAnalysis>(IModule);
 
   const auto &IntrinsicsProcessors =
-      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule).getProcessors();
+      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
 
   // Iterate over all functions and find the ones marked as a Luthier
   // intrinsic
@@ -46,14 +49,14 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
       // Find the processor for this intrinsic
       auto IntrinsicName =
           F.getFnAttribute(IntrinsicAttribute).getValueAsString();
-      // Ensure the processor is indeed registered with the Code Generator
-      auto It = IntrinsicsProcessors.find(IntrinsicName);
-      if (It == IntrinsicsProcessors.end()) {
-        IModule.getContext().emitError(
-            "Intrinsic " + llvm::Twine(IntrinsicName) +
-            " is not registered with the code generator.");
-        return llvm::PreservedAnalyses::all();
-      }
+      // Ensure the processor is indeed defined
+      auto IntrinsicProcessor =
+          IntrinsicsProcessors.getProcessor(IntrinsicName);
+      LUTHIER_EMIT_ERROR_IN_CONTEXT(
+          Context, LUTHIER_GENERIC_ERROR_CHECK(
+                       IntrinsicProcessor.has_value(),
+                       "Intrinsic " + llvm::Twine(IntrinsicName) +
+                           " is not registered with the code generator."));
 
       LLVM_DEBUG(
 
@@ -80,17 +83,17 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         // illegal
         auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User);
 
-        if (CallInst == nullptr) {
-          IModule.getContext().emitError(
-              llvm::formatv("Found a user of intrinsic {0} which is not a "
-                            "call instruction: {1}.",
-                            IntrinsicName, *User));
-          return llvm::PreservedAnalyses::all();
-        }
+        LUTHIER_EMIT_ERROR_IN_CONTEXT(
+            Context,
+            LUTHIER_GENERIC_ERROR_CHECK(
+                CallInst != nullptr,
+                llvm::formatv("Found a user of intrinsic {0} which is not a "
+                              "call instruction: {1}.",
+                              IntrinsicName, *User)));
         // Call the IR processor of the intrinsic on the user
-        auto IRLoweringInfo = It->second.IRProcessor(F, *CallInst, TM);
+        auto IRLoweringInfo = IntrinsicProcessor->IRProcessor(F, *CallInst, TM);
         if (auto Err = IRLoweringInfo.takeError()) {
-          IModule.getContext().emitError(toString(std::move(Err)));
+          IModule.getContext().emitError(llvm::toString(std::move(Err)));
         }
 
         // Set up the input/output value constraints
@@ -144,8 +147,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         // hook (i.e a device function called from a hook), check if it's not
         // requesting access to a physical register or a kernel argument
         if (!ParentFunction->hasFnAttribute(HookAttribute) &&
-            !ParentFunction->hasFnAttribute(
-                InjectedPayloadAttribute)) {
+            !ParentFunction->hasFnAttribute(InjectedPayloadAttribute)) {
           if (!IRLoweringInfo->accessed_phys_regs_empty()) {
             IModule.getContext().emitError(
                 llvm::formatv("Intrinsic {0} used in function {1} requested "
@@ -179,7 +181,8 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         );
         // Finally, push back the IR lowering info of the intrinsic that
         // we just processed
-        IntrinsicLoweringInfoVec.emplace_back(*IRLoweringInfo);
+        (void)IntrinsicLoweringInfoVec.addIntrinsicIRLoweringInfo(
+            std::move(*IRLoweringInfo));
       }
       // Remove the intrinsic function once all its users has been processed
       F.dropAllReferences();
