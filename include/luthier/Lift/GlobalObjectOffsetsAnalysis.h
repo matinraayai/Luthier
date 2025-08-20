@@ -1,4 +1,4 @@
-//===-- GlobalValueOffsetsAnalysis.h ----------------------------*- C++ -*-===//
+//===-- GlobalObjectOffsetsAnalysis.h ---------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,11 +16,11 @@
 ///
 /// \file
 /// Describes the \c GlobalObjectOffsetsAnalysis which provides a
-/// mapping between target object's offsets and their associated global
-/// object.
+/// bidirectional mapping between an \c llvm::GlobalObject and its offset
+/// inside the lifted binary.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_GLOBAL_OBJECT_OFFSETS_H
-#define LUTHIER_INSTRUMENTATION_AMDGPU_GLOBAL_OBJECT_OFFSETS_H
+#ifndef LUTHIER_LIFT_AMDGPU_GLOBAL_OBJECT_OFFSETS_H
+#define LUTHIER_LIFT_AMDGPU_GLOBAL_OBJECT_OFFSETS_H
 #include <llvm/IR/GlobalObject.h>
 #include <llvm/IR/PassManager.h>
 
@@ -36,15 +36,22 @@ public:
   class Result {
     friend class GlobalObjectOffsetsAnalysis;
 
-    llvm::DenseMap<uint64_t, const llvm::GlobalObject &> GlobalObjectOffsets{};
+    llvm::DenseMap<uint64_t, llvm::GlobalObject &> OffsetToObjectMap{};
+
+    llvm::DenseMap<llvm::GlobalObject &, uint64_t> ObjectToOffsetMap{};
 
     Result() = default;
 
   public:
-    llvm::GlobalObject *getObject(uint64_t Offset) const;
+    /// Returns the \c llvm::GlobalObject associated with
+    [[nodiscard]] const llvm::GlobalObject *
+    getGlobalObject(uint64_t Offset) const;
+
+    [[nodiscard]] uint64_t getOffset(const llvm::GlobalObject &GO) const;
 
     void insertSymbol(uint64_t Offset, const llvm::GlobalObject &GO) {
-      GlobalObjectOffsets.insert({Offset, GO});
+      OffsetToObjectMap.insert({Offset, const_cast<llvm::GlobalObject &>(GO)});
+      ObjectToOffsetMap.insert({const_cast<llvm::GlobalObject &>(GO), Offset});
     }
 
     /// Prevents invalidation of the analysis result

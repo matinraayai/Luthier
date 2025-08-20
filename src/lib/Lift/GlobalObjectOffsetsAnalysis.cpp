@@ -1,4 +1,4 @@
-//===-- GlobalValueOffsetsAnalysis.cpp ------------------------------------===//
+//===-- GlobalObjectOffsetsAnalysis.cpp -----------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,20 +15,24 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implements the \c GlobalValueOffsetsAnalysis class.
+/// Implements the \c GlobalObjectOffsetsAnalysis class.
 //===----------------------------------------------------------------------===//
-#include <luthier/Instrumentation/GlobalObjectOffsetsAnalysis.h>
-
+#include "luthier/Lift/GlobalObjectOffsetsAnalysis.h"
 
 namespace luthier {
 
-
 llvm::AnalysisKey GlobalObjectOffsetsAnalysis::Key;
 
-llvm::GlobalObject *
-GlobalObjectOffsetsAnalysis::Result::getObject(uint64_t Offset) const {
-  auto It = GlobalObjectOffsets.find(Offset);
-  It != GlobalObjectOffsets.end() ? &It->second : nullptr;
+const llvm::GlobalObject *
+GlobalObjectOffsetsAnalysis::Result::getGlobalObject(uint64_t Offset) const {
+  auto It = OffsetToObjectMap.find(Offset);
+  return It != OffsetToObjectMap.end() ? &It->second : nullptr;
+}
+
+uint64_t GlobalObjectOffsetsAnalysis::Result::getOffset(
+    const llvm::GlobalObject &GO) const {
+  auto It = ObjectToOffsetMap.find(const_cast<llvm::GlobalObject &>(GO));
+  return It != ObjectToOffsetMap.end() ? It->second : 0;
 }
 
 } // namespace luthier
