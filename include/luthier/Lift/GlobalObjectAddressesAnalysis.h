@@ -1,4 +1,4 @@
-//===-- GlobalObjectOffsetsAnalysis.h ---------------------------*- C++ -*-===//
+//===-- GlobalObjectAddressesAnalysis.h -------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,29 +16,29 @@
 ///
 /// \file
 /// Describes the \c GlobalObjectOffsetsAnalysis which provides a
-/// bidirectional mapping between an \c llvm::GlobalObject and its offset
+/// bidirectional mapping between a \c llvm::GlobalObject and its offset
 /// inside the lifted binary.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LIFT_AMDGPU_GLOBAL_OBJECT_OFFSETS_H
-#define LUTHIER_LIFT_AMDGPU_GLOBAL_OBJECT_OFFSETS_H
+#ifndef LUTHIER_LIFT_GLOBAL_OBJECT_OFFSETS_ANALYSIS_H
+#define LUTHIER_LIFT_GLOBAL_OBJECT_OFFSETS_ANALYSIS_H
 #include <llvm/IR/GlobalObject.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
-class GlobalObjectOffsetsAnalysis
-    : public llvm::AnalysisInfoMixin<GlobalObjectOffsetsAnalysis> {
+class GlobalObjectAddressesAnalysis
+    : public llvm::AnalysisInfoMixin<GlobalObjectAddressesAnalysis> {
   friend AnalysisInfoMixin;
 
   static llvm::AnalysisKey Key;
 
 public:
   class Result {
-    friend class GlobalObjectOffsetsAnalysis;
+    friend class GlobalObjectAddressesAnalysis;
 
-    llvm::DenseMap<uint64_t, llvm::GlobalObject &> OffsetToObjectMap{};
+    llvm::DenseMap<uint64_t, llvm::GlobalObject &> AddressToGlobalObjectMap{};
 
-    llvm::DenseMap<llvm::GlobalObject &, uint64_t> ObjectToOffsetMap{};
+    llvm::DenseMap<llvm::GlobalObject &, uint64_t> GlobalObjectToAddressMap{};
 
     Result() = default;
 
@@ -47,11 +47,13 @@ public:
     [[nodiscard]] const llvm::GlobalObject *
     getGlobalObject(uint64_t Offset) const;
 
-    [[nodiscard]] uint64_t getOffset(const llvm::GlobalObject &GO) const;
+    [[nodiscard]] uint64_t getAddress(const llvm::GlobalObject &GO) const;
 
     void insertSymbol(uint64_t Offset, const llvm::GlobalObject &GO) {
-      OffsetToObjectMap.insert({Offset, const_cast<llvm::GlobalObject &>(GO)});
-      ObjectToOffsetMap.insert({const_cast<llvm::GlobalObject &>(GO), Offset});
+      AddressToGlobalObjectMap.insert(
+          {Offset, const_cast<llvm::GlobalObject &>(GO)});
+      GlobalObjectToAddressMap.insert(
+          {const_cast<llvm::GlobalObject &>(GO), Offset});
     }
 
     /// Prevents invalidation of the analysis result
@@ -66,7 +68,7 @@ private:
   Result GlobalObjectOffsets;
 
 public:
-  GlobalObjectOffsetsAnalysis() = default;
+  GlobalObjectAddressesAnalysis() = default;
 
   Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
     return GlobalObjectOffsets;
