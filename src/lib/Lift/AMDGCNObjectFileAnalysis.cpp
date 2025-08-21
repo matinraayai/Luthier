@@ -1,4 +1,4 @@
-//===-- ELFObjectFileAnalysisPass.cpp -------------------------------------===//
+//===-- AMDGCNObjectFileAnalysis.cpp --------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the <tt>ObjectFileAnalysisPass</tt> analysis pass.
+/// Implements the \c AMDGCNObjectFileAnalysis class.
 //===----------------------------------------------------------------------===//
-#include "tooling_common/ELFObjectFileAnalysisPass.hpp"
+#include "luthier/Lift/AMDGCNObjectFileAnalysis.h"
 
 namespace luthier {
 
-llvm::AnalysisKey ELFObjectFileAnalysisPass::Key;
+llvm::AnalysisKey AMDGCNObjectFileAnalysis::Key;
 
 }

@@ -1,4 +1,4 @@
-//===-- ELFObjectFileAnalysisPass.hpp -------------------------------------===//
+//===-- AMDGCNObjectFileAnalysis.h ------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,44 +15,42 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes <tt>ELFObjectFileAnalysisPass</tt>,
-/// which provides a reference to the ELF object file being lifted to other
-/// lifting passes.
+/// Describes the \c AMDGCNObjectFileAnalysis class, which provides access to
+/// the AMDGCN object file of the lifted code, if available.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_ELF_OBJECT_FILE_ANALYSIS_PASS_HPP
-#define LUTHIER_TOOLING_COMMON_ELF_OBJECT_FILE_ANALYSIS_PASS_HPP
+#ifndef LUTHIER_LIFT_AMDGCN_OBJECT_FILE_ANALYSIS_H
+#define LUTHIER_LIFT_AMDGCN_OBJECT_FILE_ANALYSIS_H
+#include "luthier/Object/AMDGCNObjectFile.h"
 #include <llvm/IR/PassManager.h>
-#include <llvm/Object/ELFObjectFile.h>
 
 namespace luthier {
 
-/// \brief Analysis pass used to provide access to the ELF object file being
-/// lifted
-class ELFObjectFileAnalysisPass
-    : public llvm::AnalysisInfoMixin<ELFObjectFileAnalysisPass> {
+/// \brief Analysis pass used to provide access to the target AMDGCN object
+/// file being lifted
+class AMDGCNObjectFileAnalysis
+    : public llvm::AnalysisInfoMixin<AMDGCNObjectFileAnalysis> {
   friend AnalysisInfoMixin;
 
   static llvm::AnalysisKey Key;
 
-  const llvm::object::ELFObjectFileBase &ObjFile;
+  const object::AMDGCNObjectFile &ObjFile;
 
 public:
   class Result {
-    friend class ELFObjectFileAnalysisPass;
+    friend class AMDGCNObjectFileAnalysis;
 
-    const llvm::object::ELFObjectFileBase &ObjFile;
+    const object::AMDGCNObjectFile &ObjFile;
 
-    // NOLINTBEGIN(google-explicit-constructor)
-    /*implicit*/ Result(const llvm::object::ELFObjectFileBase &ObjFile)
+    explicit Result(const object::AMDGCNObjectFile &ObjFile)
         : ObjFile(ObjFile) {}
-    // NOLINTEND(google-explicit-constructor)
 
   public:
-    [[nodiscard]] const llvm::object::ELFObjectFileBase &getObject() const {
+    [[nodiscard]] const object::AMDGCNObjectFile &getObjectFile() const {
       return ObjFile;
     }
 
-    /// Prevents invalidation of the analysis result
+    /// Prevents invalidation of the analysis result as the object file doesn't
+    /// change throughout the process
     __attribute__((used)) bool
     invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
                llvm::ModuleAnalysisManager::Invalidator &) {
@@ -61,10 +59,12 @@ public:
   };
 
   /// constructor
-  explicit ELFObjectFileAnalysisPass(llvm::object::ELFObjectFileBase &ObjFile)
+  explicit AMDGCNObjectFileAnalysis(const object::AMDGCNObjectFile &ObjFile)
       : ObjFile(ObjFile) {};
 
-  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) { return ObjFile; }
+  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
+    return Result{ObjFile};
+  }
 };
 
 } // namespace luthier
