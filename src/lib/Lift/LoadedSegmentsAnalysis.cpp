@@ -1,4 +1,4 @@
-//===-- EntryPointKernelAnalysis.cpp --------------------------------------===//
+//===-- LoadedSegmentsAnalysis.cpp ------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
+///
 /// \file
-/// Implements the \c EntryPointKernelAnalysis class.
+/// Implements the \c LoadedSegmentsAnalysis class.
 //===----------------------------------------------------------------------===//
-#include <luthier/Instrumentation/EntryPointKernelAnalysis.h>
+#include "luthier/Lift/LoadedSegmentsAnalysis.h"
 
 namespace luthier {
 
-llvm::AnalysisKey EntryPointKernelAnalysis::Key;
+
+llvm::AnalysisKey LoadedSegmentsAnalysis::Key;
+
 
 }
