@@ -29,11 +29,13 @@
 
 namespace luthier::hsa {
 
-llvm::Error init(const decltype(hsa_init) &HsaInitFn) {
-  return LUTHIER_HSA_CALL_ERROR_CHECK(HsaInitFn(), "Failed to initialize HSA");
+llvm::Error init(const ApiTableContainer<::CoreApiTable> &CoreApi) {
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_init_fn>(),
+      "Failed to initialize HSA");
 }
 
-llvm::Error getGpuAgents(const decltype(hsa_iterate_agents) &HsaIterateAgentsFn,
+llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
                          llvm::SmallVectorImpl<hsa_agent_t> &Agents) {
   auto ReturnGpuAgentsCallback = [](hsa_agent_t Agent, void *Data) {
     auto AgentList = static_cast<llvm::SmallVector<hsa_agent_t> *>(Data);
@@ -50,12 +52,13 @@ llvm::Error getGpuAgents(const decltype(hsa_iterate_agents) &HsaIterateAgentsFn,
     return Status;
   };
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaIterateAgentsFn(ReturnGpuAgentsCallback, &Agents),
+      CoreApi.callFunction<&::CoreApiTable::hsa_iterate_agents_fn>(
+          ReturnGpuAgentsCallback, &Agents),
       "Failed to iterate over all HSA agents attached to the system");
 }
 
 llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
-    const decltype(hsa_ven_amd_loader_iterate_executables) &IterateExecFn) {
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi) {
   typedef std::vector<hsa_executable_t> OutType;
   OutType Out;
   auto Iterator = [](hsa_executable_t Exec, void *Data) {
@@ -68,7 +71,7 @@ llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
     }
     return HSA_STATUS_SUCCESS;
   };
-  return LUTHIER_HSA_CALL_ERROR_CHECK(IterateExecFn(Iterator, &Out),
+  return LUTHIER_HSA_CALL_ERROR_CHECK(LoaderApi.callFunction<&>(Iterator, &Out),
                                       "Failed to iterate over HSA executables");
 }
 
@@ -93,16 +96,9 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(
 llvm::Expected<std::tuple<hsa_executable_t, hsa_loaded_code_object_t,
                           hsa_executable_symbol_t>>
 getExecutableDefinition(
-    uint64_t Address,
-    const decltype(hsa_ven_amd_loader_query_executable)
-        &HsaVenAmdLoaderQueryExecutableFn,
-    const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
-    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
-    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
-    const decltype(hsa_executable_symbol_get_info)
-        &HsaExecutableSymbolGetInfoFn) {
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi,
+    uint64_t Address) {
   hsa_executable_t Executable;
   // Check which executable this kernel object (address) belongs to
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
@@ -147,8 +143,9 @@ getExecutableDefinition(
       "Failed to find the executable definition of address {0:x}", Address));
 }
 
-llvm::Error shutdown(const decltype(hsa_shut_down) &HsaShutdownFn) {
-  return LUTHIER_HSA_CALL_ERROR_CHECK(HsaShutdownFn(),
-                                      "Failed to shutdown the HSA runtime");
+llvm::Error shutdown(const ApiTableContainer<::CoreApiTable> &CoreApi) {
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_shut_down_fn>(),
+      "Failed to shutdown the HSA runtime");
 }
 } // namespace luthier::hsa

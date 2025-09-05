@@ -20,29 +20,27 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_HSA_H
 #define LUTHIER_HSA_HSA_H
-#include <hsa/hsa.h>
-#include <hsa/hsa_ven_amd_loader.h>
+#include "luthier/HSA/ApiTable.h"
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/Support/Error.h>
 
 namespace luthier::hsa {
 
 /// Initializes the HSA runtime if already not initialized, and increments
 /// the internal HSA runtime reference counter
-/// \param HsaInitFn the underlying \c hsa_init function used to carry out this
-/// operation
+/// \param CoreApi the \c ::CoreApiTable used to perform the required HSA
+/// calls
 /// \return \c llvm::Error indicating the success or failure of the operation
-/// \sa hsa_init
-llvm::Error init(const decltype(hsa_init) &HsaInitFn);
+/// \sa ::hsa_init
+llvm::Error init(const ApiTableContainer<::CoreApiTable> &CoreApi);
 
 /// Queries the GPU <tt>hsa_agent_t</tt>s attached to the host
-/// \param [in] HsaIterateAgentsFn the underlying \c hsa_iterate_agents function
-/// used to carry out this operation
+/// \param [in] CoreApi the \c ::CoreApiTable used to perform the required HSA
+/// calls
 /// \param [out] Agents the list of <tt>hsa_agent_t</tt>s of type GPU attached
 /// to the host
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa hsa_iterate_agents
-llvm::Error getGpuAgents(const decltype(hsa_iterate_agents) &HsaIterateAgentsFn,
+llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
                          llvm::SmallVectorImpl<hsa_agent_t> &Agents);
 
 /// Queries all the \c hsa_executable_t handles currently loaded into HSA
@@ -53,7 +51,7 @@ llvm::Error getGpuAgents(const decltype(hsa_iterate_agents) &HsaIterateAgentsFn,
 /// HSA runtime on success
 /// \sa hsa_ven_amd_loader_iterate_executables
 llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
-    const decltype(hsa_ven_amd_loader_iterate_executables) &IterateExecFn);
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi);
 
 /// Queries the host-accessible address of the given \p DeviceAddress \n
 /// \tparam T Pointer type of the address
@@ -65,11 +63,12 @@ llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
 /// \sa hsa_ven_amd_loader_query_host_address
 template <typename T>
 llvm::Expected<T *> queryHostAddress(
-    const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi,
     T *DeviceAddress) {
   const T *HostAddress;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      QueryHostFn(DeviceAddress, reinterpret_cast<const void **>(&HostAddress)),
+      LoaderApi.QueryHostFn(DeviceAddress,
+                            reinterpret_cast<const void **>(&HostAddress)),
       llvm::formatv(
           "Failed to query the host address associated with address {0:x}.",
           DeviceAddress)));
@@ -86,7 +85,8 @@ llvm::Expected<T *> queryHostAddress(
 /// \return Expects an \c llvm::ArrayRef<uint8_t> pointing to the code
 /// accessible on host memory on success
 llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
-    const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
+    const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+        &LoaderApi,
     llvm::ArrayRef<uint8_t> Code);
 
 /// Convenience version of <tt>hsa::queryHostAddress(T *)</tt> for locating
@@ -98,7 +98,8 @@ llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
 /// \return Expects a \c llvm::StringRef pointing to the code accessible on
 /// host memory
 llvm::Expected<llvm::StringRef> convertToHostEquivalent(
-    const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
+    const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+        &LoaderApi,
     llvm::StringRef Code);
 
 /// \return Expects the executable, loaded code object and the executable
@@ -108,23 +109,16 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(
 [[nodiscard]] llvm::Expected<std::tuple<
     hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
 getExecutableDefinition(
-    uint64_t Address,
-    const decltype(hsa_ven_amd_loader_query_executable)
-        &HsaVenAmdLoaderQueryExecutableFn,
-    const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
-    const decltype(hsa_ven_amd_loader_loaded_code_object_get_info)
-        &HsaVenAmdLoaderLoadedCodeObjectGetInfoFn,
-    decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
-    const decltype(hsa_executable_symbol_get_info)
-        &HsaExecutableSymbolGetInfoFn);
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi,
+    uint64_t Address);
 
 /// Decreases the reference count of the HSA runtime instance; Shuts down the
-/// HSA runtime if the counter reaches zero
-/// \param HsaShutdownFn the underlying \c hsa_shut_down function used to
-/// carry out the operation
+/// HSA runtime if the internal counter reaches zero
+/// \param CoreApi the HSA Core API table container for dispatching HSA
+/// functions
 /// \return \c llvm::Error indicating the success or failure of the operation
-llvm::Error shutdown(const decltype(hsa_shut_down) &HsaShutdownFn);
+llvm::Error shutdown(const ApiTableContainer<::CoreApiTable> &CoreApi);
 
 } // namespace luthier::hsa
 
