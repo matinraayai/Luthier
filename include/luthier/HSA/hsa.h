@@ -44,9 +44,8 @@ llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
                          llvm::SmallVectorImpl<hsa_agent_t> &Agents);
 
 /// Queries all the \c hsa_executable_t handles currently loaded into HSA
-/// \param IterateExecFn the underlying
-/// \c hsa_ven_amd_loader_iterate_executables function used to carry out the
-/// operation
+/// \param LoaderApi the HSA Loader API container used to perform required
+/// HSA calls
 /// \return Expects all <tt>hsa_executable_t</tt>s currently loaded into the
 /// HSA runtime on success
 /// \sa hsa_ven_amd_loader_iterate_executables

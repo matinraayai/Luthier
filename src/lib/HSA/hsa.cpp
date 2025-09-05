@@ -60,6 +60,8 @@ llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
 llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
     const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi) {
   typedef std::vector<hsa_executable_t> OutType;
+  using ExtTableType =
+      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
   OutType Out;
   auto Iterator = [](hsa_executable_t Exec, void *Data) {
     // Remove executables with nullptr handles
@@ -71,8 +73,11 @@ llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
     }
     return HSA_STATUS_SUCCESS;
   };
-  return LUTHIER_HSA_CALL_ERROR_CHECK(LoaderApi.callFunction<&>(Iterator, &Out),
-                                      "Failed to iterate over HSA executables");
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      LoaderApi
+          .callFunction<&ExtTableType::hsa_ven_amd_loader_iterate_executables>(
+              Iterator, &Out),
+      "Failed to iterate over HSA executables");
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
