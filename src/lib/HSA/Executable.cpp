@@ -126,9 +126,8 @@ executableGetSymbolByName(const ApiTableContainer<::CoreApiTable> &CoreApi,
 }
 
 llvm::Error executableIterateAgentSymbols(
-    const hsa_executable_t Exec,
-    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
-    const hsa_agent_t Agent,
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_executable_t Exec, const hsa_agent_t Agent,
     const std::function<llvm::Error(hsa_executable_symbol_t)> &Callback) {
 
   struct CBDataType {
@@ -148,7 +147,10 @@ llvm::Error executableIterateAgentSymbols(
     return HSA_STATUS_SUCCESS;
   };
 
-  if (const hsa_status_t Out = SymbolIterFn(Exec, Agent, CTypeCB, &CBData);
+  if (const hsa_status_t Out =
+          CoreApi.callFunction<
+              &::CoreApiTable::hsa_executable_iterate_agent_symbols_fn>(
+              Exec, Agent, CTypeCB, &CBData);
       Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK)
     return std::move(CBData.Err);
   return llvm::make_error<HsaError>(

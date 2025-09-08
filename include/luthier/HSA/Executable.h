@@ -166,9 +166,8 @@ executableGetSymbolByName(const ApiTableContainer<::CoreApiTable> &CoreApi,
 
 /// Iterates over the symbols inside the \p Exec that belong to \p Agent and
 /// invokes the provided \p Callback
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the executable being inspected
-/// \param SymbolIterFn the underlying \c hsa_executable_iterate_agent_symbols
-/// invoked to complete the operation
 /// \param Agent the GPU agent for which the symbols are going to be iterated
 /// over
 /// \param Callback a generic \c std::function that gets invoked during the
@@ -178,8 +177,7 @@ executableGetSymbolByName(const ApiTableContainer<::CoreApiTable> &CoreApi,
 /// \return a \c llvm::Error indicating the success or the failure of the
 /// operation
 llvm::Error executableIterateAgentSymbols(
-    hsa_executable_t Exec,
-    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_executable_t Exec,
     hsa_agent_t Agent,
     const std::function<llvm::Error(hsa_executable_symbol_t)> &Callback);
 
