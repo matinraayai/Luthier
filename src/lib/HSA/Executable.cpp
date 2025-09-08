@@ -92,12 +92,13 @@ executableGetProfile(const ApiTableContainer<::CoreApiTable> &CoreApi,
   return Out;
 }
 
-llvm::Expected<hsa_executable_state_t> executableGetState(
-    const hsa_executable_t Exec,
-    const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn) {
+llvm::Expected<hsa_executable_state_t>
+executableGetState(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                   const hsa_executable_t Exec) {
   hsa_executable_state_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaExecutableGetInfoFn(Exec, HSA_EXECUTABLE_INFO_STATE, &Out),
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_get_info_fn>(
+          Exec, HSA_EXECUTABLE_INFO_STATE, &Out),
       llvm::formatv("Failed to get the state of executable {0:x}",
                     Exec.handle)));
   return Out;

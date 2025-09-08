@@ -112,13 +112,12 @@ executableGetProfile(const ApiTableContainer<::CoreApiTable> &CoreApi,
                      hsa_executable_t Exec);
 
 /// Queries the \c hsa_executable_state_t of the executable
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the \c hsa_executable_t being queried
-/// \param HsaExecutableGetInfoFn the \c hsa_executable_get_info function
-/// used to carry out the operation
 /// \return Expects the state of the executable (i.e. frozen or not) on success
-[[nodiscard]] llvm::Expected<hsa_executable_state_t> executableGetState(
-    hsa_executable_t Exec,
-    const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn);
+[[nodiscard]] llvm::Expected<hsa_executable_state_t>
+executableGetState(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                   hsa_executable_t Exec);
 
 /// Queries the loaded code objects managed by this executable
 /// \param Exec the \c hsa_executable_t being queried
