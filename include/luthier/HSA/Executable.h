@@ -25,6 +25,7 @@
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/FormatVariadic.h>
 #include <optional>
 
 namespace luthier::hsa {
@@ -120,34 +121,48 @@ executableGetState(const ApiTableContainer<::CoreApiTable> &CoreApi,
                    hsa_executable_t Exec);
 
 /// Queries the loaded code objects managed by this executable
+/// \param LoaderApi the HSA loader API table container used to perform HSA
+/// loader calls
 /// \param Exec the \c hsa_executable_t being queried
-/// \param HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn the underlying
-/// \c hsa_ven_amd_loader_executable_iterate_loaded_code_objects function
-/// used to complete the operation
 /// \param [out] LCOs the list of <tt>hsa_loaded_code_object</tt>s managed by
 /// this executable
 /// \return \c llvm::Error indicating the success or failure of the operation
+template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 llvm::Error executableGetLoadedCodeObjects(
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
+        &LoaderApi,
     hsa_executable_t Exec,
-    const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
-    llvm::SmallVectorImpl<hsa_loaded_code_object_t> &LCOs);
+    llvm::SmallVectorImpl<hsa_loaded_code_object_t> &LCOs) {
+  auto Iterator = [](hsa_executable_t, hsa_loaded_code_object_t LCO,
+                     void *Data) -> hsa_status_t {
+    auto Out =
+        static_cast<llvm::SmallVectorImpl<hsa_loaded_code_object_t> *>(Data);
+    if (!Out)
+      return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+    Out->emplace_back(LCO);
+    return HSA_STATUS_SUCCESS;
+  };
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      LoaderApi.callFunction<
+          &LoaderTableType::
+              hsa_ven_amd_loader_executable_iterate_loaded_code_objects>(
+          Exec, Iterator, &LCOs),
+      llvm::formatv(
+          "Failed to iterate over the code objects of executable {0:x}", Exec));
+}
 
 /// Looks up the \c hsa_executable_symbol_t by its \p Name in the Executable
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the \c hsa_executable_t being queried
-/// \param HsaExecutableGetSymbolByNameFn the underlying
-/// \c hsa_executable_get_symbol_by_name function used to complete the
-/// operation
 /// \param Name Name of the symbol being looked up; If the queried symbol
 /// is a kernel then it must have ".kd" as a suffix in the name
 /// \param Agent the \c GpuAgent the symbol belongs to
 /// \return Expects the \c hsa_executable_symbol_t with the given \p Name if
 /// found, otherwise <tt>std::nullopt</tt> on success
 llvm::Expected<std::optional<hsa_executable_symbol_t>>
-executableGetSymbolByName(hsa_executable_t Exec,
-                          const decltype(hsa_executable_get_symbol_by_name)
-                              &HsaExecutableGetSymbolByNameFn,
-                          llvm::StringRef Name, hsa_agent_t Agent);
+executableGetSymbolByName(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                          hsa_executable_t Exec, llvm::StringRef Name,
+                          hsa_agent_t Agent);
 
 /// Iterates over the symbols inside the \p Exec that belong to \p Agent and
 /// invokes the provided \p Callback

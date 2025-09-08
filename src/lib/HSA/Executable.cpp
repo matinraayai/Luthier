@@ -104,36 +104,16 @@ executableGetState(const ApiTableContainer<::CoreApiTable> &CoreApi,
   return Out;
 }
 
-llvm::Error executableGetLoadedCodeObjects(
-    const hsa_executable_t Exec,
-    const decltype(hsa_ven_amd_loader_executable_iterate_loaded_code_objects)
-        &HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn,
-    llvm::SmallVectorImpl<hsa_loaded_code_object_t> &LCOs) {
-  auto Iterator = [](hsa_executable_t, hsa_loaded_code_object_t LCO,
-                     void *Data) -> hsa_status_t {
-    auto Out =
-        static_cast<llvm::SmallVectorImpl<hsa_loaded_code_object_t> *>(Data);
-    if (!Out)
-      return HSA_STATUS_ERROR_INVALID_ARGUMENT;
-    Out->emplace_back(LCO);
-    return HSA_STATUS_SUCCESS;
-  };
-  return LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaVenAmdLoaderExecutableIterateLoadedCodeObjectsFn(Exec, Iterator,
-                                                          &LCOs),
-      llvm::formatv(
-          "Failed to iterate over the code objects of executable {0:x}", Exec));
-}
-
 llvm::Expected<std::optional<hsa_executable_symbol_t>>
-executableGetSymbolByName(const hsa_executable_t Exec,
-                          const decltype(hsa_executable_get_symbol_by_name)
-                              &HsaExecutableGetSymbolByNameFn,
+executableGetSymbolByName(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                          const hsa_executable_t Exec,
                           const llvm::StringRef Name, const hsa_agent_t Agent) {
   hsa_executable_symbol_t Symbol;
 
   const hsa_status_t Status =
-      HsaExecutableGetSymbolByNameFn(Exec, Name.str().c_str(), &Agent, &Symbol);
+      CoreApi
+          .callFunction<&::CoreApiTable::hsa_executable_get_symbol_by_name_fn>(
+              Exec, Name.str().c_str(), &Agent, &Symbol);
   if (Status == HSA_STATUS_SUCCESS)
     return Symbol;
   if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME)
