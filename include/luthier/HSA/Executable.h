@@ -72,10 +72,8 @@ llvm::Expected<hsa_loaded_code_object_t> executableLoadAgentCodeObject(
 
 /// Creates and defines a new external HSA executable symbol with the
 /// given \p SymbolName inside the executable
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the \c hsa_executable_t where the symbol will be defined in
-/// \param HsaExecutableAgentGlobalVariableDefineFn the underlying \c
-/// hsa_executable_agent_global_variable_define_fn function used to carry out
-/// this operation
 /// \param Agent the \c hsa_agent_t the symbol will be defined for
 /// \param SymbolName the name of the created symbol
 /// \param Address the device address of the symbol; Must accessible by
@@ -83,9 +81,7 @@ llvm::Expected<hsa_loaded_code_object_t> executableLoadAgentCodeObject(
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa hsa_executable_agent_global_variable_define
 llvm::Error executableDefineExternalAgentGlobalVariable(
-    hsa_executable_t Exec,
-    const decltype(hsa_executable_agent_global_variable_define)
-        &HsaExecutableAgentGlobalVariableDefineFn,
+    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_executable_t Exec,
     hsa_agent_t Agent, llvm::StringRef SymbolName, const void *Address);
 
 /// Freezes the \p Exec handle

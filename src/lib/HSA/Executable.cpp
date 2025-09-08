@@ -52,14 +52,13 @@ llvm::Expected<hsa_loaded_code_object_t> executableLoadAgentCodeObject(
 }
 
 llvm::Error executableDefineExternalAgentGlobalVariable(
-    const hsa_executable_t Exec,
-    const decltype(hsa_executable_agent_global_variable_define)
-        &HsaExecutableAgentGlobalVariableDefineFn,
-    const hsa_agent_t Agent, const llvm::StringRef SymbolName,
-    const void *Address) {
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_executable_t Exec, const hsa_agent_t Agent,
+    const llvm::StringRef SymbolName, const void *Address) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaExecutableAgentGlobalVariableDefineFn(Exec, Agent, SymbolName.data(),
-                                               const_cast<void *>(Address)),
+      CoreApi.callFunction<
+          &::CoreApiTable::hsa_executable_agent_global_variable_define_fn>(
+          Exec, Agent, SymbolName.data(), const_cast<void *>(Address)),
       llvm::formatv("Failed to define an external global variable named {0} "
                     "with address "
                     "{1:x} on agent {2:x} in executable {3:x}",
