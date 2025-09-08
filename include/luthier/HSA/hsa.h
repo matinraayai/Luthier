@@ -15,8 +15,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Defines a set of commonly used functionality regarding the global state
-/// of the HSA runtime.
+/// Defines and implements a set of commonly used functionality regarding
+/// the global state of the HSA runtime.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_HSA_H
 #define LUTHIER_HSA_HSA_H
@@ -43,14 +43,37 @@ llvm::Error init(const ApiTableContainer<::CoreApiTable> &CoreApi);
 llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
                          llvm::SmallVectorImpl<hsa_agent_t> &Agents);
 
-/// Queries all the \c hsa_executable_t handles currently loaded into HSA
+/// Obtains a list of all the \c hsa_executable_t handles currently loaded into
+/// HSA
 /// \param LoaderApi the HSA Loader API container used to perform required
 /// HSA calls
 /// \return Expects all <tt>hsa_executable_t</tt>s currently loaded into the
 /// HSA runtime on success
 /// \sa hsa_ven_amd_loader_iterate_executables
+template <typename ExtensionApiTableType = hsa_ven_amd_loader_1_03_pfn_t>
 llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi);
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER,
+                                  ExtensionApiTableType> &LoaderApi) {
+  typedef std::vector<hsa_executable_t> OutType;
+  using ExtTableType =
+      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
+  OutType Out;
+  auto Iterator = [](hsa_executable_t Exec, void *Data) {
+    // Remove executables with nullptr handles
+    // This is a workaround for an HSA issue explained here:
+    // https://github.com/ROCm/ROCR-Runtime/issues/206
+    if (Exec.handle != 0) {
+      auto Out = static_cast<OutType *>(Data);
+      Out->emplace_back(Exec);
+    }
+    return HSA_STATUS_SUCCESS;
+  };
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      LoaderApi
+          .callFunction<&ExtTableType::hsa_ven_amd_loader_iterate_executables>(
+              Iterator, &Out),
+      "Failed to iterate over HSA executables");
+}
 
 /// Queries the host-accessible address of the given \p DeviceAddress \n
 /// \tparam T Pointer type of the address
@@ -60,14 +83,16 @@ llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
 /// \return Expects the host accessible address of the
 /// <tt>DeviceAddress</tt> on success
 /// \sa hsa_ven_amd_loader_query_host_address
-template <typename T>
+template <typename T, typename ExtensionApiTableType = ExtensionApiTableInfo<
+                          HSA_EXTENSION_AMD_LOADER>::TableType>
 llvm::Expected<T *> queryHostAddress(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi,
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER,
+                                  ExtensionApiTableType> &LoaderApi,
     T *DeviceAddress) {
   const T *HostAddress;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApi.QueryHostFn(DeviceAddress,
-                            reinterpret_cast<const void **>(&HostAddress)),
+      LoaderApi.callFunction<&ExtensionApiTableType::hsa_ven_amd_loader_query_host_address>(
+          DeviceAddress, reinterpret_cast<const void **>(&HostAddress)),
       llvm::formatv(
           "Failed to query the host address associated with address {0:x}.",
           DeviceAddress)));

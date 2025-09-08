@@ -57,31 +57,8 @@ llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
       "Failed to iterate over all HSA agents attached to the system");
 }
 
-llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi) {
-  typedef std::vector<hsa_executable_t> OutType;
-  using ExtTableType =
-      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
-  OutType Out;
-  auto Iterator = [](hsa_executable_t Exec, void *Data) {
-    // Remove executables with nullptr handles
-    // This is a workaround for an HSA issue explained here:
-    // https://github.com/ROCm/ROCR-Runtime/issues/206
-    if (Exec.handle != 0) {
-      auto Out = static_cast<OutType *>(Data);
-      Out->emplace_back(Exec);
-    }
-    return HSA_STATUS_SUCCESS;
-  };
-  return LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApi
-          .callFunction<&ExtTableType::hsa_ven_amd_loader_iterate_executables>(
-              Iterator, &Out),
-      "Failed to iterate over HSA executables");
-}
-
 llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
-    const decltype(hsa_ven_amd_loader_query_host_address) &QueryHostFn,
+    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi,
     const llvm::ArrayRef<uint8_t> Code) {
   llvm::Expected<const unsigned char *> CodeStartHostAddressOrErr =
       queryHostAddress(QueryHostFn, Code.data());
