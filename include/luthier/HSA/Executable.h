@@ -184,9 +184,8 @@ llvm::Error executableIterateAgentSymbols(
 /// Iterates over the symbols inside the \p Exec that belong to \p Agent and
 /// finds the first \c hsa_executable_symbol_t inside \p Exec that returns
 /// true for the given \p Predicate
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the executable being inspected
-/// \param SymbolIterFn the underlying \c hsa_executable_iterate_agent_symbols
-/// invoked to complete the operation
 /// \param Agent the GPU agent for which the symbols are going to be iterated
 /// over
 /// \param Predicate a generic \c std::function that gets invoked during the
@@ -197,8 +196,7 @@ llvm::Error executableIterateAgentSymbols(
 /// the \p Predicate; \c std::nullopt is expected if no symbol is found
 llvm::Expected<std::optional<hsa_executable_symbol_t>>
 executableFindFirstAgentSymbol(
-    hsa_executable_t Exec,
-    const decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_executable_t Exec,
     hsa_agent_t Agent,
     const std::function<llvm::Expected<bool>(hsa_executable_symbol_t)>
         &Predicate);

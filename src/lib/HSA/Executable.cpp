@@ -161,8 +161,7 @@ llvm::Error executableIterateAgentSymbols(
 
 llvm::Expected<std::optional<hsa_executable_symbol_t>>
 executableFindFirstAgentSymbol(
-    hsa_executable_t Exec,
-    decltype(hsa_executable_iterate_agent_symbols) &SymbolIterFn,
+    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_executable_t Exec,
     hsa_agent_t Agent,
     const std::function<llvm::Expected<bool>(hsa_executable_symbol_t)>
         &Predicate) {
@@ -189,7 +188,10 @@ executableFindFirstAgentSymbol(
     return HSA_STATUS_SUCCESS;
   };
 
-  if (const hsa_status_t Out = SymbolIterFn(Exec, Agent, Iterator, &CBData);
+  if (const hsa_status_t Out =
+          CoreApi.callFunction<
+              &::CoreApiTable::hsa_executable_iterate_agent_symbols_fn>(
+              Exec, Agent, Iterator, &CBData);
       Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK) {
     LUTHIER_RETURN_ON_ERROR(CBData.Err);
     return CBData.Symbol;
