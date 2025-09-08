@@ -37,15 +37,14 @@ llvm::Expected<hsa_executable_t> executableCreate(
 }
 
 llvm::Expected<hsa_loaded_code_object_t> executableLoadAgentCodeObject(
-    const hsa_executable_t Exec,
-    const decltype(hsa_executable_load_agent_code_object)
-        &HsaExecutableLoadAgentCodeObjectFn,
-    const hsa_code_object_reader_t Reader, const hsa_agent_t Agent,
-    const llvm::StringRef LoaderOptions) {
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_executable_t Exec, const hsa_code_object_reader_t Reader,
+    const hsa_agent_t Agent, const llvm::StringRef LoaderOptions) {
   hsa_loaded_code_object_t LCO;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaExecutableLoadAgentCodeObjectFn(Exec, Agent, Reader,
-                                         LoaderOptions.data(), &LCO),
+      CoreApi.callFunction<
+          &::CoreApiTable::hsa_executable_load_agent_code_object_fn>(
+          Exec, Agent, Reader, LoaderOptions.data(), &LCO),
       llvm::formatv("Failed to load agent code object from code object "
                     "reader {0:x} to executable {1:x} for agent {2:x}",
                     Reader.handle, Exec.handle, Agent.handle)));

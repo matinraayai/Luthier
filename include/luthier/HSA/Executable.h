@@ -45,20 +45,18 @@ namespace luthier::hsa {
 /// \sa hsa_executable_create_alt
 /// \sa hsa_profile_t
 /// \sa hsa_default_float_rounding_mode_t
-llvm::Expected<hsa_executable_t> executableCreate(
-    const ApiTableContainer<::CoreApiTable> & CoreApi,
-    hsa_profile_t Profile = HSA_PROFILE_FULL,
-    hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
-        HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);
+llvm::Expected<hsa_executable_t>
+executableCreate(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                 hsa_profile_t Profile = HSA_PROFILE_FULL,
+                 hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
+                     HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);
 
 /// Loads the code object read by the \p Reader into the <tt>Agent</tt>'s
 /// memory. Results in creation of a \c hsa_loaded_code_object_t which will be
 /// managed by this executable.
 /// \param Exec the \c hsa_executable_t where the code object will be loaded
 /// into
-/// \param HsaExecutableLoadAgentCodeObjectFn the underlying \c
-/// hsa_executable_load_agent_code_object function used to carry out the
-/// operation
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Reader the \c hsa_code_object_reader_t encapsulating a code object
 /// to be read into the executable
 /// \param Agent the \c hsa_agent_t the code object will be loaded onto
@@ -68,9 +66,7 @@ llvm::Expected<hsa_executable_t> executableCreate(
 /// \return Expects the newly created \c hsa_loaded_code_object_t on success
 /// \sa hsa_executable_load_agent_code_object
 llvm::Expected<hsa_loaded_code_object_t> executableLoadAgentCodeObject(
-    hsa_executable_t Exec,
-    const decltype(hsa_executable_load_agent_code_object)
-        &HsaExecutableLoadAgentCodeObjectFn,
+    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_executable_t Exec,
     hsa_code_object_reader_t Reader, hsa_agent_t Agent,
     llvm::StringRef LoaderOptions = "");
 
