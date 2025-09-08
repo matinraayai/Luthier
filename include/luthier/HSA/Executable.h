@@ -96,14 +96,12 @@ llvm::Error executableFreeze(const ApiTableContainer<::CoreApiTable> &CoreApi,
                              hsa_executable_t Exec);
 
 /// Destroys the executable handle
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the \c hsa_executable_t being destroyed
-/// \param HsaExecutableDestroyFn The underlying \c hsa_executable_destroy
-/// function used to carry out the operation
 /// \return \c llvm::Error indicating the success of failure of the operation
 /// \sa hsa_executable_destroy
-llvm::Error executableDestroy(
-    hsa_executable_t Exec,
-    const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn);
+llvm::Error executableDestroy(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                              hsa_executable_t Exec);
 
 /// Queries the \c hsa_profile_t of the wrapped \c hsa_executable_t
 /// \param Exec the \c hsa_executable_t being queried

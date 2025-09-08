@@ -73,11 +73,10 @@ llvm::Error executableFreeze(const ApiTableContainer<::CoreApiTable> &CoreApi,
       llvm::formatv("Failed to freeze the executable {0:x}", Exec.handle));
 }
 
-llvm::Error executableDestroy(
-    const hsa_executable_t Exec,
-    const decltype(hsa_executable_destroy) &HsaExecutableDestroyFn) {
+llvm::Error executableDestroy(const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_executable_t Exec) {
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaExecutableDestroyFn(Exec),
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_destroy_fn>(Exec),
       llvm::formatv("Failed to destroy executable {0:x}", Exec.handle));
 }
 
