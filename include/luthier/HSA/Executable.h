@@ -104,13 +104,12 @@ llvm::Error executableDestroy(const ApiTableContainer<::CoreApiTable> &CoreApi,
                               hsa_executable_t Exec);
 
 /// Queries the \c hsa_profile_t of the wrapped \c hsa_executable_t
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the \c hsa_executable_t being queried
-/// \param HsaExecutableGetInfoFn the \c hsa_executable_get_info function
-/// used to carry out the operation
 /// \return \c llvm::Error indicating the success or failure of the operation
-llvm::Expected<hsa_profile_t> executableGetProfile(
-    hsa_executable_t Exec,
-    const decltype(hsa_executable_get_info) &HsaExecutableGetInfoFn);
+llvm::Expected<hsa_profile_t>
+executableGetProfile(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                     hsa_executable_t Exec);
 
 /// Queries the \c hsa_executable_state_t of the executable
 /// \param Exec the \c hsa_executable_t being queried
