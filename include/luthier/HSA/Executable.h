@@ -193,6 +193,11 @@ executableFindFirstAgentSymbol(
 
 } // namespace luthier::hsa
 
+inline bool operator==(const hsa_executable_t &Lhs,
+                       const hsa_executable_t &Rhs) {
+  return Lhs.handle == Rhs.handle;
+}
+
 //===----------------------------------------------------------------------===//
 // LLVM DenseMapInfo, for insertion into LLVM-based containers
 //===----------------------------------------------------------------------===//
