@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_EXECUTABLE_H
 #define LUTHIER_HSA_EXECUTABLE_H
+#include "luthier/HSA/ApiTable.h"
 #include <hsa/hsa.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/DenseMapInfo.h>
@@ -29,8 +30,7 @@
 namespace luthier::hsa {
 
 /// Creates a new \c hsa_executable_t handle
-/// \param HsaCreateExecutableCreateAltFn the underlying
-/// \c hsa_executable_create_alt function used to carry out the operation
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Profile \c hsa_profile_t of the executable; set to
 /// \c HSA_PROFILE_FULL by default
 /// \param DefaultFloatRoundingMode \c hsa_default_float_rounding_mode_t
@@ -46,7 +46,7 @@ namespace luthier::hsa {
 /// \sa hsa_profile_t
 /// \sa hsa_default_float_rounding_mode_t
 llvm::Expected<hsa_executable_t> executableCreate(
-    const decltype(hsa_executable_create_alt) &HsaCreateExecutableCreateAltFn,
+    const ApiTableContainer<::CoreApiTable> & CoreApi,
     hsa_profile_t Profile = HSA_PROFILE_FULL,
     hsa_default_float_rounding_mode_t DefaultFloatRoundingMode =
         HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT);

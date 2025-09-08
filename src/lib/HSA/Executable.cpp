@@ -18,20 +18,20 @@
 /// Implements a set of commonly used functionality for the \c
 /// hsa_executable_t in HSA.
 //===----------------------------------------------------------------------===//
-#include <luthier/Common/ErrorCheck.h>
-#include <luthier/HSA/Executable.h>
-#include <luthier/HSA/HsaError.h>
+#include "luthier/HSA/Executable.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/HSA/HsaError.h"
 
 namespace luthier::hsa {
 
 llvm::Expected<hsa_executable_t> executableCreate(
-    const decltype(hsa_executable_create_alt) &HsaCreateExecutableCreateAltFn,
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
     const hsa_profile_t Profile,
     const hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) {
   hsa_executable_t Exec;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaCreateExecutableCreateAltFn(Profile, DefaultFloatRoundingMode, "",
-                                     &Exec),
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_create_alt_fn>(
+          Profile, DefaultFloatRoundingMode, "", &Exec),
       "Failed to create a new executable handle"));
   return Exec;
 }
