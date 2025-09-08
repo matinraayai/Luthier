@@ -66,11 +66,10 @@ llvm::Error executableDefineExternalAgentGlobalVariable(
   return llvm::Error::success();
 }
 
-llvm::Error
-executableFreeze(const hsa_executable_t Exec,
-                 const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn) {
+llvm::Error executableFreeze(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                             const hsa_executable_t Exec) {
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      HsaExecutableFreezeFn(Exec, ""),
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_freeze_fn>(Exec, ""),
       llvm::formatv("Failed to freeze the executable {0:x}", Exec.handle));
 }
 

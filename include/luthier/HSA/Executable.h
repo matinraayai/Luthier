@@ -85,17 +85,15 @@ llvm::Error executableDefineExternalAgentGlobalVariable(
     hsa_agent_t Agent, llvm::StringRef SymbolName, const void *Address);
 
 /// Freezes the \p Exec handle
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
 /// \param Exec the \c hsa_executable_t being frozen
-/// \param HsaExecutableFreezeFn The \c hsa_executable_freeze function
-/// used to carry out the operation
 /// \note the HSA function \c hsa_executable_freeze called by this method
 /// takes in an extra <tt>options</tt> argument which goes unused; Hence why
 /// it is not present in this method's arguments
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa hsa_executable_freeze
-llvm::Error
-executableFreeze(hsa_executable_t Exec,
-                 const decltype(hsa_executable_freeze) &HsaExecutableFreezeFn);
+llvm::Error executableFreeze(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                             hsa_executable_t Exec);
 
 /// Destroys the executable handle
 /// \param Exec the \c hsa_executable_t being destroyed
