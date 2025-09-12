@@ -39,5 +39,19 @@ might end up being added to the kernel's function prototype and marked with the 
 also considered for aligning the arguments. The total kernel argument size is aligned to
 8 bytes for AMDHSA and 4 bytes for other targets.
 
-### 
+## `kernel_code_entry_byte_offset`
+This value is automatically emitted by the `AsmPrinter` once the assembly code layout and
+the MC expressions of the object file are finalized.
+
+## `compute_pgm_rsrc3`
+
+### `ACCUM_OFFSET`
+This value is automatically calculated according to the total number of architectural VGPRs
+in the emitted code. The total number of architectural VGPRs can be forced via the 
+`NumWaveDispatchVGPRs` field's setter in the kernel's `MachineFunctionInfo`. 
+
+### `TG_SPLIT`
+This is set in if the target's feature string contains `"+tgsplit"`.
+
+### `SHARED_VGPR_COUNT`
 
