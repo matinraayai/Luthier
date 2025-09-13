@@ -1,5 +1,6 @@
 add_library(LuthierCommon OBJECT
         LuthierError.cpp
+        ROCmLibraryError.cpp
 )
 
 target_compile_definitions(LuthierCommon PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
