@@ -1,4 +1,4 @@
-//===-- CodeObjectReader.hpp - HSA Code Object Reader Wrapper -------------===//
+//===-- CodeObjectReader.hpp ----------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,59 +15,50 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the \c CodeObjectReader class under the \c luthier::hsa
-/// namespace, representing a wrapper around the \c hsa_code_object_reader_t
-/// in charge of reading AMDGPU code objects into an \c Executable and
-/// creating a <tt>LoadedCodeObject</tt>.
+/// Defines a set of commonly used functionality for the
+/// \c hsa_code_object_reader_t handle in HSA.
 //===----------------------------------------------------------------------===//
-#ifndef HSA_CODE_OBJECT_READER_HPP
-#define HSA_CODE_OBJECT_READER_HPP
-#include "hsa/HandleType.hpp"
+#ifndef LUTHIER_HSA_CODE_OBJECT_READER_HPP
+#define LUTHIER_HSA_CODE_OBJECT_READER_HPP
+#include "luthier/hsa/ApiTable.h"
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/Error.h>
 
 namespace luthier::hsa {
 
-/// \brief Wrapper around the \c hsa_code_object_reader_t handle
-/// \note
-class CodeObjectReader : public HandleType<hsa_code_object_reader_t> {
+/// Creates a handle to a \c hsa_code_object_reader_t from an \p Elf in memory
+/// \param CoreApi the HSA \c ::CoreApiTable container used to dispatch HSA
+/// calls
+/// \param Elf the code object to be loaded by the code object reader
+/// \return Expects the newly created \c hsa_code_object_reader_t on success
+/// \sa hsa_code_object_reader_create_from_memory
+llvm::Expected<hsa_code_object_reader_t> codeObjectReaderCreateFromMemory(
+    const ApiTableContainer<::CoreApiTable> &CoreApi, llvm::StringRef Elf);
 
-public:
-  /// Factory function, which creates a handle to a \c CodeObjectReader from
-  /// an \p Elf in memory
-  /// \param Elf the code object to be loaded
-  /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
-  /// \sa hsa_code_object_reader_create_from_memory
-  static llvm::Expected<CodeObjectReader> createFromMemory(llvm::StringRef Elf);
+/// Creates a handle to a \c hsa_code_object_reader_t from an \p Elf in memory
+/// \param CoreApi the HSA \c ::CoreApiTable container used to dispatch HSA
+/// calls
+/// \param Elf the code object to be loaded
+/// \return Expects the newly created \c hsa_code_object_reader_t on success
+/// \sa hsa_code_object_reader_create_from_memory
+inline llvm::Expected<hsa_code_object_reader_t>
+codeObjectReaderCreateFromMemory(
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    llvm::ArrayRef<uint8_t> Elf) {
+  return codeObjectReaderCreateFromMemory(CoreApi, llvm::toStringRef(Elf));
+}
 
-  /// Factory function, which creates a handle to a \c CodeObjectReader from
-  /// an \p Elf in memory
-  /// \param Elf the code object to be loaded
-  /// \return on success, a \c CodeObjectReader ready to load the \p Elf into
-  /// an <tt>hsa::Executable</tt>, on failure, an \c llvm::HsaError
-  /// \sa hsa_code_object_reader_create_from_memory
-  static llvm::Expected<CodeObjectReader>
-  createFromMemory(llvm::ArrayRef<uint8_t> Elf);
-
-  /// Destroys the code object reader instance
-  /// \return an \c llvm::HsaError if any issues where encountered, or
-  /// an \c llvm::ErrorSuccess if the operation was successful
-  /// \sa hsa_code_object_reader_destroy
-  llvm::Error destroy();
-
-  /// Constructor from a \c hsa_code_object_reader_t handle
-  /// \warning This should not be used to create a new
-  /// <tt>hsa_code_object_reader_t</tt>, use \c createFromMemory instead.
-  /// \param Reader a \c hsa_code_object_reader_t handle, which already has
-  /// been created by HSA
-  /// \sa createFromMemory
-  explicit CodeObjectReader(hsa_code_object_reader_t Reader)
-      : HandleType(Reader){};
-};
+/// Destroys a code object reader instance
+/// \param COR the \c hsa_code_object_reader instance being destroyed
+/// \param CoreApi the HSA \c ::CoreApiTable container used to dispatch HSA
+/// calls
+/// \return \c llvm::Error indicating the success or failure of the
+/// operation
+llvm::Error
+codeObjectReaderDestroy(hsa_code_object_reader_t COR,
+                        const ApiTableContainer<::CoreApiTable> &CoreApi);
 
 } // namespace luthier::hsa
-
 
 #endif

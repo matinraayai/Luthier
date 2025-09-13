@@ -1,4 +1,4 @@
-//===-- ApiTable.hpp ------------------------------------------------------===//
+//===-- ApiTable.hpp --------------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,8 @@
 /// Defines a set of API Table containers for HSA with automatic bounds
 /// checking for table.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_API_TABLE_HPP
-#define LUTHIER_HSA_API_TABLE_HPP
+#ifndef LUTHIER_HSA_API_TABLE_H
+#define LUTHIER_HSA_API_TABLE_H
 #include "luthier/Common/ErrorCheck.h"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
