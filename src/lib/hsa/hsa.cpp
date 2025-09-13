@@ -1,4 +1,4 @@
-//===-- hsa.cpp - Top Level HSA API Wrapper -------------------------------===//
+//===-- hsa.cpp -----------------------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,76 +15,48 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains the implementation of HSA API wrappers concerned with
-/// the global status of the HSA runtime (e.g. agents attached to the device).
+/// Implements a set of commonly used functionality regarding the global state
+/// of the HSA runtime.
 //===----------------------------------------------------------------------===//
-#include "hsa/hsa.hpp"
+#include "luthier/hsa/hsa.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
+#include "luthier/hsa/HsaError.h"
 #include <llvm/ADT/StringExtras.h>
 
 namespace luthier::hsa {
 
-llvm::Error init() {
-  const auto &CoreTable =
-      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
-  return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_init_fn());
+llvm::Error init(const ApiTableContainer<::CoreApiTable> &CoreApi) {
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_init_fn>(),
+      "Failed to initialize HSA");
 }
 
-llvm::Error getGpuAgents(llvm::SmallVectorImpl<GpuAgent> &Agents) {
-  const auto &CoreTable =
-      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
+llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                         llvm::SmallVectorImpl<hsa_agent_t> &Agents) {
   auto ReturnGpuAgentsCallback = [](hsa_agent_t Agent, void *Data) {
-    auto AgentMap = reinterpret_cast<llvm::SmallVector<GpuAgent> *>(Data);
+    auto AgentList = static_cast<llvm::SmallVector<hsa_agent_t> *>(Data);
     hsa_device_type_t DevType = HSA_DEVICE_TYPE_CPU;
 
-    hsa_status_t Status =
+    const hsa_status_t Status =
         hsa_agent_get_info(Agent, HSA_AGENT_INFO_DEVICE, &DevType);
 
     if (Status != HSA_STATUS_SUCCESS)
       return Status;
     if (DevType == HSA_DEVICE_TYPE_GPU) {
-      AgentMap->emplace_back(Agent);
+      AgentList->emplace_back(Agent);
     }
     return Status;
   };
-  return LUTHIER_HSA_SUCCESS_CHECK(
-      CoreTable.hsa_iterate_agents_fn(ReturnGpuAgentsCallback, &Agents));
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_iterate_agents_fn>(
+          ReturnGpuAgentsCallback, &Agents),
+      "Failed to iterate over all HSA agents attached to the system");
 }
 
-llvm::Expected<std::vector<Executable>> getAllExecutables() {
-  const auto &LoaderApi =
-      hsa::HsaRuntimeInterceptor::instance().getHsaVenAmdLoaderTable();
-  typedef std::vector<Executable> OutType;
-  OutType Out;
-  auto Iterator = [](hsa_executable_t Exec, void *Data) {
-    // Remove executables with nullptr handles
-    // This is a workaround for an HSA issue explained here:
-    // https://github.com/ROCm/ROCR-Runtime/issues/206
-    if (Exec.handle != 0) {
-      auto Out = reinterpret_cast<OutType *>(Data);
-      Out->emplace_back(Exec);
-    }
-    return HSA_STATUS_SUCCESS;
-  };
-  return LUTHIER_HSA_SUCCESS_CHECK(
-      LoaderApi.hsa_ven_amd_loader_iterate_executables(Iterator, &Out));
-}
-
-llvm::Expected<llvm::ArrayRef<uint8_t>>
-convertToHostEquivalent(llvm::ArrayRef<uint8_t> Code) {
-  auto CodeStartHostAddress = queryHostAddress(Code.data());
-  LUTHIER_RETURN_ON_ERROR(CodeStartHostAddress.takeError());
-  return llvm::ArrayRef<uint8_t>{*CodeStartHostAddress, Code.size()};
-}
-
-llvm::Expected<llvm::StringRef> convertToHostEquivalent(llvm::StringRef Code) {
-  auto Out = convertToHostEquivalent(llvm::arrayRefFromStringRef(Code));
-  LUTHIER_RETURN_ON_ERROR(Out.takeError());
-  return llvm::toStringRef(*Out);
-}
-
-llvm::Error shutdown() {
-  const auto &CoreTable =
-      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
-  return LUTHIER_HSA_SUCCESS_CHECK(CoreTable.hsa_shut_down_fn());
+llvm::Error shutdown(const ApiTableContainer<::CoreApiTable> &CoreApi) {
+  return LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_shut_down_fn>(),
+      "Failed to shutdown the HSA runtime");
 }
 } // namespace luthier::hsa
