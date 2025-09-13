@@ -15,31 +15,47 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements an \c llvm::Error for issues encountered when calling
-/// HIP APIs.
+/// Defines a \c llvm::ErrorInfo for issues regarding the HIP runtime.
 //===----------------------------------------------------------------------===//
-
-#ifndef LUTHIER_ERROR_HIP_ERROR_H
-#define LUTHIER_ERROR_HIP_ERROR_H
+#ifndef LUTHIER_HIP_HIP_ERROR_H
+#define LUTHIER_HIP_HIP_ERROR_H
+#include "luthier/common/ROCmLibraryError.h"
 #include <hip/hip_runtime_api.h>
-#include <llvm/Support/Error.h>
 
-namespace luthier {
+namespace luthier::hip {
+class HipError final : RocmLibraryError {
+  const std::optional<hipError_t> Error;
 
-#include "luthier/common/ROCmLibraryErrorDefine.h"
+public:
+  HipError(std::string ErrorMsg, const std::optional<hipError_t> Error,
+           const std::source_location ErrorLocation =
+               std::source_location::current(),
+           StackTraceType StackTrace = StackTraceInitializer())
+      : RocmLibraryError(std::move(ErrorMsg), ErrorLocation,
+                         std::move(StackTrace)),
+        Error(Error) {};
 
-LUTHIER_DEFINE_ROCM_LIBRARY_ERROR(Hip, hipError_t, hipSuccess);
+  HipError(const llvm::formatv_object_base &ErrorMsg,
+           const std::optional<hipError_t> Error,
+           const std::source_location ErrorLocation =
+               std::source_location::current(),
+           StackTraceType StackTrace = StackTraceInitializer())
+      : RocmLibraryError(ErrorMsg.str(), ErrorLocation, std::move(StackTrace)),
+        Error(Error) {};
 
-/// Macro to check for an expected value of a HIP status
-#define LUTHIER_HIP_ERROR_CHECK(Expr, Expected)                                \
-  luthier::HipError::HipErrorCheck(__FILE__, __LINE__, Expr, #Expr, Expected)
+  static char ID;
 
-/// Macro to check for the success of a HIP operation
-#define LUTHIER_HIP_SUCCESS_CHECK(Expr)                                        \
-  luthier::HipError::HipErrorCheck(__FILE__, __LINE__, Expr, #Expr)
+  void log(llvm::raw_ostream &OS) const override;
+};
 
-} // namespace luthier
+#define LUTHIER_HIP_CALL_ERROR_CHECK(Expr, ErrorMsg)                           \
+  [&]() {                                                                      \
+    if (const hipError_t Status = Expr; Status != hipSuccess) {                \
+      return llvm::make_error<luthier::hip::HipError>(ErrorMsg, Status);       \
+    }                                                                          \
+    return llvm::Error::success();                                             \
+  }()
 
-#undef LUTHIER_DEFINE_ROCM_LIBRARY_ERROR
+} // namespace luthier::hip
 
 #endif
