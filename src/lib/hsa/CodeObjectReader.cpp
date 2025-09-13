@@ -18,7 +18,7 @@
 /// Implements a set of commonly used functionality for the
 /// \c hsa_code_object_reader_t handle in HSA.
 //===----------------------------------------------------------------------===//
-#include "hsa/CodeObjectReader.hpp"
+#include "luthier/hsa/CodeObjectReader.h"
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/hsa/HsaError.h"
 #include <llvm/ADT/StringExtras.h>

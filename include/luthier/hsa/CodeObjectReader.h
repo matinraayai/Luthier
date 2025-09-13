@@ -1,4 +1,4 @@
-//===-- CodeObjectReader.hpp ----------------------------------------------===//
+//===-- CodeObjectReader.h --------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +18,8 @@
 /// Defines a set of commonly used functionality for the
 /// \c hsa_code_object_reader_t handle in HSA.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_CODE_OBJECT_READER_HPP
-#define LUTHIER_HSA_CODE_OBJECT_READER_HPP
+#ifndef LUTHIER_HSA_CODE_OBJECT_READER_H
+#define LUTHIER_HSA_CODE_OBJECT_READER_H
 #include "luthier/hsa/ApiTable.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringExtras.h>
