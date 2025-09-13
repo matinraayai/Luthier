@@ -35,21 +35,21 @@ namespace luthier::rocprofiler {
 /// \c rocprofiler_intercept_table_t enum, including its table type struct
 /// and the number of tables that are registered with rocprofiler-sdk
 template <rocprofiler_intercept_table_t TableType>
-struct RocprofilerApiTableEnumInfo;
+struct ApiTableEnumInfo;
 
-template <> struct RocprofilerApiTableEnumInfo<ROCPROFILER_HSA_TABLE> {
+template <> struct ApiTableEnumInfo<ROCPROFILER_HSA_TABLE> {
   using ApiTableType = ::HsaApiTable;
   constexpr unsigned int NumApiTables = 1;
   constexpr static auto ApiTableName = "HSA";
 };
 
-template <> struct RocprofilerApiTableEnumInfo<ROCPROFILER_HIP_COMPILER_TABLE> {
+template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_COMPILER_TABLE> {
   using ApiTableType = ::HipCompilerDispatchTable;
   constexpr unsigned int NumApiTables = 1;
   constexpr static auto ApiTableName = "HIP Compiler";
 };
 
-template <> struct RocprofilerApiTableEnumInfo<ROCPROFILER_HIP_RUNTIME_TABLE> {
+template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_RUNTIME_TABLE> {
   using ApiTableType = ::HipDispatchTable;
   constexpr unsigned int NumApiTables = 1;
   constexpr static auto ApiTableName = "HIP Runtime";
@@ -66,10 +66,10 @@ protected:
 
   using CallbackType = std::function<void(
       std::conditional<
-          RocprofilerApiTableEnumInfo<TableType>::NumApiTables == 1,
-          typename RocprofilerApiTableEnumInfo<TableType>::ApiTableType &,
+          ApiTableEnumInfo<TableType>::NumApiTables == 1,
+          typename ApiTableEnumInfo<TableType>::ApiTableType &,
           llvm::ArrayRef<
-              typename RocprofilerApiTableEnumInfo<TableType>::ApiTableType &>>,
+              typename ApiTableEnumInfo<TableType>::ApiTableType &>>,
       uint64_t, uint64_t)>;
 
   /// Callback invoked inside the registration callback
@@ -81,7 +81,7 @@ protected:
                                       void **Tables, uint64_t NumTables,
                                       void *Data) {
     /// Check for errors
-    if (NumTables != RocprofilerApiTableEnumInfo<TableType>::NumApiTables) {
+    if (NumTables != ApiTableEnumInfo<TableType>::NumApiTables) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
           llvm::make_error<rocprofiler::RocprofilerError>(
               llvm::formatv("Expected HIP to register only a single API table, "
@@ -92,7 +92,7 @@ protected:
       LUTHIER_REPORT_FATAL_ON_ERROR(
           llvm::make_error<rocprofiler::RocprofilerError>(llvm::formatv(
               "Expected to get {0} API table, but the API table type is {0}",
-              RocprofilerApiTableEnumInfo<TableType>::ApiTableName, Type)));
+              ApiTableEnumInfo<TableType>::ApiTableName, Type)));
     }
     if (Tables == nullptr) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -103,9 +103,9 @@ protected:
     auto &RegProvider =
         *static_cast<ApiTableRegistrationCallbackProvider *>(Data);
 
-    if constexpr (RocprofilerApiTableEnumInfo<TableType>::NumApiTables == 1) {
+    if constexpr (ApiTableEnumInfo<TableType>::NumApiTables == 1) {
       const auto *Table = static_cast<
-          typename RocprofilerApiTableEnumInfo<TableType>::ApiTableType *>(
+          typename ApiTableEnumInfo<TableType>::ApiTableType *>(
           Tables[0]);
       if (Table == nullptr) {
         LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -115,11 +115,11 @@ protected:
       RegProvider.Callback(Table, LibVersion, LibInstance);
     } else {
       llvm::SmallVector<
-          typename RocprofilerApiTableEnumInfo<TableType>::ApiTableType &, 4>
+          typename ApiTableEnumInfo<TableType>::ApiTableType &, 4>
           CallbackTables;
 
       for (const auto *Table : llvm::ArrayRef<
-               typename RocprofilerApiTableEnumInfo<TableType>::ApiTableType *>(
+               typename ApiTableEnumInfo<TableType>::ApiTableType *>(
                Tables, NumTables)) {
         if (!Table) {
           LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -144,7 +144,7 @@ protected:
         llvm::formatv("Failed to request a callback on {0} API table "
                       "initialization from "
                       "rocprofiler-sdk",
-                      RocprofilerApiTableEnumInfo<TableType>::ApiTableName)));
+                      ApiTableEnumInfo<TableType>::ApiTableName)));
   };
 
   /// Utility used to extract the type of the member pointer and the class
