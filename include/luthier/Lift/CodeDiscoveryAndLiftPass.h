@@ -29,14 +29,23 @@ namespace luthier {
 class CodeDiscoveryAndLiftPass
     : public llvm::PassInfoMixin<CodeDiscoveryAndLiftPass> {
 private:
+  /// All possible types of entry/execution points encountered during
+  /// instrumentation:
+  /// - \c llvm::amdhsa::kernel_descriptor_t& for when the entry point is a
+  /// kernel that's about to be launched
+  /// - \c uint64_t for when the entry point is an address reached during
+  /// execution of a kernel or a shader via an indirect jump or call instruction
+  /// TODO: Investigate other possible entry points, possibly related to
+  /// graphics
   using EntryPointType =
       std::variant<llvm::amdhsa::kernel_descriptor_t &, uint64_t>;
 
-  const EntryPointType EntryPoint;
+  /// Loaded device address of the entry point to the instrumentation pass
+  const EntryPointType InitialEntryPoint;
 
 public:
   explicit CodeDiscoveryAndLiftPass(const EntryPointType EntryPoint)
-      : EntryPoint(EntryPoint) {};
+      : InitialEntryPoint(EntryPoint) {};
 
   llvm::PreservedAnalyses run(llvm::Module &TargetM,
                               llvm::ModuleAnalysisManager &TargetMAM);
