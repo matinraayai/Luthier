@@ -1,4 +1,4 @@
-//===-- ApiTable.hpp --------------------------------------------*- C++ -*-===//
+//===-- ApiTable.h ----------------------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_API_TABLE_H
 #define LUTHIER_HSA_API_TABLE_H
-#include "luthier/Common/ErrorCheck.h"
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/GenericLuthierError.h"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
@@ -63,7 +64,19 @@ namespace luthier::hsa {
 /// \return \c true if \p Table contains <tt>Entry</tt>, \c false otherwise
 /// \sa <hsa/hsa_api_trace.h> in ROCr
 template <auto Entry> bool apiTableHasEntry(const auto &Table) {
-  return static_cast<size_t>(&(Table.*Entry)) < Table.version.minor_id;
+  return reinterpret_cast<size_t>(&(Table.*Entry)) -
+             reinterpret_cast<size_t>(&Table) <
+         Table.version.minor_id;
+}
+
+/// Same as \c apiTableHasEntry(const auto &) but with the \p Entry argument
+/// not hard coded and instead passed as a function argument
+template <typename HsaTableType, typename EntryType>
+bool apiTableHasEntry(const HsaTableType &Table,
+                      const EntryType HsaTableType::*Entry) {
+  return reinterpret_cast<size_t>(&(Table.*Entry)) -
+             reinterpret_cast<size_t>(&Table) <
+         Table.version.minor_id;
 }
 
 /// \brief Struct containing \c constexpr compile-time info regarding individual
@@ -152,10 +165,9 @@ public:
   /// it with the passed \p Args and returns the results of the function call
   template <auto ApiTableType::*Func, typename... ArgTypes>
   auto callFunction(ArgTypes... Args) const {
-    return getFunction<Func>()(*Args);
+    return getFunction<Func>()(Args...);
   }
 };
-
 
 template <hsa_extension_t ExtType> struct ExtensionApiTableInfo;
 
@@ -207,7 +219,7 @@ public:
   template <auto ExtensionApiTableInfo<ExtensionType>::TableType::*Func,
             typename... ArgTypes>
   const auto &callFunction(ArgTypes... Args) const {
-    return *(ExtensionTable.*Func)(Args);
+    return *(ExtensionTable.*Func)(Args...);
   };
 };
 } // namespace luthier::hsa
