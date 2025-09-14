@@ -83,10 +83,9 @@ bool apiTableHasEntry(const HsaTableType &Table,
 }
 
 /// \brief Struct containing \c constexpr compile-time info regarding individual
-/// tables inside <tt>::HsaApiTable</tt>. Used by \c ApiTableSnapshot and
-/// \c ApiTableWrapperInstaller to provide convenience accessors using the
-/// table's type. If a table is not present here, simply define a specialization
-/// of this template.
+/// tables inside <tt>::HsaApiTable</tt>. Used to provide convenience accessors
+/// using the table's type. If a table is not present here, simply define a
+/// specialization of this template.
 template <typename ApiTableType> struct ApiTableInfo;
 
 template <> struct ApiTableInfo<::CoreApiTable> {
@@ -136,6 +135,8 @@ template <> struct ApiTableInfo<::PcSamplingExtTable> {
 
 /// \brief An HSA API table container which provides bounds checking over
 /// the entries inside the API table
+/// \tparam ApiTableType Type of the HSA API table e.g. \c ::CoreApiTable
+/// \sa apiTableHasEntry
 template <typename ApiTableType> class ApiTableContainer {
 private:
   const ApiTableType &ApiTable{};
