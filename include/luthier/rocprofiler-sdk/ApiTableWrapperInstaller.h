@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines the \c ApiTableWrapperInstaller template class which provides a way
-/// to install wrappers around individual entries in an API table when it
-/// is registered with rocprofiler-sdk.
+/// Defines a set of classes to provides a way to install wrappers around
+/// individual entries in an API tables of HIP and HSA libraries when they
+/// are registered with rocprofiler-sdk.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_WRAPPER_INSTALLER_H
 #define LUTHIER_ROCPROFILER_API_TABLE_WRAPPER_INSTALLER_H
@@ -27,62 +27,69 @@ namespace luthier::rocprofiler {
 
 /// \brief Used to install wrapper functions around entries inside the HSA
 /// API table when it is registered with rocprofiler-sdk
+/// \tparam HsaApiTableType Type of the HSA API table to install wrappers for
+template <typename HsaApiTableType>
 class HsaApiTableWrapperInstaller final
     : public ApiTableRegistrationCallbackProvider<ROCPROFILER_HSA_TABLE> {
-private:
+
+  /// Installs a wrapper for an entry inside the \p Table
+  /// \param Table the table entry inside the \c ::HsaApiTable to install
+  /// the wrapper function
+  /// \param WrapperSpec A 3-entry tuple, containing a) the pointer-to
+  /// member-accessor for the \p Table b) Pointer to a function pointer where
+  /// the underlying function entry will be saved to, and c) a function
+  /// pointer of the wrapper to be installed
+  /// \note Reports a fatal error if the target entry is not inside the \p Table
+  template <typename FuncType>
+  static void
+  installWrapperEntry(HsaApiTableType &Table,
+                      const std::tuple<FuncType HsaApiTableType::*, FuncType *,
+                                       FuncType> &WrapperSpec) {
+    auto [FuncEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
+    if (!hsa::apiTableHasEntry(Table, FuncEntry)) {
+      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
+          llvm::formatv("Failed to find function entry inside the HSA "
+                        "extension table.")));
+    }
+    *UnderlyingStoreLocation = Table.*FuncEntry;
+    Table.*FuncEntry = WrapperFunc;
+  }
+
+public:
+  /// On initialization, requests a callback from rocprofiler-sdk to install
+  /// function wrappers for select entries in the \c HsaApiTableType of the \c
+  /// ::HsaApiTable as specified by the \p WrapperSpecs
+  /// \note Must only be called before rocprofiler-sdk has finished
+  /// configuration
+  /// \tparam Tuples Variadic tuple type for different entries to be wrapped
+  /// in the target table
+  /// \param Err an external \c llvm::Error that will hold any errors
+  /// encountered in the constructor
+  /// \param WrapperSpecs a variadic set of 3-entry tuples, with each tuple
+  /// specifying an entry inside the target API table to be wrapped
+  /// \sa installWrapperEntry
   template <typename... Tuples>
   explicit HsaApiTableWrapperInstaller(llvm::Error &Err,
                                        const Tuples &...WrapperSpecs)
       : ApiTableRegistrationCallbackProvider(
-            [&](::HsaApiTable &Table, uint64_t, uint64_t) {
-              (installWrapperEntry(Table, WrapperSpecs), ...);
+            [&](llvm::ArrayRef<::HsaApiTable *> Tables, uint64_t LibVersion,
+                uint64_t LibInstance) -> void {
+              if (LibInstance != 0) {
+                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
+                    "Multiple instances of the HSA library"));
+              }
+              constexpr auto RootAccessor = hsa::ApiTableInfo<
+                  HsaApiTableType>::PointerToMemberRootAccessor;
+              if (!hsa::apiTableHasEntry<RootAccessor>(*Tables[0])) {
+                LUTHIER_REPORT_FATAL_ON_ERROR(
+                    llvm::make_error<hsa::HsaError>(llvm::formatv(
+                        "Captured HSA table doesn't support extension {0}",
+                        hsa::ApiTableInfo<HsaApiTableType>::Name)));
+              }
+              (installWrapperEntry(*(Tables[0]->*RootAccessor), WrapperSpecs),
+               ...);
             },
             Err){};
-
-  /// Installs a wrapper for an entry inside an extension table of
-  /// \p Table
-  /// \p WrapperSpec is a 3-entry tuple, containing the pointer to
-  /// member accessor for the extension table inside
-  /// <tt>::HsaApiTable</tt>, reference to where the
-  /// underlying function entry will be saved to, and a function
-  /// pointer to the wrapper being installed. Reports a fatal error
-  /// if the entry is not present in the table
-  template <auto Func>
-  void installWrapperEntry(
-      ::HsaApiTable &Table,
-      const std::tuple<decltype(Func), auto *&, auto &> &WrapperSpec) {
-    auto &[FuncEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
-    using ExtTableType = typename RemoveMemberPointer<decltype(Func)>::outer;
-    auto constexpr ExtTableRootAccessor =
-        typename hsa::ApiTableInfo<ExtTableType>::PointerToMemberRootAccessor;
-    if (!hsa::apiTableHasEntry<ExtTableRootAccessor>(Table)) {
-      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
-          llvm::formatv("Failed to find entry inside the HSA API "
-                        "table at offset {0:x}.",
-                        static_cast<size_t>(&(Table.*ExtTableRootAccessor)))));
-    }
-    if (!hsa::apiTableHasEntry<FuncEntry>(Table.*ExtTableRootAccessor)) {
-      LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
-          llvm::formatv("Failed to find entry inside the HSA "
-                        "extension table at offset {0:x}",
-                        static_cast<size_t>(
-                            &(Table.*ExtTableRootAccessor->*FuncEntry)))));
-    }
-    UnderlyingStoreLocation = Table.*ExtTableRootAccessor->*FuncEntry;
-    Table.*ExtTableRootAccessor->*FuncEntry = WrapperFunc;
-  }
-
-public:
-  template <typename... Tuples>
-  llvm::Expected<std::unique_ptr<HsaApiTableWrapperInstaller>>
-  requestWrapperInstallation(const Tuples &...WrapperSpecs) {
-    llvm::Error Err = llvm::Error::success();
-    auto Out =
-        std::make_unique<HsaApiTableWrapperInstaller>(Err, WrapperSpecs...);
-    if (Err)
-      return std::move(Err);
-    return Out;
-  }
 
   ~HsaApiTableWrapperInstaller() override = default;
 };
@@ -109,10 +116,8 @@ private:
   /// to where the underlying function entry will be saved to, and a function
   /// pointer to the wrapper being installed. Reports a fatal error if
   /// the entry is not present in the table
-  template <auto Func>
-  void installWrapperEntry(
-      typename ApiTableEnumInfo<TableType>::ApiTableType &Table,
-      const std::tuple<decltype(Func), auto *&, auto &> &WrapperSpec) {
+  void installWrapperEntry(ApiTableEnumInfo<TableType>::ApiTableType &Table,
+                           const auto &WrapperSpec) {
     auto &[ExtEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
     if (!tableHasEntry<ExtEntry>(Table)) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
