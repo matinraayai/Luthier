@@ -15,52 +15,30 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c luthier::HsaError class.
+/// Implements the \c llvm::ErrorInfo for HSA.
 //===----------------------------------------------------------------------===//
-#include "hsa/HsaRuntimeInterceptor.hpp"
-#include <llvm/Support/Signals.h>
-#include <luthier/hsa/HsaError.h>
+#include "luthier/hsa/HsaError.h"
 
-namespace luthier {
+namespace luthier::hsa {
 
 char HsaError::ID = 0;
 
-llvm::Error HsaError::HsaErrorCheck(llvm::StringRef FileName, int LineNumber,
-                                    hsa_status_t Expr, llvm::StringRef ExprStr,
-                                    hsa_status_t Expected) {
-  if (Expr != Expected) {
-    std::string StackTrace;
-    llvm::raw_string_ostream STStream(StackTrace);
-    llvm::sys::PrintStackTrace(STStream);
-    return llvm::make_error<HsaError>(FileName, LineNumber, StackTrace, Expr,
-                                      ExprStr);
-  }
-  return llvm::Error::success();
+void HsaError::log(llvm::raw_ostream &OS) const {
+  OS << "HSA ";
+  if (Error.has_value())
+    OS << "error code" << *Error;
+  else
+    OS << "error";
+  OS << " encountered in file " << ErrorLocation.file_name() << ", function "
+     << ErrorLocation.function_name() << ", at " << ErrorLocation.line() << ": "
+     << ErrorMsg << ".\n";
+  OS << "Stack trace: \n";
+#ifdef __cpp_lib_stacktrace
+  OS << std::to_string(StackTrace);
+#else
+  OS << StackTrace;
+#endif
+  OS << "\n";
 }
 
-void luthier::HsaError::log(llvm::raw_ostream &OS) const {
-  OS << "HSA error encountered in file " << File << ", line: " << LineNumber
-     << ": ";
-  OS << "HSA call in expression " << Expression << " failed with error code ";
-  OS << Error;
-  if (hsa::HsaRuntimeInterceptor::isInitialized()) {
-    // Try to get the Error name if the hsa runtime interceptor is
-    // initialized.
-    const auto &DispatchAPITable =
-        hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer();
-    OS << ", ";
-    const char *ErrorName;
-    hsa_status_t Status =
-        DispatchAPITable.core.hsa_status_string_fn(Error, &ErrorName);
-    if (Status == HSA_STATUS_SUCCESS) {
-      OS << ErrorName << ".\n";
-    } else {
-      OS << "Unknown Error.\n";
-    }
-  } else {
-    OS << ".\n";
-  }
-  OS << "Stacktrace: \n" << StackTrace << "\n";
-}
-
-} // namespace luthier
+} // namespace luthier::hsa
