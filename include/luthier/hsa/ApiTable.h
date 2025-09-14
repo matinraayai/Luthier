@@ -173,6 +173,9 @@ public:
   }
 };
 
+/// \brief A static mapping struct between the HSA extension
+/// enumerator and its corresponding latest table version type and major/minor
+/// versions.
 template <hsa_extension_t ExtType> struct ExtensionApiTableInfo;
 
 template <> struct ExtensionApiTableInfo<HSA_EXTENSION_FINALIZER> {
@@ -199,33 +202,9 @@ template <> struct ExtensionApiTableInfo<HSA_EXTENSION_AMD_PC_SAMPLING> {
   static constexpr auto StepVer = HSA_PC_SAMPLING_API_TABLE_STEP_VERSION;
 };
 
-template <hsa_extension_t ExtensionType,
-          typename ExtensionApiTableType =
-              typename ExtensionApiTableInfo<ExtensionType>::TableType>
-class ExtensionTableContainer {
-private:
-  const ExtensionApiTableType &ExtensionTable;
+/// TODO: Check if a "compatibility checker" struct between extension table
+/// versions is desired
 
-public:
-  typedef ExtensionApiTableType TableType;
-
-  explicit ExtensionTableContainer(const ExtensionApiTableType &ExtensionTable)
-      : ExtensionTable(ExtensionTable) {};
-  /// \returns the function inside the table associated with the
-  /// pointer-to-member accessor \c Func
-  template <auto ExtensionApiTableInfo<ExtensionType>::TableType::*Func>
-  const auto &getFunction() const {
-    return *(ExtensionTable.*Func);
-  }
-
-  /// \returns the function inside the snapshot associated with the
-  /// pointer-to-member accessor \c Func
-  template <auto ExtensionApiTableInfo<ExtensionType>::TableType::*Func,
-            typename... ArgTypes>
-  const auto &callFunction(ArgTypes... Args) const {
-    return *(ExtensionTable.*Func)(Args...);
-  };
-};
 } // namespace luthier::hsa
 
 #endif
