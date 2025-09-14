@@ -15,7 +15,8 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// Defines the \c ApiTableRegistrationCallbackProvider class which provide
-/// a callback to its user when an API table is registered with rocprofiler-sdk.
+/// a callback to its user or sub-classes when an API table is registered with
+/// rocprofiler-sdk.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
 #define LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
@@ -54,8 +55,9 @@ template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_RUNTIME_TABLE> {
   constexpr static auto ApiTableName = "HIP Runtime";
 };
 
-/// \brief a generic class used to request a callback to be invoked when
-/// an Api table is registered with rocprofiler-sdk
+/// \brief a generic class used to safely request a callback to be invoked when
+/// an Api table is registered with rocprofiler-sdk. Can be either used as is
+/// or inherited by a sub-class
 template <rocprofiler_intercept_table_t TableType>
 class ApiTableRegistrationCallbackProvider {
 protected:
@@ -87,8 +89,9 @@ protected:
     if (Type != TableType) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
           llvm::make_error<rocprofiler::RocprofilerError>(llvm::formatv(
-              "Expected to get {0} API table, but the API table type is {0}",
-              ApiTableEnumInfo<TableType>::ApiTableType, Type)));
+              "Expected to get API table of type {0}, but instead got "
+              "{0}",
+              TableType, Type)));
     }
     if (Tables == nullptr) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -99,11 +102,10 @@ protected:
     auto &RegProvider =
         *static_cast<ApiTableRegistrationCallbackProvider *>(Data);
 
-    llvm::SmallVector<typename ApiTableEnumInfo<TableType>::ApiTableType &, 4>
-        CallbackTables;
-
-    llvm::ArrayRef<typename ApiTableEnumInfo<TableType>::ApiTableType *>
-        TablesAsArrayRef(Tables, NumTables);
+    llvm::ArrayRef TablesAsArrayRef(
+        reinterpret_cast<typename ApiTableEnumInfo<TableType>::ApiTableType **>(
+            Tables),
+        NumTables);
 
     for (const auto *Table : TablesAsArrayRef) {
       if (!Table) {
@@ -118,6 +120,21 @@ protected:
   }
 
 public:
+  /// Constructor
+  /// \note Must only be invoked before rocprofiler-sdk has been
+  /// fully configured (i.e, inside the \c rocprofiler_configure function)
+  /// \param CB The callback to be invoked once rocprofiler-sdk has reported
+  /// back with the requested API table. The callback provides the following
+  /// arguments: a) A list of pointers of the API tables passed by
+  /// rocprofiler-sdk; These pointers are checked to not be \c nullptr before
+  /// they are passed to the client. b)\c uint64_t version of the library as
+  /// passed by rocprofiler-sdk; and c) \c uint64_t indicating the number of
+  /// times this library has registered itself with rocprofiler-sdk before. The
+  /// class also checks if rocprofiler-sdk has passed the correct number of
+  /// tables expected for the library of choice, as described in the \c
+  /// ApiTableEnumInfo of the \c TableType before invoking the \p CB
+  /// \param Err an externally initialized \c llvm::Error that will report
+  /// back any errors encountered by this constructor
   ApiTableRegistrationCallbackProvider(CallbackType CB, llvm::Error &Err)
       : Callback(std::move(CB)) {
     llvm::ErrorAsOutParameter EAO(Err);
@@ -131,6 +148,11 @@ public:
                       ApiTableEnumInfo<TableType>::ApiTableName)));
   };
 
+  /// Destructor
+  /// \note The object must only be destroyed only if: a) rocprofiler is in the
+  /// process of being finalized; or b) rocprofiler has performed the scheduled
+  /// callback by this object, which can be checked via \c
+  /// wasRegistrationCallbackInvoked
   virtual ~ApiTableRegistrationCallbackProvider() {
     int RocprofilerFiniStatus;
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
@@ -142,7 +164,8 @@ public:
         "could perform the api table registration callback"));
   }
 
-  /// Checks whether rocprofiler-sdk has invoked the registration callback
+  /// Checks whether rocprofiler-sdk has invoked the registration callback and
+  /// the requested user callback has been invoked
   [[nodiscard]] bool wasRegistrationCallbackInvoked() const {
     return WasRegistrationInvoked.load();
   }
@@ -150,8 +173,8 @@ public:
   /// If the API table is not registered by the application with
   /// rocprofiler-sdk, forces its initialization by directly calling a
   /// "harmless" library function directly
-  /// \note Only use when absolutely sure the library is not going to be
-  /// initialized otherwise
+  /// \note Only use when absolutely sure the underlying library is not going to
+  /// be initialized otherwise
   template <std::enable_if<TableType == ROCPROFILER_HSA_TABLE ||
                            TableType == ROCPROFILER_HIP_RUNTIME_TABLE>>
   void forceTriggerApiTableCallback() {
