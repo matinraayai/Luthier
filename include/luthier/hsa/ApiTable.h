@@ -27,35 +27,37 @@
 
 namespace luthier::hsa {
 
-/// \brief Queries whether the HSA API \p Table struct contains the \p Entry
+/// \brief Queries whether the HSA API \p Table struct provided by the HSA
+/// runtime includes the pointer-to-member \p Entry (i.e., whether the
+/// currently running HSA runtime supports a function or an extension table)
 /// \details the implementation of the HSA standard by AMD (i.e. ROCr) provides
 /// a set of core functionality from the base HSA standard, along with a set of
-/// vendor-specific extensions added by AMD. For each extension the
-/// \c ::HsaApiTable has a corresponding table (e.g.,
-/// <tt>::HsaApiTable::core_</tt>). Each extension table is a \c struct and each
-/// API inside the extension has a corresponding function pointer field in the
-/// extension table (e.g., <tt>::CoreApiTable::hsa_init_fn</tt>).\n
-/// The \c ::HsaApiTable and its tables are forward-compatible i.e.
-/// newly added tables and functions are added below the existing ones.
-/// This means that each entry remains at a fixed offset in a table,
-/// ensuring a tool compiled against an older version of HSA can also run
-/// against a newer version of HSA without any interference from the newly
-/// added functionality. \n
-/// To check if an entry is present in the HSA API table during runtime,
-/// a fixed-size \c version field is provided at the very
-/// beginning of \c ::HsaApiTable and its extension tables. Tools can use the
+/// vendor-specific extensions added by AMD. Each extension has a corresponding
+/// table in \c ::HsaApiTable (e.g., <tt>::HsaApiTable::core_</tt>). Each
+/// extension table is itself a \c struct and each API inside the extension has
+/// a corresponding function pointer field in the table (e.g., \c hsa_init has
+/// the entry \c &::CoreApiTable::hsa_init_fn in the Core API table). The \c
+/// ::HsaApiTable and its tables are forward-compatible i.e. newly added tables
+/// and functions are added below the existing ones. This means that each entry
+/// remains at a fixed offset in a table, ensuring a tool compiled against an
+/// older version of HSA can also run against a newer version of HSA without any
+/// interference from the newly added functionality. \n To check if an entry is
+/// present in the HSA API table during runtime, a fixed-size \c version field
+/// is provided at the very beginning of \c ::HsaApiTable (i.e., <tt>offsetof ==
+/// 0</tt>) and also its extension tables. Tools can use the
 /// \c ::ApiTableVersion::minor_id field to obtain the size of each
 /// table in the active HSA runtime. Since table entries remain at a
 /// fixed offset, a tool can confirm the currently running HSA runtime supports
-/// its required extension by calling this function, which makes sure the
-/// corresponding offset of the entry is smaller than the size of the table. \n
-/// For example, to check if the HSA API \p Table has the core extension,
-/// one can use the following:
+/// its required extension or function by calling this function,
+/// which makes sure the corresponding offset of the entry is smaller than the
+/// size of the table.
+/// \example To check if the HSA API \p Table has the core extension, one can
+/// use the following:
 /// \code{.cpp}
 /// apiTableHasEntry<&::HsaApiTable::core_>(Table);
 /// \endcode
-/// To check if the \c ::CoreApiTable has the \c hsa_iterate_agents_fn field,
-/// one can use the following:
+/// \example To check if the \c ::CoreApiTable has the \c hsa_iterate_agents_fn
+/// field, one can use the following:
 /// \code{.cpp}
 /// apiTableHasEntry<&::CoreApiTable::hsa_iterate_agents_fn>(CoreApiTable, );
 /// \endcode
@@ -69,8 +71,9 @@ template <auto Entry> bool apiTableHasEntry(const auto &Table) {
          Table.version.minor_id;
 }
 
-/// Same as \c apiTableHasEntry(const auto &) but with the \p Entry argument
-/// not hard coded and instead passed as a function argument
+/// Same as <tt>apiTableHasEntry(const auto &)</tt> but with the \p Entry
+/// argument not hard coded and instead passed as a function argument
+/// \sa apiTableHasEntry(const auto &)
 template <typename HsaTableType, typename EntryType>
 bool apiTableHasEntry(const HsaTableType &Table,
                       const EntryType HsaTableType::*Entry) {
