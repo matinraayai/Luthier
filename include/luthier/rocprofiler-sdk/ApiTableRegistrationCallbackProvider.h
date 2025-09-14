@@ -25,29 +25,32 @@
 #include "luthier/hsa/HsaError.h"
 #include "luthier/rocprofiler-sdk/RocprofilerError.h"
 #include <atomic>
-//#include <hip/amd_detail/hip_api_trace.hpp>
+#include <hip/amd_detail/hip_api_trace.hpp>
 #include <rocprofiler-sdk/intercept_table.h>
 #include <rocprofiler-sdk/registration.h>
 
 namespace luthier::rocprofiler {
 
 /// \brief Struct providing static information regarding the
-/// \c rocprofiler_intercept_table_t enum, including its table type struct
+/// \c rocprofiler_intercept_table_t enum, including its table type
 /// and the number of tables that are registered with rocprofiler-sdk
 template <rocprofiler_intercept_table_t TableType> struct ApiTableEnumInfo;
 
 template <> struct ApiTableEnumInfo<ROCPROFILER_HSA_TABLE> {
   using ApiTableType = ::HsaApiTable;
+  constexpr static auto NumApiTables = 1;
   constexpr static auto ApiTableName = "HSA";
 };
 
 template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_COMPILER_TABLE> {
   using ApiTableType = ::HipCompilerDispatchTable;
+  constexpr static auto NumApiTables = 1;
   constexpr static auto ApiTableName = "HIP Compiler";
 };
 
 template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_RUNTIME_TABLE> {
   using ApiTableType = ::HipDispatchTable;
+  constexpr static auto NumApiTables = 1;
   constexpr static auto ApiTableName = "HIP Runtime";
 };
 
@@ -77,9 +80,9 @@ protected:
     if (NumTables != ApiTableEnumInfo<TableType>::NumApiTables) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
           llvm::make_error<rocprofiler::RocprofilerError>(llvm::formatv(
-              "Expected rocprofiler to register only a single API table, "
+              "Expected rocprofiler to register {0} API table(s), "
               "instead got {0}",
-              NumTables)));
+              ApiTableEnumInfo<TableType>::NumApiTables, NumTables)));
     }
     if (Type != TableType) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
