@@ -18,19 +18,22 @@
 /// This file describes Luthier's Code Lifter, a singleton in charge of
 /// disassembling code objects into MC and MIR representations.
 //===----------------------------------------------------------------------===//
-
 #ifndef LUTHIER_TOOLING_COMMON_CODE_LIFTER_HPP
 #define LUTHIER_TOOLING_COMMON_CODE_LIFTER_HPP
 #include "AMDGPUTargetMachine.h"
 #include "TargetManager.hpp"
 #include "common/ObjectUtils.hpp"
-#include "common/Singleton.hpp"
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/ISA.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-#include "hsa/hsa.hpp"
+#include "luthier/common/Singleton.h"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
+#include "luthier/hsa/ISA.h"
+#include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/hsa/LoadedCodeObjectCache.h"
+#include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
+#include "luthier/hsa/LoadedCodeObjectKernel.h"
+#include "luthier/hsa/hsa.h"
+#include "luthier/rocprofiler/ApiTableSnapshot.h"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include "luthier/types.h"
 #include "llvm/Cloning.hpp"
@@ -88,7 +91,11 @@ private:
   /// Mutex to protect fields of the code lifter
   std::recursive_mutex CacheMutex{};
 
-public:
+  rocprofiler::HsaApiTableSnapshot<::CoreApiTable> CoreApiSnapshot;
+
+  rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      LoaderApiSnapshot;
+
   /// Invoked by the \c Controller in the internal HSA callback to notify
   /// the \c CodeLifter that \p Exec has been destroyed by the HSA runtime;
   /// Therefore any cached information related to \p Exec must be removed since
@@ -97,8 +104,7 @@ public:
   /// HSA runtime
   /// \return \p llvm::Error describing whether the operation succeeded or
   /// faced an error
-  llvm::Error invalidateCachedExecutableItems(hsa::Executable &Exec);
-
+  llvm::Error invalidateCachedExecutableItems(hsa_executable_t Exec);
   //===--------------------------------------------------------------------===//
   // MC-backed Disassembly Functionality
   //===--------------------------------------------------------------------===//
@@ -118,17 +124,17 @@ private:
         : Context(std::move(Context)), DisAsm(std::move(DisAsm)) {};
   };
 
-  /// Contains the cached \c DisassemblyInfo for each \c hsa::ISA
-  llvm::DenseMap<hsa::ISA, DisassemblyInfo> DisassemblyInfoMap{};
+  /// Contains the cached \c DisassemblyInfo for each \c hsa_isa_t
+  llvm::DenseMap<hsa_isa_t, DisassemblyInfo> DisassemblyInfoMap{};
 
   /// On success, returns a reference to the \c DisassemblyInfo associated with
   /// the given \p ISA. Creates the info if not already present in the \c
   /// DisassemblyInfoMap
-  /// \param ISA the \c hsa::ISA of the \c DisassemblyInfo
+  /// \param ISA the \c hsa_isa_t of the \c DisassemblyInfo
   /// \return on success, a reference to the \c DisassemblyInfo associated with
   /// the given \p ISA, on failure, an \c llvm::Error describing the issue
   /// encountered during the process
-  llvm::Expected<DisassemblyInfo &> getDisassemblyInfo(const hsa::ISA &ISA);
+  llvm::Expected<DisassemblyInfo &> getDisassemblyInfo(hsa_isa_t ISA);
 
   /// Cache of kernel/device function symbols already disassembled by the
   /// \c CodeLifter.\n
@@ -149,6 +155,8 @@ private:
                              uint64_t Size, uint64_t &Target);
 
 public:
+  explicit CodeLifter(llvm::Error &Err);
+
   /// Disassembles the contents of the function-type \p Symbol and returns
   /// a reference to its disassembled array of <tt>hsa::Instr</tt>s\n
   /// Does not perform any symbolization or control flow analysis\n
@@ -169,14 +177,25 @@ public:
     std::lock_guard Lock(CacheMutex);
     if (!MCDisassembledSymbols.contains(&Symbol)) {
       // Get the ISA associated with the Symbol
-      auto LCO = hsa::LoadedCodeObject(Symbol.getLoadedCodeObject());
-      auto ISA = LCO.getISA();
+      hsa_loaded_code_object_t LCO = Symbol.getLoadedCodeObject();
+
+      llvm::Expected<luthier::AMDGCNObjectFile &> ObjFileOrErr =
+          hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
+      LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
+
+      auto LLVMIsa = getELFObjectFileISA(*ObjFileOrErr);
+      LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
+
+      auto ISA =
+          hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),
+                           std::get<1>(*LLVMIsa), std::get<2>(*LLVMIsa));
       LUTHIER_RETURN_ON_ERROR(ISA.takeError());
       // Locate the loaded contents of the symbol on the host
-      auto MachineCodeOnDevice = Symbol.getLoadedSymbolContents();
+      auto MachineCodeOnDevice =
+          Symbol.getLoadedSymbolContents(LoaderApiSnapshot.getTable());
       LUTHIER_RETURN_ON_ERROR(MachineCodeOnDevice.takeError());
-      auto MachineCodeOnHost =
-          hsa::convertToHostEquivalent(*MachineCodeOnDevice);
+      auto MachineCodeOnHost = hsa::convertToHostEquivalent(
+          LoaderApiSnapshot.getTable(), *MachineCodeOnDevice);
       LUTHIER_RETURN_ON_ERROR(MachineCodeOnHost.takeError());
 
       auto InstructionsAndAddresses = disassemble(*ISA, *MachineCodeOnHost);
@@ -241,7 +260,7 @@ public:
   /// \return on success, returns a \p std::vector of \p llvm::MCInst and
   /// a \p std::vector containing the start address of each instruction
   llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
-  disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code);
+  disassemble(hsa_isa_t ISA, llvm::ArrayRef<uint8_t> Code);
 
   //===--------------------------------------------------------------------===//
   // Beginning of Code Lifting Functionality
@@ -258,7 +277,7 @@ private:
   /// \details This map is used during lifting of MC instructions to MIR to
   /// indicate start/end of each \p llvm::MachineBasicBlock. It gets populated
   /// by during MC disassembly of functions
-  llvm::DenseMap<hsa::LoadedCodeObject, llvm::DenseSet<address_t>>
+  llvm::DenseMap<hsa_loaded_code_object_t, llvm::DenseSet<address_t>>
       DirectBranchTargetLocations{};
 
   /// Checks whether the given \p Address is the start of a target of a
@@ -268,7 +287,7 @@ private:
   /// \param \c Address a device address in the \p hsa::LoadedCodeObject
   /// \return true if the Address is the start of the target of another branch
   /// instruction; \c false otherwise
-  bool isAddressDirectBranchTarget(const hsa::LoadedCodeObject &LCO,
+  bool isAddressDirectBranchTarget(hsa_loaded_code_object_t LCO,
                                    address_t Address);
 
   /// Used by the MC disassembler functionality to notify
@@ -277,7 +296,7 @@ private:
   /// \param LCO an \p hsa::LoadedCodeObject that contains the \p Address
   /// in its loaded region
   /// \param Address a device address in the \p hsa::LoadedCodeObject
-  void addDirectBranchTargetAddress(const hsa::LoadedCodeObject &LCO,
+  void addDirectBranchTargetAddress(hsa_loaded_code_object_t LCO,
                                     address_t Address);
 
   //===--------------------------------------------------------------------===//
@@ -297,7 +316,7 @@ private:
   /// Cache of \c LCORelocationInfo information per loaded address in each
   /// lifted \c hsa::LoadedCodeObject\n
   /// Combines relocation information from all sections into this map
-  llvm::DenseMap<hsa::LoadedCodeObject,
+  llvm::DenseMap<hsa_loaded_code_object_t,
                  llvm::DenseMap<address_t, LCORelocationInfo>>
       Relocations{};
 
@@ -312,7 +331,7 @@ private:
   /// an \c std::nullopt otherwise; an \c llvm::Error on failure describing the
   /// issue encountered
   llvm::Expected<const CodeLifter::LCORelocationInfo *>
-  resolveRelocation(const hsa::LoadedCodeObject &LCO, address_t Address);
+  resolveRelocation(hsa_loaded_code_object_t LCO, address_t Address);
 
   //===--------------------------------------------------------------------===//
   // Function-related code-lifting functionality
@@ -336,7 +355,7 @@ private:
   /// \return an \c llvm::Error if any issues were encountered during the
   /// process
   llvm::Error
-  initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
+  initLiftedGlobalVariableEntry(hsa_loaded_code_object_t LCO,
                                 const hsa::LoadedCodeObjectSymbol &GV,
                                 LiftedRepresentation &LR);
 
