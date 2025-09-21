@@ -108,10 +108,6 @@ llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa_executable_t Exec) {
   return llvm::Error::success();
 }
 
-CodeLifter::CodeLifter(llvm::Error &Err)
-    : CoreApiSnapshot(Err), LoaderApiSnapshot(Err),
-      Singleton<luthier::CodeLifter>() {}
-
 bool CodeLifter::evaluateBranch(const llvm::MCInst &Inst, uint64_t Addr,
                                 uint64_t Size, uint64_t &Target) {
   if (!Inst.getOperand(0).isImm())

@@ -33,7 +33,7 @@
 #include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include "luthier/hsa/hsa.h"
-#include "luthier/rocprofiler/ApiTableSnapshot.h"
+#include "luthier/rocprofiler-sdk/ApiTableSnapshot.h"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include "luthier/types.h"
 #include "llvm/Cloning.hpp"
@@ -91,10 +91,10 @@ private:
   /// Mutex to protect fields of the code lifter
   std::recursive_mutex CacheMutex{};
 
-  rocprofiler::HsaApiTableSnapshot<::CoreApiTable> CoreApiSnapshot;
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
 
-  rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-      LoaderApiSnapshot;
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &LoaderApiSnapshot;
 
   /// Invoked by the \c Controller in the internal HSA callback to notify
   /// the \c CodeLifter that \p Exec has been destroyed by the HSA runtime;
@@ -155,7 +155,12 @@ private:
                              uint64_t Size, uint64_t &Target);
 
 public:
-  explicit CodeLifter(llvm::Error &Err);
+  CodeLifter(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot)
+      : Singleton<luthier::CodeLifter>(), CoreApiSnapshot(CoreApiSnapshot),
+        LoaderApiSnapshot(LoaderApiSnapshot) {};
 
   /// Disassembles the contents of the function-type \p Symbol and returns
   /// a reference to its disassembled array of <tt>hsa::Instr</tt>s\n
