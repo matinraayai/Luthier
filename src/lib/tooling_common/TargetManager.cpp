@@ -18,7 +18,7 @@
 /// This file implements Luthier's Target Manager Singleton.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/TargetManager.hpp"
-
+#include "luthier/hsa/Agent.h"
 #include <AMDGPUTargetMachine.h>
 #include <llvm/MC/MCAsmBackend.h>
 #include <llvm/MC/MCAsmInfo.h>
@@ -37,13 +37,13 @@
 #include <llvm/Support/ManagedStatic.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
-#include "hsa/GpuAgent.hpp"
 
 namespace luthier {
 
 template <> TargetManager *Singleton<TargetManager>::Instance{nullptr};
 
-TargetManager::TargetManager() : Singleton<TargetManager>() {
+TargetManager::TargetManager(llvm::Error &Err)
+    : Singleton<TargetManager>(), CoreApiTableSnapshot(Err) {
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
@@ -69,67 +69,74 @@ TargetManager::~TargetManager() {
 }
 
 llvm::Expected<const TargetInfo &>
-TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
+TargetManager::getTargetInfo(hsa_isa_t Isa) const {
   if (!LLVMTargetInfo.contains(Isa)) {
     auto Info = LLVMTargetInfo.insert({Isa, TargetInfo()}).first;
 
-    auto TT = Isa.getTargetTriple();
+    const auto HsaApiTableSnapshot = CoreApiTableSnapshot.getTable();
+
+    auto TT = hsa::isaGetTargetTriple(HsaApiTableSnapshot, Isa);
     LUTHIER_RETURN_ON_ERROR(TT.takeError());
 
     std::string Error;
 
     auto Target = llvm::TargetRegistry::lookupTarget(TT->normalize(), Error);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        Target,
-        "Failed to lookup target {0} in LLVM. Reason according to LLVM: {1}.",
-        TT->normalize(), Error));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        Target, llvm::formatv("Failed to lookup target {0} in LLVM. Reason "
+                              "according to LLVM: {1}.",
+                              TT->normalize(), Error)));
 
     auto MRI = Target->createMCRegInfo(TT->getTriple());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        MRI, "Failed to create machine register info for {0}.",
-        TT->getTriple()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        MRI, llvm::formatv("Failed to create machine register info for {0}.",
+                           TT->getTriple())));
 
     auto TargetOptions = new llvm::TargetOptions();
 
     TargetOptions->MCOptions.AsmVerbose = true;
 
-    LUTHIER_RETURN_ON_ERROR(
-        LUTHIER_ERROR_CHECK(TargetOptions, "Failed to create target options."));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        TargetOptions, "Failed to create target options."));
 
     auto MAI = Target->createMCAsmInfo(*MRI, TT->getTriple(),
                                        TargetOptions->MCOptions);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         MAI,
-        "Failed to create MCAsmInfo from target {0} for Target Triple {1}.",
-        Target, TT->getTriple()));
+        llvm::formatv(
+            "Failed to create MCAsmInfo from target {0} for Target Triple {1}.",
+            Target, TT->getTriple())));
 
     auto MII = Target->createMCInstrInfo();
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        MII, "Failed to create MCInstrInfo from target {0}", Target));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        MII,
+        llvm::formatv("Failed to create MCInstrInfo from target {0}", Target)));
 
     auto MIA = Target->createMCInstrAnalysis(MII);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        MIA, "Failed to create MCInstrAnalysis for target {0}.", Target));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        MIA, llvm::formatv("Failed to create MCInstrAnalysis for target {0}.",
+                           Target)));
 
-    auto CPU = Isa.getGPUName();
+    auto CPU = hsa::isaGetGPUName(HsaApiTableSnapshot, Isa);
     LUTHIER_RETURN_ON_ERROR(CPU.takeError());
 
-    auto FeatureString = Isa.getSubTargetFeatures();
+    auto FeatureString = hsa::isaGetSubTargetFeatures(HsaApiTableSnapshot, Isa);
     LUTHIER_RETURN_ON_ERROR(FeatureString.takeError());
 
     auto STI = Target->createMCSubtargetInfo(TT->getTriple(), *CPU,
                                              FeatureString->getString());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        STI,
-        "Failed to create MCSubTargetInfo from target {0} "
-        "for triple {1}, CPU {2}, with feature string {3}",
-        Target, TT->getTriple(), *CPU, FeatureString->getString()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        STI, llvm::formatv("Failed to create MCSubTargetInfo from target {0} "
+                           "for triple {1}, CPU {2}, with feature string {3}",
+                           Target, TT->getTriple(), *CPU,
+                           FeatureString->getString())));
 
     auto IP = Target->createMCInstPrinter(
         llvm::Triple(*TT), MAI->getAssemblerDialect(), *MAI, *MII, *MRI);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-        IP, "Failed to create MCInstPrinter from Target {0} for Triple {1}.",
-        Target, TT->getTriple()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        IP,
+        llvm::formatv(
+            "Failed to create MCInstPrinter from Target {0} for Triple {1}.",
+            Target, TT->getTriple())));
 
     Info->second.Target = Target;
     Info->second.MRI = MRI;
@@ -142,21 +149,24 @@ TargetManager::getTargetInfo(const hsa::ISA &Isa) const {
   }
   return LLVMTargetInfo[Isa];
 }
+
 llvm::Expected<std::unique_ptr<llvm::GCNTargetMachine>>
 TargetManager::createTargetMachine(
-    const hsa::ISA &ISA, const llvm::TargetOptions &TargetOptions) const {
-  auto TT = ISA.getTargetTriple();
+    hsa_isa_t ISA, const llvm::TargetOptions &TargetOptions) const {
+  const auto HsaApiTable = CoreApiTableSnapshot.getTable();
+  auto TT = hsa::isaGetTargetTriple(HsaApiTable, ISA);
   LUTHIER_RETURN_ON_ERROR(TT.takeError());
   std::string Error;
   auto Target = llvm::TargetRegistry::lookupTarget(TT->normalize(), Error);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Target,
-      "Failed to get target {0} from LLVM. Error according to LLVM: {1}.",
-      TT->normalize(), Error));
-  auto CPU = ISA.getGPUName();
+      llvm::formatv(
+          "Failed to get target {0} from LLVM. Error according to LLVM: {1}.",
+          TT->normalize(), Error)));
+  auto CPU = hsa::isaGetGPUName(HsaApiTable, ISA);
   LUTHIER_RETURN_ON_ERROR(CPU.takeError());
 
-  auto FeatureString = ISA.getSubTargetFeatures();
+  auto FeatureString = hsa::isaGetSubTargetFeatures(HsaApiTable, ISA);
   LUTHIER_RETURN_ON_ERROR(FeatureString.takeError());
   return std::unique_ptr<llvm::GCNTargetMachine>(
       reinterpret_cast<llvm::GCNTargetMachine *>(Target->createTargetMachine(
