@@ -18,11 +18,10 @@
 /// This file implements Luthier's code generator.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/CodeGenerator.hpp"
-
-#include "hsa/ISA.hpp"
-#include "hsa/LoadedCodeObject.hpp"
 #include "luthier/comgr/ComgrError.h"
 #include "luthier/common/LuthierError.h"
+#include "luthier/hsa/ISA.h"
+#include "luthier/hsa/LoadedCodeObject.h"
 #include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
@@ -50,13 +49,13 @@ namespace luthier {
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
 llvm::Error CodeGenerator::linkRelocatableToExecutable(
-    const llvm::ArrayRef<char> &Code, const hsa::ISA &ISA,
+    const llvm::ArrayRef<char> &Code, hsa_isa_t ISA,
     llvm::SmallVectorImpl<uint8_t> &Out) {
   llvm::TimeTraceScope Scope("Comgr Executable Linking");
   amd_comgr_data_t DataIn;
   amd_comgr_data_set_t DataSetIn, DataSetOut;
   amd_comgr_action_info_t DataAction;
-  auto IsaName = ISA.getName();
+  auto IsaName = hsa::isaGetName(CoreApiSnapshot.getTable(), ISA);
   LUTHIER_RETURN_ON_ERROR(IsaName.takeError());
 
   LUTHIER_RETURN_ON_ERROR(
@@ -119,11 +118,11 @@ llvm::Error CodeGenerator::printAssembly(
     llvm::CodeGenFileType FileType) {
   llvm::TimeTraceScope Scope("LLVM Assembly Printing");
   // Argument error checking
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      FileType != llvm::CodeGenFileType::Null,
+      "Cannot pass file type Null to print assembly."));
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(FileType != llvm::CodeGenFileType::Null,
-                          "Cannot pass file type Null to print assembly."));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(MMIWP != nullptr, "MMIWP is nullptr."));
+      LUTHIER_GENERIC_ERROR_CHECK(MMIWP != nullptr, "MMIWP is nullptr."));
 
   auto &MMI = MMIWP->getMMI();
   // Create the legacy pass manager with minimal passes to print the
@@ -149,7 +148,7 @@ llvm::Error CodeGenerator::printAssembly(
 
   // Finally, add the Assembly printer pass
   llvm::raw_svector_ostream ObjectFileOS(CompiledObjectFile);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       !TM.addAsmPrinter(PM, ObjectFileOS, nullptr, FileType, MMI.getContext()),
       "Failed to add the assembly printer pass to the pass manager."));
 
@@ -167,8 +166,8 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Acquire the Lifted Representation's lock
   auto Lock = LR.getLock();
   // Each LCO will get its own copy of the instrumented module
-  hsa::LoadedCodeObject LCO(LR.getLoadedCodeObject());
-  auto Agent = LCO.getAgent();
+  hsa_loaded_code_object_t LCO = LR.getLoadedCodeObject();
+  auto Agent = hsa::loadedCodeObjectGetAgent(LoaderApiSnapshot.getTable(), LCO);
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
   auto &TM = LR.getTM();
