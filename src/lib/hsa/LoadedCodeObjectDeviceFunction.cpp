@@ -18,8 +18,8 @@
 /// This file implements the \c LoadedCodeObjectDeviceFunction under the \c
 /// luthier::hsa namespace.
 //===----------------------------------------------------------------------===//
+#include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
 #include "common/ObjectUtils.hpp"
-#include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 
 namespace luthier::hsa {
 

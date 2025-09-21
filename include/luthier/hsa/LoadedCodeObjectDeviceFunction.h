@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LOADED_CODE_OBJECT_DEVICE_FUNCTION_H
 #define LUTHIER_LOADED_CODE_OBJECT_DEVICE_FUNCTION_H
-#include "LoadedCodeObjectSymbol.h"
+#include "luthier/hsa/LoadedCodeObjectSymbol.h"
 
 namespace luthier::hsa {
 
