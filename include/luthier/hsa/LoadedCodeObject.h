@@ -33,7 +33,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_H
 #define LUTHIER_HSA_LOADED_CODE_OBJECT_H
+#include "luthier/common/ErrorCheck.h"
 #include "luthier/hsa/ApiTable.h"
+#include "luthier/hsa/HsaError.h"
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormatVariadic.h>
 
@@ -46,14 +48,12 @@ namespace luthier::hsa {
 /// \return Expects the \c hsa_executable_t of \p LCO on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_EXECUTABLE
 template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
-[[nodiscard]] llvm::Expected<hsa_executable_t> loadedCodeObjectGetExecutable(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
-        &LoaderApiTable,
-    hsa_loaded_code_object_t LCO) {
+[[maybe_unused]] [[nodiscard]] llvm::Expected<hsa_executable_t>
+loadedCodeObjectGetExecutable(LoaderTableType &LoaderApiTable,
+                              hsa_loaded_code_object_t LCO) {
   hsa_executable_t Exec;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO, HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_EXECUTABLE, &Exec),
       llvm::formatv(
           "Failed to obtain the executable of HSA loaded code object {0:x}.",
@@ -71,14 +71,12 @@ template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 /// \return Expects the \c hsa_agent_t of the \p LCO on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT
 template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
-[[nodiscard]] llvm::Expected<hsa_agent_t> loadedCodeObjectGetAgent(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
-        &LoaderApiTable,
-    hsa_loaded_code_object_t LCO) {
+[[nodiscard]] llvm::Expected<hsa_agent_t>
+loadedCodeObjectGetAgent(LoaderTableType &LoaderApiTable,
+                         hsa_loaded_code_object_t LCO) {
   hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO, HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT, &Agent),
       llvm::formatv(
           "Failed to get the GPU agent of HSA loaded code object {0:x}",
@@ -93,14 +91,12 @@ template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 /// \return Expects the Load Delta of this Loaded Code Object on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_DELTA
 template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
-[[nodiscard]] llvm::Expected<long> loadedCodeObjectGetLoadDelta(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
-        &LoaderApiTable,
-    hsa_loaded_code_object_t LCO) {
+[[nodiscard]] llvm::Expected<long>
+loadedCodeObjectGetLoadDelta(const LoaderTableType &LoaderApiTable,
+                             hsa_loaded_code_object_t LCO) {
   long LoadDelta;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO, HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_DELTA,
           &LoadDelta),
       llvm::formatv("Failed to obtain the load delta of LCO {0:x}",
@@ -118,14 +114,11 @@ template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE
 template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
-loadedCodeObjectGetLoadedMemory(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
-        &LoaderApiTable,
-    hsa_loaded_code_object_t LCO) {
+loadedCodeObjectGetLoadedMemory(LoaderTableType &LoaderApiTable,
+                                hsa_loaded_code_object_t LCO) {
   uint64_t LoadBase;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO, HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_BASE, &LoadBase),
       llvm::formatv(
           "Failed to get the load base address of loaded code object {0:x}",
@@ -133,8 +126,7 @@ loadedCodeObjectGetLoadedMemory(
 
   uint64_t LoadSize;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO, HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_LOAD_SIZE, &LoadSize),
       llvm::formatv("Failed to get the load size of loaded code object {0:x}",
                     LCO.handle)));
@@ -149,14 +141,12 @@ loadedCodeObjectGetLoadedMemory(
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI_LENGTH
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI
 template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
-[[nodiscard]] llvm::Expected<std::string> loadedCodeObjectGetURI(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
-        &LoaderApiTable,
-    hsa_loaded_code_object_t LCO) {
+[[nodiscard]] llvm::Expected<std::string>
+loadedCodeObjectGetURI(LoaderTableType &LoaderApiTable,
+                       hsa_loaded_code_object_t LCO) {
   unsigned int UriLength;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO, HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI_LENGTH,
           &UriLength),
       llvm::formatv("Failed to get the URI size of loaded code object {0:x}",
@@ -165,8 +155,7 @@ template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
   std::string URI;
   URI.resize(UriLength);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO, HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_URI, URI.data()),
       llvm::formatv("Failed to get the URI of loaded code object {0:x}",
                     LCO.handle)));
@@ -183,14 +172,11 @@ template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 /// end of the storage memory on success
 template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
-loadedCodeObjectGetStorageMemory(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
-        &LoaderApiTable,
-    hsa_loaded_code_object_t LCO) {
+loadedCodeObjectGetStorageMemory(const LoaderTableType &LoaderApiTable,
+                                 hsa_loaded_code_object_t LCO) {
   uint64_t StorageBase;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO,
           HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_BASE,
           &StorageBase),
@@ -200,8 +186,7 @@ loadedCodeObjectGetStorageMemory(
 
   uint64_t StorageSize;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApiTable.callFunction<
-          &LoaderTableType::hsa_ven_amd_loader_loaded_code_object_get_info>(
+      LoaderApiTable.hsa_ven_amd_loader_loaded_code_object_get_info(
           LCO,
           HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_CODE_OBJECT_STORAGE_MEMORY_SIZE,
           &StorageSize),

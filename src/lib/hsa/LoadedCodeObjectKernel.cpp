@@ -19,43 +19,45 @@
 /// namespace.
 //===----------------------------------------------------------------------===//
 
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
+#include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include "hsa/HsaRuntimeInterceptor.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
+#include "luthier/hsa/KernelDescriptor.h"
+#include "luthier/hsa/LoadedCodeObject.h"
 #include <hsa/hsa.h>
-#include <luthier/hsa/KernelDescriptor.h>
-#include <luthier/hsa/LoadedCodeObjectKernel.h>
 
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
-LoadedCodeObjectKernel::create(hsa_loaded_code_object_s LCO,
-                               llvm::object::ELF64LEObjectFile &StorageElf,
-                               std::shared_ptr<md::Metadata> LCOMeta,
-                               llvm::object::ELFSymbolRef KFuncSymbol,
-                               llvm::object::ELFSymbolRef KDSymbol) {
-  hsa::LoadedCodeObject LCOWrapper(LCO);
+LoadedCodeObjectKernel::create(
+    const ApiTableContainer<::CoreApiTable> &CoreApiTable,
+    const hsa_ven_amd_loader_1_01_pfn_t &VenLoaderApi,
+    hsa_loaded_code_object_s LCO, llvm::object::ELF64LEObjectFile &StorageElf,
+    std::shared_ptr<md::Metadata> LCOMeta,
+    llvm::object::ELFSymbolRef KFuncSymbol,
+    llvm::object::ELFSymbolRef KDSymbol) {
   // Get the kernel symbol associated with this kernel
-  auto Exec = LCOWrapper.getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
+  llvm::Expected<hsa_executable_t> ExecOrErr =
+      hsa::loadedCodeObjectGetExecutable(VenLoaderApi, LCO);
+  LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
 
-  auto Agent = LCOWrapper.getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
+  llvm::Expected<hsa_agent_t> AgentOrErr =
+      hsa::loadedCodeObjectGetAgent(VenLoaderApi, LCO);
+  LUTHIER_RETURN_ON_ERROR(AgentOrErr.takeError());
 
   auto NameWithKDSuffixed = KDSymbol.getName();
   LUTHIER_RETURN_ON_ERROR(NameWithKDSuffixed.takeError());
 
-  auto ExecSymbol =
-      Exec->getExecutableSymbolByName(*NameWithKDSuffixed, *Agent);
+  auto ExecSymbol = hsa::executableGetSymbolByName(
+      CoreApiTable, *ExecOrErr, *NameWithKDSuffixed, *AgentOrErr);
   LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(ExecSymbol->has_value(),
-                          "Failed to query the HSA executable symbol of kernel "
-                          "{0} from its executable using its name.",
-                          *NameWithKDSuffixed));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      ExecSymbol->has_value(),
+      llvm::formatv("Failed to query the HSA executable symbol of kernel "
+                    "{0} from its executable using its name.",
+                    *NameWithKDSuffixed)));
 
   llvm::Expected<llvm::StringRef> KernelNameOrErr = KDSymbol.getName();
   LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
@@ -63,20 +65,21 @@ LoadedCodeObjectKernel::create(hsa_loaded_code_object_s LCO,
   for (auto &KernelMD : LCOMeta->Kernels) {
     if (KernelMD.Symbol == *KernelNameOrErr) {
       return std::unique_ptr<LoadedCodeObjectKernel>(new LoadedCodeObjectKernel(
-          LCO, StorageElf, KFuncSymbol, KDSymbol, ExecSymbol.get()->asHsaType(),
+          LCO, StorageElf, KFuncSymbol, KDSymbol, **ExecSymbol,
           std::move(LCOMeta), KernelMD));
     }
   }
-  return LUTHIER_CREATE_ERROR("Failed to find the metadata for kernel {0}",
-                              *KernelNameOrErr);
+  return llvm::make_error<hsa::HsaError>(llvm::formatv(
+      "Failed to find the metadata for kernel {0}", *KernelNameOrErr));
 }
 
 llvm::Expected<const KernelDescriptor *>
-LoadedCodeObjectKernel::getKernelDescriptor() const {
-  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(
-      luthier::address_t, KernelObject,
-      hsa::ExecutableSymbol(*ExecutableSymbol).getAddress());
-  return reinterpret_cast<const KernelDescriptor *>(KernelObject);
+LoadedCodeObjectKernel::getKernelDescriptor(
+    const ApiTableContainer<::CoreApiTable> &CoreApiTable) const {
+  llvm::Expected<uint64_t> KernelObjectOrErr =
+      executableSymbolGetAddress(CoreApiTable, *ExecutableSymbol);
+  LUTHIER_RETURN_ON_ERROR(KernelObjectOrErr.takeError());
+  return reinterpret_cast<const KernelDescriptor *>(*KernelObjectOrErr);
 }
 
 } // namespace luthier::hsa

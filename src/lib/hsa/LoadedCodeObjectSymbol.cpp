@@ -20,11 +20,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "common/ObjectUtils.hpp"
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/LoadedCodeObject.hpp"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
 #include "luthier/hsa/HsaError.h"
+#include "luthier/hsa/LoadedCodeObject.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
 
@@ -39,30 +39,65 @@ hsa::LoadedCodeObjectSymbol::LoadedCodeObjectSymbol(
 
 llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
 luthier::hsa::LoadedCodeObjectSymbol::fromExecutableSymbol(
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_ven_amd_loader_1_03_pfn_t &LoaderApi,
     hsa_executable_symbol_t Symbol) {
   llvm::Expected<luthier::address_t> LoadedAddressOrErr =
-      hsa::ExecutableSymbol(Symbol).getAddress();
+      hsa::executableSymbolGetAddress(CoreApi, Symbol);
   LUTHIER_RETURN_ON_ERROR(LoadedAddressOrErr.takeError());
-  return fromLoadedAddress(*LoadedAddressOrErr);
+  return fromLoadedAddress(CoreApi, LoaderApi, *LoadedAddressOrErr);
 }
 
-llvm::Expected<hsa_agent_t>
-luthier::hsa::LoadedCodeObjectSymbol::getAgent() const {
-  auto Agent = hsa::LoadedCodeObject(BackingLCO).getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-  return Agent->asHsaType();
-}
+llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
+luthier::hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_ven_amd_loader_1_03_pfn_t &LoaderApi,
+    luthier::address_t LoadedAddress) {
+  hsa_executable_t Executable;
 
-llvm::Expected<hsa_executable_t>
-hsa::LoadedCodeObjectSymbol::getExecutable() const {
-  auto Exec = hsa::LoadedCodeObject(BackingLCO).getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
-  return Exec->asHsaType();
+  // Check which executable this kernel object (address) belongs to
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      LoaderApi.hsa_ven_amd_loader_query_executable(
+          reinterpret_cast<const void *>(LoadedAddress), &Executable),
+      llvm::formatv("Failed to get the executable associated with the loaded "
+                    "address {0:x}",
+                    LoadedAddress)));
+  llvm::SmallVector<hsa_loaded_code_object_t, 4> LCOs;
+  LUTHIER_RETURN_ON_ERROR(
+      executableGetLoadedCodeObjects(LoaderApi, Executable, LCOs));
+
+  auto &COC = hsa::LoadedCodeObjectCache::instance();
+
+  for (const auto &LCO : LCOs) {
+    llvm::SmallVector<std::unique_ptr<LoadedCodeObjectSymbol>> Symbols;
+    LUTHIER_RETURN_ON_ERROR(COC.getLoadedCodeObjectSymbols(LCO, Symbols));
+    for (auto &S : Symbols) {
+      llvm::Expected<luthier::address_t> SLoadedAddrOrErr =
+          S->getLoadedSymbolAddress(LoaderApi);
+      LUTHIER_RETURN_ON_ERROR(SLoadedAddrOrErr.takeError());
+      if (*SLoadedAddrOrErr == LoadedAddress)
+        return std::move(S);
+      if (auto *KernelSymbol =
+              llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(S.get())) {
+        llvm::Expected<const hsa::KernelDescriptor *> KDAddress =
+            KernelSymbol->getKernelDescriptor(CoreApi);
+        LUTHIER_RETURN_ON_ERROR(KDAddress.takeError());
+        if (reinterpret_cast<luthier::address_t>(*KDAddress) == LoadedAddress) {
+          return std::move(S);
+        }
+      }
+    }
+  }
+  return llvm::make_error<hsa::HsaError>(
+      llvm::formatv("Failed to find the Loaded Code Object symbol "
+                    "associated with loaded address {0:x}.",
+                    LoadedAddress));
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
-hsa::LoadedCodeObjectSymbol::getLoadedSymbolContents() const {
-  auto LoadedAddress = getLoadedSymbolAddress();
+hsa::LoadedCodeObjectSymbol::getLoadedSymbolContents(
+    const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const {
+  auto LoadedAddress = getLoadedSymbolAddress(VenLoaderTable);
   LUTHIER_RETURN_ON_ERROR(LoadedAddress.takeError());
 
   auto SymbolSize = Symbol.getSize();
@@ -72,10 +107,11 @@ hsa::LoadedCodeObjectSymbol::getLoadedSymbolContents() const {
 }
 
 llvm::Expected<luthier::address_t>
-hsa::LoadedCodeObjectSymbol::getLoadedSymbolAddress() const {
-  auto LCOWrapper = hsa::LoadedCodeObject(BackingLCO);
+hsa::LoadedCodeObjectSymbol::getLoadedSymbolAddress(
+    const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const {
 
-  auto LoadedMemory = LCOWrapper.getLoadedMemory();
+  auto LoadedMemory =
+      loadedCodeObjectGetLoadedMemory(VenLoaderTable, BackingLCO);
   LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
   auto SymbolElfAddress = Symbol.getAddress();
@@ -101,46 +137,6 @@ size_t hsa::LoadedCodeObjectSymbol::getSize() const { return Symbol.getSize(); }
 
 uint8_t hsa::LoadedCodeObjectSymbol::getBinding() const {
   return Symbol.getBinding();
-}
-
-llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
-hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
-    luthier::address_t LoadedAddress) {
-  hsa_executable_t Executable;
-  const auto &LoaderTable =
-      hsa::HsaRuntimeInterceptor::instance().getHsaVenAmdLoaderTable();
-
-  // Check which executable this kernel object (address) belongs to
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_HSA_SUCCESS_CHECK(LoaderTable.hsa_ven_amd_loader_query_executable(
-          reinterpret_cast<const void *>(LoadedAddress), &Executable)));
-  llvm::SmallVector<LoadedCodeObject, 4> LCOs;
-  LUTHIER_RETURN_ON_ERROR(
-      hsa::Executable(Executable).getLoadedCodeObjects(LCOs));
-
-  for (const auto &LCO : LCOs) {
-    llvm::SmallVector<std::unique_ptr<LoadedCodeObjectSymbol>> Symbols;
-    LUTHIER_RETURN_ON_ERROR(LCO.getLoadedCodeObjectSymbols(Symbols));
-    for (auto &S : Symbols) {
-      llvm::Expected<luthier::address_t> SLoadedAddrOrErr =
-          S->getLoadedSymbolAddress();
-      LUTHIER_RETURN_ON_ERROR(SLoadedAddrOrErr.takeError());
-      if (*SLoadedAddrOrErr == LoadedAddress)
-        return std::move(S);
-      if (auto *KernelSymbol =
-              llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(S.get())) {
-        llvm::Expected<const hsa::KernelDescriptor *> KDAddress =
-            KernelSymbol->getKernelDescriptor();
-        LUTHIER_RETURN_ON_ERROR(KDAddress.takeError());
-        if (reinterpret_cast<luthier::address_t>(*KDAddress) == LoadedAddress) {
-          return std::move(S);
-        }
-      }
-    }
-  }
-  return LUTHIER_CREATE_ERROR("Failed to find the Loaded Code Object symbol "
-                              "associated with loaded address {0:x}.",
-                              LoadedAddress);
 }
 
 void hsa::LoadedCodeObjectSymbol::print(llvm::raw_ostream &OS) const {

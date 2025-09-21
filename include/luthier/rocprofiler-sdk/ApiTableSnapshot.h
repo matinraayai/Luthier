@@ -157,7 +157,7 @@ public:
 
   /// \returns the extension table snapshot; Will report a fatal error if the
   /// snapshot has not been initialized by rocprofiler-sdk
-  const HsaExtensionTableSnapshot &getTable() const {
+  const ExtensionApiTableType &getTable() const {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         wasRegistrationCallbackInvoked(), "Snapshot is not initialized"));
     return ExtensionTable;

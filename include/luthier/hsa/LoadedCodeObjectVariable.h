@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LOADED_CODE_OBJECT_VARIABLE_H
 #define LUTHIER_LOADED_CODE_OBJECT_VARIABLE_H
-#include "LoadedCodeObjectSymbol.h"
+#include "luthier/hsa/LoadedCodeObjectSymbol.h"
 
 namespace luthier::hsa {
 
@@ -45,7 +45,9 @@ private:
 
 public:
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
-  create(hsa_loaded_code_object_t LCO,
+  create(const ApiTableContainer<::CoreApiTable> &CoreApiTable,
+         const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderApi,
+         hsa_loaded_code_object_t LCO,
          llvm::object::ELF64LEObjectFile &StorageElf,
          llvm::object::ELFSymbolRef VarSymbol);
 

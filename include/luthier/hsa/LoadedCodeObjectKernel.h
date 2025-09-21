@@ -18,14 +18,12 @@
 /// This file defines the \c LoadedCodeObjectKernel under the \c luthier::hsa
 /// namespace, which represents all kernels inside a \c hsa::LoadedCodeObject.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_LOADED_CODE_OBJECT_KERNEL
-#define LUTHIER_LOADED_CODE_OBJECT_KERNEL
-#include "LoadedCodeObjectSymbol.h"
-#include "Metadata.h"
+#ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_KERNEL_H
+#define LUTHIER_HSA_LOADED_CODE_OBJECT_KERNEL_H
+#include "luthier/hsa/LoadedCodeObjectSymbol.h"
+#include "luthier/hsa/Metadata.h"
 
 namespace luthier::hsa {
-
-class LoadedCodeObject;
 
 class KernelDescriptor;
 
@@ -76,7 +74,9 @@ public:
   /// \param Metadata the Metadata of the kernel, cached internally by Luthier
   /// \return on success
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
-  create(hsa_loaded_code_object_t LCO,
+  create(const ApiTableContainer<::CoreApiTable> &CoreApiTable,
+         const hsa_ven_amd_loader_1_01_pfn_t &VenLoaderApi,
+         hsa_loaded_code_object_t LCO,
          llvm::object::ELF64LEObjectFile &StorageElf,
          std::shared_ptr<md::Metadata> LCOMeta,
          llvm::object::ELFSymbolRef KFuncSymbol,
@@ -90,8 +90,8 @@ public:
 
   /// \return a pointer to the \c hsa::KernelDescriptor of the kernel on the
   /// agent it is loaded on
-  [[nodiscard]] llvm::Expected<const KernelDescriptor *>
-  getKernelDescriptor() const;
+  [[nodiscard]] llvm::Expected<const KernelDescriptor *> getKernelDescriptor(
+      const ApiTableContainer<::CoreApiTable> &CoreApiTable) const;
 
   /// \return the parsed \c hsa::md::Kernel::Metadata of the kernel
   [[nodiscard]] const hsa::md::Kernel::Metadata &getKernelMetadata() const {

@@ -18,42 +18,18 @@
 /// This file implements the \c LoadedCodeObjectDeviceFunction under the \c
 /// luthier::hsa namespace.
 //===----------------------------------------------------------------------===//
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/LoadedCodeObject.hpp"
 
 #include <hsa/hsa.h>
-#include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
 
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
 LoadedCodeObjectExternSymbol::create(
+    const ApiTableContainer<::CoreApiTable> &CoreApiTable,
+    const hsa_ven_amd_loader_1_01_pfn_t &VenLoaderApi,
     hsa_loaded_code_object_t LCO, llvm::object::ELF64LEObjectFile &StorageElf,
     llvm::object::ELFSymbolRef ExternSymbol) {
-  hsa::LoadedCodeObject LCOWrapper(LCO);
-  // Get the executable symbol associated with this external symbol
-  auto Exec = LCOWrapper.getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
 
-  auto Agent = LCOWrapper.getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
-
-  auto Name = ExternSymbol.getName();
-  LUTHIER_RETURN_ON_ERROR(Name.takeError());
-
-  auto ExecSymbol = Exec->getExecutableSymbolByName(*Name, *Agent);
-  LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(ExecSymbol->has_value(),
-                          "Failed to locate the external symbol {0} in its "
-                          "executable using its name",
-                          *Name));
-
-  return std::unique_ptr<LoadedCodeObjectExternSymbol>(
-      new LoadedCodeObjectExternSymbol(LCO, StorageElf, ExternSymbol,
-                                       ExecSymbol.get()->asHsaType()));
 }
 
 } // namespace luthier::hsa

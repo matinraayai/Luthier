@@ -90,13 +90,13 @@ executableSymbolGetAgent(const ApiTableContainer<::CoreApiTable> &CoreApi,
 
 template <> struct llvm::DenseMapInfo<hsa_executable_symbol_t> {
   static hsa_executable_symbol_t getEmptyKey() {
-    return hsa_executable_symbol_t{{DenseMapInfo<
-        decltype(hsa_executable_symbol_t::handle)>::getEmptyKey()}};
+    return hsa_executable_symbol_t{DenseMapInfo<
+        decltype(hsa_executable_symbol_t::handle)>::getEmptyKey()};
   }
 
   static hsa_executable_symbol_t getTombstoneKey() {
-    return hsa_executable_symbol_t{{DenseMapInfo<
-        decltype(hsa_executable_symbol_t::handle)>::getTombstoneKey()}};
+    return hsa_executable_symbol_t{DenseMapInfo<
+        decltype(hsa_executable_symbol_t::handle)>::getTombstoneKey()};
   }
 
   static unsigned getHashValue(const hsa_executable_symbol_t &Symbol) {

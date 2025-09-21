@@ -19,41 +19,38 @@
 /// luthier::hsa namespace.
 //===----------------------------------------------------------------------===//
 
-#include "hsa/Executable.hpp"
-#include "hsa/ExecutableSymbol.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-
+#include "luthier/hsa/LoadedCodeObjectVariable.h"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
+#include "luthier/hsa/LoadedCodeObject.h"
 #include <hsa/hsa.h>
-#include <luthier/hsa/LoadedCodeObjectVariable.h>
 
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectVariable>>
-LoadedCodeObjectVariable::create(hsa_loaded_code_object_s LCO,
-                                 llvm::object::ELF64LEObjectFile &StorageElf,
-                                 llvm::object::ELFSymbolRef VarSymbol) {
-  hsa::LoadedCodeObject LCOWrapper(LCO);
-  // Get the kernel symbol associated with this kernel
-  auto Exec = LCOWrapper.getExecutable();
-  LUTHIER_RETURN_ON_ERROR(Exec.takeError());
+LoadedCodeObjectVariable::create(
+    const ApiTableContainer<::CoreApiTable> &CoreApiTable,
+    const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderApi,
+    hsa_loaded_code_object_s LCO, llvm::object::ELF64LEObjectFile &StorageElf,
+    llvm::object::ELFSymbolRef VarSymbol) {
+  llvm::Expected<hsa_executable_t> ExecOrErr =
+      hsa::loadedCodeObjectGetExecutable(VenLoaderApi, LCO);
+  LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
 
-  auto Agent = LCOWrapper.getAgent();
-  LUTHIER_RETURN_ON_ERROR(Agent.takeError());
+  llvm::Expected<hsa_agent_t> AgentOrErr =
+      hsa::loadedCodeObjectGetAgent(VenLoaderApi, LCO);
+  LUTHIER_RETURN_ON_ERROR(AgentOrErr.takeError());
 
   auto Name = VarSymbol.getName();
   LUTHIER_RETURN_ON_ERROR(Name.takeError());
 
-  auto ExecSymbol = Exec->getExecutableSymbolByName(*Name, *Agent);
+  auto ExecSymbol = hsa::executableGetSymbolByName(CoreApiTable, *ExecOrErr,
+                                                   *Name, *AgentOrErr);
   LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
 
-  auto ExecSymbolAsOptionalHandle =
-      ExecSymbol->has_value() ? std::make_optional<hsa_executable_symbol_t>(
-                                    ExecSymbol.get()->asHsaType())
-                              : std::nullopt;
-
-  return std::unique_ptr<LoadedCodeObjectVariable>(new LoadedCodeObjectVariable(
-      LCO, StorageElf, VarSymbol, ExecSymbolAsOptionalHandle));
+  return std::unique_ptr<LoadedCodeObjectVariable>(
+      new LoadedCodeObjectVariable(LCO, StorageElf, VarSymbol, *ExecSymbol));
 }
 
 } // namespace luthier::hsa

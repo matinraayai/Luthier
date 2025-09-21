@@ -21,6 +21,7 @@
 #ifndef LUTHIER_HSA_EXECUTABLE_H
 #define LUTHIER_HSA_EXECUTABLE_H
 #include "luthier/hsa/ApiTable.h"
+#include "luthier/hsa/HsaError.h"
 #include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormatVariadic.h>
@@ -127,9 +128,7 @@ executableGetState(const ApiTableContainer<::CoreApiTable> &CoreApi,
 /// \return \c llvm::Error indicating the success or failure of the operation
 template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
 llvm::Error executableGetLoadedCodeObjects(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER, LoaderTableType>
-        &LoaderApi,
-    hsa_executable_t Exec,
+    LoaderTableType &LoaderApi, hsa_executable_t Exec,
     llvm::SmallVectorImpl<hsa_loaded_code_object_t> &LCOs) {
   auto Iterator = [](hsa_executable_t, hsa_loaded_code_object_t LCO,
                      void *Data) -> hsa_status_t {
@@ -141,12 +140,11 @@ llvm::Error executableGetLoadedCodeObjects(
     return HSA_STATUS_SUCCESS;
   };
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApi.callFunction<
-          &LoaderTableType::
-              hsa_ven_amd_loader_executable_iterate_loaded_code_objects>(
+      LoaderApi.hsa_ven_amd_loader_executable_iterate_loaded_code_objects(
           Exec, Iterator, &LCOs),
       llvm::formatv(
-          "Failed to iterate over the code objects of executable {0:x}", Exec));
+          "Failed to iterate over the code objects of executable {0:x}",
+          Exec.handle));
 }
 
 /// Looks up the \c hsa_executable_symbol_t by its \p Name in the Executable

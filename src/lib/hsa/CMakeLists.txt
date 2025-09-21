@@ -17,17 +17,16 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
 
 add_library(LuthierHSA OBJECT
         ${CMAKE_CURRENT_BINARY_DIR}/HsaRuntimeInterceptor.cpp
+        Agent.cpp
         Executable.cpp
-        GpuAgent.cpp
         ExecutableSymbol.cpp
-        LoadedCodeObject.cpp
+        LoadedCodeObjectCache.cpp
         HsaError.cpp
         ISA.cpp
         Instr.cpp
         CodeObjectReader.cpp
         KernelDescriptor.cpp
         hsa.cpp
-        ExecutableBackedObjectsCache.cpp
         LoadedCodeObjectSymbol.cpp
         LoadedCodeObjectKernel.cpp
         LoadedCodeObjectVariable.cpp
