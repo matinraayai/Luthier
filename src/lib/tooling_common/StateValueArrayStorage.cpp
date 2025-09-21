@@ -102,37 +102,37 @@ StateValueArrayStorage::createSVAStorage(
     StateValueArrayStorage::StorageKind Scheme) {
   switch (Scheme) {
   case SVS_SINGLE_VGPR:
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         VGPRs.size() >= 1,
         "Insufficient number of VGPRs for single VGPR SVA storage."));
     return std::make_unique<VGPRStateValueArrayStorage>(VGPRs[0]);
   case SVS_ONE_AGPR_post_gfx908:
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         AGPRs.size() >= 1,
         "Insufficient number of AGPRs for single AGPR SVA storage."));
     return std::make_unique<SingleAGPRStateValueArrayStorage>(AGPRs[0]);
   case SVS_TWO_AGPRs_pre_gfx908:
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         AGPRs.size() >= 2,
         "Insufficient number of AGPRs for two AGPR SVA storage."));
     return std::make_unique<TwoAGPRValueStorage>(AGPRs[0], AGPRs[1]);
   case SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908:
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         AGPRs.size() >= 1, "Insufficient number of AGPRs for single AGPR with "
                            "three SGPR SVA storage."));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         SGPRs.size() >= 3, "Insufficient number of AGPRs for single AGPR with "
                            "three SGPR SVA storage."));
     return std::make_unique<AGPRWithThreeSGPRSValueStorage>(AGPRs[0], SGPRs[0],
                                                             SGPRs[1], SGPRs[2]);
   case SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs:
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         SGPRs.size() >= 3, "Insufficient number of AGPRs for spilled with "
                            "three SGPR SVA storage."));
     return std::make_unique<SpilledWithThreeSGPRsValueStorage>(
         SGPRs[0], SGPRs[1], SGPRs[2]);
   case SVS_SPILLED_WITH_ONE_SGPR_architected_fs:
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         SGPRs.size() >= 1, "Insufficient number of SGPRs for spilled with "
                            "single SGPR SVA storage."));
     return std::make_unique<SpilledWithOneSGPRsValueStorage>(SGPRs[0]);

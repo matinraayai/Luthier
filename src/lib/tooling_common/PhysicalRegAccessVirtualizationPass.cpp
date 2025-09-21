@@ -18,8 +18,8 @@
 /// This file implements Luthier's Physical Reg Access Virtualization Pass.
 //===----------------------------------------------------------------------===//
 #include "tooling_common/PhysicalRegAccessVirtualizationPass.hpp"
-#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include "luthier/consts.h"
+#include "luthier/intrinsic/IntrinsicProcessor.h"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
 #include "tooling_common/StateValueArraySpecs.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
@@ -237,7 +237,8 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   auto &IPIP =
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
-  auto &RegLiveness = TargetMAM.getResult<AMDGPURegLivenessAnalysis>(TargetModule);
+  auto &RegLiveness =
+      TargetMAM.getResult<AMDGPURegLivenessAnalysis>(TargetModule);
 
   const auto &CG = TargetMAM.getResult<LRCallGraphAnalysis>(TargetModule);
 
@@ -303,11 +304,12 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
   // Get the originally calculated live-in registers at the function level
   // and add them to the final set
   auto *MILivePhysRegs = RegLiveness.getMFLevelInstrLiveIns(*InstPointMI);
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       MILivePhysRegs != nullptr,
-      "Failed to find the physical live-in regs for machine instruction {0} "
-      "inside the lifted representation.",
-      *InstPointMI));
+      llvm::formatv("Failed to find the physical live-in regs for machine "
+                    "instruction {0} "
+                    "inside the lifted representation.",
+                    *InstPointMI)));
 
   LLVM_DEBUG(
       llvm::dbgs()
@@ -345,12 +347,12 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
               if (LRMI.isCall()) {
                 auto *LRMILivePhysRegs =
                     RegLiveness.getMFLevelInstrLiveIns(LRMI);
-                LUTHIER_REPORT_FATAL_ON_ERROR(
-                    LUTHIER_ERROR_CHECK(LRMILivePhysRegs != nullptr,
-                                        "Failed to find the physical live-in "
-                                        "regs for machine instruction {0} "
-                                        "inside the lifted representation.",
-                                        LRMI));
+                LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+                    LRMILivePhysRegs != nullptr,
+                    llvm::formatv("Failed to find the physical live-in "
+                                  "regs for machine instruction {0} "
+                                  "inside the lifted representation.",
+                                  LRMI)));
                 add32BitRegsOfLivePhysRegsToDenseSet(
                     *LRMILivePhysRegs, InstPointTRI,
                     PhysicalLiveInsForInjectedPayload);
@@ -367,7 +369,7 @@ bool PhysicalRegAccessVirtualizationPass::runOnMachineFunction(
            CG.getCallGraphNode(InstPointMF).CalleeFunctions) {
         auto *CallMILivePhysRegs = RegLiveness.getMFLevelInstrLiveIns(*CallMI);
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            LUTHIER_ERROR_CHECK(CallMILivePhysRegs != nullptr, ""));
+            LUTHIER_GENERIC_ERROR_CHECK(CallMILivePhysRegs != nullptr, "CallMILivePhysRegs is nullptr"));
         add32BitRegsOfLivePhysRegsToDenseSet(*CallMILivePhysRegs, InstPointTRI,
                                              PhysicalLiveInsForInjectedPayload);
       }

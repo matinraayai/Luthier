@@ -425,11 +425,11 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   const auto &ST = MFs[0]->getSubtarget<llvm::GCNSubtarget>();
   llvm::SmallVector<StateValueArrayStorage::StorageKind, 6> SupportedStorage;
   getSupportedSVAStorageList(ST, SupportedStorage);
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(!SupportedStorage.empty(),
-                          "Failed to find compatible state value array storage "
-                          "for ST {0}, CPU {1}.",
-                          ST.getTargetTriple().str(), ST.getCPU()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      !SupportedStorage.empty(),
+      llvm::formatv("Failed to find compatible state value array storage "
+                    "for ST {0}, CPU {1}.",
+                    ST.getTargetTriple().str(), ST.getCPU())));
   // Query the maximum number of SGPRs and AGPRs in all storage methods;
   // This saves us time during register scavenging
   int MaxNumAGPRsUsedByAllStorage = 0;
@@ -474,10 +474,11 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     for (const auto &[InsertionPointMI, HookFunction] : IPIP.mi_payload()) {
       auto *HookLiveRegs =
           RegLiveness.getMFLevelInstrLiveIns(*InsertionPointMI);
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           HookLiveRegs != nullptr,
-          "Failed to get the Live Physical register set for MI {0}.",
-          *InsertionPointMI));
+          llvm::formatv(
+              "Failed to get the Live Physical register set for MI {0}.",
+              *InsertionPointMI)));
       auto [VGPRLocation, ClobbersAppReg] =
           selectVGPRLoadLocationForInjectedPayload(
               *InsertionPointMI, *StateValueFixedLocation, *HookLiveRegs,
@@ -504,10 +505,10 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       // to the last available SGPR/VGPR/AGPR
       auto FirstMILiveIns =
           RegLiveness.getMFLevelInstrLiveIns(*MF->begin()->begin());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           FirstMILiveIns != nullptr,
-          "Failed to obtain the live physical regs for MI {0}.",
-          *MF->begin()->begin()));
+          llvm::formatv("Failed to obtain the live physical regs for MI {0}.",
+                        *MF->begin()->begin())));
 
       // The current location of the state value register
       std::shared_ptr<StateValueArrayStorage> SVS =
@@ -516,12 +517,12 @@ llvm::Error SVStorageAndLoadLocations::calculate(
               SupportedStorage, MaxNumAGPRsUsedByAllStorage,
               MaxNumSGPRsUsedByAllStorage);
 
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           SVS != nullptr,
-          "Failed to get a state value array storage for MI {0}.",
-          *MF->begin()->begin()));
+          llvm::formatv("Failed to get a state value array storage for MI {0}.",
+                        *MF->begin()->begin())));
 
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           llvm::isa<VGPRStateValueArrayStorage>(SVS.get()) ||
               llvm::isa<SingleAGPRStateValueArrayStorage>(SVS.get()),
           "The entry SVS must be stored in a VGPR or an AGPR."));
@@ -540,9 +541,11 @@ llvm::Error SVStorageAndLoadLocations::calculate(
           if (IPIP.contains(MI))
             HookInsertionPointsInCurrentSegment.insert(&MI);
           auto *InstrLiveRegs = RegLiveness.getMFLevelInstrLiveIns(MI);
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
               InstrLiveRegs != nullptr,
-              "Failed to get the live physical register set for MI {0}.", MI));
+              llvm::formatv(
+                  "Failed to get the live physical register set for MI {0}.",
+                  MI)));
           // - If we have spilled the state value reg and this instruction
           // will require a hook to be inserted, then we try to relocate the
           // SVS. In this instance, since the hook will have to load the value
@@ -588,7 +591,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
                 MRI, *FirstMILiveIns, AccessedPhysicalRegistersNotInLiveIns,
                 SupportedStorage, MaxNumAGPRsUsedByAllStorage,
                 MaxNumSGPRsUsedByAllStorage);
-            LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+            LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
                 SVS != nullptr, "Failed to relocate the SVA storage."));
           }
         }

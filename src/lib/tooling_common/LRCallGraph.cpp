@@ -18,7 +18,6 @@
 /// This file implements the \c LRCallgraph class.
 //===----------------------------------------------------------------------===//
 #include "luthier/tooling/LRCallgraph.h"
-#include "hsa/LoadedCodeObject.hpp"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>

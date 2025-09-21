@@ -175,11 +175,12 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
             auto Out =
                 RegAccessVirtualizationPass.getMCRegLocationInMBB(Reg, MBB);
             if (!Out) {
-              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_CREATE_ERROR(
-                  "Failed to find the virtual register associated with "
-                  "register {0} in MBB {1}.",
-                  llvm::printReg(Reg, MF.getSubtarget().getRegisterInfo()),
-                  MBB.getName()));
+              LUTHIER_REPORT_FATAL_ON_ERROR(
+                  llvm::make_error<GenericLuthierError>(llvm::formatv(
+                      "Failed to find the virtual register associated with "
+                      "register {0} in MBB {1}.",
+                      llvm::printReg(Reg, MF.getSubtarget().getRegisterInfo()),
+                      MBB.getName())));
             }
             return Out;
           }

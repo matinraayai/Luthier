@@ -22,6 +22,7 @@
 #include "luthier/common/ErrorCheck.h"
 #include <SIMachineFunctionInfo.h>
 #include <llvm/ADT/DenseMap.h>
+#include <luthier/common/GenericLuthierError.h>
 #include <luthier/common/LuthierError.h>
 
 namespace luthier::stateValueArray {
@@ -113,17 +114,21 @@ getFrameStoreSlots() {
 
 llvm::Expected<unsigned short>
 getKernelArgumentLaneIdStoreSlotBeginForWave64(KernelArgumentType Arg) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       WaveFront64KernelArgumentStoreSlots.contains(Arg),
-      "Arg enum {0} does not have an entry in the wave64 state value array."));
+      llvm::formatv("Arg enum {0} does not have an entry in the wave64 state "
+                    "value array.",
+                    Arg)));
   return WaveFront64KernelArgumentStoreSlots.at(Arg).first;
 }
 
 llvm::Expected<unsigned short>
 getKernelArgumentStoreSlotSizeForWave64(KernelArgumentType Arg) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       WaveFront64KernelArgumentStoreSlots.contains(Arg),
-      "Arg enum {0} does not have an entry in the wave64 state value array."));
+      llvm::formatv("Arg enum {0} does not have an entry in the wave64 state "
+                    "value array.",
+                    Arg)));
   return WaveFront64KernelArgumentStoreSlots.at(Arg).second;
 }
 
