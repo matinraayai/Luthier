@@ -18,9 +18,7 @@
 /// This file defines the \c LoadedCodeObjectKernel under the \c luthier::hsa
 /// namespace.
 //===----------------------------------------------------------------------===//
-
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
-#include "hsa/HsaRuntimeInterceptor.hpp"
 #include "luthier/hsa/Agent.h"
 #include "luthier/hsa/Executable.h"
 #include "luthier/hsa/ExecutableSymbol.h"
@@ -33,9 +31,9 @@ namespace luthier::hsa {
 llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
 LoadedCodeObjectKernel::create(
     const ApiTableContainer<::CoreApiTable> &CoreApiTable,
-    const hsa_ven_amd_loader_1_01_pfn_t &VenLoaderApi,
+    const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderApi,
     hsa_loaded_code_object_s LCO, llvm::object::ELF64LEObjectFile &StorageElf,
-    std::shared_ptr<md::Metadata> LCOMeta,
+    std::unique_ptr<amdgpu::hsamd::Kernel::Metadata> MD,
     llvm::object::ELFSymbolRef KFuncSymbol,
     llvm::object::ELFSymbolRef KDSymbol) {
   // Get the kernel symbol associated with this kernel
@@ -62,15 +60,12 @@ LoadedCodeObjectKernel::create(
   llvm::Expected<llvm::StringRef> KernelNameOrErr = KDSymbol.getName();
   LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
 
-  for (auto &KernelMD : LCOMeta->Kernels) {
-    if (KernelMD.Symbol == *KernelNameOrErr) {
-      return std::unique_ptr<LoadedCodeObjectKernel>(new LoadedCodeObjectKernel(
-          LCO, StorageElf, KFuncSymbol, KDSymbol, **ExecSymbol,
-          std::move(LCOMeta), KernelMD));
-    }
-  }
-  return llvm::make_error<hsa::HsaError>(llvm::formatv(
-      "Failed to find the metadata for kernel {0}", *KernelNameOrErr));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      MD->Name == *KernelNameOrErr,
+      "Name of the kernel in HSA and Metadata doesn't match"));
+
+  return std::unique_ptr<LoadedCodeObjectKernel>(new LoadedCodeObjectKernel(
+      LCO, StorageElf, KFuncSymbol, KDSymbol, **ExecSymbol, std::move(MD)));
 }
 
 llvm::Expected<const KernelDescriptor *>

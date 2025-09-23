@@ -20,15 +20,16 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMGR_COMGR_ERROR_H
 #define LUTHIER_COMGR_COMGR_ERROR_H
-#include <amd_comgr/amd_comgr.h>
 #include "luthier/common/ROCmLibraryError.h"
+#include <amd_comgr/amd_comgr.h>
 
 namespace luthier {
 
 /// \brief Encapsulates errors originating from AMD Comgr library
-class ComgrError final : RocmLibraryError {
+class ComgrError final : public RocmLibraryError {
   const std::optional<amd_comgr_status_t> Error;
 
+public:
   ComgrError(std::string ErrorMsg,
              const std::optional<amd_comgr_status_t> Error,
              const std::source_location ErrorLocation =
@@ -46,15 +47,13 @@ class ComgrError final : RocmLibraryError {
       : RocmLibraryError(std::move(ErrorMsg.str()), ErrorLocation,
                          std::move(StackTrace)),
         Error(Error) {};
-
-public:
   static char ID;
 
   void log(llvm::raw_ostream &OS) const override;
 };
 
 #define LUTHIER_COMGR_CALL_ERROR_CHECK(Expr, ErrorMsg)                         \
-  [&]() {                                                                      \
+  [&]() -> llvm::Error {                                                       \
     if (const amd_comgr_status_t Status = Expr;                                \
         Status != AMD_COMGR_STATUS_SUCCESS) {                                  \
       return llvm::make_error<ComgrError>(ErrorMsg, Status);                   \

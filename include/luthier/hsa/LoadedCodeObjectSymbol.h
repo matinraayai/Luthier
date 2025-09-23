@@ -23,8 +23,6 @@
 #ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
 #define LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
 #include "luthier/hsa/ApiTable.h"
-#include "luthier/hsa/LoadedCodeObjectCache.h"
-#include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
@@ -131,7 +129,7 @@ public:
   template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
   [[nodiscard]] llvm::Expected<hsa_agent_t>
   getAgent(const LoaderTableType &VenLoaderTable) const {
-    hsa::loadedCodeObjectGetAgent(VenLoaderTable, BackingLCO);
+    return hsa::loadedCodeObjectGetAgent(VenLoaderTable, BackingLCO);
   }
 
   /// \return Loaded Code Object of this symbol
@@ -158,8 +156,8 @@ public:
 
   /// \return an \c llvm::ArrayRef<uint8_t> encapsulating the contents of
   /// this symbol on the \c GpuAgent it was loaded onto
-  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
-  getLoadedSymbolContents(const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const;
+  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getLoadedSymbolContents(
+      const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const;
 
   [[nodiscard]] llvm::Expected<luthier::address_t> getLoadedSymbolAddress(
       const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const;

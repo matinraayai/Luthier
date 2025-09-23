@@ -51,7 +51,7 @@ private:
 public:
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
   create(const ApiTableContainer<::CoreApiTable> &CoreApiTable,
-         const hsa_ven_amd_loader_1_01_pfn_t &VenLoaderApi,
+         const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderApi,
          hsa_loaded_code_object_t LCO,
          llvm::object::ELF64LEObjectFile &StorageElf,
          llvm::object::ELFSymbolRef ExternSymbol) {

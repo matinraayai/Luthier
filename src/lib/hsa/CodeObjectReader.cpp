@@ -28,10 +28,11 @@ namespace luthier::hsa {
 llvm::Expected<hsa_code_object_reader_t> codeObjectReaderCreateFromMemory(
     const ApiTableContainer<::CoreApiTable> &CoreApi, llvm::StringRef Elf) {
   hsa_code_object_reader_t Reader;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
       CoreApi.callFunction<
           &::CoreApiTable::hsa_code_object_reader_create_from_memory_fn>(
-          Elf.data(), Elf.size(), &Reader)));
+          Elf.data(), Elf.size(), &Reader),
+      "Failed to create code object reader from memory"));
   return Reader;
 }
 

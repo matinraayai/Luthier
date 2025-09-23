@@ -32,7 +32,13 @@
 namespace luthier::hsa {
 
 class PacketMonitor : public Singleton<PacketMonitor> {
-protected:
+public:
+  typedef std::function<void(const hsa_queue_t &, uint64_t,
+                             llvm::ArrayRef<AqlPacket>,
+                             hsa_amd_queue_intercept_packet_writer)>
+      CallbackType;
+
+private:
   const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
 
   const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtSnapshot;
@@ -40,12 +46,7 @@ protected:
   const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &LoaderApiSnapshot;
 
-  typedef std::function<void(const hsa_queue_t &, uint64_t,
-                             llvm::ArrayRef<AqlPacket>,
-                             hsa_amd_queue_intercept_packet_writer)>
-      CallbackType;
-
-  CallbackType CB;
+  const CallbackType CB;
 
   std::unique_ptr<
       const rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>
@@ -71,9 +72,9 @@ public:
       const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtSnapshot,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &LoaderApiSnapshot,
-      llvm::Error &Err)
+      CallbackType CB, llvm::Error &Err)
       : CoreApiSnapshot(CoreApiSnapshot), AmdExtSnapshot(AmdExtSnapshot),
-        LoaderApiSnapshot(LoaderApiSnapshot) {
+        LoaderApiSnapshot(LoaderApiSnapshot), CB(std::move(CB)) {
     HsaApiTableInterceptor = std::make_unique<
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
         Err,

@@ -56,12 +56,9 @@ llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
 /// HSA runtime on success
 /// \sa hsa_ven_amd_loader_iterate_executables
 template <typename ExtensionApiTableType = hsa_ven_amd_loader_1_03_pfn_t>
-llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER,
-                                  ExtensionApiTableType> &LoaderApi) {
+llvm::Expected<std::vector<hsa_executable_t>>
+getAllExecutables(const ExtensionApiTableType &LoaderApi) {
   typedef std::vector<hsa_executable_t> OutType;
-  using ExtTableType =
-      ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType;
   OutType Out;
   auto Iterator = [](hsa_executable_t Exec, void *Data) {
     // Remove executables with nullptr handles
@@ -74,9 +71,7 @@ llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
     return HSA_STATUS_SUCCESS;
   };
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApi
-          .callFunction<&ExtTableType::hsa_ven_amd_loader_iterate_executables>(
-              Iterator, &Out),
+      LoaderApi.hsa_ven_amd_loader_iterate_executables(Iterator, &Out),
       "Failed to iterate over HSA executables");
 }
 
@@ -90,14 +85,11 @@ llvm::Expected<std::vector<hsa_executable_t>> getAllExecutables(
 /// \sa hsa_ven_amd_loader_query_host_address
 template <typename T,
           typename ExtensionApiTableType = hsa_ven_amd_loader_1_00_pfn_t>
-llvm::Expected<T *> queryHostAddress(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER,
-                                  ExtensionApiTableType> &LoaderApi,
-    T *DeviceAddress) {
+llvm::Expected<T *> queryHostAddress(const ExtensionApiTableType &LoaderApi,
+                                     T *DeviceAddress) {
   const T *HostAddress;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApi.callFunction<
-          &ExtensionApiTableType::hsa_ven_amd_loader_query_host_address>(
+      LoaderApi.hsa_ven_amd_loader_query_host_address(
           DeviceAddress, reinterpret_cast<const void **>(&HostAddress)),
       llvm::formatv(
           "Failed to query the host address associated with address {0:x}.",
@@ -115,10 +107,9 @@ llvm::Expected<T *> queryHostAddress(
 /// \return Expects a \c llvm::ArrayRef<uint8_t> pointing to the code
 /// accessible on host memory on success
 template <typename ExtensionApiTableType = hsa_ven_amd_loader_1_00_pfn_t>
-llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER,
-                                  ExtensionApiTableType> &LoaderApi,
-    llvm::ArrayRef<uint8_t> Code) {
+llvm::Expected<llvm::ArrayRef<uint8_t>>
+convertToHostEquivalent(const ExtensionApiTableType &LoaderApi,
+                        llvm::ArrayRef<uint8_t> Code) {
   llvm::Expected<const unsigned char *> CodeStartHostAddressOrErr =
       queryHostAddress(LoaderApi, Code.data());
   LUTHIER_RETURN_ON_ERROR(CodeStartHostAddressOrErr.takeError());
@@ -134,10 +125,9 @@ llvm::Expected<llvm::ArrayRef<uint8_t>> convertToHostEquivalent(
 /// \return Expects a \c llvm::StringRef pointing to the code accessible on
 /// host memory
 template <typename ExtensionApiTableType = hsa_ven_amd_loader_1_00_pfn_t>
-llvm::Expected<llvm::StringRef> convertToHostEquivalent(
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER,
-                                  ExtensionApiTableType> &LoaderApi,
-    llvm::StringRef Code) {
+llvm::Expected<llvm::StringRef>
+convertToHostEquivalent(const ExtensionApiTableType &LoaderApi,
+                        llvm::StringRef Code) {
   llvm::Expected<llvm::ArrayRef<uint8_t>> HostAccessibleCodeOrErr =
       convertToHostEquivalent(LoaderApi, llvm::arrayRefFromStringRef(Code));
   LUTHIER_RETURN_ON_ERROR(HostAccessibleCodeOrErr.takeError());
@@ -151,15 +141,13 @@ llvm::Expected<llvm::StringRef> convertToHostEquivalent(
 template <typename ExtensionApiTableType = hsa_ven_amd_loader_1_01_pfn_t>
 [[nodiscard]] llvm::Expected<std::tuple<
     hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
-getExecutableDefinition(
-    const ApiTableContainer<::CoreApiTable> &CoreApi,
-    const ExtensionTableContainer<HSA_EXTENSION_AMD_LOADER> &LoaderApi,
-    uint64_t Address) {
+getExecutableDefinition(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                        const ExtensionApiTableType &LoaderApi,
+                        uint64_t Address) {
   hsa_executable_t Executable;
   // Check which executable this kernel object (address) belongs to
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      LoaderApi.callFunction<
-          &ExtensionApiTableType::hsa_ven_amd_loader_query_executable>(
+      LoaderApi.hsa_ven_amd_loader_query_executable(
           reinterpret_cast<const void *>(Address), &Executable),
       llvm::formatv(
           "Failed to get the executable associated with address {0:x}.",

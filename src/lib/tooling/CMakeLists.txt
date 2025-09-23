@@ -7,7 +7,7 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierLLVM>
         $<TARGET_OBJECTS:LuthierIntrinsic>
         $<TARGET_OBJECTS:LuthierCommon>
-        $<TARGET_OBJECTS:LuthierToolingCommon> luthier.cpp Controller.cpp
+        $<TARGET_OBJECTS:LuthierToolingCommon> luthier.cpp Context.cpp
 )
 
 target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
