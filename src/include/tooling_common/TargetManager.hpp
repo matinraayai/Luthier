@@ -102,11 +102,12 @@ class TargetManager : public Singleton<TargetManager> {
 private:
   mutable std::unordered_map<hsa_isa_t, TargetInfo> LLVMTargetInfo{};
 
-  rocprofiler::HsaApiTableSnapshot<::CoreApiTable> CoreApiTableSnapshot;
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiTableSnapshot;
 
 public:
   /// Initializes the AMDGPU LLVM target
-  explicit TargetManager(llvm::Error &Err);
+  explicit TargetManager(const rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
+                             &CoreApiTableSnapshot);
 
   /// Default destructor; Destroys all Target descriptors and shuts down LLVM
   ~TargetManager() override;

@@ -42,8 +42,10 @@ namespace luthier {
 
 template <> TargetManager *Singleton<TargetManager>::Instance{nullptr};
 
-TargetManager::TargetManager(llvm::Error &Err)
-    : Singleton<TargetManager>(), CoreApiTableSnapshot(Err) {
+TargetManager::TargetManager(
+    const rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
+        &CoreApiTableSnapshot)
+    : Singleton<TargetManager>(), CoreApiTableSnapshot(CoreApiTableSnapshot) {
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
