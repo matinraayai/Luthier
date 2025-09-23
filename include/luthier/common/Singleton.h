@@ -1,4 +1,4 @@
-//===-- Singleton.hpp - Singleton Interface -------------------------------===//
+//===-- Singleton.h - Luthier Singleton Interface ---------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +15,15 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file contains the interface inherited by all Singleton objects in
+/// Defines the interface inherited by all Singleton objects in
 /// Luthier.
 /// It was inspired by OGRE's Singleton implementation here:
 /// https://github.com/OGRECave/ogre/blob/master/OgreMain/include/OgreSingleton.h
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_COMMON_SINGLETON_HPP
-#define LUTHIER_COMMON_SINGLETON_HPP
+#ifndef LUTHIER_COMMON_SINGLETON_H
+#define LUTHIER_COMMON_SINGLETON_H
 #include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
+#include "luthier/common/GenericLuthierError.h"
 
 namespace luthier {
 
@@ -41,10 +41,8 @@ public:
   /// The constructor is \b not thread-safe, and is meant to be allocated
   /// on the heap with the \c new operator for better control over its lifetime
   Singleton() {
-    if (Instance != nullptr) {
-      LUTHIER_REPORT_FATAL_ON_ERROR(
-          LUTHIER_CREATE_ERROR("Called the Singleton constructor twice."));
-    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        Instance != nullptr, "Called the Singleton constructor twice."));
     Instance = static_cast<T *>(this);
   }
 
@@ -60,21 +58,17 @@ public:
   Singleton &operator=(const Singleton &) = delete;
 
   /// \return a reference to the Singleton instance
-  static inline T &instance() {
-    if (Instance == nullptr)
-      LUTHIER_REPORT_FATAL_ON_ERROR(
-          LUTHIER_CREATE_ERROR("Singleton is not initialized"));
+  static T &instance() {
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        Instance != nullptr, "Singleton is not initialized"));
     return *Instance;
   }
 
-  static inline bool isInitialized() { return Instance != nullptr; }
+  static bool isInitialized() { return Instance != nullptr; }
 };
 
-#ifdef __clang__
-// Template definition of the Instance pointer to suppress clang warnings
-// regarding translation units
-template <typename T> T *luthier::Singleton<T>::Instance{nullptr};
-#endif
+// Template definition of the Instance pointer
+template <typename T> T *Singleton<T>::Instance{nullptr};
 
 } // namespace luthier
 
