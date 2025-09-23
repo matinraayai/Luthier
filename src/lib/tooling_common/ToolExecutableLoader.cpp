@@ -20,11 +20,11 @@
 //===----------------------------------------------------------------------===//
 #include "tooling_common/ToolExecutableLoader.hpp"
 #include "common/Log.hpp"
-#include "hsa/HsaRuntimeInterceptor.hpp"
 #include "luthier/consts.h"
 #include "luthier/hsa/Agent.h"
 #include "luthier/hsa/LoadedCodeObject.h"
 #include "luthier/hsa/hsa.h"
+#include "luthier/object/AMDGCNObjectFile.h"
 #include "tooling_common/TargetManager.hpp"
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Analysis/ValueTracking.h>
@@ -140,9 +140,9 @@ ToolExecutableLoader::hsaExecutableDestroyWrapper(hsa_executable_t Executable) {
             Kernels;
         LUTHIER_REPORT_FATAL_ON_ERROR(COC.getKernelSymbols(LCO, Kernels));
         for (const auto &Symbol : Kernels) {
-          const auto *Kernel =
-              llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Symbol.get());
-          hsa_executable_symbol_t ExecSymbol = *Kernel->getExecutableSymbol();
+          const auto &Kernel =
+              *llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Symbol.get());
+          hsa_executable_symbol_t ExecSymbol = *Kernel.getExecutableSymbol();
           if (TEL.OriginalToInstrumentedKernelsMap.contains(ExecSymbol)) {
             TEL.OriginalToInstrumentedKernelsMap.erase(
                 TEL.OriginalToInstrumentedKernelsMap.find(ExecSymbol));
@@ -153,23 +153,6 @@ ToolExecutableLoader::hsaExecutableDestroyWrapper(hsa_executable_t Executable) {
 
       for (auto &InstrumentedExec :
            TEL.OriginalExecutablesWithKernelsInstrumented[Executable]) {
-
-        // For the LCOs of the instrumented executable, delete their Code Object
-        // Readers
-        llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
-        LUTHIER_REPORT_FATAL_ON_ERROR(hsa::executableGetLoadedCodeObjects(
-            TEL.LoaderApiSnapshot.getTable(), Executable, LCOs));
-        for (const auto &LCO : LCOs) {
-          auto It = TEL.InstrumentedLCOInfo.find(LCO);
-          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-              It != TEL.InstrumentedLCOInfo.end(),
-              llvm::formatv("Failed to find the instrumented LCO {0:x}'s "
-                            "record inside the tool executable manager.",
-                            LCO.handle)));
-          LUTHIER_REPORT_FATAL_ON_ERROR(hsa::codeObjectReaderDestroy(
-              It->getSecond(), TEL.CoreApiSnapshot.getTable()));
-        }
-        // Finally, delete the executable
         LUTHIER_REPORT_FATAL_ON_ERROR(hsa::executableDestroy(
             TEL.CoreApiSnapshot.getTable(), InstrumentedExec));
       }
@@ -178,7 +161,8 @@ ToolExecutableLoader::hsaExecutableDestroyWrapper(hsa_executable_t Executable) {
   return UnderlyingHsaExecutableDestroyFn(Executable);
 }
 
-llvm::Expected<hsa_executable_symbol_t>
+llvm::Expected<
+    std::pair<hsa_executable_symbol_t, const amdgpu::hsamd::Kernel::Metadata &>>
 ToolExecutableLoader::getInstrumentedKernel(
     hsa_executable_symbol_t OriginalKernel, llvm::StringRef Preset) const {
   const auto CoreApiTable = CoreApiSnapshot.getTable();
@@ -211,13 +195,16 @@ ToolExecutableLoader::getInstrumentedKernel(
                       "kernel {0} under preset {1}.",
                       *KernelName, Preset));
   }
-  return InstrumentedKernelIt->second;
+  hsa_executable_symbol_t Out = InstrumentedKernelIt->second;
+  const auto &MD = *InstrumentedKernelMetadata.find(Out)->second;
+  return std::make_pair(Out, MD);
 }
 
 llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
     llvm::ArrayRef<uint8_t> InstrumentedElf,
     const hsa::LoadedCodeObjectKernel &OriginalKernel, llvm::StringRef Preset,
     const llvm::StringMap<const void *> &ExternVariables) {
+  std::lock_guard Lock(Mutex);
   // Ensure this kernel was not instrumented under this preset
   if (isKernelInstrumented(OriginalKernel, Preset)) {
     auto OriginalKernelName = OriginalKernel.getName();
@@ -249,7 +236,6 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
   auto LCO = hsa::executableLoadAgentCodeObject(CoreApiTable, *Executable,
                                                 *Reader, *Agent);
   LUTHIER_RETURN_ON_ERROR(LCO.takeError());
-  InstrumentedLCOInfo.insert({*LCO, *Reader});
   // Freeze the executable
   LUTHIER_RETURN_ON_ERROR(hsa::executableFreeze(CoreApiTable, *Executable));
 
@@ -285,9 +271,24 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
       OriginalKernel.getExecutable(LoaderApiSnapshot.getTable());
   LUTHIER_RETURN_ON_ERROR(OriginalExecutableOrErr.takeError());
 
+  /// Parse the metadata
+  auto ObjFile =
+      object::AMDGCNObjectFile::createAMDGCNObjectFile(InstrumentedElf);
+  LUTHIER_RETURN_ON_ERROR(ObjFile.takeError());
+  auto InstrumentedExecMDDoc = (*ObjFile)->getMetadataDocument();
+  LUTHIER_RETURN_ON_ERROR(InstrumentedExecMDDoc.takeError());
+
+  auto MD = MDParser.parseKernelMetadata(**InstrumentedExecMDDoc,
+                                         *OriginalSymbolName);
+  LUTHIER_RETURN_ON_ERROR(MD.takeError());
+
+  InstrumentedKernelMetadata.insert(
+      {**InstrumentedKernelOrErr, std::move(*MD)});
+
   insertInstrumentedKernelIntoMap(*OriginalExecutableOrErr,
                                   *OriginalKernel.getExecutableSymbol(), Preset,
                                   *Executable, **InstrumentedKernelOrErr);
+  LUTHIER_RETURN_ON_ERROR(hsa::codeObjectReaderDestroy(*Reader, CoreApiTable));
   return llvm::Error::success();
 }
 
@@ -304,12 +305,12 @@ ToolExecutableLoader::~ToolExecutableLoader() {
   // kernels must have been destroyed; If not, print a warning, and clean
   // up anyway
   // TODO: Fix this, again
-  //  if (!InstrumentedLCOInfo.empty()) {
+  //  if (!InstrumentedKernelMetadata.empty()) {
   //    luthier::outs()
   //        << "Tool executable manager is being destroyed while the original "
   //           "executables of its instrumented kernels are still frozen\n";
   //    llvm::DenseSet<hsa::Executable> InstrumentedExecs;
-  //    for (auto &[LCO, COR] : InstrumentedLCOInfo) {
+  //    for (auto &[LCO, COR] : InstrumentedKernelMetadata) {
   //      auto Exec = llvm::cantFail(LCO.getExecutable());
   //      InstrumentedExecs.insert(Exec);
   //      if (COR.destroy()) {

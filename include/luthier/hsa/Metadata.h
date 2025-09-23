@@ -1,4 +1,4 @@
-//===-- Metadata.h - HSA Metadata Struct for COV3+ --------------*- C++ -*-===//
+//===-- Metadata.h - Metadata Struct for HSA COV3+ --------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,25 +15,40 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the Metadata structs and enums used by Luthier to
-/// parse the code object metadata into an easy-access form.
+/// Defines the Metadata structs and enums used by Luthier to
+/// parse the code object metadata into an easy-access form, as well as an
+/// analysis pass for parsing the metadata during lifting.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_METADATA_H
-#define LUTHIER_HSA_METADATA_H
+#ifndef LUTHIER_INSTRUMENTATION_AMDGPU_METADATA_H
+#define LUTHIER_INSTRUMENTATION_AMDGPU_METADATA_H
+#include <llvm/ADT/StringMap.h>
+#include <llvm/BinaryFormat/MsgPackDocument.h>
+#include <llvm/IR/PassManager.h>
+#include <llvm/Support/AMDGPUAddrSpace.h>
 #include <optional>
-#include <hsa/hsa.h>
 #include <string>
 #include <vector>
 
-namespace llvm::AMDGPU::HSAMD {
-enum class AccessQualifier : uint8_t;
-}
-
-namespace luthier::hsa::md {
+namespace luthier {
+namespace amdgpu::hsamd {
 
 struct Version {
   uint64_t Major{0};
   uint64_t Minor{0};
+};
+
+struct dim3 {
+  uint32_t X;
+  uint32_t Y;
+  uint32_t Z;
+};
+
+enum class AccessQualifier : uint8_t {
+  Default = 0,
+  ReadOnly = 1,
+  WriteOnly = 2,
+  ReadWrite = 3,
+  Unknown = 0xff
 };
 
 /// Value kinds.
@@ -132,16 +147,15 @@ struct Metadata final {
   /// Offset in bytes. Required for code object v3, unused for code object v2.
   uint32_t Offset{0};
   /// Value kind. Required.
-  hsa::md::ValueKind ValueKind{ValueKind::Unknown};
+  ValueKind ValueKind{ValueKind::Unknown};
   /// Pointee alignment in bytes. Optional.
   std::optional<uint32_t> PointeeAlign{0};
   /// Address space qualifier. Optional.
   std::optional<unsigned> AddressSpace{std::nullopt};
   /// Access qualifier. Optional.
-  std::optional<llvm::AMDGPU::HSAMD::AccessQualifier> AccQual{std::nullopt};
+  std::optional<AccessQualifier> AccQual{std::nullopt};
   /// Actual access qualifier. Optional.
-  std::optional<llvm::AMDGPU::HSAMD::AccessQualifier> ActualAccQual{
-      std::nullopt};
+  std::optional<AccessQualifier> ActualAccQual{std::nullopt};
   /// True if 'const' qualifier is specified. Optional.
   bool IsConst{false};
   /// True if 'restrict' qualifier is specified. Optional.
@@ -222,9 +236,9 @@ struct Metadata final {
   /// Arguments metadata. Optional.
   std::optional<std::vector<Arg::Metadata>> Args{std::nullopt};
   /// 'reqd_work_group_size' attribute. Optional.
-  std::optional<hsa_dim3_t> ReqdWorkGroupSize{std::nullopt};
+  std::optional<dim3> ReqdWorkGroupSize{std::nullopt};
   /// 'work_group_size_hint' attribute. Optional.
-  std::optional<hsa_dim3_t> WorkGroupSizeHint{std::nullopt};
+  std::optional<dim3> WorkGroupSizeHint{std::nullopt};
   /// 'vec_type_hint' attribute. Optional.
   std::optional<std::string> VecTypeHint{std::nullopt};
   /// External symbol created by runtime to store the kernel address
@@ -250,7 +264,7 @@ struct Metadata final {
   /// Total number of VGPRs used by a workitem. Optional.
   uint32_t VGPRCount{};
   /// Total number of AGPRs required by each workitem for GFX90A, GFX908.
-  uint32_t AGPRCount{};
+  std::optional<uint32_t> AGPRCount{};
   /// Maximum flat work-group size supported by the kernel. Optional.
   uint32_t MaxFlatWorkgroupSize{};
   /// Number of SGPRs spilled by a wavefront. Optional.
@@ -258,7 +272,7 @@ struct Metadata final {
   /// Number of VGPRs spilled by a workitem. Optional.
   std::optional<uint32_t> VGPRSpillCount{0};
   /// The kind of the kernel
-  std::optional<hsa::md::KernelKind> KernelKind{KernelKind::Normal};
+  std::optional<hsamd::KernelKind> KernelKind{KernelKind::Normal};
   /// Indicates if the generated kernel machine code is using a
   /// dynamically sized stack.
   bool UsesDynamicStack{false};
@@ -288,15 +302,92 @@ constexpr char Kernels[] = "amdhsa.kernels";
 /// In-memory representation of HSA metadata.
 struct Metadata final {
   /// HSA metadata version. Required.
-  hsa::md::Version Version;
+  amdgpu::hsamd::Version Version;
   /// Printf metadata. Optional.
   std::optional<std::vector<std::string>> Printf{std::nullopt};
-  /// Kernels metadata. Required.
-  std::vector<Kernel::Metadata> Kernels{};
   /// Default constructor.
   Metadata() = default;
 };
 
-}; // namespace luthier::hsa::md
+/// \brief Class in charge of parsing the HSA code object metadata
+/// \details We opt to make this a class due to having to define a mapping
+/// between the string name and the enums of the access qualifiers, address
+/// spaces, argument value kinds, and kernel kinds. Instead of defining these
+/// mappings inside a set of maps with static lifetime, we instead
+/// follow the general design paradigm of Luthier and put them inside an
+/// object here so that we can more control over their lifetime.
+class MetadataParser {
+private:
+  const llvm::StringMap<AccessQualifier> AccessQualifierEnumMap = {
+      {"read_only", AccessQualifier::ReadOnly},
+      {"write_only", AccessQualifier::WriteOnly},
+      {"read_write", AccessQualifier::ReadWrite}};
 
+  const llvm::StringMap<unsigned> AMDGPUAddressSpaceEnumMap = {
+      {"private", llvm::AMDGPUAS::PRIVATE_ADDRESS},
+      {"global", llvm::AMDGPUAS::GLOBAL_ADDRESS},
+      {"constant", llvm::AMDGPUAS::CONSTANT_ADDRESS},
+      {"local", llvm::AMDGPUAS::LOCAL_ADDRESS},
+      {"generic", llvm::AMDGPUAS::FLAT_ADDRESS},
+      {"region", llvm::AMDGPUAS::REGION_ADDRESS}};
+
+  const llvm::StringMap<ValueKind> ValueKindEnumMap = {
+      {"by_value", ValueKind::ByValue},
+      {"global_buffer", ValueKind::GlobalBuffer},
+      {"dynamic_shared_pointer", ValueKind::DynamicSharedPointer},
+      {"sampler", ValueKind::Sampler},
+      {"image", ValueKind::Image},
+      {"pipe", ValueKind::Pipe},
+      {"queue", ValueKind::Queue},
+      {"hidden_global_offset_x", ValueKind::HiddenGlobalOffsetX},
+      {"hidden_global_offset_y", ValueKind::HiddenGlobalOffsetY},
+      {"hidden_global_offset_z", ValueKind::HiddenGlobalOffsetZ},
+      {"hidden_none", ValueKind::HiddenNone},
+      {"hidden_printf_buffer", ValueKind::HiddenPrintfBuffer},
+      {"hidden_hostcall_buffer", ValueKind::HiddenHostcallBuffer},
+      {"hidden_default_queue", ValueKind::HiddenDefaultQueue},
+      {"hidden_completion_action", ValueKind::HiddenCompletionAction},
+      {"hidden_multigrid_sync_arg", ValueKind::HiddenMultiGridSyncArg},
+      {"hidden_block_count_x", ValueKind::HiddenBlockCountX},
+      {"hidden_block_count_y", ValueKind::HiddenBlockCountY},
+      {"hidden_block_count_z", ValueKind::HiddenBlockCountZ},
+      {"hidden_group_size_x", ValueKind::HiddenGroupSizeX},
+      {"hidden_group_size_y", ValueKind::HiddenGroupSizeY},
+      {"hidden_group_size_z", ValueKind::HiddenGroupSizeZ},
+      {"hidden_remainder_x", ValueKind::HiddenRemainderX},
+      {"hidden_remainder_y", ValueKind::HiddenRemainderY},
+      {"hidden_remainder_z", ValueKind::HiddenRemainderZ},
+      {"hidden_grid_dims", ValueKind::HiddenGridDims},
+      {"hidden_heap_v1", ValueKind::HiddenHeapV1},
+      {"hidden_dynamic_lds_size", ValueKind::HiddenDynamicLDSSize},
+      {"hidden_private_base", ValueKind::HiddenPrivateBase},
+      {"hidden_shared_base", ValueKind::HiddenSharedBase},
+      {"hidden_queue_ptr", ValueKind::HiddenQueuePtr}};
+
+  const llvm::StringMap<KernelKind> KernelKindEnumMap = {
+      {"normal", KernelKind::Normal},
+      {"init", KernelKind::Init},
+      {"fini", KernelKind::Fini}};
+
+public:
+  MetadataParser() = default;
+
+  /// Parses the high-level metadata included in the \p Doc
+  /// Does not parse the kernels portion of the metadata
+  llvm::Expected<std::unique_ptr<Metadata>>
+  parseNoteMetaData(llvm::msgpack::Document &Doc) const;
+
+  /// Parses the all the kernels metadata included in the \p Doc
+  llvm::Expected<llvm::StringMap<std::unique_ptr<Kernel::Metadata>>>
+  parseAllKernelsMetadata(llvm::msgpack::Document &Doc) const;
+
+  /// Parses the kernel metadata of \p KernelName in \p Doc
+  llvm::Expected<std::unique_ptr<Kernel::Metadata>>
+  parseKernelMetadata(llvm::msgpack::Document &Doc,
+                      llvm::StringRef KernelName) const;
+};
+
+}; // namespace amdgpu::hsamd
+
+} // namespace luthier
 #endif

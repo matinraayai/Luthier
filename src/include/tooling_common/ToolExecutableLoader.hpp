@@ -28,6 +28,7 @@
 #include "luthier/hsa/Agent.h"
 #include "luthier/hsa/CodeObjectReader.h"
 #include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
 #include "luthier/hsa/LoadedCodeObject.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include "luthier/rocprofiler-sdk/ApiTableWrapperInstaller.h"
@@ -78,10 +79,11 @@ private:
   /// The single static instrumentation module included in Luthier tool
   mutable StaticInstrumentationModule SIM;
 
-  /// \brief a mapping between the loaded code objects instrumented and
-  /// loaded by Luthier and their code object readers
-  llvm::DenseMap<hsa_loaded_code_object_t, hsa_code_object_reader_t>
-      InstrumentedLCOInfo{};
+  const amdgpu::hsamd::MetadataParser &MDParser;
+
+  llvm::DenseMap<hsa_executable_symbol_t,
+                 std::unique_ptr<amdgpu::hsamd::Kernel::Metadata>>
+      InstrumentedKernelMetadata{};
 
   llvm::DenseMap<hsa_executable_t, llvm::DenseSet<hsa_executable_t>>
       OriginalExecutablesWithKernelsInstrumented{};
@@ -108,10 +110,11 @@ public:
       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &LoaderApiSnapshot,
-      const hsa::LoadedCodeObjectCache &COC, llvm::Error &Err)
-      : Singleton<luthier::ToolExecutableLoader>(),
-        CoreApiSnapshot(CoreApiSnapshot), LoaderApiSnapshot(LoaderApiSnapshot),
-        COC(COC), SIM(LoaderApiSnapshot) {
+      const hsa::LoadedCodeObjectCache &COC,
+      const amdgpu::hsamd::MetadataParser &MDParser, llvm::Error &Err)
+      : Singleton<ToolExecutableLoader>(), CoreApiSnapshot(CoreApiSnapshot),
+        LoaderApiSnapshot(LoaderApiSnapshot), COC(COC), SIM(LoaderApiSnapshot),
+        MDParser(MDParser) {
 
     CoreApiWrapperInstaller = std::make_unique<
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
@@ -160,7 +163,8 @@ public:
   /// \param OriginalKernel symbol of the un-instrumented original kernel
   /// \return symbol of the instrumented version of the target kernel, or
   /// \p llvm::Error
-  [[nodiscard]] llvm::Expected<hsa_executable_symbol_t>
+  [[nodiscard]] llvm::Expected<std::pair<
+      hsa_executable_symbol_t, const amdgpu::hsamd::Kernel::Metadata &>>
   getInstrumentedKernel(hsa_executable_symbol_t OriginalKernel,
                         llvm::StringRef Preset) const;
 
