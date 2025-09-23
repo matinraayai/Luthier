@@ -1,4 +1,5 @@
 add_library(LuthierCommon OBJECT
+        GenericLuthierError.cpp
         LuthierError.cpp
         ROCmLibraryError.cpp
 )
