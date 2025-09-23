@@ -20,58 +20,18 @@
 /// For the controller logic of Luthier, see <tt>luthier::Controller</tt>.
 //===----------------------------------------------------------------------===//
 #include "luthier/luthier.h"
-#include "hip/HipCompilerApiInterceptor.hpp"
-#include "hip/HipRuntimeApiInterceptor.hpp"
-#include "hsa/ExecutableBackedObjectsCache.hpp"
-#include "hsa/HsaRuntimeInterceptor.hpp"
+#include "comgr/comgr.hpp"
 #include "luthier/hsa/Instr.h"
 #include "luthier/tooling/InstrumentationTask.h"
 #include "tooling_common/CodeGenerator.hpp"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/ToolExecutableLoader.hpp"
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringRef.h>
+#include <luthier/tooling/Context.h>
 #include <optional>
 
 namespace luthier {
-
-namespace hip {
-
-const HipCompilerDispatchTable &getSavedCompilerTable() {
-  return HipCompilerApiInterceptor::instance().getSavedApiTableContainer();
-}
-
-const HipDispatchTable &getSavedDispatchTable() {
-  return HipRuntimeApiInterceptor::instance().getSavedApiTableContainer();
-}
-
-} // namespace hip
-
-namespace hsa {
-
-void setAtHsaApiEvtCallback(
-    const std::function<void(ApiEvtArgs *, ApiEvtPhase, ApiEvtID)> &Callback) {
-  hsa::HsaRuntimeInterceptor::instance().setUserCallback(Callback);
-}
-
-const HsaApiTable &getHsaApiTable() {
-  return hsa::HsaRuntimeInterceptor::instance()
-      .getSavedApiTableContainer()
-      .root;
-}
-
-const hsa_ven_amd_loader_1_03_pfn_s &getHsaVenAmdLoaderTable() {
-  return hsa::HsaRuntimeInterceptor::instance().getHsaVenAmdLoaderTable();
-}
-
-llvm::Error enableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
-  return hsa::HsaRuntimeInterceptor::instance().enableUserCallback(ApiID);
-}
-
-llvm::Error disableHsaApiEvtIDCallback(hsa::ApiEvtID ApiID) {
-  return hsa::HsaRuntimeInterceptor::instance().disableUserCallback(ApiID);
-}
-
-} // namespace hsa
 
 llvm::Expected<llvm::ArrayRef<hsa::Instr>>
 disassemble(const hsa::LoadedCodeObjectKernel &Kernel) {
@@ -125,11 +85,9 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
       **InstrumentedLR, Relocatable, llvm::CodeGenFileType::ObjectFile));
 
   // Link the object file into executables
-  llvm::SmallVector<uint8_t> Executable;
-  auto ISA = hsa::LoadedCodeObject(LR.getLoadedCodeObject()).getISA();
-  LUTHIER_RETURN_ON_ERROR(ISA.takeError());
-  LUTHIER_RETURN_ON_ERROR(CodeGenerator::linkRelocatableToExecutable(
-      Relocatable, *ISA, Executable));
+  llvm::SmallVector<char> Executable;
+  LUTHIER_RETURN_ON_ERROR(
+      comgr::linkRelocatableToExecutable(Relocatable, Executable));
   // Create a set of extern variables used in the instrumented code
 
   llvm::StringMap<const void *> ExternVariables;
@@ -144,13 +102,14 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
   auto Agent = llvm::cantFail(Kernel.getAgent());
   // Set of static variables used in the instrumentation module
   for (const auto &GVName : SIM.gv_names()) {
-    auto VarAddress =
-        SIM.getGlobalVariablesLoadedOnAgent(GVName, hsa::GpuAgent(Agent));
+    auto VarAddress = SIM.getGlobalVariablesLoadedOnAgent(GVName, Agent);
     LUTHIER_RETURN_ON_ERROR(VarAddress.takeError());
     ExternVariables.insert({GVName, reinterpret_cast<void *>(**VarAddress)});
   }
-  return TEM.loadInstrumentedKernel(Executable, Kernel, Preset,
-                                    ExternVariables);
+  return TEM.loadInstrumentedKernel(
+      llvm::ArrayRef(reinterpret_cast<uint8_t *>(Executable.data()),
+                     Executable.size()),
+      Kernel, Preset, ExternVariables);
 }
 
 llvm::Expected<bool>
@@ -161,30 +120,32 @@ isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
 
 llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                                      llvm::StringRef Preset) {
+  luthier::Context &C = Context::instance();
+  auto CoreApiTable = C.getHsaCoreTable();
+  const auto &LoaderApiTable = C.getHsaLoaderTable();
   auto Symbol = luthier::hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
-      Packet.kernel_object);
+      CoreApiTable, LoaderApiTable, Packet.kernel_object);
   LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       *Symbol != nullptr, "Failed to locate the kernel symbol of the dispatch "
                           "packet from its kernel_object field."));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       llvm::isa<hsa::LoadedCodeObjectKernel>(**Symbol),
       "The dispatch packet kernel object does not point to a kernel symbol."));
 
   auto InstrumentedKernel =
       luthier::ToolExecutableLoader::instance().getInstrumentedKernel(
-          *llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(Symbol.get().get()),
-          Preset);
+          *(*Symbol)->getExecutableSymbol(), Preset);
   LUTHIER_RETURN_ON_ERROR(InstrumentedKernel.takeError());
-  auto InstrumentedKD = InstrumentedKernel->getKernelDescriptor();
+  auto &[InstrumentedSymbol, InstrumentedMD] = *InstrumentedKernel;
 
+  llvm::Expected<uint64_t> InstrumentedKD =
+      hsa::executableSymbolGetAddress(CoreApiTable, InstrumentedSymbol);
   LUTHIER_RETURN_ON_ERROR(InstrumentedKD.takeError());
 
-  Packet.kernel_object = reinterpret_cast<uint64_t>(*InstrumentedKD);
+  Packet.kernel_object = *InstrumentedKD;
 
-  auto InstrumentedKernelMD = InstrumentedKernel->getKernelMetadata();
-
-  Packet.private_segment_size = InstrumentedKernelMD.PrivateSegmentFixedSize;
+  Packet.private_segment_size = InstrumentedMD.PrivateSegmentFixedSize;
 
   return llvm::Error::success();
 }
