@@ -1,7 +1,6 @@
 
 #ifndef LUTHIER_HIP_API_TABLE_H
 #define LUTHIER_HIP_API_TABLE_H
-#include "luthier/hip/HipError.h"
 #include <hip/amd_detail/hip_api_trace.hpp>
 #include <rocprofiler-sdk/intercept_table.h>
 
