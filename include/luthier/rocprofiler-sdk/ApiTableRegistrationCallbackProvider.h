@@ -27,6 +27,7 @@
 #include "luthier/rocprofiler-sdk/RocprofilerError.h"
 #include <atomic>
 #include <hip/amd_detail/hip_api_trace.hpp>
+#include <hip/hip_runtime.h>
 #include <rocprofiler-sdk/intercept_table.h>
 #include <rocprofiler-sdk/registration.h>
 

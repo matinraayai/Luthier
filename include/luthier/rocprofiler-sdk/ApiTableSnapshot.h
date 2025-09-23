@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_SNAPSHOT_H
 #define LUTHIER_ROCPROFILER_API_TABLE_SNAPSHOT_H
+#include "luthier/hip/ApiTable.h"
 #include "luthier/rocprofiler-sdk/ApiTableRegistrationCallbackProvider.h"
 
 namespace luthier::rocprofiler {
@@ -68,11 +69,13 @@ public:
               constexpr auto RootAccessor = hsa::ApiTableInfo<
                   HsaApiTableType>::PointerToMemberRootAccessor;
               if (!hsa::apiTableHasEntry<RootAccessor>(Table)) {
-                LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
-                    "Captured HSA table doesn't support extension {0}",
-                    hsa::ApiTableInfo<HsaApiTableType>::Name));
+                LUTHIER_REPORT_FATAL_ON_ERROR(
+                    llvm::make_error<hsa::HsaError>(llvm::formatv(
+                        "Captured HSA table doesn't support extension {0}",
+                        hsa::ApiTableInfo<HsaApiTableType>::Name)));
               }
-              ::copyElement(&Table, &ApiTable.root.*RootAccessor);
+              ::copyElement(&ApiTable.version,
+                            &((Table.*RootAccessor)->version));
 
               /// Check if the API table copy has been correctly performed by
               /// the copy constructor
@@ -90,10 +93,10 @@ public:
 
   /// \returns the API table snapshot; Will report a fatal error if the snapshot
   /// has not been initialized by rocprofiler-sdk
-  const HsaApiTableType &getTable() const {
+  hsa::ApiTableContainer<HsaApiTableType> getTable() const {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         wasRegistrationCallbackInvoked(), "Snapshot is not initialized"));
-    return ApiTable;
+    return hsa::ApiTableContainer(ApiTable);
   }
 
   ~HsaApiTableSnapshot() override = default;
@@ -164,79 +167,28 @@ public:
   }
 };
 
-/// \brief Provides a snapshot of the HSA API table to other components
+/// \brief Provides a snapshot of the HIP API table to other components
 /// using rocprofiler-sdk
-/// \details To invoke HSA methods inside a Luthier tool without them being
-/// recursively intercepted by the tool's wrapper functions, components must
-/// request a shared snapshot of the HSA API table from rocprofiler-sdk before
-/// proceeding to install wrappers during their initialization stage.
-/// To obtain the API table snapshot from rocprofiler-sdk a tool must invoke
-/// \c hsa::ApiTableSnapshot::requestSnapshot before its components are
-/// initialized. \n
-/// \c requestSnapshot returns an instance of <tt>ApiTableSnapshot</tt>, which
-/// can be passed by reference to other components of the tool.
-/// \note It goes without saying that any components that depend on the snapshot
-/// must be destroyed before the snapshot instance itself.
-/// \note The instance of \c ApiTableSnapshot must be preserved by the tool
-/// until the HSA API tables have been provided by rocprofiler-sdk, or after
-/// rocprofiler-sdk has started finalizing the tool. Failure to do so will
-/// result in a fatal error.
-/// \note \c ApiTableSnapshot is not thread-safe and is meant to be used
-/// inside a single thread
-// template <rocprofiler_intercept_table_t TableType>
-// class HipApiTableSnapshot final
-//     : public HipApiTableRegistrationCallbackProvider<TableType> {
-// private:
-//   /// Where the snapshot of the HSA API Table is stored
-//   typename HipApiTableEnumInfo<TableType>::ApiTableType ApiTable{};
-//
-//   explicit HipApiTableSnapshot(llvm::Error &Err)
-//       : HipApiTableRegistrationCallbackProvider<TableType>(
-//             [&](typename HipApiTableEnumInfo<TableType>::ApiTableType &Table)
-//             {
-//               std::memcpy(&Table, &ApiTable, ApiTable.size);
-//             },
-//             Err) {};
-//
-// public:
-//   /// Requests a snapshot of the HSA API table to be provided by
-//   /// rocprofiler-sdk; Must only be invoked during rocprofiler-sdk's
-//   /// configuration stage
-//   /// \return Expects a new instance of \c ApiTableSnapshot
-//   static llvm::Expected<std::unique_ptr<HipApiTableSnapshot>>
-//   requestSnapshot() {
-//     llvm::Error Err = llvm::Error::success();
-//     auto Out = std::make_unique<HipApiTableSnapshot>(Err);
-//     if (Err)
-//       return std::move(Err);
-//     return Out;
-//   }
-//
-//   ~HipApiTableSnapshot() override = default;
-//
-//   /// \brief Checks if the \c Func is present in the API table snapshot
-//   /// \tparam Func pointer-to-member of the function entry inside the
-//   /// extension table being queried
-//   /// \return \c true if the function is available inside the
-//   /// API table, \c false otherwise. Reports a fatal error
-//   /// if the snapshot has not been initialized by rocprofiler-sdk
-//   template <auto Func> [[nodiscard]] bool tableSupportsFunction() const {
-//     LUTHIER_REPORT_FATAL_ON_ERROR(
-//         HipApiTableRegistrationCallbackProvider<
-//             TableType>::wasRegistrationCallbackInvoked(),
-//         "Snapshot is not initialized");
-//     return hipApiTableHasEntry<Func>(ApiTable);
-//   }
-//
-//   /// \returns the function inside the snapshot associated with the
-//   /// pointer-to-member accessor \c Func
-//   template <auto Func> const auto &getFunction() const {
-//     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-//         (tableSupportsFunction<Func>()),
-//         "The passed function is not inside the table."));
-//     return *(ApiTable.*Func);
-//   }
-// };
+template <rocprofiler_intercept_table_t TableType>
+class HipApiTableSnapshot final
+    : public ApiTableRegistrationCallbackProvider<TableType> {
+private:
+  /// Where the snapshot of the HSA API Table is stored
+  typename hip::ApiTableEnumInfo<TableType>::ApiTableType ApiTable{};
+
+public:
+  explicit HipApiTableSnapshot(llvm::Error &Err)
+      : ApiTableRegistrationCallbackProvider<TableType>(
+            [&](typename hip::ApiTableEnumInfo<TableType>::ApiTableType
+                    &Table) { std::memcpy(&Table, &ApiTable, ApiTable.size); },
+            Err) {};
+
+  ~HipApiTableSnapshot() override = default;
+
+  hip::ApiTableContainer<TableType> getTable() const {
+    return hip::ApiTableContainer<TableType>(ApiTable);
+  }
+};
 
 } // namespace luthier::rocprofiler
 
