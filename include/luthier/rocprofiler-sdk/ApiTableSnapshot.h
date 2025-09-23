@@ -128,7 +128,10 @@ public:
   /// encountered by the constructor
   explicit HsaExtensionTableSnapshot(llvm::Error &Err)
       : ApiTableRegistrationCallbackProvider(
-            [&](llvm::ArrayRef<::HsaApiTable *> Tables, uint64_t, uint64_t) {
+            [&](llvm::ArrayRef<::HsaApiTable *> Tables, uint64_t,
+                uint64_t Instance) {
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+                  Instance != 0, "Multiple instances of the HSA library"));
               auto &Table = *Tables[0];
               if (Table.version.major_id != HSA_API_TABLE_MAJOR_VERSION) {
                 LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<
@@ -179,8 +182,15 @@ private:
 public:
   explicit HipApiTableSnapshot(llvm::Error &Err)
       : ApiTableRegistrationCallbackProvider<TableType>(
-            [&](typename hip::ApiTableEnumInfo<TableType>::ApiTableType
-                    &Table) { std::memcpy(&Table, &ApiTable, ApiTable.size); },
+            [&](llvm::ArrayRef<
+                    typename hip::ApiTableEnumInfo<TableType>::ApiTableType *>
+                    Tables,
+                uint64_t LibVersion, uint64_t LibInstance) {
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+                  LibInstance != 0,
+                  "Multiple instances of the HIP library registered"));
+              std::memcpy(&ApiTable, Tables[0], Tables[0]->size);
+            },
             Err) {};
 
   ~HipApiTableSnapshot() override = default;
