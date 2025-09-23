@@ -20,7 +20,7 @@
 
 #ifndef LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_STORAGE_HPP
 #define LUTHIER_TOOLING_COMMON_STATE_VALUE_ARRAY_STORAGE_HPP
-#include "hsa/LoadedCodeObject.hpp"
+#include "luthier/hsa/LoadedCodeObject.h"
 #include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include "luthier/tooling/AMDGPURegisterLiveness.h"
