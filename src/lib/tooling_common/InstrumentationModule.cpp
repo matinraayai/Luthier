@@ -20,7 +20,7 @@
 #include "tooling_common/InstrumentationModule.hpp"
 #include "luthier/consts.h"
 #include "luthier/hsa/LoadedCodeObject.h"
-#include <common/ObjectUtils.hpp>
+#include "luthier/object/AMDGCNObjectFile.h"
 #include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
@@ -46,7 +46,7 @@ static constexpr const char *BCSectionName = ".llvmbc";
 /// if found, or an \c llvm::Error if the bitcode was not found
 static llvm::Expected<llvm::ArrayRef<char>>
 getBitcodeBufferOfLCO(hsa_loaded_code_object_t LCO) {
-  llvm::Expected<luthier::AMDGCNObjectFile &> StorageELFOrErr =
+  llvm::Expected<luthier::object::AMDGCNObjectFile &> StorageELFOrErr =
       hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(StorageELFOrErr.takeError());
 
@@ -95,9 +95,6 @@ StaticInstrumentationModule::readBitcodeIntoContext(llvm::LLVMContext &Ctx,
       llvm::formatv("Failed to find the static instrumentation module "
                     "bitcode for agent {0:x}",
                     Agent.handle)));
-  std::error_code EC;
-  llvm::raw_fd_ostream MyFile("out.bc", EC);
-  MyFile << llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent));
   auto BCBuffer = llvm::MemoryBuffer::getMemBuffer(
       llvm::toStringRef(PerAgentBitcodeBufferMap.at(Agent)), "", false);
   return llvm::parseBitcodeFile(*BCBuffer, Ctx);
@@ -249,16 +246,23 @@ StaticInstrumentationModule::convertHookHandleToHookName(
 
 llvm::Expected<bool>
 StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
-    hsa_ven_amd_loader_1_03_pfn_t LoaderApi, hsa_executable_t Exec) {
+    const hsa::ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_ven_amd_loader_1_03_pfn_t &LoaderApi, hsa_executable_t Exec) {
+  /// Get all the loaded code objects in the executable
   llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
-  const auto &COC = hsa::LoadedCodeObjectCache::instance();
   LUTHIER_RETURN_ON_ERROR(
       hsa::executableGetLoadedCodeObjects(LoaderApi, Exec, LCOs));
+
   for (const auto &LCO : LCOs) {
-    auto LuthierReservedSymbol =
-        COC.getLoadedCodeObjectSymbolByName(LCO, ReservedManagedVar);
-    LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbol.takeError());
-    if (*LuthierReservedSymbol != nullptr) {
+    /// Get the agent of the loaded code object
+    llvm::Expected<hsa_agent_t> AgentOrErr =
+        hsa::loadedCodeObjectGetAgent(LoaderApi, LCO);
+    LUTHIER_RETURN_ON_ERROR(AgentOrErr.takeError());
+    auto LuthierReservedSymbolIfFoundOrErr = hsa::executableGetSymbolByName(
+        CoreApi, Exec, ReservedManagedVar, *AgentOrErr);
+    LUTHIER_RETURN_ON_ERROR(LuthierReservedSymbolIfFoundOrErr.takeError());
+
+    if (LuthierReservedSymbolIfFoundOrErr->has_value()) {
       return true;
     }
   }

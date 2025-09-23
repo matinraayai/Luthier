@@ -22,13 +22,13 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_CODE_OBJECT_CACHE_H
 #define LUTHIER_HSA_CODE_OBJECT_CACHE_H
-#include "common/ObjectUtils.hpp"
 #include "luthier/common/Singleton.h"
 #include "luthier/hsa/ApiTable.h"
 #include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/hsa/LoadedCodeObjectExternSymbol.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include "luthier/hsa/LoadedCodeObjectVariable.h"
+#include "luthier/object/AMDGCNObjectFile.h"
 #include "luthier/rocprofiler-sdk/ApiTableSnapshot.h"
 #include "luthier/rocprofiler-sdk/ApiTableWrapperInstaller.h"
 #include <llvm/ADT/DenseMap.h>
@@ -44,10 +44,13 @@ private:
   /// Mutex to protect the cache entries
   mutable std::recursive_mutex CacheMutex;
 
+  const amdgpu::hsamd::MetadataParser &MDParser;
+
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiTableSnapshot;
+
   /// Loader API snapshot
-  std::unique_ptr<
-      rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>>
-      VenLoaderSnapshot;
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &VenLoaderSnapshot;
 
   /// Wrapper installer for installing the cache's event handlers in HSA's
   /// \c ::CoreApiTable
@@ -57,7 +60,7 @@ private:
   /// Info regarding each loaded code object cached
   struct LCOCacheEntry {
     std::unique_ptr<llvm::SmallVector<uint8_t>> CodeObject;
-    std::unique_ptr<luthier::AMDGCNObjectFile> ParsedELF;
+    std::unique_ptr<luthier::object::AMDGCNObjectFile> ParsedELF;
   };
 
   /// Mapping between every loaded code object and their cached entries
@@ -80,7 +83,11 @@ private:
 
 public:
   explicit LoadedCodeObjectCache(
-      llvm::Error &Err);
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
+          &CoreApiTableSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &VenLoaderSnapshot,
+      const amdgpu::hsamd::MetadataParser &MDParser, llvm::Error &Err);
 
   /// Queries whether \p LCO is cached or not
   /// \param LCO the \c LoadedCodeObject is being queried
@@ -90,7 +97,7 @@ public:
   llvm::Expected<llvm::ArrayRef<uint8_t>>
   getAssociatedCodeObject(hsa_loaded_code_object_t LCO) const;
 
-  llvm::Expected<luthier::AMDGCNObjectFile &>
+  llvm::Expected<luthier::object::AMDGCNObjectFile &>
   getAssociatedObjectFile(hsa_loaded_code_object_t LCO) const;
 
   llvm::Error getLoadedCodeObjectSymbols(

@@ -27,7 +27,7 @@
 namespace luthier::hsa {
 
 llvm::Expected<hsa_isa_t>
-ISAFromLLVM(const ApiTableContainer<::CoreApiTable> &CoreApi,
+isaFromLLVM(const ApiTableContainer<::CoreApiTable> &CoreApi,
             const llvm::Triple &TT, llvm::StringRef GPUName,
             const llvm::SubtargetFeatures &Features) {
   auto ISAName = (TT.getTriple() + llvm::Twine("--") + GPUName).str();

@@ -268,7 +268,8 @@ public:
   /// not, or an \c llvm::Error if any issues were encountered during the
   /// process
   static llvm::Expected<bool> isStaticInstrumentationModuleExecutable(
-      hsa_ven_amd_loader_1_03_pfn_t LoaderApi, hsa_executable_t Exec);
+      const hsa::ApiTableContainer<::CoreApiTable> &CoreApi,
+      const hsa_ven_amd_loader_1_03_pfn_t &LoaderApi, hsa_executable_t Exec);
 
   static bool classof(const InstrumentationModule *IM) {
     return IM->getKind() == MK_Static;

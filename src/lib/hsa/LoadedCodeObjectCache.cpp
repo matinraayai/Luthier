@@ -18,11 +18,11 @@
 /// This file implements the \c LoadedCodeObjectCache Singleton.
 //===----------------------------------------------------------------------===//
 #include "luthier/hsa/LoadedCodeObjectCache.h"
-#include "common/ObjectUtils.hpp"
 #include "hsa/hsa.h"
 #include "luthier/hsa/Executable.h"
 #include "luthier/hsa/ExecutableSymbol.h"
 #include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/object/AMDGCNObjectFile.h"
 #include <llvm/Object/ELFObjectFile.h>
 
 #undef DEBUG_TYPE
@@ -75,13 +75,14 @@ hsa_status_t LoadedCodeObjectCache::hsaExecutableLoadAgentCodeObjectWrapper(
 
   llvm::ArrayRef<uint8_t> StorageMemory;
   LUTHIER_REPORT_FATAL_ON_ERROR(hsa::loadedCodeObjectGetStorageMemory(
-                                    COC.VenLoaderSnapshot->getTable(), LCO)
+                                    COC.VenLoaderSnapshot.getTable(), LCO)
                                     .moveInto(StorageMemory));
 
   auto StorageCopy =
       std::make_unique<llvm::SmallVector<uint8_t>>(StorageMemory);
 
-  auto ParsedElfOrErr = parseAMDGCNObjectFile(*StorageCopy);
+  auto ParsedElfOrErr =
+      object::AMDGCNObjectFile::createAMDGCNObjectFile(*StorageCopy);
   LUTHIER_REPORT_FATAL_ON_ERROR(ParsedElfOrErr.takeError());
 
   std::lock_guard Lock(COC.CacheMutex);
@@ -100,24 +101,38 @@ hsa_status_t LoadedCodeObjectCache::hsaExecutableDestroyWrapper(
       LUTHIER_GENERIC_ERROR_CHECK(UnderlyingHsaExecutableDestroyFn != nullptr,
                                   "Underlying hsa_executable_destroy of "
                                   "LoadedCodeObjectCache is nullptr"));
+  llvm::SmallVector<hsa_loaded_code_object_t, 2> LCOs;
+  if (isInitialized()) {
+    /// Remove the LCOs of the executable from the cache before it is destroyed
+    auto &COC = instance();
+    auto &VenTable = COC.VenLoaderSnapshot.getTable();
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        hsa::executableGetLoadedCodeObjects(VenTable, Executable, LCOs));
+  }
+
+  hsa_status_t Out = UnderlyingHsaExecutableDestroyFn(Executable);
+  if (Out != HSA_STATUS_SUCCESS)
+    return Out;
 
   if (isInitialized()) {
     /// Remove the LCOs of the executable from the cache before it is destroyed
     auto &COC = instance();
-    auto &VenTable = COC.VenLoaderSnapshot->getTable();
-    llvm::SmallVector<hsa_loaded_code_object_t, 2> LCOs;
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        hsa::executableGetLoadedCodeObjects(VenTable, Executable, LCOs));
     std::lock_guard Lock(COC.CacheMutex);
     for (hsa_loaded_code_object_t LCO : LCOs) {
       COC.LCOCache.erase(LCO);
     }
   }
-
-  return UnderlyingHsaExecutableDestroyFn(Executable);
+  return Out;
 }
 
-LoadedCodeObjectCache::LoadedCodeObjectCache(llvm::Error &Err) {
+LoadedCodeObjectCache::LoadedCodeObjectCache(
+    const rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
+        &CoreApiTableSnapshot,
+    const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+        &VenLoaderSnapshot,
+    const amdgpu::hsamd::MetadataParser &MDParser, llvm::Error &Err)
+    : CoreApiTableSnapshot(CoreApiTableSnapshot), MDParser(MDParser),
+      VenLoaderSnapshot(VenLoaderSnapshot) {
   llvm::ErrorAsOutParameter EAO(Err);
   HsaWrapperInstaller = std::make_unique<
       rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
@@ -139,7 +154,7 @@ LoadedCodeObjectCache::getAssociatedCodeObject(
   return *EntryOrErr->CodeObject;
 }
 
-llvm::Expected<luthier::AMDGCNObjectFile &>
+llvm::Expected<luthier::object::AMDGCNObjectFile &>
 LoadedCodeObjectCache::getAssociatedObjectFile(
     hsa_loaded_code_object_t LCO) const {
   llvm::Expected<LCOCacheEntry &> EntryOrErr =
@@ -159,14 +174,14 @@ llvm::Error LoadedCodeObjectCache::getKernelSymbols(
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
 
-  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr =
+  llvm::Expected<luthier::object::AMDGCNObjectFile &> StorageElfOrErr =
       getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
   llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbolsOfThisLCO;
   llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbolsOfThisLCO;
 
-  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
+  for (const llvm::object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     uint8_t Type = Symbol.getELFType();
     llvm::Expected<llvm::StringRef> SymbolNameOrErr = Symbol.getName();
     LUTHIER_RETURN_ON_ERROR(SymbolNameOrErr.takeError());
@@ -185,16 +200,15 @@ llvm::Error LoadedCodeObjectCache::getKernelSymbols(
   }
 
   // Cache the LCO and Kernel Symbols Metadata
-  std::shared_ptr<hsa::md::Metadata> MetaData;
-  LUTHIER_RETURN_ON_ERROR(
-      parseNoteMetaData(*StorageElfOrErr).moveInto(MetaData));
+  std::unique_ptr<llvm::msgpack::Document> MD;
+  LUTHIER_RETURN_ON_ERROR(StorageElfOrErr->getMetadataDocument().moveInto(MD));
+  auto KernelsMDOrErr = MDParser.parseAllKernelsMetadata(*MD);
+  LUTHIER_RETURN_ON_ERROR(KernelsMDOrErr.takeError());
 
   // Construct the kernel symbols and cache them
-  for (auto &KernelMD : MetaData->Kernels) {
+  for (auto &[NameWithKDAtTheEnd, KernelMD] : *KernelsMDOrErr) {
 
     LLVM_DEBUG(llvm::dbgs() << "Creating the kernel symbols.\n";);
-
-    auto &NameWithKDAtTheEnd = KernelMD.Symbol;
     llvm::StringRef NameWithoutKD =
         llvm::StringRef(NameWithKDAtTheEnd)
             .substr(0, NameWithKDAtTheEnd.rfind(".kd"));
@@ -215,7 +229,8 @@ llvm::Error LoadedCodeObjectCache::getKernelSymbols(
 
     // Construct the Kernel LCO Symbol
     auto KernelSymbol = LoadedCodeObjectKernel::create(
-        LCO, *StorageElfOrErr, MetaData, KFuncSymbolIter->second,
+        CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
+        *StorageElfOrErr, std::move(KernelMD), KFuncSymbolIter->second,
         KDSymbolIter->second);
     LUTHIER_RETURN_ON_ERROR(KernelSymbol.takeError());
     Out.push_back(std::move(*KernelSymbol));
@@ -227,11 +242,11 @@ llvm::Error LoadedCodeObjectCache::getVariableSymbols(
     hsa_loaded_code_object_t LCO,
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
-  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr =
+  llvm::Expected<luthier::object::AMDGCNObjectFile &> StorageElfOrErr =
       getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
-  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
+  for (const llvm::object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     auto Type = Symbol.getELFType();
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
@@ -241,8 +256,9 @@ llvm::Error LoadedCodeObjectCache::getVariableSymbols(
                                 *SymbolName, Binding, Type));
     if (Type == llvm::ELF::STT_OBJECT && !SymbolName->ends_with(".kd")) {
       // Variable Symbol
-      auto VarSymbolOrErr = std::move(
-          LoadedCodeObjectVariable::create(LCO, *StorageElfOrErr, Symbol));
+      auto VarSymbolOrErr = std::move(LoadedCodeObjectVariable::create(
+          CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
+          *StorageElfOrErr, Symbol));
       LUTHIER_RETURN_ON_ERROR(VarSymbolOrErr.takeError());
       Out.push_back(std::move(*VarSymbolOrErr));
     }
@@ -254,14 +270,14 @@ llvm::Error LoadedCodeObjectCache::getDeviceFunctionSymbols(
     hsa_loaded_code_object_t LCO,
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
-  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr =
+  llvm::Expected<luthier::object::AMDGCNObjectFile &> StorageElfOrErr =
       getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
   llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbolsOfThisLCO;
   llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbolsOfThisLCO;
 
-  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
+  for (const llvm::object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     auto Type = Symbol.getELFType();
     auto SymbolName = Symbol.getName();
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
@@ -293,14 +309,14 @@ llvm::Error LoadedCodeObjectCache::getExternalSymbols(
     hsa_loaded_code_object_t LCO,
     llvm::SmallVectorImpl<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> &Out)
     const {
-  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr =
+  llvm::Expected<luthier::object::AMDGCNObjectFile &> StorageElfOrErr =
       getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
   llvm::StringMap<llvm::object::ELFSymbolRef> FuncSymbolsOfThisLCO;
   llvm::StringMap<llvm::object::ELFSymbolRef> KDSymbolsOfThisLCO;
 
-  for (const object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
+  for (const llvm::object::ELFSymbolRef &Symbol : StorageElfOrErr->symbols()) {
     auto Type = Symbol.getELFType();
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
@@ -308,8 +324,9 @@ llvm::Error LoadedCodeObjectCache::getExternalSymbols(
 
     if (Type == llvm::ELF::STT_NOTYPE && Binding == llvm::ELF::STB_GLOBAL &&
         *SymbolName != "UNDEF") {
-      auto ExternSymbol =
-          LoadedCodeObjectExternSymbol::create(LCO, *StorageElfOrErr, Symbol);
+      auto ExternSymbol = LoadedCodeObjectExternSymbol::create(
+          CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
+          *StorageElfOrErr, Symbol);
       LUTHIER_RETURN_ON_ERROR(ExternSymbol.takeError());
 
       Out.push_back(std::move(*ExternSymbol));
@@ -341,7 +358,7 @@ LoadedCodeObjectCache::getOrCreateLoadedCodeObjectEntry(
   if (LCOEntry == LCOCache.end()) {
     llvm::ArrayRef<uint8_t> LCOStorageMemory;
     LUTHIER_RETURN_ON_ERROR(hsa::loadedCodeObjectGetStorageMemory(
-                                VenLoaderSnapshot->getTable(), LCO)
+                                VenLoaderSnapshot.getTable(), LCO)
                                 .moveInto(LCOStorageMemory));
 
     try {
@@ -350,7 +367,8 @@ LoadedCodeObjectCache::getOrCreateLoadedCodeObjectEntry(
       auto StorageCopy =
           std::make_unique<llvm::SmallVector<uint8_t>>(LCOStorageMemory);
 
-      auto ParsedElfOrErr = parseAMDGCNObjectFile(*StorageCopy);
+      auto ParsedElfOrErr =
+          object::AMDGCNObjectFile::createAMDGCNObjectFile(*StorageCopy);
       LUTHIER_REPORT_FATAL_ON_ERROR(ParsedElfOrErr.takeError());
 
       LCOEntry = LCOCache
@@ -368,11 +386,11 @@ LoadedCodeObjectCache::getOrCreateLoadedCodeObjectEntry(
 llvm::Expected<std::unique_ptr<LoadedCodeObjectSymbol>>
 LoadedCodeObjectCache::getLoadedCodeObjectSymbolByName(
     hsa_loaded_code_object_t LCO, llvm::StringRef Name) const {
-  llvm::Expected<luthier::AMDGCNObjectFile &> StorageElfOrErr =
+  llvm::Expected<luthier::object::AMDGCNObjectFile &> StorageElfOrErr =
       getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(StorageElfOrErr.takeError());
 
-  auto OptElfSymbolOrErr = lookupSymbolByName(*StorageElfOrErr, Name);
+  auto OptElfSymbolOrErr = StorageElfOrErr->lookupSymbol(Name);
   LUTHIER_RETURN_ON_ERROR(OptElfSymbolOrErr.takeError());
   if (!OptElfSymbolOrErr->has_value())
     return nullptr;
@@ -384,41 +402,51 @@ LoadedCodeObjectCache::getLoadedCodeObjectSymbolByName(
          SymbolSize == 64) ||
         (SymbolType == llvm::ELF::STT_AMDGPU_HSA_KERNEL && SymbolSize == 64)) {
       // Find the Kernel function symbol
-      auto KDFuncOrErr = lookupSymbolByName(*StorageElfOrErr,
-                                            Name.substr(0, Name.rfind(".kd")));
+      auto KDFuncOrErr =
+          StorageElfOrErr->lookupSymbol(Name.substr(0, Name.rfind(".kd")));
       LUTHIER_RETURN_ON_ERROR(KDFuncOrErr.takeError());
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           KDFuncOrErr->has_value(),
           llvm::formatv("Failed to find the kernel function for {0}.", Name)));
-      std::shared_ptr<hsa::md::Metadata> MetaData;
+      std::unique_ptr<llvm::msgpack::Document> MD;
       LUTHIER_RETURN_ON_ERROR(
-          parseNoteMetaData(*StorageElfOrErr).moveInto(MetaData));
+          StorageElfOrErr->getMetadataDocument().moveInto(MD));
+      auto KernelsMDOrErr = MDParser.parseKernelMetadata(*MD, Name);
+      LUTHIER_RETURN_ON_ERROR(KernelsMDOrErr.takeError());
 
-      return LoadedCodeObjectKernel::create(LCO, *StorageElfOrErr, MetaData,
-                                            **KDFuncOrErr, **OptElfSymbolOrErr);
+      return LoadedCodeObjectKernel::create(
+          CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
+          *StorageElfOrErr, std::move(*KernelsMDOrErr), **KDFuncOrErr,
+          **OptElfSymbolOrErr);
     } else if (SymbolType == llvm::ELF::STT_FUNC) {
       // Find the KD symbol (if available)
-      auto KDSymOrErr =
-          lookupSymbolByName(*StorageElfOrErr, (Name + ".kd").str());
+      auto KDSymOrErr = StorageElfOrErr->lookupSymbol((Name + ".kd").str());
       LUTHIER_RETURN_ON_ERROR(KDSymOrErr.takeError());
       if (KDSymOrErr->has_value()) {
-        std::shared_ptr<hsa::md::Metadata> MetaData;
+        std::unique_ptr<llvm::msgpack::Document> MD;
         LUTHIER_RETURN_ON_ERROR(
-            parseNoteMetaData(*StorageElfOrErr).moveInto(MetaData));
+            StorageElfOrErr->getMetadataDocument().moveInto(MD));
+        auto KernelsMDOrErr =
+            MDParser.parseKernelMetadata(*MD, (Name + ".kd").str());
+        LUTHIER_RETURN_ON_ERROR(KernelsMDOrErr.takeError());
 
         return LoadedCodeObjectKernel::create(
-            LCO, *StorageElfOrErr, MetaData, **OptElfSymbolOrErr, **KDSymOrErr);
+            CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
+            *StorageElfOrErr, std::move(*KernelsMDOrErr), **OptElfSymbolOrErr,
+            **KDSymOrErr);
       } else {
         return LoadedCodeObjectDeviceFunction::create(LCO, *StorageElfOrErr,
                                                       **OptElfSymbolOrErr);
       }
     } else if (SymbolType == llvm::ELF::STT_OBJECT) {
-      return LoadedCodeObjectVariable::create(LCO, *StorageElfOrErr,
-                                              **OptElfSymbolOrErr);
+      return LoadedCodeObjectVariable::create(
+          CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
+          *StorageElfOrErr, **OptElfSymbolOrErr);
     } else if (SymbolType == llvm::ELF::STT_NOTYPE &&
                SymbolBinding == llvm::ELF::STB_GLOBAL && Name != "UNDEF") {
-      return LoadedCodeObjectExternSymbol::create(LCO, *StorageElfOrErr,
-                                                  **OptElfSymbolOrErr);
+      return LoadedCodeObjectExternSymbol::create(
+          CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
+          *StorageElfOrErr, **OptElfSymbolOrErr);
     } else {
       return nullptr;
     }
