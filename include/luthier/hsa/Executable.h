@@ -22,7 +22,6 @@
 #define LUTHIER_HSA_EXECUTABLE_H
 #include "luthier/hsa/ApiTable.h"
 #include "luthier/hsa/HsaError.h"
-#include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <optional>

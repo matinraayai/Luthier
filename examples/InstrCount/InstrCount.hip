@@ -24,6 +24,8 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/PrettyStackTrace.h>
+#include <luthier/common/ErrorCheck.h>
 #include <luthier/hip/HipError.h>
 #include <luthier/hsa/HsaError.h>
 #include <luthier/llvm/CodeGenHelpers.h>
@@ -31,6 +33,7 @@
 #include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
 #include <luthier/rocprofiler-sdk/ApiTableSnapshot.h>
+#include <luthier/tooling/Context.h>
 #include <mutex>
 #include <thread>
 
@@ -164,7 +167,7 @@ static llvm::Error instrumentKernel(const hsa::LoadedCodeObjectKernel &Kernel) {
 
 static void
 atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
-                         llvm::ArrayRef<AqlPacket> Packets,
+                         llvm::ArrayRef<hsa::AqlPacket> Packets,
                          hsa_amd_queue_intercept_packet_writer PacketWriter) {
   // Copy the app packets because we are going to modify the packets field
   // of the argument, and it will be easier to mutate
@@ -172,6 +175,10 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
   for (auto &Packet : AppPackets) {
     if (auto *DispatchPacket = Packet.asKernelDispatch()) {
       Mutex.lock();
+
+      const auto HsaCoreApiTable = C->getHsaCoreTable();
+      const auto HsaAmdExtTable = C->getHsaAmdExtTable();
+      const auto &LoaderTable = C->getHsaLoaderTable();
 
       decltype(std::chrono::high_resolution_clock::now()) T1{};
 
@@ -197,11 +204,10 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
 
       // Get the kernel that is about to get launched
       std::unique_ptr<hsa::LoadedCodeObjectKernel> KernelBeingInstrumented;
-      auto KernelSymbol =
+      LUTHIER_REPORT_FATAL_ON_ERROR(
           hsa::KernelDescriptor::fromKernelObject(DispatchPacket->kernel_object)
-              ->getLoadedCodeObjectKernelSymbol()
-              .moveInto(KernelBeingInstrumented);
-      LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
+              ->getLoadedCodeObjectKernelSymbol(HsaCoreApiTable, LoaderTable)
+              .moveInto(KernelBeingInstrumented));
 
       auto KernelName = KernelBeingInstrumented->getName();
       LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
@@ -213,17 +219,19 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
       // Create a signal if the application didn't create one for this
       // packet
       if (DispatchPacket->completion_signal.handle == 0) {
-        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-            hsa::getHsaApiTable().amd_ext_->hsa_amd_signal_create_fn(
-                SignalValue, 0, nullptr, 0,
-                &DispatchPacket->completion_signal)));
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            HsaAmdExtTable
+                .callFunction<&::AmdExtTable::hsa_amd_signal_create_fn>(
+                    SignalValue, 0, nullptr, 0,
+                    &DispatchPacket->completion_signal),
+            "Failed to create a signal to wait on for the kernel"));
         MustDestroySignalAfterLaunch = true;
       } else {
         MustDestroySignalAfterLaunch = false;
       }
       SignalValue =
-          C->getHsaCoreTable()
-              ..callFunction<&::CoreApiTable::hsa_signal_load_scacquire_fn>(
+          HsaCoreApiTable
+              .callFunction<&::CoreApiTable::hsa_signal_load_scacquire_fn>(
                   DispatchPacket->completion_signal);
 
       if (NumKernelLaunched >= *KernelBeginInterval &&
@@ -247,14 +255,16 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
         // Zero the instruction counter device variable
         uint64_t CounterHost = 0;
         uint64_t *CounterDevice;
-        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
-            HipRuntimeTableSnapshot->getTable
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_CALL_ERROR_CHECK(
+            HipRuntimeTableSnapshot->getTable()
                 .callFunction<&::HipDispatchTable::hipGetSymbolAddress_fn>(
-                    (void **)&CounterDevice, &Counter)));
-        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-            C->getHsaCoreTable()
-                .callFunction<&::CoreApiTable::hsa_memory_copy_fn>(
-                    CounterDevice, &CounterHost, sizeof(CounterHost))));
+                    (void **)&CounterDevice, (void *)&Counter),
+            "Failed to get the symbol associated with the counter variable on "
+            "the device"));
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            HsaCoreApiTable.callFunction<&::CoreApiTable::hsa_memory_copy_fn>(
+                CounterDevice, &CounterHost, sizeof(CounterHost)),
+            "Failed to copy to the device counter"));
       }
       T1 = std::chrono::high_resolution_clock::now();
       constexpr auto Timeout =
@@ -262,7 +272,7 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
               std::chrono::seconds{300})
               .count();
       auto CurrentSignalValue =
-          C->getHsaCoreTable()
+          HsaCoreApiTable
               .callFunction<&::CoreApiTable::hsa_signal_wait_relaxed_fn>(
                   DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
                   SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
@@ -274,10 +284,11 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
                           DispatchPacket->completion_signal.handle,
                           CurrentSignalValue - 1, SignalValue));
       if (MustDestroySignalAfterLaunch) {
-        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-            C->getHsaCoreTable()
-                .callFunction<&::CoreApiTable::hsa_signal_destroy_fn>
-                    s(DispatchPacket->completion_signal)));
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            HsaCoreApiTable
+                .callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
+                    DispatchPacket->completion_signal),
+            "Failed to destroy the signal used to wait on the kernel"));
       }
       auto T2 = std::chrono::high_resolution_clock::now();
       KernelTotalTime +=
@@ -301,14 +312,16 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
         uint64_t CounterHost = 0;
         {
           uint64_t *CounterDevice;
-          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_CALL_ERROR_CHECK(
               HipRuntimeTableSnapshot->getTable()
                   .callFunction<&::HipDispatchTable::hipGetSymbolAddress_fn>(
-                      (void **)&CounterDevice, &Counter)));
-          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-              C->getHsaCoreTable()
-                  .callFunction<&::CoreApiTable::hsa_memory_copy_fn>(
-                      &CounterHost, CounterDevice, sizeof(Counter))));
+                      (void **)&CounterDevice, &Counter),
+              "Failed to get the symbol associated with the device counter "
+              "variable"));
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+              HsaCoreApiTable.callFunction<&::CoreApiTable::hsa_memory_copy_fn>(
+                  &CounterHost, CounterDevice, sizeof(Counter)),
+              "Failed to copy back the device counter back to the host"));
           TotalNumInstructions += CounterHost;
         }
 
@@ -340,79 +353,6 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
 
 namespace luthier {
 
-static void toolingLibraryFini() { toolingLibraryFini(nullptr); }
-
-static void atToolInit(void *) {
-  luthier::errs() << "Instruction counter tool is launching.\n";
-  std::atexit(toolingLibraryFini);
-  InstrCountToolOptionCategory =
-      new llvm::cl::OptionCategory("Instruction Count Tool Options");
-
-  InstrBeginInterval = new llvm::cl::opt<unsigned int>(
-      "instr-begin-interval",
-      llvm::cl::desc("Beginning of the instruction interval where to "
-                     "apply instrumentation, inclusive"),
-      llvm::cl::init(0), llvm::cl::NotHidden,
-      llvm::cl::cat(*InstrCountToolOptionCategory));
-
-  InstrEndInterval = new llvm::cl::opt<unsigned int>(
-      "instr-end-interval",
-      llvm::cl::desc("End of the instruction interval where to "
-                     "apply instrumentation, exclusive"),
-      llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-      llvm::cl::NotHidden, llvm::cl::cat(*InstrCountToolOptionCategory));
-
-  KernelBeginInterval = new llvm::cl::opt<unsigned int>(
-      "kernel-begin-interval",
-      llvm::cl::desc("Beginning of the kernel interval to apply "
-                     "instrumentation, inclusive"),
-      llvm::cl::init(0), llvm::cl::NotHidden,
-      llvm::cl::cat(*InstrCountToolOptionCategory));
-
-  KernelEndInterval = new llvm::cl::opt<unsigned int>(
-      "kernel-end-interval",
-      llvm::cl::desc(
-          "End of the kernel interval to apply instrumentation, exclusive"),
-      llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-      llvm::cl::NotHidden, llvm::cl::cat(*InstrCountToolOptionCategory));
-
-  CountWavefrontLevel = new llvm::cl::opt<bool>(
-      "count-wavefront-level",
-      llvm::cl::desc("Whether to count number of instructions at the wavefront "
-                     "level or thread level"),
-      llvm::cl::init(false), llvm::cl::NotHidden,
-      llvm::cl::cat(*InstrCountToolOptionCategory));
-
-  DemangleKernelNames = new llvm::cl::opt<bool>(
-      "demangle-kernel-names",
-      llvm::cl::desc("Whether to demangle kernel names before printing"),
-      llvm::cl::init(true), llvm::cl::NotHidden,
-      llvm::cl::cat(*InstrCountToolOptionCategory));
-  const auto Argv = "";
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      llvm::cl::ParseCommandLineOptions(
-          0, &Argv, "Luthier, An AMD GPU Dynamic Binary Instrumentation Tool",
-          &luthier::errs(), "LUTHIER_ARGS"),
-      "Failed to parse the command line arguments."));
-  llvm::EnablePrettyStackTrace();
-  llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
-  llvm::setBugReportMsg("PLEASE submit a bug report to "
-                        "https://github.com/matinraayai/Luthier/issues/ and "
-                        "include the crash error message and backtrace.\n");
-  // Add the rocprofiler finalize function as a signal handler to LLVM so that
-  // it executes in case of a fatal error
-  llvm::sys::AddSignalHandler(toolingLibraryFini, nullptr);
-
-  llvm::Error Err;
-  C = new Context(atPacketDispatchCallback, Err);
-  if (Err)
-    llvm::report_fatal_error(std::move(Err));
-  HipRuntimeTableSnapshot =
-      new rocprofiler::HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(Err);
-  if (Err)
-    llvm::report_fatal_error(std::move(Err));
-}
-
 void atToolFini(void *) {
   static std::once_flag Once{};
   std::call_once(Once, []() {
@@ -436,6 +376,84 @@ void atToolFini(void *) {
   });
 }
 
+static void atToolFini() { atToolFini(nullptr); }
+
+static void atToolInit(void *) {
+  static std::once_flag Once{};
+  std::call_once(Once, [] {
+    luthier::errs() << "Instruction counter tool is launching.\n";
+    std::atexit(atToolFini);
+    InstrCountToolOptionCategory =
+        new llvm::cl::OptionCategory("Instruction Count Tool Options");
+
+    InstrBeginInterval = new llvm::cl::opt<unsigned int>(
+        "instr-begin-interval",
+        llvm::cl::desc("Beginning of the instruction interval where to "
+                       "apply instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    InstrEndInterval = new llvm::cl::opt<unsigned int>(
+        "instr-end-interval",
+        llvm::cl::desc("End of the instruction interval where to "
+                       "apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    KernelBeginInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-begin-interval",
+        llvm::cl::desc("Beginning of the kernel interval to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    KernelEndInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-end-interval",
+        llvm::cl::desc(
+            "End of the kernel interval to apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    CountWavefrontLevel = new llvm::cl::opt<bool>(
+        "count-wavefront-level",
+        llvm::cl::desc(
+            "Whether to count number of instructions at the wavefront "
+            "level or thread level"),
+        llvm::cl::init(false), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+
+    DemangleKernelNames = new llvm::cl::opt<bool>(
+        "demangle-kernel-names",
+        llvm::cl::desc("Whether to demangle kernel names before printing"),
+        llvm::cl::init(true), llvm::cl::NotHidden,
+        llvm::cl::cat(*InstrCountToolOptionCategory));
+    const auto Argv = "";
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        llvm::cl::ParseCommandLineOptions(
+            0, &Argv, "Luthier ROCm Instruction Counter Tool", &luthier::errs(),
+            "LUTHIER_ARGS"),
+        "Failed to parse the command line arguments."));
+    llvm::EnablePrettyStackTrace();
+    llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
+    llvm::setBugReportMsg("PLEASE submit a bug report to "
+                          "https://github.com/matinraayai/Luthier/issues/ and "
+                          "include the crash error message and backtrace.\n");
+    // Add the rocprofiler finalize function as a signal handler to LLVM so that
+    // it executes in case of a fatal error
+    llvm::sys::AddSignalHandler(atToolFini, nullptr);
+
+    llvm::Error Err = llvm::Error::success();
+    C = new Context(atPacketDispatchCallback, Err);
+    if (Err)
+      llvm::report_fatal_error(std::move(Err));
+    HipRuntimeTableSnapshot =
+        new rocprofiler::HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(
+            Err);
+    if (Err)
+      llvm::report_fatal_error(std::move(Err));
+  });
+}
+
 } // namespace luthier
 
 extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *
@@ -453,12 +471,10 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
                           << " (" << RuntimeVersion << ")"
                           << "\n";
              llvm::dbgs() << "Tool priority: " << Priority << ";\n";);
-  llvm::StringRef ToolName = luthier::getToolName();
-  LLVM_DEBUG(llvm::dbgs() << "Luthier tool name: " << ToolName << "\n";);
   ClientID->name = "Luthier Instruction Counter tool";
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
       sizeof(rocprofiler_tool_configure_result_t), nullptr,
-      &luthier::toolingLibraryFini, nullptr};
+      &luthier::atToolFini, nullptr};
   return &Cfg;
 }

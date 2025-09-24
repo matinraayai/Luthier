@@ -79,7 +79,7 @@ public:
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
         Err,
         std::make_tuple(&::CoreApiTable::hsa_queue_create_fn,
-                        UnderlyingHsaQueueCreateFn, hsaQueueCreateWrapper));
+                        &UnderlyingHsaQueueCreateFn, hsaQueueCreateWrapper));
     if (Err) {
       return;
     }

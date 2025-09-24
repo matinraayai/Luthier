@@ -22,7 +22,6 @@
 #define LUTHIER_TOOLING_COMMON_CODE_LIFTER_HPP
 #include "AMDGPUTargetMachine.h"
 #include "TargetManager.hpp"
-#include "common/ObjectUtils.hpp"
 #include "luthier/common/Singleton.h"
 #include "luthier/hsa/Agent.h"
 #include "luthier/hsa/Executable.h"
@@ -33,6 +32,8 @@
 #include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
 #include "luthier/hsa/hsa.h"
+#include "luthier/object/AMDGCNObjectFile.h"
+#include "luthier/object/ObjectFileUtils.h"
 #include "luthier/rocprofiler-sdk/ApiTableSnapshot.h"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include "luthier/types.h"
@@ -184,11 +185,11 @@ public:
       // Get the ISA associated with the Symbol
       hsa_loaded_code_object_t LCO = Symbol.getLoadedCodeObject();
 
-      llvm::Expected<luthier::AMDGCNObjectFile &> ObjFileOrErr =
+      llvm::Expected<luthier::object::AMDGCNObjectFile &> ObjFileOrErr =
           hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
       LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
 
-      auto LLVMIsa = getELFObjectFileISA(*ObjFileOrErr);
+      auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
       LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
 
       auto ISA =

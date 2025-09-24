@@ -17,31 +17,24 @@
 /// \file
 /// This file implements the \c luthier::LLVMError class.
 //===----------------------------------------------------------------------===//
+#include "luthier/llvm/LLVMError.h"
 #include <llvm/Support/Signals.h>
-#include <luthier/llvm/LLVMError.h>
 
 namespace luthier {
 
 char LLVMError::ID = 0;
 
 void LLVMError::log(llvm::raw_ostream &OS) const {
-  OS << "Call to LLVM library in file " << File << ", line: " << LineNumber
-     << "encountered an error : " << OriginalErrorMsg << "\n";
-  OS << "Stacktrace: \n" << StackTrace << "\n";
-}
-
-llvm::Error LLVMError::llvmErrorCheck(llvm::Error Expr, llvm::StringRef File,
-                                      int LineNumber) {
-  if (Expr) {
-    std::string StackTrace;
-    llvm::raw_string_ostream STStream(StackTrace);
-    llvm::sys::PrintStackTrace(STStream);
-    std::string OriginalErrorMessage = llvm::toStringWithoutConsuming(Expr);
-    llvm::consumeError(std::move(Expr));
-    return llvm::make_error<LLVMError>(File, LineNumber, StackTrace,
-                                       OriginalErrorMessage);
-  }
-  return llvm::Error::success();
+  OS << "Call to LLVM library in file " << ErrorLocation.file_name()
+     << ", function " << ErrorLocation.function_name() << ", at "
+     << ErrorLocation.line() << ": " << ErrorMsg << ".\n";
+  OS << "Stack trace: \n";
+#ifdef __cpp_lib_stacktrace
+  OS << std::to_string(StackTrace);
+#else
+  OS << StackTrace;
+#endif
+  OS << "\n";
 }
 
 } // namespace luthier

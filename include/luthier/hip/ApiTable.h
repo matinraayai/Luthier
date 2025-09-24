@@ -7,7 +7,17 @@
 namespace luthier::hip {
 
 template <auto Entry> bool apiTableHasEntry(const auto &Table) {
-  return static_cast<size_t>(&(Table.*Entry)) < Table.size;
+  return reinterpret_cast<size_t>(&(Table.*Entry)) -
+             reinterpret_cast<size_t>(&Table) <
+         Table.size;
+}
+
+template <typename HipTableType, typename EntryType>
+bool apiTableHasEntry(const HipTableType &Table,
+                      const EntryType HipTableType::*Entry) {
+  return reinterpret_cast<size_t>(&(Table.*Entry)) -
+             reinterpret_cast<size_t>(&Table) <
+         Table.size;
 }
 
 template <rocprofiler_intercept_table_t TableType> struct ApiTableEnumInfo;
@@ -27,7 +37,7 @@ private:
 public:
   explicit ApiTableContainer(
       const ApiTableEnumInfo<TableType>::ApiTableType &ApiTable)
-      : ApiTable(ApiTable) {};
+      : ApiTable(ApiTable){};
 
   /// \brief Checks if the \c Func is present in the API table snapshot
   /// \tparam Func pointer-to-member of the function entry inside the
@@ -35,14 +45,14 @@ public:
   /// \return \c true if the function is available inside the
   /// API table, \c false otherwise. Reports a fatal error
   /// if the snapshot has not been initialized by rocprofiler-sdk
-  template <auto ApiTableEnumInfo<TableType>::*Func>
+  template <auto ApiTableEnumInfo<TableType>::ApiTableType::*Func>
   [[nodiscard]] bool tableSupportsFunction() const {
     return apiTableHasEntry<Func>(ApiTable);
   }
 
   /// \returns the function inside the snapshot associated with the
   /// pointer-to-member accessor \c Func
-  template <auto ApiTableEnumInfo<TableType>::*Func>
+  template <auto ApiTableEnumInfo<TableType>::ApiTableType::*Func>
   const auto &getFunction() const {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         tableSupportsFunction<Func>(),
@@ -52,7 +62,8 @@ public:
 
   /// Obtains the function \c Func from the table snapshot and calls
   /// it with the passed \p Args and returns the results of the function call
-  template <auto ApiTableEnumInfo<TableType>::*Func, typename... ArgTypes>
+  template <auto ApiTableEnumInfo<TableType>::ApiTableType::*Func,
+            typename... ArgTypes>
   auto callFunction(ArgTypes... Args) const {
     return getFunction<Func>()(Args...);
   }

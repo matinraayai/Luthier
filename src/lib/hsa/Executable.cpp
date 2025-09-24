@@ -29,7 +29,7 @@ llvm::Expected<hsa_executable_t> executableCreate(
     const hsa_profile_t Profile,
     const hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) {
   hsa_executable_t Exec;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
       CoreApi.callFunction<&::CoreApiTable::hsa_executable_create_alt_fn>(
           Profile, DefaultFloatRoundingMode, "", &Exec),
       "Failed to create a new executable handle"));

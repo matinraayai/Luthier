@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_OBJECT_OBJECT_FILE_UTILS_H
 #define LUTHIER_OBJECT_OBJECT_FILE_UTILS_H
+#include <llvm/ADT/StringMap.h>
 #include <llvm/Object/ObjectFile.h>
 
 namespace luthier::object {
@@ -35,6 +36,10 @@ createObjectFile(llvm::StringRef ObjFile, bool InitContent = true);
 /// on failure
 llvm::Expected<std::string>
 getObjectFileTarget(const llvm::object::ObjectFile &ObjFile);
+
+llvm::Expected<
+    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
+getObjectFileTargetTuple(const llvm::object::ObjectFile &ObjFile);
 
 /// Returns a mapping between the name of each symbol in the \p ObjFile and its
 /// load offset

@@ -34,7 +34,7 @@ public:
              const std::optional<amd_comgr_status_t> Error,
              const std::source_location ErrorLocation =
                  std::source_location::current(),
-             std::stacktrace StackTrace = std::stacktrace::current())
+             StackTraceType StackTrace = StackTraceInitializer())
       : RocmLibraryError(std::move(ErrorMsg), ErrorLocation,
                          std::move(StackTrace)),
         Error(Error) {};
@@ -43,7 +43,7 @@ public:
              const std::optional<amd_comgr_status_t> Error,
              const std::source_location ErrorLocation =
                  std::source_location::current(),
-             std::stacktrace StackTrace = std::stacktrace::current())
+             StackTraceType StackTrace = StackTraceInitializer())
       : RocmLibraryError(std::move(ErrorMsg.str()), ErrorLocation,
                          std::move(StackTrace)),
         Error(Error) {};

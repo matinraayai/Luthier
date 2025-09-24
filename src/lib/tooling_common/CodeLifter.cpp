@@ -21,8 +21,6 @@
 
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
-
-#include "common/ObjectUtils.hpp"
 #include "luthier/hsa/Agent.h"
 #include "luthier/hsa/Executable.h"
 #include "luthier/hsa/ISA.h"
@@ -214,7 +212,7 @@ CodeLifter::resolveRelocation(hsa_loaded_code_object_t LCO,
 
     auto LoadedMemoryBase = reinterpret_cast<address_t>(LoadedMemory->data());
 
-    llvm::Expected<luthier::AMDGCNObjectFile &> StorageELFOrErr =
+    llvm::Expected<object::AMDGCNObjectFile &> StorageELFOrErr =
         hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
     LUTHIER_RETURN_ON_ERROR(StorageELFOrErr.takeError());
 
@@ -285,11 +283,11 @@ llvm::Error CodeLifter::initLR(LiftedRepresentation &LR,
   hsa_loaded_code_object_t LCO = Kernel.getLoadedCodeObject();
   LR.LCO = LCO;
   // Create a new Target Machine for the LCO
-  llvm::Expected<luthier::AMDGCNObjectFile &> ObjFileOrErr =
+  llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
       hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
 
-  auto LLVMIsa = getELFObjectFileISA(*ObjFileOrErr);
+  auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
   LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
 
   auto ISA = hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),
@@ -331,7 +329,7 @@ CodeLifter::initLiftedGlobalVariableEntry(hsa_loaded_code_object_t LCO,
 }
 
 static llvm::Type *
-processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
+processExplicitKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
                          llvm::LLVMContext &Ctx) {
   llvm::Type *ParamType = llvm::Type::getIntNTy(Ctx, ArgMD.Size * 8);
   // Used when the argument kind is global buffer or dynamic shared pointer
@@ -340,10 +338,10 @@ processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
                                   : llvm::AMDGPUAS::GLOBAL_ADDRESS;
   unsigned int PointeeAlign =
       ArgMD.PointeeAlign.has_value() ? *ArgMD.PointeeAlign : 0;
-  switch (ArgMD.ValueKind) {
-  case hsa::md::ValueKind::ByValue:
+  switch (ArgMD.ValKind) {
+  case amdgpu::hsamd::ValueKind::ByValue:
     break;
-  case hsa::md::ValueKind::GlobalBuffer:
+  case amdgpu::hsamd::ValueKind::GlobalBuffer:
     // Convert the argument to a pointer
     ParamType = llvm::PointerType::get(ParamType, AddressSpace);
     break;
@@ -353,49 +351,49 @@ processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
   return ParamType;
 }
 
-void processHiddenKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
+void processHiddenKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
                             llvm::Function &F, llvm::SIMachineFunctionInfo &MFI,
                             const llvm::SIRegisterInfo &TRI) {
-  switch (ArgMD.ValueKind) {
-  case hsa::md::ValueKind::HiddenGlobalOffsetX:
-  case hsa::md::ValueKind::HiddenGlobalOffsetY:
-  case hsa::md::ValueKind::HiddenGlobalOffsetZ:
-  case hsa::md::ValueKind::HiddenBlockCountX:
-  case hsa::md::ValueKind::HiddenBlockCountY:
-  case hsa::md::ValueKind::HiddenBlockCountZ:
-  case hsa::md::ValueKind::HiddenRemainderX:
-  case hsa::md::ValueKind::HiddenRemainderY:
-  case hsa::md::ValueKind::HiddenRemainderZ:
-  case hsa::md::ValueKind::HiddenNone:
-  case hsa::md::ValueKind::HiddenGroupSizeX:
-  case hsa::md::ValueKind::HiddenGroupSizeY:
-  case hsa::md::ValueKind::HiddenGroupSizeZ:
-  case hsa::md::ValueKind::HiddenGridDims:
-  case hsa::md::ValueKind::HiddenPrivateBase:
-  case hsa::md::ValueKind::HiddenSharedBase:
+  switch (ArgMD.ValKind) {
+  case amdgpu::hsamd::ValueKind::HiddenGlobalOffsetX:
+  case amdgpu::hsamd::ValueKind::HiddenGlobalOffsetY:
+  case amdgpu::hsamd::ValueKind::HiddenGlobalOffsetZ:
+  case amdgpu::hsamd::ValueKind::HiddenBlockCountX:
+  case amdgpu::hsamd::ValueKind::HiddenBlockCountY:
+  case amdgpu::hsamd::ValueKind::HiddenBlockCountZ:
+  case amdgpu::hsamd::ValueKind::HiddenRemainderX:
+  case amdgpu::hsamd::ValueKind::HiddenRemainderY:
+  case amdgpu::hsamd::ValueKind::HiddenRemainderZ:
+  case amdgpu::hsamd::ValueKind::HiddenNone:
+  case amdgpu::hsamd::ValueKind::HiddenGroupSizeX:
+  case amdgpu::hsamd::ValueKind::HiddenGroupSizeY:
+  case amdgpu::hsamd::ValueKind::HiddenGroupSizeZ:
+  case amdgpu::hsamd::ValueKind::HiddenGridDims:
+  case amdgpu::hsamd::ValueKind::HiddenPrivateBase:
+  case amdgpu::hsamd::ValueKind::HiddenSharedBase:
     break;
-  case hsa::md::ValueKind::HiddenPrintfBuffer:
+  case amdgpu::hsamd::ValueKind::HiddenPrintfBuffer:
     F.getParent()->getOrInsertNamedMetadata("llvm.printf.fmts");
     break;
-  case hsa::md::ValueKind::HiddenHostcallBuffer:
+  case amdgpu::hsamd::ValueKind::HiddenHostcallBuffer:
     F.removeFnAttr("amdgpu-no-hostcall-ptr");
     break;
-  case hsa::md::ValueKind::HiddenDefaultQueue:
+  case amdgpu::hsamd::ValueKind::HiddenDefaultQueue:
     F.removeFnAttr("amdgpu-no-default-queue");
     break;
-  case hsa::md::ValueKind::HiddenCompletionAction:
+  case amdgpu::hsamd::ValueKind::HiddenCompletionAction:
     F.removeFnAttr("amdgpu-no-completion-action");
     break;
-  case hsa::md::ValueKind::HiddenMultiGridSyncArg:
+  case amdgpu::hsamd::ValueKind::HiddenMultiGridSyncArg:
     F.removeFnAttr("amdgpu-no-multigrid-sync-arg");
     break;
-  case hsa::md::ValueKind::HiddenHeapV1:
+  case amdgpu::hsamd::ValueKind::HiddenHeapV1:
     F.removeFnAttr("amdgpu-no-heap-ptr");
     break;
-  case hsa::md::ValueKind::HiddenDynamicLDSSize:
+  case amdgpu::hsamd::ValueKind::HiddenDynamicLDSSize:
     MFI.setUsesDynamicLDS(true);
     break;
-  case hsa::md::ValueKind::HiddenQueuePtr:
+  case amdgpu::hsamd::ValueKind::HiddenQueuePtr:
     MFI.addQueuePtr(TRI);
     break;
   default:
@@ -428,7 +426,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObjectKernel &Kernel,
     // For now, we only rely on required argument metadata
     // This should be updated as new cases are encountered
     for (const auto &ArgMD : *KernelMD.Args) {
-      if (ArgMD.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin)
+      if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin)
         break;
       else {
         Params.push_back(processExplicitKernelArg(ArgMD, Module.getContext()));
@@ -548,8 +546,8 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObjectKernel &Kernel,
     F->addFnAttr("amdgpu-no-multigrid-sync-arg");
     F->addFnAttr("amdgpu-no-heap-ptr");
     for (const auto &ArgMD : *KernelMD.Args) {
-      if (ArgMD.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin &&
-          ArgMD.ValueKind <= hsa::md::ValueKind::HiddenArgKindEnd) {
+      if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
+          ArgMD.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
         processHiddenKernelArg(
             ArgMD, *F, *MFI,
             *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo());
@@ -674,11 +672,11 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
 
   auto &TM = MMI.getTarget();
 
-  llvm::Expected<luthier::AMDGCNObjectFile &> ObjFileOrErr =
+  llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
       hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
   LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
 
-  auto LLVMIsa = getELFObjectFileISA(*ObjFileOrErr);
+  auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
   LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
 
   auto ISA = hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),
@@ -1148,11 +1146,11 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   // Create a new target machine for the MMI
   DestLR->Module = llvm::CloneModule(SrcModule, VMap);
   DestLR->LCO = SrcLR.LCO;
-  llvm::Expected<luthier::AMDGCNObjectFile &> ObjFileOrErr =
+  llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
       hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(SrcLR.LCO);
   LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
 
-  auto LLVMIsa = getELFObjectFileISA(*ObjFileOrErr);
+  auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
   LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
 
   auto ISA = hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),

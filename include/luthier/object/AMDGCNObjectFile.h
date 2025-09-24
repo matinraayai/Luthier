@@ -19,8 +19,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_OBJECT_AMDGCN_OBJECT_FILE_H
 #define LUTHIER_OBJECT_AMDGCN_OBJECT_FILE_H
+#include "luthier/object/ELFObjectFileUtils.h"
 #include <llvm/BinaryFormat/MsgPackDocument.h>
-#include <luthier/Object/ELFObjectUtils.h>
 
 namespace luthier::object {
 
@@ -456,9 +456,9 @@ AMDGCNKernelDescSymbolRef::fromKernelFunction(
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ExpectedKernelDescSym->has_value(),
-      "Failed to find the kernel descriptor associated with "
-      "kernel function {0}.",
-      *NameOrErr));
+      llvm::formatv("Failed to find the kernel descriptor associated with "
+                    "kernel function {0}.",
+                    *NameOrErr)));
   return AMDGCNKernelDescSymbolRef{**ExpectedKernelDescSym};
 }
 
@@ -492,9 +492,9 @@ AMDGCNKernelFuncSymbolRef::fromKernelDescriptor(
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ExpectedKernelFuncSym->has_value(),
-      "Failed to find the kernel function associated with "
-      "kernel descriptor {0}.",
-      *NameOrErr));
+      llvm::formatv("Failed to find the kernel function associated with "
+                    "kernel descriptor {0}.",
+                    *NameOrErr)));
 
   return AMDGCNKernelFuncSymbolRef{**ExpectedKernelFuncSym};
 }

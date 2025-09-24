@@ -32,7 +32,7 @@ llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
 LoadedCodeObjectKernel::create(
     const ApiTableContainer<::CoreApiTable> &CoreApiTable,
     const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderApi,
-    hsa_loaded_code_object_s LCO, llvm::object::ELF64LEObjectFile &StorageElf,
+    hsa_loaded_code_object_s LCO, luthier::object::AMDGCNObjectFile &StorageElf,
     std::unique_ptr<amdgpu::hsamd::Kernel::Metadata> MD,
     llvm::object::ELFSymbolRef KFuncSymbol,
     llvm::object::ELFSymbolRef KDSymbol) {

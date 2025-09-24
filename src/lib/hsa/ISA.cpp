@@ -61,8 +61,9 @@ inline llvm::Error parseIsaName(llvm::StringRef IsaName,
   IsaName.split(Out, '-', 4);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Out.size() == 5,
-      "Failed to split the passed ISA name {0} into 5 different fields.",
-      IsaName));
+      llvm::formatv(
+          "Failed to split the passed ISA name {0} into 5 different fields.",
+          IsaName)));
   return llvm::Error::success();
 }
 

@@ -48,69 +48,6 @@ namespace luthier {
 
 template <> CodeGenerator *Singleton<CodeGenerator>::Instance{nullptr};
 
-llvm::Error CodeGenerator::linkRelocatableToExecutable(
-    const llvm::ArrayRef<char> &Code, hsa_isa_t ISA,
-    llvm::SmallVectorImpl<uint8_t> &Out) {
-  llvm::TimeTraceScope Scope("Comgr Executable Linking");
-  amd_comgr_data_t DataIn;
-  amd_comgr_data_set_t DataSetIn, DataSetOut;
-  amd_comgr_action_info_t DataAction;
-  auto IsaName = hsa::isaGetName(CoreApiSnapshot.getTable(), ISA);
-  LUTHIER_RETURN_ON_ERROR(IsaName.takeError());
-
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_create_data_set(&DataSetIn)));
-
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      amd_comgr_create_data(AMD_COMGR_DATA_KIND_RELOCATABLE, &DataIn)));
-
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      amd_comgr_set_data(DataIn, Code.size(), Code.data())));
-
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_set_data_name(DataIn, "source.o"))));
-
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_data_set_add(DataSetIn, DataIn))));
-
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_create_data_set(&DataSetOut))));
-
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_create_action_info(&DataAction))));
-
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_action_info_set_isa_name(DataAction, IsaName->c_str()))));
-  const char *LinkOptions[]{"-Wl,--unresolved-symbols=ignore-all"};
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_action_info_set_option_list(DataAction, LinkOptions, 1))));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_do_action(AMD_COMGR_ACTION_LINK_RELOCATABLE_TO_EXECUTABLE,
-                           DataAction, DataSetIn, DataSetOut))));
-
-  amd_comgr_data_t DataOut;
-  size_t DataOutSize;
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_action_data_get_data(
-          DataSetOut, AMD_COMGR_DATA_KIND_EXECUTABLE, 0, &DataOut))));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK(
-      (amd_comgr_get_data(DataOut, &DataOutSize, nullptr))));
-  Out.resize(DataOutSize);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_COMGR_SUCCESS_CHECK((amd_comgr_get_data(
-      DataOut, &DataOutSize, reinterpret_cast<char *>(Out.data())))));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_data_set(DataSetIn)));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_data_set(DataSetOut)));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_destroy_action_info(DataAction)));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_release_data(DataIn)));
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_COMGR_SUCCESS_CHECK(amd_comgr_release_data(DataOut)));
-  return llvm::Error::success();
-}
-
 llvm::Error CodeGenerator::printAssembly(
     llvm::Module &Module, llvm::GCNTargetMachine &TM,
     std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,

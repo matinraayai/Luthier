@@ -10,7 +10,6 @@ add_library(LuthierHSA OBJECT
         KernelDescriptor.cpp
         LoadedCodeObjectCache.cpp
         LoadedCodeObjectDeviceFunction.cpp
-        LoadedCodeObjectExternSymbol.cpp
         LoadedCodeObjectKernel.cpp
         LoadedCodeObjectSymbol.cpp
         LoadedCodeObjectVariable.cpp

@@ -23,6 +23,8 @@
 #ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
 #define LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
 #include "luthier/hsa/ApiTable.h"
+#include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/object/AMDGCNObjectFile.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
@@ -49,7 +51,7 @@ protected:
   /// The HSA Loaded Code Object this symbol belongs to
   hsa_loaded_code_object_t BackingLCO{};
   /// Parsed storage ELF of the LCO, to ensure \c Symbol stays valid
-  llvm::object::ELF64LEObjectFile &StorageELF;
+  luthier::object::AMDGCNObjectFile &StorageELF;
   /// The LLVM Object ELF symbol of this LCO symbol;
   /// Backed by parsing the storage ELF of the LCO
   llvm::object::ELFSymbolRef Symbol;
@@ -67,7 +69,8 @@ protected:
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the <tt>LoadedCodeObjectSymbol</tt> if exists
   LoadedCodeObjectSymbol(
-      hsa_loaded_code_object_t LCO, llvm::object::ELF64LEObjectFile &StorageELF,
+      hsa_loaded_code_object_t LCO,
+      luthier::object::AMDGCNObjectFile &StorageELF,
       llvm::object::ELFSymbolRef Symbol, SymbolKind Kind,
       std::optional<hsa_executable_symbol_t> ExecutableSymbol);
 

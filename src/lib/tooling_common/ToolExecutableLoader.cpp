@@ -221,7 +221,7 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
   LUTHIER_RETURN_ON_ERROR(Executable.takeError());
 
   // Define the Agent allocation external variables
-  auto Agent = OriginalKernel.getAgent(CoreApiTable);
+  auto Agent = OriginalKernel.getAgent(LoaderApiSnapshot.getTable());
   LUTHIER_RETURN_ON_ERROR(Agent.takeError());
 
   for (const auto &[EVName, EVAddress] : ExternVariables) {

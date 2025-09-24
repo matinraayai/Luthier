@@ -18,10 +18,10 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_ELF_OBJECT_FILE_H
 #define LUTHIER_COMMON_ELF_OBJECT_FILE_H
+#include "luthier/common/ErrorCheck.h"
+#include "luthier/common/GenericLuthierError.h"
+#include "luthier/llvm/LLVMError.h"
 #include <llvm/Object/ELFObjectFile.h>
-#include <luthier/Common/ErrorCheck.h>
-#include <luthier/Common/GenericLuthierError.h>
-#include <luthier/LLVM/LLVMError.h>
 
 namespace luthier::object {
 
@@ -46,7 +46,9 @@ getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
 
   llvm::Expected<typename llvm::object::ELFFile<ELFT>::Elf_Phdr_Range>
       PhdrRangeOrErr = ELF.program_headers();
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(PhdrRangeOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_LLVM_ERROR_CHECK(PhdrRangeOrErr.takeError(),
+                               "Failed to get the program headers of the ELF"));
 
   // Search for a PT_LOAD segment containing the requested section. Use this
   // segment's p_addr to calculate the section's LMA.
@@ -66,8 +68,8 @@ getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
 /// \param Sec the  section being queried
 /// \return on success, the loaded offset of \p Sec with respect to the
 /// object file's load base; an \c llvm::Error on failure
-llvm::Expected<std::optional<uint64_t>>
-getLoadOffset(const llvm::object::ELFSectionRef &Sec) {
+llvm::Expected<std::optional<uint64_t>> inline getLoadOffset(
+    const llvm::object::ELFSectionRef &Sec) {
   const llvm::object::ELFObjectFileBase *ObjFile = Sec.getObject();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ObjFile != nullptr, "Object file of section is nullptr."));
@@ -101,9 +103,9 @@ getLoadOffset(const llvm::object::ELFSectionRef &Sec) {
 /// ELF's load base if the symbol is loaded, \c std::nullopt if not;
 /// an \c llvm::Error on failure
 template <typename ELFT>
-llvm::Expected<std::optional<uint64_t>>
-getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
-              const typename llvm::object::ELFFile<ELFT>::Elf_Sym &Sym) {
+llvm::Expected<std::optional<uint64_t>> getLoadOffset(
+    const llvm::object::ELFFile<ELFT> &ELF,
+    const typename llvm::object::ELFFile<ELFT>::Elf_Sym &Sym) {
   /// If the ELF is a relocatable, return as it does not have any program
   /// headers yet
   if (ELF.getHeader().e_type == llvm::ELF::ET_REL)
@@ -111,13 +113,17 @@ getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
 
   llvm::Expected<typename llvm::object::ELFFile<ELFT>::Elf_Phdr_Range>
       PhdrRangeOrErr = ELF.program_headers();
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(PhdrRangeOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+      PhdrRangeOrErr.takeError(),
+      "Failed to obtain the program headers of the ELF"));
 
   /// Get the symbol's section
   llvm::Expected<const typename ELFT::Shdr *> SymSectionOrErr =
       ELF.getSection(Sym.st_shndx);
 
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SymSectionOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(
+      LUTHIER_LLVM_ERROR_CHECK(SymSectionOrErr.takeError(),
+                               "Failed to get the ELF section for the symbol"));
 
   // Search for a PT_LOAD segment containing the symbol's section. Use this
   // segment's p_addr to calculate the symbol's LMA.
@@ -137,7 +143,7 @@ getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
 /// \return on success, the load offset of the \c Sym with respect to the
 /// object file's load base if the symbol is loaded, \c std::nullopt if not;
 /// an \c llvm::Error on failure
-llvm::Expected<std::optional<uint64_t>>
+llvm::Expected<std::optional<uint64_t>> inline
 getLoadOffset(const llvm::object::ELFSymbolRef &SymbolRef) {
   const llvm::object::ELFObjectFileBase *ObjFile = SymbolRef.getObject();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
@@ -146,22 +152,30 @@ getLoadOffset(const llvm::object::ELFSymbolRef &SymbolRef) {
   if (const auto *ELF64LE =
           llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ObjFile)) {
     auto ElfSymOrErr = ELF64LE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+        ElfSymOrErr.takeError(),
+        "Failed to get the ELF symbol from its Dataref"));
     return getLoadOffset(ELF64LE->getELFFile(), **ElfSymOrErr);
   } else if (const auto *ELF64BE =
                  llvm::dyn_cast<llvm::object::ELF64BEObjectFile>(ObjFile)) {
     auto ElfSymOrErr = ELF64BE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+        ElfSymOrErr.takeError(),
+        "Failed to get the ELF symbol from its Dataref"));
     return getLoadOffset(ELF64BE->getELFFile(), **ElfSymOrErr);
   } else if (const auto *ELF32LE =
                  llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ObjFile)) {
     auto ElfSymOrErr = ELF32LE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+        ElfSymOrErr.takeError(),
+        "Failed to get the ELF symbol from its Dataref"));
     return getLoadOffset(ELF32LE->getELFFile(), **ElfSymOrErr);
   } else {
     auto *ELF32BE = llvm::cast<llvm::object::ELF32BEObjectFile>(ObjFile);
     auto ElfSymOrErr = ELF32BE->getSymbol(SymbolRef.getRawDataRefImpl());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(ElfSymOrErr.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+        ElfSymOrErr.takeError(),
+        "Failed to get the ELF symbol from its Dataref"));
     return getLoadOffset(ELF32BE->getELFFile(), **ElfSymOrErr);
   }
 }
@@ -173,7 +187,7 @@ getLoadOffset(const llvm::object::ELFSymbolRef &SymbolRef) {
 /// flag
 /// \return on success, an \c llvm::ArrayRef encapsulating the contents
 /// of the symbol inside its object file; an \c llvm::Error on failure
-llvm::Expected<llvm::ArrayRef<uint8_t>>
+llvm::Expected<llvm::ArrayRef<uint8_t>> inline
 getContents(const llvm::object::ELFSymbolRef &SymbolRef) {
   const llvm::object::ELFObjectFileBase *ObjFile = SymbolRef.getObject();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
@@ -184,21 +198,24 @@ getContents(const llvm::object::ELFSymbolRef &SymbolRef) {
   bool IsRelocatable = ObjFile->isRelocatableObject();
 
   llvm::Expected<uint64_t> SymValueOrErr = SymbolRef.getValue();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(SymValueOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+      SymValueOrErr.takeError(), "Failed to get the symbol's value"));
   size_t SymbolSize = SymbolRef.getSize();
 
   llvm::Expected<llvm::object::section_iterator> SectionOrErr =
       SymbolRef.getSection();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(SectionOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+      SectionOrErr.takeError(), "Failed to get the section of the symbol"));
 
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_GENERIC_ERROR_CHECK(*SectionOrErr != ObjFile->section_end(),
                                   "Failed to find the symbol's section"));
 
   llvm::Expected<llvm::StringRef> SectionContentsOrErr =
-      (**SectionOrErr).getContents();
+      (*SectionOrErr)->getContents();
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_LLVM_ERROR_CHECK(SectionContentsOrErr.takeError()));
+      LUTHIER_LLVM_ERROR_CHECK(SectionContentsOrErr.takeError(),
+                               "Failed to get the contents of the section"));
 
   uint64_t SymbolOffset;
 
@@ -254,9 +271,10 @@ static llvm::Expected<const typename ELFT::Sym *> getSymbolFromGnuHashTable(
     if ((NameHash | 0x1) != (ChainHash | 0x1))
       continue;
 
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         SymTab[I].st_name < StrTab.size(),
-        "symbol [index {0}] has invalid st_name: {1}", I, SymTab[I].st_name));
+        llvm::formatv("symbol [index {0}] has invalid st_name: {1}", I,
+                      SymTab[I].st_name)));
     if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
       return &SymTab[I];
 
@@ -276,13 +294,15 @@ static llvm::Expected<const typename ELFT::Sym *> getSymbolFromSysVHashTable(
   llvm::ArrayRef<typename ELFT::Word> Chain = HashTab.chains();
   for (typename ELFT::Word I = Bucket[Hash % NBucket];
        I != llvm::ELF::STN_UNDEF; I = Chain[I]) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         I < SymTab.size(),
-        "symbol [index {0}] is greater than the number of symbols: {1}", I,
-        SymTab.size()));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        llvm::formatv(
+            "symbol [index {0}] is greater than the number of symbols: {1}", I,
+            SymTab.size())));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         SymTab[I].st_name < StrTab.size(),
-        "symbol [index {0}] has invalid st_name: {1}", I, SymTab[I].st_name));
+        llvm::formatv("symbol [index {0}] has invalid st_name: {1}", I,
+                      SymTab[I].st_name)));
 
     if (StrTab.drop_front(SymTab[I].st_name).data() == Name)
       return &SymTab[I];
@@ -296,25 +316,32 @@ getHashTableSymbol(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
                    const llvm::object::ELFSectionRef &HashSecRef,
                    llvm::StringRef Name) {
   auto HashSecOrErr = ELFObj.getELFFile().getSection(HashSecRef.getIndex());
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(HashSecOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+      HashSecOrErr.takeError(),
+      "Failed to get the hash section using its index"));
 
   const typename ELFT::Shdr &HashSec = **HashSecOrErr;
 
   const llvm::object::ELFFile<ELFT> &Elf = ELFObj.getELFFile();
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       HashSec.sh_type == llvm::ELF::SHT_HASH ||
           HashSec.sh_type == llvm::ELF::SHT_GNU_HASH,
       "invalid sh_type for hash table, expected SHT_HASH or SHT_GNU_HASH"));
 
   llvm::Expected<typename ELFT::ShdrRange> SectionsOrError = Elf.sections();
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SectionsOrError.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+      SectionsOrError.takeError(),
+      "Failed to get the sections range of the ELF file"));
 
   auto SymTabOrErr = getSection<ELFT>(*SectionsOrError, HashSec.sh_link);
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(SymTabOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+      SymTabOrErr.takeError(),
+      "Failed to get the symtab section of the ELF file"));
 
   auto StrTabOrErr =
       Elf.getStringTableForSymtab(**SymTabOrErr, *SectionsOrError);
-  LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(StrTabOrErr.takeError()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+      StrTabOrErr.takeError(), "Failed to get the strtab of the ELF file"));
 
   llvm::StringRef StrTab = *StrTabOrErr;
 
@@ -328,10 +355,11 @@ getHashTableSymbol(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
   if (HashSec.sh_type == llvm::ELF::SHT_GNU_HASH) {
     const auto *HashTab = reinterpret_cast<const typename ELFT::GnuHash *>(
         Elf.base() + HashSec.sh_offset);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         HashSec.sh_offset + HashSec.sh_size < Elf.getBufSize(),
-        "section has invalid sh_offset: {0}", HashSec.sh_offset));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        llvm::formatv("section has invalid sh_offset: {0}",
+                      HashSec.sh_offset)));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         HashSec.sh_size >= sizeof(typename ELFT::GnuHash) &&
             HashSec.sh_size >=
                 sizeof(typename ELFT::GnuHash) +
@@ -339,10 +367,11 @@ getHashTableSymbol(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
                     sizeof(typename ELFT::Word) * HashTab->nbuckets +
                     sizeof(typename ELFT::Word) *
                         (SymTab.size() - HashTab->symndx),
-        "section has invalid sh_size: {0}", HashSec.sh_size));
+        llvm::formatv("section has invalid sh_size: {0}", HashSec.sh_size)));
 
     auto Sym = getSymbolFromGnuHashTable<ELFT>(Name, *HashTab, SymTab, StrTab);
-    LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(Sym.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+        Sym.takeError(), "Failed to get symbol using GNU hash table"));
     if (!*Sym)
       return std::nullopt;
     return ELFObj.toSymbolRef(*SymTabOrErr, *Sym - &SymTab[0]);
@@ -353,19 +382,21 @@ getHashTableSymbol(const llvm::object::ELFObjectFile<ELFT> &ELFObj,
   if (HashSec.sh_type == llvm::ELF::SHT_HASH) {
     const auto *HashTab = reinterpret_cast<const typename ELFT::Hash *>(
         Elf.base() + HashSec.sh_offset);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         HashSec.sh_offset + HashSec.sh_size < Elf.getBufSize(),
-        "section has invalid sh_offset: {0}", HashSec.sh_offset));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+        llvm::formatv("section has invalid sh_offset: {0}",
+                      HashSec.sh_offset)));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         HashSec.sh_size >= sizeof(typename ELFT::Hash) &&
             HashSec.sh_size >=
                 sizeof(typename ELFT::Hash) +
                     sizeof(typename ELFT::Word) * HashTab->nbucket +
                     sizeof(typename ELFT::Word) * HashTab->nchain,
-        "section has invalid sh_size: {0}", HashSec.sh_size));
+        llvm::formatv("section has invalid sh_size: {0}", HashSec.sh_size)));
 
     auto Sym = getSymbolFromSysVHashTable<ELFT>(Name, *HashTab, SymTab, StrTab);
-    LUTHIER_RETURN_ON_ERROR(LLVM_ERROR_CHECK(Sym.takeError()));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_LLVM_ERROR_CHECK(
+        Sym.takeError(), "Failed to get symbol using Sys hash table"));
     if (!*Sym)
       return std::nullopt;
     return ELFObj.toSymbolRef(*SymTabOrErr, *Sym - &SymTab[0]);

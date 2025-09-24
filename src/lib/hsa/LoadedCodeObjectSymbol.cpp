@@ -18,20 +18,20 @@
 /// This file implements the \c LoadedCodeObjectSymbol under the \c luthier::hsa
 /// namespace.
 //===----------------------------------------------------------------------===//
-
-#include "common/ObjectUtils.hpp"
+#include "luthier/hsa/LoadedCodeObjectSymbol.h"
 #include "luthier/hsa/Agent.h"
 #include "luthier/hsa/Executable.h"
 #include "luthier/hsa/ExecutableSymbol.h"
 #include "luthier/hsa/HsaError.h"
 #include "luthier/hsa/LoadedCodeObject.h"
 #include "luthier/hsa/LoadedCodeObjectKernel.h"
-#include <luthier/hsa/LoadedCodeObjectSymbol.h>
+
+#include <luthier/hsa/LoadedCodeObjectCache.h>
 
 namespace luthier {
 
 hsa::LoadedCodeObjectSymbol::LoadedCodeObjectSymbol(
-    hsa_loaded_code_object_t LCO, luthier::AMDGCNObjectFile &StorageELF,
+    hsa_loaded_code_object_t LCO, luthier::object::AMDGCNObjectFile &StorageELF,
     llvm::object::ELFSymbolRef Symbol, SymbolKind Kind,
     std::optional<hsa_executable_symbol_t> ExecutableSymbol)
     : BackingLCO(LCO), StorageELF(StorageELF), Symbol(Symbol), Kind(Kind),
@@ -117,10 +117,13 @@ hsa::LoadedCodeObjectSymbol::getLoadedSymbolAddress(
   auto SymbolElfAddress = Symbol.getAddress();
   LUTHIER_RETURN_ON_ERROR(SymbolElfAddress.takeError());
 
-  auto SymbolLMO = getLoadedMemoryOffset(StorageELF.getELFFile(), Symbol);
+  auto SymbolLMO = object::getLoadOffset(Symbol);
   LUTHIER_RETURN_ON_ERROR(SymbolLMO.takeError());
 
-  return reinterpret_cast<luthier::address_t>(*SymbolLMO +
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      SymbolLMO->has_value(), "Symbol doesn't have a load address"));
+
+  return reinterpret_cast<luthier::address_t>(**SymbolLMO +
                                               LoadedMemory->data());
 }
 

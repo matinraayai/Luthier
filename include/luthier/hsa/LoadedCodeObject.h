@@ -70,9 +70,9 @@ loadedCodeObjectGetExecutable(LoaderTableType &LoaderApiTable,
 /// therefore, are backed by an HSA GPU Agent
 /// \return Expects the \c hsa_agent_t of the \p LCO on success
 /// \sa HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT
-template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
+template <typename LoaderTableType = hsa_ven_amd_loader_1_03_pfn_t>
 [[nodiscard]] llvm::Expected<hsa_agent_t>
-loadedCodeObjectGetAgent(LoaderTableType &LoaderApiTable,
+loadedCodeObjectGetAgent(const LoaderTableType &LoaderApiTable,
                          hsa_loaded_code_object_t LCO) {
   hsa_agent_t Agent;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(

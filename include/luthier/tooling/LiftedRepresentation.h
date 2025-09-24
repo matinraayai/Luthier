@@ -26,7 +26,6 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
-#include <luthier/hsa/DenseMapInfo.h>
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>

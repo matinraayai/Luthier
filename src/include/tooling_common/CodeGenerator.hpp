@@ -124,17 +124,6 @@ public:
                 llvm::SmallVectorImpl<char> &CompiledObjectFile,
                 llvm::CodeGenFileType FileType);
 
-  /// Links the relocatable object file passed in \p Code to an executable,
-  /// which can then be loaded into the HSA runtime
-  /// \param [in] Code the relocatable file
-  /// \param [in] ISA the ISA of the relocatable file
-  /// \param [out] Out the linked executable
-  /// \return an \c llvm::Error in case any issues were encountered during the
-  /// process
-  lvm::Error linkRelocatableToExecutable(const llvm::ArrayRef<char> &Code,
-                                         hsa_isa_t ISA,
-                                         llvm::SmallVectorImpl<uint8_t> &Out);
-
 private:
   /// Applies the instrumentation task \p Task to the lifted representation
   /// of \p LR \n

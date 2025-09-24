@@ -21,8 +21,12 @@
 #include "luthier/common/GenericLuthierError.h"
 #include "luthier/hsa/PacketMointor.h"
 
-namespace luthier::hsa {
+namespace luthier {
 
+template<>
+hsa::PacketMonitor *Singleton<hsa::PacketMonitor>::Instance{nullptr};
+
+namespace hsa {
 decltype(hsa_queue_create) *PacketMonitor::UnderlyingHsaQueueCreateFn = nullptr;
 
 hsa_status_t PacketMonitor::hsaQueueCreateWrapper(
@@ -96,5 +100,6 @@ void PacketMonitor::interceptQueuePacketHandler(
       llvm::ArrayRef(static_cast<const AqlPacket *>(Packets), PacketCount),
       Writer);
 }
+} // namespace hsa
 
-} // namespace luthier::hsa
+} // namespace luthier

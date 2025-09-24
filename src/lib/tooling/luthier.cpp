@@ -73,6 +73,7 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
                                                  LiftedRepresentation &)>
                       Mutator,
                   llvm::StringRef Preset) {
+  const auto &LoaderApiTable = Context::instance().getHsaLoaderTable();
   auto Lock = LR.getLock();
   // Instrument the lifted representation
   auto InstrumentedLR = CodeGenerator::instance().instrument(LR, Mutator);
@@ -93,13 +94,14 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
   llvm::StringMap<const void *> ExternVariables;
   // set of static variables used in the original kernel itself
   for (const auto &[Symbol, GV] : LR.globals()) {
-    ExternVariables.insert({llvm::cantFail(Symbol->getName()),
-                            reinterpret_cast<const void *>(llvm::cantFail(
-                                Symbol->getLoadedSymbolAddress()))});
+    ExternVariables.insert(
+        {llvm::cantFail(Symbol->getName()),
+         reinterpret_cast<const void *>(
+             llvm::cantFail(Symbol->getLoadedSymbolAddress(LoaderApiTable)))});
   }
   auto &TEM = ToolExecutableLoader::instance();
   const auto &SIM = TEM.getStaticInstrumentationModule();
-  auto Agent = llvm::cantFail(Kernel.getAgent());
+  auto Agent = llvm::cantFail(Kernel.getAgent(LoaderApiTable));
   // Set of static variables used in the instrumentation module
   for (const auto &GVName : SIM.gv_names()) {
     auto VarAddress = SIM.getGlobalVariablesLoadedOnAgent(GVName, Agent);

@@ -67,8 +67,11 @@ public:
   static bool isInitialized() { return Instance != nullptr; }
 };
 
-// Template definition of the Instance pointer
-template <typename T> T *Singleton<T>::Instance{nullptr};
+#ifdef __clang__
+// Template definition of the Instance pointer to suppress clang warnings
+// regarding translation units
+template <typename T> T *luthier::Singleton<T>::Instance{nullptr};
+#endif
 
 } // namespace luthier
 

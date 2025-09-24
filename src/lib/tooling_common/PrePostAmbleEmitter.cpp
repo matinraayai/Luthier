@@ -133,7 +133,7 @@ DEFINE_ENABLE_SGPR_ARGUMENT_WITH_TRI(QueuePtr,
 static llvm::Error
 emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
                        llvm::MCRegister SVSStorageVGPR,
-                       const hsa::md::Kernel::Metadata &KernelMD) {
+                       const amdgpu::hsamd::Kernel::Metadata &KernelMD) {
   auto &MF = *EntryInstr.getMF();
   const auto &TII = *MF.getSubtarget().getInstrInfo();
   const auto &TRI = *MF.getSubtarget().getRegisterInfo();
@@ -603,8 +603,8 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
                                 "of a kernel without any arguments."));
       uint32_t HiddenOffset = [&]() {
         for (const auto &Arg : *KernArgs) {
-          if (Arg.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin &&
-              Arg.ValueKind <= hsa::md::ValueKind::HiddenArgKindEnd) {
+          if (Arg.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
+              Arg.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
             return Arg.Offset;
           }
         }

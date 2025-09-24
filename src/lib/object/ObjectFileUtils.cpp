@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include <llvm/TargetParser/SubtargetFeature.h>
 #include <luthier/common/ErrorCheck.h>
+#include <luthier/common/GenericLuthierError.h>
 #include <luthier/object/ObjectFileUtils.h>
 
 namespace luthier::object {
@@ -46,6 +47,34 @@ getObjectFileTarget(const llvm::object::ObjectFile &ObjFile) {
   std::string FeatureString = SubTargetFeaturesOrErr->getString();
   if (!FeatureString.empty())
     Out += ":" + SubTargetFeaturesOrErr->getString();
+  return Out;
+}
+
+llvm::Expected<
+    std::tuple<llvm::Triple, llvm::StringRef, llvm::SubtargetFeatures>>
+getObjectFileTargetTuple(const llvm::object::ObjectFile &Obj) {
+  llvm::Triple TT = Obj.makeTriple();
+  std::optional<llvm::StringRef> CPU = Obj.tryGetCPUName();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      CPU.has_value(), "Failed to get the CPU name of the object file."));
+  llvm::SubtargetFeatures Features;
+  LUTHIER_RETURN_ON_ERROR(Obj.getFeatures().moveInto(Features));
+  return std::make_tuple(TT, *CPU, Features);
+}
+
+llvm::Expected<llvm::StringMap<uint64_t>>
+getSymbolLoadOffsetsMap(const llvm::object::ObjectFile &ObjFile) {
+  llvm::StringMap<uint64_t> Out;
+  for (const llvm::object::SymbolRef &Symbol : ObjFile.symbols()) {
+    llvm::Expected<llvm::StringRef> SymNamOrErr = Symbol.getName();
+    LUTHIER_RETURN_ON_ERROR(SymNamOrErr.takeError());
+
+    llvm::Expected<uint64_t> SymAddrOrErr = Symbol.getAddress();
+    LUTHIER_RETURN_ON_ERROR(SymAddrOrErr.takeError());
+
+    Out.insert({*SymNamOrErr, *SymAddrOrErr});
+  }
+
   return Out;
 }
 

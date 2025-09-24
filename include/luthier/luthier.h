@@ -22,18 +22,15 @@
 /// HIP_ENABLE_WARP_SYNC_BUILTINS enables the warp sync built-ins in HIP
 /// Must be defined before HIP runtime headers are included
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
-#include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
 #include <luthier/common/ErrorCheck.h>
 #include <luthier/consts.h>
-#include <luthier/hip/TraceApi.h>
 /// Undef the ill-defined \c ICMP_NE in HIP headers
 #undef ICMP_NE
 #include <luthier/hsa/Instr.h>
 #include <luthier/hsa/KernelDescriptor.h>
 #include <luthier/hsa/LoadedCodeObjectKernel.h>
 #include <luthier/hsa/LoadedCodeObjectSymbol.h>
-#include <luthier/hsa/TraceApi.h>
 #include <luthier/intrinsic/Intrinsics.h>
 #include <luthier/tooling/InstrumentationTask.h>
 #include <luthier/tooling/LiftedRepresentation.h>

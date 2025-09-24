@@ -39,9 +39,10 @@ llvm::Expected<hsa_code_object_reader_t> codeObjectReaderCreateFromMemory(
 llvm::Error
 codeObjectReaderDestroy(hsa_code_object_reader_t COR,
                         const ApiTableContainer<::CoreApiTable> &CoreApi) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
       CoreApi.callFunction<&::CoreApiTable::hsa_code_object_reader_destroy_fn>(
-          COR)));
+          COR),
+      "Failed to destroy the code object reader"));
   return llvm::Error::success();
 }
 

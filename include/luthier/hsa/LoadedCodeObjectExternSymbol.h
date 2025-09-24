@@ -42,7 +42,7 @@ private:
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the extern symbol
   LoadedCodeObjectExternSymbol(hsa_loaded_code_object_t LCO,
-                               llvm::object::ELF64LEObjectFile &StorageElf,
+                               luthier::object::AMDGCNObjectFile &StorageElf,
                                llvm::object::ELFSymbolRef ExternSymbol,
                                hsa_executable_symbol_t ExecutableSymbol)
       : LoadedCodeObjectSymbol(LCO, StorageElf, ExternSymbol,
@@ -53,7 +53,7 @@ public:
   create(const ApiTableContainer<::CoreApiTable> &CoreApiTable,
          const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderApi,
          hsa_loaded_code_object_t LCO,
-         llvm::object::ELF64LEObjectFile &StorageElf,
+         luthier::object::AMDGCNObjectFile &StorageElf,
          llvm::object::ELFSymbolRef ExternSymbol) {
     // Get the executable symbol associated with this external symbol
     llvm::Expected<hsa_executable_t> ExecOrErr =

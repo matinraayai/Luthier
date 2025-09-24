@@ -101,46 +101,45 @@ template <rocprofiler_intercept_table_t TableType,
 class HipApiTableWrapperInstaller final
     : public ApiTableRegistrationCallbackProvider<TableType> {
 private:
-  template <typename... Tuples>
-  explicit HipApiTableWrapperInstaller(llvm::Error &Err,
-                                       const Tuples &...WrapperSpecs)
-      : ApiTableRegistrationCallbackProvider<TableType>(
-            [&](typename ApiTableEnumInfo<TableType>::ApiTableType &Table) {
-              (installWrapperEntry(Table, WrapperSpecs), ...);
-            },
-            Err){};
-
   /// Installs a wrapper for an entry inside an extension table of \p Table
   /// \p WrapperSpec is a 3-entry tuple, containing the pointer to member
   /// accessor for the extension table inside the HIP API table, reference
   /// to where the underlying function entry will be saved to, and a function
   /// pointer to the wrapper being installed. Reports a fatal error if
   /// the entry is not present in the table
-  void installWrapperEntry(ApiTableEnumInfo<TableType>::ApiTableType &Table,
-                           const auto &WrapperSpec) {
+  template <typename FuncType>
+  static void installWrapperEntry(
+      hip::ApiTableEnumInfo<TableType>::ApiTableType &Table,
+      const std::tuple<
+          FuncType hip::ApiTableEnumInfo<TableType>::ApiTableType::*,
+          FuncType *, FuncType> &WrapperSpec) {
     auto &[ExtEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
-    if (!tableHasEntry<ExtEntry>(Table)) {
+    if (!hip::apiTableHasEntry(Table, ExtEntry)) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
           llvm::make_error<hip::HipError>(llvm::formatv(
               "Failed to find entry inside the HSA API table at offset {0:x}.",
-              static_cast<size_t>(&(Table.*ExtEntry)))));
+              reinterpret_cast<size_t>(&(Table.*ExtEntry)) -
+                  reinterpret_cast<size_t>(&Table))));
     }
-    UnderlyingStoreLocation = Table.*ExtEntry;
+    *UnderlyingStoreLocation = Table.*ExtEntry;
     Table.*ExtEntry = WrapperFunc;
   }
 
 public:
-  // Variadic template function to accept a variable-length list of tuples
   template <typename... Tuples>
-  llvm::Expected<std::unique_ptr<HipApiTableWrapperInstaller>>
-  requestWrapperInstallation(const Tuples &...WrapperSpecs) {
-    llvm::Error Err = llvm::Error::success();
-    auto Out =
-        std::make_unique<HipApiTableWrapperInstaller>(Err, WrapperSpecs...);
-    if (Err)
-      return std::move(Err);
-    return Out;
-  }
+  explicit HipApiTableWrapperInstaller(llvm::Error &Err,
+                                       const Tuples &...WrapperSpecs)
+      : ApiTableRegistrationCallbackProvider<TableType>(
+            [&](llvm::ArrayRef<
+                    typename hip::ApiTableEnumInfo<TableType>::ApiTableType *>
+                    Tables,
+                uint64_t LibVersion, uint64_t LibInstance) {
+              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+                  LibInstance != 0,
+                  "Multiple instances of the HIP library registered"));
+              (installWrapperEntry(*Tables[0], WrapperSpecs), ...);
+            },
+            Err){};
 
   ~HipApiTableWrapperInstaller() override = default;
 };

@@ -99,7 +99,7 @@ executableSymbolGetAgent(const ApiTableContainer<::CoreApiTable> &CoreApi,
       CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
           Symbol, HSA_EXECUTABLE_SYMBOL_INFO_AGENT, &Agent),
       llvm::formatv("Failed to get the agent of executable symbol {0:x}",
-                    Symbol)));
+                    Symbol.handle)));
   return Agent;
 }
 

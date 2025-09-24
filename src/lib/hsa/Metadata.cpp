@@ -18,10 +18,10 @@
 /// Implements parsing of the HSA metadata, as well as the pass used
 /// to parse it inside the lifting procedure.
 //===----------------------------------------------------------------------===//
-#include <llvm/IR/Module.h>
+#include "luthier/hsa/Metadata.h"
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/common/GenericLuthierError.h"
-#include "luthier/hsa/Metadata.h"
+#include <llvm/IR/Module.h>
 
 using namespace llvm::msgpack;
 
@@ -115,8 +115,9 @@ llvm::Error parseEnumMDRequired(MapDocNode &Map, llvm::StringRef Key,
                                 const llvm::StringMap<ET> &EnumMap, ET &Out) {
   std::string EnumString;
   LUTHIER_RETURN_ON_ERROR(parseStringMDRequired(Map, Key, EnumString));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
-      EnumMap.contains(EnumString), "Key {0} is not present in Enum Map", Key));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      EnumMap.contains(EnumString),
+      llvm::formatv("Key {0} is not present in Enum Map", Key)));
   Out = EnumMap.at(EnumString);
   return llvm::Error::success();
 }
@@ -235,7 +236,7 @@ parseArgMD(llvm::msgpack::MapDocNode &KernelMetaNode,
 
   LUTHIER_RETURN_ON_ERROR(parseEnumMDRequired(KernelMetaNode,
                                               Kernel::Arg::Key::ValueKind,
-                                              ValueKindEnumMap, Out.ValueKind));
+                                              ValueKindEnumMap, Out.ValKind));
 
   LUTHIER_RETURN_ON_ERROR(parseUIntMDOptional(
       KernelMetaNode, Kernel::Arg::Key::PointeeAlign, Out.PointeeAlign));

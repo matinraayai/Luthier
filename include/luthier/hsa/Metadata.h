@@ -147,7 +147,7 @@ struct Metadata final {
   /// Offset in bytes. Required for code object v3, unused for code object v2.
   uint32_t Offset{0};
   /// Value kind. Required.
-  ValueKind ValueKind{ValueKind::Unknown};
+  ValueKind ValKind{ValueKind::Unknown};
   /// Pointee alignment in bytes. Optional.
   std::optional<uint32_t> PointeeAlign{0};
   /// Address space qualifier. Optional.

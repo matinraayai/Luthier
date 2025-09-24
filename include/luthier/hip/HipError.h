@@ -23,25 +23,26 @@
 #include <hip/hip_runtime.h>
 
 namespace luthier::hip {
-class HipError final : RocmLibraryError {
+class HipError final : public RocmLibraryError {
   const std::optional<hipError_t> Error;
 
 public:
-  HipError(std::string ErrorMsg, const std::optional<hipError_t> Error,
-           const std::source_location ErrorLocation =
-               std::source_location::current(),
-           StackTraceType StackTrace = StackTraceInitializer())
+  explicit HipError(std::string ErrorMsg,
+                    const std::optional<hipError_t> Error = std::nullopt,
+                    const std::source_location ErrorLocation =
+                        std::source_location::current(),
+                    StackTraceType StackTrace = StackTraceInitializer())
       : RocmLibraryError(std::move(ErrorMsg), ErrorLocation,
                          std::move(StackTrace)),
-        Error(Error) {};
+        Error(Error){};
 
-  HipError(const llvm::formatv_object_base &ErrorMsg,
-           const std::optional<hipError_t> Error,
-           const std::source_location ErrorLocation =
-               std::source_location::current(),
-           StackTraceType StackTrace = StackTraceInitializer())
+  explicit HipError(const llvm::formatv_object_base &ErrorMsg,
+                    const std::optional<hipError_t> Error = std::nullopt,
+                    const std::source_location ErrorLocation =
+                        std::source_location::current(),
+                    StackTraceType StackTrace = StackTraceInitializer())
       : RocmLibraryError(ErrorMsg.str(), ErrorLocation, std::move(StackTrace)),
-        Error(Error) {};
+        Error(Error){};
 
   static char ID;
 
@@ -49,7 +50,7 @@ public:
 };
 
 #define LUTHIER_HIP_CALL_ERROR_CHECK(Expr, ErrorMsg)                           \
-  [&]() {                                                                      \
+  [&]() -> llvm::Error {                                                       \
     if (const hipError_t Status = Expr; Status != hipSuccess) {                \
       return llvm::make_error<luthier::hip::HipError>(ErrorMsg, Status);       \
     }                                                                          \

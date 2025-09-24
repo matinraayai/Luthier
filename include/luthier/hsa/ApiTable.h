@@ -153,7 +153,7 @@ public:
   /// if the snapshot has not been initialized by rocprofiler-sdk
   template <auto ApiTableType::*Func>
   [[nodiscard]] bool tableSupportsFunction() const {
-    return hsaApiTableHasEntry<Func>(ApiTable);
+    return apiTableHasEntry<Func>(ApiTable);
   }
 
   /// \returns the function inside the snapshot associated with the
