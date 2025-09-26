@@ -315,8 +315,6 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
 
   std::unique_ptr<amdgpu::hsamd::Kernel::Metadata> MD;
 
-  InstrumentedExecMDDoc->toYAML(llvm::outs());
-
   LUTHIER_RETURN_ON_ERROR(
       MDParser.parseKernelMetadata(*InstrumentedExecMDDoc, OriginalSymbolName)
           .moveInto(MD));
