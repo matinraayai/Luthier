@@ -117,9 +117,9 @@ Context::Context(hsa::PacketMonitor::CallbackType PacketCallback,
   CG->registerIntrinsic("luthier::sAtomicAdd",
                         {sAtomicAddIRProcessor, sAtomicAddMIRProcessor});
 
-  PacketMonitor =
-      new hsa::PacketMonitor(*HsaCoreApiTableSnapshot, *HsaAmdExtTableSnapshot,
-                             *VenLoaderSnapshot, PacketCallback, Err);
+  PacketMonitor = new hsa::PacketMonitor(
+      *HsaCoreApiTableSnapshot, *HsaAmdExtTableSnapshot, *VenLoaderSnapshot,
+      std::move(PacketCallback), Err);
   if (Err)
     return;
   // Enable the LLVM time tracer if enabled
@@ -137,13 +137,13 @@ Context::~Context() {
   delete HipCompilerTableSnapshot;
   delete HsaAmdExtTableSnapshot;
   delete HsaCoreApiTableSnapshot;
-  delete TM;
   delete MDParser;
   if (*TimeTrace) {
     LUTHIER_REPORT_FATAL_ON_ERROR(
         llvm::timeTraceProfilerWrite(*TimeTraceFile, "luthier-profile"));
     llvm::timeTraceProfilerCleanup();
   }
+  delete TM;
 }
 
 } // namespace luthier

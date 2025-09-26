@@ -55,8 +55,10 @@ public:
 /// original error message inside a \c luthier::LLVMError to provide a more
 /// helpful error message
 #define LUTHIER_LLVM_ERROR_CHECK(Expr, ErrorMsg)                               \
-  (Expr) ? llvm::Error::success()                                              \
-         : llvm::make_error<luthier::LLVMError>(ErrorMsg)
+  (Expr) ? llvm::make_error<luthier::LLVMError>(                               \
+               ErrorMsg, std::source_location::current(),                      \
+               luthier::LLVMError::StackTraceInitializer())                    \
+         : llvm::Error::success()
 
 } // namespace luthier
 #endif

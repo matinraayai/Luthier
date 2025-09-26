@@ -161,6 +161,38 @@ ToolExecutableLoader::hsaExecutableDestroyWrapper(hsa_executable_t Executable) {
   return UnderlyingHsaExecutableDestroyFn(Executable);
 }
 
+ToolExecutableLoader::ToolExecutableLoader(
+    const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+    const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+        &LoaderApiSnapshot,
+    const hsa::LoadedCodeObjectCache &COC,
+    const amdgpu::hsamd::MetadataParser &MDParser, llvm::Error &Err)
+    : Singleton<ToolExecutableLoader>(), CoreApiSnapshot(CoreApiSnapshot),
+      LoaderApiSnapshot(LoaderApiSnapshot), COC(COC), SIM(LoaderApiSnapshot),
+      MDParser(MDParser) {
+
+  CoreApiWrapperInstaller = std::make_unique<
+      rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
+      Err,
+      std::make_tuple(&::CoreApiTable::hsa_executable_freeze_fn,
+                      std::ref(UnderlyingHsaExecutableFreezeFn),
+                      hsaExecutableFreezeWrapper),
+      std::make_tuple(&::CoreApiTable::hsa_executable_destroy_fn,
+                      std::ref(UnderlyingHsaExecutableDestroyFn),
+                      hsaExecutableDestroyWrapper));
+  if (Err)
+    return;
+
+  HipCompilerWrapperInstaller =
+      std::make_unique<rocprofiler::HipCompilerApiTableWrapperInstaller>(
+          Err,
+          std::make_tuple(&::HipCompilerDispatchTable::__hipRegisterFunction_fn,
+                          std::ref(UnderlyingHipRegisterFn),
+                          hipRegisterFunctionWrapper));
+  if (Err)
+    return;
+};
+
 llvm::Expected<
     std::pair<hsa_executable_symbol_t, const amdgpu::hsamd::Kernel::Metadata &>>
 ToolExecutableLoader::getInstrumentedKernel(
@@ -240,8 +272,10 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
   LUTHIER_RETURN_ON_ERROR(hsa::executableFreeze(CoreApiTable, *Executable));
 
   // Find the original kernel in the instrumented executable
-  auto OriginalSymbolName = OriginalKernel.getName();
-  LUTHIER_RETURN_ON_ERROR(OriginalSymbolName.takeError());
+  std::string OriginalSymbolName;
+  LUTHIER_RETURN_ON_ERROR(
+      OriginalKernel.getName().moveInto(OriginalSymbolName));
+  OriginalSymbolName.append(".kd");
 
   auto InstrumentedKernelOrErr = hsa::executableFindFirstAgentSymbol(
       CoreApiTable, *Executable, *Agent,
@@ -249,14 +283,14 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
         llvm::Expected<std::string> SymbolNameOrErr =
             hsa::executableSymbolGetName(CoreApiTable, Symbol);
         LUTHIER_RETURN_ON_ERROR(SymbolNameOrErr.takeError());
-        return (llvm::StringRef(*SymbolNameOrErr) == *OriginalSymbolName);
+        return llvm::StringRef(*SymbolNameOrErr) == OriginalSymbolName;
       });
   LUTHIER_RETURN_ON_ERROR(InstrumentedKernelOrErr.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       InstrumentedKernelOrErr->has_value(),
       llvm::formatv("Failed to find the corresponding kernel "
-                    "to {0} inside its instrumented executable.",
-                    *OriginalSymbolName)));
+                    "to {0} inside its instrumented executable",
+                    OriginalSymbolName)));
 
   auto InstrumentedKernelType =
       hsa::executableSymbolGetType(CoreApiTable, **InstrumentedKernelOrErr);
@@ -265,7 +299,7 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
       llvm::formatv(
           "Found the symbol associated with kernel {0} inside the instrumented "
           "executable, but it is not of type kernel.",
-          *OriginalSymbolName)));
+          OriginalSymbolName)));
 
   llvm::Expected<hsa_executable_t> OriginalExecutableOrErr =
       OriginalKernel.getExecutable(LoaderApiSnapshot.getTable());
@@ -275,15 +309,19 @@ llvm::Error ToolExecutableLoader::loadInstrumentedKernel(
   auto ObjFile =
       object::AMDGCNObjectFile::createAMDGCNObjectFile(InstrumentedElf);
   LUTHIER_RETURN_ON_ERROR(ObjFile.takeError());
-  auto InstrumentedExecMDDoc = (*ObjFile)->getMetadataDocument();
-  LUTHIER_RETURN_ON_ERROR(InstrumentedExecMDDoc.takeError());
+  std::unique_ptr<llvm::msgpack::Document> InstrumentedExecMDDoc;
+  LUTHIER_RETURN_ON_ERROR(
+      (*ObjFile)->getMetadataDocument().moveInto(InstrumentedExecMDDoc));
 
-  auto MD = MDParser.parseKernelMetadata(**InstrumentedExecMDDoc,
-                                         *OriginalSymbolName);
-  LUTHIER_RETURN_ON_ERROR(MD.takeError());
+  std::unique_ptr<amdgpu::hsamd::Kernel::Metadata> MD;
 
-  InstrumentedKernelMetadata.insert(
-      {**InstrumentedKernelOrErr, std::move(*MD)});
+  InstrumentedExecMDDoc->toYAML(llvm::outs());
+
+  LUTHIER_RETURN_ON_ERROR(
+      MDParser.parseKernelMetadata(*InstrumentedExecMDDoc, OriginalSymbolName)
+          .moveInto(MD));
+  
+  InstrumentedKernelMetadata.insert({**InstrumentedKernelOrErr, std::move(MD)});
 
   insertInstrumentedKernelIntoMap(*OriginalExecutableOrErr,
                                   *OriginalKernel.getExecutableSymbol(), Preset,

@@ -41,17 +41,16 @@ class HsaApiTableWrapperInstaller final
   /// pointer of the wrapper to be installed
   /// \note Reports a fatal error if the target entry is not inside the \p Table
   template <typename FuncType>
-  static void
-  installWrapperEntry(HsaApiTableType &Table,
-                      const std::tuple<FuncType HsaApiTableType::*, FuncType *,
-                                       FuncType> &WrapperSpec) {
-    auto [FuncEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
+  static void installWrapperEntry(HsaApiTableType &Table,
+                                  FuncType HsaApiTableType::*FuncEntry,
+                                  FuncType &UnderlyingStoreLocation,
+                                  FuncType WrapperFunc) {
     if (!hsa::apiTableHasEntry(Table, FuncEntry)) {
       LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
           llvm::formatv("Failed to find function entry inside the HSA "
                         "extension table.")));
     }
-    *UnderlyingStoreLocation = Table.*FuncEntry;
+    UnderlyingStoreLocation = Table.*FuncEntry;
     Table.*FuncEntry = WrapperFunc;
   }
 
@@ -72,8 +71,8 @@ public:
   explicit HsaApiTableWrapperInstaller(llvm::Error &Err,
                                        const Tuples &...WrapperSpecs)
       : ApiTableRegistrationCallbackProvider(
-            [&](llvm::ArrayRef<::HsaApiTable *> Tables, uint64_t LibVersion,
-                uint64_t LibInstance) -> void {
+            [=, this](llvm::ArrayRef<::HsaApiTable *> Tables,
+                      uint64_t LibVersion, uint64_t LibInstance) -> void {
               if (LibInstance != 0) {
                 LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
                     "Multiple instances of the HSA library"));
@@ -86,7 +85,9 @@ public:
                         "Captured HSA table doesn't support extension {0}",
                         hsa::ApiTableInfo<HsaApiTableType>::Name)));
               }
-              (installWrapperEntry(*(Tables[0]->*RootAccessor), WrapperSpecs),
+              (installWrapperEntry(
+                   *(Tables[0]->*RootAccessor), std::get<0>(WrapperSpecs),
+                   std::get<1>(WrapperSpecs), std::get<2>(WrapperSpecs)),
                ...);
             },
             Err){};
@@ -110,18 +111,16 @@ private:
   template <typename FuncType>
   static void installWrapperEntry(
       hip::ApiTableEnumInfo<TableType>::ApiTableType &Table,
-      const std::tuple<
-          FuncType hip::ApiTableEnumInfo<TableType>::ApiTableType::*,
-          FuncType *, FuncType> &WrapperSpec) {
-    auto &[ExtEntry, UnderlyingStoreLocation, WrapperFunc] = WrapperSpec;
+      FuncType hip::ApiTableEnumInfo<TableType>::ApiTableType::*ExtEntry,
+      FuncType &UnderlyingStoreLocation, FuncType WrapperFunc) {
     if (!hip::apiTableHasEntry(Table, ExtEntry)) {
       LUTHIER_REPORT_FATAL_ON_ERROR(
           llvm::make_error<hip::HipError>(llvm::formatv(
-              "Failed to find entry inside the HSA API table at offset {0:x}.",
+              "Failed to find entry inside the HIP API table at offset {0:x}.",
               reinterpret_cast<size_t>(&(Table.*ExtEntry)) -
                   reinterpret_cast<size_t>(&Table))));
     }
-    *UnderlyingStoreLocation = Table.*ExtEntry;
+    UnderlyingStoreLocation = Table.*ExtEntry;
     Table.*ExtEntry = WrapperFunc;
   }
 
@@ -130,14 +129,17 @@ public:
   explicit HipApiTableWrapperInstaller(llvm::Error &Err,
                                        const Tuples &...WrapperSpecs)
       : ApiTableRegistrationCallbackProvider<TableType>(
-            [&](llvm::ArrayRef<
+            [=](llvm::ArrayRef<
                     typename hip::ApiTableEnumInfo<TableType>::ApiTableType *>
                     Tables,
                 uint64_t LibVersion, uint64_t LibInstance) {
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-                  LibInstance != 0,
+                  LibInstance == 0,
                   "Multiple instances of the HIP library registered"));
-              (installWrapperEntry(*Tables[0], WrapperSpecs), ...);
+              (installWrapperEntry(*Tables[0], std::get<0>(WrapperSpecs),
+                                   std::get<1>(WrapperSpecs),
+                                   std::get<2>(WrapperSpecs)),
+               ...);
             },
             Err){};
 

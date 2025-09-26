@@ -41,9 +41,11 @@ public:
   using StackTraceType = std::string;
 #endif
 
-protected:
+
 #ifdef __cpp_lib_stacktrace
-  static auto constexpr StackTraceInitializer = std::stacktrace::current;
+  static auto constexpr StackTraceInitializer = []() {
+    return std::stacktrace::current();
+  };
 #else
   static auto constexpr StackTraceInitializer = []() {
     std::string Out;
@@ -53,6 +55,7 @@ protected:
   };
 #endif
 
+protected:
   /// Source location where the error occurred
   const std::source_location ErrorLocation;
   /// Stack trace of where the error occurred

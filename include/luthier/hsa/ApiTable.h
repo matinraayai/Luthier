@@ -93,6 +93,9 @@ template <> struct ApiTableInfo<::CoreApiTable> {
   static constexpr auto PointerToMemberRootAccessor = &::HsaApiTable::core_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::core;
+  static constexpr auto MajorVer = HSA_CORE_API_TABLE_MAJOR_VERSION;
+  static constexpr auto MinorVer = sizeof(::CoreApiTable);
+  static constexpr auto StepVer = HSA_CORE_API_TABLE_STEP_VERSION;
 };
 
 template <> struct ApiTableInfo<::AmdExtTable> {
@@ -100,6 +103,9 @@ template <> struct ApiTableInfo<::AmdExtTable> {
   static constexpr auto PointerToMemberRootAccessor = &::HsaApiTable::amd_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::amd_ext;
+  static constexpr auto MajorVer = HSA_AMD_EXT_API_TABLE_MAJOR_VERSION;
+  static constexpr auto MinorVer = sizeof(::AmdExtTable);
+  static constexpr auto StepVer = HSA_AMD_EXT_API_TABLE_STEP_VERSION;
 };
 
 template <> struct ApiTableInfo<::FinalizerExtTable> {
@@ -108,6 +114,9 @@ template <> struct ApiTableInfo<::FinalizerExtTable> {
       &::HsaApiTable::finalizer_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::finalizer_ext;
+  static constexpr auto MajorVer = HSA_FINALIZER_API_TABLE_MAJOR_VERSION;
+  static constexpr auto MinorVer = sizeof(::FinalizerExtTable);
+  static constexpr auto StepVer = HSA_FINALIZER_API_TABLE_STEP_VERSION;
 };
 
 template <> struct ApiTableInfo<::ImageExtTable> {
@@ -116,6 +125,9 @@ template <> struct ApiTableInfo<::ImageExtTable> {
       &::HsaApiTable::image_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::image_ext;
+  static constexpr auto MajorVer = HSA_IMAGE_API_TABLE_MAJOR_VERSION;
+  static constexpr auto MinorVer = sizeof(::ImageExtTable);
+  static constexpr auto StepVer = HSA_IMAGE_API_TABLE_STEP_VERSION;
 };
 
 template <> struct ApiTableInfo<::ToolsApiTable> {
@@ -123,6 +135,9 @@ template <> struct ApiTableInfo<::ToolsApiTable> {
   static constexpr auto PointerToMemberRootAccessor = &::HsaApiTable::tools_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::tools;
+  static constexpr auto MajorVer = HSA_TOOLS_API_TABLE_MAJOR_VERSION;
+  static constexpr auto MinorVer = sizeof(::ToolsApiTable);
+  static constexpr auto StepVer = HSA_TOOLS_API_TABLE_STEP_VERSION;
 };
 
 template <> struct ApiTableInfo<::PcSamplingExtTable> {
@@ -131,6 +146,9 @@ template <> struct ApiTableInfo<::PcSamplingExtTable> {
       &::HsaApiTable::pc_sampling_ext_;
   static constexpr auto PointerToMemberContainerAccessor =
       &::HsaApiTableContainer::pc_sampling_ext;
+  static constexpr auto MajorVer = HSA_PC_SAMPLING_API_TABLE_MAJOR_VERSION;
+  static constexpr auto MinorVer = sizeof(::PcSamplingExtTable);
+  static constexpr auto StepVer = HSA_PC_SAMPLING_API_TABLE_STEP_VERSION;
 };
 
 /// \brief An HSA API table container which provides bounds checking over

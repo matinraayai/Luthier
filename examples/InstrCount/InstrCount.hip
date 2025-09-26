@@ -271,6 +271,7 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
           std::chrono::duration_cast<std::chrono::nanoseconds>(
               std::chrono::seconds{300})
               .count();
+      PacketWriter(DispatchPacket, 1);
       auto CurrentSignalValue =
           HsaCoreApiTable
               .callFunction<&::CoreApiTable::hsa_signal_wait_relaxed_fn>(

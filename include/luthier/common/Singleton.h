@@ -42,7 +42,7 @@ public:
   /// on the heap with the \c new operator for better control over its lifetime
   Singleton() {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        Instance != nullptr, "Called the Singleton constructor twice."));
+        Instance == nullptr, "Called the Singleton constructor twice."));
     Instance = static_cast<T *>(this);
   }
 

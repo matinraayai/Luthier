@@ -61,7 +61,7 @@ LoadedCodeObjectKernel::create(
   LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      MD->Name == *KernelNameOrErr,
+      MD->Symbol == *KernelNameOrErr,
       "Name of the kernel in HSA and Metadata doesn't match"));
 
   return std::unique_ptr<LoadedCodeObjectKernel>(new LoadedCodeObjectKernel(

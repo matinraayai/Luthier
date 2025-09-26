@@ -138,10 +138,10 @@ LoadedCodeObjectCache::LoadedCodeObjectCache(
       rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
       Err,
       std::make_tuple(&::CoreApiTable::hsa_executable_load_agent_code_object_fn,
-                      &UnderlyingHsaExecutableLoadAgentCodeObjectFn,
+                      std::ref(UnderlyingHsaExecutableLoadAgentCodeObjectFn),
                       hsaExecutableLoadAgentCodeObjectWrapper),
       std::make_tuple(&::CoreApiTable::hsa_executable_destroy_fn,
-                      &UnderlyingHsaExecutableDestroyFn,
+                      std::ref(UnderlyingHsaExecutableDestroyFn),
                       hsaExecutableDestroyWrapper));
 }
 
@@ -251,10 +251,13 @@ llvm::Error LoadedCodeObjectCache::getVariableSymbols(
     auto Binding = Symbol.getBinding();
     auto SymbolName = Symbol.getName();
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
+    llvm::Expected<uint64_t> AddressOrErr = Symbol.getAddress();
+    LUTHIER_RETURN_ON_ERROR(AddressOrErr.takeError());
     LLVM_DEBUG(llvm::dbgs()
                << llvm::formatv("\tSymbol Name: {0}, Binding: {1}, Type:{2}\n ",
                                 *SymbolName, Binding, Type));
-    if (Type == llvm::ELF::STT_OBJECT && !SymbolName->ends_with(".kd")) {
+    if (Type == llvm::ELF::STT_OBJECT && !SymbolName->ends_with(".kd") &&
+        *AddressOrErr != 0) {
       // Variable Symbol
       auto VarSymbolOrErr = std::move(LoadedCodeObjectVariable::create(
           CoreApiTableSnapshot.getTable(), VenLoaderSnapshot.getTable(), LCO,
@@ -357,9 +360,9 @@ LoadedCodeObjectCache::getOrCreateLoadedCodeObjectEntry(
   /// API
   if (LCOEntry == LCOCache.end()) {
     llvm::ArrayRef<uint8_t> LCOStorageMemory;
-    LUTHIER_RETURN_ON_ERROR(hsa::loadedCodeObjectGetStorageMemory(
-                                VenLoaderSnapshot.getTable(), LCO)
-                                .moveInto(LCOStorageMemory));
+    LUTHIER_RETURN_ON_ERROR(
+        hsa::loadedCodeObjectGetStorageMemory(VenLoaderSnapshot.getTable(), LCO)
+            .moveInto(LCOStorageMemory));
 
     try {
       /// TODO: Install a signal handler to treat segfaults encountered

@@ -79,17 +79,22 @@ public:
 
               /// Check if the API table copy has been correctly performed by
               /// the copy constructor
-              const ApiTableVersion &DestApiTableVersion = Table.version;
+              const ApiTableVersion &DestApiTableVersion = ApiTable.version;
               if (DestApiTableVersion.major_id == 0 ||
-                  DestApiTableVersion.minor_id == 0 ||
-                  DestApiTableVersion.step_id) {
+                  DestApiTableVersion.minor_id == 0) {
                 LUTHIER_REPORT_FATAL_ON_ERROR(
                     llvm::make_error<hsa::HsaError>(llvm::formatv(
                         "Failed to correctly copy the HSA {0} extension",
                         hsa::ApiTableInfo<HsaApiTableType>::Name)));
               }
             },
-            Err) {};
+            Err) {
+    /// Need to poulate the correct API table version here, otherwise the HSA
+    /// copy table routine will fail
+    ApiTable.version.major_id = hsa::ApiTableInfo<HsaApiTableType>::MajorVer;
+    ApiTable.version.step_id = hsa::ApiTableInfo<HsaApiTableType>::StepVer;
+    ApiTable.version.minor_id = hsa::ApiTableInfo<HsaApiTableType>::MinorVer;
+  };
 
   /// \returns the API table snapshot; Will report a fatal error if the snapshot
   /// has not been initialized by rocprofiler-sdk
@@ -131,7 +136,7 @@ public:
             [&](llvm::ArrayRef<::HsaApiTable *> Tables, uint64_t,
                 uint64_t Instance) {
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-                  Instance != 0, "Multiple instances of the HSA library"));
+                  Instance == 0, "Multiple instances of the HSA library"));
               auto &Table = *Tables[0];
               if (Table.version.major_id != HSA_API_TABLE_MAJOR_VERSION) {
                 LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<
@@ -153,7 +158,9 @@ public:
               }
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
                   Table.core_->hsa_system_get_extension_table_fn(
-                      ExtensionType, 1, sizeof(ExtensionApiTableType),
+                      ExtensionType,
+                      hsa::ExtensionApiTableInfo<ExtensionType>::MajorVer,
+                      hsa::ExtensionApiTableInfo<ExtensionType>::StepVer,
                       &ExtensionTable),
                   "Failed to get the extension table"));
             },
@@ -187,7 +194,7 @@ public:
                     Tables,
                 uint64_t LibVersion, uint64_t LibInstance) {
               LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-                  LibInstance != 0,
+                  LibInstance == 0,
                   "Multiple instances of the HIP library registered"));
               std::memcpy(&ApiTable, Tables[0], Tables[0]->size);
             },

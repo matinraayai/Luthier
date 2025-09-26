@@ -77,9 +77,9 @@ public:
         LoaderApiSnapshot(LoaderApiSnapshot), CB(std::move(CB)) {
     HsaApiTableInterceptor = std::make_unique<
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
-        Err,
-        std::make_tuple(&::CoreApiTable::hsa_queue_create_fn,
-                        &UnderlyingHsaQueueCreateFn, hsaQueueCreateWrapper));
+        Err, std::make_tuple(&::CoreApiTable::hsa_queue_create_fn,
+                             std::ref(UnderlyingHsaQueueCreateFn),
+                             hsaQueueCreateWrapper));
     if (Err) {
       return;
     }

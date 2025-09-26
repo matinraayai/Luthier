@@ -20,8 +20,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_GENERIC_LUTHIER_ERROR_H
 #define LUTHIER_COMMON_GENERIC_LUTHIER_ERROR_H
-#include <llvm/Support/FormatVariadic.h>
 #include "luthier/common/LuthierError.h"
+#include <llvm/Support/FormatVariadic.h>
 
 namespace luthier {
 
@@ -53,7 +53,9 @@ public:
 
 #define LUTHIER_GENERIC_ERROR_CHECK(Expr, ErrorMsg)                            \
   (Expr) ? llvm::Error::success()                                              \
-         : llvm::make_error<GenericLuthierError>(ErrorMsg)
+         : llvm::make_error<GenericLuthierError>(                              \
+               ErrorMsg, std::source_location::current(),                      \
+               luthier::GenericLuthierError::StackTraceInitializer())
 
 } // namespace luthier
 

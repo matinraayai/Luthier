@@ -440,7 +440,7 @@ MetadataParser::parseAllKernelsMetadata(llvm::msgpack::Document &Doc) const {
 llvm::Expected<std::unique_ptr<Kernel::Metadata>>
 MetadataParser::parseKernelMetadata(llvm::msgpack::Document &Doc,
                                     llvm::StringRef KernelName) const {
-  std::unique_ptr<Kernel::Metadata> Out{nullptr};
+   auto Out = std::make_unique<Kernel::Metadata>();
   DocNode &MetaDataRoot = Doc.getRoot();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       MetaDataRoot.isMap(), "The metadata doc is not a map"));

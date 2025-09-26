@@ -111,31 +111,7 @@ public:
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &LoaderApiSnapshot,
       const hsa::LoadedCodeObjectCache &COC,
-      const amdgpu::hsamd::MetadataParser &MDParser, llvm::Error &Err)
-      : Singleton<ToolExecutableLoader>(), CoreApiSnapshot(CoreApiSnapshot),
-        LoaderApiSnapshot(LoaderApiSnapshot), COC(COC), SIM(LoaderApiSnapshot),
-        MDParser(MDParser) {
-
-    CoreApiWrapperInstaller = std::make_unique<
-        rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
-        Err,
-        std::make_tuple(&::CoreApiTable::hsa_executable_freeze_fn,
-                        &UnderlyingHsaExecutableFreezeFn,
-                        hsaExecutableFreezeWrapper),
-        std::make_tuple(&::CoreApiTable::hsa_executable_destroy_fn,
-                        &UnderlyingHsaExecutableDestroyFn,
-                        hsaExecutableDestroyWrapper));
-    if (Err)
-      return;
-
-    HipCompilerWrapperInstaller =
-        std::make_unique<rocprofiler::HipCompilerApiTableWrapperInstaller>(
-            Err, std::make_tuple(
-                     &::HipCompilerDispatchTable::__hipRegisterFunction_fn,
-                     &UnderlyingHipRegisterFn, hipRegisterFunctionWrapper));
-    if (Err)
-      return;
-  };
+      const amdgpu::hsamd::MetadataParser &MDParser, llvm::Error &Err);
 
   /// Loads a list of instrumented code objects into a new executable and
   /// freezes it, allowing the instrumented version of the \p OriginalKernel
