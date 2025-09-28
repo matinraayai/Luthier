@@ -25,12 +25,15 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/PrettyStackTrace.h>
+#include <luthier/common/ErrorCheck.h>
 #include <luthier/hip/HipError.h>
-#include <luthier/hsa/DisableInterceptionScope.h>
 #include <luthier/hsa/HsaError.h>
 #include <luthier/llvm/CodeGenHelpers.h>
 #include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
+#include <luthier/rocprofiler-sdk/ApiTableSnapshot.h>
+#include <luthier/tooling/Context.h>
 #include <mutex>
 #include <thread>
 
@@ -159,7 +162,7 @@ instrumentAllFunctionsOfLR(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
 
 static void
 atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
-                         llvm::ArrayRef<AqlPacket> Packets,
+                         llvm::ArrayRef<hsa::AqlPacket> Packets,
                          hsa_amd_queue_intercept_packet_writer PacketWriter) {
   // Copy the app packets because we are going to modify the packets field
   // of the argument, and it will be easier to mutate
@@ -167,6 +170,12 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
   for (auto &Packet : AppPackets) {
     if (auto *DispatchPacket = Packet.asKernelDispatch()) {
       Mutex.lock();
+
+      const auto HsaCoreApiTable = C->getHsaCoreTable();
+      const auto HsaAmdExtTable = C->getHsaAmdExtTable();
+      const auto &LoaderTable = C->getHsaLoaderTable();
+
+      const llvm::TargetInstrInfo *TII{nullptr};
 
       /// This is set to true if the original dispatch packet didn't have a
       /// signal field set. In this scenario, the tool creates a signal so that
@@ -189,7 +198,7 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
       std::unique_ptr<hsa::LoadedCodeObjectKernel> KernelBeingInstrumented;
       LUTHIER_REPORT_FATAL_ON_ERROR(
           hsa::KernelDescriptor::fromKernelObject(DispatchPacket->kernel_object)
-              ->getLoadedCodeObjectKernelSymbol()
+              ->getLoadedCodeObjectKernelSymbol(HsaCoreApiTable, LoaderTable)
               .moveInto(KernelBeingInstrumented));
 
       auto KernelName = KernelBeingInstrumented->getName();
@@ -202,7 +211,7 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
       // Create a signal if the application didn't create one for this
       // packet
       if (DispatchPacket->completion_signal.handle == 0) {
-        if (hsa::getHsaApiTable().amd_ext_->hsa_amd_signal_create_fn(
+        if (HsaAmdExtTable.callFunction<hsa_amd_signal_create>(
                 SignalValue, 0, nullptr, 0,
                 &DispatchPacket->completion_signal) != HSA_STATUS_SUCCESS)
           llvm::report_fatal_error("Failed to create a signal for the "
@@ -211,7 +220,7 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
       } else {
         MustDestroySignalAfterLaunch = false;
       }
-      SignalValue = hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
+      SignalValue = HsaCoreApiTable.callFunction<hsa_signal_load_scacquire>(
           DispatchPacket->completion_signal);
 
       if (NumKernelLaunched >= *KernelBeginInterval &&
@@ -243,24 +252,28 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
         }
         // Zero the instruction counter device variable
         uint64_t *HistogramDevice;
-        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
-            hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
-                (void **)&HistogramDevice, &KernelHistogram)));
-        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-            hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_CALL_ERROR_CHECK(
+            HipRuntimeTableSnapshot->getTable()
+                .callFunction<&::HipDispatchTable::hipGetSymbolAddress_fn>(
+                    (void **)&HistogramDevice, &KernelHistogram),
+            "Failed to get the symbol associated with the histogram on "
+            "the device"));
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            HsaCoreApiTable.callFunction<hsa_memory_copy>(
                 HistogramDevice, KernelHistogramHostBuffer,
                 sizeof(KernelHistogramHostBuffer) *
-                    llvm::AMDGPU::INSTRUCTION_LIST_END)));
+                    llvm::AMDGPU::INSTRUCTION_LIST_END),
+            "Failed to zero out the device histogram"));
       }
-      PacketWriter(&Packet, 1);
       luthier::errs() << "Active region in the exit callback: " << ActiveRegion
                       << "\n";
       constexpr auto Timeout =
           std::chrono::duration_cast<std::chrono::nanoseconds>(
               std::chrono::seconds{300})
               .count();
+      PacketWriter(DispatchPacket, 1);
       auto CurrentSignalValue =
-          hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
+          HsaCoreApiTable.callFunction<hsa_signal_wait_relaxed>(
               DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
               SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
       if (CurrentSignalValue >= SignalValue)
@@ -271,7 +284,7 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
                           DispatchPacket->completion_signal.handle,
                           CurrentSignalValue - 1, SignalValue));
       if (MustDestroySignalAfterLaunch) {
-        if (hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
+        if (HsaCoreApiTable.callFunction<hsa_signal_destroy>(
                 DispatchPacket->completion_signal) != HSA_STATUS_SUCCESS) {
           llvm::report_fatal_error("Failed to destroy the completed kernel's"
                                    "signal");
@@ -294,16 +307,19 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
                                                 : std::string(*KernelName);
         // Copy the histogram to the global histogram
         {
-          luthier::hsa::DisableUserInterceptionScope Scope;
           uint64_t *HistogramDevice;
-          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
-              hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
-                  (void **)&HistogramDevice, &KernelHistogram)));
-          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-              hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_CALL_ERROR_CHECK(
+              HipRuntimeTableSnapshot->getTable()
+                  .callFunction<&::HipDispatchTable::hipGetSymbolAddress_fn>(
+                      (void **)&HistogramDevice, &KernelHistogram),
+              "Failed to get the symbol associated with the histogram on "
+              "the device"));
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+              HsaCoreApiTable.callFunction<hsa_memory_copy>(
                   KernelHistogramHostBuffer, HistogramDevice,
                   sizeof(KernelHistogramHostBuffer) *
-                      llvm::AMDGPU::INSTRUCTION_LIST_END)));
+                      llvm::AMDGPU::INSTRUCTION_LIST_END),
+              "Failed to copy back the histogram to the host"));
         }
 
         uint64_t InstsCountedForThisKernel = 0;
@@ -351,116 +367,29 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
           }
         }
       }
-      if (KernelBeingInstrumented) {
-        delete KernelBeingInstrumented;
-        KernelBeingInstrumented = nullptr;
-      }
-
       NumKernelLaunched++;
       Mutex.unlock();
     } else {
-      Writer(&Packet, 1);
+      PacketWriter(&Packet, 1);
     }
   }
 }
 
 namespace luthier {
 
-static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER) {
-    LUTHIER_REPORT_FATAL_ON_ERROR(hsa::enableHsaApiEvtIDCallback(
-        hsa::HSA_API_EVT_ID_hsa_queue_packet_submit));
-  }
-}
-
-llvm::StringRef getToolName() { return *ToolName; }
-
-void atToolInit(void *) {
-  luthier::errs() << "Opcode Histogram tool is launching.\n";
-  std::atexit(atToolFini);
-
-  /// Define an option category for the instruction count tool
-  OpcodeHistogramToolOptionCategory =
-      new llvm::cl::OptionCategory("Opcode Histogram Tool Options");
-
-  InstrBeginInterval = new llvm::cl::opt<unsigned int>(
-      "instr-begin-interval",
-      llvm::cl::desc("Beginning of the instruction interval where to "
-                     "apply instrumentation, inclusive"),
-      llvm::cl::init(0), llvm::cl::NotHidden,
-      llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
-
-  InstrEndInterval = new llvm::cl::opt<unsigned int>(
-      "instr-end-interval",
-      llvm::cl::desc("End of the instruction interval where to apply "
-                     "instrumentation, inclusive"),
-      llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-      llvm::cl::NotHidden, llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
-
-  KernelBeginInterval = new llvm::cl::opt<unsigned int>(
-      "kernel-start-interval",
-      llvm::cl::desc("Beginning of the kernel interval to apply "
-                     "instrumentation, inclusive"),
-      llvm::cl::init(0), llvm::cl::NotHidden,
-      llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
-
-  KernelEndInterval = new llvm::cl::opt<unsigned int>(
-      "kernel-end-interval",
-      llvm::cl::desc(
-          "End of the kernel interval to apply instrumentation, exclusive"),
-      llvm::cl::init(std::numeric_limits<unsigned int>::max()),
-      llvm::cl::NotHidden, llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
-
-  CountWavefrontLevel = new llvm::cl::opt<bool>(
-      "count-wavefront-level",
-      llvm::cl::desc("Count instructions at the wavefront level"),
-      llvm::cl::init(false), llvm::cl::NotHidden,
-      llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
-
-  DemangleKernelNames = new llvm::cl::opt<bool>(
-      "demangle-kernel-names",
-      llvm::cl::desc("Whether to demangle kernel names before printing"),
-      llvm::cl::init(true), llvm::cl::NotHidden,
-      llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
-
-  ToolName = new std::string{"luthier opcode histogram tool"};
-
-  GlobalHistogram = new llvm::StringMap<uint64_t>();
-
-  KernelHistogramHostBuffer = new uint64_t[llvm::AMDGPU::INSTRUCTION_LIST_END];
-
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      llvm::cl::ParseCommandLineOptions(0, &Argv,
-                                        "Luthier ROCm Opcode Histogram Tool",
-                                        &luthier::errs(), "LUTHIER_ARGS"),
-      "Failed to parse the command line arguments."));
-  llvm::EnablePrettyStackTrace();
-  llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
-  llvm::setBugReportMsg("PLEASE submit a bug report to "
-                        "https://github.com/matinraayai/Luthier/issues/ and "
-                        "include the crash error message and backtrace.\n");
-  // Add the rocprofiler finalize function as a signal handler to LLVM so that
-  // it executes in case of a fatal error
-  llvm::sys::AddSignalHandler(atToolFini, nullptr);
-
-  llvm::Error Err;
-  C = new Context(atPacketDispatchCallback, Err);
-  if (Err)
-    llvm::report_fatal_error(std::move(Err));
-  HipRuntimeTableSnapshot =
-      new rocprofiler::HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(Err);
-  if (Err)
-    llvm::report_fatal_error(std::move(Err));
-}
-
-void atToolFini(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_BEFORE) {
+void atToolFini(void *) {
+  static std::once_flag Once{};
+  std::call_once(Once, []() {
     luthier::errs() << "Instruction Opcode Results: \n";
     for (const auto &[OpcodeName, Count] : *GlobalHistogram) {
       luthier::errs() << llvm::formatv("  {0} = {1}\n",
                                        OpcodeName, // index
                                        Count);
     }
+    luthier::errs() << "Total number of instructions counted: "
+                    << TotalNumInstructions << "\n";
+    delete C;
+
     delete InstrBeginInterval;
 
     delete InstrEndInterval;
@@ -475,14 +404,94 @@ void atToolFini(ApiEvtPhase Phase) {
 
     delete OpcodeHistogramToolOptionCategory;
 
-    delete ToolName;
-
     delete GlobalHistogram;
 
     delete KernelHistogramHostBuffer;
-    luthier::errs() << "Total number of instructions counted: "
-                    << TotalNumInstructions << "\n";
-  }
+  });
+}
+
+static void atToolFini() { atToolFini(nullptr); }
+
+void atToolInit(void *) {
+  static std::once_flag Once{};
+  std::call_once(Once, [] {
+    luthier::errs() << "Opcode Histogram tool is launching.\n";
+    std::atexit(atToolFini);
+
+    /// Define an option category for the instruction count tool
+    OpcodeHistogramToolOptionCategory =
+        new llvm::cl::OptionCategory("Opcode Histogram Tool Options");
+
+    InstrBeginInterval = new llvm::cl::opt<unsigned int>(
+        "instr-begin-interval",
+        llvm::cl::desc("Beginning of the instruction interval where to "
+                       "apply instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    InstrEndInterval = new llvm::cl::opt<unsigned int>(
+        "instr-end-interval",
+        llvm::cl::desc("End of the instruction interval where to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    KernelBeginInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-start-interval",
+        llvm::cl::desc("Beginning of the kernel interval to apply "
+                       "instrumentation, inclusive"),
+        llvm::cl::init(0), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    KernelEndInterval = new llvm::cl::opt<unsigned int>(
+        "kernel-end-interval",
+        llvm::cl::desc(
+            "End of the kernel interval to apply instrumentation, exclusive"),
+        llvm::cl::init(std::numeric_limits<unsigned int>::max()),
+        llvm::cl::NotHidden, llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    CountWavefrontLevel = new llvm::cl::opt<bool>(
+        "count-wavefront-level",
+        llvm::cl::desc("Count instructions at the wavefront level"),
+        llvm::cl::init(false), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    DemangleKernelNames = new llvm::cl::opt<bool>(
+        "demangle-kernel-names",
+        llvm::cl::desc("Whether to demangle kernel names before printing"),
+        llvm::cl::init(true), llvm::cl::NotHidden,
+        llvm::cl::cat(*OpcodeHistogramToolOptionCategory));
+
+    GlobalHistogram = new llvm::StringMap<uint64_t>();
+
+    KernelHistogramHostBuffer =
+        new uint64_t[llvm::AMDGPU::INSTRUCTION_LIST_END];
+
+    const auto Argv = "";
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        llvm::cl::ParseCommandLineOptions(0, &Argv,
+                                          "Luthier Opcode Histogram Tool",
+                                          &luthier::errs(), "LUTHIER_ARGS"),
+        "Failed to parse the command line arguments."));
+    llvm::EnablePrettyStackTrace();
+    llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
+    llvm::setBugReportMsg("PLEASE submit a bug report to "
+                          "https://github.com/matinraayai/Luthier/issues/ and "
+                          "include the crash error message and backtrace.\n");
+    // Add the rocprofiler finalize function as a signal handler to LLVM so that
+    // it executes in case of a fatal error
+    llvm::sys::AddSignalHandler(atToolFini, nullptr);
+
+    llvm::Error Err = llvm::Error::success();
+    C = new Context(atPacketDispatchCallback, Err);
+    if (Err)
+      llvm::report_fatal_error(std::move(Err));
+    HipRuntimeTableSnapshot =
+        new rocprofiler::HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(
+            Err);
+    if (Err)
+      llvm::report_fatal_error(std::move(Err));
+  });
 }
 
 } // namespace luthier
@@ -502,12 +511,10 @@ rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
                           << " (" << RuntimeVersion << ")"
                           << "\n";
              llvm::dbgs() << "Tool priority: " << Priority << ";\n";);
-  llvm::StringRef ToolName = luthier::getToolName();
-  LLVM_DEBUG(llvm::dbgs() << "Luthier tool name: " << ToolName << "\n";);
-  ClientID->name = "Luthier Instruction Counter tool";
+  ClientID->name = "Luthier Opcode Histogram tool";
 
   static auto Cfg = rocprofiler_tool_configure_result_t{
       sizeof(rocprofiler_tool_configure_result_t), nullptr,
-      &luthier::toolingLibraryFini, nullptr};
+      &luthier::atToolFini, nullptr};
   return &Cfg;
 }
