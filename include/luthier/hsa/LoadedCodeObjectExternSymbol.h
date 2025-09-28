@@ -21,7 +21,12 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LOADED_CODE_OBJECT_EXTERN_SYMBOL_H
 #define LUTHIER_LOADED_CODE_OBJECT_EXTERN_SYMBOL_H
-#include "LoadedCodeObjectSymbol.h"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
+#include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/hsa/LoadedCodeObjectExternSymbol.h"
+#include "luthier/hsa/LoadedCodeObjectSymbol.h"
 
 namespace luthier::hsa {
 
@@ -37,7 +42,7 @@ private:
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the extern symbol
   LoadedCodeObjectExternSymbol(hsa_loaded_code_object_t LCO,
-                               llvm::object::ELF64LEObjectFile &StorageElf,
+                               luthier::object::AMDGCNObjectFile &StorageElf,
                                llvm::object::ELFSymbolRef ExternSymbol,
                                hsa_executable_symbol_t ExecutableSymbol)
       : LoadedCodeObjectSymbol(LCO, StorageElf, ExternSymbol,
@@ -45,9 +50,36 @@ private:
 
 public:
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectExternSymbol>>
-  create(hsa_loaded_code_object_t LCO,
-         llvm::object::ELF64LEObjectFile & StorageElf,
-         llvm::object::ELFSymbolRef ExternSymbol);
+  create(const ApiTableContainer<::CoreApiTable> &CoreApiTable,
+         const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderApi,
+         hsa_loaded_code_object_t LCO,
+         luthier::object::AMDGCNObjectFile &StorageElf,
+         llvm::object::ELFSymbolRef ExternSymbol) {
+    // Get the executable symbol associated with this external symbol
+    llvm::Expected<hsa_executable_t> ExecOrErr =
+        hsa::loadedCodeObjectGetExecutable(VenLoaderApi, LCO);
+    LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
+
+    llvm::Expected<hsa_agent_t> AgentOrErr =
+        hsa::loadedCodeObjectGetAgent(VenLoaderApi, LCO);
+    LUTHIER_RETURN_ON_ERROR(AgentOrErr.takeError());
+
+    auto Name = ExternSymbol.getName();
+    LUTHIER_RETURN_ON_ERROR(Name.takeError());
+
+    auto ExecSymbol = hsa::executableGetSymbolByName(CoreApiTable, *ExecOrErr,
+                                                     *Name, *AgentOrErr);
+    LUTHIER_RETURN_ON_ERROR(ExecSymbol.takeError());
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        ExecSymbol->has_value(),
+        llvm::formatv("Failed to locate the external symbol {0} in its "
+                      "executable using its name",
+                      *Name)));
+
+    return std::unique_ptr<LoadedCodeObjectExternSymbol>(
+        new LoadedCodeObjectExternSymbol(LCO, StorageElf, ExternSymbol,
+                                         **ExecSymbol));
+  }
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const LoadedCodeObjectSymbol *S) {

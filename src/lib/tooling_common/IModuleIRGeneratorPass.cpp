@@ -27,6 +27,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/common/GenericLuthierError.h>
 
 #undef DEBUG_TYPE
 
@@ -90,10 +91,10 @@ static llvm::Expected<llvm::Function &> generateInjectedPayloadForApplicationMI(
   for (const auto &HookInvSpec : HookInvocationSpecs) {
     // Find the hook function inside the instrumentation module
     auto HookFunc = IModule.getFunction(HookInvSpec.HookName);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         HookFunc != nullptr,
-        "Failed to find hook {0} inside the instrumentation module.",
-        HookInvSpec.HookName));
+        llvm::formatv("Failed to find hook {0} inside the instrumentation module.",
+        HookInvSpec.HookName)));
     // Construct the operands of the hook call
     llvm::SmallVector<llvm::Value *, 4> Operands;
     for (const auto &[Idx, Op] : llvm::enumerate(HookInvSpec.Args)) {

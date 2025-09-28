@@ -15,43 +15,32 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c luthier::ComgrError class.
+/// Implements the \c luthier::ComgrError class.
 //===----------------------------------------------------------------------===//
+#include "luthier/comgr/ComgrError.h"
+#include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/Signals.h>
-#include <luthier/comgr/ComgrError.h>
 
 namespace luthier {
 
 char ComgrError::ID = 0;
 
-llvm::Error ComgrError::ComgrErrorCheck(llvm::StringRef FileName,
-                                        int LineNumber, amd_comgr_status_t Expr,
-                                        llvm::StringRef ExprStr,
-                                        const amd_comgr_status_t Expected) {
-  if (Expr != Expected) {
-    std::string StackTrace;
-    llvm::raw_string_ostream STStream(StackTrace);
-    llvm::sys::PrintStackTrace(STStream);
-    return llvm::make_error<ComgrError>(FileName, LineNumber, StackTrace, Expr,
-                                        ExprStr);
-  }
-  return llvm::Error::success();
-}
-
 void ComgrError::log(llvm::raw_ostream &OS) const {
-  const char *ErrorMsg;
-  amd_comgr_status_t Status = amd_comgr_status_string(Error, &ErrorMsg);
-  OS << "COMGR error encountered in file " << File << ", line: " << LineNumber
-     << ": ";
-  OS << "COMGR call in expression " << Expression << " failed with error code "
-     << Error << ". ";
-  if (Status == AMD_COMGR_STATUS_SUCCESS) {
-    OS << "More info about the error according to COMGR: ";
-    OS << ErrorMsg << ".\n";
-  } else {
-    OS << "Failed to get additional info regarding the error from comgr.\n";
-  }
-  OS << "Stacktrace: \n" << StackTrace << "\n";
+  OS << "Comgr ";
+  if (Error.has_value())
+    OS << "error code" << *Error;
+  else
+    OS << "error";
+  OS << " encountered in file " << ErrorLocation.file_name() << ", function "
+     << ErrorLocation.function_name() << ", at " << ErrorLocation.line() << ": "
+     << ErrorMsg << ".\n";
+  OS << "Stack trace: \n";
+#ifdef __cpp_lib_stacktrace
+  OS << std::to_string(StackTrace);
+#else
+  OS << StackTrace;
+#endif
+  OS << "\n";
 }
 
 } // namespace luthier

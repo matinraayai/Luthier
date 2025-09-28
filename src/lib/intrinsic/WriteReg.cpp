@@ -2,6 +2,7 @@
 #include "AMDGPUTargetMachine.h"
 #include "SIRegisterInfo.h"
 #include "luthier/common/ErrorCheck.h"
+#include "luthier/common/GenericLuthierError.h"
 #include "luthier/common/LuthierError.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
@@ -15,28 +16,28 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
                     const llvm::GCNTargetMachine &TM) {
   auto *TRI = TM.getSubtargetImpl(Intrinsic)->getRegisterInfo();
   // The User must only have 2 operands
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(User.arg_size() == 2,
-                          "Expected two operands to be passed to the "
-                          "luthier::writeReg intrinsic '{0}', got {1}.",
-                          User, User.arg_size()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      User.arg_size() == 2,
+      llvm::formatv("Expected two operands to be passed to the "
+                    "luthier::writeReg intrinsic '{0}', got {1}.",
+                    User, User.arg_size())));
 
   luthier::IntrinsicIRLoweringInfo Out;
   // The first argument specifies the MCRegister Enum that will be read
   // The enum value should be constant; A different intrinsic should be used
   // if reg indexing is needed at runtime
   auto *DestRegEnum = llvm::dyn_cast<llvm::ConstantInt>(User.getArgOperand(0));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       DestRegEnum != nullptr, "The first operand of the luthier::writeReg "
                               "intrinsic is not a constant int."));
   // Get the MCRegister from the first argument's content
   llvm::MCRegister DestReg(DestRegEnum->getZExtValue());
   // Check if the enum value is indeed a physical register
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       llvm::MCRegister::isPhysicalRegister(DestReg.id()),
-      "The first argument of the luthier::writeReg intrinsic {0} "
-      "is not an MC Physical Register.",
-      DestReg.id()));
+      llvm::formatv("The first argument of the luthier::writeReg intrinsic {0} "
+                    "is not an MC Physical Register.",
+                    DestReg.id())));
   // Get the type of the dest register and encode its inline asm constraint
   auto *PhysRegClass = TRI->getPhysRegBaseClass(DestReg);
   std::string Constraint;
@@ -47,9 +48,9 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
   else if (llvm::SIRegisterInfo::isSGPRClass(PhysRegClass))
     Constraint = "s";
   else
-    return LUTHIER_CREATE_ERROR(
+    return llvm::make_error<GenericLuthierError>(llvm::formatv(
         "Unable to find a suitable register class for writing into {0}.",
-        DestReg.id());
+        DestReg.id()));
   // Set the output's constraint
   Out.setReturnValueInfo(&User, Constraint);
   // The second argument specifies the source register
@@ -76,13 +77,14 @@ llvm::Error writeRegMIRProcessor(
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
   // There should be only a single virtual register involved in the operation
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args.size() == 1,
-      "Expected only a single virtual register to be passed down to the "
-      "MIR lowering stage of luthier::writeReg, instead got {0}",
-      Args.size()));
+      llvm::formatv(
+          "Expected only a single virtual register to be passed down to the "
+          "MIR lowering stage of luthier::writeReg, instead got {0}",
+          Args.size())));
   // It should be of reg use kind
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegUseKind(),
       "The virtual register argument for luthier::writeReg is not a use."));
   llvm::Register InputReg = Args[0].second;
@@ -96,10 +98,10 @@ llvm::Error writeRegMIRProcessor(
   uint64_t DestRegSize = TRI->getRegSizeInBits(Dest, MRI);
   uint64_t InputRegSize = TRI->getRegSizeInBits(InputReg, MRI);
   // Check if both the input value and the destination reg have the same size
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(InputRegSize == DestRegSize,
-                          "The input register and the destination register of "
-                          "luthier::writeReg don't have the same size."));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      InputRegSize == DestRegSize,
+      "The input register and the destination register of "
+      "luthier::writeReg don't have the same size."));
 
   if (DestRegSize > 32) {
     // Split the input reg into subregs, and set each subreg to replace the

@@ -133,7 +133,7 @@ DEFINE_ENABLE_SGPR_ARGUMENT_WITH_TRI(QueuePtr,
 static llvm::Error
 emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
                        llvm::MCRegister SVSStorageVGPR,
-                       const hsa::md::Kernel::Metadata &KernelMD) {
+                       const amdgpu::hsamd::Kernel::Metadata &KernelMD) {
   auto &MF = *EntryInstr.getMF();
   const auto &TII = *MF.getSubtarget().getInstrInfo();
   const auto &TRI = *MF.getSubtarget().getRegisterInfo();
@@ -303,7 +303,7 @@ emitCodeToStoreSGPRKernelArg(llvm::MachineInstr &InsertionPoint,
   size_t Size = TRI.getRegSizeInBits(*TRI.getPhysRegBaseClass(SrcSGPR));
   auto &InsertionPointMBB = *InsertionPoint.getParent();
   if (Size == 32) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         NumSlots == 1, "Mismatch between number of SGPRs in the argument and "
                        "save slot lanes."));
     llvm::BuildMI(InsertionPointMBB, InsertionPoint, llvm::DebugLoc(),
@@ -313,7 +313,7 @@ emitCodeToStoreSGPRKernelArg(llvm::MachineInstr &InsertionPoint,
         .addReg(SVSVGPR);
   } else {
     size_t NumChannels = Size / 32;
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         NumSlots == NumChannels,
         "Mismatch between number of SGPRs in the argument and "
         "save slot lanes."));
@@ -598,13 +598,13 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
       luthier::outs() << "emitting code to store the hidden arg offset.\n";
       auto &KernArgs = LR.getKernel().getKernelMetadata().Args;
 
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           KernArgs.has_value(), "Attempted to access the hidden arguments "
                                 "of a kernel without any arguments."));
       uint32_t HiddenOffset = [&]() {
         for (const auto &Arg : *KernArgs) {
-          if (Arg.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin &&
-              Arg.ValueKind <= hsa::md::ValueKind::HiddenArgKindEnd) {
+          if (Arg.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
+              Arg.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
             return Arg.Offset;
           }
         }

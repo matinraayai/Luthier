@@ -14,7 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file This files implements versions of <tt>llvm::outs</tt>,
+/// \file Implements versions of <tt>llvm::outs</tt>,
 /// <tt>llvm::errs</tt>, and <tt>llvm::nulls</tt> that are safe to use with
 /// Luthier tools.
 //===----------------------------------------------------------------------===//
@@ -23,6 +23,7 @@
 #include "luthier/common/LuthierError.h"
 #include "luthier/llvm/EagerManagedStatic.h"
 #include <llvm/Support/FileSystem.h>
+#include <luthier/common/GenericLuthierError.h>
 
 namespace luthier {
 
@@ -36,7 +37,7 @@ llvm::raw_fd_ostream &outs() {
 #endif
   static EagerManagedStatic<llvm::raw_fd_ostream> S("-", EC,
                                                     llvm::sys::fs::OF_None);
-  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       !EC, "Failed to initialize the standard output raw_fd_stream."));
   return *S;
 }

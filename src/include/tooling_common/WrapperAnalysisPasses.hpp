@@ -20,7 +20,6 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_WRAPPER_ANALYSIS_PASSES_HPP
 #define LUTHIER_TOOLING_COMMON_WRAPPER_ANALYSIS_PASSES_HPP
-#include "hsa/LoadedCodeObject.hpp"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
@@ -199,13 +198,12 @@ private:
 
   /// The \c hsa::LoadedCodeObject inside the lifted representation being worked
   /// on
-  const hsa::LoadedCodeObject LCO;
+  const hsa_loaded_code_object_t LCO;
 
 public:
-  using Result = const hsa::LoadedCodeObject;
+  using Result = const hsa_loaded_code_object_t;
 
-  explicit LoadedCodeObjectAnalysis(hsa::LoadedCodeObject LCO)
-      : LCO(std::move(LCO)) {}
+  explicit LoadedCodeObjectAnalysis(hsa_loaded_code_object_t LCO) : LCO(LCO) {}
 
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &) { return LCO; }
 

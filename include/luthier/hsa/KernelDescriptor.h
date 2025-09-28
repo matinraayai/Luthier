@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
 #define LUTHIER_HSA_KERNEL_DESCRIPTOR_HPP
+#include "ApiTable.h"
 #include "luthier/types.h"
 #include <cstdint>
 #include <llvm/Support/Error.h>
@@ -141,7 +142,10 @@ struct KernelDescriptor {
   /// \return a const reference to the KD's \c hsa::LoadedCodeObjectKernel on
   /// success, or an \c llvm::Error if the KD is invalid
   [[nodiscard]] llvm::Expected<std::unique_ptr<LoadedCodeObjectKernel>>
-  getLoadedCodeObjectKernelSymbol() const;
+  getLoadedCodeObjectKernelSymbol(
+      const ApiTableContainer<::CoreApiTable> &CoreApi,
+      const ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType
+          &LoaderApi) const;
 };
 } // namespace luthier::hsa
 

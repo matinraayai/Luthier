@@ -21,6 +21,7 @@
 #include "luthier/common/LuthierError.h"
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/Support/Error.h>
+#include <luthier/common/GenericLuthierError.h>
 
 namespace luthier {
 
@@ -37,11 +38,11 @@ getIntrinsicInlineAsmPlaceHolderIdx(const llvm::MachineInstr &MI) {
       unsigned int IntrinsicIdx = std::stoul(IntrinsicIdxAsString);
       return IntrinsicIdx;
     } catch (const std::exception &Exception) {
-      return LUTHIER_CREATE_ERROR(
+      return llvm::make_error<GenericLuthierError>(llvm::formatv(
           "Caught an exception when getting the intrinsic index of the "
           "inline assembly instruction "
           "{0}. The exception: {1}.",
-          IntrinsicIdxAsString, Exception.what());
+          IntrinsicIdxAsString, Exception.what()));
     }
   } else {
     return -1;

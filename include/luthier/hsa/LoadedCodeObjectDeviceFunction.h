@@ -21,7 +21,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LOADED_CODE_OBJECT_DEVICE_FUNCTION_H
 #define LUTHIER_LOADED_CODE_OBJECT_DEVICE_FUNCTION_H
-#include "LoadedCodeObjectSymbol.h"
+#include "luthier/hsa/LoadedCodeObjectSymbol.h"
+#include "luthier/object/AMDGCNObjectFile.h"
 
 namespace luthier::hsa {
 
@@ -35,7 +36,7 @@ private:
   /// \param FuncSymbol the function symbol of the device function,
   /// cached internally by Luthier
   LoadedCodeObjectDeviceFunction(hsa_loaded_code_object_t LCO,
-                                 llvm::object::ELF64LEObjectFile &StorageElf,
+                                 luthier::object::AMDGCNObjectFile &StorageElf,
                                  llvm::object::ELFSymbolRef FuncSymbol)
       : LoadedCodeObjectSymbol(LCO, StorageElf, FuncSymbol,
                                SymbolKind::SK_DEVICE_FUNCTION, std::nullopt) {}
@@ -49,7 +50,7 @@ public:
   /// cached internally by Luthier
   static llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
   create(hsa_loaded_code_object_t LCO,
-         llvm::object::ELF64LEObjectFile &StorageElf,
+         luthier::object::AMDGCNObjectFile &StorageElf,
          llvm::object::ELFSymbolRef FuncSymbol);
 
   /// method for providing LLVM RTTI

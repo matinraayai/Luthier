@@ -24,19 +24,18 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/PrettyStackTrace.h>
+#include <luthier/common/ErrorCheck.h>
 #include <luthier/hip/HipError.h>
-#include <luthier/hsa/DisableInterceptionScope.h>
 #include <luthier/hsa/HsaError.h>
 #include <luthier/llvm/CodeGenHelpers.h>
 #include <luthier/llvm/EagerManagedStatic.h>
 #include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
+#include <luthier/rocprofiler-sdk/ApiTableSnapshot.h>
+#include <luthier/tooling/Context.h>
 #include <mutex>
 #include <thread>
-
-static decltype(std::chrono::high_resolution_clock::now()) T1{};
-
-static unsigned int KernelTotalTime{0};
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instr-counter-tool"
@@ -64,8 +63,12 @@ static llvm::cl::opt<bool> *DemangleKernelNames;
 //===----------------------------------------------------------------------===//
 // Global variables of the tool
 //===----------------------------------------------------------------------===//
-/// Name of the tool
-static std::string *ToolName{nullptr};
+/// Where the controller singleton is stored
+static Context *C{nullptr};
+
+/// Where the HIP runtime table is stored
+static rocprofiler::HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>
+    *HipRuntimeTableSnapshot{nullptr};
 
 /// Number of kernels launched so far
 static uint32_t NumKernelLaunched = 0;
@@ -77,25 +80,9 @@ static uint64_t TotalNumInstructions = 0;
 /// Profiling variable on devices Kernel instruction counter
 __attribute__((device)) uint64_t Counter;
 
-/// Keeps track of whether we are in the interval to profile or not
-static bool ActiveRegion = true;
-
 /// A Mutex, used to protect the Counter value and ActiveRegion, effectively
 /// makes all kernels launch sequentially
 std::recursive_mutex Mutex;
-
-/// The current kernel being instrumented
-static const luthier::hsa::LoadedCodeObjectKernel *KernelBeingInstrumented{
-    nullptr};
-
-/// This is set to true if the original dispatch packet didn't have a signal
-/// field set. In this scenario, the tool creates a signal so that it can
-/// wait on the end of the kernel, and must destroy the signal after waiting
-/// on the kernel
-static bool MustDestroySignalAfterLaunch{false};
-
-/// The value of the signal to wait for after kernel launches
-static hsa_signal_value_t SignalValue{0};
 
 //===----------------------------------------------------------------------===//
 // Hook definitions
@@ -178,186 +165,226 @@ static llvm::Error instrumentKernel(const hsa::LoadedCodeObjectKernel &Kernel) {
   return llvm::Error::success();
 }
 
-static void atHsaEvt(hsa::ApiEvtArgs *CBData, ApiEvtPhase Phase,
-                     hsa::ApiEvtID ApiID) {
-  if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit) {
-    // Copy the app packets because we are going to modify the packets field
-    // of the argument, and it will be easier to mutate
-    std::vector<hsa::AqlPacket> AppPackets(
-        *CBData->hsa_queue_packet_submit.packets);
-    auto *ToBeSubmittedPackets = CBData->hsa_queue_packet_submit.packets;
-    // Clear the packets that are about to be submitted, as we will repopulate
-    // it again after analyzing the AppPackets
-    ToBeSubmittedPackets->clear();
-    for (auto &Packet : AppPackets) {
-      if (auto *DispatchPacket = Packet.asKernelDispatch()) {
-        if (Phase == luthier::API_EVT_PHASE_BEFORE) {
-          Mutex.lock();
-          /// If we are entering to a kernel launch:
-          /// 1. Lock the mutex to prevent multiple kernels to run concurrently
-          /// 2. Instrument the kernel if no already instrumented
-          /// 3. Select whether the instrumented kernel will run or not
-          /// 4. Reset the managed Counter variable
+static void
+atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
+                         llvm::ArrayRef<hsa::AqlPacket> Packets,
+                         hsa_amd_queue_intercept_packet_writer PacketWriter) {
+  // Copy the app packets because we are going to modify the packets field
+  // of the argument, and it will be easier to mutate
+  std::vector<hsa::AqlPacket> AppPackets(Packets);
+  for (auto &Packet : AppPackets) {
+    if (auto *DispatchPacket = Packet.asKernelDispatch()) {
+      Mutex.lock();
 
-          // Get the kernel that is about to get launched
-          auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
-                                  DispatchPacket->kernel_object)
-                                  ->getLoadedCodeObjectKernelSymbol();
-          LUTHIER_REPORT_FATAL_ON_ERROR(KernelSymbol.takeError());
+      const auto HsaCoreApiTable = C->getHsaCoreTable();
+      const auto HsaAmdExtTable = C->getHsaAmdExtTable();
+      const auto &LoaderTable = C->getHsaLoaderTable();
 
-          // Keep track of the kernel being instrumented for the exit callback
-          KernelBeingInstrumented = KernelSymbol->release();
+      decltype(std::chrono::high_resolution_clock::now()) T1{};
 
-          auto KernelName = KernelBeingInstrumented->getName();
-          LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
-          std::string KernelNameToBePrinted = *DemangleKernelNames
-                                                  ? llvm::demangle(*KernelName)
-                                                  : std::string(*KernelName);
-          // Get the packet's completion signal and its value
+      unsigned int KernelTotalTime{0};
 
-          // Create a signal if the application didn't create one for this
-          // packet
-          if (DispatchPacket->completion_signal.handle == 0) {
-            LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-                hsa::getHsaApiTable().amd_ext_->hsa_amd_signal_create_fn(
+      /// This is set to true if the original dispatch packet didn't have a
+      /// signal field set. In this scenario, the tool creates a signal so that
+      /// it can wait on the end of the kernel, and must destroy the signal
+      /// after waiting on the kernel
+      bool MustDestroySignalAfterLaunch{false};
+
+      /// The value of the signal to wait for after kernel launches
+      hsa_signal_value_t SignalValue{0};
+
+      /// Keeps track of whether we are in the interval to profile or not
+      bool ActiveRegion{false};
+
+      /// If we are entering to a kernel launch:
+      /// 1. Lock the mutex to prevent multiple kernels to run concurrently
+      /// 2. Instrument the kernel if no already instrumented
+      /// 3. Select whether the instrumented kernel will run or not
+      /// 4. Reset the managed Counter variable
+
+      // Get the kernel that is about to get launched
+      std::unique_ptr<hsa::LoadedCodeObjectKernel> KernelBeingInstrumented;
+      LUTHIER_REPORT_FATAL_ON_ERROR(
+          hsa::KernelDescriptor::fromKernelObject(DispatchPacket->kernel_object)
+              ->getLoadedCodeObjectKernelSymbol(HsaCoreApiTable, LoaderTable)
+              .moveInto(KernelBeingInstrumented));
+
+      auto KernelName = KernelBeingInstrumented->getName();
+      LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
+      std::string KernelNameToBePrinted = *DemangleKernelNames
+                                              ? llvm::demangle(*KernelName)
+                                              : std::string(*KernelName);
+      // Get the packet's completion signal and its value
+
+      // Create a signal if the application didn't create one for this
+      // packet
+      if (DispatchPacket->completion_signal.handle == 0) {
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            HsaAmdExtTable
+                .callFunction<&::AmdExtTable::hsa_amd_signal_create_fn>(
                     SignalValue, 0, nullptr, 0,
-                    &DispatchPacket->completion_signal)));
-            MustDestroySignalAfterLaunch = true;
-          } else {
-            MustDestroySignalAfterLaunch = false;
-          }
-          SignalValue =
-              hsa::getHsaApiTable().core_->hsa_signal_load_scacquire_fn(
+                    &DispatchPacket->completion_signal),
+            "Failed to create a signal to wait on for the kernel"));
+        MustDestroySignalAfterLaunch = true;
+      } else {
+        MustDestroySignalAfterLaunch = false;
+      }
+      SignalValue =
+          HsaCoreApiTable
+              .callFunction<&::CoreApiTable::hsa_signal_load_scacquire_fn>(
                   DispatchPacket->completion_signal);
 
-          if (NumKernelLaunched >= *KernelBeginInterval &&
-              NumKernelLaunched < *KernelEndInterval) {
-            ActiveRegion = true;
-          } else {
-            ActiveRegion = false;
-          }
-          if (ActiveRegion) {
-            luthier::errs() << "Kernel is being instrumented.\n";
+      if (NumKernelLaunched >= *KernelBeginInterval &&
+          NumKernelLaunched < *KernelEndInterval) {
+        ActiveRegion = true;
+      } else {
+        ActiveRegion = false;
+      }
+      if (ActiveRegion) {
+        luthier::errs() << "Kernel is being instrumented.\n";
 
-            auto IsKernelInstrumented =
-                isKernelInstrumented(*KernelBeingInstrumented, "instr_count");
-            LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
-            if (!*IsKernelInstrumented) {
-              LUTHIER_REPORT_FATAL_ON_ERROR(
-                  instrumentKernel(*KernelBeingInstrumented));
-            }
-            LUTHIER_REPORT_FATAL_ON_ERROR(luthier::overrideWithInstrumented(
-                *DispatchPacket, "instr_count"));
-            // Zero the instruction counter device variable
-            {
-              luthier::hsa::DisableUserInterceptionScope Scope;
-              uint64_t CounterHost = 0;
-              uint64_t *CounterDevice;
-              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
-                  hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
-                      (void **)&CounterDevice, &Counter)));
-              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-                  hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
-                      CounterDevice, &CounterHost, sizeof(CounterHost))));
-            }
-          }
-          T1 = std::chrono::high_resolution_clock::now();
-        } else {
-          constexpr auto Timeout =
-              std::chrono::duration_cast<std::chrono::nanoseconds>(
-                  std::chrono::seconds{300})
-                  .count();
-          auto CurrentSignalValue =
-              hsa::getHsaApiTable().core_->hsa_signal_wait_relaxed_fn(
+        auto IsKernelInstrumented =
+            isKernelInstrumented(*KernelBeingInstrumented, "instr_count");
+        LUTHIER_REPORT_FATAL_ON_ERROR(IsKernelInstrumented.takeError());
+        if (!*IsKernelInstrumented) {
+          LUTHIER_REPORT_FATAL_ON_ERROR(
+              instrumentKernel(*KernelBeingInstrumented));
+        }
+        LUTHIER_REPORT_FATAL_ON_ERROR(
+            luthier::overrideWithInstrumented(*DispatchPacket, "instr_count"));
+        // Zero the instruction counter device variable
+        uint64_t CounterHost = 0;
+        uint64_t *CounterDevice;
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_CALL_ERROR_CHECK(
+            HipRuntimeTableSnapshot->getTable()
+                .callFunction<&::HipDispatchTable::hipGetSymbolAddress_fn>(
+                    (void **)&CounterDevice, (void *)&Counter),
+            "Failed to get the symbol associated with the counter variable on "
+            "the device"));
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            HsaCoreApiTable.callFunction<&::CoreApiTable::hsa_memory_copy_fn>(
+                CounterDevice, &CounterHost, sizeof(CounterHost)),
+            "Failed to copy to the device counter"));
+      }
+      T1 = std::chrono::high_resolution_clock::now();
+      constexpr auto Timeout =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::seconds{300})
+              .count();
+      PacketWriter(DispatchPacket, 1);
+      auto CurrentSignalValue =
+          HsaCoreApiTable
+              .callFunction<&::CoreApiTable::hsa_signal_wait_relaxed_fn>(
                   DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
                   SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
-          if (CurrentSignalValue >= SignalValue)
-            llvm::report_fatal_error(
-                llvm::formatv("Wait timeout reached for signal handle {0:x},"
-                              "Expected "
-                              "value: {1}, Actual Value: {2}",
-                              DispatchPacket->completion_signal.handle,
-                              CurrentSignalValue - 1, SignalValue));
-          if (MustDestroySignalAfterLaunch) {
-            LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-                hsa::getHsaApiTable().core_->hsa_signal_destroy_fn(
-                    DispatchPacket->completion_signal)));
-          }
-          auto T2 = std::chrono::high_resolution_clock::now();
-          KernelTotalTime +=
-              std::chrono::duration_cast<std::chrono::microseconds>(T2 - T1)
-                  .count();
-          if (ActiveRegion) {
-            luthier::errs() << "Kernel is being waited on.\n";
-            /// If we are exiting a kernel launch:
-            /// 1. Wait on the signal of the kernel being launched
-            /// 2. Get the number of wave fronts in the kernel
-            /// 3. Print the counter for this kernel
-            /// 4. Release the lock
-
-            // Get the kernel that was launched
-
-            auto KernelName = KernelBeingInstrumented->getName();
-            LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
-            std::string KernelNameToBePrinted =
-                *DemangleKernelNames ? llvm::demangle(*KernelName)
-                                     : std::string(*KernelName);
-            uint64_t CounterHost = 0;
-            {
-              luthier::hsa::DisableUserInterceptionScope Scope;
-              uint64_t *CounterDevice;
-              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_SUCCESS_CHECK(
-                  hip::getSavedDispatchTable().hipGetSymbolAddress_fn(
-                      (void **)&CounterDevice, &Counter)));
-              LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-                  hsa::getHsaApiTable().core_->hsa_memory_copy_fn(
-                      &CounterHost, CounterDevice, sizeof(Counter))));
-              TotalNumInstructions += CounterHost;
-            }
-
-            // Note: Grid size in HSA contains all the work items in the kernel.
-            // This is different from the number of blocks (grid dim) in CUDA or
-            // HIP For example, if a kernel is launched from HIP with 16 blocks,
-            // each with 64 threads, this will be indicated as a grid size dim
-            // of (1024, 1, 1) and workgroup size of (64, 1, 1), since 1024 = 64
-            // x 16. As is evident from the example, workgroup size in HSA has
-            // the same meaning as CUDA/HIP
-            luthier::errs() << llvm::formatv(
-                "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
-                "Workgroup Dims: "
-                "({5}, {6}, {7}) Kernel Instruction "
-                "Count: {8}, Total Instructions counted so far: {9}\n",
-                NumKernelLaunched, KernelNameToBePrinted,
-                DispatchPacket->grid_size_x, DispatchPacket->grid_size_y,
-                DispatchPacket->grid_size_z, DispatchPacket->workgroup_size_x,
-                DispatchPacket->workgroup_size_y,
-                DispatchPacket->workgroup_size_z, CounterHost,
-                TotalNumInstructions);
-          }
-          if (KernelBeingInstrumented) {
-            delete KernelBeingInstrumented;
-            KernelBeingInstrumented = nullptr;
-          }
-          NumKernelLaunched++;
-          Mutex.unlock();
-        }
+      if (CurrentSignalValue >= SignalValue)
+        llvm::report_fatal_error(
+            llvm::formatv("Wait timeout reached for signal handle {0:x},"
+                          "Expected "
+                          "value: {1}, Actual Value: {2}",
+                          DispatchPacket->completion_signal.handle,
+                          CurrentSignalValue - 1, SignalValue));
+      if (MustDestroySignalAfterLaunch) {
+        LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            HsaCoreApiTable
+                .callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
+                    DispatchPacket->completion_signal),
+            "Failed to destroy the signal used to wait on the kernel"));
       }
-      if (Phase == API_EVT_PHASE_BEFORE)
-        ToBeSubmittedPackets->push_back(Packet);
+      auto T2 = std::chrono::high_resolution_clock::now();
+      KernelTotalTime +=
+          std::chrono::duration_cast<std::chrono::microseconds>(T2 - T1)
+              .count();
+      if (ActiveRegion) {
+        luthier::errs() << "Kernel is being waited on.\n";
+        /// If we are exiting a kernel launch:
+        /// 1. Wait on the signal of the kernel being launched
+        /// 2. Get the number of wave fronts in the kernel
+        /// 3. Print the counter for this kernel
+        /// 4. Release the lock
+
+        // Get the kernel that was launched
+
+        auto KernelName = KernelBeingInstrumented->getName();
+        LUTHIER_REPORT_FATAL_ON_ERROR(KernelName.takeError());
+        std::string KernelNameToBePrinted = *DemangleKernelNames
+                                                ? llvm::demangle(*KernelName)
+                                                : std::string(*KernelName);
+        uint64_t CounterHost = 0;
+        {
+          uint64_t *CounterDevice;
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HIP_CALL_ERROR_CHECK(
+              HipRuntimeTableSnapshot->getTable()
+                  .callFunction<&::HipDispatchTable::hipGetSymbolAddress_fn>(
+                      (void **)&CounterDevice, &Counter),
+              "Failed to get the symbol associated with the device counter "
+              "variable"));
+          LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+              HsaCoreApiTable.callFunction<&::CoreApiTable::hsa_memory_copy_fn>(
+                  &CounterHost, CounterDevice, sizeof(Counter)),
+              "Failed to copy back the device counter back to the host"));
+          TotalNumInstructions += CounterHost;
+        }
+
+        // Note: Grid size in HSA contains all the work items in the kernel.
+        // This is different from the number of blocks (grid dim) in CUDA or
+        // HIP For example, if a kernel is launched from HIP with 16 blocks,
+        // each with 64 threads, this will be indicated as a grid size dim
+        // of (1024, 1, 1) and workgroup size of (64, 1, 1), since 1024 = 64
+        // x 16. As is evident from the example, workgroup size in HSA has
+        // the same meaning as CUDA/HIP
+        luthier::errs() << llvm::formatv(
+            "Kernel {0} - {1}: Total Grid Size Dims: ({2}, {3}, {4}) "
+            "Workgroup Dims: "
+            "({5}, {6}, {7}) Kernel Instruction "
+            "Count: {8}, Total Instructions counted so far: {9}\n",
+            NumKernelLaunched, KernelNameToBePrinted,
+            DispatchPacket->grid_size_x, DispatchPacket->grid_size_y,
+            DispatchPacket->grid_size_z, DispatchPacket->workgroup_size_x,
+            DispatchPacket->workgroup_size_y, DispatchPacket->workgroup_size_z,
+            CounterHost, TotalNumInstructions);
+      }
+      NumKernelLaunched++;
+      Mutex.unlock();
+    } else {
+      PacketWriter(&Packet, 1);
     }
   }
 }
+
 namespace luthier {
 
-static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER) {
-    LUTHIER_REPORT_FATAL_ON_ERROR(hsa::enableHsaApiEvtIDCallback(
-        hsa::HSA_API_EVT_ID_hsa_queue_packet_submit));
-  }
+void atToolFini(void *) {
+  static std::once_flag Once{};
+  std::call_once(Once, []() {
+    luthier::errs() << "Total instructions executed: " << TotalNumInstructions << "\n";
+    delete C;
+
+    delete HipRuntimeTableSnapshot;
+
+    delete InstrCountToolOptionCategory;
+
+    delete InstrBeginInterval;
+
+    delete InstrEndInterval;
+
+    delete KernelBeginInterval;
+
+    delete KernelEndInterval;
+
+    delete CountWavefrontLevel;
+
+    delete DemangleKernelNames;
+  });
 }
 
-void atToolInit(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_BEFORE) {
+static void atToolFini() { atToolFini(nullptr); }
+
+static void atToolInit(void *) {
+  static std::once_flag Once{};
+  std::call_once(Once, [] {
+    luthier::errs() << "Instruction counter tool is launching.\n";
+    std::atexit(atToolFini);
     InstrCountToolOptionCategory =
         new llvm::cl::OptionCategory("Instruction Count Tool Options");
 
@@ -402,42 +429,54 @@ void atToolInit(ApiEvtPhase Phase) {
         llvm::cl::desc("Whether to demangle kernel names before printing"),
         llvm::cl::init(true), llvm::cl::NotHidden,
         llvm::cl::cat(*InstrCountToolOptionCategory));
+    const auto Argv = "";
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        llvm::cl::ParseCommandLineOptions(
+            0, &Argv, "Luthier ROCm Instruction Counter Tool", &luthier::errs(),
+            "LUTHIER_ARGS"),
+        "Failed to parse the command line arguments."));
+    llvm::EnablePrettyStackTrace();
+    llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
+    llvm::setBugReportMsg("PLEASE submit a bug report to "
+                          "https://github.com/matinraayai/Luthier/issues/ and "
+                          "include the crash error message and backtrace.\n");
+    // Add the rocprofiler finalize function as a signal handler to LLVM so that
+    // it executes in case of a fatal error
+    llvm::sys::AddSignalHandler(atToolFini, nullptr);
 
-    ToolName = new std::string{"luthier instruction counter tool"};
-  } else {
-    luthier::errs() << "Instruction counter tool is launching.\n";
-    // Set the callback for when the HSA API table is captured
-    hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
-    // Set the HSA API callback
-    hsa::setAtHsaApiEvtCallback(atHsaEvt);
-  }
+    llvm::Error Err = llvm::Error::success();
+    C = new Context(atPacketDispatchCallback, Err);
+    if (Err)
+      llvm::report_fatal_error(std::move(Err));
+    HipRuntimeTableSnapshot =
+        new rocprofiler::HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(
+            Err);
+    if (Err)
+      llvm::report_fatal_error(std::move(Err));
+  });
 }
-
-void atToolFini(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_BEFORE) {
-    delete InstrCountToolOptionCategory;
-
-    delete InstrBeginInterval;
-
-    delete InstrEndInterval;
-
-    delete KernelBeginInterval;
-
-    delete KernelEndInterval;
-
-    delete CountWavefrontLevel;
-
-    delete DemangleKernelNames;
-
-    delete ToolName;
-
-    luthier::errs() << "Total number of counted instructions: "
-                    << TotalNumInstructions << ".\n";
-    luthier::errs() << "Total kernel run time (us): "
-                    << KernelTotalTime << ".\n";
-  }
-}
-
-llvm::StringRef getToolName() { return *ToolName; }
 
 } // namespace luthier
+
+extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *
+rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
+                      uint32_t Priority, rocprofiler_client_id_t *ClientID) {
+  // Initialize the tooling library
+  luthier::atToolInit(nullptr);
+
+  LLVM_DEBUG(const uint32_t RocProfVerMajor = Version / 10000;
+             const uint32_t RocProfVerMinor = (Version % 10000) / 100;
+             const uint32_t RocProfVerPatch = Version % 100;
+             llvm::dbgs() << "Registering Luthier tool with rocprofiler-sdk.\n";
+             llvm::dbgs() << "Rocprofiler-sdk version: " << RocProfVerMajor
+                          << "." << RocProfVerMinor << "." << RocProfVerPatch
+                          << " (" << RuntimeVersion << ")"
+                          << "\n";
+             llvm::dbgs() << "Tool priority: " << Priority << ";\n";);
+  ClientID->name = "Luthier Instruction Counter tool";
+
+  static auto Cfg = rocprofiler_tool_configure_result_t{
+      sizeof(rocprofiler_tool_configure_result_t), nullptr,
+      &luthier::atToolFini, nullptr};
+  return &Cfg;
+}

@@ -21,15 +21,13 @@
 
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
-
-#include "common/ObjectUtils.hpp"
-#include "hsa/Executable.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "hsa/ISA.hpp"
-#include "hsa/LoadedCodeObject.hpp"
-#include "hsa/hsa.hpp"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ISA.h"
 #include "luthier/hsa/Instr.h"
 #include "luthier/hsa/KernelDescriptor.h"
+#include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/hsa/hsa.h"
 #include "luthier/llvm/streams.h"
 #include "luthier/tooling/LRCallgraph.h"
 #include "luthier/types.h"
@@ -75,7 +73,7 @@ namespace luthier {
 
 template <> CodeLifter *Singleton<CodeLifter>::Instance{nullptr};
 
-llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa::Executable &Exec) {
+llvm::Error CodeLifter::invalidateCachedExecutableItems(hsa_executable_t Exec) {
   // TODO: Re-enable this once the executable cache is implemented
   //  std::lock_guard Lock(CacheMutex);
   //  llvm::SmallVector<hsa::LoadedCodeObject, 1> LCOs;
@@ -119,25 +117,25 @@ bool CodeLifter::evaluateBranch(const llvm::MCInst &Inst, uint64_t Addr,
 }
 
 llvm::Expected<CodeLifter::DisassemblyInfo &>
-luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &ISA) {
+luthier::CodeLifter::getDisassemblyInfo(hsa_isa_t ISA) {
   if (!DisassemblyInfoMap.contains(ISA)) {
     auto TargetInfo = TargetManager::instance().getTargetInfo(ISA);
     LUTHIER_RETURN_ON_ERROR(TargetInfo.takeError());
 
-    auto TT = ISA.getTargetTriple();
+    auto TT = hsa::isaGetTargetTriple(CoreApiSnapshot.getTable(), ISA);
     LUTHIER_RETURN_ON_ERROR(TT.takeError());
 
     std::unique_ptr<llvm::MCContext> MCCtx(new (std::nothrow) llvm::MCContext(
         llvm::Triple(*TT), TargetInfo->getMCAsmInfo(),
         TargetInfo->getMCRegisterInfo(), TargetInfo->getMCSubTargetInfo()));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         MCCtx != nullptr,
         "Failed to create MCContext for LLVM disassembly operation."));
 
     std::unique_ptr<llvm::MCDisassembler> DisAsm(
         TargetInfo->getTarget()->createMCDisassembler(
             *(TargetInfo->getMCSubTargetInfo()), *MCCtx));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         DisAsm != nullptr, "Failed to create an MCDisassembler for the LLVM "
                            "disassembly operation."));
 
@@ -147,7 +145,7 @@ luthier::CodeLifter::getDisassemblyInfo(const hsa::ISA &ISA) {
   return DisassemblyInfoMap[ISA];
 }
 
-bool CodeLifter::isAddressDirectBranchTarget(const hsa::LoadedCodeObject &LCO,
+bool CodeLifter::isAddressDirectBranchTarget(hsa_loaded_code_object_t LCO,
                                              address_t Address) {
   if (!DirectBranchTargetLocations.contains(LCO)) {
     return false;
@@ -157,7 +155,7 @@ bool CodeLifter::isAddressDirectBranchTarget(const hsa::LoadedCodeObject &LCO,
 }
 
 void luthier::CodeLifter::addDirectBranchTargetAddress(
-    const hsa::LoadedCodeObject &LCO, address_t Address) {
+    hsa_loaded_code_object_t LCO, address_t Address) {
   if (!DirectBranchTargetLocations.contains(LCO)) {
     DirectBranchTargetLocations.insert(
         {LCO, llvm::DenseSet<luthier::address_t>{}});
@@ -167,7 +165,7 @@ void luthier::CodeLifter::addDirectBranchTargetAddress(
 
 llvm::Expected<
     std::pair<std::vector<llvm::MCInst>, std::vector<luthier::address_t>>>
-CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
+CodeLifter::disassemble(hsa_isa_t ISA, llvm::ArrayRef<uint8_t> Code) {
   auto DisassemblyInfo = getDisassemblyInfo(ISA);
   LUTHIER_RETURN_ON_ERROR(DisassemblyInfo.takeError());
 
@@ -188,10 +186,11 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
     llvm::MCInst Inst;
     auto ReadBytes =
         arrayRefFromStringRef(toStringRef(Code).substr(Idx, ReadSize));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         DisAsm->getInstruction(Inst, InstSize, ReadBytes, CurrentAddress,
                                llvm::nulls()) == llvm::MCDisassembler::Success,
-        "Failed to disassemble instruction at address {0:x}", CurrentAddress));
+        llvm::formatv("Failed to disassemble instruction at address {0:x}",
+                      CurrentAddress)));
 
     Addresses.push_back(CurrentAddress);
     Idx += InstSize;
@@ -203,17 +202,18 @@ CodeLifter::disassemble(const hsa::ISA &ISA, llvm::ArrayRef<uint8_t> Code) {
 }
 
 llvm::Expected<const CodeLifter::LCORelocationInfo *>
-CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
+CodeLifter::resolveRelocation(hsa_loaded_code_object_t LCO,
                               luthier::address_t Address) {
   if (!Relocations.contains(LCO)) {
     // If the LCO doesn't have its relocation info cached, calculate it
-    auto LoadedMemory = LCO.getLoadedMemory();
+    auto LoadedMemory =
+        hsa::loadedCodeObjectGetLoadedMemory(LoaderApiSnapshot.getTable(), LCO);
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
     auto LoadedMemoryBase = reinterpret_cast<address_t>(LoadedMemory->data());
 
-    llvm::Expected<luthier::AMDGCNObjectFile &> StorageELFOrErr =
-        LCO.getStorageELF();
+    llvm::Expected<object::AMDGCNObjectFile &> StorageELFOrErr =
+        hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
     LUTHIER_RETURN_ON_ERROR(StorageELFOrErr.takeError());
 
     // Create an entry for the LCO in the relocations map
@@ -231,21 +231,16 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
         if (RelocSym != StorageELFOrErr->symbol_end()) {
           auto RelocSymbolLoadedAddress = Reloc.getSymbol()->getAddress();
           LUTHIER_RETURN_ON_ERROR(RelocSymbolLoadedAddress.takeError());
-          LLVM_DEBUG(
-              LUTHIER_RETURN_ON_MOVE_INTO_FAIL(llvm::StringRef, SymName,
-                                               Reloc.getSymbol()->getName());
-              llvm::dbgs() << llvm::formatv(
-                  "Found relocation for symbol {0} at address {1:x}.\n",
-                  SymName, LoadedMemoryBase + *RelocSymbolLoadedAddress));
           // Check with the hsa::Platform which HSA executable Symbol this
           // address is associated with
           auto RelocSymbol = hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
+              CoreApiSnapshot.getTable(), LoaderApiSnapshot.getTable(),
               LoadedMemoryBase + *RelocSymbolLoadedAddress);
-          LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+          LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
               *RelocSymbol != nullptr,
-              "Failed to find a symbol associated with device "
-              "address {0:x}.",
-              LoadedMemoryBase + *RelocSymbolLoadedAddress));
+              llvm::formatv("Failed to find a symbol associated with device "
+                            "address {0:x}.",
+                            LoadedMemoryBase + *RelocSymbolLoadedAddress)));
           // The target address will be the base of the loaded
           luthier::address_t TargetAddress =
               LoadedMemoryBase + Reloc.getOffset();
@@ -253,7 +248,7 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
                          "Relocation found for symbol {0} at address {1:x} for "
                          "LCO {2:x}.\n",
                          llvm::cantFail(RelocSymbol.get()->getName()),
-                         TargetAddress, LCO.hsaHandle()));
+                         TargetAddress, LCO.handle));
           LCORelocationsMap.insert(
               {TargetAddress,
                LCORelocationInfo{std::move(RelocSymbol.get()->clone()),
@@ -266,7 +261,7 @@ CodeLifter::resolveRelocation(const hsa::LoadedCodeObject &LCO,
   const auto &LCORelocationsMap = Relocations.at(LCO);
   LLVM_DEBUG(
       llvm::dbgs() << llvm::formatv("Querying address {0:x} for LCO {1:x}\n",
-                                    Address, LCO.hsaHandle()));
+                                    Address, LCO.handle));
   if (LCORelocationsMap.contains(Address)) {
     auto &Out = LCORelocationsMap.at(Address);
     LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
@@ -285,10 +280,18 @@ llvm::Error CodeLifter::initLR(LiftedRepresentation &LR,
   LR.Context =
       llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>());
   // Get the LCO of the kernel
-  hsa::LoadedCodeObject LCO(Kernel.getLoadedCodeObject());
-  LR.LCO = LCO.asHsaType();
+  hsa_loaded_code_object_t LCO = Kernel.getLoadedCodeObject();
+  LR.LCO = LCO;
   // Create a new Target Machine for the LCO
-  auto ISA = LCO.getISA();
+  llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
+      hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
+  LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
+
+  auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
+  LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
+
+  auto ISA = hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),
+                              std::get<1>(*LLVMIsa), std::get<2>(*LLVMIsa));
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
   LUTHIER_RETURN_ON_ERROR(
       TargetManager::instance().createTargetMachine(*ISA).moveInto(LR.TM));
@@ -309,7 +312,7 @@ llvm::Error CodeLifter::initLR(LiftedRepresentation &LR,
 }
 
 llvm::Error
-CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
+CodeLifter::initLiftedGlobalVariableEntry(hsa_loaded_code_object_t LCO,
                                           const hsa::LoadedCodeObjectSymbol &GV,
                                           LiftedRepresentation &LR) {
   auto &LLVMContext = LR.getContext();
@@ -326,7 +329,7 @@ CodeLifter::initLiftedGlobalVariableEntry(const hsa::LoadedCodeObject &LCO,
 }
 
 static llvm::Type *
-processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
+processExplicitKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
                          llvm::LLVMContext &Ctx) {
   llvm::Type *ParamType = llvm::Type::getIntNTy(Ctx, ArgMD.Size * 8);
   // Used when the argument kind is global buffer or dynamic shared pointer
@@ -335,10 +338,10 @@ processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
                                   : llvm::AMDGPUAS::GLOBAL_ADDRESS;
   unsigned int PointeeAlign =
       ArgMD.PointeeAlign.has_value() ? *ArgMD.PointeeAlign : 0;
-  switch (ArgMD.ValueKind) {
-  case hsa::md::ValueKind::ByValue:
+  switch (ArgMD.ValKind) {
+  case amdgpu::hsamd::ValueKind::ByValue:
     break;
-  case hsa::md::ValueKind::GlobalBuffer:
+  case amdgpu::hsamd::ValueKind::GlobalBuffer:
     // Convert the argument to a pointer
     ParamType = llvm::PointerType::get(ParamType, AddressSpace);
     break;
@@ -348,49 +351,49 @@ processExplicitKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
   return ParamType;
 }
 
-void processHiddenKernelArg(const hsa::md::Kernel::Arg::Metadata &ArgMD,
+void processHiddenKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
                             llvm::Function &F, llvm::SIMachineFunctionInfo &MFI,
                             const llvm::SIRegisterInfo &TRI) {
-  switch (ArgMD.ValueKind) {
-  case hsa::md::ValueKind::HiddenGlobalOffsetX:
-  case hsa::md::ValueKind::HiddenGlobalOffsetY:
-  case hsa::md::ValueKind::HiddenGlobalOffsetZ:
-  case hsa::md::ValueKind::HiddenBlockCountX:
-  case hsa::md::ValueKind::HiddenBlockCountY:
-  case hsa::md::ValueKind::HiddenBlockCountZ:
-  case hsa::md::ValueKind::HiddenRemainderX:
-  case hsa::md::ValueKind::HiddenRemainderY:
-  case hsa::md::ValueKind::HiddenRemainderZ:
-  case hsa::md::ValueKind::HiddenNone:
-  case hsa::md::ValueKind::HiddenGroupSizeX:
-  case hsa::md::ValueKind::HiddenGroupSizeY:
-  case hsa::md::ValueKind::HiddenGroupSizeZ:
-  case hsa::md::ValueKind::HiddenGridDims:
-  case hsa::md::ValueKind::HiddenPrivateBase:
-  case hsa::md::ValueKind::HiddenSharedBase:
+  switch (ArgMD.ValKind) {
+  case amdgpu::hsamd::ValueKind::HiddenGlobalOffsetX:
+  case amdgpu::hsamd::ValueKind::HiddenGlobalOffsetY:
+  case amdgpu::hsamd::ValueKind::HiddenGlobalOffsetZ:
+  case amdgpu::hsamd::ValueKind::HiddenBlockCountX:
+  case amdgpu::hsamd::ValueKind::HiddenBlockCountY:
+  case amdgpu::hsamd::ValueKind::HiddenBlockCountZ:
+  case amdgpu::hsamd::ValueKind::HiddenRemainderX:
+  case amdgpu::hsamd::ValueKind::HiddenRemainderY:
+  case amdgpu::hsamd::ValueKind::HiddenRemainderZ:
+  case amdgpu::hsamd::ValueKind::HiddenNone:
+  case amdgpu::hsamd::ValueKind::HiddenGroupSizeX:
+  case amdgpu::hsamd::ValueKind::HiddenGroupSizeY:
+  case amdgpu::hsamd::ValueKind::HiddenGroupSizeZ:
+  case amdgpu::hsamd::ValueKind::HiddenGridDims:
+  case amdgpu::hsamd::ValueKind::HiddenPrivateBase:
+  case amdgpu::hsamd::ValueKind::HiddenSharedBase:
     break;
-  case hsa::md::ValueKind::HiddenPrintfBuffer:
+  case amdgpu::hsamd::ValueKind::HiddenPrintfBuffer:
     F.getParent()->getOrInsertNamedMetadata("llvm.printf.fmts");
     break;
-  case hsa::md::ValueKind::HiddenHostcallBuffer:
+  case amdgpu::hsamd::ValueKind::HiddenHostcallBuffer:
     F.removeFnAttr("amdgpu-no-hostcall-ptr");
     break;
-  case hsa::md::ValueKind::HiddenDefaultQueue:
+  case amdgpu::hsamd::ValueKind::HiddenDefaultQueue:
     F.removeFnAttr("amdgpu-no-default-queue");
     break;
-  case hsa::md::ValueKind::HiddenCompletionAction:
+  case amdgpu::hsamd::ValueKind::HiddenCompletionAction:
     F.removeFnAttr("amdgpu-no-completion-action");
     break;
-  case hsa::md::ValueKind::HiddenMultiGridSyncArg:
+  case amdgpu::hsamd::ValueKind::HiddenMultiGridSyncArg:
     F.removeFnAttr("amdgpu-no-multigrid-sync-arg");
     break;
-  case hsa::md::ValueKind::HiddenHeapV1:
+  case amdgpu::hsamd::ValueKind::HiddenHeapV1:
     F.removeFnAttr("amdgpu-no-heap-ptr");
     break;
-  case hsa::md::ValueKind::HiddenDynamicLDSSize:
+  case amdgpu::hsamd::ValueKind::HiddenDynamicLDSSize:
     MFI.setUsesDynamicLDS(true);
     break;
-  case hsa::md::ValueKind::HiddenQueuePtr:
+  case amdgpu::hsamd::ValueKind::HiddenQueuePtr:
     MFI.addQueuePtr(TRI);
     break;
   default:
@@ -423,7 +426,7 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObjectKernel &Kernel,
     // For now, we only rely on required argument metadata
     // This should be updated as new cases are encountered
     for (const auto &ArgMD : *KernelMD.Args) {
-      if (ArgMD.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin)
+      if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin)
         break;
       else {
         Params.push_back(processExplicitKernelArg(ArgMD, Module.getContext()));
@@ -450,10 +453,11 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObjectKernel &Kernel,
 
   // Construct the attributes of the Function, which will result in the MF
   // attributes getting populated
-  auto KDOnDevice = Kernel.getKernelDescriptor();
+  auto KDOnDevice = Kernel.getKernelDescriptor(CoreApiSnapshot.getTable());
   LUTHIER_RETURN_ON_ERROR(KDOnDevice.takeError());
 
-  auto KDOnHost = hsa::queryHostAddress(*KDOnDevice);
+  auto KDOnHost =
+      hsa::queryHostAddress(LoaderApiSnapshot.getTable(), *KDOnDevice);
   LUTHIER_RETURN_ON_ERROR(KDOnHost.takeError());
 
   F->addFnAttr("amdgpu-lds-size",
@@ -542,8 +546,8 @@ CodeLifter::initLiftedKernelEntry(const hsa::LoadedCodeObjectKernel &Kernel,
     F->addFnAttr("amdgpu-no-multigrid-sync-arg");
     F->addFnAttr("amdgpu-no-heap-ptr");
     for (const auto &ArgMD : *KernelMD.Args) {
-      if (ArgMD.ValueKind >= hsa::md::ValueKind::HiddenArgKindBegin &&
-          ArgMD.ValueKind <= hsa::md::ValueKind::HiddenArgKindEnd) {
+      if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
+          ArgMD.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
         processHiddenKernelArg(
             ArgMD, *F, *MFI,
             *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo());
@@ -583,7 +587,7 @@ llvm::Error CodeLifter::initLiftedDeviceFunctionEntry(
   // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
   // won't run
   llvm::BasicBlock *BB = llvm::BasicBlock::Create(Module.getContext(), "", F);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       BB != nullptr,
       "Failed to create a dummy IR basic block during code lifting."));
   new llvm::UnreachableInst(Module.getContext(), BB);
@@ -638,7 +642,7 @@ static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
     // MC version
     if (MI.getNumOperands() < MI.getNumExplicitOperands()) {
       // Check if the first operand is a register
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           MI.getOperand(0).isReg(),
           "The first operand of a bitset instruction is not a register."));
       // Add the output reg also as the first input, and tie the first and
@@ -656,7 +660,7 @@ static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
 llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                                      llvm::MachineFunction &MF,
                                      LiftedRepresentation &LR) {
-  hsa::LoadedCodeObject LCO(LR.LCO);
+  hsa_loaded_code_object_t LCO = LR.LCO;
   llvm::Module &Module = LR.getModule();
   llvm::MachineModuleInfo &MMI = LR.getMMI();
   auto &F = MF.getFunction();
@@ -668,7 +672,15 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
 
   auto &TM = MMI.getTarget();
 
-  auto ISA = LCO.getISA();
+  llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
+      hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
+  LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
+
+  auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
+  LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
+
+  auto ISA = hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),
+                              std::get<1>(*LLVMIsa), std::get<2>(*LLVMIsa));
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
 
   auto TargetInfo = TargetManager::instance().getTargetInfo(*ISA);
@@ -704,7 +716,7 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
     LUTHIER_RETURN_ON_ERROR(
         CodeLifter::instance().disassemble(*Func).moveInto(TargetFunction));
   else
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_CREATE_ERROR(
+    LUTHIER_RETURN_ON_ERROR(llvm::make_error<GenericLuthierError>(
         "Passed symbol is not of type kernel or device function."));
 
   llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
@@ -809,11 +821,12 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                 llvm::isa<hsa::LoadedCodeObjectExternSymbol>(TargetSymbol)) {
               LLVM_DEBUG(
                   auto TargetSymbolAddress =
-                      TargetSymbol.getLoadedSymbolAddress();
+                      TargetSymbol.getLoadedSymbolAddress(
+                          LoaderApiSnapshot.getTable());
                   LUTHIER_RETURN_ON_ERROR(TargetSymbolAddress.takeError());
-                  LUTHIER_RETURN_ON_MOVE_INTO_FAIL(llvm::StringRef,
-                                                   TargetSymbolName,
-                                                   TargetSymbol.getName());
+
+                  llvm::StringRef TargetSymbolName; LUTHIER_RETURN_ON_ERROR(
+                      TargetSymbol.getName().moveInto(TargetSymbolName));
                   llvm::dbgs()
                   << llvm::formatv("Relocation is being resolved to the global "
                                    "variables {0} at address {1:x}.\n",
@@ -833,10 +846,11 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
               } else
                 GV = GVIter->second;
 
-              LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+              LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
                   GV != nullptr,
-                  "Failed to find the GV associated with Symbol {0} in the LR.",
-                  *TargetSymbolNameOrErr));
+                  llvm::formatv("Failed to find the GV associated with Symbol "
+                                "{0} in the LR.",
+                                *TargetSymbolNameOrErr)));
 
               if (Type == llvm::ELF::R_AMDGPU_REL32_LO)
                 Type = llvm::SIInstrInfo::MO_GOTPCREL32_LO;
@@ -848,7 +862,7 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                                hsa::LoadedCodeObjectDeviceFunction>(
                                &TargetSymbol)) {
               auto UsedMF = LR.Functions.find(TargetSymbolAsDevFunc);
-              LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+              LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
                   UsedMF != LR.Functions.end(),
                   "Failed to find the related function in map."));
               llvm::Function &UsedF = UsedMF->second->getFunction();
@@ -990,11 +1004,11 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
         llvm::dbgs() << llvm::formatv(
             "Resolving MIs jumping to target address {0:x}.\n", TargetAddress));
     MBB = BranchTargetMBBs[TargetAddress];
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         MBB != nullptr,
-        "Failed to find the MachineBasicBlock associated with "
-        "the branch target address {0:x}.",
-        TargetAddress));
+        llvm::formatv("Failed to find the MachineBasicBlock associated with "
+                      "the branch target address {0:x}.",
+                      TargetAddress)));
     for (auto &MI : BranchMIs) {
       LLVM_DEBUG(llvm::dbgs() << "Resolving branch for the instruction ";
                  MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
@@ -1018,10 +1032,11 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
     // TODO: dynamic stack kernels
     const auto *KernelSymbol =
         llvm::dyn_cast<hsa::LoadedCodeObjectKernel>(&Symbol);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         KernelSymbol != nullptr,
-        "LLVM Machine Function {0} was incorrectly lifted to a kernel",
-        MF.getName()));
+        llvm::formatv(
+            "LLVM Machine Function {0} was incorrectly lifted to a kernel",
+            MF.getName())));
     auto KernelMD = KernelSymbol->getKernelMetadata();
     LLVM_DEBUG(llvm::dbgs() << "Stack size according to the metadata: "
                             << KernelMD.PrivateSegmentFixedSize << "\n");
@@ -1060,19 +1075,22 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
     std::unique_ptr<LiftedRepresentation> LR(new LiftedRepresentation());
     // Initialize the LR
     LUTHIER_RETURN_ON_ERROR(initLR(*LR, KernelSymbol));
-    hsa::LoadedCodeObject LCO(LR->LCO);
+
+    hsa_loaded_code_object_t LCO = LR->LCO;
+
+    auto &COC = hsa::LoadedCodeObjectCache::instance();
 
     // Create Global Variables associated with the LCO
     llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4>
         GlobalVariables;
-    LUTHIER_RETURN_ON_ERROR(LCO.getVariableSymbols(GlobalVariables));
-    LUTHIER_RETURN_ON_ERROR(LCO.getExternalSymbols(GlobalVariables));
+    LUTHIER_RETURN_ON_ERROR(COC.getVariableSymbols(LCO, GlobalVariables));
+    LUTHIER_RETURN_ON_ERROR(COC.getExternalSymbols(LCO, GlobalVariables));
     for (auto &GV : GlobalVariables) {
       LUTHIER_RETURN_ON_ERROR(initLiftedGlobalVariableEntry(LCO, *GV, *LR));
     }
     // Create Kernel entries for the LCO
     llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>> Kernels;
-    LUTHIER_RETURN_ON_ERROR(LCO.getKernelSymbols(Kernels));
+    LUTHIER_RETURN_ON_ERROR(COC.getKernelSymbols(LCO, Kernels));
     for (const auto &Kernel : Kernels) {
       if (*Kernel == KernelSymbol)
         LUTHIER_RETURN_ON_ERROR(initLiftedKernelEntry(KernelSymbol, *LR));
@@ -1083,7 +1101,7 @@ luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
     // Create device function entries for this LCO
     llvm::SmallVector<std::unique_ptr<hsa::LoadedCodeObjectSymbol>, 4>
         DeviceFuncs;
-    LUTHIER_RETURN_ON_ERROR(LCO.getDeviceFunctionSymbols(DeviceFuncs));
+    LUTHIER_RETURN_ON_ERROR(COC.getDeviceFunctionSymbols(LCO, DeviceFuncs));
     for (const auto &Func : DeviceFuncs) {
       LUTHIER_RETURN_ON_ERROR(initLiftedDeviceFunctionEntry(
           *llvm::dyn_cast<hsa::LoadedCodeObjectDeviceFunction>(Func.get()),
@@ -1128,7 +1146,15 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   // Create a new target machine for the MMI
   DestLR->Module = llvm::CloneModule(SrcModule, VMap);
   DestLR->LCO = SrcLR.LCO;
-  auto ISA = hsa::LoadedCodeObject(DestLR->LCO).getISA();
+  llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
+      hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(SrcLR.LCO);
+  LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
+
+  auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
+  LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
+
+  auto ISA = hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),
+                              std::get<1>(*LLVMIsa), std::get<2>(*LLVMIsa));
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
   LUTHIER_RETURN_ON_ERROR(
       TargetManager::instance().createTargetMachine(*ISA).moveInto(DestLR->TM));
@@ -1142,11 +1168,11 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
       llvm::unique_dyn_cast<hsa::LoadedCodeObjectKernel>(SrcLR.Kernel->clone());
 
   auto DestKernelEntry = VMap.find(&SrcLR.KernelMF->getFunction());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       DestKernelEntry != VMap.end(),
-      "Failed to find the matching LLVM Function {0} during "
-      "Lifted Representation cloning.",
-      SrcLR.KernelMF->getFunction()));
+      llvm::formatv("Failed to find the matching LLVM Function {0} during "
+                    "Lifted Representation cloning.",
+                    SrcLR.KernelMF->getFunction())));
 
   DestLR->KernelMF = DestLR->getMMI().getMachineFunction(
       *cast<llvm::Function>(DestKernelEntry->second));
@@ -1155,21 +1181,21 @@ CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   // functions and related global variables. We use the VMap to do this
   for (const auto &[GVHandle, GV] : SrcLR.Variables) {
     auto GVDestEntry = VMap.find(GV);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         GVDestEntry != VMap.end(),
-        "Failed to find the matching LLVM Global "
-        "variable for {0} during Lifted Representation cloning.",
-        *GV));
+        llvm::formatv("Failed to find the matching LLVM Global "
+                      "variable for {0} during Lifted Representation cloning.",
+                      *GV)));
     auto *DestGV = cast<llvm::GlobalVariable>(GVDestEntry->second);
     DestLR->Variables.emplace(GVHandle->clone(), DestGV);
   }
   for (const auto &[FuncSymbol, SrcMF] : SrcLR.Functions) {
     auto FDestEntry = VMap.find(&SrcMF->getFunction());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         FDestEntry != VMap.end(),
-        "Failed to find the matching LLVM Function {0} during "
-        "Lifted Representation cloning.",
-        SrcMF->getFunction()));
+        llvm::formatv("Failed to find the matching LLVM Function {0} during "
+                      "Lifted Representation cloning.",
+                      SrcMF->getFunction())));
     auto *DestF = cast<llvm::Function>(FDestEntry->second);
     // Get the MMI of the dest function
     auto DestMF = DestLR->getMMI().getMachineFunction(*DestF);

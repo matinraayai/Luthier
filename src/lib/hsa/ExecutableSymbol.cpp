@@ -15,68 +15,92 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c ExecutableSymbol class under the \c luthier::hsa
-/// namespace.
+/// Implements a set of commonly used functionality for the
+/// \c hsa_executable_symbol_t handle in HSA.
 //===----------------------------------------------------------------------===//
-
-#include "hsa/ExecutableSymbol.hpp"
-
-#include "hsa/GpuAgent.hpp"
+#include "luthier/hsa/ExecutableSymbol.h"
+#include "luthier/common/ErrorCheck.h"
 #include "luthier/hsa/HsaError.h"
-
-#undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-hsa-executable-symbol"
+#include <llvm/Support/Error.h>
+#include <llvm/Support/FormatVariadic.h>
 
 namespace luthier::hsa {
 
-llvm::Expected<hsa_symbol_kind_t> ExecutableSymbol::getType() const {
+llvm::Expected<hsa_symbol_kind_t>
+executableSymbolGetType(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                        const hsa_executable_symbol_t Symbol) {
   hsa_symbol_kind_t Out;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_symbol_get_info_fn(
-          asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &Out)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
+          Symbol, HSA_EXECUTABLE_SYMBOL_INFO_TYPE, &Out),
+      llvm::formatv("Failed to get the type of executable symbol {0:x}",
+                    Symbol.handle)));
   return Out;
 }
 
-llvm::Expected<llvm::StringRef> ExecutableSymbol::getName() const {
+llvm::Expected<std::string>
+executableSymbolGetName(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                        const hsa_executable_symbol_t Symbol) {
   uint32_t NameLength;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_symbol_get_info_fn(
-          asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &NameLength)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
+          Symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME_LENGTH, &NameLength),
+      llvm::formatv("Failed to get the length of the name of the executable "
+                    "symbol {0:x}",
+                    Symbol.handle)));
+
   std::string Out(NameLength, '\0');
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_symbol_get_info_fn(
-          asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_NAME, &Out.front())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
+          Symbol, HSA_EXECUTABLE_SYMBOL_INFO_NAME, &Out.front()),
+      llvm::formatv("Failed to get the name of the executable symbol {0:x}",
+                    Symbol.handle)));
   return Out;
 }
 
-llvm::Expected<size_t> ExecutableSymbol::getSize() const {
+llvm::Expected<size_t>
+executableSymbolGetSymbolSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                              const hsa_executable_symbol_t Symbol) {
   uint32_t Out;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_symbol_get_info_fn(
-          asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_SIZE, &Out)));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
+          Symbol, HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_SIZE, &Out),
+      llvm::formatv("Failed to get the size of executable symbol {0:x}",
+                    Symbol.handle)));
   return Out;
 }
 
-llvm::Expected<luthier::address_t> ExecutableSymbol::getAddress() const {
-  auto SymbolType = getType();
-  LUTHIER_RETURN_ON_ERROR(SymbolType.takeError());
-  luthier::address_t Out;
-  auto InfoQueried = *SymbolType == HSA_SYMBOL_KIND_VARIABLE
-                         ? HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS
-                         : HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_symbol_get_info_fn(asHsaType(),
-                                                           InfoQueried, &Out)));
+llvm::Expected<uint64_t>
+executableSymbolGetAddress(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                           const hsa_executable_symbol_t Symbol) {
+  llvm::Expected<hsa_symbol_kind_t> SymbolTypeOrErr =
+      executableSymbolGetType(CoreApi, Symbol);
+  LUTHIER_RETURN_ON_ERROR(SymbolTypeOrErr.takeError());
+
+  uint64_t Out;
+  const hsa_executable_symbol_info_t InfoQueried =
+      *SymbolTypeOrErr == HSA_SYMBOL_KIND_VARIABLE
+          ? HSA_EXECUTABLE_SYMBOL_INFO_VARIABLE_ADDRESS
+          : HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
+          Symbol, InfoQueried, &Out),
+      llvm::formatv("Failed to get the address of the executable symbol {0:x}",
+                    Symbol.handle)));
 
   return Out;
 }
 
-llvm::Expected<GpuAgent> ExecutableSymbol::getAgent() const {
+llvm::Expected<hsa_agent_t>
+executableSymbolGetAgent(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                         const hsa_executable_symbol_t Symbol) {
   hsa_agent_t Agent;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_executable_symbol_get_info_fn(
-          this->asHsaType(), HSA_EXECUTABLE_SYMBOL_INFO_AGENT, &Agent)));
-  return hsa::GpuAgent(Agent);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
+          Symbol, HSA_EXECUTABLE_SYMBOL_INFO_AGENT, &Agent),
+      llvm::formatv("Failed to get the agent of executable symbol {0:x}",
+                    Symbol.handle)));
+  return Agent;
 }
 
 } // namespace luthier::hsa

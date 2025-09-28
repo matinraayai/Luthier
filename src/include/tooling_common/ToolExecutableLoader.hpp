@@ -15,67 +15,103 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's Tool Executable Loader Singleton, which is
-/// in charge of managing all loaded instrumentation modules loaded
-/// automatically, the lifetime of the instrumented executables,
-/// and loading instrumented kernels into a dispatch packet when the tool
-/// requests it.
+/// Describes Luthier's Tool Executable Loader Singleton, in charge of:
+/// - Managing all loaded instrumentation modules loaded automatically or
+/// manually
+/// - The lifetime of the instrumented executables
+/// - Providing the instrumented versions of the original kernels
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_TOOL_EXECUTABLE_LOADER_HPP
 #define LUTHIER_TOOLING_COMMON_TOOL_EXECUTABLE_LOADER_HPP
+#include "InstrumentationModule.hpp"
+#include "luthier/common/Singleton.h"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/CodeObjectReader.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ExecutableSymbol.h"
+#include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/hsa/LoadedCodeObjectKernel.h"
+#include "luthier/rocprofiler-sdk/ApiTableWrapperInstaller.h"
+#include "luthier/types.h"
+#include <hip/amd_detail/amd_hip_vector_types.h>
+#include <hip/hip_runtime.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/Module.h>
+#include <luthier/rocprofiler-sdk/ApiTableWrapperInstaller.h>
 #include <vector>
 
-#include "InstrumentationModule.hpp"
-#include "common/Singleton.hpp"
-#include "hsa/CodeObjectReader.hpp"
-#include "hsa/Executable.hpp"
-#include "hsa/GpuAgent.hpp"
-#include "luthier/hsa/LoadedCodeObjectKernel.h"
-#include "luthier/types.h"
-
 namespace luthier {
+namespace hsa {
+class LoadedCodeObjectCache;
+}
 
 /// \brief A singleton object that keeps track of executables that belong to
 /// Luthier, including instrumented executables and tool
 /// instrumentation modules, plus launching instrumented kernels
 class ToolExecutableLoader : public Singleton<ToolExecutableLoader> {
+private:
+  /// Mutex to protect internal state of the loader
+  std::recursive_mutex Mutex;
+
+  /// Table snapshot used to invoke HSA core operations
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
+
+  /// Table snapshot used to invoke HSA loader operations
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &LoaderApiSnapshot;
+
+  /// Used to install wrappers for executable freeze/destroy functions
+  std::unique_ptr<
+      const rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>
+      CoreApiWrapperInstaller;
+
+  /// Used to install a wrapper for __hipRegisterFunction
+  std::unique_ptr<const rocprofiler::HipCompilerApiTableWrapperInstaller>
+      HipCompilerWrapperInstaller;
+
+  /// Reference to the code object cache used to support loading/unloading of
+  /// instrumented kernels
+  const hsa::LoadedCodeObjectCache &COC;
+
+  /// The single static instrumentation module included in Luthier tool
+  mutable StaticInstrumentationModule SIM;
+
+  const amdgpu::hsamd::MetadataParser &MDParser;
+
+  llvm::DenseMap<hsa_executable_symbol_t,
+                 std::unique_ptr<amdgpu::hsamd::Kernel::Metadata>>
+      InstrumentedKernelMetadata{};
+
+  llvm::DenseMap<hsa_executable_t, llvm::DenseSet<hsa_executable_t>>
+      OriginalExecutablesWithKernelsInstrumented{};
+
+  static t___hipRegisterFunction UnderlyingHipRegisterFn;
+
+  static decltype(hsa_executable_freeze) *UnderlyingHsaExecutableFreezeFn;
+
+  static decltype(hsa_executable_destroy) *UnderlyingHsaExecutableDestroyFn;
+
+  static void
+  hipRegisterFunctionWrapper(void **modules, const void *hostFunction,
+                             char *deviceFunction, const char *deviceName,
+                             unsigned int threadLimit, uint3 *tid, uint3 *bid,
+                             dim3 *blockDim, dim3 *gridDim, int *wSize);
+
+  static hsa_status_t hsaExecutableFreezeWrapper(hsa_executable_t Executable,
+                                                 const char *Options);
+
+  static hsa_status_t hsaExecutableDestroyWrapper(hsa_executable_t Executable);
+
 public:
-  /// Registers the wrapper kernel of an instrumentation hook in a static
-  /// instrumentation module
-  /// For now, dummy empty kernels are used to give tool writers a handle to
-  /// hooks on the host side (also referred to as the shadow host pointer) \n
-  /// These handles are captured via the \c __hipRegisterFunction calls in
-  /// HIP, and they have the same name as the hook they point to, with
-  /// \c HOOK_HANDLE_PREFIX prefixed.
-  /// \param WrapperShadowHostPtr shadow host pointer of the instrumentation
-  /// hook's wrapper kernel
-  /// \param HookWrapperName name of the wrapper kernel
-  /// \sa LUTHIER_HOOK_ANNOTATE, LUTHIER_EXPORT_HOOK_HANDLE
-  void registerInstrumentationHookWrapper(const void *WrapperShadowHostPtr,
-                                          const char *HookWrapperName);
-
-  /// Called right after the \p Exec is frozen by the application
-  /// It mainly registers an \p Exec if it is a static instrumentation module
-  /// executable
-  /// \param Exec executable that was just frozen
-  /// \return an \c llvm::Error indicating any issues encountered during the
-  /// process
-  llvm::Error registerIfLuthierToolExecutable(const hsa::Executable &Exec);
-
-  /// Called right before the \p Exec is destroyed by the HSA runtime.
-  /// It checks if \p Exec: \n
-  /// 1. has been instrumented or not, and removes the instrumented versions
-  /// of the executable
-  /// 2. belongs to the static instrumentation module and removes it if so
-  /// \param Exec the executable about to be destroyed
-  /// \return an \c llvm::Error if any issues were encountered during the
-  /// process
-  llvm::Error unregisterIfLuthierToolExecutable(const hsa::Executable &Exec);
+  ToolExecutableLoader(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot,
+      const hsa::LoadedCodeObjectCache &COC,
+      const amdgpu::hsamd::MetadataParser &MDParser, llvm::Error &Err);
 
   /// Loads a list of instrumented code objects into a new executable and
   /// freezes it, allowing the instrumented version of the \p OriginalKernel
@@ -95,25 +131,6 @@ public:
                          llvm::StringRef Preset,
                          const llvm::StringMap<const void *> &ExternVariables);
 
-  /// Loads a list of instrumented versions of the loaded code objects found in
-  /// \p OriginalExecutable into a new executable and freezes it \n
-  /// This is usually used when the user wants to instrument most of the kernels
-  /// in the executable
-  /// \param InstrumentedElfs a list of instrumented versions of the loaded code
-  /// objects found in the original Executable
-  /// \param OriginalExecutable the \c hsa::ExecutableSymbol of the original
-  /// kernel
-  /// \param ExternVariables a mapping between the name and the address of
-  /// external variables of the instrumented code objects
-  /// \return an \p llvm::Error if an issue was encountered in the process
-  llvm::Error loadInstrumentedExecutable(
-      llvm::ArrayRef<
-          std::pair<hsa::LoadedCodeObject, llvm::SmallVector<uint8_t>>>
-          InstrumentedElfs,
-      llvm::StringRef Preset,
-      llvm::ArrayRef<std::tuple<hsa::GpuAgent, llvm::StringRef, const void *>>
-          ExternVariables);
-
   /// Returns the instrumented kernel's \c hsa::ExecutableSymbol given its
   /// original un-instrumented version's \c hsa::ExecutableSymbol and the
   /// preset name it was instrumented under \n
@@ -122,65 +139,56 @@ public:
   /// \param OriginalKernel symbol of the un-instrumented original kernel
   /// \return symbol of the instrumented version of the target kernel, or
   /// \p llvm::Error
-  llvm::Expected<const hsa::LoadedCodeObjectKernel &>
-  getInstrumentedKernel(const hsa::LoadedCodeObjectKernel &OriginalKernel,
+  [[nodiscard]] llvm::Expected<std::pair<
+      hsa_executable_symbol_t, const amdgpu::hsamd::Kernel::Metadata &>>
+  getInstrumentedKernel(hsa_executable_symbol_t OriginalKernel,
                         llvm::StringRef Preset) const;
 
   /// Checks if the given \p Kernel is instrumented under the given \p Preset
   /// \return \c true if it's instrumented, \c false otherwise
-  bool isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
-                            llvm::StringRef Preset) const;
+  [[nodiscard]] bool
+  isKernelInstrumented(const hsa::LoadedCodeObjectKernel &Kernel,
+                       llvm::StringRef Preset) const;
 
-  const StaticInstrumentationModule &getStaticInstrumentationModule() const {
+  [[nodiscard]] const StaticInstrumentationModule &
+  getStaticInstrumentationModule() const {
     return SIM;
   }
 
-  ~ToolExecutableLoader();
+  ~ToolExecutableLoader() override;
 
 private:
-  /// A private helper function to insert newly-instrumented versions of
-  /// the \p OriginalKernel under the given \p Preset\n
-  /// <b>Should be called after checking
-  /// \c OriginalToInstrumentedKernelsMap doesn't have this entry already</b>
-  /// \param OriginalKernel original kernel that was just instrumented
-  /// \param Preset the preset name it was instrumented under
-  /// \param InstrumentedKernel instrumented version of the original kernel
   void insertInstrumentedKernelIntoMap(
-      std::unique_ptr<hsa::LoadedCodeObjectKernel> OriginalKernel,
-      llvm::StringRef Preset,
-      std::unique_ptr<hsa::LoadedCodeObjectKernel> InstrumentedKernel) {
+      const hsa_executable_t OriginalExecutable,
+      const hsa_executable_symbol_t OriginalKernel, llvm::StringRef Preset,
+      const hsa_executable_t InstrumentedExecutable,
+      const hsa_executable_symbol_t InstrumentedKernel) {
     // Create an entry for the OriginalKernel if it doesn't already exist in the
     // map
-    if (!OriginalToInstrumentedKernelsMap.contains(OriginalKernel)) {
-      OriginalToInstrumentedKernelsMap
-          .emplace(
-              std::move(OriginalKernel),
-              llvm::StringMap<std::unique_ptr<hsa::LoadedCodeObjectKernel>>{})
-          .first->second.insert({Preset, std::move(InstrumentedKernel)});
-    } else
-      OriginalToInstrumentedKernelsMap.find(OriginalKernel)
-          ->second.insert({Preset, std::move(InstrumentedKernel)});
+    auto OriginalKernelEntry =
+        OriginalToInstrumentedKernelsMap.find(OriginalKernel);
+    if (OriginalKernelEntry == OriginalToInstrumentedKernelsMap.end()) {
+      OriginalKernelEntry =
+          OriginalToInstrumentedKernelsMap
+              .emplace(OriginalKernel,
+                       llvm::StringMap<hsa_executable_symbol_t>{})
+              .first;
+    }
+    OriginalKernelEntry->second.insert({Preset, InstrumentedKernel});
+    auto OriginalExecutableEntry =
+        OriginalExecutablesWithKernelsInstrumented.find(OriginalExecutable);
+    if (OriginalExecutableEntry ==
+        OriginalExecutablesWithKernelsInstrumented.end()) {
+      OriginalExecutableEntry = OriginalExecutablesWithKernelsInstrumented
+                                    .insert({OriginalExecutable, {}})
+                                    .first;
+    }
+    OriginalExecutableEntry->second.insert(InstrumentedExecutable);
   }
-
-  /// The single static instrumentation module included in Luthier tool
-  mutable StaticInstrumentationModule SIM{};
-
-  /// \brief a mapping between the loaded code objects instrumented and
-  /// loaded by Luthier and their code object readers
-  llvm::DenseMap<hsa::LoadedCodeObject, hsa::CodeObjectReader>
-      InstrumentedLCOInfo{};
-
-  /// \brief a set of executables that has at least a single kernel of it
-  /// instrumented
-  llvm::DenseSet<hsa::Executable> OriginalExecutablesWithKernelsInstrumented{};
-
   /// \brief a mapping between the pair of an instrumented kernel, given
   /// its original kernel, and its instrumentation preset
-  std::unordered_map<
-      std::unique_ptr<hsa::LoadedCodeObjectKernel>,
-      llvm::StringMap<std::unique_ptr<hsa::LoadedCodeObjectKernel>>,
-      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectKernel>,
-      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectKernel>>
+  std::unordered_map<hsa_executable_symbol_t,
+                     llvm::StringMap<hsa_executable_symbol_t>>
       OriginalToInstrumentedKernelsMap{};
 };
 }; // namespace luthier

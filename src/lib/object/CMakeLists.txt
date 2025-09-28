@@ -1,6 +1,5 @@
 add_library(LuthierObject OBJECT
         ObjectFileUtils.cpp
-        ObjectUtils.cpp
 )
 
 target_compile_definitions(LuthierObject PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})

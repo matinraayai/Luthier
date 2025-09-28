@@ -27,6 +27,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
+#include <luthier/common/GenericLuthierError.h>
 
 namespace luthier {
 
@@ -35,11 +36,11 @@ implicitArgPtrIRProcessor(const llvm::Function &Intrinsic,
                           const llvm::CallInst &User,
                           const llvm::GCNTargetMachine &TM) {
   // The user must not have any operands
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(User.arg_size() == 0,
-                          "Expected no operands to be passed to the "
-                          "luthier::implicitArgPtr intrinsic '{0}', got {1}.",
-                          User, User.arg_size()));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      User.arg_size() == 0,
+      llvm::formatv("Expected no operands to be passed to the "
+                    "luthier::implicitArgPtr intrinsic '{0}', got {1}.",
+                    User, User.arg_size())));
 
   luthier::IntrinsicIRLoweringInfo Out;
   // The kernarg hidden address will be returned in an SGPR
@@ -64,12 +65,12 @@ llvm::Error implicitArgPtrMIRProcessor(
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
   // There should be only a single virtual register involved in the operation
   LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_ERROR_CHECK(Args.size() == 1,
-                          "Number of virtual register arguments "
+      LUTHIER_GENERIC_ERROR_CHECK(Args.size() == 1,
+                          llvm::formatv("Number of virtual register arguments "
                           "involved in the MIR lowering stage of "
                           "luthier::implicitArgPtr is {0} instead of 1.",
-                          Args.size()));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_ERROR_CHECK(
+                          Args.size())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(),
       "The register argument of luthier::implicitArgPtr is not a definition."));
   llvm::Register Output = Args[0].second;

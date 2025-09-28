@@ -21,8 +21,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
 #define LUTHIER_TOOLING_COMMON_CODE_GENERATOR_HPP
-#include "common/Singleton.hpp"
+#include "luthier/common/Singleton.h"
 #include "luthier/intrinsic/IntrinsicProcessor.h"
+#include "luthier/rocprofiler-sdk/ApiTableSnapshot.h"
 
 namespace llvm {
 
@@ -65,7 +66,20 @@ private:
   /// Holds information regarding how to lower Luthier intrinsics
   llvm::StringMap<IntrinsicProcessor> IntrinsicsProcessors;
 
+  /// HSA Core API table snapshot
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
+
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &LoaderApiSnapshot;
+
 public:
+  explicit CodeGenerator(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &LoaderApiSnapshot)
+      : CoreApiSnapshot(CoreApiSnapshot),
+        LoaderApiSnapshot(LoaderApiSnapshot) {};
+
   /// Register a Luthier intrinsic with the <tt>CodeGenerator</tt> and provide a
   /// way to lower it to Machine IR
   /// \param Name the demangled function name of the intrinsic, without the
@@ -109,18 +123,6 @@ public:
                 std::unique_ptr<llvm::MachineModuleInfoWrapperPass> &MMIWP,
                 llvm::SmallVectorImpl<char> &CompiledObjectFile,
                 llvm::CodeGenFileType FileType);
-
-  /// Links the relocatable object file passed in \p Code to an executable,
-  /// which can then be loaded into the HSA runtime
-  /// \param [in] Code the relocatable file
-  /// \param [in] ISA the ISA of the relocatable file
-  /// \param [out] Out the linked executable
-  /// \return an \c llvm::Error in case any issues were encountered during the
-  /// process
-  static llvm::Error
-  linkRelocatableToExecutable(const llvm::ArrayRef<char> &Code,
-                              const hsa::ISA &ISA,
-                              llvm::SmallVectorImpl<uint8_t> &Out);
 
 private:
   /// Applies the instrumentation task \p Task to the lifted representation

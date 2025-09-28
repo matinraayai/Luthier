@@ -22,12 +22,14 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
 #define LUTHIER_HSA_LOADED_CODE_OBJECT_SYMBOL_H
+#include "luthier/hsa/ApiTable.h"
+#include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/object/AMDGCNObjectFile.h"
 #include <hsa/hsa.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/Hashing.h>
 #include <llvm/Object/ELFObjectFile.h>
-#include <luthier/hsa/DenseMapInfo.h>
 #include <luthier/types.h>
 #include <optional>
 #include <string>
@@ -49,7 +51,7 @@ protected:
   /// The HSA Loaded Code Object this symbol belongs to
   hsa_loaded_code_object_t BackingLCO{};
   /// Parsed storage ELF of the LCO, to ensure \c Symbol stays valid
-  llvm::object::ELF64LEObjectFile &StorageELF;
+  luthier::object::AMDGCNObjectFile &StorageELF;
   /// The LLVM Object ELF symbol of this LCO symbol;
   /// Backed by parsing the storage ELF of the LCO
   llvm::object::ELFSymbolRef Symbol;
@@ -58,7 +60,7 @@ protected:
   /// The HSA executable symbol equivalent, if exists
   std::optional<hsa_executable_symbol_t> ExecutableSymbol;
 
-  /// Constructor used by sub-classes
+  /// Constructor used by subclasses
   /// \param LCO the \c hsa_loaded_code_object_t which the symbol belongs to
   /// \param StorageELF the \c luthier::AMDGCNObjectFile of \p Symbol
   /// \param Symbol a reference to the \c llvm::object::ELFSymbolRef
@@ -67,7 +69,8 @@ protected:
   /// \param ExecutableSymbol the \c hsa_executable_symbol_t equivalent of
   /// the <tt>LoadedCodeObjectSymbol</tt> if exists
   LoadedCodeObjectSymbol(
-      hsa_loaded_code_object_t LCO, llvm::object::ELF64LEObjectFile &StorageELF,
+      hsa_loaded_code_object_t LCO,
+      luthier::object::AMDGCNObjectFile &StorageELF,
       llvm::object::ELFSymbolRef Symbol, SymbolKind Kind,
       std::optional<hsa_executable_symbol_t> ExecutableSymbol);
 
@@ -77,6 +80,8 @@ public:
 
   /// Disallowed assignment operation
   LoadedCodeObjectSymbol &operator=(const LoadedCodeObjectSymbol &) = delete;
+
+  virtual ~LoadedCodeObjectSymbol() = default;
 
   /// \return a deep clone copy of the
   [[nodiscard]] virtual std::unique_ptr<LoadedCodeObjectSymbol> clone() const {
@@ -105,7 +110,9 @@ public:
   /// \c LoadedCodeObjectSymbol of the HSA executable symbol, or an
   /// \c llvm::Error on failure
   static llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
-  fromExecutableSymbol(hsa_executable_symbol_t Symbol);
+  fromExecutableSymbol(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                       const hsa_ven_amd_loader_1_03_pfn_t &LoaderApi,
+                       hsa_executable_symbol_t Symbol);
 
   /// Queries if a \c hsa::LoadedCodeObjectSymbol is
   /// loaded on device memory at \p LoadedAddress
@@ -113,14 +120,20 @@ public:
   /// \return \c nullptr if no symbol is loaded at the given address, or
   /// a \c const pointer to the symbol loaded at the given address
   static llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
-  fromLoadedAddress(luthier::address_t LoadedAddress);
+  fromLoadedAddress(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                    const hsa_ven_amd_loader_1_03_pfn_t &LoaderApi,
+                    luthier::address_t LoadedAddress);
 
   /// \return the \c SymbolKind of this symbol
   [[nodiscard]] SymbolKind getType() const { return Kind; }
 
   /// \return GPU Agent of this symbol on success, an \c llvm::Error
   /// on failure
-  [[nodiscard]] llvm::Expected<hsa_agent_t> getAgent() const;
+  template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
+  [[nodiscard]] llvm::Expected<hsa_agent_t>
+  getAgent(const LoaderTableType &VenLoaderTable) const {
+    return hsa::loadedCodeObjectGetAgent(VenLoaderTable, BackingLCO);
+  }
 
   /// \return Loaded Code Object of this symbol
   [[nodiscard]] hsa_loaded_code_object_t getLoadedCodeObject() const {
@@ -128,7 +141,11 @@ public:
   }
 
   /// \return the executable this symbol was loaded into
-  [[nodiscard]] llvm::Expected<hsa_executable_t> getExecutable() const;
+  template <typename LoaderTableType = hsa_ven_amd_loader_1_01_pfn_t>
+  [[nodiscard]] llvm::Expected<hsa_executable_t>
+  getExecutable(const LoaderTableType &VenLoaderTable) const {
+    return hsa::loadedCodeObjectGetExecutable(VenLoaderTable, BackingLCO);
+  }
 
   /// \return the name of the symbol on success, or an \c llvm::Error on
   /// failure
@@ -142,11 +159,11 @@ public:
 
   /// \return an \c llvm::ArrayRef<uint8_t> encapsulating the contents of
   /// this symbol on the \c GpuAgent it was loaded onto
-  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>>
-  getLoadedSymbolContents() const;
+  [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getLoadedSymbolContents(
+      const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const;
 
-  [[nodiscard]] llvm::Expected<luthier::address_t>
-  getLoadedSymbolAddress() const;
+  [[nodiscard]] llvm::Expected<luthier::address_t> getLoadedSymbolAddress(
+      const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const;
 
   /// \return the \c hsa_executable_symbol_t associated with
   /// this LCO Symbol if exists (i.e the symbol has a \c llvm::ELF::STB_GLOBAL
@@ -301,7 +318,7 @@ struct LoadedCodeObjectSymbolHash {
     if (Symbol)
       return Symbol->hash();
     else
-      return llvm::hash_value((SymbolType *)nullptr);
+      return llvm::hash_value(static_cast<SymbolType *>(nullptr));
   }
 
   std::size_t
@@ -309,14 +326,14 @@ struct LoadedCodeObjectSymbolHash {
     if (Symbol)
       return Symbol->hash();
     else
-      return llvm::hash_value((const SymbolType *)nullptr);
+      return llvm::hash_value(static_cast<const SymbolType *>(nullptr));
   }
 
   std::size_t operator()(const std::shared_ptr<SymbolType> &Symbol) const {
     if (Symbol)
       return Symbol->hash();
     else
-      return llvm::hash_value((SymbolType *)nullptr);
+      return llvm::hash_value(static_cast<SymbolType *>(nullptr));
   }
 
   std::size_t
@@ -324,14 +341,14 @@ struct LoadedCodeObjectSymbolHash {
     if (Symbol)
       return Symbol->hash();
     else
-      return llvm::hash_value((const SymbolType *)nullptr);
+      return llvm::hash_value(static_cast<const SymbolType *>(nullptr));
   }
 
   std::size_t operator()(const SymbolType *Symbol) const {
     if (Symbol)
       return Symbol->hash();
     else
-      return llvm::hash_value((SymbolType *)nullptr);
+      return llvm::hash_value(static_cast<SymbolType *>(nullptr));
   }
 
   std::size_t operator()(const SymbolType &Symbol) const {

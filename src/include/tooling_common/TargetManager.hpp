@@ -21,15 +21,14 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_TARGET_MANAGER_HPP
 #define LUTHIER_TOOLING_COMMON_TARGET_MANAGER_HPP
+#include "luthier/common/Singleton.h"
+#include "luthier/hsa/ISA.h"
+#include "luthier/rocprofiler-sdk/ApiTableSnapshot.h"
 #include <llvm/Target/TargetOptions.h>
-
 #include <memory>
 #include <optional>
 #include <unordered_map>
 #include <vector>
-
-#include "common/Singleton.hpp"
-#include "hsa/ISA.hpp"
 
 namespace llvm {
 
@@ -101,16 +100,19 @@ public:
 /// on destruction
 class TargetManager : public Singleton<TargetManager> {
 private:
-  mutable std::unordered_map<hsa::ISA, TargetInfo> LLVMTargetInfo{};
+  mutable std::unordered_map<hsa_isa_t, TargetInfo> LLVMTargetInfo{};
+
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiTableSnapshot;
 
 public:
-  /// Default constructor; Initializes the AMDGPU LLVM target
-  TargetManager();
+  /// Initializes the AMDGPU LLVM target
+  explicit TargetManager(const rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
+                             &CoreApiTableSnapshot);
 
   /// Default destructor; Destroys all Target descriptors and shuts down LLVM
   ~TargetManager() override;
 
-  llvm::Expected<const TargetInfo &> getTargetInfo(const hsa::ISA &Isa) const;
+  llvm::Expected<const TargetInfo &> getTargetInfo(hsa_isa_t Isa) const;
 
   /// Creates an \c llvm::GCNTargetMachine given the \p ISA and the
   /// <tt>TargetOptions</tt>
@@ -123,7 +125,7 @@ public:
   /// <tt>llvm::GCNTargetMachine</tt>, or an \c llvm::Error if the process
   /// fails
   llvm::Expected<std::unique_ptr<llvm::GCNTargetMachine>>
-  createTargetMachine(const hsa::ISA &ISA,
+  createTargetMachine(hsa_isa_t ISA,
                       const llvm::TargetOptions &TargetOptions = {}) const;
 };
 

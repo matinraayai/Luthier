@@ -18,15 +18,15 @@
 /// This file implements the \c LoadedCodeObjectDeviceFunction under the \c
 /// luthier::hsa namespace.
 //===----------------------------------------------------------------------===//
-#include "common/ObjectUtils.hpp"
-#include <luthier/hsa/LoadedCodeObjectDeviceFunction.h>
+#include "luthier/hsa/LoadedCodeObjectDeviceFunction.h"
+#include "luthier/object/AMDGCNObjectFile.h"
 
 namespace luthier::hsa {
 
 llvm::Expected<std::unique_ptr<LoadedCodeObjectDeviceFunction>>
-LoadedCodeObjectDeviceFunction::create(hsa_loaded_code_object_t LCO,
-                                       luthier::AMDGCNObjectFile &StorageElf,
-                                       llvm::object::ELFSymbolRef FuncSymbol) {
+LoadedCodeObjectDeviceFunction::create(
+    hsa_loaded_code_object_t LCO, luthier::object::AMDGCNObjectFile &StorageElf,
+    llvm::object::ELFSymbolRef FuncSymbol) {
   return std::unique_ptr<LoadedCodeObjectDeviceFunction>(
       new LoadedCodeObjectDeviceFunction(LCO, StorageElf, FuncSymbol));
 }

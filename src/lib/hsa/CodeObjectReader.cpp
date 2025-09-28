@@ -1,4 +1,4 @@
-//===-- CodeObjectReader.hpp - HSA Code Object Reader Wrapper -------------===//
+//===-- CodeObjectReader.cpp ----------------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,35 +15,33 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the \c CodeObjectReader class under the \c luthier::hsa
-/// namespace.
+/// Implements a set of commonly used functionality for the
+/// \c hsa_code_object_reader_t handle in HSA.
 //===----------------------------------------------------------------------===//
-#include "hsa/CodeObjectReader.hpp"
-#include "hsa/HsaRuntimeInterceptor.hpp"
+#include "luthier/hsa/CodeObjectReader.h"
+#include "luthier/common/ErrorCheck.h"
 #include "luthier/hsa/HsaError.h"
 #include <llvm/ADT/StringExtras.h>
 
 namespace luthier::hsa {
 
-llvm::Expected<CodeObjectReader>
-CodeObjectReader::createFromMemory(llvm::StringRef Elf) {
-  const auto &CoreApiTable =
-      hsa::HsaRuntimeInterceptor::instance().getSavedApiTableContainer().core;
+llvm::Expected<hsa_code_object_reader_t> codeObjectReaderCreateFromMemory(
+    const ApiTableContainer<::CoreApiTable> &CoreApi, llvm::StringRef Elf) {
   hsa_code_object_reader_t Reader;
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_SUCCESS_CHECK(
-      CoreApiTable.hsa_code_object_reader_create_from_memory_fn(
-          Elf.data(), Elf.size(), &Reader)));
-  return CodeObjectReader{Reader};
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<hsa_code_object_reader_create_from_memory>(
+          Elf.data(), Elf.size(), &Reader),
+      "Failed to create code object reader from memory"));
+  return Reader;
 }
 
-llvm::Expected<CodeObjectReader>
-CodeObjectReader::createFromMemory(llvm::ArrayRef<uint8_t> Elf) {
-  return createFromMemory(llvm::toStringRef(Elf));
-}
-
-llvm::Error CodeObjectReader::destroy() {
-  return LUTHIER_HSA_SUCCESS_CHECK(
-      getApiTable().core.hsa_code_object_reader_destroy_fn(asHsaType()));
+llvm::Error
+codeObjectReaderDestroy(hsa_code_object_reader_t COR,
+                        const ApiTableContainer<::CoreApiTable> &CoreApi) {
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<hsa_code_object_reader_destroy>(COR),
+      "Failed to destroy the code object reader"));
+  return llvm::Error::success();
 }
 
 } // namespace luthier::hsa
