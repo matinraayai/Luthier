@@ -29,8 +29,7 @@ llvm::Expected<hsa_code_object_reader_t> codeObjectReaderCreateFromMemory(
     const ApiTableContainer<::CoreApiTable> &CoreApi, llvm::StringRef Elf) {
   hsa_code_object_reader_t Reader;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<
-          &::CoreApiTable::hsa_code_object_reader_create_from_memory_fn>(
+      CoreApi.callFunction<hsa_code_object_reader_create_from_memory>(
           Elf.data(), Elf.size(), &Reader),
       "Failed to create code object reader from memory"));
   return Reader;
@@ -40,8 +39,7 @@ llvm::Error
 codeObjectReaderDestroy(hsa_code_object_reader_t COR,
                         const ApiTableContainer<::CoreApiTable> &CoreApi) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_code_object_reader_destroy_fn>(
-          COR),
+      CoreApi.callFunction<hsa_code_object_reader_destroy>(COR),
       "Failed to destroy the code object reader"));
   return llvm::Error::success();
 }

@@ -50,8 +50,8 @@ isaGetName(const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_isa_t ISA) {
       "Failed to get the length of the ISA name from HSA."));
   std::string IsaName(IsaNameSize - 1, '\0');
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_isa_get_info_alt_fn>(
-          ISA, HSA_ISA_INFO_NAME, &IsaName.front()),
+      CoreApi.callFunction<hsa_isa_get_info_alt>(ISA, HSA_ISA_INFO_NAME,
+                                                 &IsaName.front()),
       "Failed to get the name of the ISA from HSA."));
   return IsaName;
 }

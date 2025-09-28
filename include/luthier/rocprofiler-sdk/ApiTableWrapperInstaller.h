@@ -79,7 +79,7 @@ public:
               }
               constexpr auto RootAccessor = hsa::ApiTableInfo<
                   HsaApiTableType>::PointerToMemberRootAccessor;
-              if (!hsa::apiTableHasEntry<RootAccessor>(*Tables[0])) {
+              if (!hsa::apiTableHasEntry<HsaApiTableType>(*Tables[0])) {
                 LUTHIER_REPORT_FATAL_ON_ERROR(
                     llvm::make_error<hsa::HsaError>(llvm::formatv(
                         "Captured HSA table doesn't support extension {0}",

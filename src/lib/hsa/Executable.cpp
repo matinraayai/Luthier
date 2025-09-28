@@ -30,7 +30,7 @@ llvm::Expected<hsa_executable_t> executableCreate(
     const hsa_default_float_rounding_mode_t DefaultFloatRoundingMode) {
   hsa_executable_t Exec;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_executable_create_alt_fn>(
+      CoreApi.callFunction<hsa_executable_create_alt>(
           Profile, DefaultFloatRoundingMode, "", &Exec),
       "Failed to create a new executable handle"));
   return Exec;
@@ -42,8 +42,7 @@ llvm::Expected<hsa_loaded_code_object_t> executableLoadAgentCodeObject(
     const hsa_agent_t Agent, const llvm::StringRef LoaderOptions) {
   hsa_loaded_code_object_t LCO;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<
-          &::CoreApiTable::hsa_executable_load_agent_code_object_fn>(
+      CoreApi.callFunction<hsa_executable_load_agent_code_object>(
           Exec, Agent, Reader, LoaderOptions.data(), &LCO),
       llvm::formatv("Failed to load agent code object from code object "
                     "reader {0:x} to executable {1:x} for agent {2:x}",
@@ -56,8 +55,7 @@ llvm::Error executableDefineExternalAgentGlobalVariable(
     const hsa_executable_t Exec, const hsa_agent_t Agent,
     const llvm::StringRef SymbolName, const void *Address) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<
-          &::CoreApiTable::hsa_executable_agent_global_variable_define_fn>(
+      CoreApi.callFunction<hsa_executable_agent_global_variable_define>(
           Exec, Agent, SymbolName.data(), const_cast<void *>(Address)),
       llvm::formatv("Failed to define an external global variable named {0} "
                     "with address "
@@ -69,14 +67,14 @@ llvm::Error executableDefineExternalAgentGlobalVariable(
 llvm::Error executableFreeze(const ApiTableContainer<::CoreApiTable> &CoreApi,
                              const hsa_executable_t Exec) {
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_executable_freeze_fn>(Exec, ""),
+      CoreApi.callFunction<hsa_executable_freeze>(Exec, ""),
       llvm::formatv("Failed to freeze the executable {0:x}", Exec.handle));
 }
 
 llvm::Error executableDestroy(const ApiTableContainer<::CoreApiTable> &CoreApi,
                               const hsa_executable_t Exec) {
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_executable_destroy_fn>(Exec),
+      CoreApi.callFunction<hsa_executable_destroy>(Exec),
       llvm::formatv("Failed to destroy executable {0:x}", Exec.handle));
 }
 
@@ -85,7 +83,7 @@ executableGetProfile(const ApiTableContainer<::CoreApiTable> &CoreApi,
                      const hsa_executable_t Exec) {
   hsa_profile_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_executable_get_info_fn>(
+      CoreApi.callFunction<hsa_executable_get_info>(
           Exec, HSA_EXECUTABLE_INFO_PROFILE, &Out),
       llvm::formatv("Failed to get the profile of executable {0:x}",
                     Exec.handle)));
@@ -97,7 +95,7 @@ executableGetState(const ApiTableContainer<::CoreApiTable> &CoreApi,
                    const hsa_executable_t Exec) {
   hsa_executable_state_t Out;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_executable_get_info_fn>(
+      CoreApi.callFunction<hsa_executable_get_info>(
           Exec, HSA_EXECUTABLE_INFO_STATE, &Out),
       llvm::formatv("Failed to get the state of executable {0:x}",
                     Exec.handle)));
@@ -111,9 +109,8 @@ executableGetSymbolByName(const ApiTableContainer<::CoreApiTable> &CoreApi,
   hsa_executable_symbol_t Symbol;
 
   const hsa_status_t Status =
-      CoreApi
-          .callFunction<&::CoreApiTable::hsa_executable_get_symbol_by_name_fn>(
-              Exec, Name.str().c_str(), &Agent, &Symbol);
+      CoreApi.callFunction<hsa_executable_get_symbol_by_name>(
+          Exec, Name.str().c_str(), &Agent, &Symbol);
   if (Status == HSA_STATUS_SUCCESS)
     return Symbol;
   if (Status == HSA_STATUS_ERROR_INVALID_SYMBOL_NAME)
@@ -122,7 +119,8 @@ executableGetSymbolByName(const ApiTableContainer<::CoreApiTable> &CoreApi,
       llvm::formatv("Failed to query the symbol name {0} for agent {1:x} "
                     "inside executable {2:x}",
                     Name, Agent.handle, Exec.handle),
-      Status);
+      Status, std::source_location::current(),
+      HsaError::StackTraceInitializer());
 }
 
 llvm::Error executableIterateAgentSymbols(
@@ -148,8 +146,7 @@ llvm::Error executableIterateAgentSymbols(
   };
 
   if (const hsa_status_t Out =
-          CoreApi.callFunction<
-              &::CoreApiTable::hsa_executable_iterate_agent_symbols_fn>(
+          CoreApi.callFunction<hsa_executable_iterate_agent_symbols>(
               Exec, Agent, CTypeCB, &CBData);
       Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK)
     return std::move(CBData.Err);
@@ -170,7 +167,6 @@ executableFindFirstAgentSymbol(
     std::optional<hsa_executable_symbol_t> Symbol;
     llvm::Error Err;
   } CBData{Predicate, std::nullopt, llvm::Error::success()};
-
   auto Iterator = [](hsa_executable_t, hsa_agent_t, hsa_executable_symbol_t S,
                      void *D) -> hsa_status_t {
     auto *Data = static_cast<CallbackDataType *>(D);
@@ -189,8 +185,7 @@ executableFindFirstAgentSymbol(
   };
 
   if (const hsa_status_t Out =
-          CoreApi.callFunction<
-              &::CoreApiTable::hsa_executable_iterate_agent_symbols_fn>(
+          CoreApi.callFunction<hsa_executable_iterate_agent_symbols>(
               Exec, Agent, Iterator, &CBData);
       Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK) {
     LUTHIER_RETURN_ON_ERROR(CBData.Err);

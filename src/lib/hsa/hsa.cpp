@@ -27,9 +27,8 @@
 namespace luthier::hsa {
 
 llvm::Error init(const ApiTableContainer<::CoreApiTable> &CoreApi) {
-  return LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_init_fn>(),
-      "Failed to initialize HSA");
+  return LUTHIER_HSA_CALL_ERROR_CHECK(CoreApi.callFunction<hsa_init>(),
+                                      "Failed to initialize HSA");
 }
 
 llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
@@ -49,14 +48,13 @@ llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
     return Status;
   };
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_iterate_agents_fn>(
-          ReturnGpuAgentsCallback, &Agents),
+      CoreApi.callFunction<hsa_iterate_agents>(ReturnGpuAgentsCallback,
+                                               &Agents),
       "Failed to iterate over all HSA agents attached to the system");
 }
 
 llvm::Error shutdown(const ApiTableContainer<::CoreApiTable> &CoreApi) {
-  return LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_shut_down_fn>(),
-      "Failed to shutdown the HSA runtime");
+  return LUTHIER_HSA_CALL_ERROR_CHECK(CoreApi.callFunction<hsa_shut_down>(),
+                                      "Failed to shutdown the HSA runtime");
 }
 } // namespace luthier::hsa

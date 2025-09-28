@@ -53,10 +53,23 @@ public:
 #define LUTHIER_HSA_CALL_ERROR_CHECK(Expr, ErrorMsg)                           \
   [&]() -> llvm::Error {                                                       \
     if (const hsa_status_t Status = Expr; Status != HSA_STATUS_SUCCESS) {      \
-      return llvm::make_error<luthier::hsa::HsaError>(ErrorMsg, Status);       \
+      return llvm::make_error<luthier::hsa::HsaError>(                         \
+          ErrorMsg, Status, std::source_location::current(),                   \
+          luthier::hsa::HsaError::StackTraceInitializer());                    \
     }                                                                          \
     return llvm::Error::success();                                             \
   }()
+
+#define LUTHIER_HSA_ERROR_CHECK(Expr, ErrorMsg)                                \
+  [&]() -> llvm::Error {                                                       \
+    if (!(Expr)) {                                                             \
+      return llvm::make_error<luthier::hsa::HsaError>(                         \
+          ErrorMsg, std::nullopt, std::source_location::current(),             \
+          luthier::hsa::HsaError::StackTraceInitializer());                    \
+    }                                                                          \
+    return llvm::Error::success();                                             \
+  }()
+
 } // namespace luthier::hsa
 
 #endif

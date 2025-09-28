@@ -68,7 +68,7 @@ public:
 
               constexpr auto RootAccessor = hsa::ApiTableInfo<
                   HsaApiTableType>::PointerToMemberRootAccessor;
-              if (!hsa::apiTableHasEntry<RootAccessor>(Table)) {
+              if (!hsa::apiTableHasEntry<HsaApiTableType>(Table)) {
                 LUTHIER_REPORT_FATAL_ON_ERROR(
                     llvm::make_error<hsa::HsaError>(llvm::formatv(
                         "Captured HSA table doesn't support extension {0}",
@@ -145,7 +145,7 @@ public:
                     "instead.",
                     HSA_API_TABLE_MAJOR_VERSION, Table.version.major_id)));
               }
-              if (!hsa::apiTableHasEntry<&::HsaApiTable::core_>(Table)) {
+              if (!hsa::apiTableHasEntry<::CoreApiTable>(Table)) {
                 LUTHIER_REPORT_FATAL_ON_ERROR(llvm::make_error<hsa::HsaError>(
                     "Captured HSA table doesn't support the core extension"));
               }

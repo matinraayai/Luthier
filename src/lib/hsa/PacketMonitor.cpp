@@ -23,7 +23,7 @@
 
 namespace luthier {
 
-template<>
+template <>
 hsa::PacketMonitor *Singleton<hsa::PacketMonitor>::Instance{nullptr};
 
 namespace hsa {
@@ -53,24 +53,24 @@ hsa_status_t PacketMonitor::hsaQueueCreateWrapper(
   /// Try to install an event handler on the newly created queue
   const hsa_status_t EventHandlerStatus =
       PacketMonitor.AmdExtSnapshot.getTable()
-          .callFunction<&::AmdExtTable::hsa_amd_queue_intercept_register_fn>(
+          .callFunction<hsa_amd_queue_intercept_register>(
               *Queue, interceptQueuePacketHandler, *Queue);
   /// If we fail to install an event handler, the queue was
   /// a normal queue; Destroy it, and recreate an intercept queue in its place
   if (EventHandlerStatus == HSA_STATUS_ERROR_INVALID_QUEUE) {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
         PacketMonitor.CoreApiSnapshot.getTable()
-            .callFunction<&::CoreApiTable::hsa_queue_destroy_fn>(*Queue),
+            .callFunction<hsa_queue_destroy>(*Queue),
         "Failed to destroy the application's queue"));
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
         PacketMonitor.AmdExtSnapshot.getTable()
-            .callFunction<&::AmdExtTable::hsa_amd_queue_intercept_create_fn>(
+            .callFunction<hsa_amd_queue_intercept_create>(
                 Agent, Size, Type, Callback, Data, PrivateSegmentSize,
                 GroupSegmentSize, Queue),
         "Failed to create an intercept queue"));
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
         PacketMonitor.AmdExtSnapshot.getTable()
-            .callFunction<&::AmdExtTable::hsa_amd_queue_intercept_register_fn>(
+            .callFunction<hsa_amd_queue_intercept_register>(
                 *Queue, interceptQueuePacketHandler, *Queue),
         "Failed to assign a packet handler to the intercept queue"));
   } else {

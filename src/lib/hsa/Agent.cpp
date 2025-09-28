@@ -36,8 +36,7 @@ agentGetSupportedISAs(const ApiTableContainer<::CoreApiTable> &CoreApi,
     return HSA_STATUS_SUCCESS;
   };
   return LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<&::CoreApiTable::hsa_agent_iterate_isas_fn>(
-          Agent, Iterator, &ISAList),
+      CoreApi.callFunction<hsa_agent_iterate_isas>(Agent, Iterator, &ISAList),
       llvm::formatv("Failed to iterate over ISAs of Agent {0:x}"));
 }
 
@@ -61,9 +60,8 @@ agentIterateISAs(const ApiTableContainer<::CoreApiTable> &CoreApi,
     return HSA_STATUS_SUCCESS;
   };
 
-  if (const hsa_status_t Out =
-          CoreApi.callFunction<&::CoreApiTable::hsa_agent_iterate_isas_fn>(
-              Agent, Iterator, &CBData);
+  if (const hsa_status_t Out = CoreApi.callFunction<hsa_agent_iterate_isas>(
+          Agent, Iterator, &CBData);
       Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK)
     return std::move(CBData.Err);
 
@@ -98,9 +96,8 @@ llvm::Expected<std::optional<hsa_isa_t>> agentFindFirstISA(
     return HSA_STATUS_SUCCESS;
   };
 
-  if (const hsa_status_t Out =
-          CoreApi.callFunction<&::CoreApiTable::hsa_agent_iterate_isas_fn>(
-              Agent, Iterator, &CBData);
+  if (const hsa_status_t Out = CoreApi.callFunction<hsa_agent_iterate_isas>(
+          Agent, Iterator, &CBData);
       Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK) {
     LUTHIER_RETURN_ON_ERROR(CBData.Err);
     return CBData.ISA;
