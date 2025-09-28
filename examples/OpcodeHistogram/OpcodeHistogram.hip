@@ -390,6 +390,8 @@ void atToolFini(void *) {
                     << TotalNumInstructions << "\n";
     delete C;
 
+    delete HipRuntimeTableSnapshot;
+
     delete InstrBeginInterval;
 
     delete InstrEndInterval;

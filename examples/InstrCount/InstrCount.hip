@@ -357,6 +357,7 @@ namespace luthier {
 void atToolFini(void *) {
   static std::once_flag Once{};
   std::call_once(Once, []() {
+    luthier::errs() << "Total instructions executed: " << TotalNumInstructions << "\n";
     delete C;
 
     delete HipRuntimeTableSnapshot;

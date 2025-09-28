@@ -17,7 +17,12 @@
 /// \file
 /// This file implements a sample kernel instrumentation tool.
 //===----------------------------------------------------------------------===//
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/PrettyStackTrace.h>
+#include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
+#include <luthier/tooling/Context.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-kernel-instrument-tool"
@@ -38,6 +43,8 @@
 // 5); static __device__ constexpr int ttmp11_wave_in_group_shift = 0;
 
 using namespace luthier;
+
+static Context *C{nullptr};
 
 static std::mutex Mutex;
 
@@ -104,98 +111,134 @@ LUTHIER_HOOK_ANNOTATE instrumentationHook(long RegVal) {
 
 LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHook);
 
-static void atHsaEvt(luthier::hsa::ApiEvtArgs *CBData,
-                     luthier::ApiEvtPhase Phase, luthier::hsa::ApiEvtID ApiID) {
-  if (ApiID == luthier::hsa::HSA_API_EVT_ID_hsa_queue_packet_submit &&
-      Phase == API_EVT_PHASE_BEFORE) {
-    LLVM_DEBUG(llvm::dbgs() << "In the packet submission callback\n");
-    for (auto &Packet : *CBData->hsa_queue_packet_submit.packets) {
-      if (auto *DispatchPacket = Packet.asKernelDispatch()) {
-        auto KernelSymbol = hsa::KernelDescriptor::fromKernelObject(
-                                DispatchPacket->kernel_object)
-                                ->getLoadedCodeObjectKernelSymbol();
+static void
+atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
+                         llvm::ArrayRef<hsa::AqlPacket> Packets,
+                         hsa_amd_queue_intercept_packet_writer PacketWriter) {
+  std::vector<hsa::AqlPacket> AppPackets(Packets);
+  for (auto &Packet : AppPackets) {
+    if (auto *DispatchPacket = Packet.asKernelDispatch()) {
+      Mutex.lock();
+      const auto HsaCoreApiTable = C->getHsaCoreTable();
+      const auto &LoaderTable = C->getHsaLoaderTable();
+      auto KernelSymbol =
+          hsa::KernelDescriptor::fromKernelObject(DispatchPacket->kernel_object)
+              ->getLoadedCodeObjectKernelSymbol(HsaCoreApiTable, LoaderTable);
 
-        if (auto Err = KernelSymbol.takeError())
+      if (auto Err = KernelSymbol.takeError())
+        llvm::report_fatal_error(std::move(Err), true);
+      if (!llvm::cantFail(
+              isKernelInstrumented(**KernelSymbol, "instrumented"))) {
+
+        auto LiftedKernel = luthier::lift(**KernelSymbol);
+        if (auto Err = LiftedKernel.takeError())
           llvm::report_fatal_error(std::move(Err), true);
-        if (!llvm::cantFail(
-                isKernelInstrumented(**KernelSymbol, "instrumented"))) {
 
-          auto LiftedKernel = luthier::lift(**KernelSymbol);
-          if (auto Err = LiftedKernel.takeError())
-            llvm::report_fatal_error(std::move(Err), true);
-
-          if (auto Err = luthier::instrumentAndLoad(
-                  **KernelSymbol, *LiftedKernel,
-                  [&](InstrumentationTask &IT,
-                      LiftedRepresentation &LR) -> llvm::Error {
-                    // insert a hook after the first instruction of each basic
-                    // block
-                    return LR.iterateAllDefinedFunctionTypes(
-                        [&](const hsa::LoadedCodeObjectSymbol &Sym,
-                            llvm::MachineFunction &MF) -> llvm::Error {
-                          auto &MBB = MF.front();
-                          return IT.insertHookBefore(
-                              *MBB.begin()
-                                   ->getNextNode()
-                                   ->getNextNode()
-                                   ->getNextNode(),
-                              LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
-                              {llvm::AMDGPU::SGPR4_SGPR5});
-                        });
-                  },
-                  "instrumented")) {
-            llvm::report_fatal_error(std::move(Err), true);
-          }
-          if (auto Err =
-                  overrideWithInstrumented(*DispatchPacket, "instrumented"))
-            llvm::report_fatal_error(std::move(Err), true);
+        if (auto Err = luthier::instrumentAndLoad(
+                **KernelSymbol, *LiftedKernel,
+                [&](InstrumentationTask &IT,
+                    LiftedRepresentation &LR) -> llvm::Error {
+                  // insert a hook after the first instruction of each basic
+                  // block
+                  return LR.iterateAllDefinedFunctionTypes(
+                      [&](const hsa::LoadedCodeObjectSymbol &Sym,
+                          llvm::MachineFunction &MF) -> llvm::Error {
+                        auto &MBB = MF.front();
+                        return IT.insertHookBefore(
+                            *MBB.begin()
+                                 ->getNextNode()
+                                 ->getNextNode()
+                                 ->getNextNode(),
+                            LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
+                            {llvm::AMDGPU::SGPR4_SGPR5});
+                      });
+                },
+                "instrumented")) {
+          llvm::report_fatal_error(std::move(Err), true);
         }
+        if (auto Err =
+                overrideWithInstrumented(*DispatchPacket, "instrumented"))
+          llvm::report_fatal_error(std::move(Err), true);
       }
+      PacketWriter(DispatchPacket, 1);
+      Mutex.unlock();
+    } else {
+      PacketWriter(&Packet, 1);
     }
-  }
-}
-
-static void atHsaApiTableCaptureCallBack(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER) {
-    if (auto Err = luthier::hsa::enableHsaApiEvtIDCallback(
-            hsa::HSA_API_EVT_ID_hsa_queue_packet_submit))
-      llvm::report_fatal_error(std::move(Err), true);
   }
 }
 
 namespace luthier {
 
-llvm::StringRef getToolName() {
-  const static std::string ToolName{"LuthierKernelInstrument"};
-  return ToolName;
+void atToolFini(void *) {
+  luthier::outs() << llvm::formatv("WaveID: {0}\n", WaveID);
+  luthier::outs() << llvm::formatv("Group ID: ({0}, {1}, {2})\n", GroupIDs.z,
+                                   GroupIDs.y, GroupIDs.x);
+  luthier::outs() << llvm::formatv("Position in Group: {0}\n", PositionInGroup);
+  //    llvm::outs() << llvm::formatv("Counter 4 Value: {0:x}\n",
+  //    GlobalCounter4); llvm::outs() << llvm::formatv("Counter 5 Value:
+  //    {0:x}\n", GlobalCounter5); llvm::outs() << "Pointer of counter at
+  //    host: "
+  //                 << llvm::to_address(&GlobalCounter) << "\n";
+  //    llvm::outs() << "Reserved variable address: "
+  //                 << llvm::to_address(
+  //                        reinterpret_cast<uint64_t *>(&__luthier_reserved))
+  //                 << "\n";
+  luthier::outs() << "Kernel Instrument Tool is terminating!\n";
+  delete C;
 }
 
-void atToolInit(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_BEFORE) {
+static void atToolFini() { atToolFini(nullptr); }
+
+void atToolInit(void *) {
+  static std::once_flag Once{};
+  std::call_once(Once, [] {
     llvm::outs() << "Kernel instrument tool is launching.\n";
-  } else {
-    hsa::setAtApiTableCaptureEvtCallback(atHsaApiTableCaptureCallBack);
-    hsa::setAtHsaApiEvtCallback(atHsaEvt);
-  }
-}
+    std::atexit(atToolFini);
 
-void atToolFini(ApiEvtPhase Phase) {
-  if (Phase == API_EVT_PHASE_AFTER) {
-    llvm::outs() << llvm::formatv("WaveID: {0}\n", WaveID);
-    llvm::outs() << llvm::formatv("Group ID: ({0}, {1}, {2})\n", GroupIDs.z,
-                                  GroupIDs.y, GroupIDs.x);
-    llvm::outs() << llvm::formatv("Position in Group: {0}\n", PositionInGroup);
-    //    llvm::outs() << llvm::formatv("Counter 4 Value: {0:x}\n",
-    //    GlobalCounter4); llvm::outs() << llvm::formatv("Counter 5 Value:
-    //    {0:x}\n", GlobalCounter5); llvm::outs() << "Pointer of counter at
-    //    host: "
-    //                 << llvm::to_address(&GlobalCounter) << "\n";
-    //    llvm::outs() << "Reserved variable address: "
-    //                 << llvm::to_address(
-    //                        reinterpret_cast<uint64_t *>(&__luthier_reserved))
-    //                 << "\n";
-    llvm::outs() << "Kernel Instrument Tool is terminating!\n";
-  }
+    const auto Argv = "";
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        llvm::cl::ParseCommandLineOptions(0, &Argv,
+                                          "Luthier Kernel Instrument Tool",
+                                          &luthier::errs(), "LUTHIER_ARGS"),
+        "Failed to parse the command line arguments."));
+    llvm::EnablePrettyStackTrace();
+    llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());
+    llvm::setBugReportMsg("PLEASE submit a bug report to "
+                          "https://github.com/matinraayai/Luthier/issues/ and "
+                          "include the crash error message and backtrace.\n");
+    // Add the rocprofiler finalize function as a signal handler to LLVM so that
+    // it executes in case of a fatal error
+    llvm::sys::AddSignalHandler(atToolFini, nullptr);
+
+    llvm::Error Err = llvm::Error::success();
+    C = new Context(atPacketDispatchCallback, Err);
+    if (Err)
+      llvm::report_fatal_error(std::move(Err));
+  });
 }
 
 } // namespace luthier
+
+extern "C" __attribute__((used)) rocprofiler_tool_configure_result_t *
+rocprofiler_configure(uint32_t Version, const char *RuntimeVersion,
+                      uint32_t Priority, rocprofiler_client_id_t *ClientID) {
+  // Initialize the tooling library
+  luthier::atToolInit(nullptr);
+
+  LLVM_DEBUG(const uint32_t RocProfVerMajor = Version / 10000;
+             const uint32_t RocProfVerMinor = (Version % 10000) / 100;
+             const uint32_t RocProfVerPatch = Version % 100;
+             llvm::dbgs() << "Registering Luthier tool with rocprofiler-sdk.\n";
+             llvm::dbgs() << "Rocprofiler-sdk version: " << RocProfVerMajor
+                          << "." << RocProfVerMinor << "." << RocProfVerPatch
+                          << " (" << RuntimeVersion << ")"
+                          << "\n";
+             llvm::dbgs() << "Tool priority: " << Priority << ";\n";);
+  ClientID->name = "Luthier Kernel Instrument tool";
+
+  static auto Cfg = rocprofiler_tool_configure_result_t{
+      sizeof(rocprofiler_tool_configure_result_t), nullptr,
+      &luthier::atToolFini, nullptr};
+  return &Cfg;
+}
