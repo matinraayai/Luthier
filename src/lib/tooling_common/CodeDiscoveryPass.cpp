@@ -190,6 +190,74 @@ static llvm::Error parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   /// FWD_PROGRESS is always set to 1 for GFX10+, so we will fix it once we
   /// have printed the relocatable of the instrumented object
+
+  return llvm::Error::success();
+}
+
+static llvm::Error parseKDRsrc2(const llvm::amdhsa::kernel_descriptor_t &KD,
+                                const llvm::GCNTargetMachine &TM,
+                                llvm::Function &F) {
+  /// ENABLE_PRIVATE_SEGMENT is set if the stack size of the kernel is set to
+  /// non-zero value
+
+  /// USER_SGPR_COUNT is automatically set based on the user sgprs requested
+  /// from the MFI
+
+  /// ENABLE_TRAP_HANDLER is not set in HSA; For other OSes, it should be set
+  /// when creating the target
+
+  /// ENABLE_DYNAMIC_VGPR is not seem to have a handle neither in MIR or MC
+
+  /// Lift ENABLE_SGPR_WORKGROUP_ID_X, Y and Z
+  if (AMDHSA_BITS_GET(
+          KD.compute_pgm_rsrc2,
+          llvm::amdhsa::COMPUTE_PGM_RSRC2_ENABLE_SGPR_WORKGROUP_ID_X) == 0) {
+    F.addFnAttr("amdgpu-no-workgroup-id-x");
+  }
+
+  if (AMDHSA_BITS_GET(
+          KD.compute_pgm_rsrc2,
+          llvm::amdhsa::COMPUTE_PGM_RSRC2_ENABLE_SGPR_WORKGROUP_ID_Y) == 0) {
+    F.addFnAttr("amdgpu-no-workgroup-id-y");
+  }
+  if (AMDHSA_BITS_GET(
+          KD.compute_pgm_rsrc2,
+          llvm::amdhsa::COMPUTE_PGM_RSRC2_ENABLE_SGPR_WORKGROUP_ID_Z) == 0) {
+    F.addFnAttr("amdgpu-no-workgroup-id-z");
+  }
+  /// ENABLE_SGPR_WORKGROUP_INFO is represented in MFI, but it is always set to
+  /// false and there is no way to set it
+
+  /// Lift ENABLE_VGPR_WORKITEM_ID
+  switch (AMDHSA_BITS_GET(
+      KD.compute_pgm_rsrc2,
+      llvm::amdhsa::COMPUTE_PGM_RSRC2_ENABLE_VGPR_WORKITEM_ID)) {
+  case 0:
+    F.addFnAttr("amdgpu-no-workitem-id-y");
+  case 1:
+    F.addFnAttr("amdgpu-no-workitem-id-z");
+  case 2:
+    break;
+  default:
+    return llvm::make_error<GenericLuthierError>(
+        "KD's VGPR workitem ID is not valid");
+  }
+  /// ENABLE_EXCEPTION_ADDRESS_WATCH is always set to zero
+
+  /// ENABLE_EXCEPTION_MEMORY is always set to zero
+
+  /// GRANULATED_LDS_SIZE is automatically set via the lds-size attribute
+
+  /// ENABLE_EXCEPTION_IEEE_754_FP_INVALID_OPERATION,
+  /// ENABLE_EXCEPTION_FP_DENORMAL_SOURCE,
+  /// ENABLE_EXCEPTION_IEEE_754_FP_DIVISION_BY_ZERO,
+  /// ENABLE_EXCEPTION_IEEE_754_FP_OVERFLOW,
+  /// ENABLE_EXCEPTION_IEEE_754_FP_UNDERFLOW
+  /// ENABLE_EXCEPTION_IEEE_754_FP_INEXACT
+  /// ENABLE_EXCEPTION_INT_DIVIDE_BY_ZERO are all set to zero; Must be fixed
+  /// after printing the assembly
+
+  return llvm::Error::success();
 }
 
 static llvm::Expected<llvm::MachineFunction &>
@@ -287,8 +355,11 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   F->addFnAttr("amdgpu-lds-size",
                llvm::to_string(KDOnHost.group_segment_fixed_size));
   // Kern Arg is determined via analysis usage + args set earlier
-  LUTHIER_RETURN_ON_ERROR(parseKDRsrc1(KDOnHost, *F));
-  auto Rsrc1 = (*KDOnHost)->getRsrc1();
+
+  /// Lift Rsrc1
+  const auto &TM =
+      *reinterpret_cast<const llvm::GCNTargetMachine *>(&TargetMMI.getTarget());
+  LUTHIER_RETURN_ON_ERROR(parseKDRsrc1(KDOnHost, TM, *F));
   auto Rsrc2 = (*KDOnHost)->getRsrc2();
   auto KCP = (*KDOnHost)->getKernelCodeProperties();
   if (KCP.EnableSgprDispatchId == 0) {
@@ -299,28 +370,6 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   }
   if (KCP.EnableSgprQueuePtr == 0) {
     F->addFnAttr("amdgpu-no-queue-ptr");
-  }
-
-  F->addFnAttr("amdgpu-ieee", Rsrc1.EnableIeeeMode ? "true" : "false");
-  F->addFnAttr("amdgpu-dx10-clamp", Rsrc1.EnableDx10Clamp ? "true" : "false");
-  if (Rsrc2.EnableSgprWorkgroupIdX == 0) {
-    F->addFnAttr("amdgpu-no-workgroup-id-x");
-  }
-  if (Rsrc2.EnableSgprWorkgroupIdY == 0) {
-    F->addFnAttr("amdgpu-no-workgroup-id-y");
-  }
-  if (Rsrc2.EnableSgprWorkgroupIdZ == 0) {
-    F->addFnAttr("amdgpu-no-workgroup-id-z");
-  }
-  switch (Rsrc2.EnableVgprWorkitemId) {
-  case 0:
-    F->addFnAttr("amdgpu-no-workitem-id-y");
-  case 1:
-    F->addFnAttr("amdgpu-no-workitem-id-z");
-  case 2:
-    break;
-  default:
-    llvm_unreachable("KD's VGPR workitem ID is not valid");
   }
 
   // TODO: Check the args metadata to set this correctly
@@ -341,7 +390,6 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   // TODO: Fix alignment value depending on the function type
   MF.setAlignment(llvm::Align(4096));
-  auto &TM = TargetMMI.getTarget();
 
   auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
       TM.getSubtargetImpl(*F)->getRegisterInfo());
