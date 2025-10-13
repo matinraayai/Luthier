@@ -88,7 +88,6 @@ static llvm::Error parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
                                 const llvm::GCNTargetMachine &TM,
                                 llvm::Function &F) {
   auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(F);
-  auto Generation = ST.getGeneration();
   /// GRANULATED_WORKITEM_VGPR_COUNT is automatically calculated via the
   /// resource usage analysis pass
 
@@ -260,6 +259,103 @@ static llvm::Error parseKDRsrc2(const llvm::amdhsa::kernel_descriptor_t &KD,
   return llvm::Error::success();
 }
 
+// static llvm::Error parseKDRsrc3(const llvm::amdhsa::kernel_descriptor_t &KD,
+//                                 const llvm::GCNTargetMachine &TM,
+//                                 llvm::Function &F) {
+//   auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(F);
+//   auto Generation = ST.getGeneration();
+/// Rsrc3 for GFX90A and GFX942 ==============================================
+
+/// ACCUM_OFFSET is automatically calculated based off of vgpr and agpr usage
+/// of the MF
+
+/// TG_SPLIT is set by the TM cumode feature
+
+/// Rsrc3 for GFX10 and 11 ===================================================
+
+/// SHARED_VGPR_COUNT is not set by the backend; Must be manually fixed
+/// after the assembly is printed
+
+/// INST_PREF_SIZE is automatically calculated according to the size of the
+/// code of the kernel
+
+/// TRAP_ON_START and TRAP_ON_END are filled in by the CP
+
+/// IMAGE_OP is not set by the backend; Must be manually fixed after the
+/// assembly is printed
+
+/// Rsrc3 for GFX12 ==========================================================
+
+/// INST_PREF_SIZE is automatically calculated according to the size of the
+/// code of the kernel
+
+/// GLG_EN is not set either by the backend or MC
+
+/// IMAGE_OP is not set by the backend; Must be manually fixed after the
+/// assembly is printed
+// }
+
+static llvm::Error
+parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
+                  const llvm::GCNTargetMachine &TM, llvm::MachineFunction &MF) {
+  llvm::Function &F = MF.getFunction();
+  auto MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
+  auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
+      TM.getSubtargetImpl(F)->getRegisterInfo());
+  auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(F);
+
+  if (!ST.flatScratchIsArchitected()) {
+    if (AMDHSA_BITS_GET(
+            KD.kernel_code_properties,
+            llvm::amdhsa::
+                KERNEL_CODE_PROPERTY_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER) == 1) {
+      MFI->addPrivateSegmentBuffer(*TRI);
+    }
+  }
+
+  if (AMDHSA_BITS_GET(
+          KD.kernel_code_properties,
+          llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_PTR) == 1) {
+    MFI->addDispatchPtr(*TRI);
+  }
+
+  if (AMDHSA_BITS_GET(
+          KD.kernel_code_properties,
+          llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_QUEUE_PTR) == 1) {
+    MFI->addQueuePtr(*TRI);
+  }
+
+  if (AMDHSA_BITS_GET(
+          KD.kernel_code_properties,
+          llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_KERNARG_SEGMENT_PTR) ==
+      1) {
+    MFI->addKernargSegmentPtr(*TRI);
+  }
+
+  if (AMDHSA_BITS_GET(
+          KD.kernel_code_properties,
+          llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_ID) == 1) {
+    MFI->addDispatchID(*TRI);
+  }
+
+  if (ST.flatScratchIsArchitected()) {
+    if (AMDHSA_BITS_GET(
+            KD.kernel_code_properties,
+            llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT) ==
+        1) {
+      MFI->addFlatScratchInit(*TRI);
+    }
+  }
+  if (AMDHSA_BITS_GET(
+          KD.kernel_code_properties,
+          llvm::amdhsa::
+              KERNEL_CODE_PROPERTY_ENABLE_SGPR_PRIVATE_SEGMENT_SIZE) == 1) {
+    MFI->addPrivateSegmentSize(*TRI);
+  }
+
+  return llvm::Error::success();
+};
+
 static llvm::Expected<llvm::MachineFunction &>
 initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
                              const ExecutableMemorySegmentAccessor &SegAccessor,
@@ -343,9 +439,6 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
 
-  F->addFnAttr("uniform-work-group-size",
-               KernelMD.UniformWorkgroupSize ? "true" : "false");
-
   // Construct the attributes of the Function, which will result in the MF
   // attributes getting populated
 
@@ -354,29 +447,14 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   F->addFnAttr("amdgpu-lds-size",
                llvm::to_string(KDOnHost.group_segment_fixed_size));
-  // Kern Arg is determined via analysis usage + args set earlier
 
-  /// Lift Rsrc1
+  /// Lift Rsrc1-Rsrc2; Rsrc3 is mostly automatically computed so we don't
+  /// lift it
   const auto &TM =
       *reinterpret_cast<const llvm::GCNTargetMachine *>(&TargetMMI.getTarget());
   LUTHIER_RETURN_ON_ERROR(parseKDRsrc1(KDOnHost, TM, *F));
-  auto Rsrc2 = (*KDOnHost)->getRsrc2();
-  auto KCP = (*KDOnHost)->getKernelCodeProperties();
-  if (KCP.EnableSgprDispatchId == 0) {
-    F->addFnAttr("amdgpu-no-dispatch-id");
-  }
-  if (KCP.EnableSgprDispatchPtr == 0) {
-    F->addFnAttr("amdgpu-no-dispatch-ptr");
-  }
-  if (KCP.EnableSgprQueuePtr == 0) {
-    F->addFnAttr("amdgpu-no-queue-ptr");
-  }
+  LUTHIER_RETURN_ON_ERROR(parseKDRsrc2(KDOnHost, TM, *F));
 
-  // TODO: Check the args metadata to set this correctly
-  // TODO: Set the rest of the attributes
-  //    luthier::outs() << "Preloaded Args: " << (*KDOnHost)->KernArgPreload <<
-  //    "\n";
-  //  F->addFnAttr("amdgpu-calls");
   // Add dummy IR instructions ===============================================
   // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
   // won't run
@@ -388,27 +466,21 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   auto &MF = TargetMMI.getOrCreateMachineFunction(*F);
 
-  // TODO: Fix alignment value depending on the function type
-  MF.setAlignment(llvm::Align(4096));
+  /// Parse kernel code
+  LUTHIER_RETURN_ON_ERROR(parseKDKernelCode(KDOnHost, TM, MF));
 
-  auto TRI = reinterpret_cast<const llvm::SIRegisterInfo *>(
-      TM.getSubtargetImpl(*F)->getRegisterInfo());
+
   auto MFI = MF.template getInfo<llvm::SIMachineFunctionInfo>();
-  if (KCP.EnableSgprDispatchPtr == 1) {
-    MFI->addDispatchPtr(*TRI);
+  auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(*F);
+
+
+  if (ST.hasKernargPreload()) {
+    MFI->getUserSGPRInfo().allocKernargPreloadSGPRs(KD.kernarg_preload);
   }
-  if (KCP.EnableSgprPrivateSegmentBuffer == 1) {
-    MFI->addPrivateSegmentBuffer(*TRI);
-  }
-  if (KCP.EnableSgprKernArgSegmentPtr == 1) {
-    MFI->addKernargSegmentPtr(*TRI);
-  }
-  if (KCP.EnableSgprFlatScratchInit == 1) {
-    MFI->addFlatScratchInit(*TRI);
-  }
-  if (Rsrc2.EnableSgprPrivateSegmentWaveByteOffset == 1) {
-    MFI->addPrivateSegmentWaveByteOffset();
-  }
+
+  MF.setAlignment(llvm::Align(256));
+
+
 
   // Process the hidden args now that MFI and MF has been created
   if ((*KernelMDOrErr)->Args.has_value()) {
@@ -435,6 +507,8 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   // arg offset and the last explicit arg offset
   F->addFnAttr("amdgpu-implicitarg-num-bytes",
                llvm::to_string(ImplicitArgsOffset - ExplicitArgsOffset));
+
+  /// Set the size of the stack
 
   return MF;
 }
