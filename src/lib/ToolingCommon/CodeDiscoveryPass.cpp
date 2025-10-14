@@ -1,18 +1,30 @@
 
 #include "luthier/tooling/CodeDiscoveryPass.h"
-
+#include "LuthierRealToPseudoOpcodeMap.hpp"
+#include "LuthierRealToPseudoRegEnumMap.hpp"
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
+#include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/MC/MCAsmInfo.h>
+#include <llvm/MC/MCDisassembler/MCDisassembler.h>
+#include <llvm/MC/MCInstPrinter.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <luthier/tooling/EntryPointsAnalysis.h>
 #include <luthier/tooling/ExecutableMemorySegmentAccessor.h>
+#include <luthier/tooling/InstructionTracesAnalysis.h>
 #include <luthier/tooling/MetadataParserAnalysis.h>
 #include <unordered_set>
 
+#undef DEBUG_TYPE
+
+#define DEBUG_TYPE "luthier-code-discovery"
+
 namespace luthier {
 
-static llvm::Type *
+static inline llvm::Type *
 processExplicitKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
                          llvm::LLVMContext &Ctx) {
   llvm::Type *ParamType = llvm::Type::getIntNTy(Ctx, ArgMD.Size * 8);
@@ -33,7 +45,7 @@ processExplicitKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
   return ParamType;
 }
 
-static void
+static inline void
 processHiddenKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
                        llvm::Function &F, llvm::SIMachineFunctionInfo &MFI,
                        const llvm::SIRegisterInfo &TRI) {
@@ -84,9 +96,9 @@ processHiddenKernelArg(const amdgpu::hsamd::Kernel::Arg::Metadata &ArgMD,
   }
 }
 
-static llvm::Error parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
-                                const llvm::GCNTargetMachine &TM,
-                                llvm::Function &F) {
+static inline llvm::Error
+parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
+             const llvm::GCNTargetMachine &TM, llvm::Function &F) {
   auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(F);
   /// GRANULATED_WORKITEM_VGPR_COUNT is automatically calculated via the
   /// resource usage analysis pass
@@ -193,9 +205,9 @@ static llvm::Error parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
   return llvm::Error::success();
 }
 
-static llvm::Error parseKDRsrc2(const llvm::amdhsa::kernel_descriptor_t &KD,
-                                const llvm::GCNTargetMachine &TM,
-                                llvm::Function &F) {
+static inline llvm::Error
+parseKDRsrc2(const llvm::amdhsa::kernel_descriptor_t &KD,
+             const llvm::GCNTargetMachine &TM, llvm::Function &F) {
   /// ENABLE_PRIVATE_SEGMENT is set if the stack size of the kernel is set to
   /// non-zero value
 
@@ -295,7 +307,7 @@ static llvm::Error parseKDRsrc2(const llvm::amdhsa::kernel_descriptor_t &KD,
 /// assembly is printed
 // }
 
-static llvm::Error
+inline llvm::Error
 parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
                   const llvm::GCNTargetMachine &TM, llvm::MachineFunction &MF) {
   llvm::Function &F = MF.getFunction();
@@ -353,6 +365,20 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
     MFI->addPrivateSegmentSize(*TRI);
   }
 
+  /// Wavefront32 should be taken care of when creating the target machine
+
+  /// Set the size of the stack based on whether we have a dynamic stack or not
+  if (KD.private_segment_fixed_size != 0) {
+    llvm::MachineFrameInfo &FrameInfo = MF.getFrameInfo();
+    FrameInfo.CreateFixedObject(KD.private_segment_fixed_size, 0, true);
+    FrameInfo.setStackSize(KD.private_segment_fixed_size);
+    if (AMDHSA_BITS_GET(
+            KD.kernel_code_properties,
+            llvm::amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK)) {
+      FrameInfo.CreateVariableSizedObject(llvm::Align(4), nullptr);
+    }
+  }
+
   return llvm::Error::success();
 };
 
@@ -376,6 +402,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
     llvm::Error Err = llvm::Error::success();
     for (object::AMDGCNKernelDescSymbolRef CurrentKD :
          SegmentOrErr->CodeObjectStorage->kernel_descriptors(Err)) {
+      LUTHIER_RETURN_ON_ERROR(Err);
       llvm::Expected<uint64_t> CurrentKDLoadAddrOrErr = CurrentKD.getAddress();
       LUTHIER_RETURN_ON_ERROR(CurrentKDLoadAddrOrErr.takeError());
       if (*CurrentKDLoadAddrOrErr == KDLoadAddr) {
@@ -469,18 +496,18 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// Parse kernel code
   LUTHIER_RETURN_ON_ERROR(parseKDKernelCode(KDOnHost, TM, MF));
 
-
-  auto MFI = MF.template getInfo<llvm::SIMachineFunctionInfo>();
+  auto MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
   auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(*F);
 
-
+  /// Set pre-loaded kernel argument field for targets that support it
   if (ST.hasKernargPreload()) {
-    MFI->getUserSGPRInfo().allocKernargPreloadSGPRs(KD.kernarg_preload);
+    /// TODO: It seems the AMDGPU backend doesn't support the offset field of
+    /// kernarg_preload for now. Fix it once it is added to LLVM upstream
+    MFI->getUserSGPRInfo().allocKernargPreloadSGPRs(KDOnHost.kernarg_preload);
   }
 
+  /// Kernel functions are 2^8 byte aligned
   MF.setAlignment(llvm::Align(256));
-
-
 
   // Process the hidden args now that MFI and MF has been created
   if ((*KernelMDOrErr)->Args.has_value()) {
@@ -491,7 +518,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
     F->addFnAttr("amdgpu-no-completion-action");
     F->addFnAttr("amdgpu-no-multigrid-sync-arg");
     F->addFnAttr("amdgpu-no-heap-ptr");
-    for (const auto &ArgMD : (*KernelMDOrErr)->Args) {
+    for (const auto &ArgMD : *(*KernelMDOrErr)->Args) {
       if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
           ArgMD.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
         processHiddenKernelArg(
@@ -508,22 +535,412 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   F->addFnAttr("amdgpu-implicitarg-num-bytes",
                llvm::to_string(ImplicitArgsOffset - ExplicitArgsOffset));
 
-  /// Set the size of the stack
-
   return MF;
+}
+
+llvm::Expected<llvm::MachineFunction &> initLiftedDeviceFunctionEntry(
+    uint64_t DeviceEntryPointAddr,
+    const ExecutableMemorySegmentAccessor &SegAccessor,
+    llvm::Module &TargetModule, llvm::MachineModuleInfo &TargetMMI) {
+
+  llvm::LLVMContext &LLVMContext = TargetModule.getContext();
+  auto SegmentOrErr = SegAccessor.getSegment(DeviceEntryPointAddr);
+
+  uint64_t DevFuncLoadOffset =
+      DeviceEntryPointAddr -
+      reinterpret_cast<uint64_t>(SegmentOrErr->SegmentOnDevice.data());
+
+  /// Locate the symbol this entry address is part of
+  std::optional<llvm::object::ELFSymbolRef> FuncSymRef{std::nullopt};
+  uint64_t EntryFromStartOfSymbol{0};
+
+  for (object::AMDGCNElfSymbolRef Symbol :
+       SegmentOrErr->CodeObjectStorage->symbols()) {
+    if (Symbol.getELFType() == llvm::ELF::STT_FUNC) {
+      llvm::Expected<uint64_t> SymbolAddrOrErr = Symbol.getAddress();
+      LUTHIER_RETURN_ON_ERROR(SymbolAddrOrErr.takeError());
+      uint64_t SymbolSize = Symbol.getSize();
+      if (*SymbolAddrOrErr <= DevFuncLoadOffset &&
+          DevFuncLoadOffset <= (*SymbolAddrOrErr + SymbolSize)) {
+        FuncSymRef = Symbol;
+        EntryFromStartOfSymbol = DevFuncLoadOffset - *SymbolAddrOrErr;
+      }
+    }
+  }
+
+  std::string FuncName;
+  if (FuncSymRef.has_value()) {
+    LUTHIER_RETURN_ON_ERROR(FuncSymRef->getName().moveInto(FuncName));
+    FuncName += llvm::formatv("x{0:x}", EntryFromStartOfSymbol);
+  } else {
+    FuncName = llvm::formatv("x{0:x}", DeviceEntryPointAddr);
+  }
+
+  llvm::Type *const ReturnType = llvm::Type::getVoidTy(LLVMContext);
+  llvm::FunctionType *FunctionType =
+      llvm::FunctionType::get(ReturnType, {}, false);
+
+  auto *F = llvm::Function::Create(
+      FunctionType, llvm::GlobalValue::PrivateLinkage, FuncName, TargetModule);
+  F->setCallingConv(llvm::CallingConv::C);
+  // Add dummy IR instructions ===============================================
+  // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
+  // won't run
+  llvm::BasicBlock *BB = llvm::BasicBlock::Create(LLVMContext, "", F);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      BB != nullptr,
+      "Failed to create a dummy IR basic block during code lifting."));
+  new llvm::UnreachableInst(LLVMContext, BB);
+  auto &MF = TargetMMI.getOrCreateMachineFunction(*F);
+
+  MF.setAlignment(llvm::Align(4));
+  return MF;
+}
+
+llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
+                       uint64_t EntryAddr, llvm::MachineFunction &MF,
+                       llvm::DenseMap<const llvm::MachineInstr *,
+                                      const TraceInstr *> &MIToTraceInstrMap) {
+
+  llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
+
+  const auto &TM =
+      *reinterpret_cast<const llvm::GCNTargetMachine *>(&MF.getTarget());
+
+  MF.push_back(MBB);
+  auto MBBEntry = MBB;
+
+  const llvm::MCRegisterInfo &MRI = *TM.getMCRegisterInfo();
+  auto IP =
+      std::unique_ptr<llvm::MCInstPrinter>(TM.getTarget().createMCInstPrinter(
+          TM.getTargetTriple(), TM.getMCAsmInfo()->getAssemblerDialect(),
+          *TM.getMCAsmInfo(), *TM.getMCInstrInfo(), MRI));
+
+  llvm::MCContext &MCContext = MF.getContext();
+
+  const llvm::MCInstrInfo &MCInstInfo = *TM.getMCInstrInfo();
+  std::unique_ptr<llvm::MCInstrAnalysis> MIA(
+      TM.getTarget().createMCInstrAnalysis(&MCInstInfo));
+
+  llvm::DenseMap<uint64_t,
+                 llvm::SmallVector<llvm::MachineInstr *>>
+      UnresolvedBranchMIs; // < Set of branch instructions located at a
+                           // device address waiting for their
+                           // target to be resolved after MBBs and MIs
+                           // are created
+  llvm::DenseMap<luthier::address_t, llvm::MachineBasicBlock *>
+      BranchTargetMBBs; // < Set of MBBs that will be the target of the
+                        // UnresolvedBranchMIs
+
+  llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
+  MBBs.push_back(MBB);
+
+  const auto &BranchTargets = MFTrace.getBranchTargets();
+  for (const auto &[TraceStartEndAddr, Trace] : MFTrace.getTraceGroup()) {
+    uint64_t CurrentInstrAddr = TraceStartEndAddr.first;
+    uint64_t LastInstrAddr = TraceStartEndAddr.second;
+    while (CurrentInstrAddr <= LastInstrAddr) {
+      const TraceInstr &Inst = Trace.at(CurrentInstrAddr);
+      LLVM_DEBUG(llvm::dbgs()
+                     << "+++++++++++++++++++++++++++++++++++++++++++++++"
+                        "+++++++++++++++++++++++++\n";);
+      auto MCInst = Inst.getMCInst();
+      const unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
+      const llvm::MCInstrDesc &MCID = MCInstInfo.get(Opcode);
+      bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
+      bool IsDirectBranchTarget =
+          BranchTargets.contains(Inst.getLoadedDeviceAddress());
+      LLVM_DEBUG(llvm::dbgs() << "Lifting and adding MC Inst: ";
+                 MCInst.dump_pretty(llvm::dbgs(), IP.get(), " ", &MCContext);
+                 llvm::dbgs() << "\n";
+                 llvm::dbgs()
+                 << llvm::formatv("Loaded address of the instruction: {0:x}\n",
+                                  Inst.getLoadedDeviceAddress());
+                 llvm::dbgs()
+                 << llvm::formatv("Is branch? {0}\n", MCID.isBranch());
+                 llvm::dbgs() << llvm::formatv("Is indirect branch? {0}\n",
+                                               MCID.isIndirectBranch()););
+
+      if (IsDirectBranchTarget) {
+        LLVM_DEBUG(llvm::dbgs() << "Instruction is a branch target.\n";);
+        if (!MBB->empty()) {
+          LLVM_DEBUG(
+              llvm::dbgs()
+              << "Current MBB is not empty; Creating a new basic block\n");
+          auto OldMBB = MBB;
+          MBB = MF.CreateMachineBasicBlock();
+          MF.push_back(MBB);
+          MBBs.push_back(MBB);
+          OldMBB->addSuccessor(MBB);
+          // Branch targets mark the beginning of an MBB
+          LLVM_DEBUG(llvm::dbgs()
+                     << "*********************************************"
+                        "***************************\n");
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Current MBB is empty; No new block created "
+                        "for the branch target.\n");
+        }
+        BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
+        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                       "Address {0:x} marks the beginning of MBB idx {1}.\n",
+                       Inst.getLoadedDeviceAddress(), MBB->getNumber()););
+      }
+      llvm::MachineInstrBuilder Builder =
+          llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
+      MIToTraceInstrMap.insert({Builder.getInstr(), &Inst});
+
+      LLVM_DEBUG(llvm::dbgs() << "Number of operands according to MCID: "
+                              << MCID.operands().size() << "\n";
+                 llvm::dbgs() << "Populating operands\n";);
+      for (unsigned OpIndex = 0, E = MCInst.getNumOperands(); OpIndex < E;
+           ++OpIndex) {
+        const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
+        if (Op.isReg()) {
+          LLVM_DEBUG(llvm::dbgs() << "Resolving reg operand.\n");
+          unsigned RegNum = RealToPseudoRegisterMapTable(Op.getReg());
+          const bool IsDef = OpIndex < MCID.getNumDefs();
+          unsigned Flags = 0;
+          const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
+          if (IsDef && !OpInfo.isOptionalDef()) {
+            Flags |= llvm::RegState::Define;
+          }
+          LLVM_DEBUG(llvm::dbgs()
+                         << "Adding register "
+                         << llvm::printReg(RegNum,
+                                           MF.getSubtarget().getRegisterInfo())
+                         << " with flags " << Flags << "\n";);
+          (void)Builder.addReg(RegNum, Flags);
+        } else if (Op.isImm()) {
+          LLVM_DEBUG(llvm::dbgs() << "Resolving an immediate operand.\n");
+          // TODO: Resolve immediate load/store operands if they don't have
+          // relocations associated with them (e.g. when they happen in the
+          // text section)
+          luthier::address_t InstAddr = Inst.getLoadedDeviceAddress();
+          size_t InstSize = Inst.getSize();
+          if (!IsDirectBranch) {
+            LLVM_DEBUG(
+                llvm::dbgs()
+                    << "Relocation was not applied for the "
+                       "immediate operand, and it is not a direct branch.\n";
+                llvm::dbgs() << "Adding the immediate operand directly to the "
+                                "instruction\n");
+            if (llvm::SIInstrInfo::isSOPK(*Builder)) {
+              LLVM_DEBUG(llvm::dbgs() << "Instruction is in SOPK format\n");
+              if (llvm::SIInstrInfo::sopkIsZext(Opcode)) {
+                auto Imm = static_cast<uint16_t>(Op.getImm());
+                LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                               "Adding truncated imm value: {0}\n", Imm));
+                (void)Builder.addImm(Imm);
+              } else {
+                auto Imm = static_cast<int16_t>(Op.getImm());
+                LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                               "Adding truncated imm value: {0}\n", Imm));
+                (void)Builder.addImm(Imm);
+              }
+            } else {
+              LLVM_DEBUG(llvm::dbgs()
+                         << llvm::formatv("Adding Imm: {0}\n", Op.getImm()));
+              (void)Builder.addImm(Op.getImm());
+            }
+          }
+
+        } else
+          llvm_unreachable("Unexpected operand type");
+      }
+      // Create a (fake) memory operand to keep the machine verifier happy
+      // when encountering image instructions
+      if (llvm::SIInstrInfo::isImage(*Builder)) {
+        llvm::MachinePointerInfo PtrInfo =
+            llvm::MachinePointerInfo::getConstantPool(MF);
+        auto *MMO = MF.getMachineMemOperand(
+            PtrInfo,
+            MCInstInfo.get(Builder->getOpcode()).mayLoad()
+                ? llvm::MachineMemOperand::MOLoad
+                : llvm::MachineMemOperand::MOStore,
+            16, llvm::Align(8));
+        Builder->addMemOperand(MF, MMO);
+      }
+
+      if (MCInst.getNumOperands() < MCID.NumOperands) {
+        LLVM_DEBUG(llvm::dbgs() << "Must fixup instruction ";
+                   Builder->print(llvm::dbgs()); llvm::dbgs() << "\n";
+                   llvm::dbgs() << "Num explicit operands added so far: "
+                                << MCInst.getNumOperands() << "\n";
+                   llvm::dbgs() << "Num explicit operands according to MCID: "
+                                << MCID.NumOperands << "\n";);
+        // Loop over missing explicit operands (if any) and fixup any missing
+        for (unsigned int MissingExpOpIdx = MCInst.getNumOperands();
+             MissingExpOpIdx < MCID.NumOperands; MissingExpOpIdx++) {
+          LLVM_DEBUG(llvm::dbgs() << "Fixing up operand no " << MissingExpOpIdx
+                                  << "\n";);
+          auto OpType = MCID.operands()[MissingExpOpIdx].OperandType;
+          if (OpType == llvm::MCOI::OPERAND_IMMEDIATE ||
+              OpType == llvm::AMDGPU::OPERAND_KIMM32) {
+            LLVM_DEBUG(llvm::dbgs() << "Added a 0-immediate operand.\n";);
+            Builder.addImm(0);
+          }
+        }
+      }
+
+      LUTHIER_RETURN_ON_ERROR(fixupBitsetInst(*Builder));
+      LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
+      LLVM_DEBUG(llvm::dbgs() << "Final form of the instruction (not final if "
+                                 "it's a direct branch): ";
+                 Builder->print(llvm::dbgs()); llvm::dbgs() << "\n");
+      // Basic Block resolving
+      if (MCID.isTerminator()) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Instruction is a terminator; Finishing basic block.\n");
+        if (IsDirectBranch) {
+          LLVM_DEBUG(llvm::dbgs() << "The terminator is a direct branch.\n");
+          luthier::address_t BranchTarget;
+          if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(), 4,
+                                  BranchTarget)) {
+            LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                           "Address was resolved to {0:x}\n", BranchTarget));
+            if (!UnresolvedBranchMIs.contains(BranchTarget)) {
+              UnresolvedBranchMIs.insert({BranchTarget, {Builder.getInstr()}});
+            } else {
+              UnresolvedBranchMIs[BranchTarget].push_back(Builder.getInstr());
+            }
+          } else {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "Error resolving the target address of the branch\n");
+          }
+        }
+        // if this is the last instruction in the stream, no need for creating
+        // a new basic block
+        if (CurrentInstrAddr == LastInstrAddr) {
+          LLVM_DEBUG(llvm::dbgs() << "Creating a new basic block.\n");
+          auto OldMBB = MBB;
+          MBB = MF.CreateMachineBasicBlock();
+          MBBs.push_back(MBB);
+          MF.push_back(MBB);
+          // Don't add the next block to the list of successors if the
+          // terminator is an unconditional branch
+          if (!MCID.isUnconditionalBranch())
+            OldMBB->addSuccessor(MBB);
+          LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                         "Address {0:x} marks the beginning of MBB idx {1}.\n",
+                         Inst.getLoadedDeviceAddress(), MBB->getNumber()););
+        }
+        LLVM_DEBUG(llvm::dbgs()
+                   << "*********************************************"
+                      "***************************\n");
+      }
+    }
+    // Resolve the branch and target MIs/MBBs
+    LLVM_DEBUG(llvm::dbgs() << "Resolving direct branch MIs\n");
+    for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
+      LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                     "Resolving MIs jumping to target address {0:x}.\n",
+                     TargetAddress));
+      MBB = BranchTargetMBBs[TargetAddress];
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+          MBB != nullptr,
+          llvm::formatv("Failed to find the MachineBasicBlock associated with "
+                        "the branch target address {0:x}.",
+                        TargetAddress)));
+      for (auto &MI : BranchMIs) {
+        LLVM_DEBUG(llvm::dbgs() << "Resolving branch for the instruction ";
+                   MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
+        MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
+        MI->getParent()->addSuccessor(MBB);
+        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                       "MBB {0:x} {1} was set as the target of the branch.\n",
+                       MBB, MBB->getName()));
+        LLVM_DEBUG(llvm::dbgs() << "Final branch instruction: ";
+                   MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
+      }
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "*********************************************"
+                               "***************************\n");
+
+    MF.getRegInfo().freezeReservedRegs();
+
+    // Populate the properties of MF
+    llvm::MachineFunctionProperties &Properties = MF.getProperties();
+    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
+    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
+    Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
+    Properties.set(llvm::MachineFunctionProperties::Property::TracksLiveness);
+    Properties.set(llvm::MachineFunctionProperties::Property::Selected);
+
+    LLVM_DEBUG(llvm::dbgs() << "Final form of the Machine function:\n";
+               MF.print(llvm::dbgs());
+               llvm::dbgs() << "\n"
+                            << "*********************************************"
+                               "***************************\n";);
+  }
+
+  // Resolve the branch and target MIs/MBBs
+  LLVM_DEBUG(llvm::dbgs() << "Resolving direct branch MIs\n");
+  for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
+    LLVM_DEBUG(
+        llvm::dbgs() << llvm::formatv(
+            "Resolving MIs jumping to target address {0:x}.\n", TargetAddress));
+    MBB = BranchTargetMBBs[TargetAddress];
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        MBB != nullptr,
+        llvm::formatv("Failed to find the MachineBasicBlock associated with "
+                      "the branch target address {0:x}.",
+                      TargetAddress)));
+    for (auto &MI : BranchMIs) {
+      LLVM_DEBUG(llvm::dbgs() << "Resolving branch for the instruction ";
+                 MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
+      MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
+      MI->getParent()->addSuccessor(MBB);
+      LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                     "MBB {0:x} {1} was set as the target of the branch.\n",
+                     MBB, MBB->getName()));
+      LLVM_DEBUG(llvm::dbgs() << "Final branch instruction: ";
+                 MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
+    }
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "*********************************************"
+                             "***************************\n");
+
+  MF.getRegInfo().freezeReservedRegs();
+
+  // Populate the properties of MF
+  llvm::MachineFunctionProperties &Properties = MF.getProperties();
+  Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
+  Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
+  Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
+  Properties.set(llvm::MachineFunctionProperties::Property::TracksLiveness);
+  Properties.set(llvm::MachineFunctionProperties::Property::Selected);
+
+  LLVM_DEBUG(llvm::dbgs() << "Final form of the Machine function:\n";
+             MF.print(llvm::dbgs());
+             llvm::dbgs() << "\n"
+                          << "*********************************************"
+                             "***************************\n";);
+  return llvm::Error::success();
 }
 
 llvm::PreservedAnalyses
 CodeDiscoveryPass::run(llvm::Module &TargetModule,
                        llvm::ModuleAnalysisManager &TargetMAM) {
   llvm::LLVMContext &Ctx = TargetModule.getContext();
-  /// Get the MMI
+
   llvm::MachineModuleInfo &MMI =
       TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
-  /// Get the device segment accessor
+  auto &TM =
+      *reinterpret_cast<const llvm::GCNTargetMachine *>(&MMI.getTarget());
+
   const ExecutableMemorySegmentAccessor &SegAccessor =
       TargetMAM.getResult<ExecutableMemorySegmentAccessorAnalysis>(TargetModule)
           .getAccessor();
+
+  auto &EntryPoints = TargetMAM.getResult<EntryPointsAnalysis>(TargetModule);
+
+  auto &MFAM = TargetMAM
+                   .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
+                       TargetModule)
+                   .getManager();
 
   std::unordered_set<EntryPointType> UnvisitedPointsOfEntry{InitialEntryPoint};
   std::unordered_set<EntryPointType> VisitedPointsOfEntry;
@@ -531,9 +948,7 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
   while (!UnvisitedPointsOfEntry.empty()) {
     EntryPointType CurrentEntryPoint = *UnvisitedPointsOfEntry.begin();
 
-    ExecutableMemorySegmentAccessor::SegmentDescriptor SegDesc;
-
-    uint64_t CurrentInstructionAddrs{0};
+    llvm::MachineFunction *MF{nullptr};
 
     /// Initialize the function handle associated with the entry point
     if (std::holds_alternative<const llvm::amdhsa::kernel_descriptor_t *>(
@@ -545,13 +960,23 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
       const auto &MDParser =
           TargetMAM.getResult<MetadataParserAnalysis>(TargetModule).getParser();
 
-      LUTHIER_EMIT_ERROR_IN_CONTEXT(
-          Ctx,
-          SegAccessor.getSegment(reinterpret_cast<const uint64_t>(&KDOnDevice))
-              .moveInto(SegDesc));
+      llvm::Expected<llvm::MachineFunction &> MFOrErr =
+          initKernelEntryPointFunction(*KDOnDevice, SegAccessor, MDParser,
+                                       TargetModule, MMI);
+      LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, MFOrErr.takeError());
 
+      MF = &*MFOrErr;
     } else {
+      llvm::Expected<llvm::MachineFunction &> MFOrErr =
+          initLiftedDeviceFunctionEntry(std::get<uint64_t>(CurrentEntryPoint),
+                                        SegAccessor, TargetModule, MMI);
+      LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, MFOrErr.takeError());
+      MF = &*MFOrErr;
     }
+    /// Add the newly created MF's entry point
+    EntryPoints.insert(*MF, CurrentEntryPoint);
+    /// Ask for the trace of the instructions
+    auto TraceResults = MFAM.getResult<InstructionTracesAnalysis>(*MF);
 
     UnvisitedPointsOfEntry.erase(CurrentEntryPoint);
     VisitedPointsOfEntry.insert(CurrentEntryPoint);
