@@ -40,14 +40,15 @@ evaluateBranchOrCallIfDirect(const llvm::MCInst &Inst, uint64_t Addr) {
   return llvm::SignExtend64<16>(Imm) * 4 + Addr + 4;
 }
 
-llvm::Expected<std::map<uint64_t, TraceInstr>>
-disassembleTrace(uint64_t StartHostAddr, uint64_t SegSize,
-                 uint64_t StartDeviceAddr, llvm::MCDisassembler &Disassembler,
-                 size_t MaxReadSize, const llvm::MCInstrInfo &MII) {
+llvm::Error disassembleTrace(uint64_t StartHostAddr, uint64_t SegSize,
+                             uint64_t StartDeviceAddr,
+                             llvm::MCDisassembler &Disassembler,
+                             size_t MaxReadSize, const llvm::MCInstrInfo &MII,
+                             llvm::DenseMap<uint64_t, TraceInstr> &Instructions,
+                             uint64_t &LastInstructionAddr) {
   uint64_t CurrentDeviceAddress = StartDeviceAddr;
   uint64_t CurrentHostAddr = StartHostAddr;
   uint64_t SegmentHostEndAddr = StartHostAddr + SegSize;
-  std::map<uint64_t, TraceInstr> Instructions;
   bool WasTraceEndEncountered{false};
 
   while (WasTraceEndEncountered || CurrentHostAddr >= SegmentHostEndAddr) {
@@ -58,6 +59,8 @@ disassembleTrace(uint64_t StartHostAddr, uint64_t SegSize,
     size_t InstSize{};
     llvm::ArrayRef ReadBytes = {reinterpret_cast<uint8_t *>(CurrentHostAddr),
                                 ReadSize};
+
+    LastInstructionAddr = CurrentDeviceAddress;
 
     LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         Disassembler.getInstruction(Inst, InstSize, ReadBytes,
@@ -74,7 +77,7 @@ disassembleTrace(uint64_t StartHostAddr, uint64_t SegSize,
     CurrentHostAddr += InstSize;
   }
 
-  return Instructions;
+  return llvm::Error::success();
 }
 
 InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
@@ -120,12 +123,12 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
 
   Result Out;
 
-  InstructionAddrSet UnvisitedAddresses{InitialEntryPointAddr};
+  InstructionAddrSet UnvisitedTraceAddresses{InitialEntryPointAddr};
 
-  InstructionAddrSet VisitedAddresses{};
+  InstructionAddrSet VisitedTraceAddresses{};
 
-  while (!UnvisitedAddresses.empty()) {
-    uint64_t CurrentDeviceAddr = *UnvisitedAddresses.begin();
+  while (!UnvisitedTraceAddresses.empty()) {
+    uint64_t CurrentDeviceAddr = *UnvisitedTraceAddresses.begin();
     ExecutableMemorySegmentAccessor::SegmentDescriptor SegDesc;
 
     LUTHIER_EMIT_ERROR_IN_CONTEXT(
@@ -136,13 +139,12 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
         reinterpret_cast<uint64_t>(SegDesc.SegmentOnDevice.data()) +
         reinterpret_cast<uint64_t>(SegDesc.SegmentOnHost.data());
     size_t SegmentSize = SegDesc.SegmentOnHost.size();
-    std::map<uint64_t, TraceInstr> InstTrace;
+    llvm::DenseMap<uint64_t, TraceInstr> InstTrace;
+    uint64_t TraceDeviceEndAddr{0};
     LUTHIER_EMIT_ERROR_IN_CONTEXT(
         Ctx, disassembleTrace(EntryPointHostAddr, SegmentSize,
-                              InitialEntryPointAddr, *DisAsm, MaxInstSize, MII)
-                 .moveInto(InstTrace));
-    /// Get the trace's end address
-    uint64_t TraceDeviceEndAddr = InstTrace.rbegin()->first;
+                              InitialEntryPointAddr, *DisAsm, MaxInstSize, MII,
+                              InstTrace, TraceDeviceEndAddr));
 
     /// Add the br
     for (const auto &[InstAddr, TraceInst] : InstTrace) {
@@ -173,7 +175,7 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
             }
           }
           if (!HaveVisitedDirectBranchTarget) {
-            UnvisitedAddresses.insert(*TargetOrErr);
+            UnvisitedTraceAddresses.insert(*TargetOrErr);
           }
         }
       }
@@ -194,8 +196,8 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
                        std::move(InstTrace)});
 
     /// Put the current entry point in the visited set
-    VisitedAddresses.insert(CurrentDeviceAddr);
-    UnvisitedAddresses.erase(CurrentDeviceAddr);
+    VisitedTraceAddresses.insert(CurrentDeviceAddr);
+    UnvisitedTraceAddresses.erase(CurrentDeviceAddr);
   }
   return Out;
 }
