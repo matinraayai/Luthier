@@ -39,6 +39,7 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Support/TimeProfiler.h>
 
 #undef DEBUG_TYPE
@@ -124,6 +125,12 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   llvm::CGSCCAnalysisManager ICGAM;
   llvm::ModuleAnalysisManager IMAM;
   llvm::ModulePassManager IPM;
+  llvm::PassInstrumentationCallbacks PIC;
+  llvm::StandardInstrumentations SI(LR.getContext(), true);
+
+  // Create a PM Builder for the IR pipeline
+  llvm::PassBuilder PB(&TM);
+  llvm::TimeTraceScope Scope("Instrumentation Module IR Optimization");
 
   // Instantiate the Legacy PM for running the modified codegen pipeline
   // on the instrumentation module and MMI
@@ -140,6 +147,8 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Create a new Module pass manager, in charge of running the entire
   // pipeline
   llvm::ModulePassManager TargetMPM;
+
+  SI.registerCallbacks(PIC, &TargetMAM);
   // Add the pass instrumentation analysis as it is required by the new PM
   TargetMAM.registerPass([&]() { return llvm::PassInstrumentationAnalysis(); });
   // Add the MMI Analysis pass, pointing to the target app's lifted MMI

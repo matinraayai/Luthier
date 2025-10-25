@@ -54,7 +54,7 @@ namespace luthier {
 /// \param Value the L-value to prevent optimization on
 template <typename T>
 __attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
-  __asm__ __volatile__("" : : "X"(Value) : "memory");
+  __asm__ __volatile__("" : : "X"((void*)(&Value)) : "memory");
 }
 
 /// \brief Intrinsic to read the value of a register

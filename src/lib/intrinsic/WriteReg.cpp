@@ -29,7 +29,7 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
   auto *DestRegEnum = llvm::dyn_cast<llvm::ConstantInt>(User.getArgOperand(0));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       DestRegEnum != nullptr, "The first operand of the luthier::writeReg "
-                              "intrinsic is not a constant int."));
+                              "intrinsic is not a constant int"));
   // Get the MCRegister from the first argument's content
   llvm::MCRegister DestReg(DestRegEnum->getZExtValue());
   // Check if the enum value is indeed a physical register
@@ -97,9 +97,10 @@ llvm::Error writeRegMIRProcessor(
 
   uint64_t DestRegSize = TRI->getRegSizeInBits(Dest, MRI);
   uint64_t InputRegSize = TRI->getRegSizeInBits(InputReg, MRI);
-  // Check if both the input value and the destination reg have the same size
+  // Check if both the input value and the destination reg have the same
+  // size
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      InputRegSize == DestRegSize,
+      InputRegSize == DestRegSize || (DestRegSize == 1 && InputRegSize == 32),
       "The input register and the destination register of "
       "luthier::writeReg don't have the same size."));
 
@@ -117,7 +118,7 @@ llvm::Error writeRegMIRProcessor(
           .addReg(InputReg, 0, SubIdx);
       PhysRegsToBeOverwritten.insert({TRI->getSubReg(Dest, SubIdx), SubReg});
     }
-  } else if (DestRegSize == 32) {
+  } else if (DestRegSize == 32 || DestRegSize == 1) {
     PhysRegsToBeOverwritten.insert({Dest, InputReg});
   } else {
     auto SuperRegDest = TRI->get32BitRegister(Dest);
