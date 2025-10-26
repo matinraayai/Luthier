@@ -166,7 +166,7 @@ private:
 
   /// Disables forking, instead a random path is chosen. Enabled as
   /// needed to control memory usage. \see fork()
-  bool atMemoryLimit;
+  bool AtMemoryLimit;
 
   /// Disables forking, set by client. \see setInhibitForking()
   bool inhibitForking;
@@ -231,13 +231,11 @@ private:
   void initializeGlobalObjects(ExecutionState &state);
 
   void stepInstruction(ExecutionState &state);
+
   void updateStates(ExecutionState *current);
+
   void transferToBasicBlock(llvm::BasicBlock *dst, llvm::BasicBlock *src,
                             ExecutionState &state);
-
-  void callExternalFunction(ExecutionState &state, KInstruction *target,
-                            KCallable *callable,
-                            std::vector<ref<Expr>> &arguments);
 
   ObjectState *bindObjectInState(ExecutionState &state, const MemoryObject *mo,
                                  bool isLocal, const Array *array = 0);
@@ -494,10 +492,11 @@ private:
 
 public:
   Executor(llvm::LLVMContext &ctx, const InterpreterOptions &opts,
-           InterpreterHandler *ih);
-  virtual ~Executor();
+           InterpreterHandler &ih);
 
-  const InterpreterHandler &getHandler() { return IHandler; }
+  ~Executor() override;
+
+  const InterpreterHandler &getHandler() const { return IHandler; }
 
   void setPathWriter(TreeStreamWriter *tsw) override { pathWriter = tsw; }
 

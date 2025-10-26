@@ -68,10 +68,9 @@ class InstructionTracesAnalysis
   static llvm::AnalysisKey Key;
 
 public:
-  using InstructionTrace = std::map<uint64_t, TraceInstr>;
+  using InstructionTrace = llvm::DenseMap<uint64_t, TraceInstr>;
 
-  using TraceGroup =
-      llvm::DenseMap<std::pair<uint64_t, uint64_t>, InstructionTrace>;
+  using TraceGroup = std::map<std::pair<uint64_t, uint64_t>, InstructionTrace>;
 
   using InstructionAddrSet = llvm::DenseSet<uint64_t>;
 
@@ -88,10 +87,12 @@ public:
 
     InstructionAddrSet DirectBranchTargets;
 
+    uint64_t EntryAddress;
+
     Result() = default;
 
   public:
-    const TraceGroup &getTraceGroup() const { return Traces; }
+    [[nodiscard]] const TraceGroup &getTraceGroup() const { return Traces; }
 
     const InstructionAddrSet &getIndirectCallInstAddresses() const {
       return IndirectCallInstAddresses;
@@ -101,7 +102,13 @@ public:
       return IndirectBranchAddresses;
     }
 
-    const InstructionAddrSet &getBranchTargets() const { return DirectBranchTargets; }
+    const InstructionAddrSet &getBranchTargets() const {
+      return DirectBranchTargets;
+    }
+
+    uint64_t getEntryAddr() const {
+      return EntryAddress;
+    }
 
     bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
                     llvm::ModuleAnalysisManager::Invalidator &) {

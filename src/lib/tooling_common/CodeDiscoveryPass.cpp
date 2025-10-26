@@ -15,6 +15,7 @@
 #include <luthier/tooling/EntryPointsAnalysis.h>
 #include <luthier/tooling/ExecutableMemorySegmentAccessor.h>
 #include <luthier/tooling/InstructionTracesAnalysis.h>
+#include <luthier/tooling/MachineToTraceInstrAnalysis.h>
 #include <luthier/tooling/MetadataParserAnalysis.h>
 #include <unordered_set>
 
@@ -597,8 +598,64 @@ llvm::Expected<llvm::MachineFunction &> initLiftedDeviceFunctionEntry(
   return MF;
 }
 
+static bool shouldReadExec(const llvm::MachineInstr &MI) {
+  if (llvm::SIInstrInfo::isVALU(MI)) {
+    switch (MI.getOpcode()) {
+    case llvm::AMDGPU::V_READLANE_B32:
+    case llvm::AMDGPU::SI_RESTORE_S32_FROM_VGPR:
+    case llvm::AMDGPU::V_WRITELANE_B32:
+    case llvm::AMDGPU::SI_SPILL_S32_TO_VGPR:
+      return false;
+    default:
+      return true;
+    }
+  }
+
+  if (MI.isPreISelOpcode() ||
+      llvm::SIInstrInfo::isGenericOpcode(MI.getOpcode()) ||
+      llvm::SIInstrInfo::isSALU(MI) || llvm::SIInstrInfo::isSMRD(MI))
+    return false;
+
+  return true;
+}
+
+llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
+  auto &MI = *Builder.getInstr();
+  if (shouldReadExec(MI) &&
+      !MI.hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
+    MI.addOperand(
+        llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
+  }
+  return llvm::Error::success();
+}
+
+static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
+  unsigned int Opcode = MI.getOpcode();
+  if (Opcode == llvm::AMDGPU::S_BITSET0_B32 ||
+      Opcode == llvm::AMDGPU::S_BITSET0_B64 ||
+      Opcode == llvm::AMDGPU::S_BITSET1_B32 ||
+      Opcode == llvm::AMDGPU::S_BITSET1_B64) {
+    // bitset instructions have a tied def/use that is not reflected in the
+    // MC version
+    if (MI.getNumOperands() < MI.getNumExplicitOperands()) {
+      // Check if the first operand is a register
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+          MI.getOperand(0).isReg(),
+          "The first operand of a bitset instruction is not a register."));
+      // Add the output reg also as the first input, and tie the first and
+      // second operands together
+      MI.addOperand(
+          llvm::MachineOperand::CreateReg(MI.getOperand(0).getReg(), false));
+      MI.tieOperands(0, 2);
+    } else {
+      return llvm::Error::success();
+    }
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
-                       uint64_t EntryAddr, llvm::MachineFunction &MF,
+                       llvm::MachineFunction &MF,
                        llvm::DenseMap<const llvm::MachineInstr *,
                                       const TraceInstr *> &MIToTraceInstrMap) {
 
@@ -635,11 +692,14 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
   llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
   MBBs.push_back(MBB);
 
+  auto [FirstInstrAddr, LastInstrAddr] = MFTrace.getTraceGroup().begin()->first;
+
+  llvm::MachineInstr *EntryInst{nullptr};
   const auto &BranchTargets = MFTrace.getBranchTargets();
   for (const auto &[TraceStartEndAddr, Trace] : MFTrace.getTraceGroup()) {
     uint64_t CurrentInstrAddr = TraceStartEndAddr.first;
-    uint64_t LastInstrAddr = TraceStartEndAddr.second;
-    while (CurrentInstrAddr <= LastInstrAddr) {
+    uint64_t LastTraceInstrAddr = TraceStartEndAddr.second;
+    while (CurrentInstrAddr <= LastTraceInstrAddr) {
       const TraceInstr &Inst = Trace.at(CurrentInstrAddr);
       LLVM_DEBUG(llvm::dbgs()
                      << "+++++++++++++++++++++++++++++++++++++++++++++++"
@@ -778,7 +838,7 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
           if (OpType == llvm::MCOI::OPERAND_IMMEDIATE ||
               OpType == llvm::AMDGPU::OPERAND_KIMM32) {
             LLVM_DEBUG(llvm::dbgs() << "Added a 0-immediate operand.\n";);
-            Builder.addImm(0);
+            (void)Builder.addImm(0);
           }
         }
       }
@@ -811,7 +871,7 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
         }
         // if this is the last instruction in the stream, no need for creating
         // a new basic block
-        if (CurrentInstrAddr == LastInstrAddr) {
+        if (CurrentInstrAddr != LastInstrAddr) {
           LLVM_DEBUG(llvm::dbgs() << "Creating a new basic block.\n");
           auto OldMBB = MBB;
           MBB = MF.CreateMachineBasicBlock();
@@ -829,52 +889,11 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
                    << "*********************************************"
                       "***************************\n");
       }
-    }
-    // Resolve the branch and target MIs/MBBs
-    LLVM_DEBUG(llvm::dbgs() << "Resolving direct branch MIs\n");
-    for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
-      LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
-                     "Resolving MIs jumping to target address {0:x}.\n",
-                     TargetAddress));
-      MBB = BranchTargetMBBs[TargetAddress];
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-          MBB != nullptr,
-          llvm::formatv("Failed to find the MachineBasicBlock associated with "
-                        "the branch target address {0:x}.",
-                        TargetAddress)));
-      for (auto &MI : BranchMIs) {
-        LLVM_DEBUG(llvm::dbgs() << "Resolving branch for the instruction ";
-                   MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
-        MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
-        MI->getParent()->addSuccessor(MBB);
-        LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
-                       "MBB {0:x} {1} was set as the target of the branch.\n",
-                       MBB, MBB->getName()));
-        LLVM_DEBUG(llvm::dbgs() << "Final branch instruction: ";
-                   MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
+      if (Inst.getLoadedDeviceAddress() == MFTrace.getEntryAddr()) {
+        EntryInst = Builder.getInstr();
       }
     }
-
-    LLVM_DEBUG(llvm::dbgs() << "*********************************************"
-                               "***************************\n");
-
-    MF.getRegInfo().freezeReservedRegs();
-
-    // Populate the properties of MF
-    llvm::MachineFunctionProperties &Properties = MF.getProperties();
-    Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
-    Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
-    Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
-    Properties.set(llvm::MachineFunctionProperties::Property::TracksLiveness);
-    Properties.set(llvm::MachineFunctionProperties::Property::Selected);
-
-    LLVM_DEBUG(llvm::dbgs() << "Final form of the Machine function:\n";
-               MF.print(llvm::dbgs());
-               llvm::dbgs() << "\n"
-                            << "*********************************************"
-                               "***************************\n";);
   }
-
   // Resolve the branch and target MIs/MBBs
   LLVM_DEBUG(llvm::dbgs() << "Resolving direct branch MIs\n");
   for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
@@ -900,6 +919,22 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
     }
   }
 
+  /// If the entry address of the trace group is not equal to the address of the
+  /// first trace then add a new basic block in the beginning of the MF, and
+  /// put a jump to the entry instruction
+  if (MFTrace.getEntryAddr() != FirstInstrAddr) {
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        EntryInst != nullptr, "the entry instruction is not nullptr"));
+    llvm::MachineBasicBlock *EntryMBB = MF.CreateMachineBasicBlock();
+    MF.push_front(EntryMBB);
+
+    llvm::MachineInstrBuilder Builder = llvm::BuildMI(
+        EntryMBB, llvm::DebugLoc(), MCInstInfo.get(llvm::AMDGPU::S_BRANCH));
+    Builder->addOperand(
+        llvm::MachineOperand::CreateMBB(EntryInst->getParent()));
+    EntryMBB->addSuccessor(EntryInst->getParent());
+  }
+
   LLVM_DEBUG(llvm::dbgs() << "*********************************************"
                              "***************************\n");
 
@@ -918,6 +953,7 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
              llvm::dbgs() << "\n"
                           << "*********************************************"
                              "***************************\n";);
+
   return llvm::Error::success();
 }
 
@@ -977,6 +1013,11 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
     EntryPoints.insert(*MF, CurrentEntryPoint);
     /// Ask for the trace of the instructions
     auto TraceResults = MFAM.getResult<InstructionTracesAnalysis>(*MF);
+
+    auto &MIToTrace = MFAM.getResult<MachineToTraceInstrAnalysis>(*MF).getMap();
+
+    LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx,
+                                  populateMF(TraceResults, *MF, MIToTrace));
 
     UnvisitedPointsOfEntry.erase(CurrentEntryPoint);
     VisitedPointsOfEntry.insert(CurrentEntryPoint);

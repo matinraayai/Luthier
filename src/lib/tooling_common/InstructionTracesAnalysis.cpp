@@ -123,6 +123,8 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
 
   Result Out;
 
+  Out.EntryAddress = InitialEntryPointAddr;
+
   InstructionAddrSet UnvisitedTraceAddresses{InitialEntryPointAddr};
 
   InstructionAddrSet VisitedTraceAddresses{};

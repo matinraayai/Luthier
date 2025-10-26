@@ -189,7 +189,6 @@ bool KModule::link(std::vector<std::unique_ptr<llvm::Module>> &modules,
 }
 
 void KModule::instrument(const Interpreter::ModuleOptions &opts) {
-  klee::instrument(opts.CheckDivZero, opts.CheckOvershift, module.get());
 }
 
 void KModule::optimiseAndPrepare(
@@ -201,9 +200,6 @@ void KModule::optimiseAndPrepare(
     addInternalFunction("klee_div_zero_check");
   if (opts.CheckOvershift)
     addInternalFunction("klee_overshift_check");
-
-  klee::optimiseAndPrepare(OptimiseKLEECall, opts.Optimize, SwitchType,
-                           opts.EntryPoint, preservedFunctions, module.get());
 }
 
 void KModule::manifest(InterpreterHandler *ih, bool forceSourceOutput) {
@@ -264,7 +260,7 @@ void KModule::manifest(InterpreterHandler *ih, bool forceSourceOutput) {
   }
 }
 
-void KModule::checkModule() { klee::checkModule(DontVerify, module.get()); }
+void KModule::checkModule() { }
 
 KConstant *KModule::getKConstant(const Constant *c) {
   auto it = constantMap.find(c);

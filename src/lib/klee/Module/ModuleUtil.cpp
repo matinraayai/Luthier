@@ -148,8 +148,9 @@ static bool linkTwoModules(llvm::Module *Dest,
 }
 
 std::unique_ptr<llvm::Module>
-klee::linkModules(std::vector<std::unique_ptr<llvm::Module>> &modules,
-                  llvm::StringRef entryFunction, std::string &errorMsg) {
+luthier::klee::linkModules(std::vector<std::unique_ptr<llvm::Module>> &modules,
+                           llvm::StringRef entryFunction,
+                           std::string &errorMsg) {
   assert(!modules.empty() && "modules list should not be empty");
 
   if (entryFunction.empty()) {

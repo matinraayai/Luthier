@@ -7,18 +7,10 @@
 #
 #===------------------------------------------------------------------------===#
 set(KLEE_MODULE_COMPONENT_SRCS
-        Checks.cpp
-        FunctionAlias.cpp
         InstructionInfoTable.cpp
-        InstructionOperandTypeCheckPass.cpp
-        IntrinsicCleaner.cpp
         KInstruction.cpp
         KModule.cpp
-        LowerSwitch.cpp
         ModuleUtil.cpp
-        OptNone.cpp
-        PhiCleaner.cpp
-        RaiseAsm.cpp
 )
 
 if ("${LLVM_VERSION_MAJOR}" LESS 17)
@@ -27,10 +19,6 @@ if ("${LLVM_VERSION_MAJOR}" LESS 17)
             OptimizeLegacy.cpp
     )
 else ()
-    LIST(APPEND KLEE_MODULE_COMPONENT_SRCS
-            Instrument.cpp
-            Optimize.cpp
-    )
 endif ()
 
 

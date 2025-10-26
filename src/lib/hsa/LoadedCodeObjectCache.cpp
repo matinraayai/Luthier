@@ -85,10 +85,16 @@ hsa_status_t LoadedCodeObjectCache::hsaExecutableLoadAgentCodeObjectWrapper(
       object::AMDGCNObjectFile::createAMDGCNObjectFile(*StorageCopy);
   LUTHIER_REPORT_FATAL_ON_ERROR(ParsedElfOrErr.takeError());
 
+  llvm::ArrayRef<uint8_t> LoadedMemory;
+  LUTHIER_REPORT_FATAL_ON_ERROR(hsa::loadedCodeObjectGetLoadedMemory(
+                                    COC.VenLoaderSnapshot.getTable(), LCO)
+                                    .moveInto(LoadedMemory));
+
   std::lock_guard Lock(COC.CacheMutex);
   {
     COC.LCOCache.insert({LCO, LCOCacheEntry{std::move(StorageCopy),
                                             std::move(*ParsedElfOrErr)}});
+    COC.LoadedBaseToLCOMap.insert({LoadedMemory.data(), LCO});
   }
 
   return Out;
@@ -120,6 +126,12 @@ hsa_status_t LoadedCodeObjectCache::hsaExecutableDestroyWrapper(
     std::lock_guard Lock(COC.CacheMutex);
     for (hsa_loaded_code_object_t LCO : LCOs) {
       COC.LCOCache.erase(LCO);
+
+      llvm::ArrayRef<uint8_t> LoadedMemory;
+      LUTHIER_REPORT_FATAL_ON_ERROR(hsa::loadedCodeObjectGetLoadedMemory(
+                                        COC.VenLoaderSnapshot.getTable(), LCO)
+                                        .moveInto(LoadedMemory));
+      COC.LoadedBaseToLCOMap.erase(LoadedMemory.data());
     }
   }
   return Out;

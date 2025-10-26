@@ -12,9 +12,15 @@ tablegen(LuthierToolingCommon LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-
 add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
 
 add_library(LuthierToolingCommon OBJECT
+        CodeDiscoveryPass.cpp
         CodeGenerator.cpp
         CodeLifter.cpp
+        EntryPointsAnalysis.cpp
+        MachineToTraceInstrAnalysis.cpp
+        InstructionTracesAnalysis.cpp
+        ExecutableMemorySegmentAccessor.cpp
         InstrumentationTask.cpp
+        InstructionModel.cpp
         TargetManager.cpp
         ToolExecutableLoader.cpp
         LiftedRepresentation.cpp
@@ -38,6 +44,7 @@ add_library(LuthierToolingCommon OBJECT
         RunMIRPassesOnIModulePass.cpp
         PatchLiftedRepresentationPass.cpp
         MIRConvenience.cpp
+        MetadataParserAnalysis.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
