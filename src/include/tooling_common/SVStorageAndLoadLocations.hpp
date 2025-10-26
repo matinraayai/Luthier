@@ -24,7 +24,6 @@
 #define LUTHIER_TOOLING_COMMON_SV_STORAGE_AND_LOAD_LOCATIONS_HPP
 #include "luthier/hsa/LoadedCodeObject.h"
 #include "IModuleIRGeneratorPass.hpp"
-#include "MMISlotIndexesAnalysis.hpp"
 #include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "luthier/tooling/LiftedRepresentation.h"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
