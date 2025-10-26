@@ -31,7 +31,6 @@ add_library(LuthierToolingCommon OBJECT
         StateValueArrayStorage.cpp
         IModuleIRGeneratorPass.cpp
         RunIRPassesOnIModulePass.cpp
-        MMISlotIndexesAnalysis.cpp
         ProcessIntrinsicsAtIRLevelPass.cpp
         PhysRegsNotInLiveInsAnalysis.cpp
         WrapperAnalysisPasses.cpp

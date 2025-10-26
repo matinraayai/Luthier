@@ -371,8 +371,10 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
                               llvm::Module &TargetModule,
                               llvm::MachineFunction *MF,
                               luthier::SVStorageAndLoadLocations &SVLocations) {
-  auto &SlotIndexes =
-      TargetMAM.getCachedResult<MMISlotIndexesAnalysis>(TargetModule)->at(*MF);
+  auto &MFAM = TargetMAM
+                   .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
+                       TargetModule)
+                   .getManager();
 
   // Now we need to emit code that juggles the SVS between different
   // storage schemes
@@ -384,7 +386,8 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
       auto &NextMBBInterval = MBBIntervals[I + 1];
       if (CurMBBInterval.getSVS() != NextMBBInterval.getSVS()) {
         auto InsertionMI =
-            SlotIndexes.getInstructionFromIndex(NextMBBInterval.begin());
+            MFAM.getResult<llvm::SlotIndexesAnalysis>(*MF)
+                .getInstructionFromIndex(NextMBBInterval.begin());
         CurMBBInterval.getSVS().emitCodeToSwitchSVS(*InsertionMI,
                                                     NextMBBInterval.getSVS());
       }

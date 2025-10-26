@@ -128,7 +128,7 @@ public:
   /// operation
   llvm::Error calculate(
       const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
-      const MMISlotIndexesAnalysis::Result &SlotIndexes,
+      llvm::MachineFunctionAnalysisManager &TargetMFAM,
       const AMDGPURegisterLiveness &RegLiveness,
       const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
       const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns);

@@ -25,7 +25,6 @@
 #include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "tooling_common/CodeLifter.hpp"
 #include "tooling_common/InjectedPayloadPEIPass.hpp"
-#include "tooling_common/MMISlotIndexesAnalysis.hpp"
 #include "tooling_common/PatchLiftedRepresentationPass.hpp"
 #include "tooling_common/PrePostAmbleEmitter.hpp"
 #include "tooling_common/RunIRPassesOnIModulePass.hpp"
@@ -129,8 +128,6 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   llvm::StandardInstrumentations SI(LR.getContext(), true);
 
   // Create a PM Builder for the IR pipeline
-  llvm::PassBuilder PB(&TM);
-  llvm::TimeTraceScope Scope("Instrumentation Module IR Optimization");
 
   // Instantiate the Legacy PM for running the modified codegen pipeline
   // on the instrumentation module and MMI
@@ -149,6 +146,23 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   llvm::ModulePassManager TargetMPM;
 
   SI.registerCallbacks(PIC, &TargetMAM);
+  // Create a Machine Function Analysis manager
+  llvm::MachineFunctionAnalysisManager TargetMFAM;
+
+  // llvm::FunctionPassManager TargetFPM;
+  // llvm::MachineFunctionPassManager TargetMFPM;
+  // TargetFPM.addPass(llvm::createFunctionToMachineFunctionPassAdaptor(std::move(TargetMFPM)));
+  // TargetMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(TargetFPM)));
+
+  // Register analysis proxies; Here we do it manually instead of using
+  // the pass builder interface
+  TargetMAM.registerPass([&] {
+    return llvm::MachineFunctionAnalysisManagerModuleProxy(TargetMFAM);
+  });
+  TargetMFAM.registerPass([&] {
+    return llvm::ModuleAnalysisManagerMachineFunctionProxy(TargetMAM);
+  });
+
   // Add the pass instrumentation analysis as it is required by the new PM
   TargetMAM.registerPass([&]() { return llvm::PassInstrumentationAnalysis(); });
   // Add the MMI Analysis pass, pointing to the target app's lifted MMI
@@ -166,14 +180,17 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   TargetMAM.registerPass([&]() { return AMDGPURegLivenessAnalysis(); });
   // Add the LR Callgraph analysis pass
   TargetMAM.registerPass([&]() { return LRCallGraphAnalysis(); });
-  // Add the MMI-wide Slot indexes analysis pass
-  TargetMAM.registerPass([&]() { return MMISlotIndexesAnalysis(); });
   // Add the State Value Array storage and load analysis pass
   TargetMAM.registerPass(
       [&]() { return LRStateValueStorageAndLoadLocationsAnalysis(); });
   // Add the Function Preamble Descriptor Analysis pass
   TargetMAM.registerPass(
       [&]() { return FunctionPreambleDescriptorAnalysis(); });
+  // Add the slot indexes analysis
+  TargetMFAM.registerPass([&]() { return llvm::SlotIndexesAnalysis(); });
+  // Add the pass instrumentation analysis as it is required by the new PM
+  TargetMFAM.registerPass(
+      [&]() { return llvm::PassInstrumentationAnalysis(); });
   // Add the IR pipeline for the instrumentation module
   TargetMPM.addPass(
       RunIRPassesOnIModulePass(Task, IntrinsicsProcessors, TM, *IModule));

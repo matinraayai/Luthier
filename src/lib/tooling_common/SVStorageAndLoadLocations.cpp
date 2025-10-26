@@ -22,7 +22,6 @@
 #include "luthier/tooling/AMDGPURegisterLiveness.h"
 #include "luthier/tooling/LRCallgraph.h"
 #include "tooling_common/IModuleIRGeneratorPass.hpp"
-#include "tooling_common/MMISlotIndexesAnalysis.hpp"
 #include "tooling_common/PhysRegsNotInLiveInsAnalysis.hpp"
 #include "tooling_common/StateValueArrayStorage.hpp"
 #include "tooling_common/WrapperAnalysisPasses.hpp"
@@ -406,7 +405,7 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
 
 llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
-    const MMISlotIndexesAnalysis::Result &SlotIndexes,
+    llvm::MachineFunctionAnalysisManager &TargetMFAM,
     const AMDGPURegisterLiveness &RegLiveness,
     const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
@@ -458,12 +457,14 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     // representation
     for (const auto &MF : MFs) {
       for (const auto &MBB : *MF) {
+        const auto &SlotIndexes =
+            TargetMFAM.getResult<llvm::SlotIndexesAnalysis>(*MF);
         auto &Segments =
             StateValueStorageIntervals
                 .insert({&MBB, llvm::SmallVector<StateValueStorageSegment>{}})
                 .first->getSecond();
-        Segments.emplace_back(SlotIndexes.at(*MF).getMBBStartIdx(&MBB),
-                              SlotIndexes.at(*MF).getMBBEndIdx(&MBB),
+        Segments.emplace_back(SlotIndexes.getMBBStartIdx(&MBB),
+                              SlotIndexes.getMBBEndIdx(&MBB),
                               StateValueFixedLocation);
       }
       if (MF->getFunction().getCallingConv() !=
@@ -530,10 +531,11 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       // A set of hook insertion points that fall into the current interval
       llvm::SmallDenseSet<const llvm::MachineInstr *, 4>
           HookInsertionPointsInCurrentSegment{};
+
+      auto &SlotIndexes = TargetMFAM.getResult<llvm::SlotIndexesAnalysis>(*MF);
       for (const auto &MBB : *MF) {
         // Marks the beginning of the current interval we are in this loop
-        llvm::SlotIndex CurrentIntervalBegin =
-            SlotIndexes.at(*MF).getMBBStartIdx(&MBB);
+        llvm::SlotIndex CurrentIntervalBegin = SlotIndexes.getMBBStartIdx(&MBB);
 
         auto &CurrentMBBSegments =
             StateValueStorageIntervals.insert({&MBB, {}}).first->getSecond();
@@ -570,8 +572,8 @@ llvm::Error SVStorageAndLoadLocations::calculate(
           if (&MI == &MBB.back() || TryRelocatingValueStateReg ||
               MustRelocateStateValue) {
             auto NextIndex = &MI == &MBB.back()
-                                 ? SlotIndexes.at(*MF).getMBBEndIdx(&MBB)
-                                 : SlotIndexes.at(*MF).getInstructionIndex(MI);
+                                 ? SlotIndexes.getMBBEndIdx(&MBB)
+                                 : SlotIndexes.getInstructionIndex(MI);
             CurrentMBBSegments.emplace_back(CurrentIntervalBegin, NextIndex,
                                             SVS);
             for (const auto &HookMI : HookInsertionPointsInCurrentSegment) {
@@ -610,11 +612,16 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
   auto &IModuleAndPMRes = TargetMAM.getResult<IModulePMAnalysis>(TargetModule);
   auto &IModule = IModuleAndPMRes.getModule();
   auto &IMAM = IModuleAndPMRes.getMAM();
+  auto &TargetMFAM =
+      TargetMAM
+          .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
+              TargetModule)
+          .getManager();
 
   auto Err = Out.calculate(
       TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
           ->getMMI(),
-      TargetModule, TargetMAM.getResult<MMISlotIndexesAnalysis>(TargetModule),
+      TargetModule, TargetMFAM,
       *TargetMAM.getCachedResult<AMDGPURegLivenessAnalysis>(TargetModule),
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule),
       TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule),
