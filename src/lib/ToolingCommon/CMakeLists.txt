@@ -12,9 +12,15 @@ tablegen(LuthierToolingCommon LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-
 add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
 
 add_library(LuthierToolingCommon OBJECT
+        CodeDiscoveryPass.cpp
         CodeGenerator.cpp
         CodeLifter.cpp
+        EntryPointsAnalysis.cpp
+        MachineToTraceInstrAnalysis.cpp
+        InstructionTracesAnalysis.cpp
+        ExecutableMemorySegmentAccessor.cpp
         InstrumentationTask.cpp
+        InstructionModel.cpp
         TargetManager.cpp
         ToolExecutableLoader.cpp
         LiftedRepresentation.cpp
@@ -39,8 +45,7 @@ add_library(LuthierToolingCommon OBJECT
         PatchLiftedRepresentationPass.cpp
         MIRConvenience.cpp
         MockAMDGPULoader.cpp
-        Context.cpp
-        luthier.cpp
+        MetadataParserAnalysis.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
@@ -51,6 +56,7 @@ target_compile_definitions(LuthierToolingCommon PRIVATE AMD_INTERNAL_BUILD ${LLV
 
 target_include_directories(LuthierToolingCommon
         PRIVATE
+        "${CMAKE_SOURCE_DIR}/src/include"
         ${CMAKE_CURRENT_BINARY_DIR}
         ${LLVM_INCLUDE_DIRS}
         ${hsa-runtime64_INCLUDE_DIRS}

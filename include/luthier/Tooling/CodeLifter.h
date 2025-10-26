@@ -49,6 +49,7 @@
 #include <llvm/MC/MCInst.h>
 #include <llvm/MC/MCInstrAnalysis.h>
 #include <llvm/Object/ELFObjectFile.h>
+#include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -394,21 +395,32 @@ private:
   // Cached Lifted Representations
   //===--------------------------------------------------------------------===//
 
-  std::unordered_map<
-      std::unique_ptr<hsa::LoadedCodeObjectKernel>,
-      std::unique_ptr<LiftedRepresentation>,
-      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectKernel>,
-      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectKernel>>
+  llvm::DenseMap<const llvm::amdhsa::kernel_descriptor_t *,
+                 std::unique_ptr<LiftedRepresentation>>
       LiftedKernelSymbols{};
 
   //===--------------------------------------------------------------------===//
   // Public-facing code-lifting functionality
   //===--------------------------------------------------------------------===//
 public:
+  /// Given a kernel descriptor \p KD residing on a \c hsa_agent_t of GPU type,
+  /// creates and returns a \c llvm::GCNTargetMachine which can be used for
+  /// lifting and instrumenting the reachable code body of \p KD
+  [[nodiscard]] llvm::Expected<std::unique_ptr<llvm::GCNTargetMachine>>
+  createTargetMachine(const llvm::amdhsa::kernel_descriptor_t &KD,
+                      const llvm::TargetOptions &TargetOptions = {}) const;
+
+  llvm::Error
+  addLiftingPasses(const llvm::amdhsa::kernel_descriptor_t &KernelDescriptor,
+                   llvm::ModulePassManager &PM,
+                   llvm::ModuleAnalysisManager &MAM, llvm::Module &Module,
+                   llvm::GCNTargetMachine &TM,
+                   llvm::MachineModuleInfo &MMI) const;
+
   /// Returns the \c LiftedRepresentation associated
   /// with the given \p Symbol\n
-  /// The representation isolates the requirements of a single kernel can run
-  /// interdependently from its parent \c hsa::LoadedCodeObject or \c
+  /// The representation isolates the requirements of a single kernel can
+  /// run interdependently from its parent \c hsa::LoadedCodeObject or \c
   /// hsa::Executable\n
   /// The representation gets cached on the first invocation
   /// \param KernelSymbol an \c hsa::ExecutableSymbol of type \c KERNEL
@@ -417,7 +429,10 @@ public:
   /// process
   /// \sa LiftedRepresentation
   llvm::Expected<const LiftedRepresentation &>
-  lift(const hsa::LoadedCodeObjectKernel &KernelSymbol);
+  lift(const llvm::amdhsa::kernel_descriptor_t &KernelDescriptor);
+
+  llvm::Expected<const LiftedRepresentation &>
+  lift(const uint64_t DeviceAddress);
 
   llvm::Expected<std::unique_ptr<LiftedRepresentation>>
   cloneRepresentation(const LiftedRepresentation &SrcLR);

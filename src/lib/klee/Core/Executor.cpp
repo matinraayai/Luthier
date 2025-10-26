@@ -180,26 +180,6 @@ enum class ExternalCallPolicy {
               // by the call
 };
 
-cl::opt<ExternalCallPolicy> ExternalCalls(
-    "external-calls", cl::desc("Specify the external call policy"),
-    cl::values(
-        clEnumValN(
-            ExternalCallPolicy::None, "none",
-            "No external function calls are allowed.  Note that KLEE always "
-            "allows some external calls with concrete arguments to go through "
-            "(in particular printf and puts), regardless of this option."),
-        clEnumValN(ExternalCallPolicy::Concrete, "concrete",
-                   "Only external function calls with concrete arguments are "
-                   "allowed (default)"),
-        clEnumValN(ExternalCallPolicy::All, "all",
-                   "All external function calls are allowed.  This concretizes "
-                   "any symbolic arguments in calls to external functions."),
-        clEnumValN(ExternalCallPolicy::OverApprox, "over-approx",
-                   "All external function calls are allowed.  This concretizes "
-                   "any symbolic arguments in calls to external functions but"
-                   "the concretization is ignored after the call (see docs).")),
-    cl::init(ExternalCallPolicy::Concrete), cl::cat(ExtCallsCat));
-
 /*** External call warnings options ***/
 
 enum class ExtCallWarnings {
@@ -431,14 +411,6 @@ llvm::cl::bits<PrintDebugInstructionsType> DebugPrintInstructions(
                    "[inst_id]")),
     llvm::cl::CommaSeparated, cl::cat(DebugCat));
 
-#ifdef HAVE_ZLIB_H
-cl::opt<bool> DebugCompressInstructions(
-    "debug-compress-instructions", cl::init(false),
-    cl::desc(
-        "Compress the logged instructions in gzip format (default=false)."),
-    cl::cat(DebugCat));
-#endif
-
 cl::opt<bool> DebugCheckForImpliedValues(
     "debug-check-for-implied-values", cl::init(false),
     cl::desc("Debug the implied value optimization"), cl::cat(DebugCat));
@@ -450,7 +422,7 @@ extern "C" unsigned dumpStates, dumpExecutionTree;
 unsigned dumpStates = 0, dumpExecutionTree = 0;
 namespace luthier::klee {
 Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
-                   InterpreterHandler *ih)
+                   InterpreterHandler &ih)
     : Interpreter(opts), IHandler(ih), Searcher(nullptr),
       ExtDispatcher(new ExternalDispatcher(ctx)), statsTracker(0),
       pathWriter(0), symPathWriter(0), specialFunctionHandler(0),
@@ -483,7 +455,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
 
   this->solver =
       std::make_unique<TimingSolver>(std::move(solver), EqualitySubstitution);
-  memory = std::make_unique<MemoryManager>(&arrayCache);
+  Memory = std::make_unique<MemoryManager>(&arrayCache);
 
   initializeSearchOptions();
 
@@ -497,16 +469,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
     std::string debug_file_name =
         IHandler.getOutputFilename("instructions.txt");
     std::string error;
-#ifdef HAVE_ZLIB_H
-    if (!DebugCompressInstructions) {
-#endif
-      debugInstFile = klee_open_output_file(debug_file_name, error);
-#ifdef HAVE_ZLIB_H
-    } else {
-      debug_file_name.append(".gz");
-      debugInstFile = klee_open_compressed_output_file(debug_file_name, error);
-    }
-#endif
+    debugInstFile = klee_open_output_file(debug_file_name, error);
     if (!debugInstFile) {
       klee_error("Could not open file %s : %s", debug_file_name.c_str(),
                  error.c_str());
@@ -528,9 +491,9 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   SmallString<128> LibPath(opts.LibraryDir);
   llvm::sys::path::append(LibPath,
                           "libkleeRuntimeIntrinsic" + opts.OptSuffix + ".bca");
-  std::string error;
+  std::string Error;
   if (!klee::loadFile(LibPath.c_str(), modules[0]->getContext(), modules,
-                      error)) {
+                      Error)) {
     klee_error("Could not load KLEE intrinsic file %s", LibPath.c_str());
   }
 
@@ -673,13 +636,13 @@ void Executor::allocateGlobalObjects(ExecutionState &state) {
     // not defined in this module; if it isn't resolvable then it
     // should be null.
     if (f.hasExternalWeakLinkage() &&
-        !externalDispatcher->resolveSymbol(f.getName().str())) {
+        !ExtDispatcher->resolveSymbol(f.getName().str())) {
       addr = Expr::createPointer(0);
     } else {
       // We allocate an object to represent each function,
       // its address can be used for function pointers.
       // TODO: Check whether the object is accessed?
-      auto mo = memory->allocate(8, false, true, &state, &f, 8);
+      auto mo = Memory->allocate(8, false, true, &state, &f, 8);
       addr = Expr::createPointer(mo->address);
       legalFunctions.emplace(mo->address, &f);
     }
@@ -757,7 +720,7 @@ void Executor::allocateGlobalObjects(ExecutionState &state) {
       }
     }
 
-    MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
+    MemoryObject *mo = Memory->allocate(size, /*isLocal=*/false,
                                         /*isGlobal=*/true, /*state=*/nullptr,
                                         /*allocSite=*/&v,
                                         /*alignment=*/globalObjectAlignment);
@@ -820,7 +783,7 @@ void Executor::initializeGlobalObjects(ExecutionState &state) {
       if (v.getName() == "__dso_handle") {
         addr = &__dso_handle; // wtf ?
       } else {
-        addr = externalDispatcher->resolveSymbol(v.getName().str());
+        addr = ExtDispatcher->resolveSymbol(v.getName().str());
       }
       if (!addr) {
         klee_error("Unable to load symbol(%.*s) while initializing globals",
@@ -843,10 +806,10 @@ void Executor::initializeGlobalObjects(ExecutionState &state) {
 }
 
 bool Executor::branchingPermitted(const ExecutionState &state) const {
-  if ((MaxMemoryInhibit && atMemoryLimit) || state.forkDisabled ||
+  if ((MaxMemoryInhibit && AtMemoryLimit) || state.forkDisabled ||
       inhibitForking || (MaxForks != ~0u && stats::forks >= MaxForks)) {
 
-    if (MaxMemoryInhibit && atMemoryLimit)
+    if (MaxMemoryInhibit && AtMemoryLimit)
       klee_warning_once(0, "skipping fork (memory cap exceeded)");
     else if (state.forkDisabled)
       klee_warning_once(0, "skipping fork (fork disabled on current path)");
@@ -1019,9 +982,9 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
   if (isSeeding)
     timeout *= static_cast<unsigned>(it->second.size());
   solver->setTimeout(timeout);
-  bool success = solver->evaluate(current.constraints, condition, res,
+  bool success = Solver->evaluate(current.constraints, condition, res,
                                   current.queryMetaData);
-  solver->setTimeout(time::Span());
+  Solver->setTimeout(time::Span());
   if (!success) {
     current.pc = current.prevPC;
     terminateStateOnSolverError(current, "Query timed out (fork).");
@@ -1075,7 +1038,7 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
                                          siie = it->second.end();
          siit != siie; ++siit) {
       ref<ConstantExpr> res;
-      bool success = solver->getValue(current.constraints,
+      bool success = Solver->getValue(current.constraints,
                                       siit->assignment.evaluate(condition), res,
                                       current.queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
@@ -1138,7 +1101,7 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
                                            siie = seeds.end();
            siit != siie; ++siit) {
         ref<ConstantExpr> res;
-        bool success = solver->getValue(current.constraints,
+        bool success = Solver->getValue(current.constraints,
                                         siit->assignment.evaluate(condition),
                                         res, current.queryMetaData);
         assert(success && "FIXME: Unhandled solver failure");
@@ -1220,13 +1183,13 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
                                          siie = it->second.end();
          siit != siie; ++siit) {
       bool res;
-      bool success = solver->mustBeFalse(state.constraints,
+      bool success = Solver->mustBeFalse(state.constraints,
                                          siit->assignment.evaluate(condition),
                                          res, state.queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
       (void)success;
       if (res) {
-        siit->patchSeed(state, condition, solver.get());
+        siit->patchSeed(state, condition, Solver.get());
         warn = true;
       }
     }
@@ -1276,8 +1239,8 @@ ref<Expr> Executor::toUnique(const ExecutionState &state, ref<Expr> &e) {
     ref<ConstantExpr> value;
     bool isTrue = false;
     e = optimizer.optimizeExpr(e, true);
-    solver->setTimeout(coreSolverTimeout);
-    if (solver->getValue(state.constraints, e, value, state.queryMetaData)) {
+    Solver->setTimeout(coreSolverTimeout);
+    if (Solver->getValue(state.constraints, e, value, state.queryMetaData)) {
       ref<Expr> cond = EqExpr::create(e, value);
       cond = optimizer.optimizeExpr(cond, false);
       if (solver->mustBeTrue(state.constraints, cond, isTrue,
@@ -1690,8 +1653,8 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     switch (f->getIntrinsicID()) {
     case Intrinsic::not_intrinsic: {
       // state may be destroyed by this call, cannot touch
-      callExternalFunction(state, ki, kmodule->functionMap[f], arguments);
-      break;
+      return terminateStateOnExecError(
+          state, "Call to external function not supported");
     }
     case Intrinsic::fabs: {
       ref<ConstantExpr> arg = toConstant(state, arguments[0], "floating point");
@@ -1718,31 +1681,30 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         return terminateStateOnExecError(
             state, f->getName() + " with vectors is not supported");
 
-      ref<ConstantExpr> op1 =
+      ref<ConstantExpr> Op1 =
           toConstant(state, eval(ki, 1, state).value, "floating point");
-      ref<ConstantExpr> op2 =
+      ref<ConstantExpr> Op2 =
           toConstant(state, eval(ki, 2, state).value, "floating point");
-      ref<ConstantExpr> op3 =
+      ref<ConstantExpr> Op3 =
           toConstant(state, eval(ki, 3, state).value, "floating point");
 
-      if (!fpWidthToSemantics(op1->getWidth()) ||
-          !fpWidthToSemantics(op2->getWidth()) ||
-          !fpWidthToSemantics(op3->getWidth()))
+      if (!fpWidthToSemantics(Op1->getWidth()) ||
+          !fpWidthToSemantics(Op2->getWidth()) ||
+          !fpWidthToSemantics(Op3->getWidth()))
         return terminateStateOnExecError(state, "Unsupported " + f->getName() +
                                                     " call");
 
       // (op1 * op2) + op3
-      APFloat Res(*fpWidthToSemantics(op1->getWidth()), op1->getAPValue());
+      APFloat Res(*fpWidthToSemantics(Op1->getWidth()), Op1->getAPValue());
       Res.fusedMultiplyAdd(
-          APFloat(*fpWidthToSemantics(op2->getWidth()), op2->getAPValue()),
-          APFloat(*fpWidthToSemantics(op3->getWidth()), op3->getAPValue()),
+          APFloat(*fpWidthToSemantics(Op2->getWidth()), Op2->getAPValue()),
+          APFloat(*fpWidthToSemantics(Op3->getWidth()), Op3->getAPValue()),
           APFloat::rmNearestTiesToEven);
 
       bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
       break;
     }
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(12, 0)
     case Intrinsic::abs: {
       if (isa<VectorType>(i->getOperand(0)->getType()))
         return terminateStateOnExecError(
@@ -1790,24 +1752,23 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         return terminateStateOnExecError(
             state, "llvm.{s,u}{max,min} with vectors is not supported");
 
-      ref<Expr> op1 = eval(ki, 1, state).value;
-      ref<Expr> op2 = eval(ki, 2, state).value;
+      ref<Expr> Op1 = eval(ki, 1, state).value;
+      ref<Expr> Op2 = eval(ki, 2, state).value;
 
-      ref<Expr> cond = nullptr;
+      ref<Expr> Cond = nullptr;
       if (f->getIntrinsicID() == Intrinsic::smax)
-        cond = SgtExpr::create(op1, op2);
+        Cond = SgtExpr::create(Op1, Op2);
       else if (f->getIntrinsicID() == Intrinsic::smin)
-        cond = SltExpr::create(op1, op2);
+        Cond = SltExpr::create(Op1, Op2);
       else if (f->getIntrinsicID() == Intrinsic::umax)
-        cond = UgtExpr::create(op1, op2);
+        Cond = UgtExpr::create(Op1, Op2);
       else // (f->getIntrinsicID() == Intrinsic::umin)
-        cond = UltExpr::create(op1, op2);
+        Cond = UltExpr::create(Op1, Op2);
 
-      ref<Expr> result = SelectExpr::create(cond, op1, op2);
+      ref<Expr> result = SelectExpr::create(Cond, Op1, Op2);
       bindLocal(ki, state, result);
       break;
     }
-#endif
 
     case Intrinsic::fshr:
     case Intrinsic::fshl: {
@@ -2064,23 +2025,23 @@ Function *Executor::getTargetFunction(Value *calledVal) {
     return 0;
 
   while (true) {
-    if (GlobalValue *gv = dyn_cast<GlobalValue>(c)) {
+    if (auto *gv = dyn_cast<GlobalValue>(c)) {
       if (!Visited.insert(gv).second)
-        return 0;
+        return nullptr;
 
-      if (Function *f = dyn_cast<Function>(gv))
+      if (auto *f = dyn_cast<Function>(gv))
         return f;
-      else if (GlobalAlias *ga = dyn_cast<GlobalAlias>(gv))
+      else if (auto *ga = dyn_cast<GlobalAlias>(gv))
         c = ga->getAliasee();
       else
-        return 0;
-    } else if (llvm::ConstantExpr *ce = dyn_cast<llvm::ConstantExpr>(c)) {
+        return nullptr;
+    } else if (auto *ce = dyn_cast<llvm::ConstantExpr>(c)) {
       if (ce->getOpcode() == Instruction::BitCast)
         c = ce->getOperand(0);
       else
-        return 0;
+        return nullptr;
     } else
-      return 0;
+      return nullptr;
   }
 }
 
@@ -2114,42 +2075,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         state.pc = kcaller;
         ++state.pc;
       }
-
-#ifdef SUPPORT_KLEE_EH_CXX
-      if (ri->getFunction()->getName() == "_klee_eh_cxx_personality") {
-        assert(dyn_cast<ConstantExpr>(result) &&
-               "result from personality fn must be a concrete value");
-
-        auto *sui = dyn_cast_or_null<SearchPhaseUnwindingInformation>(
-            state.unwindingInformation.get());
-        assert(sui && "return from personality function outside of "
-                      "search phase unwinding");
-
-        // unbind the MO we used to pass the serialized landingpad
-        state.addressSpace.unbindObject(sui->serializedLandingpad);
-        sui->serializedLandingpad = nullptr;
-
-        if (result->isZero()) {
-          // this lpi doesn't handle the exception, continue the search
-          unwindToNextLandingpad(state);
-        } else {
-          // a clause (or a catch-all clause or filter clause) matches:
-          // remember the stack index and switch to clean-up phase
-          state.unwindingInformation =
-              std::make_unique<CleanupPhaseUnwindingInformation>(
-                  sui->exceptionObject, cast<ConstantExpr>(result),
-                  sui->unwindingProgress);
-          // this pointer is now invalidated
-          sui = nullptr;
-          // continue the unwinding process (which will now start with the
-          // cleanup phase)
-          unwindToNextLandingpad(state);
-        }
-
-        // never return normally from the personality fn
-        break;
-      }
-#endif // SUPPORT_KLEE_EH_CXX
 
       if (!isVoidReturn) {
         Type *t = caller->getType();
@@ -2254,7 +2179,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       // check feasibility
       bool result;
       bool success __attribute__((unused)) =
-          solver->mayBeTrue(state.constraints, e, result, state.queryMetaData);
+          Solver->mayBeTrue(state.constraints, e, result, state.queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
       if (result) {
         targets.push_back(d);
@@ -2263,7 +2188,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     }
     // check errorCase feasibility
     bool result;
-    bool success __attribute__((unused)) = solver->mayBeTrue(
+    bool success __attribute__((unused)) = Solver->mayBeTrue(
         state.constraints, errorCase, result, state.queryMetaData);
     assert(success && "FIXME: Unhandled solver failure");
     if (result) {
@@ -2347,7 +2272,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         // Check if control flow could take this case
         bool result;
         match = optimizer.optimizeExpr(match, false);
-        bool success = solver->mayBeTrue(state.constraints, match, result,
+        bool success = Solver->mayBeTrue(state.constraints, match, result,
                                          state.queryMetaData);
         assert(success && "FIXME: Unhandled solver failure");
         (void)success;
@@ -2376,7 +2301,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       // Check if control could take the default case
       defaultValue = optimizer.optimizeExpr(defaultValue, false);
       bool res;
-      bool success = solver->mayBeTrue(state.constraints, defaultValue, res,
+      bool success = Solver->mayBeTrue(state.constraints, defaultValue, res,
                                        state.queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
       (void)success;
@@ -2504,7 +2429,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         v = optimizer.optimizeExpr(v, true);
         ref<ConstantExpr> value;
         bool success =
-            solver->getValue(free->constraints, v, value, free->queryMetaData);
+            Solver->getValue(free->constraints, v, value, free->queryMetaData);
         assert(success && "FIXME: Unhandled solver failure");
         (void)success;
         StatePair res =
@@ -4000,176 +3925,6 @@ static std::set<std::string> okExternals(
     okExternalsList,
     okExternalsList + (sizeof(okExternalsList) / sizeof(okExternalsList[0])));
 
-void Executor::callExternalFunction(ExecutionState &state, KInstruction *target,
-                                    KCallable *callable,
-                                    std::vector<ref<Expr>> &arguments) {
-  // check if specialFunctionHandler wants it
-  if (const auto *func = dyn_cast<KFunction>(callable);
-      func &&
-      specialFunctionHandler->handle(state, func->function, target, arguments))
-    return;
-
-  if (ExternalCalls == ExternalCallPolicy::None &&
-      !okExternals.count(callable->getName().str())) {
-    klee_warning("Disallowed call to external function: %s\n",
-                 callable->getName().str().c_str());
-    terminateStateOnUserError(state, "external calls disallowed");
-    return;
-  }
-
-  // normal external function handling path
-  // allocate 512 bits for each argument (+return value) to support
-  // fp80's and SIMD vectors as parameters for external calls;
-  // we could iterate through all the arguments first and determine the exact
-  // size we need, but this is faster, and the memory usage isn't significant.
-  size_t allocatedBytes = Expr::MaxWidth / 8 * (arguments.size() + 1);
-  uint64_t *args = static_cast<uint64_t *>(alloca(allocatedBytes));
-  memset(args, 0, allocatedBytes);
-  unsigned wordIndex = 2;
-  for (auto &a : arguments) {
-    if (ExternalCalls == ExternalCallPolicy::All ||
-        ExternalCalls == ExternalCallPolicy::OverApprox) {
-      a = optimizer.optimizeExpr(a, true);
-      ref<ConstantExpr> cvalue = toConstant(
-          state, a, "external call", ExternalCalls == ExternalCallPolicy::All);
-      cvalue->toMemory(&args[wordIndex]);
-
-      // If the argument points to a valid and writable object, concretise it
-      // according to the selected policy
-      if (ObjectPair op;
-          cvalue->getWidth() == Context::get().getPointerWidth() &&
-          state.addressSpace.resolveOne(cvalue, op) && !op.second->readOnly) {
-        auto *os = state.addressSpace.getWriteable(op.first, op.second);
-        os->flushToConcreteStore(*this, state,
-                                 ExternalCalls == ExternalCallPolicy::All);
-      }
-
-      wordIndex += (cvalue->getWidth() + 63) / 64;
-    } else {
-      ref<Expr> arg = toUnique(state, a);
-      if (auto *ce = dyn_cast<ConstantExpr>(arg)) {
-        // fp80 must be aligned to 16 according to the System V AMD 64 ABI
-        if (ce->getWidth() == Expr::Fl80 && wordIndex & 0x01)
-          wordIndex++;
-
-        // XXX kick toMemory functions from here
-        ce->toMemory(&args[wordIndex]);
-        wordIndex += (ce->getWidth() + 63) / 64;
-      } else {
-        terminateStateOnExecError(state,
-                                  "external call with symbolic argument: " +
-                                      callable->getName());
-        return;
-      }
-    }
-  }
-
-  // Prepare external memory for invoking the function
-  static std::size_t residentPages = 0;
-  double avgNeededPages = 0;
-  if (MemoryManager::isDeterministic) {
-    auto const minflt = [] {
-      struct rusage ru = {};
-      [[maybe_unused]] int ret = getrusage(RUSAGE_SELF, &ru);
-      assert(!ret && "getrusage failed");
-      assert(ru.ru_minflt >= 0);
-      return ru.ru_minflt;
-    };
-
-    auto tmp = minflt();
-    std::size_t neededPages = state.addressSpace.copyOutConcretes();
-    auto newPages = minflt() - tmp;
-    assert(newPages >= 0);
-    residentPages += newPages;
-    assert(residentPages >= neededPages &&
-           "allocator too full, assumption that each object occupies its own "
-           "page is no longer true");
-
-    // average of pages needed for an external function call
-    static double avgNeededPages_ = residentPages;
-    // exponential moving average with alpha = 1/3
-    avgNeededPages_ = (3.0 * avgNeededPages_ + neededPages) / 4.0;
-    avgNeededPages = avgNeededPages_;
-  } else {
-    state.addressSpace.copyOutConcretes();
-  }
-
-#ifndef WINDOWS
-  // Update external errno state with local state value
-  int *errno_addr = getErrnoLocation(state);
-  ObjectPair result;
-  bool resolved = state.addressSpace.resolveOne(
-      ConstantExpr::create((uint64_t)errno_addr, Expr::Int64), result);
-  if (!resolved)
-    klee_error("Could not resolve memory object for errno");
-  ref<Expr> errValueExpr = result.second->read(0, sizeof(*errno_addr) * 8);
-  ConstantExpr *errnoValue = dyn_cast<ConstantExpr>(errValueExpr);
-  if (!errnoValue) {
-    terminateStateOnExecError(state,
-                              "external call with errno value symbolic: " +
-                                  callable->getName());
-    return;
-  }
-
-  ExtDispatcher->setLastErrno(
-      errnoValue->getZExtValue(sizeof(*errno_addr) * 8));
-#endif
-
-  if (ExternalCallWarnings != ExtCallWarnings::None) {
-    std::string TmpStr;
-    llvm::raw_string_ostream os(TmpStr);
-    os << "calling external: " << callable->getName().str() << "(";
-    for (unsigned i = 0; i < arguments.size(); i++) {
-      os << arguments[i];
-      if (i != arguments.size() - 1)
-        os << ", ";
-    }
-    os << ") at " << state.pc->getSourceLocation();
-
-    if (ExternalCallWarnings == ExtCallWarnings::All)
-      klee_warning("%s", os.str().c_str());
-    else
-      klee_warning_once(callable->getValue(), "%s", os.str().c_str());
-  }
-
-  bool success = ExtDispatcher->executeCall(callable, target->inst, args);
-  if (!success) {
-    terminateStateOnExecError(state,
-                              "failed external call: " + callable->getName(),
-                              StateTerminationType::External);
-    return;
-  }
-
-  if (!state.addressSpace.copyInConcretes(ExternalCalls ==
-                                          ExternalCallPolicy::All)) {
-    terminateStateOnExecError(state, "external modified read-only object",
-                              StateTerminationType::External);
-    return;
-  }
-
-  if (MemoryManager::isDeterministic && residentPages > ExternalPageThreshold &&
-      residentPages > 2 * avgNeededPages) {
-    if (memory->markMappingsAsUnneeded()) {
-      residentPages = 0;
-    }
-  }
-
-#ifndef WINDOWS
-  // Update errno memory object with the errno value from the call
-  int error = externalDispatcher->getLastErrno();
-  state.addressSpace.copyInConcrete(result.first, result.second,
-                                    (uint64_t)&error,
-                                    ExternalCalls == ExternalCallPolicy::All);
-#endif
-
-  Type *resultType = target->inst->getType();
-  if (resultType != Type::getVoidTy(kmodule->module->getContext())) {
-    ref<Expr> e =
-        ConstantExpr::fromMemory((void *)args, getWidthForLLVMType(resultType));
-    bindLocal(target, state, e);
-  }
-}
-
 /***/
 
 ref<Expr> Executor::replaceReadWithSymbolic(ExecutionState &state,
@@ -4226,7 +3981,7 @@ void Executor::executeAlloc(ExecutionState &state, ref<Expr> size, bool isLocal,
       allocationAlignment = getAllocationAlignment(allocSite);
     }
     MemoryObject *mo =
-        memory->allocate(CE->getZExtValue(), isLocal, /*isGlobal=*/false,
+        Memory->allocate(CE->getZExtValue(), isLocal, /*isGlobal=*/false,
                          &state, allocSite, allocationAlignment);
     if (!mo) {
       bindLocal(target, state,
@@ -4266,7 +4021,7 @@ void Executor::executeAlloc(ExecutionState &state, ref<Expr> size, bool isLocal,
     // Check if in seed mode, then try to replicate size from a seed
     ref<ConstantExpr> example = getValueFromSeeds(state, size);
     if (!example) {
-      bool success = solver->getValue(state.constraints, size, example,
+      bool success = Solver->getValue(state.constraints, size, example,
                                       state.queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
       (void)success;
@@ -4277,7 +4032,7 @@ void Executor::executeAlloc(ExecutionState &state, ref<Expr> size, bool isLocal,
         ref<ConstantExpr> tmp = example->LShr(ConstantExpr::alloc(1, W));
         bool res;
         [[maybe_unused]] bool success =
-            solver->mayBeTrue(state.constraints, EqExpr::create(tmp, size), res,
+            Solver->mayBeTrue(state.constraints, EqExpr::create(tmp, size), res,
                               state.queryMetaData);
         assert(success && "FIXME: Unhandled solver failure");
         if (!res)
@@ -4292,12 +4047,12 @@ void Executor::executeAlloc(ExecutionState &state, ref<Expr> size, bool isLocal,
     if (fixedSize.second) {
       // Check for exactly two values
       ref<ConstantExpr> tmp;
-      bool success = solver->getValue(fixedSize.second->constraints, size, tmp,
+      bool success = Solver->getValue(fixedSize.second->constraints, size, tmp,
                                       fixedSize.second->queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
       (void)success;
       bool res;
-      success = solver->mustBeTrue(fixedSize.second->constraints,
+      success = Solver->mustBeTrue(fixedSize.second->constraints,
                                    EqExpr::create(tmp, size), res,
                                    fixedSize.second->queryMetaData);
       assert(success && "FIXME: Unhandled solver failure");
@@ -4379,7 +4134,7 @@ void Executor::resolveExact(ExecutionState &state, ref<Expr> p,
   p = optimizer.optimizeExpr(p, true);
   // XXX we may want to be capping this?
   ResolutionList rl;
-  state.addressSpace.resolve(state, solver.get(), p, rl);
+  state.addressSpace.resolve(state, Solver.get(), p, rl);
 
   ExecutionState *unbound = &state;
   for (ResolutionList::iterator it = rl.begin(), ie = rl.end(); it != ie;
@@ -4998,12 +4753,7 @@ void Executor::prepareForEarlyExit() {
 
 /// Returns the errno location in memory
 int *Executor::getErrnoLocation(const ExecutionState &state) const {
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
-  /* From /usr/include/errno.h: it [errno] is a per-thread variable. */
   return __errno_location();
-#else
-  return __error();
-#endif
 }
 
 void Executor::dumpExecutionTree() {

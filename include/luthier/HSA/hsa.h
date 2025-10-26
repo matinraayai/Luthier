@@ -70,9 +70,10 @@ getAllExecutables(const ExtensionApiTableType &LoaderApi) {
     }
     return HSA_STATUS_SUCCESS;
   };
-  return LUTHIER_HSA_CALL_ERROR_CHECK(
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
       LoaderApi.hsa_ven_amd_loader_iterate_executables(Iterator, &Out),
-      "Failed to iterate over HSA executables");
+      "Failed to iterate over HSA executables"));
+  return Out;
 }
 
 /// Queries the host-accessible address of the given \p DeviceAddress \n
@@ -85,8 +86,8 @@ getAllExecutables(const ExtensionApiTableType &LoaderApi) {
 /// \sa hsa_ven_amd_loader_query_host_address
 template <typename T,
           typename ExtensionApiTableType = hsa_ven_amd_loader_1_00_pfn_t>
-llvm::Expected<T *> queryHostAddress(const ExtensionApiTableType &LoaderApi,
-                                     T *DeviceAddress) {
+llvm::Expected<const T *>
+queryHostAddress(const ExtensionApiTableType &LoaderApi, T *DeviceAddress) {
   const T *HostAddress;
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
       LoaderApi.hsa_ven_amd_loader_query_host_address(
@@ -139,8 +140,9 @@ convertToHostEquivalent(const ExtensionApiTableType &LoaderApi,
 /// if the address is not part of an executable or if an HSA issue is
 /// encountered
 template <typename ExtensionApiTableType = hsa_ven_amd_loader_1_01_pfn_t>
-[[nodiscard]] llvm::Expected<std::tuple<
-    hsa_executable_t, hsa_loaded_code_object_t, hsa_executable_symbol_t>>
+[[nodiscard]] llvm::Expected<
+    std::tuple<hsa_executable_t, hsa_agent_t, hsa_loaded_code_object_t,
+               hsa_executable_symbol_t>>
 getExecutableDefinition(const ApiTableContainer<::CoreApiTable> &CoreApi,
                         const ExtensionApiTableType &LoaderApi,
                         uint64_t Address) {
@@ -179,7 +181,8 @@ getExecutableDefinition(const ApiTableContainer<::CoreApiTable> &CoreApi,
             });
     LUTHIER_RETURN_ON_ERROR(SymbolIfPresentOrErr.takeError());
     if (SymbolIfPresentOrErr->has_value()) {
-      return std::make_tuple(Executable, LCO, **SymbolIfPresentOrErr);
+      return std::make_tuple(Executable, *AgentOrErr, LCO,
+                             **SymbolIfPresentOrErr);
     }
   }
   return llvm::make_error<hsa::HsaError>(llvm::formatv(

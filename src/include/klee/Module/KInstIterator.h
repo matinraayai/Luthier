@@ -17,7 +17,7 @@ class KInstIterator {
   KInstruction **it;
 
 public:
-  KInstIterator() : it(0) {}
+  KInstIterator() : it(nullptr) {}
   KInstIterator(KInstruction **_it) : it(_it) {}
 
   bool operator==(const KInstIterator &b) const { return it == b.it; }
@@ -28,7 +28,7 @@ public:
     return *this;
   }
 
-  operator KInstruction *() const { return it ? *it : 0; }
+  operator KInstruction *() const { return it ? *it : nullptr; }
   operator bool() const { return it != 0; }
 
   KInstruction *operator->() const { return *it; }

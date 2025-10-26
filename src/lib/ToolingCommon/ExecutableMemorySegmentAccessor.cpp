@@ -28,34 +28,46 @@ llvm::AnalysisKey ExecutableMemorySegmentAccessorAnalysis::Key;
 llvm::Expected<ExecutableMemorySegmentAccessor::SegmentDescriptor>
 HsaRuntimeExecutableMemorySegmentAccessor::getSegment(
     uint64_t DeviceAddr) const {
-  SegmentDescriptor Out;
 
-  /// Query the pointer's device allocation from HSA
-  hsa_amd_pointer_info_t PtrInfo{sizeof(hsa_amd_pointer_info_t)};
-
+  hsa_executable_t Exec;
+  /// Check which executable this address belongs to
   LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      AmdExtApi.callFunction<hsa_amd_pointer_info>(
-          reinterpret_cast<void *>(DeviceAddr), &PtrInfo, nullptr, nullptr,
-          nullptr),
-      llvm::formatv("Failed to obtain the pointer info for address {0:x} from "
-                    "the HSA runtime",
-                    DeviceAddr)));
-  Out.SegmentOnDevice = {static_cast<uint8_t *>(PtrInfo.agentBaseAddress),
-                         PtrInfo.sizeInBytes};
-  /// If there is a host-accessible pointer for this allocation return that
-  /// instead; otherwise, query the loader API for the host address of the
-  /// agent base address of the allocation
-  if (PtrInfo.hostBaseAddress) {
-    Out.SegmentOnHost = {static_cast<uint8_t *>(PtrInfo.hostBaseAddress),
-                         PtrInfo.sizeInBytes};
-  } else {
-    llvm::Expected<const void *> HostCopyBaseAddrOrErr =
-        hsa::queryHostAddress(VenLoaderTable, PtrInfo.agentBaseAddress);
-    LUTHIER_RETURN_ON_ERROR(HostCopyBaseAddrOrErr.takeError());
-    Out.SegmentOnHost = {static_cast<const uint8_t *>(*HostCopyBaseAddrOrErr),
-                         PtrInfo.sizeInBytes};
+      VenLoaderTable.hsa_ven_amd_loader_query_executable(
+          reinterpret_cast<const void *>(DeviceAddr), &Exec),
+      llvm::formatv(
+          "Failed to get the executable associated with address {0:x}.",
+          DeviceAddr)));
+
+  /// Find the LCO of the address
+  llvm::SmallVector<hsa_loaded_code_object_t, 1> LCOs;
+
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::executableGetLoadedCodeObjects(VenLoaderTable, Exec, LCOs));
+
+  for (hsa_loaded_code_object_t LCO : LCOs) {
+    llvm::ArrayRef<uint8_t> LoadedMemory;
+    LUTHIER_RETURN_ON_ERROR(
+        hsa::loadedCodeObjectGetLoadedMemory(VenLoaderTable, LCO)
+            .moveInto(LoadedMemory));
+    const auto LoadedStartAddr =
+        reinterpret_cast<uint64_t>(LoadedMemory.data());
+    const uint64_t LoadedEndAddr = LoadedStartAddr + LoadedMemory.size();
+    if (LoadedStartAddr <= DeviceAddr && DeviceAddr < LoadedEndAddr) {
+
+      llvm::Expected<const uint8_t *> HostCopyBaseAddrOrErr =
+          hsa::queryHostAddress(VenLoaderTable, LoadedMemory.data());
+      LUTHIER_RETURN_ON_ERROR(HostCopyBaseAddrOrErr.takeError());
+      llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
+          COC.getAssociatedObjectFile(LCO);
+      LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
+      return SegmentDescriptor{&*ObjFileOrErr,
+                               {*HostCopyBaseAddrOrErr, LoadedMemory.size()},
+                               LoadedMemory};
+    }
   }
-  return Out;
+  return llvm::make_error<hsa::HsaError>(llvm::formatv(
+      "Failed to obtain the segment associated with device address {0:x}",
+      DeviceAddr));
 }
 
 } // namespace luthier

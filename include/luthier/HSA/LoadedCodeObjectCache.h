@@ -66,6 +66,10 @@ private:
   /// Mapping between every loaded code object and their cached entries
   mutable llvm::DenseMap<hsa_loaded_code_object_t, LCOCacheEntry> LCOCache;
 
+  /// Mapping between the base load address of an LCO and the LCO itself
+  mutable llvm::DenseMap<const uint8_t *, hsa_loaded_code_object_t>
+      LoadedBaseToLCOMap;
+
   static decltype(hsa_executable_load_agent_code_object)
       *UnderlyingHsaExecutableLoadAgentCodeObjectFn;
 

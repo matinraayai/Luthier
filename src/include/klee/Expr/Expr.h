@@ -97,7 +97,7 @@ Todo: Shouldn't bool \c Xor just be written as not equal?
 class Expr {
 public:
   static unsigned count;
-  static const unsigned MAGIC_HASH_CONSTANT = 39;
+  static constexpr unsigned MagicHashConstant = 39;
 
   /// The type of an expression is simply its width, in bits.
   typedef unsigned Width;
@@ -105,17 +105,17 @@ public:
   // NOTE: The prefix "Int" in no way implies the integer type of expression.
   // For example, Int64 can indicate i64, double or <2 * i32> in different
   // cases.
-  static const Width InvalidWidth = 0;
-  static const Width Bool = 1;
-  static const Width Int8 = 8;
-  static const Width Int16 = 16;
-  static const Width Int32 = 32;
-  static const Width Int64 = 64;
-  static const Width Fl80 = 80;
-  static const Width Int128 = 128;
-  static const Width Int256 = 256;
-  static const Width Int512 = 512;
-  static const Width MaxWidth = Int512;
+  static constexpr Width InvalidWidth = 0;
+  static constexpr Width Bool = 1;
+  static constexpr Width Int8 = 8;
+  static constexpr Width Int16 = 16;
+  static constexpr Width Int32 = 32;
+  static constexpr Width Int64 = 64;
+  static constexpr Width Fl80 = 80;
+  static constexpr Width Int128 = 128;
+  static constexpr Width Int256 = 256;
+  static constexpr Width Int512 = 512;
+  static constexpr Width MaxWidth = Int512;
 
   enum Kind {
     InvalidKind = -1,

@@ -17,26 +17,26 @@
 /// \file
 /// This file implements Luthier's Code Lifter.
 //===----------------------------------------------------------------------===//
-#include "luthier/Tooling/CodeLifter.h"
+#include "tooling_common/CodeLifter.hpp"
+
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
-#include "luthier/HSA/Agent.h"
-#include "luthier/HSA/Executable.h"
-#include "luthier/HSA/ISA.h"
-#include "luthier/HSA/Instr.h"
-#include "luthier/HSA/KernelDescriptor.h"
-#include "luthier/HSA/LoadedCodeObject.h"
-#include "luthier/HSA/hsa.h"
-#include "luthier/LLVM/streams.h"
-#include "luthier/Tooling/LRCallgraph.h"
-#include "luthier/Tooling/TargetManager.h"
-#include "luthier/HSA/LoadedCodeObjectExternSymbol.h"
-#include "luthier/HSA/LoadedCodeObjectVariable.h"
+#include "luthier/hsa/Agent.h"
+#include "luthier/hsa/Executable.h"
+#include "luthier/hsa/ISA.h"
+#include "luthier/hsa/Instr.h"
+#include "luthier/hsa/KernelDescriptor.h"
+#include "luthier/hsa/LoadedCodeObject.h"
+#include "luthier/hsa/hsa.h"
+#include "luthier/llvm/streams.h"
+#include "luthier/tooling/LRCallgraph.h"
 #include "luthier/types.h"
+#include "tooling_common/TargetManager.hpp"
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
+#include <hsa/amd_hsa_kernel_code.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/BinaryFormat/MsgPackDocument.h>
 #include <llvm/CodeGen/AsmPrinter.h>
@@ -63,6 +63,9 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
+#include <luthier/hsa/LoadedCodeObjectExternSymbol.h>
+#include <luthier/hsa/LoadedCodeObjectVariable.h>
+#include <luthier/tooling/ExecutableMemorySegmentAccessor.h>
 #include <memory>
 
 #undef DEBUG_TYPE
@@ -275,22 +278,21 @@ CodeLifter::resolveRelocation(hsa_loaded_code_object_t LCO,
 
 llvm::Error CodeLifter::initLR(LiftedRepresentation &LR,
                                const hsa::LoadedCodeObjectKernel &Kernel) {
+  hsa::ApiTableContainer<::CoreApiTable> CoreApiTable =
+      CoreApiSnapshot.getTable();
+  const auto &LoaderTable = LoaderApiSnapshot.getTable();
   // Create a thread-safe LLVMContext
   LR.Context =
       llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>());
   // Get the LCO of the kernel
   hsa_loaded_code_object_t LCO = Kernel.getLoadedCodeObject();
   LR.LCO = LCO;
-  // Create a new Target Machine for the LCO
-  llvm::Expected<object::AMDGCNObjectFile &> ObjFileOrErr =
-      hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
-  LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
+  /// Get the most specific ISA name of the GPU of the kernel
+  llvm::Expected<hsa_agent_t> KernelAgentOrErr = Kernel.getAgent(LoaderTable);
+  LUTHIER_RETURN_ON_ERROR(KernelAgentOrErr.takeError());
 
-  auto LLVMIsa = object::getObjectFileTargetTuple(*ObjFileOrErr);
-  LUTHIER_RETURN_ON_ERROR(LLVMIsa.takeError());
+  /// Create a new target machine
 
-  auto ISA = hsa::isaFromLLVM(CoreApiSnapshot.getTable(), std::get<0>(*LLVMIsa),
-                              std::get<1>(*LLVMIsa), std::get<2>(*LLVMIsa));
   LUTHIER_RETURN_ON_ERROR(ISA.takeError());
   LUTHIER_RETURN_ON_ERROR(
       TargetManager::instance().createTargetMachine(*ISA).moveInto(LR.TM));
@@ -1064,12 +1066,133 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
   return llvm::Error::success();
 }
 
-llvm::Expected<const LiftedRepresentation &>
-luthier::CodeLifter::lift(const hsa::LoadedCodeObjectKernel &KernelSymbol) {
+static llvm::Expected<std::unique_ptr<llvm::GCNTargetMachine>>
+createTargetMachine(const llvm::Triple &TT, llvm::StringRef GpuName,
+                    llvm::SubtargetFeatures Features,
+                    const llvm::amdhsa::kernel_descriptor_t &KD,
+                    const llvm::TargetOptions &TargetOptions) {
+  /// Get the Target
+  std::string ErrorMsg;
+  const llvm::Target *LLVMTarget =
+      llvm::TargetRegistry::lookupTarget(TT, ErrorMsg);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      LLVMTarget,
+      llvm::formatv(
+          "Failed to get target {0} from LLVM. Error according to LLVM: {1}.",
+          TT.normalize(), ErrorMsg)));
+
+  /// Get the GFX version of the GPU
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      GpuName.starts_with("gfx"),
+      llvm::formatv("The GPU name {0} does not start with 'gfx'", GpuName)));
+
+  llvm::StringRef GfxVersionStr = GpuName.substr(3);
+  uint32_t GfxVer;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      llvm::to_integer(GfxVersionStr, GfxVer, 16),
+      llvm::formatv("Failed to convert the GFX version number {0} to integer",
+                    GfxVersionStr)));
+
+  /// Handle trap handler for non-HSA OSes
+  if (TT.getOS() != llvm::Triple::AMDHSA && GfxVer <= 11) {
+    Features.AddFeature("trap-handler", true);
+  }
+
+  /// Handle the wavefront execution mode/cumode from the kernel code for gfx
+  /// 10+
+  if (GfxVer >= 0x100) {
+    if (AMDHSA_BITS_GET(
+            KD.kernel_code_properties,
+            llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32)) {
+      Features.AddFeature("wavefrontsize32", true);
+    } else {
+      Features.AddFeature("wavefrontsize64", true);
+    }
+    if (AMDHSA_BITS_GET(KD.compute_pgm_rsrc1,
+                        llvm::amdhsa::COMPUTE_PGM_RSRC1_GFX10_PLUS_WGP_MODE)) {
+      Features.AddFeature("cumode", true);
+    };
+  };
+
+  return std::unique_ptr<llvm::GCNTargetMachine>(
+      reinterpret_cast<llvm::GCNTargetMachine *>(
+          LLVMTarget->createTargetMachine(TT, GpuName, Features.getString(),
+                                          TargetOptions, llvm::Reloc::PIC_)));
+}
+
+llvm::Expected<std::unique_ptr<llvm::GCNTargetMachine>>
+CodeLifter::createTargetMachine(
+    const llvm::amdhsa::kernel_descriptor_t &KD,
+    const llvm::TargetOptions &TargetOptions) const {
+  const auto CoreApiTable = CoreApiSnapshot.getTable();
+  const auto &LoaderApiTable = LoaderApiSnapshot.getTable();
+
+  /// Obtain the agent associated with the kernel descriptor
+  auto ExecDefOrErr = hsa::getExecutableDefinition(
+      CoreApiTable, LoaderApiTable, reinterpret_cast<uint64_t>(&KD));
+  LUTHIER_RETURN_ON_ERROR(ExecDefOrErr.takeError());
+  auto Agent = std::get<hsa_agent_t>(*ExecDefOrErr);
+
+  /// Obtain the non-generic ISA reported by the HSA runtime for the agent
+  std::optional<hsa_isa_t> GpuISA;
+
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::agentFindFirstISA(CoreApiTable, Agent,
+                             [&](hsa_isa_t ISA) -> llvm::Expected<bool> {
+                               llvm::Expected<std::string> GpuNameOrErr =
+                                   hsa::isaGetGPUName(CoreApiTable, ISA);
+                               LUTHIER_RETURN_ON_ERROR(
+                                   GpuNameOrErr.takeError());
+                               return !GpuNameOrErr->contains("generic");
+                             })
+          .moveInto(GpuISA));
+
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      GpuISA.has_value(),
+      llvm::formatv("Failed to obtain a non-generic ISA for agent {0:x}",
+                    Agent.handle)));
+
+  /// Convert the HSA ISA into LLVM ISA
+  llvm::Expected<llvm::Triple> TTOrErr =
+      hsa::isaGetTargetTriple(CoreApiTable, *GpuISA);
+  LUTHIER_RETURN_ON_ERROR(TTOrErr.takeError());
+
+  llvm::Expected<std::string> GpuNameOrErr =
+      hsa::isaGetGPUName(CoreApiTable, *GpuISA);
+  LUTHIER_RETURN_ON_ERROR(GpuNameOrErr.takeError());
+
+  auto FeaturesOrErr = hsa::isaGetSubTargetFeatures(CoreApiTable, *GpuISA);
+  LUTHIER_RETURN_ON_ERROR(FeaturesOrErr.takeError());
+
+  /// Get the host equivalent address of the KD
+  llvm::Expected<const llvm::amdhsa::kernel_descriptor_t *> KDOnHostOrErr =
+      hsa::queryHostAddress(LoaderApiTable, &KD);
+  LUTHIER_RETURN_ON_ERROR(KDOnHostOrErr.takeError());
+
+  return luthier::createTargetMachine(*TTOrErr, *GpuNameOrErr, *FeaturesOrErr,
+                                      **KDOnHostOrErr, TargetOptions);
+}
+
+llvm::Error CodeLifter::addLiftingPasses(
+    const llvm::amdhsa::kernel_descriptor_t &KernelDescriptor,
+    llvm::ModulePassManager &PM, llvm::ModuleAnalysisManager &MAM,
+    llvm::Module &Module, llvm::GCNTargetMachine &TM,
+    llvm::MachineModuleInfo &MMI) {}
+
+llvm::Expected<const LiftedRepresentation &> luthier::CodeLifter::lift(
+    const llvm::amdhsa::kernel_descriptor_t &KernelDescriptor) {
+
   std::lock_guard Lock(CacheMutex);
-  if (!LiftedKernelSymbols.contains(KernelSymbol)) {
+
+  if (!LiftedKernelSymbols.contains(&KernelDescriptor)) {
     // Lift the kernel if not already lifted
     llvm::TimeTraceScope Scope("Lifting Kernel");
+
+    std::unique_ptr<HsaRuntimeExecutableMemorySegmentAccessor>
+    DeviceSegmentAccessor();
+
+    // Obtain the kernel's host copy
+
     // Start a lifted representation
     std::unique_ptr<LiftedRepresentation> LR(new LiftedRepresentation());
     // Initialize the LR

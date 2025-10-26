@@ -9,16 +9,17 @@
 
 #include "klee/Statistics/Statistics.h"
 
+#include <utility>
 #include <vector>
 
 using namespace luthier::klee;
 
 StatisticManager::StatisticManager()
-    : enabled(true), globalStats(0), indexedStats(0), contextStats(0),
-      index(0) {}
+    : Enabled(true), GlobalStats(nullptr), indexedStats(nullptr),
+      contextStats(nullptr), index(0) {}
 
 StatisticManager::~StatisticManager() {
-  delete[] globalStats;
+  delete[] GlobalStats;
   delete[] indexedStats;
 }
 
@@ -29,11 +30,11 @@ void StatisticManager::useIndexedStats(unsigned totalIndices) {
 }
 
 void StatisticManager::registerStatistic(Statistic &s) {
-  delete[] globalStats;
-  s.id = stats.size();
-  stats.push_back(&s);
-  globalStats = new uint64_t[stats.size()];
-  memset(globalStats, 0, sizeof(*globalStats) * stats.size());
+  delete[] GlobalStats;
+  s.Id = Stats.size();
+  Stats.push_back(&s);
+  GlobalStats = new uint64_t[Stats.size()];
+  memset(GlobalStats, 0, sizeof(*GlobalStats) * Stats.size());
 }
 
 int StatisticManager::getStatisticID(const std::string &name) const {
@@ -60,16 +61,15 @@ static StatisticManager &getStatisticManager() {
 
 /* *** */
 
-Statistic::Statistic(const std::string &name, const std::string &shortName)
-    : name{name}, shortName{shortName} {
-  getStatisticManager().registerStatistic(*this);
+Statistic::Statistic(StatisticManager &Manager, std::string Name,
+                     std::string ShortName)
+    : Name{std::move(Name)}, ShortName{std::move(ShortName)}, Manager(Manager) {
+  Manager.registerStatistic(*this);
 }
 
 Statistic &Statistic::operator+=(std::uint64_t addend) {
-  theStatisticManager->incrementStatistic(*this, addend);
+  Manager.incrementStatistic(*this, addend);
   return *this;
 }
 
-std::uint64_t Statistic::getValue() const {
-  return theStatisticManager->getValue(*this);
-}
+std::uint64_t Statistic::getValue() const { return Manager.getValue(*this); }

@@ -22,39 +22,36 @@
 #define LUTHIER_TOOLING_ENTRY_POINT_ANALYSIS_H
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/MC/MCInst.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
-#include <map>
 
 namespace luthier {
 
-/// \brief A \c llvm::MachineFunction analysis which provides the instruction
-/// trace group discovered from the entry point corresponding to the machine
-/// function in the target module
+/// \brief A target \c llvm::Module analysis which provides the
+/// \c llvm::MachineFunction corresponding to each entry point discovered
+/// during the lifting operation
 class EntryPointsAnalysis
     : public llvm::AnalysisInfoMixin<EntryPointsAnalysis> {
-  friend llvm::AnalysisInfoMixin<EntryPointsAnalysis>;
+  friend AnalysisInfoMixin<EntryPointsAnalysis>;
 
   static llvm::AnalysisKey Key;
 
-  /// Entry points in the target module are either kernels (kernel descriptor)
-  /// or device function (address on the device)
+public:
+  /// Entry points in the target module are either kernels (address of kernel
+  /// descriptor on the device) or device function (address on the device)
   using EntryPointType =
       std::variant<const llvm::amdhsa::kernel_descriptor_t *, uint64_t>;
 
-  using EntryPointMap =
-      llvm::SmallDenseMap<const llvm::MachineFunction *, EntryPointType>;
-
-  EntryPointMap MFToEntryPointsMap;
-
+private:
 public:
   class Result {
     friend EntryPointsAnalysis;
 
-    EntryPointMap &MFToEntryPointsMap;
+    using EntryPointMap =
+        llvm::SmallDenseMap<const llvm::MachineFunction *, EntryPointType>;
 
-    explicit Result(EntryPointMap &MFToEntryPointsMap)
-        : MFToEntryPointsMap(MFToEntryPointsMap) {};
+    EntryPointMap MFToEntryPointsMap;
+
+    Result() = default;
 
   public:
     bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
@@ -86,7 +83,7 @@ public:
       return MFToEntryPointsMap.contains(&MF);
     }
 
-    EntryPointMap::iterator find(const llvm::MachineFunction &MF) const {
+    EntryPointMap::const_iterator find(const llvm::MachineFunction &MF) const {
       return MFToEntryPointsMap.find(&MF);
     }
 
@@ -101,9 +98,8 @@ public:
 
   EntryPointsAnalysis() = default;
 
-  Result run(llvm::MachineFunction &,
-             llvm::MachineFunctionAnalysisManager &) {
-    return Result{MFToEntryPointsMap};
+  Result run(llvm::MachineFunction &, llvm::MachineFunctionAnalysisManager &) {
+    return Result{};
   }
 };
 

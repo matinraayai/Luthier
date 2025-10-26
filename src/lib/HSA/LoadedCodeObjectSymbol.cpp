@@ -90,7 +90,9 @@ luthier::hsa::LoadedCodeObjectSymbol::fromLoadedAddress(
   return llvm::make_error<hsa::HsaError>(
       llvm::formatv("Failed to find the Loaded Code Object symbol "
                     "associated with loaded address {0:x}.",
-                    LoadedAddress));
+                    LoadedAddress),
+      std::nullopt, std::source_location::current(),
+      HsaError::StackTraceInitializer());
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>

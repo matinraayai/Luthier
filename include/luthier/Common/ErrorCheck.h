@@ -47,4 +47,9 @@
     }                                                                          \
   } while (false)
 
+#define LUTHIER_MAKE_ERROR(ErrorType, ErrorMsg)                                \
+  llvm::make_error<ErrorType>(                                                 \
+      ErrorMsg, std::source_location::current(),                               \
+      luthier::GenericLuthierError::StackTraceInitializer())
+
 #endif

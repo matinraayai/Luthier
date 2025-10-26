@@ -29,23 +29,29 @@ class Statistic final {
   friend class StatisticRecord;
 
 private:
-  std::uint32_t id;
-  const std::string name;
-  const std::string shortName;
+  std::uint32_t Id;
+
+  const std::string Name;
+
+  const std::string ShortName;
+
+  StatisticManager &Manager;
+  std::size_t id;
 
 public:
-  Statistic(const std::string &name, const std::string &shortName);
+  Statistic(StatisticManager &Manager, std::string Name, std::string ShortName);
+
   ~Statistic() = default;
 
   /// getID - Get the unique statistic ID.
-  std::uint32_t getID() const { return id; }
+  std::uint32_t getID() const { return Id; }
 
   /// getName - Get the statistic name.
-  const std::string &getName() const { return name; }
+  const std::string &getName() const { return Name; }
 
   /// getShortName - Get the "short" statistic name, used in
   /// callgrind output for example.
-  const std::string &getShortName() const { return shortName; }
+  const std::string &getShortName() const { return ShortName; }
 
   /// getValue - Get the current primary statistic value.
   std::uint64_t getValue() const;

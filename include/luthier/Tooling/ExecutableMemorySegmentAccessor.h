@@ -22,13 +22,12 @@
 #include "luthier/hsa/ApiTable.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/Support/CommandLine.h>
+#include <luthier/hsa/LoadedCodeObjectCache.h>
 
 namespace luthier {
 
-/// \brief Interface class used to provide host-accessible copies of the
-/// executable memory segments loaded on a target device to other
-/// instrumentation passes
+/// \brief Interface class used to provide information regarding executable
+/// memory segments loaded on a target device to other instrumentation passes
 /// \details An instance of this class is provided to other instrumentation
 /// passes via the \c ExecutableMemorySegmentAccessorAnalysis in the target
 /// module analysis manager. This class acts as a level of abstraction
@@ -40,11 +39,13 @@ namespace luthier {
 class ExecutableMemorySegmentAccessor {
 public:
   typedef struct {
+    /// parsed host code object used to load the segment
+    const object::AMDGCNObjectFile *CodeObjectStorage{nullptr};
     /// Encapsulates the segment's copy on the host
-    llvm::ArrayRef<uint8_t> SegmentOnHost;
+    llvm::ArrayRef<uint8_t> SegmentOnHost{};
     /// Encapsulates the segment's location on device memory; Might not be
     /// host-accessible
-    llvm::ArrayRef<uint8_t> SegmentOnDevice;
+    llvm::ArrayRef<uint8_t> SegmentOnDevice{};
   } SegmentDescriptor;
 
   /// Expects the \c SegmentDescriptor associated with the \p DeviceAddr
@@ -59,7 +60,7 @@ public:
 class HsaRuntimeExecutableMemorySegmentAccessor
     : public ExecutableMemorySegmentAccessor {
 
-  const hsa::ApiTableContainer<::AmdExtTable> AmdExtApi;
+  const hsa::LoadedCodeObjectCache &COC;
 
   const hsa::ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType
       &VenLoaderTable;
@@ -69,10 +70,10 @@ public:
   getSegment(uint64_t DeviceAddr) const override;
 
   HsaRuntimeExecutableMemorySegmentAccessor(
-      hsa::ApiTableContainer<::AmdExtTable> AmdExtApi,
+      const hsa::LoadedCodeObjectCache &COC,
       const hsa::ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType
           &VenLoaderTable)
-      : AmdExtApi(std::move(AmdExtApi)), VenLoaderTable(VenLoaderTable) {};
+      : COC(COC), VenLoaderTable(VenLoaderTable) {};
 
   ~HsaRuntimeExecutableMemorySegmentAccessor() override = default;
 };
@@ -94,6 +95,7 @@ public:
 
     const ExecutableMemorySegmentAccessor &SegmentAccessor;
 
+  public:
     explicit Result(const ExecutableMemorySegmentAccessor &SegmentAccessor)
         : SegmentAccessor(SegmentAccessor) {};
 
@@ -103,7 +105,7 @@ public:
       return false;
     }
 
-    const ExecutableMemorySegmentAccessor &getAccessor() const {
+    [[nodiscard]] const ExecutableMemorySegmentAccessor &getAccessor() const {
       return SegmentAccessor;
     }
   };
