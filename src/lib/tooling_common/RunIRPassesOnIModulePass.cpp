@@ -25,6 +25,7 @@
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Support/TimeProfiler.h>
 
 #undef DEBUG_TYPE
@@ -52,10 +53,14 @@ RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
   // Get the instrumentation pass manager
   auto &IMPM = IModulePMRes.getPM();
 
+  llvm::PassInstrumentationCallbacks PIC;
+  llvm::StandardInstrumentations SI(IModule.getContext(), true);
+
   // Create a PM Builder for the IR pipeline
   llvm::PassBuilder PB(&TM);
   {
     llvm::TimeTraceScope Scope("Instrumentation Module IR Optimization");
+    SI.registerCallbacks(PIC, &IMAM);
     // Add the Intrinsic Lowering Info analysis pass
     IMAM.registerPass([&]() { return IntrinsicIRLoweringInfoMapAnalysis(); });
     // Add the Intrinsic processors Map analysis pass

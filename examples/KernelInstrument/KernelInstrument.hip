@@ -56,25 +56,42 @@ __attribute__((managed)) hsa_dim3_t GroupIDs{0, 0, 0};
 
 __attribute__((managed)) uint64_t PositionInGroup{0};
 
-__attribute__((device, noinline)) void myFunc(const uint32_t &MyInt) {
-  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
+// __attribute__((device, noinline)) void myFunc(const uint32_t &MyInt) {
+//   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
 
-  // Overwrite the exec mask with one so that only a single thread is active
-  luthier::writeExec(1);
-  // Increment the counter by 1
-  atomicAdd(&WaveID, MyInt);
-  // Restore the exec mask
-  luthier::writeExec(ExecMask);
+//   // Overwrite the exec mask with one so that only a single thread is active
+//   luthier::writeExec(1);
+//   // Increment the counter by 1
+//   atomicAdd(&WaveID, MyInt);
+//   // Restore the exec mask
+//   luthier::writeExec(ExecMask);
+// }
+
+LUTHIER_HOOK_ANNOTATE instrumentationHookUint32(const llvm::MCRegister Reg,
+                                                const uint32_t Val) {
+  luthier::writeReg(Reg, Val);
 }
 
-LUTHIER_HOOK_ANNOTATE instrumentationHook(long RegVal) {
-  uint32_t MyArray[20];
-  for (int i = 0; i < 20; i++) {
-    MyArray[i] = i;
-  }
-  for (int i = 0; i < 20; i++) {
-    myFunc(MyArray[i]);
-  }
+LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHookUint32);
+
+LUTHIER_HOOK_ANNOTATE instrumentationHookUint64(const llvm::MCRegister Reg,
+                                                const uint64_t Val) {
+  luthier::writeReg(Reg, Val);
+}
+
+LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHookUint64);
+
+LUTHIER_HOOK_ANNOTATE instrumentationHook(const llvm::MCRegister Reg,
+                                          const uint32_t Val) {
+  luthier::writeReg(Reg, Val);
+
+  // uint32_t MyArray[20];
+  // for (int i = 0; i < 20; i++) {
+  //   MyArray[i] = i;
+  // }
+  // for (int i = 0; i < 20; i++) {
+  //   myFunc(MyArray[i]);
+  // }
   //     writeReg<uint64_t>(llvm::AMDGPU::SGPR4_SGPR5, 5);
   //  if (RegVal > 5)
   //    PositionInGroup += RegVal;
@@ -149,8 +166,13 @@ atPacketDispatchCallback(const hsa_queue_t &Queue, uint64_t PacketIdx,
                                  ->getNextNode()
                                  ->getNextNode()
                                  ->getNextNode(),
-                            LUTHIER_GET_HOOK_HANDLE(instrumentationHook),
-                            {llvm::AMDGPU::SGPR4_SGPR5});
+                            LUTHIER_GET_HOOK_HANDLE(instrumentationHookBool),
+                            {llvm::ConstantInt::get(
+                                 llvm::Type::getInt32Ty(LR.getContext()),
+                                 llvm::AMDGPU::SCC),
+                                 llvm::ConstantInt::get(
+                                  llvm::Type::getInt32Ty(LR.getContext()),
+                                  1)});
                       });
                 },
                 "instrumented")) {

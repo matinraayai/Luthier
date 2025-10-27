@@ -85,6 +85,7 @@ get32BitSubRegsOfPhysReg(llvm::MCRegister Register,
     LLVM_DEBUG(llvm::dbgs()
                    << "Adding 1-bit register " << llvm::printReg(Register, &TRI)
                    << " to the sub regs.\n";);
+    SubRegs.push_back(Register);
   }
   // handle the reg size > 32 case by splitting the register into smaller 32-bit
   // chunks
