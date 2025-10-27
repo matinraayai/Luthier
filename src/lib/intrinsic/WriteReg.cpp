@@ -98,7 +98,7 @@ llvm::Error writeRegMIRProcessor(
   uint64_t DestRegSize = TRI->getRegSizeInBits(Dest, MRI);
   uint64_t InputRegSize = TRI->getRegSizeInBits(InputReg, MRI);
   // Check if both the input value and the destination reg have the same
-  // size
+  // size; SCC is a special case where we accept the input reg to be 32
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       InputRegSize == DestRegSize || (DestRegSize == 1 && InputRegSize == 32),
       "The input register and the destination register of "

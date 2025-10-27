@@ -23,7 +23,6 @@
 #include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
 #include <luthier/tooling/Context.h>
-#include <stdarg.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-kernel-instrument-tool"
@@ -67,13 +66,6 @@ __attribute__((managed)) uint64_t PositionInGroup{0};
 //   // Restore the exec mask
 //   luthier::writeExec(ExecMask);
 // }
-
-LUTHIER_HOOK_ANNOTATE instrumentationHookBool(const llvm::MCRegister Reg,
-                                              const uint32_t Val) {
-  luthier::writeReg(Reg, Val);
-}
-
-LUTHIER_EXPORT_HOOK_HANDLE(instrumentationHookBool);
 
 LUTHIER_HOOK_ANNOTATE instrumentationHookUint32(const llvm::MCRegister Reg,
                                                 const uint32_t Val) {
