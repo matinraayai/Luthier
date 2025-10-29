@@ -88,7 +88,7 @@ llvm::Error readRegMIRProcessor(
   auto &MRI = MF.getRegInfo();
   auto Src = IRLoweringInfo.getLoweringData<llvm::MCRegister>();
   auto SrcRegSize = TRI->getRegSizeInBits(Src, MRI);
-  uint64_t DestRegSize = TRI->getRegSizeInBits(Dest, MRI);
+  uint64_t DestRegSize = TRI->getRegSizeInBits(Output, MRI);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       SrcRegSize == DestRegSize || (DestRegSize == 32 && SrcRegSize == 1),
       "The input register and the destination register of "
