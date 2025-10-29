@@ -88,6 +88,11 @@ llvm::Error readRegMIRProcessor(
   auto &MRI = MF.getRegInfo();
   auto Src = IRLoweringInfo.getLoweringData<llvm::MCRegister>();
   auto SrcRegSize = TRI->getRegSizeInBits(Src, MRI);
+  uint64_t DestRegSize = TRI->getRegSizeInBits(Output, MRI);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      SrcRegSize == DestRegSize || (DestRegSize == 32 && SrcRegSize == 1),
+      "The input register and the destination register of "
+      "luthier::readReg don't have the same size."));
 
   if (SrcRegSize > 32) {
     // First create a reg sequence MI
@@ -107,7 +112,7 @@ llvm::Error readRegMIRProcessor(
     MIBuilder(llvm::AMDGPU::COPY)
         .addReg(Output, llvm::RegState::Define)
         .addReg(MergedReg);
-  } else if (SrcRegSize == 32) {
+  } else if (SrcRegSize == 32 || SrcRegSize == 1) {
     MIBuilder(llvm::AMDGPU::COPY)
         .addReg(Output, llvm::RegState::Define)
         .addReg(PhysRegAccessor(Src));
