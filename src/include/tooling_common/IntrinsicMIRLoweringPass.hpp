@@ -15,19 +15,18 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes the Intrinsic MIR Lowering Pass, in charge of
-/// converting inline assembly place holder instructions with a sequence of
-/// Machine Instructions.
+/// Describes the Intrinsic MIR Lowering Pass.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_MIR_LOWERING_PASS_HPP
 #define LUTHIER_TOOLING_COMMON_INTRINSIC_MIR_LOWERING_PASS_HPP
-#include "tooling_common/PrePostAmbleEmitter.hpp"
 #include <llvm/CodeGen/MachineFunctionPass.h>
-#include <llvm/IR/PassManager.h>
 #include <luthier/intrinsic/IntrinsicProcessor.h>
 
 namespace luthier {
 
+/// \brief A \c llvm::MachineFunctionPass in charge of converting inline
+/// assembly placeholder instructions in each injected payload machine function
+/// with a sequence of Machine Instructions in SSA form
 class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {
 public:
   static char ID;
