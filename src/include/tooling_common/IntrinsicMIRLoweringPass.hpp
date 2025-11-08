@@ -31,7 +31,7 @@ class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {
 public:
   static char ID;
 
-  explicit IntrinsicMIRLoweringPass() : llvm::MachineFunctionPass(ID) {};
+  IntrinsicMIRLoweringPass() : llvm::MachineFunctionPass(ID) {};
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Intrinsic MIR Lowering";
