@@ -39,7 +39,7 @@ getArgReg(const llvm::MachineFunction &MF,
 }
 
 static bool doesLRRequireSVA(const LiftedRepresentation &LR,
-                             const FunctionPreambleDescriptor &PKInfo) {
+                             const SVADescriptor &PKInfo) {
 
   auto &SVAKernelInfo = PKInfo.Kernels.at(&LR.getKernelMF());
   if (SVAKernelInfo.usesSVA()) {
@@ -460,9 +460,10 @@ FunctionPreambleDescriptorAnalysis::Result
 FunctionPreambleDescriptorAnalysis::run(
     llvm::Module &TargetModule, llvm::ModuleAnalysisManager &TargetMAM) {
 
-  return {TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
-              ->getMMI(),
-          TargetModule};
+  return Result{
+      TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
+          ->getMMI(),
+      TargetModule};
 }
 
 llvm::PreservedAnalyses
@@ -636,19 +637,36 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
   return llvm::PreservedAnalyses::all();
 }
 
-FunctionPreambleDescriptor::FunctionPreambleDescriptor(
-    const llvm::MachineModuleInfo &TargetMMI,
-    const llvm::Module &TargetModule) {
-  for (const auto &F : TargetModule) {
-    auto *MF = TargetMMI.getMachineFunction(F);
-    if (!MF)
-      continue;
-    if (MF->getFunction().getCallingConv() ==
-        llvm::CallingConv::AMDGPU_KERNEL) {
-      Kernels.insert({MF, {}});
-    } else {
-      DeviceFunctions.insert({MF, {}});
-    }
+unsigned int SVADescriptor::getStateValueSize(StateValue SV) {
+  switch (SV) {
+  case INSTRUMENTATION_FLAT_SCRATCH:
+  case APPLICATION_FLAT_SCRATCH_SPILL_SLOT:
+  case AQL_DISPATCH_PACKET_PTR:
+  case QUEUE_PTR:
+  case TARGET_KERN_ARG_SEGMENT_PTR:
+  case TARGET_USER_ARG_SEGMENT_PTR:
+  case DISPATCH_ID:
+  case FLAT_SCRATCH_INIT:
+    return 2;
+    break;
+  case INSTRUMENTATION_STACK_PTR:
+  case APPLICATION_STACK_PTR_SPILL_SLOT:
+  case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
+  case PRIVATE_SEGMENT_WAVE_BYTE_OFFSET:
+    return 1;
+  case QUEUE_PRIVATE_SEGMENT_BUFFER:
+    return 4;
+
+  default:
+    llvm_unreachable("Invalid state value enum");
   }
+}
+
+SVADescriptor::LaneDescriptor
+SVADescriptor::getOrAllocateSVALane(StateValue SV) {}
+
+SVADescriptor::SVADescriptor(const llvm::GCNSubtarget &ST,
+                             bool IsInitialEntryPointAKernel) {
+  /// If the
 }
 } // namespace luthier
