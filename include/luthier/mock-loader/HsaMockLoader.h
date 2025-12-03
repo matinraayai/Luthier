@@ -1,4 +1,17 @@
-////////////////////////////////////////////////////////////////////////////////
+//===-- HsaMockLoader.h -----------------------------------------*- C++ -*-===//
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //
 // The University of Illinois/NCSA
 // Open Source License (NCSA)
@@ -38,298 +51,165 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS WITH THE SOFTWARE.
 //
-////////////////////////////////////////////////////////////////////////////////
+//===----------------------------------------------------------------------===//
+///
+/// \file Contains definitions used to implement the HSA mock code loader used
+/// to test the lifting passes. Adapted from the HSA runtime source code.
+//===----------------------------------------------------------------------===//
+#ifndef LUTHIER_MOCK_LOADER_HSA_MOCK_LOADER_H
+#define LUTHIER_MOCK_LOADER_HSA_MOCK_LOADER_H
 
-#ifndef HSA_RUNTIME_CORE_LOADER_EXECUTABLE_HPP_
-#define HSA_RUNTIME_CORE_LOADER_EXECUTABLE_HPP_
-
-#include <array>
-#include <cassert>
-#include <cstdint>
-#include <iostream>
-#include <libelf.h>
-#if defined(__linux__)
-#include <link.h>
-#endif
 #include "amd_hsa_locks.hpp"
 #include "luthier/mock-loader/amd_hsa_code.hpp"
 #include "luthier/mock-loader/amd_hsa_loader.hpp"
+#include "luthier/object/AMDGCNObjectFile.h"
+#include <cassert>
 #include <cstring>
 #include <hsa/amd_hsa_kernel_code.h>
 #include <hsa/hsa.h>
-#include <hsa/hsa_ext_image.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <list>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/ExtensibleRTTI.h>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
-#if defined(_WIN32) || defined(_WIN64)
-// r_version history:
-// 1: Initial debug protocol
-// 2: New trap handler ABI. The reason for halting a wave is recorded in
-// ttmp11[8:7]. 3: New trap handler ABI. A wave halted at S_ENDPGM rewinds its
-// PC by 8 bytes, and sets ttmp11[9]=1. 4: New trap handler ABI. Save the trap
-// id in ttmp11[16:9] 5: New trap handler ABI. Save the PC in ttmp11[22:7]
-// ttmp6[31:0], and park the wave if stopped 6: New trap handler ABI.
-// ttmp6[25:0] contains dispatch index modulo queue size 7: New trap handler
-// ABI. Send interrupts as a bitmask, coalescing concurrent exceptions. 8: New
-// trap handler ABI. for gfx942: Initialize ttmp[4:5] if ttmp11[31] == 0. 9: New
-// trap handler ABI. For gfx11: Save PC in ttmp11[22:7] ttmp6[31:0], and park
-// the wave if stopped. 10: New trap handler ABI. Set status.skip_export when
-// halting the wave.
-//                           For gfx942, set ttmp6[31] = 0 if ttmp11[31] == 0.
-#if _WIN64
-#define __WORDSIZE 64
-#else
-#define __WORDSIZE 32
-#endif
+namespace luthier {
 
-#define __ELF_NATIVE_CLASS __WORDSIZE
-
-/* We use this macro to refer to ELF types independent of the native wordsize.
-   `ElfW(TYPE)' is used in place of `Elf32_TYPE' or `Elf64_TYPE'.  */
-#define _ElfW_1(e, w, t) e##w##t
-#define _ElfW(e, w, t) _ElfW_1(e, w, _##t)
-#define ElfW(type) _ElfW(Elf, __ELF_NATIVE_CLASS, type)
-
-/* Structure describing a loaded shared object.  The `l_next' and `l_prev'
-   members form a chain of all the shared objects loaded at startup.
-
-   These data structures exist in space used by the run-time dynamic linker;
-   modifying them may have disastrous results.  */
-
-struct link_map {
-  /* These first few members are part of the protocol with the debugger.
-     This is the same format used in SVR4.  */
-
-  ElfW(Addr) l_addr; /* Difference between the address in the ELF
-                        file and the addresses in memory.  */
-  char *l_name;      /* Absolute file name object was found in.  */
-  ElfW(Dyn) * l_ld;  /* Dynamic section of the shared object.  */
-  struct link_map *l_next, *l_prev; /* Chain of loaded objects.  */
-};
-
-struct r_debug {
-  /* Version number for this protocol.  It should be greater than 0.  */
-  int r_version;
-
-  struct link_map *r_map; /* Head of the chain of loaded objects.  */
-
-  /* This is the address of a function internal to the run-time linker,
-     that will always be called when the linker begins to map in a
-     library or unmap it, and again when the mapping change is complete.
-     The debugger can set a breakpoint at this address if it wants to
-     notice shared object mapping changes.  */
-  ElfW(Addr) r_brk;
-  enum RT {
-    /* This state value describes the mapping change taking place when
-       the `r_brk' address is called.  */
-    RT_CONSISTENT, /* Mapping change is complete.  */
-    RT_ADD,        /* Beginning to add a new object.  */
-    RT_DELETE      /* Beginning to remove an object mapping.  */
-  } r_state;
-
-  ElfW(Addr) r_ldbase; /* Base address the linker is loaded at.  */
-};
-#endif
-
-namespace rocr::amd::hsa::loader {
-
-class MemoryAddress;
-class SymbolImpl;
-class KernelSymbol;
+class MockHsaKernelSymbol;
 class VariableSymbol;
-class ExecutableImpl;
 
-//===----------------------------------------------------------------------===//
-// SymbolImpl.                                                                //
-//===----------------------------------------------------------------------===//
+class MockHsaLoadedCodeObject;
+class MockHsaExecutable;
 
-typedef uint32_t symbol_attribute32_t;
-
-class SymbolImpl : public Symbol {
-public:
-  ~SymbolImpl() override = default;
-
-  bool IsKernel() const { return HSA_SYMBOL_KIND_KERNEL == kind; }
-
-  bool IsVariable() const { return HSA_SYMBOL_KIND_VARIABLE == kind; }
-
-  bool is_loaded;
-  hsa_symbol_kind_t kind;
-  std::string module_name;
-  std::string symbol_name;
-  hsa_symbol_linkage_t linkage;
-  bool is_definition;
-  uint64_t address;
-  hsa_agent_t agent;
-
-  hsa_agent_t GetAgent() override { return agent; }
+/// \brief Represents a symbol loaded by the HSA mock loader
+class MockHsaLoadedSymbol
+    : public llvm::RTTIExtends<MockHsaLoadedSymbol, llvm::RTTIRoot> {
 
 protected:
-  SymbolImpl(const bool &_is_loaded, const hsa_symbol_kind_t &_kind,
-             const std::string &_module_name, const std::string &_symbol_name,
-             const hsa_symbol_linkage_t &_linkage, const bool &_is_definition,
-             const uint64_t &_address = 0)
-      : is_loaded(_is_loaded), kind(_kind), module_name(_module_name),
-        symbol_name(_symbol_name), linkage(_linkage),
-        is_definition(_is_definition), address(_address) {}
+  MockHsaLoadedSymbol() = default;
 
-  virtual bool GetInfo(hsa_symbol_info32_t symbol_info, void *value) override;
+public:
+  static char ID;
 
-private:
-  SymbolImpl(const SymbolImpl &s);
-  SymbolImpl &operator=(const SymbolImpl &s);
+  virtual ~MockHsaLoadedSymbol() = default;
+
+  MockHsaLoadedSymbol(const MockHsaLoadedSymbol &S) = delete;
+
+  MockHsaLoadedSymbol &operator=(const MockHsaLoadedSymbol &S) = delete;
+
+  [[nodiscard]] virtual uint8_t getType() const = 0;
+
+  [[nodiscard]] virtual llvm::StringRef getName() const = 0;
+
+  [[nodiscard]] virtual std::byte *getAddress() const = 0;
 };
 
-//===----------------------------------------------------------------------===//
-// KernelSymbol.                                                              //
-//===----------------------------------------------------------------------===//
-
-class KernelSymbol final : public SymbolImpl {
-public:
-  KernelSymbol(const bool &_is_loaded, const std::string &_module_name,
-               const std::string &_symbol_name,
-               const hsa_symbol_linkage_t &_linkage, const bool &_is_definition,
-               const uint32_t &_kernarg_segment_size,
-               const uint32_t &_kernarg_segment_alignment,
-               const uint32_t &_group_segment_size,
-               const uint32_t &_private_segment_size,
-               const bool &_is_dynamic_callstack, const uint32_t &_size,
-               const uint32_t &_alignment, const uint32_t &_wavefront_size,
-               const uint64_t &_address = 0)
-      : SymbolImpl(_is_loaded, HSA_SYMBOL_KIND_KERNEL, _module_name,
-                   _symbol_name, _linkage, _is_definition, _address),
-        full_name(_module_name.empty() ? _symbol_name
-                                       : _module_name + "::" + _symbol_name),
-        kernarg_segment_size(_kernarg_segment_size),
-        kernarg_segment_alignment(_kernarg_segment_alignment),
-        group_segment_size(_group_segment_size),
-        private_segment_size(_private_segment_size),
-        is_dynamic_callstack(_is_dynamic_callstack), size(_size),
-        alignment(_alignment), wavefront_size(_wavefront_size), debug_info{} {}
-
-  ~KernelSymbol() = default;
-
-  bool GetInfo(hsa_symbol_info32_t symbol_info, void *value);
-
-  std::string full_name;
-  uint32_t kernarg_segment_size;
-  uint32_t kernarg_segment_alignment;
-  uint32_t group_segment_size;
-  uint32_t private_segment_size;
-  bool is_dynamic_callstack;
-  uint32_t size;
-  uint32_t alignment;
-  uint32_t wavefront_size;
-  amd_runtime_loader_debug_info_t debug_info;
-
+class MockHsaLoadedCodeObjectSymbol
+    : public llvm::RTTIExtends<MockHsaLoadedCodeObjectSymbol,
+                               MockHsaLoadedSymbol> {
 private:
-  KernelSymbol(const KernelSymbol &ks);
-  KernelSymbol &operator=(const KernelSymbol &ks);
+  friend MockHsaLoadedCodeObject;
+
+  /// The loaded code object this symbol belongs to
+  MockHsaLoadedCodeObject &Parent;
+
+  /// The symbol ref that defines this symbol
+  object::AMDGCNElfSymbolRef DynSymRef;
+
+  MockHsaLoadedCodeObjectSymbol(MockHsaLoadedCodeObject &Parent,
+                                object::AMDGCNElfSymbolRef DynSymRef)
+      : Parent(Parent), DynSymRef(DynSymRef) {}
+
+public:
+  static char ID;
+
+  [[nodiscard]] uint8_t getType() const override {
+    return DynSymRef.getELFType();
+  }
+
+  [[nodiscard]] llvm::StringRef getName() const override {
+    return llvm::cantFail(DynSymRef.getName());
+  }
+
+  [[nodiscard]] std::byte *getAddress() const override;
+
+  [[nodiscard]] object::AMDGCNElfSymbolRef getSymbolRef() const {
+    return DynSymRef;
+  }
 };
 
-//===----------------------------------------------------------------------===//
-// VariableSymbol.                                                            //
-//===----------------------------------------------------------------------===//
-
-class VariableSymbol final : public SymbolImpl {
-public:
-  VariableSymbol(const bool &_is_loaded, const std::string &_module_name,
-                 const std::string &_symbol_name,
-                 const hsa_symbol_linkage_t &_linkage,
-                 const bool &_is_definition,
-                 const hsa_variable_allocation_t &_allocation,
-                 const hsa_variable_segment_t &_segment, const uint32_t &_size,
-                 const uint32_t &_alignment, const bool &_is_constant,
-                 const bool &_is_external = false, const uint64_t &_address = 0)
-      : SymbolImpl(_is_loaded, HSA_SYMBOL_KIND_VARIABLE, _module_name,
-                   _symbol_name, _linkage, _is_definition, _address),
-        allocation(_allocation), segment(_segment), size(_size),
-        alignment(_alignment), is_constant(_is_constant),
-        is_external(_is_external) {}
-
-  ~VariableSymbol() {}
-
-  bool GetInfo(hsa_symbol_info32_t symbol_info, void *value);
-
-  hsa_variable_allocation_t allocation;
-  hsa_variable_segment_t segment;
-  uint32_t size;
-  uint32_t alignment;
-  bool is_constant;
-  bool is_external;
-
+class MockExternalDefinitionSymbol
+    : public llvm::RTTIExtends<MockExternalDefinitionSymbol,
+                               MockHsaLoadedSymbol> {
 private:
-  VariableSymbol(const VariableSymbol &vs);
-  VariableSymbol &operator=(const VariableSymbol &vs);
+  std::string SymbolName;
+
+  bool IsDefinition;
+
+  uint64_t Address;
+
+public:
+protected:
+  MockHsaLoadedSymbol(const hsa_symbol_kind_t &_kind,
+                      llvm::StringRef SymbolName, bool IsDefinition,
+                      uint64_t Address = 0)
+      : Kind(_kind), SymbolName(SymbolName), IsDefinition(IsDefinition),
+        Address(Address) {}
+
+public:
+  [[nodiscard]] llvm::StringRef getName() const { return SymbolName; }
+
+  [[nodiscard]] bool isDefinition() const { return IsDefinition; }
+
+  [[nodiscard]] uint64_t getAddress() const { return Address; }
 };
 
 //===----------------------------------------------------------------------===//
 // Executable.                                                                //
 //===----------------------------------------------------------------------===//
 
-class ExecutableImpl;
-class LoadedCodeObjectImpl;
-class Segment;
+class MockHsaLoadedSegment;
 
-class ExecutableObject {
+class MockExecutableObject {
 protected:
-  ExecutableImpl *owner;
-  hsa_agent_t agent;
+  MockHsaExecutable &Parent;
 
 public:
-  ExecutableObject(ExecutableImpl *owner_, hsa_agent_t agent_)
-      : owner(owner_), agent(agent_) {}
+  explicit MockExecutableObject(MockHsaExecutable &Parent) : Parent(Parent) {}
 
-  ExecutableImpl *Owner() const { return owner; }
+  MockHsaExecutable &Parent() const { return Parent; }
 
-  hsa_agent_t Agent() const { return agent; }
-
-  virtual void Print(std::ostream &out) = 0;
-
-  virtual void Destroy() = 0;
-
-  virtual ~ExecutableObject() = default;
+  virtual ~MockExecutableObject() = default;
 };
 
-class LoadedCodeObjectImpl : public LoadedCodeObject, public ExecutableObject {
+class MockHsaLoadedCodeObject : public MockExecutableObject {
   friend class AmdHsaCodeLoader;
 
 private:
-  LoadedCodeObjectImpl(const LoadedCodeObjectImpl &);
-  LoadedCodeObjectImpl &operator=(const LoadedCodeObjectImpl &);
-
-  const void *elf_data;
-  const size_t elf_size;
-  std::vector<Segment *> loaded_segments;
+  llvm::ArrayRef<std::byte> Elf;
+  llvm::SmallVector<std::unique_ptr<MockHsaLoadedSegment>, 1> LoadedSegments;
 
 public:
-  LoadedCodeObjectImpl(ExecutableImpl *owner_, hsa_agent_t agent_,
-                       const void *elf_data_, size_t elf_size_)
-      : ExecutableObject(owner_, agent_), elf_data(elf_data_),
+  MockHsaLoadedCodeObject(MockHsaExecutable *owner_, hsa_agent_t agent_,
+                          const void *elf_data_, size_t elf_size_)
+      : MockExecutableObject(owner_, agent_), elf_data(elf_data_),
         elf_size(elf_size_) {
     memset(&r_debug_info, 0, sizeof(r_debug_info));
   }
 
-  const void *ElfData() const { return elf_data; }
-  size_t ElfSize() const { return elf_size; }
-  std::vector<Segment *> &LoadedSegments() { return loaded_segments; }
+  MockHsaLoadedCodeObject(const MockHsaLoadedCodeObject &) = delete;
+
+  MockHsaLoadedCodeObject &operator=(const MockHsaLoadedCodeObject &) = delete;
+
+  llvm::ArrayRef<std::byte> getElf() const { return Elf; }
+
+  std::vector<MockHsaLoadedSegment *> &LoadedSegments() {
+    return loaded_segments;
+  }
 
   bool GetInfo(amd_loaded_code_object_info_t attribute, void *value) override;
-
-  hsa_status_t IterateLoadedSegments(
-      hsa_status_t (*callback)(amd_loaded_segment_t loaded_segment, void *data),
-      void *data) override;
-
-  void Print(std::ostream &out) override;
-
-  void Destroy() override {}
-
-  hsa_agent_t getAgent() const override;
 
   hsa_executable_t getExecutable() const override;
 
@@ -350,7 +230,7 @@ public:
   link_map r_debug_info;
 };
 
-class Segment : public LoadedSegment, public ExecutableObject {
+class MockHsaLoadedSegment : public MockExecutableObject {
 private:
   amdgpu_hsa_elf_segment_t segment;
   void *ptr;
@@ -360,17 +240,21 @@ private:
   size_t storage_offset;
 
 public:
-  Segment(ExecutableImpl *owner_, hsa_agent_t agent_,
-          amdgpu_hsa_elf_segment_t segment_, void *ptr_, size_t size_,
-          uint64_t vaddr_, size_t storage_offset_)
-      : ExecutableObject(owner_, agent_), segment(segment_), ptr(ptr_),
+  MockHsaLoadedSegment(MockHsaExecutable *owner_, hsa_agent_t agent_,
+                       amdgpu_hsa_elf_segment_t segment_, void *ptr_,
+                       size_t size_, uint64_t vaddr_, size_t storage_offset_)
+      : MockExecutableObject(owner_, agent_), segment(segment_), ptr(ptr_),
         size(size_), vaddr(vaddr_), frozen(false),
         storage_offset(storage_offset_) {}
 
   amdgpu_hsa_elf_segment_t ElfSegment() const { return segment; }
+
   void *Ptr() const { return ptr; }
+
   size_t Size() const { return size; }
+
   uint64_t VAddr() const { return vaddr; }
+
   size_t StorageOffset() const { return storage_offset; }
 
   bool GetInfo(amd_loaded_segment_info_t attribute, void *value) override;
@@ -392,97 +276,138 @@ public:
   void Destroy() override;
 };
 
-class Sampler : public ExecutableObject {
-private:
-  hsa_ext_sampler_t samp;
-
+class MockHsaSegmentMemory {
 public:
-  Sampler(ExecutableImpl *owner, hsa_agent_t agent, hsa_ext_sampler_t samp_)
-      : ExecutableObject(owner, agent), samp(samp_) {}
-  void Print(std::ostream &out) override;
-  void Destroy() override;
+  MockHsaSegmentMemory(const MockHsaSegmentMemory &) = delete;
+
+  MockHsaSegmentMemory &operator=(const MockHsaSegmentMemory &) = delete;
+
+  virtual ~MockHsaSegmentMemory() = default;
+
+  [[nodiscard]] virtual std::byte *Address(size_t Offset = 0) const = 0;
+
+  [[nodiscard]] virtual std::byte *HostAddress(size_t Offset = 0) const = 0;
+
+  [[nodiscard]] virtual bool Allocated() const = 0;
+
+  virtual llvm::Error Allocate(size_t size, size_t align, bool zero) = 0;
+
+  virtual llvm::Error Copy(size_t offset, const void *src, size_t size) = 0;
+
+  virtual void Free() = 0;
+
+  virtual bool Freeze() = 0;
+
+protected:
+  MockHsaSegmentMemory() = default;
 };
 
-class Image : public ExecutableObject {
-private:
-  hsa_ext_image_t img;
-
+class MallocedMemory final : public MockHsaSegmentMemory {
 public:
-  Image(ExecutableImpl *owner, hsa_agent_t agent, hsa_ext_image_t img_)
-      : ExecutableObject(owner, agent), img(img_) {}
-  void Print(std::ostream &out) override;
-  void Destroy() override;
-};
+  MallocedMemory() = default;
 
-typedef std::string ProgramSymbol;
-typedef std::unordered_map<ProgramSymbol, SymbolImpl *> ProgramSymbolMap;
+  ~MallocedMemory() override = default;
 
-typedef std::pair<std::string, hsa_agent_t> AgentSymbol;
-struct ASC {
-  bool operator()(const AgentSymbol &las, const AgentSymbol &ras) const {
-    return las.first == ras.first && las.second.handle == ras.second.handle;
+  [[nodiscard]] std::byte *Address(size_t Offset) const override {
+    assert(this->Allocated());
+    return &ptr_[Offset];
   }
-};
-struct ASH {
-  size_t operator()(const AgentSymbol &as) const {
-    size_t h = std::hash<std::string>()(as.first);
-    size_t i = std::hash<uint64_t>()(as.second.handle);
-    return h ^ (i << 1);
-  }
-};
-typedef std::unordered_map<AgentSymbol, SymbolImpl *, ASH, ASC> AgentSymbolMap;
 
-class ExecutableImpl final : public Executable {
+  void *HostAddress(size_t offset = 0) const override {
+    return this->Address(offset);
+  }
+
+  bool Allocated() const override { return nullptr != ptr_; }
+
+  llvm::Error Allocate(size_t size, size_t align, bool zero) override;
+
+  llvm::Error Copy(size_t offset, const void *src, size_t size) override;
+
+  void Free() override;
+
+  bool Freeze() override;
+
+private:
+  MallocedMemory(const MallocedMemory &);
+  MallocedMemory &operator=(const MallocedMemory &);
+
+  std::byte *ptr_{nullptr};
+
+  size_t size_{0};
+};
+
+class MockHsaLoaderContext {
+public:
+  MockHsaLoaderContext() = default;
+
+  ~MockHsaLoaderContext() = default;
+
+  hsa_isa_t IsaFromName(const char *name) override;
+
+  bool IsaSupportedByAgent(hsa_agent_t agent, hsa_isa_t code_object_isa,
+                           unsigned codeGenericVersion) override;
+
+  void *SegmentAlloc(amdgpu_hsa_elf_segment_t segment, hsa_agent_t agent,
+                     size_t size, size_t align, bool zero) override;
+
+  bool SegmentCopy(amdgpu_hsa_elf_segment_t segment, hsa_agent_t agent,
+                   void *dst, size_t offset, const void *src,
+                   size_t size) override;
+
+  void SegmentFree(amdgpu_hsa_elf_segment_t segment, hsa_agent_t agent,
+                   void *seg, size_t size = 0) override;
+
+  void *SegmentAddress(amdgpu_hsa_elf_segment_t segment, hsa_agent_t agent,
+                       void *seg, size_t offset) override;
+
+  void *SegmentHostAddress(amdgpu_hsa_elf_segment_t segment, hsa_agent_t agent,
+                           void *seg, size_t offset) override;
+
+  bool SegmentFreeze(amdgpu_hsa_elf_segment_t segment, hsa_agent_t agent,
+                     void *seg, size_t size) override;
+
+private:
+  LoaderContext(const LoaderContext &);
+  LoaderContext &operator=(const LoaderContext &);
+};
+
+class MockHsaExecutable {
   friend class AmdHsaCodeLoader;
 
 public:
-  const hsa_profile_t &profile() const { return profile_; }
+  typedef std::unordered_map<std::string, std::unique_ptr<MockHsaLoadedSymbol>>
+      AgentSymbolMap;
 
   const hsa_executable_state_t &state() const { return state_; }
 
-  ExecutableImpl(const hsa_profile_t &_profile, Context *context, size_t id,
-                 hsa_default_float_rounding_mode_t default_float_rounding_mode);
+  MockHsaExecutable(
+      Context *context, size_t id,
+      hsa_default_float_rounding_mode_t default_float_rounding_mode);
 
-  ExecutableImpl(const hsa_profile_t &_profile,
-                 std::unique_ptr<Context> unique_context, size_t id,
-                 hsa_default_float_rounding_mode_t default_float_rounding_mode);
+  MockHsaExecutable(
+      std::unique_ptr<Context> unique_context, size_t id,
+      hsa_default_float_rounding_mode_t default_float_rounding_mode);
 
-  ~ExecutableImpl() override;
+  ~MockHsaExecutable() override;
 
   hsa_status_t GetInfo(hsa_executable_info_t executable_info,
                        void *value) override;
 
-  hsa_status_t DefineProgramExternalVariable(const char *name,
-                                             void *address) override;
-
-  hsa_status_t DefineAgentExternalVariable(const char *name, hsa_agent_t agent,
+  hsa_status_t defineAgentExternalVariable(llvm::StringRef name,
+                                           hsa_agent_t agent,
                                            hsa_variable_segment_t segment,
                                            void *address) override;
 
-  hsa_status_t
+  llvm::Error
   LoadCodeObject(hsa_agent_t agent, hsa_code_object_t code_object,
                  const char *options, const std::string &uri,
                  hsa_loaded_code_object_t *loaded_code_object) override;
 
-  llvm::Error
-  LoadCodeObject(hsa_agent_t agent, hsa_code_object_t code_object,
-                 size_t code_object_size, const char *options,
-                 const std::string &uri,
-                 hsa_loaded_code_object_t *loaded_code_object) override;
+  llvm::Expected<const MockHsaLoadedCodeObject &>
+  loadCodeObject(llvm::ArrayRef<std::byte> CodeObject,
+                 const std::string &uri) override;
 
-  hsa_status_t Freeze(const char *options) override;
-
-  hsa_status_t Validate(uint32_t *result) override {
-    amd::hsa::common::ReaderLockGuard<amd::hsa::common::ReaderWriterLock>
-        reader_lock(rw_lock_);
-    assert(result);
-    *result = 0;
-    return HSA_STATUS_SUCCESS;
-  }
-
-  /// @note needed for hsa v1.0.
-  /// @todo remove during loader refactoring.
-  bool IsProgramSymbol(const char *symbol_name) override;
+  llvm::Error freeze() override;
 
   Symbol *GetSymbol(const char *symbol_name, const hsa_agent_t *agent) override;
 
@@ -492,12 +417,6 @@ public:
   hsa_status_t IterateAgentSymbols(
       hsa_agent_t agent,
       hsa_status_t (*callback)(hsa_executable_t exec, hsa_agent_t agent,
-                               hsa_executable_symbol_t symbol, void *data),
-      void *data) override;
-
-  /// @since hsa v1.1.
-  hsa_status_t IterateProgramSymbols(
-      hsa_status_t (*callback)(hsa_executable_t exec,
                                hsa_executable_symbol_t symbol, void *data),
       void *data) override;
 
@@ -519,17 +438,13 @@ public:
   void EnableReadOnlyMode();
   void DisableReadOnlyMode();
 
-  void Print(std::ostream &out) override;
-
-  bool PrintToFile(const std::string &filename) override;
-
   Context *context() { return context_; }
 
   size_t id() { return id_; }
 
-  ExecutableImpl(const ExecutableImpl &e) = default;
+  MockHsaExecutable(const MockHsaExecutable &e) = delete;
 
-  ExecutableImpl &operator=(const ExecutableImpl &e) = default;
+  MockHsaExecutable &operator=(const MockHsaExecutable &e) = delete;
 
 private:
   std::unique_ptr<amd::hsa::code::AmdHsaCode> code;
@@ -539,11 +454,7 @@ private:
   hsa_status_t LoadSegments(hsa_agent_t agent, const code::AmdHsaCode *c,
                             uint32_t majorVersion);
 
-  hsa_status_t LoadSegmentsV1(hsa_agent_t agent, const code::AmdHsaCode *c);
-
   hsa_status_t LoadSegmentsV2(hsa_agent_t agent, const code::AmdHsaCode *c);
-
-  hsa_status_t LoadSegmentV1(hsa_agent_t agent, const code::Segment *s);
 
   hsa_status_t LoadSegmentV2(const code::Segment *data_segment,
                              loader::Segment *load_segment);
@@ -569,58 +480,41 @@ private:
   hsa_status_t
   ApplyDynamicRelocationSection(hsa_agent_t agent,
                                 amd::hsa::code::RelocationSection *sec);
+
   hsa_status_t ApplyDynamicRelocation(hsa_agent_t agent,
                                       amd::hsa::code::Relocation *rel);
 
-  Segment *VirtualAddressSegment(uint64_t vaddr);
+  MockHsaLoadedSegment *VirtualAddressSegment(uint64_t vaddr);
 
-  uint64_t SymbolAddress(hsa_agent_t agent, amd::hsa::code::Symbol *sym);
+  uint64_t SymbolAddress(amd::hsa::code::Symbol *sym);
 
-  uint64_t SymbolAddress(hsa_agent_t agent, amd::elf::Symbol *sym);
+  uint64_t SymbolAddress(amd::elf::Symbol *sym);
 
-  Segment *SymbolSegment(hsa_agent_t agent, amd::hsa::code::Symbol *sym);
+  MockHsaLoadedSegment *SymbolSegment(amd::hsa::code::Symbol *sym);
 
-  Segment *SectionSegment(hsa_agent_t agent, amd::hsa::code::Section *sec);
+  MockHsaLoadedSegment *SectionSegment(amd::hsa::code::Section *sec);
 
   amd::hsa::common::ReaderWriterLock rw_lock_;
-  hsa_profile_t profile_;
-  Context *context_;
-  std::unique_ptr<Context> unique_context_;
-  const size_t id_;
-  hsa_default_float_rounding_mode_t default_float_rounding_mode_;
+  MockHsaLoaderContext &Context;
   hsa_executable_state_t state_;
 
-  ProgramSymbolMap program_symbols_;
   AgentSymbolMap agent_symbols_;
-  std::vector<ExecutableObject *> objects;
-  Segment *program_allocation_segment;
-  std::vector<LoadedCodeObjectImpl *> loaded_code_objects;
+  std::vector<MockExecutableObject *> objects;
+  std::vector<std::unique_ptr<MockHsaLoadedCodeObject>> loaded_code_objects;
 };
 
-class AmdHsaCodeLoader : public Loader {
+class MockHsaLoader {
 private:
-  Context *context;
-  std::vector<Executable *> executables;
+  MockHsaLoaderContext &Ctx;
+  std::vector<std::unique_ptr<MockHsaExecutable>> executables;
   amd::hsa::common::ReaderWriterLock rw_lock_;
 
 public:
-  AmdHsaCodeLoader(Context *context_) : context(context_) { assert(context); }
+  explicit MockHsaLoader(MockHsaLoaderContext &Ctx) : Ctx(Ctx) {}
 
-  Context *GetContext() const override { return context; }
+  MockHsaLoaderContext &GetContext() const { return Ctx; }
 
-  Executable *CreateExecutable(
-      hsa_profile_t profile, const char *options,
-      hsa_default_float_rounding_mode_t default_float_rounding_mode =
-          HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT) override;
-
-  Executable *CreateExecutable(
-      std::unique_ptr<Context> isolated_context, hsa_profile_t profile,
-      const char *options,
-      hsa_default_float_rounding_mode_t default_float_rounding_mode =
-          HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT) override;
-
-  hsa_status_t FreezeExecutable(Executable *executable,
-                                const char *options) override;
+  std::unique_ptr<MockHsaExecutable> CreateExecutable();
 
   void DestroyExecutable(Executable *executable) override;
 
@@ -631,17 +525,15 @@ public:
   hsa_status_t QuerySegmentDescriptors(
       hsa_ven_amd_loader_segment_descriptor_t *segment_descriptors,
       size_t *num_segment_descriptors) override;
-#undef FindExecutable
-  hsa_executable_t FindExecutable(uint64_t device_address) override;
+
+  MockHsaExecutable *FindExecutable(uint64_t device_address);
 
   uint64_t FindHostAddress(uint64_t device_address) override;
-
-  void PrintHelp(std::ostream &out) override;
 
   void EnableReadOnlyMode();
   void DisableReadOnlyMode();
 };
 
-} // namespace rocr::amd::hsa::loader
+} // namespace luthier
 
 #endif // HSA_RUNTIME_CORE_LOADER_EXECUTABLE_HPP_
