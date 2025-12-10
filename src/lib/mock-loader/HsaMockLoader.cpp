@@ -42,9 +42,11 @@
 
 #include <libelf.h>
 #include <limits.h>
+#include <llvm/IR/InlineAsm.h>
 #include <luthier/common/ErrorCheck.h>
 #include <luthier/common/GenericLuthierError.h>
 #include <luthier/hsa/HsaError.h>
+#include <luthier/hsa/ISA.h>
 #include <luthier/mock-loader/amd_hsa_code_util.hpp>
 #if defined(__linux__)
 #include <link.h>
@@ -74,10 +76,81 @@ using namespace rocr::amd::hsa::common;
 
 namespace luthier {
 
-llvm::Error MallocedMemory::Allocate(size_t Size, size_t align, bool zero) {
-  assert(!this->Allocated());
-  assert(0 < Size);
-  assert(0 < align && 0 == (align & (align - 1)));
+MockHsaLoadedCodeObject::MockHsaLoadedCodeObject(MockHsaExecutable &Owner,
+                                                 llvm::ArrayRef<std::byte> Elf,
+                                                 llvm::Error Err)
+    : Parent(Owner) {
+  llvm::ErrorAsOutParameter EAO(Err);
+
+  /// Parse the code object
+  Err = object::AMDGCNObjectFile::createAMDGCNObjectFile(
+            llvm::StringRef(reinterpret_cast<const char *>(Elf.data()),
+                            Elf.size()))
+            .moveInto(this->Elf);
+  if (Err)
+    return;
+
+  /// Cast to object::ELFObjectFileBase since for some reason methods for
+  /// querying the ELF EMachine and the ABI versions are private in the
+  /// little endian 64-bit sub-class version
+  auto &ElfBase = llvm::cast<llvm::object::ELFObjectFileBase>(*this->Elf);
+
+  unsigned CodeObjectMach = ElfBase.getEMachine();
+
+  /// Check if the ISA of the code object and the executable are compatible
+  /// TODO: check XNACK and SRAMECC fields in the AMDGPU object file
+  if (CodeObjectMach != Owner.getEMach()) {
+    unsigned GenericCodeObjectMach =
+        object::getGenericAMDGPUMach(CodeObjectMach);
+    unsigned GenericExecutableMach =
+        object::getGenericAMDGPUMach(CodeObjectMach);
+    if (GenericCodeObjectMach != GenericExecutableMach) {
+      Err = LUTHIER_MAKE_GENERIC_ERROR(
+          "The code object's e-machine is not compatible with the executable's "
+          "e-machine");
+      return;
+    }
+  }
+
+  uint8_t CodeObjectVersion = ElfBase.getEIdentABIVersion();
+
+  if (CodeObjectVersion < llvm::ELF::ELFABIVERSION_AMDGPU_HSA_V2 ||
+      CodeObjectVersion > llvm::ELF::ELFABIVERSION_AMDGPU_HSA_V6) {
+    Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "Unsupported code object version {0}", CodeObjectVersion + 2));
+    return;
+  }
+
+  Err = LoadSegments();
+  if (Err)
+    return;
+
+  /// Add the
+
+  for (size_t i = 0; i < code->SymbolCount(); ++i) {
+    if (majorVersion >= 2 &&
+        code->GetSymbol(i)->elfSym()->type() != STT_AMDGPU_HSA_KERNEL &&
+        code->GetSymbol(i)->elfSym()->binding() == STB_LOCAL)
+      continue;
+
+    status = LoadSymbol(code->GetSymbol(i), majorVersion);
+    if (status != HSA_STATUS_SUCCESS) {
+      return status;
+    }
+  }
+
+  status = ApplyRelocations(code.get());
+  if (status != HSA_STATUS_SUCCESS) {
+    return status;
+  }
+
+  code.reset();
+
+  return loaded_code_objects.back();
+}
+
+llvm::Error HsaMockSegmentMemory::Allocate(size_t Size, size_t align,
+                                           bool zero) {
   ptr_ = new (std::align_val_t{align}, std::nothrow) std::byte[Size];
   if (nullptr == ptr_) {
     return LUTHIER_MAKE_GENERIC_ERROR(
@@ -90,77 +163,25 @@ llvm::Error MallocedMemory::Allocate(size_t Size, size_t align, bool zero) {
   return llvm::Error::success();
 }
 
-llvm::Error MallocedMemory::Copy(size_t offset, const void *src, size_t size) {
+llvm::Error HsaMockSegmentMemory::Copy(size_t offset, const void *src,
+                                       size_t size) {
   assert(this->Allocated());
   assert(nullptr != src);
   assert(0 < size);
-  memcpy(this->Address(offset), src, size);
+  std::memcpy(this->getAddress(offset), src, size);
   return llvm::Error::success();
 }
 
-void MallocedMemory::Free() {
+void HsaMockSegmentMemory::Free() {
   assert(this->Allocated());
   delete[] ptr_;
   ptr_ = nullptr;
   size_ = 0;
 }
 
-bool MallocedMemory::Freeze() {
+bool HsaMockSegmentMemory::Freeze() {
   assert(this->Allocated());
   return true;
-}
-
-hsa_isa_t MockHsaLoaderContext::IsaFromName(const char *name) {
-  assert(name);
-
-  hsa_status_t HsaStatus = HSA_STATUS_SUCCESS;
-  hsa_isa_t isa_handle;
-  isa_handle.handle = 0;
-
-  hsa_status = HSA::hsa_isa_from_name(name, &isa_handle);
-  if (HSA_STATUS_SUCCESS != HsaStatus) {
-    isa_handle.handle = 0;
-    return isa_handle;
-  }
-
-  return isa_handle;
-}
-
-bool MockHsaLoaderContext::IsaSupportedByAgent(hsa_agent_t agent,
-                                               hsa_isa_t code_object_isa,
-                                               unsigned codeGenericVersion) {
-  struct callBackData {
-    std::pair<hsa_isa_t, bool> comparison_data;
-    const unsigned int codeGenericV;
-  } cbData = {{code_object_isa, false}, codeGenericVersion};
-
-  auto IsIsaEquivalent = [](hsa_isa_t agent_isa_h, void *data) {
-    assert(data);
-
-    struct callBackData *inOutCB = reinterpret_cast<decltype(&cbData)>(data);
-
-    std::pair<hsa_isa_t, bool> *data_pair = &inOutCB->comparison_data;
-    const unsigned int codeGenericV = inOutCB->codeGenericV;
-
-    assert(data_pair);
-    assert(!data_pair->second);
-
-    const core::Isa *agent_isa = core::Isa::Object(agent_isa_h);
-    assert(agent_isa);
-    const core::Isa *code_object_isa = core::Isa::Object(data_pair->first);
-    assert(code_object_isa);
-
-    data_pair->second =
-        core::Isa::IsCompatible(*code_object_isa, *agent_isa, codeGenericV);
-    return data_pair->second ? HSA_STATUS_INFO_BREAK : HSA_STATUS_SUCCESS;
-  };
-
-  hsa_status_t status =
-      HSA::hsa_agent_iterate_isas(agent, IsIsaEquivalent, &cbData);
-  if (status != HSA_STATUS_SUCCESS && status != HSA_STATUS_INFO_BREAK) {
-    return false;
-  }
-  return cbData.comparison_data.second;
 }
 
 void *MockHsaLoaderContext::SegmentAlloc(amdgpu_hsa_elf_segment_t segment,
@@ -169,7 +190,7 @@ void *MockHsaLoaderContext::SegmentAlloc(amdgpu_hsa_elf_segment_t segment,
   assert(0 < size);
   assert(0 < align && 0 == (align & (align - 1)));
 
-  SegmentMemory *Mem = new (std::nothrow) MallocedMemory();
+  HsaMockSegmentMemory *Mem = new (std::nothrow) HsaMockSegmentMemory();
 
   if (nullptr == Mem) {
     return nullptr;
@@ -188,45 +209,33 @@ bool MockHsaLoaderContext::SegmentCopy(
     hsa_agent_t agent,                // not used.
     void *dst, size_t offset, const void *src, size_t size) {
   assert(nullptr != dst);
-  return ((SegmentMemory *)dst)->Copy(offset, src, size);
+  return ((HsaMockSegmentMemory *)dst)->Copy(offset, src, size);
 }
 
-void MockHsaLoaderContext::SegmentFree(
+void *MockHsaLoaderContext::SegmentAddress(
+    amdgpu_hsa_elf_segment_t segment, // not used.
+    hsa_agent_t agent,                // not used.
+    void *seg, size_t offset) {
+  assert(nullptr != seg);
+  return ((HsaMockSegmentMemory *)seg)->getAddress(offset);
+}
+
+void *MockHsaLoaderContext::SegmentHostAddress(
+    amdgpu_hsa_elf_segment_t segment, // not used.
+    hsa_agent_t agent,                // not used.
+    void *seg, size_t offset) {
+  assert(nullptr != seg);
+  return ((HsaMockSegmentMemory *)seg)->HostAddress(offset);
+}
+
+bool MockHsaLoaderContext::SegmentFreeze(
     amdgpu_hsa_elf_segment_t segment, // not used.
     hsa_agent_t agent,                // not used.
     void *seg,
     size_t size) // not used.
 {
   assert(nullptr != seg);
-  SegmentMemory *mem = (SegmentMemory *)seg;
-  mem->Free();
-  delete mem;
-  mem = nullptr;
-}
-
-void *
-LoaderContext::SegmentAddress(amdgpu_hsa_elf_segment_t segment, // not used.
-                              hsa_agent_t agent,                // not used.
-                              void *seg, size_t offset) {
-  assert(nullptr != seg);
-  return ((SegmentMemory *)seg)->Address(offset);
-}
-
-void *
-LoaderContext::SegmentHostAddress(amdgpu_hsa_elf_segment_t segment, // not used.
-                                  hsa_agent_t agent,                // not used.
-                                  void *seg, size_t offset) {
-  assert(nullptr != seg);
-  return ((SegmentMemory *)seg)->HostAddress(offset);
-}
-
-bool LoaderContext::SegmentFreeze(amdgpu_hsa_elf_segment_t segment, // not used.
-                                  hsa_agent_t agent,                // not used.
-                                  void *seg,
-                                  size_t size) // not used.
-{
-  assert(nullptr != seg);
-  return ((SegmentMemory *)seg)->Freeze();
+  return ((HsaMockSegmentMemory *)seg)->Freeze();
 }
 
 Loader *Loader::Create(Context *context) { return new MockHsaLoader(context); }
@@ -366,209 +375,32 @@ void MockHsaLoader::DisableReadOnlyMode() {
   }
 }
 
-//===----------------------------------------------------------------------===//
-// SymbolImpl. //
-//===----------------------------------------------------------------------===//
-
-//===----------------------------------------------------------------------===//
-// KernelSymbol.                                                              //
-//===----------------------------------------------------------------------===//
-
-bool KernelSymbol::GetInfo(hsa_symbol_info32_t symbol_info, void *value) {
-  static_assert(
-      (symbol_attribute32_t(HSA_CODE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE) ==
-       symbol_attribute32_t(
-           HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE)),
-      "attributes are not compatible");
-  static_assert(
-      (symbol_attribute32_t(
-           HSA_CODE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_ALIGNMENT) ==
-       symbol_attribute32_t(
-           HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_ALIGNMENT)),
-      "attributes are not compatible");
-  static_assert(
-      (symbol_attribute32_t(HSA_CODE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE) ==
-       symbol_attribute32_t(
-           HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE)),
-      "attributes are not compatible");
-  static_assert(
-      (symbol_attribute32_t(HSA_CODE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE) ==
-       symbol_attribute32_t(
-           HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE)),
-      "attributes are not compatible");
-  static_assert(
-      (symbol_attribute32_t(HSA_CODE_SYMBOL_INFO_KERNEL_DYNAMIC_CALLSTACK) ==
-       symbol_attribute32_t(
-           HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_DYNAMIC_CALLSTACK)),
-      "attributes are not compatible");
-
-  assert(value);
-
-  switch (symbol_info) {
-  case HSA_CODE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE: {
-    *((uint32_t *)value) = kernarg_segment_size;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_ALIGNMENT: {
-    *((uint32_t *)value) = kernarg_segment_alignment;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE: {
-    *((uint32_t *)value) = group_segment_size;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE: {
-    *((uint32_t *)value) = private_segment_size;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_KERNEL_DYNAMIC_CALLSTACK: {
-    *((bool *)value) = is_dynamic_callstack;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_KERNEL_WAVEFRONT_SIZE: {
-    *((uint32_t *)value) = wavefront_size;
-    break;
-  }
-  case HSA_EXT_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT_SIZE: {
-    *((uint32_t *)value) = size;
-    break;
-  }
-  case HSA_EXT_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT_ALIGN: {
-    *((uint32_t *)value) = alignment;
-    break;
-  }
-  default: {
-    return SymbolImpl::GetInfo(symbol_info, value);
-  }
-  }
-
-  return true;
-}
-
-//===----------------------------------------------------------------------===//
-// VariableSymbol.                                                            //
-//===----------------------------------------------------------------------===//
-
-bool VariableSymbol::GetInfo(hsa_symbol_info32_t symbol_info, void *value) {
-
-  switch (symbol_info) {
-  case HSA_CODE_SYMBOL_INFO_VARIABLE_ALLOCATION: {
-    *((hsa_variable_allocation_t *)value) = allocation;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_VARIABLE_SEGMENT: {
-    *((hsa_variable_segment_t *)value) = segment;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_VARIABLE_ALIGNMENT: {
-    *((uint32_t *)value) = alignment;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_VARIABLE_SIZE: {
-    *((uint32_t *)value) = size;
-    break;
-  }
-  case HSA_CODE_SYMBOL_INFO_VARIABLE_IS_CONST: {
-    *((bool *)value) = is_constant;
-    break;
-  }
-  default: {
-    return SymbolImpl::GetInfo(symbol_info, value);
-  }
-  }
-
-  return true;
-}
-
-bool LoadedCodeObjectImpl::GetInfo(amd_loaded_code_object_info_t attribute,
-                                   void *value) {
-  assert(value);
-
-  switch (attribute) {
-  case AMD_LOADED_CODE_OBJECT_INFO_ELF_IMAGE:
-    ((hsa_code_object_t *)value)->handle = reinterpret_cast<uint64_t>(elf_data);
-    break;
-  case AMD_LOADED_CODE_OBJECT_INFO_ELF_IMAGE_SIZE:
-    *((size_t *)value) = elf_size;
-    break;
-  default: {
-    return false;
-  }
-  }
-
-  return true;
-}
-
-void LoadedCodeObjectImpl::Print(std::ostream &out) {
-  out << "Code Object" << std::endl;
-}
-
-bool Segment::GetInfo(amd_loaded_segment_info_t attribute, void *value) {
-  assert(value);
-
-  switch (attribute) {
-  case AMD_LOADED_SEGMENT_INFO_TYPE: {
-    *((amdgpu_hsa_elf_segment_t *)value) = segment;
-    break;
-  }
-  case AMD_LOADED_SEGMENT_INFO_ELF_BASE_ADDRESS: {
-    *((uint64_t *)value) = vaddr;
-    break;
-  }
-  case AMD_LOADED_SEGMENT_INFO_LOAD_BASE_ADDRESS: {
-    *((uint64_t *)value) =
-        reinterpret_cast<uint64_t>(this->Address(this->VAddr()));
-    break;
-  }
-  case AMD_LOADED_SEGMENT_INFO_SIZE: {
-    *((size_t *)value) = size;
-    break;
-  }
-  default: {
-    return false;
-  }
-  }
-
-  return true;
-}
-
-uint64_t Segment::Offset(uint64_t addr) {
+uint64_t MockHsaLoadedRegion::Offset(uint64_t addr) {
   assert(IsAddressInSegment(addr));
   return addr - vaddr;
 }
 
-void *Segment::Address(uint64_t addr) {
+void *MockHsaLoadedRegion::Address(uint64_t addr) {
   return owner->context()->SegmentAddress(segment, agent, ptr, Offset(addr));
 }
 
-bool Segment::Freeze() {
+bool MockHsaLoadedRegion::Freeze() {
   return !frozen ? (frozen = owner->context()->SegmentFreeze(segment, agent,
                                                              ptr, size))
                  : true;
 }
 
-bool Segment::IsAddressInSegment(uint64_t addr) {
+bool MockHsaLoadedRegion::IsAddressInSegment(uint64_t addr) {
   return vaddr <= addr && addr < vaddr + size;
 }
 
-void Segment::Copy(uint64_t addr, const void *src, size_t size) {
+void MockHsaLoadedRegion::Copy(uint64_t addr, const void *src, size_t size) {
   // loader must do copies before freezing.
-  assert(!frozen);
 
   if (size > 0) {
     owner->context()->SegmentCopy(segment, agent, ptr, Offset(addr), src, size);
+    std::memcpy(this->getAddress(Offset(addr), src, size);
   }
-}
-
-void Segment::Print(std::ostream &out) {
-  out << "Segment" << std::endl
-      << "    Type: " << AmdHsaElfSegmentToString(segment)
-      << "    Size: " << size << "    VAddr: " << vaddr << std::endl
-      << "    Ptr: " << std::hex << ptr << std::dec << std::endl;
-}
-
-void Segment::Destroy() {
-  owner->context()->SegmentFree(segment, agent, ptr, size);
 }
 
 //===----------------------------------------------------------------------===//
@@ -594,10 +426,6 @@ ExecutableImpl::ExecutableImpl(
 }
 
 ExecutableImpl::~ExecutableImpl() {
-  for (ExecutableObject *o : objects) {
-    delete o;
-  }
-  objects.clear();
 
   for (auto &symbol_entry : agent_symbols_) {
     delete symbol_entry.second;
@@ -648,14 +476,6 @@ Symbol *ExecutableImpl::GetSymbolInternal(const char *symbol_name,
 
   std::string mangled_name = std::string(symbol_name);
   if (mangled_name.empty()) {
-    return nullptr;
-  }
-
-  if (!agent) {
-    auto program_symbol = program_symbols_.find(mangled_name);
-    if (program_symbol != program_symbols_.end()) {
-      return program_symbol->second;
-    }
     return nullptr;
   }
 
@@ -795,7 +615,7 @@ int64_t LoadedCodeObjectImpl::getDelta() const {
   return getLoadBase() - loaded_segments.front()->VAddr();
 }
 
-std::string LoadedCodeObjectImpl::getUri() const {
+std::string MockHsaLoadedCodeObject::getUri() const {
   return std::string(r_debug_info.l_name);
 }
 
@@ -817,11 +637,11 @@ MockHsaExecutable *MockHsaLoader::FindExecutable(uint64_t device_address) {
   return nullptr;
 }
 
-uint64_t ExecutableImpl::FindHostAddress(uint64_t device_address) {
+uint64_t MockHsaExecutable::FindHostAddress(uint64_t device_address) {
   ReaderLockGuard<ReaderWriterLock> reader_lock(rw_lock_);
-  for (auto &obj : loaded_code_objects) {
+  for (auto &obj : LoadedCodeObjects) {
     assert(obj);
-    for (auto &seg : obj->LoadedSegments()) {
+    for (auto &seg : obj->getLoadedSegments()) {
       assert(seg);
       uint64_t paddr = (uint64_t)(uintptr_t)seg->Address(seg->VAddr());
       if (paddr <= device_address && device_address < paddr + seg->Size()) {
@@ -835,46 +655,15 @@ uint64_t ExecutableImpl::FindHostAddress(uint64_t device_address) {
   return 0;
 }
 
-void ExecutableImpl::EnableReadOnlyMode() { rw_lock_.ReaderLock(); }
+void MockHsaExecutable::EnableReadOnlyMode() { rw_lock_.ReaderLock(); }
 
-void ExecutableImpl::DisableReadOnlyMode() { rw_lock_.ReaderUnlock(); }
-
-hsa_status_t ExecutableImpl::GetInfo(hsa_executable_info_t executable_info,
-                                     void *value) {
-  ReaderLockGuard<ReaderWriterLock> reader_lock(rw_lock_);
-
-  assert(value);
-
-  switch (executable_info) {
-  case HSA_EXECUTABLE_INFO_STATE: {
-    *((hsa_executable_state_t *)value) = state_;
-    break;
-  }
-  case HSA_EXECUTABLE_INFO_DEFAULT_FLOAT_ROUNDING_MODE: {
-    *((hsa_default_float_rounding_mode_t *)value) =
-        default_float_rounding_mode_;
-    break;
-  }
-  default: {
-    return HSA_STATUS_ERROR_INVALID_ARGUMENT;
-  }
-  }
-
-  return HSA_STATUS_SUCCESS;
-}
-
-llvm::Error
-ExecutableImpl::LoadCodeObject(hsa_agent_t agent, hsa_code_object_t code_object,
-                               const char *options, const std::string &uri,
-                               hsa_loaded_code_object_t *loaded_code_object) {
-  return LoadCodeObject(agent, code_object, 0, options, uri,
-                        loaded_code_object);
-}
+void MockHsaExecutable::DisableReadOnlyMode() { rw_lock_.ReaderUnlock(); }
 
 llvm::Expected<const MockHsaLoadedCodeObject &>
 MockHsaExecutable::loadCodeObject(llvm::ArrayRef<std::byte> CodeObject,
                                   const std::string &uri) {
   WriterLockGuard<ReaderWriterLock> WriterLock(rw_lock_);
+
   LUTHIER_RETURN_ON_ERROR(
       LUTHIER_GENERIC_ERROR_CHECK(HSA_EXECUTABLE_STATE_FROZEN != state_,
                                   "LoaderError: executable is already frozen"));
@@ -932,13 +721,13 @@ MockHsaExecutable::loadCodeObject(llvm::ArrayRef<std::byte> CodeObject,
         code->GetSymbol(i)->elfSym()->binding() == STB_LOCAL)
       continue;
 
-    status = LoadSymbol(agent, code->GetSymbol(i), majorVersion);
+    status = LoadSymbol(code->GetSymbol(i), majorVersion);
     if (status != HSA_STATUS_SUCCESS) {
       return status;
     }
   }
 
-  status = ApplyRelocations(agent, code.get());
+  status = ApplyRelocations(code.get());
   if (status != HSA_STATUS_SUCCESS) {
     return status;
   }
@@ -955,166 +744,67 @@ MockHsaExecutable::loadCodeObject(llvm::ArrayRef<std::byte> CodeObject,
 }
 
 hsa_status_t MockHsaExecutable::LoadSegments(hsa_agent_t agent,
-                                             const code::AmdHsaCode *c,
-                                             uint32_t majorVersion) {
+                                             const code::AmdHsaCode *c) {
   return LoadSegmentsV2(agent, c);
 }
 
-hsa_status_t MockHsaExecutable::LoadSegmentsV2(hsa_agent_t agent,
-                                               const code::AmdHsaCode *c) {
-  assert(c->Machine() == ELF::EM_AMDGPU &&
-         "Program code objects are not supported");
+llvm::Error MockHsaLoadedCodeObject::LoadSegments() {
 
-  if (!c->DataSegmentCount())
-    return HSA_STATUS_ERROR_INVALID_CODE_OBJECT;
+  const auto &CodeObjectELFFile = Elf->getELFFile();
 
-  uint64_t vaddr = c->DataSegment(0)->vaddr();
-  uint64_t size = c->DataSegment(c->DataSegmentCount() - 1)->vaddr() +
-                  c->DataSegment(c->DataSegmentCount() - 1)->memSize();
+  /// Get the PT_LOAD segments of the ELF
+  auto ProgramHeadersOrErr = CodeObjectELFFile.program_headers();
+  LUTHIER_RETURN_ON_ERROR(ProgramHeadersOrErr.takeError());
 
-  void *ptr = context_->SegmentAlloc(AMDGPU_HSA_SEGMENT_CODE_AGENT, agent, size,
-                                     AMD_ISA_ALIGN_BYTES, true);
-  if (!ptr)
-    return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
+  llvm::SmallVector<std::reference_wrapper<llvm::object::ELF64LE::Phdr>, 4>
+      PTLoadSegments;
 
-  auto *LoadSegment =
-      new (std::nothrow) Segment(this, agent, AMDGPU_HSA_SEGMENT_CODE_AGENT,
-                                 ptr, size, vaddr, c->DataSegment(0)->offset());
-  if (!LoadSegment)
-    return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
-
-  hsa_status_t status = HSA_STATUS_SUCCESS;
-  for (size_t i = 0; i < c->DataSegmentCount(); ++i) {
-    status = LoadSegmentV2(c->DataSegment(i), LoadSegment);
-    if (status != HSA_STATUS_SUCCESS)
-      return status;
-  }
-
-  objects.push_back(LoadSegment);
-  loaded_code_objects.back()->LoadedSegments().push_back(LoadSegment);
-
-  return HSA_STATUS_SUCCESS;
-}
-
-hsa_status_t MockHsaExecutable::LoadSegmentV2(const code::Segment *data_segment,
-                                              loader::Segment *load_segment) {
-  assert(data_segment && load_segment);
-  load_segment->Copy(data_segment->vaddr(), data_segment->data(),
-                     data_segment->imageSize());
-
-  return HSA_STATUS_SUCCESS;
-}
-
-hsa_status_t MockHsaExecutable::LoadSymbol(hsa_agent_t agent, code::Symbol *sym,
-                                           uint32_t majorVersion) {
-  if (sym->IsDeclaration()) {
-    return LoadDeclarationSymbol(agent, sym, majorVersion);
-  } else {
-    return LoadDefinitionSymbol(agent, sym, majorVersion);
-  }
-}
-
-hsa_status_t MockHsaExecutable::LoadDefinitionSymbol(hsa_agent_t agent,
-                                                     code::Symbol *sym,
-                                                     uint32_t majorVersion) {
-  auto agent_symbol = agent_symbols_.find(std::make_pair(sym->Name(), agent));
-  if (agent_symbol != agent_symbols_.end()) {
-    // TODO(spec): this is not spec compliant.
-    return HSA_STATUS_ERROR_VARIABLE_ALREADY_DEFINED;
-  }
-
-  uint64_t address = SymbolAddress(sym);
-  SymbolImpl *symbol = nullptr;
-  if (llvm::StringRef(sym->GetSymbolName()).ends_with(".kd")) {
-    // V3.
-    llvm::amdhsa::kernel_descriptor_t kd;
-    sym->GetSection()->getData(sym->SectionOffset(), &kd, sizeof(kd));
-
-    uint32_t kernarg_segment_size =
-        kd.kernarg_size; // FIXME: If 0 then the compiler is not specifying the
-    // size.
-    uint32_t kernarg_segment_alignment =
-        16; // FIXME: Use the minumum HSA required alignment.
-    uint32_t group_segment_size = kd.group_segment_fixed_size;
-    uint32_t private_segment_size = kd.private_segment_fixed_size;
-    bool is_dynamic_callstack =
-        AMDHSA_BITS_GET(kd.kernel_code_properties,
-                        llvm::amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK);
-    bool uses_wave32 = AMDHSA_BITS_GET(
-        kd.kernel_code_properties,
-        llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32);
-
-    uint64_t size = sym->Size();
-
-    KernelSymbol *kernel_symbol = new KernelSymbol(
-        true, sym->GetModuleName(), sym->GetSymbolName(), sym->Linkage(),
-        true, // sym->IsDefinition()
-        kernarg_segment_size, kernarg_segment_alignment, group_segment_size,
-        private_segment_size, is_dynamic_callstack, size, 64,
-        uses_wave32 ? 32 : 64, address);
-    symbol = kernel_symbol;
-  } else if (sym->IsVariableSymbol()) {
-    symbol = new VariableSymbol(
-        true, sym->GetModuleName(), sym->GetSymbolName(), sym->Linkage(),
-        true, // sym->IsDefinition()
-        sym->Allocation(), sym->Segment(), sym->Size(), sym->Alignment(),
-        sym->IsConst(), false, address);
-  } else if (sym->IsKernelSymbol()) {
-    amd_kernel_code_t akc;
-    sym->GetSection()->getData(sym->SectionOffset(), &akc, sizeof(akc));
-
-    uint32_t kernarg_segment_size = uint32_t(akc.kernarg_segment_byte_size);
-    uint32_t kernarg_segment_alignment =
-        uint32_t(1 << akc.kernarg_segment_alignment);
-    uint32_t group_segment_size =
-        uint32_t(akc.workgroup_group_segment_byte_size);
-    uint32_t private_segment_size =
-        uint32_t(akc.workitem_private_segment_byte_size);
-    bool is_dynamic_callstack =
-        AMD_HSA_BITS_GET(akc.kernel_code_properties,
-                         AMD_KERNEL_CODE_PROPERTIES_IS_DYNAMIC_CALLSTACK)
-            ? true
-            : false;
-    bool uses_wave32 = akc.wavefront_size == AMD_POWERTWO_32;
-
-    uint64_t size = sym->Size();
-
-    if (!size && sym->SectionOffset() < sym->GetSection()->size()) {
-      // ORCA Runtime relies on symbol size equal to size of kernel ISA. If
-      // symbol size is 0 in ELF, calculate end of segment - symbol value.
-      size = sym->GetSection()->size() - sym->SectionOffset();
+  for (auto Phdr : *ProgramHeadersOrErr) {
+    if (Phdr.p_type == PT_LOAD) {
+      PTLoadSegments.push_back(Phdr);
     }
-    KernelSymbol *kernel_symbol = new KernelSymbol(
-        true, sym->GetModuleName(), sym->GetSymbolName(), sym->Linkage(),
-        true, // sym->IsDefinition()
-        kernarg_segment_size, kernarg_segment_alignment, group_segment_size,
-        private_segment_size, is_dynamic_callstack, size, 256,
-        uses_wave32 ? 32 : 64, address);
-    kernel_symbol->debug_info.elf_raw = code->ElfData();
-    kernel_symbol->debug_info.elf_size = code->ElfSize();
-    kernel_symbol->debug_info.kernel_name = kernel_symbol->full_name.c_str();
-    kernel_symbol->debug_info.owning_segment =
-        (void *)SymbolSegment(sym)->Address(sym->GetSection()->addr());
-    symbol = kernel_symbol;
-
-    // \todo kzhuravl 10/15/15 This is a debugger backdoor: needs to be
-    // removed.
-    uint64_t target_address =
-        sym->GetSection()->addr() + sym->SectionOffset() +
-        ((size_t)(&((amd_kernel_code_t *)0)->runtime_loader_kernel_symbol));
-    uint64_t source_value = (uint64_t)(uintptr_t)&kernel_symbol->debug_info;
-    SymbolSegment(sym)->Copy(target_address, &source_value,
-                             sizeof(source_value));
-  } else {
-    assert(!"Unexpected symbol type in LoadDefinitionSymbol");
-    return HSA_STATUS_ERROR;
   }
 
-  assert(symbol);
-  symbol->agent = agent;
-  agent_symbols_.insert(
-      std::make_pair(std::make_pair(sym->Name(), agent), symbol));
-  return HSA_STATUS_SUCCESS;
+  if (PTLoadSegments.empty()) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "The code object has no PT_LOAD sections");
+  }
+
+  /// PT_LOAD segments are sorted w.r.t their virtual address but we sort them
+  /// anyway just to be sure. We then use the sorted list to calculate the
+  /// starting virtual address of the loaded region and its size
+  llvm::sort(PTLoadSegments,
+             [](std::reference_wrapper<llvm::object::ELF64LE::Phdr> LHS,
+                std::reference_wrapper<llvm::object::ELF64LE::Phdr> RHS) {
+               return LHS.get().p_vaddr < RHS.get().p_vaddr;
+             });
+
+  const auto &FirstLoadSegment = PTLoadSegments.begin()->get();
+  const auto &LastLoadSegment = PTLoadSegments.rbegin()->get();
+  uint64_t VAddrBegin = FirstLoadSegment.p_vaddr;
+  uint64_t Size = LastLoadSegment.p_vaddr + LastLoadSegment.p_memsz;
+
+  /// Allocate the region
+  llvm::Error Err = llvm::Error::success();
+
+  LoadedRegion = std::make_unique<MockHsaLoadedRegion>(
+      *this, Size, AMD_ISA_ALIGN_BYTES, VAddrBegin, FirstLoadSegment.p_offset,
+      Err);
+
+  LUTHIER_RETURN_ON_ERROR(Err);
+
+  /// If region allocation was successful, load the PT_LOAD segments
+  const char *ElfStart = Elf->getMemoryBufferRef().getBufferStart();
+
+  for (auto PTLoadSegment : PTLoadSegments) {
+
+    Err = LoadedRegion->Copy(PTLoadSegment.get().p_vaddr,
+                             ElfStart + PTLoadSegment.get().p_offset,
+                             PTLoadSegment.get().p_filesz);
+    LUTHIER_RETURN_ON_ERROR(Err);
+  }
+
+  return llvm::Error::success();
 }
 
 hsa_status_t MockHsaExecutable::LoadDeclarationSymbol(hsa_agent_t agent,
@@ -1169,52 +859,37 @@ Segment *MockHsaExecutable::SectionSegment(code::Section *sec) {
   return nullptr;
 }
 
-hsa_status_t
-MockHsaExecutable::ApplyRelocations(hsa_agent_t agent,
-                                    amd::hsa::code::AmdHsaCode *c) {
-  hsa_status_t status = HSA_STATUS_SUCCESS;
-
-  uint32_t majorVersion, minorVersion;
-  if (!c->GetCodeObjectVersion(&majorVersion, &minorVersion)) {
-    return HSA_STATUS_ERROR_INVALID_CODE_OBJECT;
-  }
-
-  for (size_t i = 0; i < c->RelocationSectionCount(); ++i) {
-    if (c->GetRelocationSection(i)->targetSection()) {
-      // Static relocations may be present if --emit-relocs
-      // option was passed to lld, but they cannot be applied
-      // again, so skip it for code object v2 and up.
-      if (majorVersion >= 2) {
-        continue;
-      }
-
-      status = ApplyStaticRelocationSection(agent, c->GetRelocationSection(i));
-    } else {
-      // Dynamic relocations are supported starting code object v2.1.
-      if (majorVersion < 2) {
-        return HSA_STATUS_ERROR_INVALID_CODE_OBJECT;
-      }
-      if (majorVersion == 2 && minorVersion < 1) {
-        return HSA_STATUS_ERROR_INVALID_CODE_OBJECT;
-      }
-      status = ApplyDynamicRelocationSection(agent, c->GetRelocationSection(i));
-    }
-    if (status != HSA_STATUS_SUCCESS) {
-      return status;
+llvm::Error MockHsaLoadedCodeObject::ApplyRelocations() {
+  /// Apply static relocations
+  for (const llvm::object::SectionRef Section : Elf->sections()) {
+    for (const llvm::object::ELFRelocationRef Reloc : Section.relocations()) {
+      /// In ROCr static relocations are only applied to code object v1; Here
+      /// we allow it to be applied since we support device functions
+      LUTHIER_RETURN_ON_ERROR(ApplyStaticRelocationSection(Reloc));
     }
   }
-  return HSA_STATUS_SUCCESS;
+
+  /// Apply dynamic relocations
+  for (const llvm::object::SectionRef DynRelocSection :
+       llvm::cast<llvm::object::ObjectFile>(Elf)
+           ->dynamic_relocation_sections()) {
+    for (const llvm::object::ELFRelocationRef Reloc : DynRelocSection) {
+
+      LUTHIER_RETURN_ON_ERROR(ApplyDynamicRelocationSection(Reloc));
+    }
+  }
+  return llvm::Error::success();
 }
 
-hsa_status_t MockHsaExecutable::ApplyStaticRelocationSection(
-    hsa_agent_t agent, amd::hsa::code::RelocationSection *sec) {
+llvm::Error MockHsaLoadedCodeObject::ApplyStaticRelocationSection(
+    llvm::object::ELFRelocationRef sec) {
   // Skip link-time relocations (if any).
   if (!(sec->targetSection()->flags() & SHF_ALLOC)) {
     return HSA_STATUS_SUCCESS;
   }
   hsa_status_t status = HSA_STATUS_SUCCESS;
   for (size_t i = 0; i < sec->relocationCount(); ++i) {
-    status = ApplyStaticRelocation(agent, sec->relocation(i));
+    status = ApplyStaticRelocation(sec->relocation(i));
     if (status != HSA_STATUS_SUCCESS) {
       return status;
     }
@@ -1222,66 +897,53 @@ hsa_status_t MockHsaExecutable::ApplyStaticRelocationSection(
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t
-MockHsaExecutable::ApplyStaticRelocation(hsa_agent_t agent,
-                                         amd::hsa::code::Relocation *rel) {
-  hsa_status_t status = HSA_STATUS_SUCCESS;
-  amd::elf::Symbol *sym = rel->symbol();
-  code::RelocationSection *rsec = rel->section();
-  code::Section *sec = rsec->targetSection();
-  Segment *rseg = SectionSegment(sec);
-  size_t reladdr = sec->addr() + rel->offset();
-  switch (rel->type()) {
-  case R_AMDGPU_V1_32_LOW:
-  case R_AMDGPU_V1_32_HIGH:
-  case R_AMDGPU_V1_64: {
-    uint64_t addr;
-    switch (sym->type()) {
-    case STT_OBJECT:
-    case STT_SECTION:
-    case STT_AMDGPU_HSA_KERNEL:
-    case STT_AMDGPU_HSA_INDIRECT_FUNCTION:
-      addr = SymbolAddress(sym);
-      if (!addr) {
-        return HSA_STATUS_ERROR_INVALID_CODE_OBJECT;
-      }
+llvm::Error MockHsaLoadedCodeObject::ApplyStaticRelocation(
+    llvm::object::ELFRelocationRef Rel) {
+
+  llvm::object::elf_symbol_iterator Sym = Rel.getSymbol();
+  if (Sym == Rel.getObject()->symbol_end()) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "Relocation section doesn't have a symbol");
+  }
+
+  uint64_t RelOffset = Rel.getOffset();
+  switch (Rel.getType()) {
+  case llvm::ELF::R_AMDGPU_ABS32_LO:
+  case llvm::ELF::R_AMDGPU_ABS32_HI:
+  case llvm::ELF::R_AMDGPU_ABS64: {
+    uint64_t Addr;
+    switch (Sym->getELFType()) {
+    case llvm::ELF::STT_OBJECT:
+    case llvm::ELF::STT_SECTION:
+    case llvm::ELF::STT_FUNC:
+    case llvm::ELF::STT_GNU_IFUNC:
+      LUTHIER_RETURN_ON_ERROR(Sym->getAddress().moveInto(Addr));
       break;
-    case STT_COMMON: {
-      hsa_agent_t *sagent = &agent;
-      if (STA_AMDGPU_HSA_GLOBAL_PROGRAM ==
-          ELF64_ST_AMDGPU_ALLOCATION(sym->other())) {
-        sagent = nullptr;
-      }
-      SymbolImpl *esym =
-          (SymbolImpl *)GetSymbolInternal(sym->name().c_str(), sagent);
-      if (!esym) {
-        logger_ << "LoaderError: symbol \"" << sym->name()
-                << "\" is undefined\n";
-        return HSA_STATUS_ERROR_VARIABLE_UNDEFINED;
-      }
-      addr = esym->address;
-      break;
-    }
     default:
-      return HSA_STATUS_ERROR_INVALID_CODE_OBJECT;
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Invalid symbol type {0}", Sym->getELFType()));
     }
-    addr += rel->addend();
+    llvm::Expected<uint64_t> AddendOrErr = Rel.getAddend();
+    LUTHIER_RETURN_ON_ERROR(AddendOrErr.takeError());
+
+    Addr += *AddendOrErr;
 
     uint32_t addr32 = 0;
-    switch (rel->type()) {
-    case R_AMDGPU_V1_32_HIGH:
-      addr32 = uint32_t((addr >> 32) & 0xFFFFFFFF);
-      rseg->Copy(reladdr, &addr32, sizeof(addr32));
+    switch (Rel.getType()) {
+    case llvm::ELF::R_AMDGPU_ABS32_HI:
+      addr32 = static_cast<uint32_t>((Addr >> 32) & 0xFFFFFFFF);
+      LoadedRegion->Copy(RelOffset, &addr32, sizeof(addr32));
       break;
-    case R_AMDGPU_V1_32_LOW:
-      addr32 = uint32_t(addr & 0xFFFFFFFF);
-      rseg->Copy(reladdr, &addr32, sizeof(addr32));
+    case llvm::ELF::R_AMDGPU_ABS32_LO:
+      addr32 = static_cast<uint32_t>(Addr & 0xFFFFFFFF);
+      LoadedRegion->Copy(RelOffset, &addr32, sizeof(addr32));
       break;
-    case R_AMDGPU_V1_64:
-      rseg->Copy(reladdr, &addr, sizeof(addr));
+    case llvm::ELF::R_AMDGPU_ABS64:
+      LoadedRegion->Copy(RelOffset, &Addr, sizeof(Addr));
       break;
     default:
-      return HSA_STATUS_ERROR_INVALID_CODE_OBJECT;
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Encountered invalid relocation type {0}", Rel.getType()));
     }
     break;
   }
@@ -1290,24 +952,31 @@ MockHsaExecutable::ApplyStaticRelocation(hsa_agent_t agent,
     // Ignore.
     break;
   }
-  return HSA_STATUS_SUCCESS;
+  return llvm::Error::success();
 }
 
-hsa_status_t MockHsaExecutable::ApplyDynamicRelocationSection(
-    hsa_agent_t agent, amd::hsa::code::RelocationSection *sec) {
-  hsa_status_t status = HSA_STATUS_SUCCESS;
-  for (size_t i = 0; i < sec->relocationCount(); ++i) {
-    status = ApplyDynamicRelocation(agent, sec->relocation(i));
-    if (status != HSA_STATUS_SUCCESS) {
-      return status;
-    }
+MockHsaLoadedRegion::MockHsaLoadedRegion(MockHsaLoadedCodeObject &Parent,
+                                         size_t Size, size_t Alignment,
+                                         uint64_t VAddr, size_t Offset,
+                                         llvm::Error &Err, bool Zero)
+    : Parent(Parent), Size(Size), BaseVAddr(VAddr), storage_offset(Offset) {
+  llvm::ErrorAsOutParameter EAO(Err);
+
+  Ptr = new (std::align_val_t{Alignment}, std::nothrow) std::byte[Size];
+  if (nullptr == Ptr) {
+    Err = LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("Failed to allocate {0} bytes of memory", Size));
+    return;
   }
-  return HSA_STATUS_SUCCESS;
+  if (Zero) {
+    std::memset(Ptr, 0, Size);
+  }
 }
 
-hsa_status_t
-MockHsaExecutable::ApplyDynamicRelocation(hsa_agent_t agent,
-                                          amd::hsa::code::Relocation *rel) {
+MockHsaLoadedRegion::~MockHsaLoadedRegion() { delete[] Ptr; }
+
+hsa_status_t MockHsaLoadedCodeObject::ApplyDynamicRelocation(
+    llvm::object::ELFRelocationRef Rel) {
   Segment *relSeg = VirtualAddressSegment(rel->offset());
   uint64_t symAddr = 0;
   switch (rel->symbol()->type()) {
@@ -1320,7 +989,7 @@ MockHsaExecutable::ApplyDynamicRelocation(hsa_agent_t agent,
   }
 
     // External symbols, they must be defined prior loading.
-  case STT_NOTYPE: {
+  case llvm::ELF::STT_NOTYPE: {
     // TODO: Only agent allocation variables are supported in v2.1. How will
     // we distinguish between program allocation and agent allocation
     // variables?
