@@ -4,7 +4,7 @@
 
 The mock loader is a very useful tool for Luthier developers that streamlines the instrumentation pass development
 process, allowing them to easily experiment with different possible instrumentation scenarios without the constraints
-of physical access to an AMD GPU device to load their target code. In this section we go over Luthier's
+of having physical access to an AMD GPU device to load their target code. In this section we go over Luthier's
 `MockAMDGPULoader` design and its usage.
 
 ## Background
@@ -19,64 +19,35 @@ Exclusively running the inspection passes directly on GPU memory has the followi
 
 ## Design
 
-A new loader implementation called the "Mock AMDGPU Loader" is introduced to dynamically load and link AMD GPU code
+A loader implementation called the "Mock AMDGPU Loader" is introduced to dynamically load and link AMD GPU code
 objects on host memory instead of device memory, thereby "mocking" or emulating the normal loading process and
 eliminating the need for a physical AMD GPU to utilize Luthier's instrumentation passes.
 
-The mock loader is a stripped down version of the ROCr HSA loader and behaves somewhat similarly to the code loading
-APIs provided by the HSA standard. After creating a loader instance, the users can request a `MockAMDGPUExecutable`. The
-mock executable can then be used to load code objects
+The `MockAMDGPULoader` class works somewhat similarly to the AMD HSA loader's `hsa_executable_t` (and it indeed started
+off as a modified version of it). It allows for loading multiple code objects, and even manually defining variables
+externally to be used to resolve any undefined variables in the loaded code objects (equivalent to
+`hsa_executable_agent_global_variable_define`). Once the user is done loading code objects, they can call
+`finalize()` to finalize the loading process (equivalent to `hsa_executable_freeze` in HSA).
 
-These two steps will allow the instrumentation passes to seamlessly
+There are, however some important differences between the mock loader and the HSA executable loader. Unlike the
+HSA loader, the mock loader:
 
-`MockAMDGPULoader` mechanism is introduced. The mock loader dynamically loads and links
-AMD GPU code objects on the host memory instead of the target device's memory, thereby "mocking" the normal loading
-process. he mock loader developers can test their instrumentation passes for all intended AMD GPU targets without having
-physical access to the GPUs on their system.
+1. only supports HSA code object versions 3 and up. Code object version 1 does not follow proper ELF conventions to
+   begin with and its relocation enumerations are incompatible with newer HSA code object versions. Even though code
+   object version 2 does support the current AMD GPU relocations and is better formed, the loader chooses not to support
+   it due to having to inspect the note section of the code object in order to distinguish between code objects version
+   1 and 2.
+2. does not apply static and dynamic relocations the moment the code objects are loaded. Instead, it defers the
+   relocation resolving to the finalization stage. This way, the loader can support loading circularly dependent code
+   objects (e.g., code object A defines variable A used by code object B, and code object B defines variable B used by
+   code object A).
+3. links externally defined variable and the external variables in loaded code objects regardless of their types.
+4. supports all relocations as documented in
+   the [AMDGPU LLVM backend](https://llvm.org/docs/AMDGPUUsage.html#relocation-records).
+5. allows for loading of code objects targeting other OSes including PAL or Mesa for OS-agnostic testing.
+6. allows loading of code objects targeting different architectures and capabilities on the host memory space to emulate
+   linking of code objects on multiple devices.
 
-A mechanism that "mocks"
-the code object loading and linking process of an AMD GPU runtime is desired, which loads the code objects on host
-memory instead of a target AMD GPU device.
+It is worth mentioning that the loader will not work with object files (i.e., ELFs that don't have program headers).
 
-## Design
-
-The mock loader's implementation is a very stripped down version of the HSA loader.
-
-1. Emulate the
-2.
-3. primarily allow for easier and faster
-   testing and experimentation with the loaded code objects and the instrumentation passes.
-
-To allow for easier
-testing and development of instrumentation passes on all supported AMD GPU target devices while eliminating the need of
-having a physical AMD GPU attached to the test system,
-
-1. Testing and
-
-To allow for easier testing and experimentation,
-Because of this,
-
-1. to allow Luthier developers to test and experiment with the
-   instrumentation passes without requiring the presence of a physical AMD GPU.
-
-This requirement makes testing and development of the instrumentation passes challenging, as
-they have to rely as without
-a
-the other hand, However, it hinders testing as all inspection tests require the presence of a target AMD GPU runtime
-and a target device, making
-
-In addition to testing
-
-To remedy
-Originally, an "offline" mode for inspection passes was considered to
-support instrumentation of code objects that has not been loaded into a target runtime. The passes then could which the
-passes would behave differently if they are only dealing with
-
-1.
-2. It
-
-To streamline the instrumentation pass development process, Luthier has
-
-## Constraints on The Code Objects Used In A Mock Executable
-
-- The mock loader is intentionally not thread-safe to reduce implementation complexity.
+The mock loader is not thread-safe as it is intended for testing.
