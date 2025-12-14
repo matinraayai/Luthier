@@ -1,7 +1,6 @@
 add_subdirectory(compiler-plugins)
 add_subdirectory(amdgpu)
 add_subdirectory(llvm)
-add_subdirectory(mock-loader)
 add_subdirectory(comgr)
 add_subdirectory(rocprofiler-sdk)
 add_subdirectory(object)
