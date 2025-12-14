@@ -38,6 +38,7 @@ add_library(LuthierToolingCommon OBJECT
         RunMIRPassesOnIModulePass.cpp
         PatchLiftedRepresentationPass.cpp
         MIRConvenience.cpp
+        MockAMDGPULoader.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)

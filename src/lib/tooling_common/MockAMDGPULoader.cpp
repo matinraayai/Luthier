@@ -17,9 +17,9 @@
 /// classes.
 //===----------------------------------------------------------------------===//
 
+#include "luthier/tooling/MockAMDGPULoader.h"
 #include "luthier/common/ErrorCheck.h"
 #include "luthier/common/GenericLuthierError.h"
-#include "luthier/mock-loader/MockAMDGPULoader.h"
 #include <hsa/amd_hsa_kernel_code.h>
 
 namespace luthier {

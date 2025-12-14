@@ -16,8 +16,8 @@
 /// \file Defines the \c MockAMDGPULoader and \c MockLoadedCodeObject
 /// classes.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_MOCK_AMDGPU_LOADER_H
-#define LUTHIER_MOCK_AMDGPU_LOADER_H
+#ifndef LUTHIER_TOOLING_MOCK_AMDGPU_LOADER_H
+#define LUTHIER_TOOLING_MOCK_AMDGPU_LOADER_H
 
 #include "luthier/object/AMDGCNObjectFile.h"
 #include <llvm/ADT/StringMap.h>
