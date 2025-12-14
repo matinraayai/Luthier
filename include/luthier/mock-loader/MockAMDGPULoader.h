@@ -39,7 +39,7 @@ class MockLoadedCodeObject {
   std::unique_ptr<object::AMDGCNObjectFile> Elf{};
 
   /// A contiguous memory region where the code object is loaded
-  llvm::MutableArrayRef<std::byte> Segment{};
+  llvm::MutableArrayRef<std::byte> LoadedRegion{};
 
   /// List of load segments of the ELF, sorted w.r.t their virtual address
   llvm::SmallVector<std::reference_wrapper<const llvm::object::ELF64LE::Phdr>,
@@ -55,24 +55,27 @@ public:
   MockLoadedCodeObject &operator=(const MockLoadedCodeObject &) = delete;
 
   ~MockLoadedCodeObject() {
-    if (Segment.data())
-      delete Segment.data();
+    if (LoadedRegion.data())
+      delete LoadedRegion.data();
   }
 
   [[nodiscard]] const object::AMDGCNObjectFile &getCodeObject() const {
     return *Elf;
   }
 
-  llvm::ArrayRef<std::byte> getLoadedSegment() const { return Segment; }
+  llvm::ArrayRef<std::byte> getLoadedRegion() const { return LoadedRegion; }
 
   [[nodiscard]] MockAMDGPULoader &getExecutable() const { return Parent; }
+
+  llvm::ArrayRef<std::reference_wrapper<const llvm::object::ELF64LE::Phdr>>
+  getLoadSegments() const {
+    return PTLoadSegments;
+  }
 
 private:
   llvm::Error finalize();
 
-  llvm::Error applyStaticRelocation(llvm::object::ELFRelocationRef Rel);
-
-  llvm::Error applyDynamicRelocation(llvm::object::ELFRelocationRef Rel);
+  llvm::Error applyRelocation(llvm::object::ELFRelocationRef Rel);
 };
 
 /// \brief a code loader for AMD GPU code objects that loads and dynamically
@@ -81,6 +84,8 @@ class MockAMDGPULoader {
 private:
   typedef llvm::StringMap<void *> ExternalSymbolMap;
 
+  typedef llvm::SmallVector<std::unique_ptr<MockLoadedCodeObject>> LCOVector;
+
   /// If true, loading of the code objects has been finalized
   bool IsFinalized{false};
 
@@ -88,7 +93,7 @@ private:
   ExternalSymbolMap ExternalSymbols;
 
   /// Loaded code objects managed by the executable
-  llvm::SmallVector<std::unique_ptr<MockLoadedCodeObject>> LoadedCodeObjects;
+  LCOVector LoadedCodeObjects;
 
 public:
   MockAMDGPULoader() = default;
@@ -151,56 +156,94 @@ public:
   /// operation
   llvm::Error finalize();
 
-  /// Non-const function to iterate over the loaded code objects managed by
-  /// the loader and invoke a \c C
-  /// \tparam Callable a callable type that takes a non-const \c
-  /// MockHsaLoadedCodeObject as the first parameter, and the \c Args as the
-  /// subsequent parameters, and returns a \c llvm::Error indicating it success
-  /// or failure
-  /// \tparam ExtraArgs the additional argument types required to invoke \c
-  /// Callable
-  /// \param C the \c Callable to be invoked on every loaded code object managed
-  /// by the loader
-  /// \param Args the additional arguments of \p C
-  /// \return \c llvm::Error indicating the success or failure of the iteration
-  template <typename Callable, typename... ExtraArgs>
-  llvm::Error iterateLoadedCodeObjects(Callable C, ExtraArgs... Args) {
-    for (auto &LCO : LoadedCodeObjects) {
-      LUTHIER_RETURN_ON_ERROR(C(*LCO, Args...));
+  class loaded_code_object_iterator {
+    LCOVector::iterator It;
+
+  public:
+    explicit loaded_code_object_iterator(LCOVector::iterator It) : It(It) {}
+
+    MockLoadedCodeObject &operator*() const { return **It; }
+
+    loaded_code_object_iterator &operator++() {
+      ++It;
+      return *this;
     }
-    return llvm::Error::success();
+
+    loaded_code_object_iterator operator++(int) {
+      auto Copy = *this;
+      ++(*this);
+      return Copy;
+    }
+
+    bool operator==(const loaded_code_object_iterator &Other) const {
+      return It == Other.It;
+    }
+
+    bool operator!=(const loaded_code_object_iterator &Other) const {
+      return !(*this == Other);
+    }
+  };
+
+  class const_loaded_code_object_iterator {
+    LCOVector::const_iterator It;
+
+  public:
+    explicit const_loaded_code_object_iterator(LCOVector::const_iterator It)
+        : It(It) {}
+
+    const MockLoadedCodeObject &operator*() const { return **It; }
+
+    const_loaded_code_object_iterator &operator++() {
+      ++It;
+      return *this;
+    }
+
+    const_loaded_code_object_iterator operator++(int) {
+      auto Copy = *this;
+      ++(*this);
+      return Copy;
+    }
+
+    bool operator==(const const_loaded_code_object_iterator &Other) const {
+      return It == Other.It;
+    }
+
+    bool operator!=(const const_loaded_code_object_iterator &Other) const {
+      return !(*this == Other);
+    }
+  };
+
+  loaded_code_object_iterator loaded_code_objects_begin() {
+    return loaded_code_object_iterator(LoadedCodeObjects.begin());
   }
 
-  /// Const iterator function over the loaded code objects managed by the loader
-  /// \see iterateLoadedCodeObjects
-  template <typename Callable, typename... ExtraArgs>
-  llvm::Error iterateLoadedCodeObjects(Callable C, ExtraArgs... Args) const {
-    for (const auto &LCO : LoadedCodeObjects) {
-      LUTHIER_RETURN_ON_ERROR(C(*LCO, Args...));
-    }
-    return llvm::Error::success();
+  loaded_code_object_iterator loaded_code_objects_end() {
+    return loaded_code_object_iterator(LoadedCodeObjects.begin());
   }
 
-  /// Iterator function over the loaded code objects managed by the loader with
-  /// no extra arguments
-  /// \see iterateLoadedCodeObjects
-  template <typename Callable>
-  llvm::Error iterateLoadedCodeObjects(Callable C) {
-    for (auto &LCO : LoadedCodeObjects) {
-      LUTHIER_RETURN_ON_ERROR(C(*LCO));
-    }
-    return llvm::Error::success();
+  llvm::iterator_range<loaded_code_object_iterator> loaded_code_objects() {
+    return llvm::make_range(loaded_code_objects_begin(),
+                            loaded_code_objects_end());
   }
 
-  /// Const iterator function over the loaded code objects managed by the loader
-  /// with no extra arguments
-  /// \see iterateLoadedCodeObjects
-  template <typename Callable>
-  llvm::Error iterateLoadedCodeObjects(Callable C) const {
-    for (const auto &LCO : LoadedCodeObjects) {
-      LUTHIER_RETURN_ON_ERROR(C(*LCO));
-    }
-    return llvm::Error::success();
+  [[nodiscard]] const_loaded_code_object_iterator
+  loaded_code_objects_begin() const {
+    return const_loaded_code_object_iterator(LoadedCodeObjects.begin());
+  }
+
+  [[nodiscard]] const_loaded_code_object_iterator
+  loaded_code_objects_end() const {
+    return const_loaded_code_object_iterator(LoadedCodeObjects.end());
+  }
+
+  [[nodiscard]] llvm::iterator_range<const_loaded_code_object_iterator>
+  loaded_code_objects() const {
+    return llvm::make_range(loaded_code_objects_begin(),
+                            loaded_code_objects_end());
+  }
+
+  [[nodiscard]] unsigned loaded_code_objects_size() const {
+    return LoadedCodeObjects.size();
   }
 };
 
