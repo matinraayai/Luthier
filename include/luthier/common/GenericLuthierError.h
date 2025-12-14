@@ -51,11 +51,13 @@ public:
   void log(llvm::raw_ostream &OS) const override;
 };
 
+#define LUTHIER_MAKE_GENERIC_ERROR(ErrorMsg)                                   \
+  llvm::make_error<luthier::GenericLuthierError>(                              \
+      ErrorMsg, std::source_location::current(),                               \
+      luthier::GenericLuthierError::StackTraceInitializer())
+
 #define LUTHIER_GENERIC_ERROR_CHECK(Expr, ErrorMsg)                            \
-  (Expr) ? llvm::Error::success()                                              \
-         : llvm::make_error<GenericLuthierError>(                              \
-               ErrorMsg, std::source_location::current(),                      \
-               luthier::GenericLuthierError::StackTraceInitializer())
+  (Expr) ? llvm::Error::success() : LUTHIER_MAKE_GENERIC_ERROR(ErrorMsg)
 
 } // namespace luthier
 

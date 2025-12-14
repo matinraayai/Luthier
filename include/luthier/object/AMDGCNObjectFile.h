@@ -24,6 +24,73 @@
 
 namespace luthier::object {
 
+/// \returns \c true if \p AMDGPUMach is a generic ELF AMDGPU machine, \c false
+/// otherwise
+inline bool isGenericAMDGPUMach(unsigned AMDGPUMach) {
+  switch (AMDGPUMach) {
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX9_GENERIC:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX9_4_GENERIC:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX10_1_GENERIC:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX10_3_GENERIC:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX11_GENERIC:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX12_GENERIC:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// \return the generic AMDGPU ELF machine ID associated with the
+/// ELF AMDGPU Machine ID \p AMDGPUMach if exists, otherwise
+/// llvm::ELF::EF_AMDGPU_MACH_NONE
+inline unsigned getGenericAMDGPUMach(unsigned AMDGPUMach) {
+  switch (AMDGPUMach) {
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX900:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX902:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX904:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX906:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX909:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX90C:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX9_GENERIC:
+    return llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX9_GENERIC;
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX942:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX950:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX9_4_GENERIC:
+    return llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX9_4_GENERIC;
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1010:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1011:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1012:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1013:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX10_1_GENERIC:
+    return llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX10_1_GENERIC;
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1030:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1031:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1032:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1033:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1034:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1035:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1036:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX10_3_GENERIC:
+    return llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX10_3_GENERIC;
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1100:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1101:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1102:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1103:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1150:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1151:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1152:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1153:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX11_GENERIC:
+    return llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX11_GENERIC;
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1200:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX1201:
+  case llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX12_GENERIC:
+    return llvm::ELF::EF_AMDGPU_MACH_AMDGCN_GFX12_GENERIC;
+  default:
+    return llvm::ELF::EF_AMDGPU_MACH_NONE;
+  }
+}
+
 class AMDGCNObjectFile;
 
 /// \brief Wrapper around a \c ELFSymbolRef for symbols inside a
