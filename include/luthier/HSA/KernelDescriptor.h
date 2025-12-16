@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_KERNEL_DESCRIPTOR_H
 #define LUTHIER_HSA_KERNEL_DESCRIPTOR_H
-#include "luthier/hsa/ApiTable.h"
+#include "luthier/HSA/ApiTable.h"
 #include "luthier/types.h"
 #include <cstdint>
 #include <llvm/Support/Error.h>

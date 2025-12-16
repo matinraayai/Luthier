@@ -27,13 +27,13 @@
 #include <llvm/Support/PrettyStackTrace.h>
 #include <luthier/Common/ErrorCheck.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
-#include <luthier/hip/HipError.h>
-#include <luthier/hsa/HsaError.h>
-#include <luthier/llvm/CodeGenHelpers.h>
-#include <luthier/llvm/EagerManagedStatic.h>
-#include <luthier/llvm/streams.h>
+#include <luthier/HIP/HipError.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/LLVM/CodeGenHelpers.h>
+#include <luthier/LLVM/EagerManagedStatic.h>
+#include <luthier/LLVM/streams.h>
 #include <luthier/luthier.h>
-#include <luthier/tooling/Context.h>
+#include <luthier/Tooling/Context.h>
 #include <mutex>
 #include <thread>
 

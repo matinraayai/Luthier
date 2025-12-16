@@ -20,7 +20,7 @@
 #define LUTHIER_COMMON_ELF_OBJECT_FILE_H
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
-#include "luthier/llvm/LLVMError.h"
+#include "luthier/LLVM/LLVMError.h"
 #include <llvm/Object/ELFObjectFile.h>
 
 namespace luthier::object {

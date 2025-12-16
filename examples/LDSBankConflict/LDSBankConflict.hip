@@ -29,12 +29,12 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/PrettyStackTrace.h>
-#include <luthier/hip/HipError.h>
-#include <luthier/hsa/HsaError.h>
-#include <luthier/llvm/streams.h>
+#include <luthier/HIP/HipError.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/LLVM/streams.h>
 #include <luthier/luthier.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
-#include <luthier/tooling/Context.h>
+#include <luthier/Tooling/Context.h>
 #include <mutex>
 #include <thread>
 
