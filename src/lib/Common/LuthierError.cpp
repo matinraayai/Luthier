@@ -17,7 +17,7 @@
 /// \file
 /// Implements concrete portions of the <tt>LuthierError</tt> class.
 //===----------------------------------------------------------------------===//
-#include "luthier/common/LuthierError.h"
+#include "luthier/Common/LuthierError.h"
 
 namespace luthier {
 

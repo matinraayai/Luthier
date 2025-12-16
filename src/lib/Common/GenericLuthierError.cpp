@@ -17,7 +17,7 @@
 /// \file
 /// Implements the GenericLuthierError class.
 //===----------------------------------------------------------------------===//
-#include "luthier/common/GenericLuthierError.h"
+#include "luthier/Common/GenericLuthierError.h"
 
 namespace luthier {
 

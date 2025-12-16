@@ -17,7 +17,7 @@
 /// \file
 /// Implements the \c RocmLibraryError class.
 //===----------------------------------------------------------------------===//
-#include "luthier/common/ROCmLibraryError.h"
+#include "luthier/Common/ROCmLibraryError.h"
 
 namespace luthier {
 
