@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ERROR_ROCPROFILER_ERROR_H
 #define LUTHIER_ERROR_ROCPROFILER_ERROR_H
-#include "luthier/common/ROCmLibraryError.h"
+#include "luthier/Common/ROCmLibraryError.h"
 #include <llvm/Support/Error.h>
 #include <rocprofiler-sdk/fwd.h>
 

@@ -20,8 +20,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_WRAPPER_INSTALLER_H
 #define LUTHIER_ROCPROFILER_API_TABLE_WRAPPER_INSTALLER_H
-#include "luthier/hip/HipError.h"
-#include "luthier/rocprofiler-sdk/ApiTableRegistrationCallbackProvider.h"
+#include "luthier/Rocprofiler/ApiTableRegistrationCallbackProvider.h"
+#include "luthier/HIP/HipError.h"
 
 namespace luthier::rocprofiler {
 

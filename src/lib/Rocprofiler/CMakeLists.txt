@@ -9,7 +9,6 @@ target_include_directories(LuthierRocprofilerSDK
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
         PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/include
         ${rocprofiler-sdk_INCLUDE_DIR}
         ${LLVM_INCLUDE_DIRS}
 )

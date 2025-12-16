@@ -19,8 +19,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_SNAPSHOT_H
 #define LUTHIER_ROCPROFILER_API_TABLE_SNAPSHOT_H
-#include "luthier/hip/ApiTable.h"
-#include "luthier/rocprofiler-sdk/ApiTableRegistrationCallbackProvider.h"
+#include "luthier/Rocprofiler/ApiTableRegistrationCallbackProvider.h"
+#include "luthier/HIP/ApiTable.h"
 
 namespace luthier::rocprofiler {
 

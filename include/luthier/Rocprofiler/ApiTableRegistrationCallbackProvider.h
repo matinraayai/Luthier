@@ -20,11 +20,11 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
 #define LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/GenericLuthierError.h"
-#include "luthier/hsa/ApiTable.h"
-#include "luthier/hsa/HsaError.h"
-#include "luthier/rocprofiler-sdk/RocprofilerError.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/HSA/ApiTable.h"
+#include "luthier/HSA/HsaError.h"
+#include "luthier/Rocprofiler/RocprofilerError.h"
 #include <atomic>
 #include <hip/amd_detail/hip_api_trace.hpp>
 #include <hip/hip_runtime.h>

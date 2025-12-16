@@ -17,7 +17,7 @@
 /// \file
 /// Implements the rocprofiler \c llvm::ErrorInfo class.
 //===----------------------------------------------------------------------===//
-#include "luthier/rocprofiler-sdk/RocprofilerError.h"
+#include "luthier/Rocprofiler/RocprofilerError.h"
 #include <llvm/Support/Signals.h>
 #include <rocprofiler-sdk/rocprofiler.h>
 
