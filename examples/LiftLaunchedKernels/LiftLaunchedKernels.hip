@@ -22,9 +22,9 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/PrettyStackTrace.h>
-#include <luthier/llvm/streams.h>
+#include <luthier/LLVM/streams.h>
 #include <luthier/luthier.h>
-#include <luthier/tooling/Context.h>
+#include <luthier/Tooling/Context.h>
 #include <unordered_set>
 
 #undef DEBUG_TYPE

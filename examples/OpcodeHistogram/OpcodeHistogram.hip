@@ -26,14 +26,14 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/PrettyStackTrace.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/hip/HipError.h>
-#include <luthier/hsa/HsaError.h>
-#include <luthier/llvm/CodeGenHelpers.h>
-#include <luthier/llvm/streams.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Rocprofiler/ApiTableSnapshot.h>
+#include <luthier/HIP/HipError.h>
+#include <luthier/HSA/HsaError.h>
+#include <luthier/LLVM/CodeGenHelpers.h>
+#include <luthier/LLVM/streams.h>
 #include <luthier/luthier.h>
-#include <luthier/rocprofiler-sdk/ApiTableSnapshot.h>
-#include <luthier/tooling/Context.h>
+#include <luthier/Tooling/Context.h>
 #include <mutex>
 #include <thread>
 
@@ -60,8 +60,8 @@ static llvm::cl::opt<bool> *CountWavefrontLevel;
 
 static llvm::cl::opt<bool> *DemangleKernelNames;
 
-__attribute__((device))
-uint64_t KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
+__attribute__((
+    device)) uint64_t KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
 static uint64_t *KernelHistogramHostBuffer;
 
