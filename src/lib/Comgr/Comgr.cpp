@@ -1,4 +1,4 @@
-//===-- comgr.cpp - AMD CoMGR High-level Wrapper --------------------------===//
+//===-- Comgr.cpp - AMD CoMGR High-level Wrapper --------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,14 +18,14 @@
 /// This files implements wrappers around AMD CoMGR functionality frequently
 /// used by Luthier.
 //===----------------------------------------------------------------------===//
-#include "comgr/comgr.hpp"
-#include "luthier/comgr/ComgrError.h"
+#include "luthier/Comgr/Comgr.h"
+#include "luthier/Comgr/ComgrError.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Object/ObjectFileUtils.h"
 #include <amd_comgr/amd_comgr.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/TimeProfiler.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/object/ObjectFileUtils.h>
 
 namespace luthier::comgr {
 

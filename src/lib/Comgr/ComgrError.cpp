@@ -17,7 +17,7 @@
 /// \file
 /// Implements the \c luthier::ComgrError class.
 //===----------------------------------------------------------------------===//
-#include "luthier/comgr/ComgrError.h"
+#include "luthier/Comgr/ComgrError.h"
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/Signals.h>
 

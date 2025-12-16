@@ -1,5 +1,5 @@
 add_library(LuthierComgr OBJECT
-        comgr.cpp
+        Comgr.cpp
         ComgrError.cpp
 )
 
@@ -11,6 +11,5 @@ target_include_directories(LuthierComgr
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
         ${amd_comgr_INCLUDE_DIRS}
         PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/include
         ${LLVM_INCLUDE_DIRS}
 )

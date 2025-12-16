@@ -18,8 +18,8 @@
 /// This files defines wrappers around AMD CoMGR functionality frequently
 /// used by Luthier.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_COMGR_COMGR_HPP
-#define LUTHIER_COMGR_COMGR_HPP
+#ifndef LUTHIER_COMGR_COMGR_H
+#define LUTHIER_COMGR_COMGR_H
 #include <llvm/Support/Error.h>
 
 namespace luthier::comgr {
