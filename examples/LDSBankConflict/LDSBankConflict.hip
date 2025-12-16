@@ -33,7 +33,7 @@
 #include <luthier/hsa/HsaError.h>
 #include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
-#include <luthier/rocprofiler-sdk/ApiTableSnapshot.h>
+#include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/tooling/Context.h>
 #include <mutex>
 #include <thread>

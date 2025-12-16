@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMGR_COMGR_ERROR_H
 #define LUTHIER_COMGR_COMGR_ERROR_H
-#include "luthier/common/ROCmLibraryError.h"
+#include "luthier/Common/ROCmLibraryError.h"
 #include <amd_comgr/amd_comgr.h>
 
 namespace luthier {

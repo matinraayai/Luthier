@@ -23,7 +23,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/PrettyStackTrace.h>
-#include <luthier/common/ErrorCheck.h>
+#include <luthier/Common/ErrorCheck.h>
 #include <luthier/hip/HipError.h>
 #include <luthier/hsa/HsaError.h>
 #include <luthier/llvm/streams.h>

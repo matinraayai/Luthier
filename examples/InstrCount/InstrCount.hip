@@ -25,14 +25,14 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/PrettyStackTrace.h>
-#include <luthier/common/ErrorCheck.h>
+#include <luthier/Common/ErrorCheck.h>
+#include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/hip/HipError.h>
 #include <luthier/hsa/HsaError.h>
 #include <luthier/llvm/CodeGenHelpers.h>
 #include <luthier/llvm/EagerManagedStatic.h>
 #include <luthier/llvm/streams.h>
 #include <luthier/luthier.h>
-#include <luthier/rocprofiler-sdk/ApiTableSnapshot.h>
 #include <luthier/tooling/Context.h>
 #include <mutex>
 #include <thread>
@@ -357,7 +357,8 @@ namespace luthier {
 void atToolFini(void *) {
   static std::once_flag Once{};
   std::call_once(Once, []() {
-    luthier::errs() << "Total instructions executed: " << TotalNumInstructions << "\n";
+    luthier::errs() << "Total instructions executed: " << TotalNumInstructions
+                    << "\n";
     delete C;
 
     delete HipRuntimeTableSnapshot;

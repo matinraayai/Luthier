@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_ROCM_LIBRARY_ERROR_H
 #define LUTHIER_COMMON_ROCM_LIBRARY_ERROR_H
-#include "luthier/common/LuthierError.h"
+#include "luthier/Common/LuthierError.h"
 
 namespace luthier {
 
@@ -39,7 +39,7 @@ protected:
                                 std::source_location::current(),
                             StackTraceType StackTrace = StackTraceInitializer())
       : LuthierError(std::move(FormatObject.str()), ErrorLocation,
-                     std::move(StackTrace)){};
+                     std::move(StackTrace)) {};
 
 public:
   static char ID;
