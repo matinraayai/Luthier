@@ -22,13 +22,18 @@
 #define LUTHIER_TOOLING_DISCOVERED_TRACES_ANALYSIS_H
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCInst.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
+#include <llvm/Target/TargetMachine.h>
+#include <luthier/common/GenericLuthierError.h>
 #include <map>
 
 namespace luthier {
 
+/// \brief A class containing information regarding instructions in a trace
+/// obtained during the lifting process
 class TraceInstr {
 private:
   /// The MC representation of the instruction
@@ -56,6 +61,33 @@ public:
 
   /// \return the size of the instruction in bytes
   [[nodiscard]] size_t getSize() const { return Size; }
+};
+
+class TraceMachineInstr : public llvm::MachineInstr {
+public:
+  static constexpr auto TraceID = "Trace";
+
+  static bool classof(const llvm::MachineInstr *MI) {
+    if (const llvm::MachineOperand &LastOperand =
+            MI->getOperand(MI->getNumOperands() - 1);
+        LastOperand.isMetadata()) {
+      if (auto *MD = llvm::dyn_cast<llvm::MDTuple>(LastOperand.getMetadata())) {
+        if (auto Operands = MD->operands();
+            Operands.size() >= 2 && llvm::isa<llvm::MDString>(Operands[0]) &&
+            llvm::isa<llvm::ConstantAsMetadata>(Operands[1])) {
+          return llvm::cast<llvm::MDString>(Operands[0])->getString() ==
+                 TraceID;
+        }
+      }
+    } else {
+      return false;
+    }
+  }
+
+  static llvm::Expected<TraceMachineInstr &>
+  makeTraceInstr(llvm::MachineInstr &MI, const TraceInstr &TI);
+
+  [[nodiscard]] const TraceInstr &getTraceInstr() const;
 };
 
 /// \brief A \c llvm::MachineFunction analysis which provides the instruction
@@ -106,9 +138,7 @@ public:
       return DirectBranchTargets;
     }
 
-    uint64_t getEntryAddr() const {
-      return EntryAddress;
-    }
+    uint64_t getEntryAddr() const { return EntryAddress; }
 
     bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
                     llvm::ModuleAnalysisManager::Invalidator &) {
