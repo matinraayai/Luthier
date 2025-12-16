@@ -46,6 +46,7 @@ add_library(LuthierToolingCommon OBJECT
         MIRConvenience.cpp
         MockAMDGPULoader.cpp
         MetadataParserAnalysis.cpp
+        ImmutableMachineInstr.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
