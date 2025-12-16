@@ -1,4 +1,4 @@
-set(AMDGPU_INCLUDE_DIR ${CMAKE_BINARY_DIR}/include/luthier/amdgpu/)
+set(AMDGPU_INCLUDE_DIR ${CMAKE_BINARY_DIR}/include/luthier/AMDGPU/)
 # workaround to make the tablegen generate its output files under the ${AMDGPU_INCLUDE_DIR} dir
 set(CMAKE_CURRENT_BINARY_DIR ${AMDGPU_INCLUDE_DIR})
 # Find the llvm-tblgen tool executable
@@ -29,5 +29,5 @@ add_library(LuthierAMDGPU INTERFACE)
 
 target_include_directories(LuthierAMDGPU INTERFACE
         "$<BUILD_INTERFACE:${AMDGPU_INCLUDE_DIR}>"
-        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/luthier/amdgpu>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/luthier/AMDGPU>"
 )
