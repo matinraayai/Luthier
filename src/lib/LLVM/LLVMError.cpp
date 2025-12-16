@@ -17,7 +17,7 @@
 /// \file
 /// This file implements the \c luthier::LLVMError class.
 //===----------------------------------------------------------------------===//
-#include "luthier/llvm/LLVMError.h"
+#include "luthier/LLVM/LLVMError.h"
 #include <llvm/Support/Signals.h>
 
 namespace luthier {

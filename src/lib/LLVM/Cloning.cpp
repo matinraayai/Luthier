@@ -17,9 +17,11 @@
 /// \file
 /// This file implements utility functions used to clone LLVM MIR constructs.
 //===----------------------------------------------------------------------===//
-#include "llvm/Cloning.hpp"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
+#include "luthier/LLVM/Cloning.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Common/LuthierError.h"
+#include "luthier/LLVM/LLVMError.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -28,8 +30,6 @@
 #include <llvm/CodeGen/PseudoSourceValueManager.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
 #include <llvm/Target/TargetMachine.h>
-#include <luthier/common/GenericLuthierError.h>
-#include <luthier/llvm/LLVMError.h>
 
 namespace luthier {
 

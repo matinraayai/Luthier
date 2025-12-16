@@ -16,7 +16,7 @@
 ///
 /// \file This file implements the CodeGen helper functions.
 //===----------------------------------------------------------------------===//
-#include "luthier/llvm/CodeGenHelpers.h"
+#include "luthier/LLVM/CodeGenHelpers.h"
 #include "SIInstrInfo.h"
 
 namespace luthier {

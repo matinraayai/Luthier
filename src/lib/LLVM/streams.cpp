@@ -14,16 +14,17 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file Implements versions of <tt>llvm::outs</tt>,
+/// \file
+/// Implements versions of <tt>llvm::outs</tt>,
 /// <tt>llvm::errs</tt>, and <tt>llvm::nulls</tt> that are safe to use with
 /// Luthier tools.
 //===----------------------------------------------------------------------===//
-#include "luthier/llvm/streams.h"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
-#include "luthier/llvm/EagerManagedStatic.h"
+#include "luthier/LLVM/streams.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Common/LuthierError.h"
+#include "luthier/LLVM/EagerManagedStatic.h"
 #include <llvm/Support/FileSystem.h>
-#include <luthier/common/GenericLuthierError.h>
 
 namespace luthier {
 

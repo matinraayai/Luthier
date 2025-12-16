@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_LLVM_LLVM_ERROR_H
 #define LUTHIER_LLVM_LLVM_ERROR_H
-#include "luthier/common/LuthierError.h"
+#include "luthier/Common/LuthierError.h"
 
 namespace luthier {
 
