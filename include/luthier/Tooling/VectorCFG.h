@@ -19,7 +19,9 @@
 #ifndef LUTHIER_TOOLING_VECTOR_CFG_H
 #define LUTHIER_TOOLING_VECTOR_CFG_H
 #include <llvm/ADT/DenseSet.h>
+#include <llvm/ADT/Twine.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
+#include <llvm/CodeGen/MachineFunction.h>
 
 namespace llvm {
 
