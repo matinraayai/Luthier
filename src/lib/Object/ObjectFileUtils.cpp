@@ -17,10 +17,10 @@
 /// \file
 /// This file implements a set of object utilities used frequently by Luthier.
 //===----------------------------------------------------------------------===//
+#include "luthier/Object/ObjectFileUtils.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include <llvm/TargetParser/SubtargetFeature.h>
-#include <luthier/common/ErrorCheck.h>
-#include <luthier/common/GenericLuthierError.h>
-#include <luthier/object/ObjectFileUtils.h>
 
 namespace luthier::object {
 

@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_OBJECT_AMDGCN_OBJECT_FILE_H
 #define LUTHIER_OBJECT_AMDGCN_OBJECT_FILE_H
-#include "luthier/object/ELFObjectFileUtils.h"
+#include "luthier/Object/ELFObjectFileUtils.h"
 #include <llvm/BinaryFormat/MsgPackDocument.h>
 
 namespace luthier::object {

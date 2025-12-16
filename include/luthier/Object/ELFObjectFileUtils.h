@@ -18,8 +18,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMON_ELF_OBJECT_FILE_H
 #define LUTHIER_COMMON_ELF_OBJECT_FILE_H
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/GenericLuthierError.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/llvm/LLVMError.h"
 #include <llvm/Object/ELFObjectFile.h>
 
@@ -103,9 +103,9 @@ llvm::Expected<std::optional<uint64_t>> inline getLoadOffset(
 /// ELF's load base if the symbol is loaded, \c std::nullopt if not;
 /// an \c llvm::Error on failure
 template <typename ELFT>
-llvm::Expected<std::optional<uint64_t>> getLoadOffset(
-    const llvm::object::ELFFile<ELFT> &ELF,
-    const typename llvm::object::ELFFile<ELFT>::Elf_Sym &Sym) {
+llvm::Expected<std::optional<uint64_t>>
+getLoadOffset(const llvm::object::ELFFile<ELFT> &ELF,
+              const typename llvm::object::ELFFile<ELFT>::Elf_Sym &Sym) {
   /// If the ELF is a relocatable, return as it does not have any program
   /// headers yet
   if (ELF.getHeader().e_type == llvm::ELF::ET_REL)
@@ -143,8 +143,8 @@ llvm::Expected<std::optional<uint64_t>> getLoadOffset(
 /// \return on success, the load offset of the \c Sym with respect to the
 /// object file's load base if the symbol is loaded, \c std::nullopt if not;
 /// an \c llvm::Error on failure
-llvm::Expected<std::optional<uint64_t>> inline
-getLoadOffset(const llvm::object::ELFSymbolRef &SymbolRef) {
+llvm::Expected<std::optional<uint64_t>> inline getLoadOffset(
+    const llvm::object::ELFSymbolRef &SymbolRef) {
   const llvm::object::ELFObjectFileBase *ObjFile = SymbolRef.getObject();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ObjFile != nullptr, "Object file of symbol is nullptr."));
@@ -187,8 +187,8 @@ getLoadOffset(const llvm::object::ELFSymbolRef &SymbolRef) {
 /// flag
 /// \return on success, an \c llvm::ArrayRef encapsulating the contents
 /// of the symbol inside its object file; an \c llvm::Error on failure
-llvm::Expected<llvm::ArrayRef<uint8_t>> inline
-getContents(const llvm::object::ELFSymbolRef &SymbolRef) {
+llvm::Expected<llvm::ArrayRef<uint8_t>> inline getContents(
+    const llvm::object::ELFSymbolRef &SymbolRef) {
   const llvm::object::ELFObjectFileBase *ObjFile = SymbolRef.getObject();
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       ObjFile != nullptr, "Object file of symbol is nullptr."));
