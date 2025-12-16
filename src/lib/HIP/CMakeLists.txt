@@ -6,7 +6,6 @@ target_compile_definitions(LuthierHIP PRIVATE ${LLVM_DEFINITIONS})
 
 target_include_directories(LuthierHIP
         PRIVATE
-        "${CMAKE_SOURCE_DIR}/src/include"
         ${LLVM_INCLUDE_DIRS}
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"

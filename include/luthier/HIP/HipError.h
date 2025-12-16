@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HIP_HIP_ERROR_H
 #define LUTHIER_HIP_HIP_ERROR_H
-#include "luthier/common/ROCmLibraryError.h"
+#include "luthier/Common/ROCmLibraryError.h"
 #include <hip/hip_runtime.h>
 
 namespace luthier::hip {
