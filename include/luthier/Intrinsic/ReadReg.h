@@ -1,4 +1,4 @@
-//===-- ReadReg.hpp - Luthier ReadReg Intrinsic  ---------------------===//
+//===-- ReadReg.hpp - Luthier ReadReg Intrinsic  ----------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,13 +19,12 @@
 /// be transformed from an extern function call into a set of
 /// <tt>llvm::MachineInstr</tt>s.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
-#define LUTHIER_TOOLING_COMMON_INTRINSIC_READ_REG_HPP
-
-#include "luthier/intrinsic/IntrinsicProcessor.h"
-#include <llvm/Support/Error.h>
+#ifndef LUTHIER_INTRINSIC_INTRINSIC_READ_REG_H
+#define LUTHIER_INTRINSIC_INTRINSIC_READ_REG_H
+#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/Support/Error.h>
 
 namespace luthier {
 

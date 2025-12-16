@@ -17,8 +17,8 @@
 /// \file
 /// This file defines methods used to insert calls to Luthier intrinsics.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_INTRINSIC_CALLS_H
-#define LUTHIER_INTRINSIC_CALLS_H
+#ifndef LUTHIER_INTIRNSIC_INTRINSIC_CALLS_H
+#define LUTHIER_INTIRNSIC_INTRINSIC_CALLS_H
 #include "luthier/consts.h"
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>

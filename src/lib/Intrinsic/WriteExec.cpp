@@ -1,9 +1,28 @@
-#include "intrinsic/WriteExec.hpp"
+//===-- WriteExec.cpp -----------------------------------------------------===//
+// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file implements the "write exec mask" intrinsic.
+//===----------------------------------------------------------------------===//
+#include "luthier/Intrinsic/WriteExec.h"
 #include "AMDGPUTargetMachine.h"
 #include "SIRegisterInfo.h"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/GenericLuthierError.h"
-#include "luthier/common/LuthierError.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Common/LuthierError.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/MC/MCRegister.h>

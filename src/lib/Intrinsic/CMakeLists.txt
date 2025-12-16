@@ -13,7 +13,6 @@ target_compile_definitions(LuthierIntrinsic PRIVATE ${LLVM_DEFINITIONS})
 
 target_include_directories(LuthierIntrinsic
         PRIVATE
-        "${CMAKE_SOURCE_DIR}/src/include"
         ${LLVM_INCLUDE_DIRS}
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"

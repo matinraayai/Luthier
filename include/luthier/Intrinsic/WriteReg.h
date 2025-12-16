@@ -1,4 +1,4 @@
-//===-- SAtomicAdd.hpp - Luthier Scalar Atomic Add ------------------------===//
+//===-- WriteReg.h - Luthier WriteReg Intrinsic  ----------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,13 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file describes Luthier's <tt>sAtomicAdd</tt> intrinsic, and how it
-/// should be transformed from an extern function call into a set of
+/// This file describes Luthier's <tt>WriteReg</tt> intrinsic, and how it should
+/// be transformed from an extern function call into a set of
 /// <tt>llvm::MachineInstr</tt>s.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_COMMON_INTRINSIC_S_ATOMIC_ADD_HPP
-#define LUTHIER_TOOLING_COMMON_INTRINSIC_S_ATOMIC_ADD_HPP
-
-#include "luthier/intrinsic/IntrinsicProcessor.h"
+#ifndef LUTHIER_INTRINSIC_INTRINSIC_WRITE_REG_H
+#define LUTHIER_INTRINSIC_INTRINSIC_WRITE_REG_H
+#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Support/Error.h>
@@ -30,11 +29,10 @@
 namespace luthier {
 
 llvm::Expected<IntrinsicIRLoweringInfo>
-sAtomicAddIRProcessor(const llvm::Function &Intrinsic,
-                      const llvm::CallInst &User,
-                      const llvm::GCNTargetMachine &TM);
+writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
+                    const llvm::GCNTargetMachine &TM);
 
-llvm::Error sAtomicAddMIRProcessor(
+llvm::Error writeRegMIRProcessor(
     const IntrinsicIRLoweringInfo &IRLoweringInfo,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,

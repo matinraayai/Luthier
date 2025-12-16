@@ -17,17 +17,17 @@
 /// \file
 /// This file implements Luthier's <tt>ImplicitArgPtr</tt> intrinsic.
 //===----------------------------------------------------------------------===//
-#include "intrinsic/ImplicitArgPtr.hpp"
+#include "luthier/Intrinsic/ImplicitArgPtr.h"
 #include "AMDGPUTargetMachine.h"
 #include "GCNSubtarget.h"
 #include "SIRegisterInfo.h"
-#include "luthier/common/ErrorCheck.h"
-#include "luthier/common/LuthierError.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Common/LuthierError.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
-#include <luthier/common/GenericLuthierError.h>
 
 namespace luthier {
 
@@ -64,12 +64,12 @@ llvm::Error implicitArgPtrMIRProcessor(
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
   // There should be only a single virtual register involved in the operation
-  LUTHIER_RETURN_ON_ERROR(
-      LUTHIER_GENERIC_ERROR_CHECK(Args.size() == 1,
-                          llvm::formatv("Number of virtual register arguments "
-                          "involved in the MIR lowering stage of "
-                          "luthier::implicitArgPtr is {0} instead of 1.",
-                          Args.size())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Args.size() == 1,
+      llvm::formatv("Number of virtual register arguments "
+                    "involved in the MIR lowering stage of "
+                    "luthier::implicitArgPtr is {0} instead of 1.",
+                    Args.size())));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(),
       "The register argument of luthier::implicitArgPtr is not a definition."));
