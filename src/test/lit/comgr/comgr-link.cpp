@@ -18,7 +18,7 @@
 /// This file implements comgr-link, an executable used to test the relocatable
 /// linking functionality of Comgr used in Luthier.
 //===----------------------------------------------------------------------===//
-#include "../../../../include/luthier/Comgr/comgr.hpp"
+#include "luthier/Comgr/Comgr.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FileSystem.h>
