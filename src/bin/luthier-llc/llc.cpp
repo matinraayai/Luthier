@@ -311,7 +311,7 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &,
   llvm_unreachable("reportError() should not return");
 }
 
-static std::unique_ptr<ToolOutputFile> GetOutputStream(Triple::OSType OS) {
+static std::unique_ptr<ToolOutputFile> getOutputStream() {
   // If we don't yet have an output filename, make one.
   if (OutputFilename.empty()) {
     if (InputFilename == "-")
@@ -331,10 +331,7 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(Triple::OSType OS) {
         OutputFilename += ".s";
         break;
       case CodeGenFileType::ObjectFile:
-        if (OS == Triple::Win32)
-          OutputFilename += ".obj";
-        else
-          OutputFilename += ".o";
+        OutputFilename += ".o";
         break;
       case CodeGenFileType::Null:
         OutputFilename = "-";
@@ -408,8 +405,6 @@ int main(int argc, char **argv) {
     PluginList.emplace_back(Plugin.get());
   });
 
-  // Register the Target and CPU printer for --version.
-  cl::AddExtraVersionPrinter(sys::printDefaultTargetAndDetectedCPU);
   // Register the target printer for --version.
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
@@ -574,7 +569,7 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
       Options.MCOptions.OutputAsmVariant = OutputAsmVariant;
     Options.MCOptions.IASSearchPaths = IncludeDirs;
     Options.MCOptions.InstPrinterOptions = InstPrinterOptions;
-    Options.MCOptions.SplitDwarfFile = SplitDwarfFile;
+    Options.MCOptions.SplitDwarfFile = SplitDwarfFile.getValue();
     if (DwarfDirectory.getPosition()) {
       Options.MCOptions.MCUseDwarfDirectory =
           DwarfDirectory ? MCTargetOptions::EnableDwarfDirectory
@@ -680,7 +675,7 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
     Target->Options.FloatABIType = codegen::getFloatABIForCalls();
 
   // Figure out where we are going to send the output.
-  std::unique_ptr<ToolOutputFile> Out = GetOutputStream(TheTriple.getOS());
+  std::unique_ptr<ToolOutputFile> Out = getOutputStream();
   if (!Out)
     return 1;
 
