@@ -1,4 +1,6 @@
-## Machine Instruction Annotation
+# Machine Instruction Annotation
+
+## Background
 
 When running Luthier instrumentation passes we may want to append additional
 information to a set of `llvm::MachineInstr`s in the target
@@ -44,6 +46,10 @@ the following reasons:
 4. The extra info field does not seem to have an adverse side effect on other
    LLVM MIR passes in the AMDGPU backend.
 
+There is one limitation for using the `PCSections` in the machine instructions:
+**It is not yet serialized by the MIR parser**, meaning that we either have
+to wait until it's serialized or implement a workaround ourselves.
+
 The following avenues for appending extra information to a machine
 instructions were investigated but abandoned:
 
@@ -67,4 +73,59 @@ instructions were investigated but abandoned:
    method. If the machine instruction's explicit operands are well-formed,
    then this logic causes the `implicit_operands()` iterator of the machine
    instruction to also return metadata operands.
+
+## Luthier PC Sections Metadata Format
+
+According to the
+[PC Sections Metadata Documentation](https://llvm.org/docs/PCSectionsMetadata.html)
+and the assembly printer method `emitPCSections`, the Metadata must have the
+following format:
+
+```llvm
+!0 = !{
+  !"<section#1>"
+  [ , !1 ... ]
+  !"<section#2">
+  [ , !2 ... ]
+  ...
+}
+!1 = !{ iXX <aux-consts#1>, ... }
+!2 = !{ iXX <aux-consts#2>, ... }
+...
+```
+
+Essentially, an `MDString` header metadata is followed by an array of constant
+value metadata nodes. PCSections Metadata can be created using the
+`llvm::MDBuilder::createPCSections` method. We use every even-numbered
+entry in the `MDNode` array to introduce a header, with every odd-numbered
+entry introduce the contents for the header.
+
+### Instruction Identifier
+
+The header is `"luthier.instr.id"`, and it is followed by a single element array
+of constant `uint64_t` number. Provides a unique identifier for each instruction
+that is preserved between passes. The module will have a metadata named
+`"luthier.next.instr.id"` that indicates the next ID available for any
+instruction requiring an ID.
+
+### Trace Instruction Identifier
+
+The header is `"luthier.instr.trace"`, and it is followed by a single element
+array of constant `uint64_t` number. Indicates to passes that the instruction
+was obtained by inspecting and lifting loaded memory, and the constant number
+indicates the memory address it was obtained from.
+
+### Mutable Instruction
+
+The header is `"luthier.instr.mutable"`, followed by an empty list of constants.
+It indicates (especially to post-patching passes) that an instruction is free
+to be modified or replaced while ensuring the original behavior of the
+instruction. For example, a short mutable branch in the post-patching passes
+indicates it can be relaxed (i.e., converted to a long branch) in case it cannot
+reach its original target. By default, all instructions are treated as immutable
+unless stated otherwise.
+
+## Helpful Links
+
+- [PC Sections Metadata Documentation](https://llvm.org/docs/PCSectionsMetadata.html)
 
