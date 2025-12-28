@@ -1,5 +1,5 @@
 //===-- ExecutableMemorySegmentAccessor.h -----------------------*- C++ -*-===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+// Copyright 2025-2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,20 +19,21 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_EXECUTABLE_MEMORY_SEGMENT_ACCESSOR_H
 #define LUTHIER_TOOLING_EXECUTABLE_MEMORY_SEGMENT_ACCESSOR_H
-#include "luthier/hsa/ApiTable.h"
+#include "luthier/HSA/ApiTable.h"
+#include "luthier/Object/AMDGCNObjectFile.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/PassManager.h>
-#include <luthier/hsa/LoadedCodeObjectCache.h>
 
 namespace luthier {
 
-/// \brief Interface class used to provide information regarding executable
-/// memory segments loaded on a target device to other instrumentation passes
+/// \brief Interface that provides information regarding executable
+/// memory segments loaded on a target device to passes in the Luthier
+/// code generation pipeline
 /// \details An instance of this class is provided to other instrumentation
 /// passes via the \c ExecutableMemorySegmentAccessorAnalysis in the target
 /// module analysis manager. This class acts as a level of abstraction
 /// over the underlying runtime for other instrumentation passes instead of
-/// having them directly querying the underlying runtime. This helps to keep the
+/// having them directly query the GPU runtime. This helps to keep the
 /// instrumentation passes runtime-agnostic, and makes it easier to test
 /// the instrumentation passes without needing a physical GPU or the target
 /// runtime
@@ -40,7 +41,7 @@ class ExecutableMemorySegmentAccessor {
 public:
   typedef struct {
     /// parsed host code object used to load the segment
-    const object::AMDGCNObjectFile *CodeObjectStorage{nullptr};
+    const luthier::object::AMDGCNObjectFile *CodeObjectStorage{nullptr};
     /// Encapsulates the segment's copy on the host
     llvm::ArrayRef<uint8_t> SegmentOnHost{};
     /// Encapsulates the segment's location on device memory; Might not be
@@ -53,29 +54,6 @@ public:
   getSegment(uint64_t DeviceAddr) const = 0;
 
   virtual ~ExecutableMemorySegmentAccessor() = default;
-};
-
-/// \brief Implementation of \c ExecutableMemorySegmentAccessor for the HSA
-/// runtime
-class HsaRuntimeExecutableMemorySegmentAccessor
-    : public ExecutableMemorySegmentAccessor {
-
-  const hsa::LoadedCodeObjectCache &COC;
-
-  const hsa::ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType
-      &VenLoaderTable;
-
-public:
-  [[nodiscard]] llvm::Expected<SegmentDescriptor>
-  getSegment(uint64_t DeviceAddr) const override;
-
-  HsaRuntimeExecutableMemorySegmentAccessor(
-      const hsa::LoadedCodeObjectCache &COC,
-      const hsa::ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType
-          &VenLoaderTable)
-      : COC(COC), VenLoaderTable(VenLoaderTable) {};
-
-  ~HsaRuntimeExecutableMemorySegmentAccessor() override = default;
 };
 
 /// \brief Provides access to the \c ExecutableMemorySegmentAccessorAnalysis for
