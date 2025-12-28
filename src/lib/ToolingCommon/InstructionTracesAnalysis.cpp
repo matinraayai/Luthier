@@ -16,15 +16,15 @@
 /// \file
 /// Implements the \c InstructionTracesAnalysis class.
 //===----------------------------------------------------------------------===//
-#include "luthier/tooling/InstructionTracesAnalysis.h"
+#include "luthier/Tooling/InstructionTracesAnalysis.h"
+#include "luthier/Tooling/MachineFunctionEntryPoints.h"
+#include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include <AMDGPUTargetMachine.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/TargetRegistry.h>
-#include <luthier/tooling/EntryPointsAnalysis.h>
-#include <luthier/tooling/ExecutableMemorySegmentAccessor.h>
 #include <unordered_set>
 
 namespace luthier {
@@ -40,15 +40,15 @@ evaluateBranchOrCallIfDirect(const llvm::MCInst &Inst, uint64_t Addr) {
   return llvm::SignExtend64<16>(Imm) * 4 + Addr + 4;
 }
 
-llvm::Error disassembleTrace(uint64_t StartHostAddr, uint64_t SegSize,
+llvm::Error disassembleTrace(uint64_t StartHostAddr, uint64_t AllocationSize,
                              uint64_t StartDeviceAddr,
                              llvm::MCDisassembler &Disassembler,
                              size_t MaxReadSize, const llvm::MCInstrInfo &MII,
-                             llvm::DenseMap<uint64_t, TraceInstr> &Instructions,
+                             InstructionTracesAnalysis::Trace &Instructions,
                              uint64_t &LastInstructionAddr) {
   uint64_t CurrentDeviceAddress = StartDeviceAddr;
   uint64_t CurrentHostAddr = StartHostAddr;
-  uint64_t SegmentHostEndAddr = StartHostAddr + SegSize;
+  uint64_t SegmentHostEndAddr = StartHostAddr + AllocationSize;
   bool WasTraceEndEncountered{false};
 
   while (WasTraceEndEncountered || CurrentHostAddr >= SegmentHostEndAddr) {
@@ -71,55 +71,14 @@ llvm::Error disassembleTrace(uint64_t StartHostAddr, uint64_t SegSize,
     /// Check if the current instruction is a return
     WasTraceEndEncountered =
         MII.get(getPseudoOpcodeFromReal(Inst.getOpcode())).isReturn();
-    Instructions.insert({CurrentDeviceAddress,
-                         TraceInstr{Inst, CurrentDeviceAddress, InstSize}});
+    Instructions.insert(
+        {CurrentDeviceAddress,
+         std::move(TraceInstr{Inst, CurrentDeviceAddress, InstSize})});
     CurrentDeviceAddress += InstSize;
     CurrentHostAddr += InstSize;
   }
 
   return llvm::Error::success();
-}
-
-llvm::Expected<TraceMachineInstr &>
-TraceMachineInstr::makeTraceInstr(llvm::MachineInstr &MI,
-                                  const TraceInstr &TI) {
-  auto *MF = MI.getMF();
-  if (!MF)
-    return LUTHIER_MAKE_GENERIC_ERROR(
-        "MI doesn't have a MachineFunction parent");
-  llvm::LLVMContext &Ctx = MF->getFunction().getContext();
-  auto *TraceIDMD = llvm::MDString::get(Ctx, TraceID);
-  const auto *ImmutableTupleMD = llvm::MDTuple::getIfExists(
-      Ctx, {TraceIDMD, llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
-                           llvm::Type::getInt64Ty(Ctx),
-                           reinterpret_cast<uint64_t>(&TI)))});
-  MI.addOperand(*MF, llvm::MachineOperand::CreateMetadata(ImmutableTupleMD));
-  return llvm::cast<TraceMachineInstr &>(MI);
-}
-
-const TraceInstr &TraceMachineInstr::getTraceInstr() const {
-  const llvm::MachineOperand &LastOperand = getOperand(getNumOperands() - 1);
-  assert(LastOperand.isMetadata() &&
-         "Trace machine instruction doesn't have a metadata");
-  const auto *LastOperandMD = LastOperand.getMetadata();
-  assert(llvm::isa<llvm::MDTuple>(LastOperandMD) &&
-         "Trace metadata is not an MDTuple");
-
-  const auto *TraceMD = llvm::cast<llvm::MDTuple>(LastOperandMD);
-  assert(TraceMD->getNumOperands() == 2 &&
-         "Trace metadata doesn't have 2 operands");
-  assert(llvm::isa<const llvm::ConstantAsMetadata>(TraceMD->getOperand(1)) &&
-         "The second operand of the trace metadata is not a constant");
-  const llvm::Constant *C =
-      llvm::cast<const llvm::ConstantAsMetadata>(TraceMD->getOperand(1))
-          ->getValue();
-  assert(llvm::isa<llvm::ConstantInt>(C) &&
-         "The trace metadata constant is not an integer");
-  const uint64_t TraceInstPtr =
-      llvm::cast<const llvm::ConstantInt>(C)->getZExtValue();
-  assert(TraceInstPtr != 0 &&
-         "The trace instruction pointer address is nullptr");
-  return reinterpret_cast<const TraceInstr &>(TraceInstPtr);
 }
 
 InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
@@ -135,15 +94,40 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
       TargetMFAM.getResult<llvm::ModuleAnalysisManagerMachineFunctionProxy>(
           TargetMF);
 
-  const ExecutableMemorySegmentAccessor &SegAccessor =
-      MAMProxy
-          .getCachedResult<ExecutableMemorySegmentAccessorAnalysis>(TargetM)
-          ->getAccessor();
+  const auto *MAMRes =
+      MAMProxy.getCachedResult<MemoryAllocationAnalysis>(TargetM);
 
-  EntryPointsAnalysis::EntryPointType EntryPoint =
-      MAMProxy.getCachedResult<EntryPointsAnalysis>(TargetM)
-          ->find(TargetMF)
-          ->second;
+  if (!MAMRes) {
+    LUTHIER_CTX_EMIT_ON_ERROR(
+        Ctx, LUTHIER_MAKE_GENERIC_ERROR(
+                 "Memory Allocation Analysis result is not available"));
+  }
+
+  const MemoryAllocationAccessor &SegAccessor = MAMRes->getAccessor();
+
+  const auto *EPRes =
+      MAMProxy.getCachedResult<MachineFunctionEntryPoints>(TargetM);
+
+  if (!EPRes) {
+    LUTHIER_CTX_EMIT_ON_ERROR(
+        Ctx,
+        LUTHIER_MAKE_GENERIC_ERROR(
+            "Machine Function Entry Points analysis result is not available"));
+  }
+
+  auto EPIt = EPRes->find(TargetMF);
+
+  if (EPIt == EPRes->end()) {
+    LUTHIER_CTX_EMIT_ON_ERROR(
+        Ctx, LUTHIER_MAKE_GENERIC_ERROR(
+                 llvm::formatv("Failed to find the entry point associated with "
+                               "machine function {0}",
+                               TargetMF.getName())));
+  }
+
+  EntryPoint EP = EPIt->second;
+
+  /// Disassemble the instructions
 
   std::unique_ptr<llvm::MCDisassembler> DisAsm(
       TM.getTarget().createMCDisassembler(*TM.getMCSubtargetInfo(), MCCtx));
@@ -152,16 +136,7 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
 
   const llvm::MCInstrInfo &MII = *TM.getMCInstrInfo();
 
-  uint64_t InitialEntryPointAddr{0};
-  if (std::holds_alternative<const llvm::amdhsa::kernel_descriptor_t *>(
-          EntryPoint)) {
-    const auto *KD =
-        std::get<const llvm::amdhsa::kernel_descriptor_t *>(EntryPoint);
-    InitialEntryPointAddr =
-        reinterpret_cast<uint64_t>(KD) + KD->kernel_code_entry_byte_offset;
-  } else {
-    InitialEntryPointAddr = std::get<uint64_t>(EntryPoint);
-  }
+  uint64_t InitialEntryPointAddr = EP.getEntryPointAddress();
 
   Result Out;
 
@@ -173,25 +148,27 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
 
   while (!UnvisitedTraceAddresses.empty()) {
     uint64_t CurrentDeviceAddr = *UnvisitedTraceAddresses.begin();
-    ExecutableMemorySegmentAccessor::SegmentDescriptor SegDesc;
+    MemoryAllocationAccessor::AllocationDescriptor AllocDesc;
 
-    LUTHIER_EMIT_ERROR_IN_CONTEXT(
-        Ctx, SegAccessor.getSegment(CurrentDeviceAddr).moveInto(SegDesc));
+    LUTHIER_CTX_EMIT_ON_ERROR(
+        Ctx, SegAccessor.getAllocationDescriptor(CurrentDeviceAddr)
+                 .moveInto(AllocDesc));
 
     uint64_t EntryPointHostAddr =
         CurrentDeviceAddr -
-        reinterpret_cast<uint64_t>(SegDesc.SegmentOnDevice.data()) +
-        reinterpret_cast<uint64_t>(SegDesc.SegmentOnHost.data());
-    size_t SegmentSize = SegDesc.SegmentOnHost.size();
-    llvm::DenseMap<uint64_t, TraceInstr> InstTrace;
+        reinterpret_cast<uint64_t>(AllocDesc.AllocationOnDevice.data()) +
+        reinterpret_cast<uint64_t>(AllocDesc.AllocationOnHost.data());
+    size_t SegmentSize = AllocDesc.AllocationOnHost.size();
+    auto InstTrace = std::make_unique<Trace>();
     uint64_t TraceDeviceEndAddr{0};
-    LUTHIER_EMIT_ERROR_IN_CONTEXT(
+
+    LUTHIER_CTX_EMIT_ON_ERROR(
         Ctx, disassembleTrace(EntryPointHostAddr, SegmentSize,
                               InitialEntryPointAddr, *DisAsm, MaxInstSize, MII,
-                              InstTrace, TraceDeviceEndAddr));
+                              *InstTrace, TraceDeviceEndAddr));
 
-    /// Add the br
-    for (const auto &[InstAddr, TraceInst] : InstTrace) {
+    /// Handle branch and call instructions
+    for (const auto &[InstAddr, TraceInst] : *InstTrace) {
       const auto &MCInst = TraceInst.getMCInst();
       llvm::MCInstrDesc PseudoOpcodeDesc =
           MII.get(getPseudoOpcodeFromReal(MCInst.getOpcode()));
@@ -201,20 +178,20 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
       bool IsIndirectCall = IsCall && !MCInst.getOperand(0).isImm();
       bool IsDirectCall = IsCall && !IsIndirectCall;
 
-      if (IsDirectBranch) {
+      if (IsDirectBranch || IsDirectCall) {
         llvm::Expected<uint64_t> TargetOrErr =
             evaluateBranchOrCallIfDirect(MCInst, InstAddr);
-        LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, TargetOrErr.takeError());
+        LUTHIER_CTX_EMIT_ON_ERROR(Ctx, TargetOrErr.takeError());
         Out.DirectBranchTargets.insert(*TargetOrErr);
         /// Find if we have already have the target of this branch in the
         /// current trace; If not, look into the previously discoverd traces; If
         /// it's also not there, add the address to the unvisited list
-        if (!InstTrace.contains(*TargetOrErr)) {
+        if (!InstTrace->contains(*TargetOrErr)) {
           bool HaveVisitedDirectBranchTarget{false};
           for (const auto &[TraceInterval, Trace] : Out.Traces) {
             if (TraceInterval.first <= *TargetOrErr &&
                 TraceInterval.second <= *TargetOrErr &&
-                Trace.contains(*TargetOrErr)) {
+                Trace->contains(*TargetOrErr)) {
               HaveVisitedDirectBranchTarget = true;
             }
           }
@@ -230,17 +207,13 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
       if (IsIndirectCall) {
         Out.IndirectCallInstAddresses.insert(InstAddr);
       }
-      if (IsDirectCall) {
-        Out.DirectCallInstAddresses.insert(InstAddr);
-      }
     };
 
     /// Put the discovered trace in the map
     Out.Traces.insert({std::make_pair(CurrentDeviceAddr, TraceDeviceEndAddr),
                        std::move(InstTrace)});
 
-    /// Put the current entry point in the visited set
-    VisitedTraceAddresses.insert(CurrentDeviceAddr);
+    /// Remove the current entry point from the unvisited set
     UnvisitedTraceAddresses.erase(CurrentDeviceAddr);
   }
   return Out;
