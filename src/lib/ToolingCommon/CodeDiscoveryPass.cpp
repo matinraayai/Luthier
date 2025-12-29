@@ -1,7 +1,13 @@
 
-#include "luthier/tooling/CodeDiscoveryPass.h"
+#include "luthier/Tooling/CodeDiscoveryPass.h"
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Tooling/InstructionTracesAnalysis.h"
+#include "luthier/Tooling/MachineFunctionEntryPoints.h"
+#include "luthier/Tooling/MachineToTraceInstrAnalysis.h"
+#include "luthier/Tooling/MemoryAllocationAccessor.h"
+#include "luthier/Tooling/MetadataParserAnalysis.h"
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
@@ -12,11 +18,7 @@
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/TargetRegistry.h>
-#include <luthier/tooling/EntryPointsAnalysis.h>
-#include <luthier/tooling/ExecutableMemorySegmentAccessor.h>
-#include <luthier/tooling/InstructionTracesAnalysis.h>
-#include <luthier/tooling/MachineToTraceInstrAnalysis.h>
-#include <luthier/tooling/MetadataParserAnalysis.h>
+#include <luthier/Tooling/AnnotatedMachineInstr.h>
 #include <unordered_set>
 
 #undef DEBUG_TYPE
@@ -385,24 +387,24 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
 
 static llvm::Expected<llvm::MachineFunction &>
 initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
-                             const ExecutableMemorySegmentAccessor &SegAccessor,
+                             const MemoryAllocationAccessor &SegAccessor,
                              const amdgpu::hsamd::MetadataParser &MDParser,
                              llvm::Module &TargetModule,
                              llvm::MachineModuleInfo &TargetMMI) {
   llvm::LLVMContext &LLVMContext = TargetModule.getContext();
   auto KDLoadAddr = reinterpret_cast<uint64_t>(&KD);
-  auto SegmentOrErr = SegAccessor.getSegment(KDLoadAddr);
+  auto SegmentOrErr = SegAccessor.getAllocationDescriptor(KDLoadAddr);
 
   uint64_t KDLoadOffset =
       KDLoadAddr -
-      reinterpret_cast<uint64_t>(SegmentOrErr->SegmentOnDevice.data());
+      reinterpret_cast<uint64_t>(SegmentOrErr->AllocationOnDevice.data());
 
   /// Locate the KD symbol inside the code object
   llvm::Expected<object::AMDGCNKernelDescSymbolRef> KDSymbolOrErr =
       [&]() -> llvm::Expected<object::AMDGCNKernelDescSymbolRef> {
     llvm::Error Err = llvm::Error::success();
     for (object::AMDGCNKernelDescSymbolRef CurrentKD :
-         SegmentOrErr->CodeObjectStorage->kernel_descriptors(Err)) {
+         SegmentOrErr->AllocationCodeObject->kernel_descriptors(Err)) {
       LUTHIER_RETURN_ON_ERROR(Err);
       llvm::Expected<uint64_t> CurrentKDLoadAddrOrErr = CurrentKD.getAddress();
       LUTHIER_RETURN_ON_ERROR(CurrentKDLoadAddrOrErr.takeError());
@@ -422,7 +424,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   /// Parse the kernel's metadata
   llvm::Expected<std::unique_ptr<llvm::msgpack::Document>> MDDocOrErr =
-      SegmentOrErr->CodeObjectStorage->getMetadataDocument();
+      SegmentOrErr->AllocationCodeObject->getMetadataDocument();
   LUTHIER_RETURN_ON_ERROR(MDDocOrErr.takeError());
   auto KernelMDOrErr =
       MDParser.parseKernelMetadata(**MDDocOrErr, *KernelNameOrErr);
@@ -471,7 +473,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   // attributes getting populated
 
   auto &KDOnHost = *reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-      &SegmentOrErr->SegmentOnHost[KDLoadOffset]);
+      &SegmentOrErr->AllocationOnHost[KDLoadOffset]);
 
   F->addFnAttr("amdgpu-lds-size",
                llvm::to_string(KDOnHost.group_segment_fixed_size));
@@ -540,23 +542,22 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 }
 
 llvm::Expected<llvm::MachineFunction &> initLiftedDeviceFunctionEntry(
-    uint64_t DeviceEntryPointAddr,
-    const ExecutableMemorySegmentAccessor &SegAccessor,
+    uint64_t DeviceEntryPointAddr, const MemoryAllocationAccessor &SegAccessor,
     llvm::Module &TargetModule, llvm::MachineModuleInfo &TargetMMI) {
 
   llvm::LLVMContext &LLVMContext = TargetModule.getContext();
-  auto SegmentOrErr = SegAccessor.getSegment(DeviceEntryPointAddr);
+  auto SegmentOrErr = SegAccessor.getAllocationDescriptor(DeviceEntryPointAddr);
 
   uint64_t DevFuncLoadOffset =
       DeviceEntryPointAddr -
-      reinterpret_cast<uint64_t>(SegmentOrErr->SegmentOnDevice.data());
+      reinterpret_cast<uint64_t>(SegmentOrErr->AllocationOnDevice.data());
 
   /// Locate the symbol this entry address is part of
   std::optional<llvm::object::ELFSymbolRef> FuncSymRef{std::nullopt};
   uint64_t EntryFromStartOfSymbol{0};
 
   for (object::AMDGCNElfSymbolRef Symbol :
-       SegmentOrErr->CodeObjectStorage->symbols()) {
+       SegmentOrErr->AllocationCodeObject->symbols()) {
     if (Symbol.getELFType() == llvm::ELF::STT_FUNC) {
       llvm::Expected<uint64_t> SymbolAddrOrErr = Symbol.getAddress();
       LUTHIER_RETURN_ON_ERROR(SymbolAddrOrErr.takeError());
@@ -655,9 +656,7 @@ static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
 }
 
 llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
-                       llvm::MachineFunction &MF,
-                       llvm::DenseMap<const llvm::MachineInstr *,
-                                      const TraceInstr *> &MIToTraceInstrMap) {
+                       llvm::MachineFunction &MF) {
 
   llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
 
@@ -665,7 +664,6 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
       *reinterpret_cast<const llvm::GCNTargetMachine *>(&MF.getTarget());
 
   MF.push_back(MBB);
-  auto MBBEntry = MBB;
 
   const llvm::MCRegisterInfo &MRI = *TM.getMCRegisterInfo();
   auto IP =
@@ -685,31 +683,35 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
                            // device address waiting for their
                            // target to be resolved after MBBs and MIs
                            // are created
-  llvm::DenseMap<luthier::address_t, llvm::MachineBasicBlock *>
+  llvm::DenseMap<uint64_t, llvm::MachineBasicBlock *>
       BranchTargetMBBs; // < Set of MBBs that will be the target of the
                         // UnresolvedBranchMIs
 
   llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
   MBBs.push_back(MBB);
 
-  auto [FirstInstrAddr, LastInstrAddr] = MFTrace.getTraceGroup().begin()->first;
+  /// The start address of the first trace
+  uint64_t FirstTraceStartAddr = MFTrace.traces_begin()->first.first;
+  /// The end address of the last trace
+  uint64_t LastTraceEndAddr = MFTrace.traces_rbegin()->first.second;
 
   llvm::MachineInstr *EntryInst{nullptr};
-  const auto &BranchTargets = MFTrace.getBranchTargets();
-  for (const auto &[TraceStartEndAddr, Trace] : MFTrace.getTraceGroup()) {
+
+  for (const auto &[TraceStartEndAddr, Trace] : MFTrace.traces()) {
     uint64_t CurrentInstrAddr = TraceStartEndAddr.first;
     uint64_t LastTraceInstrAddr = TraceStartEndAddr.second;
     while (CurrentInstrAddr <= LastTraceInstrAddr) {
-      const TraceInstr &Inst = Trace.at(CurrentInstrAddr);
+      const TraceInstr &Inst = Trace->at(CurrentInstrAddr);
       LLVM_DEBUG(llvm::dbgs()
                      << "+++++++++++++++++++++++++++++++++++++++++++++++"
                         "+++++++++++++++++++++++++\n";);
       auto MCInst = Inst.getMCInst();
       const unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
       const llvm::MCInstrDesc &MCID = MCInstInfo.get(Opcode);
-      bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
+      bool IsIndirectBranch = MCID.isIndirectBranch();
+      bool IsDirectBranch = MCID.isBranch() && !IsIndirectBranch;
       bool IsDirectBranchTarget =
-          BranchTargets.contains(Inst.getLoadedDeviceAddress());
+          MFTrace.isAddressDirectBranchTarget(Inst.getLoadedDeviceAddress());
       LLVM_DEBUG(llvm::dbgs() << "Lifting and adding MC Inst: ";
                  MCInst.dump_pretty(llvm::dbgs(), IP.get(), " ", &MCContext);
                  llvm::dbgs() << "\n";
@@ -719,7 +721,7 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
                  llvm::dbgs()
                  << llvm::formatv("Is branch? {0}\n", MCID.isBranch());
                  llvm::dbgs() << llvm::formatv("Is indirect branch? {0}\n",
-                                               MCID.isIndirectBranch()););
+                                               IsIndirectBranch););
 
       if (IsDirectBranchTarget) {
         LLVM_DEBUG(llvm::dbgs() << "Instruction is a branch target.\n";);
@@ -748,7 +750,10 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
       }
       llvm::MachineInstrBuilder Builder =
           llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
-      MIToTraceInstrMap.insert({Builder.getInstr(), &Inst});
+
+      LUTHIER_RETURN_ON_ERROR(assignInstrID(*Builder.getInstr()));
+      LUTHIER_RETURN_ON_ERROR(
+          makeInstrTrace(*Builder.getInstr(), CurrentInstrAddr));
 
       LLVM_DEBUG(llvm::dbgs() << "Number of operands according to MCID: "
                               << MCID.operands().size() << "\n";
@@ -773,10 +778,7 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
           (void)Builder.addReg(RegNum, Flags);
         } else if (Op.isImm()) {
           LLVM_DEBUG(llvm::dbgs() << "Resolving an immediate operand.\n");
-          // TODO: Resolve immediate load/store operands if they don't have
-          // relocations associated with them (e.g. when they happen in the
-          // text section)
-          luthier::address_t InstAddr = Inst.getLoadedDeviceAddress();
+          uint64_t InstAddr = Inst.getLoadedDeviceAddress();
           size_t InstSize = Inst.getSize();
           if (!IsDirectBranch) {
             LLVM_DEBUG(
@@ -854,7 +856,7 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
                    << "Instruction is a terminator; Finishing basic block.\n");
         if (IsDirectBranch) {
           LLVM_DEBUG(llvm::dbgs() << "The terminator is a direct branch.\n");
-          luthier::address_t BranchTarget;
+          uint64_t BranchTarget;
           if (MIA->evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(), 4,
                                   BranchTarget)) {
             LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
@@ -869,9 +871,9 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
                        << "Error resolving the target address of the branch\n");
           }
         }
-        // if this is the last instruction in the stream, no need for creating
-        // a new basic block
-        if (CurrentInstrAddr != LastInstrAddr) {
+        // if this is the last instruction in the trace group, no need for
+        // creating a new basic block
+        if (CurrentInstrAddr != LastTraceEndAddr) {
           LLVM_DEBUG(llvm::dbgs() << "Creating a new basic block.\n");
           auto OldMBB = MBB;
           MBB = MF.CreateMachineBasicBlock();
@@ -889,12 +891,13 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
                    << "*********************************************"
                       "***************************\n");
       }
-      if (Inst.getLoadedDeviceAddress() == MFTrace.getEntryAddr()) {
+      if (Inst.getLoadedDeviceAddress() ==
+          MFTrace.getInitialEntryPoint().getEntryPointAddress()) {
         EntryInst = Builder.getInstr();
       }
     }
   }
-  // Resolve the branch and target MIs/MBBs
+  // Resolve the direct branch and target MIs/MBBs
   LLVM_DEBUG(llvm::dbgs() << "Resolving direct branch MIs\n");
   for (auto &[TargetAddress, BranchMIs] : UnresolvedBranchMIs) {
     LLVM_DEBUG(
@@ -922,7 +925,8 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
   /// If the entry address of the trace group is not equal to the address of the
   /// first trace then add a new basic block in the beginning of the MF, and
   /// put a jump to the entry instruction
-  if (MFTrace.getEntryAddr() != FirstInstrAddr) {
+  if (MFTrace.getInitialEntryPoint().getEntryPointAddress() !=
+      FirstTraceStartAddr) {
     LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         EntryInst != nullptr, "the entry instruction is not nullptr"));
     llvm::MachineBasicBlock *EntryMBB = MF.CreateMachineBasicBlock();
@@ -930,10 +934,13 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
 
     llvm::MachineInstrBuilder Builder = llvm::BuildMI(
         EntryMBB, llvm::DebugLoc(), MCInstInfo.get(llvm::AMDGPU::S_BRANCH));
+    LUTHIER_RETURN_ON_ERROR(makeInstrMutable(*Builder.getInstr()));
     Builder->addOperand(
         llvm::MachineOperand::CreateMBB(EntryInst->getParent()));
     EntryMBB->addSuccessor(EntryInst->getParent());
   }
+
+  /// TODO: Resolve the indirect call and branch instructions here
 
   LLVM_DEBUG(llvm::dbgs() << "*********************************************"
                              "***************************\n");
@@ -962,62 +969,58 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
                        llvm::ModuleAnalysisManager &TargetMAM) {
   llvm::LLVMContext &Ctx = TargetModule.getContext();
 
-  llvm::MachineModuleInfo &MMI =
+  llvm::MachineModuleInfo &TargetMMI =
       TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
   auto &TM =
-      *reinterpret_cast<const llvm::GCNTargetMachine *>(&MMI.getTarget());
+      *reinterpret_cast<const llvm::GCNTargetMachine *>(&TargetMMI.getTarget());
 
-  const ExecutableMemorySegmentAccessor &SegAccessor =
-      TargetMAM.getResult<ExecutableMemorySegmentAccessorAnalysis>(TargetModule)
-          .getAccessor();
+  const MemoryAllocationAccessor &SegAccessor =
+      TargetMAM.getResult<MemoryAllocationAnalysis>(TargetModule).getAccessor();
 
-  auto &EntryPoints = TargetMAM.getResult<EntryPointsAnalysis>(TargetModule);
+  auto &MFEntryPoints =
+      TargetMAM.getResult<MachineFunctionEntryPoints>(TargetModule);
 
   auto &MFAM = TargetMAM
                    .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
                        TargetModule)
                    .getManager();
 
-  std::unordered_set<EntryPointType> UnvisitedPointsOfEntry{InitialEntryPoint};
-  std::unordered_set<EntryPointType> VisitedPointsOfEntry;
+  llvm::SmallDenseSet<EntryPoint> UnvisitedPointsOfEntry{InitialEntryPoint};
+
+  llvm::SmallDenseSet<EntryPoint> VisitedPointsOfEntry{};
 
   while (!UnvisitedPointsOfEntry.empty()) {
-    EntryPointType CurrentEntryPoint = *UnvisitedPointsOfEntry.begin();
+    EntryPoint CurrentEntryPoint = *UnvisitedPointsOfEntry.begin();
 
-    llvm::MachineFunction *MF{nullptr};
+    llvm::MachineFunction &MF = [&]() -> llvm::MachineFunction & {
+      /// Initialize the function handle associated with the entry point
+      if (const auto *KDOnDevice = CurrentEntryPoint.getKernelDescriptor()) {
+        const auto &MDParser =
+            TargetMAM.getResult<MetadataParserAnalysis>(TargetModule)
+                .getParser();
 
-    /// Initialize the function handle associated with the entry point
-    if (std::holds_alternative<const llvm::amdhsa::kernel_descriptor_t *>(
-            CurrentEntryPoint)) {
-      const auto &KDOnDevice =
-          std::get<const llvm::amdhsa::kernel_descriptor_t *>(
-              CurrentEntryPoint);
+        llvm::Expected<llvm::MachineFunction &> MFOrErr =
+            initKernelEntryPointFunction(*KDOnDevice, SegAccessor, MDParser,
+                                         TargetModule, TargetMMI);
+        LUTHIER_CTX_EMIT_ON_ERROR(Ctx, MFOrErr.takeError());
 
-      const auto &MDParser =
-          TargetMAM.getResult<MetadataParserAnalysis>(TargetModule).getParser();
-
-      llvm::Expected<llvm::MachineFunction &> MFOrErr =
-          initKernelEntryPointFunction(*KDOnDevice, SegAccessor, MDParser,
-                                       TargetModule, MMI);
-      LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, MFOrErr.takeError());
-
-      MF = &*MFOrErr;
-    } else {
-      llvm::Expected<llvm::MachineFunction &> MFOrErr =
-          initLiftedDeviceFunctionEntry(std::get<uint64_t>(CurrentEntryPoint),
-                                        SegAccessor, TargetModule, MMI);
-      LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, MFOrErr.takeError());
-      MF = &*MFOrErr;
-    }
+        return *MFOrErr;
+      } else {
+        llvm::Expected<llvm::MachineFunction &> MFOrErr =
+            initLiftedDeviceFunctionEntry(
+                CurrentEntryPoint.getEntryPointAddress(), SegAccessor,
+                TargetModule, TargetMMI);
+        LUTHIER_CTX_EMIT_ON_ERROR(Ctx, MFOrErr.takeError());
+        return *MFOrErr;
+      }
+    }();
     /// Add the newly created MF's entry point
-    EntryPoints.insert(*MF, CurrentEntryPoint);
-    /// Ask for the trace of the instructions
-    auto TraceResults = MFAM.getResult<InstructionTracesAnalysis>(*MF);
+    MFEntryPoints.insert(MF, CurrentEntryPoint);
+    /// Ask for the trace of the instructions for this machine function
+    auto TraceResults = MFAM.getResult<InstructionTracesAnalysis>(MF);
 
-    auto &MIToTrace = MFAM.getResult<MachineToTraceInstrAnalysis>(*MF).getMap();
-
-    LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx,
-                                  populateMF(TraceResults, *MF, MIToTrace));
+    /// Populate the machine function
+    LUTHIER_CTX_EMIT_ON_ERROR(Ctx, populateMF(TraceResults, MF));
 
     UnvisitedPointsOfEntry.erase(CurrentEntryPoint);
     VisitedPointsOfEntry.insert(CurrentEntryPoint);

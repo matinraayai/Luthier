@@ -1,4 +1,4 @@
-//===-- MemorySegmentAccessor.cpp -----------------------------------------===//
+//===-- MemoryAllocationAccessor.cpp --------------------------------------===//
 // Copyright 2025-2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,6 @@
 
 namespace luthier {
 
-llvm::AnalysisKey ExecutableMemoryAllocationAnalysis::Key;
+llvm::AnalysisKey MemoryAllocationAnalysis::Key;
 
 }

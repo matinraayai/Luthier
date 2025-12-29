@@ -21,6 +21,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_INSTRUCTION_TRACES_ANALYSIS_H
 #define LUTHIER_TOOLING_INSTRUCTION_TRACES_ANALYSIS_H
+#include "MachineFunctionEntryPoints.h"
+
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/MapVector.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -110,12 +112,13 @@ public:
     InstructionAddrSet DirectBranchTargets;
 
     /// The initial entry point of the trace
-    uint64_t EntryAddress;
+    EntryPoint EP;
 
-    Result() = default;
+    explicit Result(EntryPoint EP) : EP(EP) {};
 
   public:
     using trace_group_iterator = TraceGroup::const_iterator;
+    using trace_group_reverse_iterator = TraceGroup::const_reverse_iterator;
 
     [[nodiscard]] trace_group_iterator traces_begin() const {
       return Traces.begin();
@@ -125,10 +128,23 @@ public:
       return Traces.end();
     }
 
+    [[nodiscard]] trace_group_reverse_iterator traces_rbegin() const {
+      return Traces.rbegin();
+    }
+
+    [[nodiscard]] trace_group_reverse_iterator traces_rend() const {
+      return Traces.rend();
+    }
+
     [[nodiscard]] size_t traces_size() const { return Traces.size(); }
 
     [[nodiscard]] llvm::iterator_range<trace_group_iterator> traces() const {
       return llvm::make_range(traces_begin(), traces_end());
+    }
+
+    [[nodiscard]] llvm::iterator_range<trace_group_reverse_iterator>
+    traces_reversed() const {
+      return llvm::make_range(traces_rbegin(), traces_rend());
     }
 
     [[nodiscard]] trace_group_iterator findTrace(uint64_t StartAddress,
@@ -201,7 +217,7 @@ public:
       return DirectBranchTargets.contains(DevAddr);
     }
 
-    uint64_t getEntryAddr() const { return EntryAddress; }
+    [[nodiscard]] EntryPoint getInitialEntryPoint() const { return EP; }
 
     bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
                     llvm::ModuleAnalysisManager::Invalidator &) {

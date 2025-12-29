@@ -69,10 +69,10 @@ public:
 
 /// \brief Provides the \c MemoryAllocationAccessor to
 /// other passes from the target module's analysis manager
-class ExecutableMemoryAllocationAnalysis
-    : public llvm::AnalysisInfoMixin<ExecutableMemoryAllocationAnalysis> {
+class MemoryAllocationAnalysis
+    : public llvm::AnalysisInfoMixin<MemoryAllocationAnalysis> {
 private:
-  friend llvm::AnalysisInfoMixin<ExecutableMemoryAllocationAnalysis>;
+  friend llvm::AnalysisInfoMixin<MemoryAllocationAnalysis>;
 
   static llvm::AnalysisKey Key;
 
@@ -80,7 +80,7 @@ private:
 
 public:
   class Result {
-    friend ExecutableMemoryAllocationAnalysis;
+    friend MemoryAllocationAnalysis;
 
     const MemoryAllocationAccessor &SegmentAccessor;
 
@@ -99,7 +99,7 @@ public:
     }
   };
 
-  explicit ExecutableMemoryAllocationAnalysis(
+  explicit MemoryAllocationAnalysis(
       std::unique_ptr<MemoryAllocationAccessor> SegmentAccessor)
       : SegmentAccessor(std::move(SegmentAccessor)) {};
 

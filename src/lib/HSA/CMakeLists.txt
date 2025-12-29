@@ -5,6 +5,7 @@ add_library(LuthierHSA OBJECT
         ExecutableSymbol.cpp
         hsa.cpp
         HsaError.cpp
+        HsaMemoryAllocationAccessor.cpp
         Instr.cpp
         ISA.cpp
         KernelDescriptor.cpp

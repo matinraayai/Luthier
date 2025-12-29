@@ -1,4 +1,4 @@
-//===-- EntryPointsAnalysis.cpp -------------------------------------------===//
+//===-- MachineFunctionEntryPoints.cpp ------------------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,12 +14,12 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the \c EntryPointsAnalysis class.
+/// Implements the \c MachineFunctionEntryPoints analysis.
 //===----------------------------------------------------------------------===//
-#include "luthier/tooling/EntryPointsAnalysis.h"
+#include "luthier/Tooling/MachineFunctionEntryPoints.h"
 
 namespace luthier {
 
-llvm::AnalysisKey EntryPointsAnalysis::Key;
+llvm::AnalysisKey MachineFunctionEntryPoints::Key;
 
 }

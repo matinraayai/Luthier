@@ -1,5 +1,5 @@
 //===-- CodeDiscoveryPass.h -  ------------------------------------*-C++-*-===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+// Copyright 2025-2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,22 +19,29 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_CODE_DISCOVERY_PASS_H
 #define LUTHIER_TOOLING_CODE_DISCOVERY_PASS_H
+#include "luthier/Tooling/MachineFunctionEntryPoints.h"
 #include <llvm/IR/PassManager.h>
-#include <llvm/Support/AMDHSAKernelDescriptor.h>
 
 namespace luthier {
 
-/// \brief Pass in charge of discovering all statically reachable code and their
-/// entry points, and creating their equivalent machine functions
+
+struct CodeDiscoveryPassOptions {
+
+
+};
+
+
+/// \brief Target module pass in charge of:
+/// - Discovering all statically reachable code and entry points from a starting
+/// entry point
+/// - Disassembling and creating equivalent machine functions for each entry
+/// point
 class CodeDiscoveryPass : public llvm::PassInfoMixin<CodeDiscoveryPass> {
 
-  using EntryPointType =
-      std::variant<const llvm::amdhsa::kernel_descriptor_t *, uint64_t>;
-
-  EntryPointType InitialEntryPoint;
+  EntryPoint InitialEntryPoint;
 
 public:
-  explicit CodeDiscoveryPass(EntryPointType InitialEntryPoint)
+  explicit CodeDiscoveryPass(EntryPoint InitialEntryPoint)
       : InitialEntryPoint(InitialEntryPoint) {};
 
   llvm::PreservedAnalyses run(llvm::Module &TargetModule,

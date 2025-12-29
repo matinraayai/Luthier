@@ -12,13 +12,14 @@ tablegen(LuthierToolingCommon LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-
 add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
 
 add_library(LuthierToolingCommon OBJECT
+        AnnotatedMachineInstr.cpp
         CodeDiscoveryPass.cpp
         CodeGenerator.cpp
         CodeLifter.cpp
-        EntryPointsAnalysis.cpp
+        MachineFunctionEntryPoints.cpp
         MachineToTraceInstrAnalysis.cpp
         InstructionTracesAnalysis.cpp
-        ExecutableMemorySegmentAccessor.cpp
+        MemoryAllocationAccessor.cpp
         InstrumentationTask.cpp
         InstructionModel.cpp
         TargetManager.cpp

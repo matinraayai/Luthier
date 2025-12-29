@@ -40,7 +40,7 @@
 
 /// \brief Emits an error into the LLVM Context if \p Error is not equal to
 /// \c llvm::ErrorSuccess
-#define LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, Error)                              \
+#define LUTHIER_CTX_EMIT_ON_ERROR(Ctx, Error)                              \
   do {                                                                         \
     if (auto ___E = std::move(Error)) {                                        \
       (Ctx).emitError(llvm::toString(std::move(___E)));                        \

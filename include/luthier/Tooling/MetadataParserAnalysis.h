@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_METADATA_PARSER_ANALYSIS_H
 #define LUTHIER_TOOLING_METADATA_PARSER_ANALYSIS_H
-#include "luthier/hsa/Metadata.h"
+#include "luthier/HSA/Metadata.h"
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
