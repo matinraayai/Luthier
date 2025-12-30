@@ -1,0 +1,46 @@
+//===- IntrinsicRegistry.def - Registry of intrinsics -----------*- C++ -*-===//
+//
+// Copyright 2025-2026 @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file is used as the registry of Luthier intrinsic processors.
+//
+//===----------------------------------------------------------------------===//
+
+
+// NOTE: NO INCLUDE GUARD DESIRED!
+
+#ifndef REGISTER_INTRINSIC
+#define REGISTER_INTRINSIC(NAME, IR_PROCESSOR, MIR_PROCESSOR)
+#endif
+
+
+REGISTER_INTRINSIC("luthier::readReg",
+                   readRegIRProcessor,
+                   readRegMIRProcessor)
+REGISTER_INTRINSIC("luthier::writeReg",
+                   writeRegIRProcessor,
+                   writeRegMIRProcessor)
+REGISTER_INTRINSIC("luthier::writeExec",
+                   writeExecIRProcessor,
+                   writeExecMIRProcessor)
+REGISTER_INTRINSIC("luthier::implicitArgPtr",
+                   implicitArgPtrIRProcessor,
+                   implicitArgPtrMIRProcessor)
+REGISTER_INTRINSIC("luthier::sAtomicAdd",
+                   sAtomicAddIRProcessor,
+                   sAtomicAddMIRProcessor)
+#undef REGISTER_INTRINSIC
