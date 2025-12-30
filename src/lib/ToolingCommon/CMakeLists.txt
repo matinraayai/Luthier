@@ -48,6 +48,9 @@ add_library(LuthierToolingCommon OBJECT
         MockAMDGPULoader.cpp
         MetadataParserAnalysis.cpp
         ImmutableMachineInstr.cpp
+        Context.cpp
+        luthier.cpp
+        IntrinsicProcessorRegistry.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
@@ -58,7 +61,6 @@ target_compile_definitions(LuthierToolingCommon PRIVATE AMD_INTERNAL_BUILD ${LLV
 
 target_include_directories(LuthierToolingCommon
         PRIVATE
-        "${CMAKE_SOURCE_DIR}/src/include"
         ${CMAKE_CURRENT_BINARY_DIR}
         ${LLVM_INCLUDE_DIRS}
         ${hsa-runtime64_INCLUDE_DIRS}
