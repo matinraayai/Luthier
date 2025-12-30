@@ -41,6 +41,7 @@ add_library(LuthierToolingCommon OBJECT
         MockAMDGPULoader.cpp
         Context.cpp
         luthier.cpp
+        IntrinsicProcessorRegistry.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
