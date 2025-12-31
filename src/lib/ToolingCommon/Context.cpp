@@ -101,20 +101,10 @@ Context::Context(hsa::PacketMonitor::CallbackType PacketCallback,
   if (Err)
     return;
   CL = new CodeLifter(*HsaCoreApiTableSnapshot, *VenLoaderSnapshot);
-  CG = new CodeGenerator(*HsaCoreApiTableSnapshot, *VenLoaderSnapshot);
 
-  // Register Luthier intrinsics with the Code Generator
-  CG->registerIntrinsic("luthier::readReg",
-                        {readRegIRProcessor, readRegMIRProcessor});
-  CG->registerIntrinsic("luthier::writeReg",
-                        {writeRegIRProcessor, writeRegMIRProcessor});
-  CG->registerIntrinsic("luthier::writeExec",
-                        {writeExecIRProcessor, writeExecMIRProcessor});
-  CG->registerIntrinsic(
-      "luthier::implicitArgPtr",
-      {implicitArgPtrIRProcessor, implicitArgPtrMIRProcessor});
-  CG->registerIntrinsic("luthier::sAtomicAdd",
-                        {sAtomicAddIRProcessor, sAtomicAddMIRProcessor});
+  IPR = new IntrinsicProcessorRegistry();
+
+  CG = new CodeGenerator(*HsaCoreApiTableSnapshot, *VenLoaderSnapshot);
 
   PacketMonitor = new hsa::PacketMonitor(
       *HsaCoreApiTableSnapshot, *HsaAmdExtTableSnapshot, *VenLoaderSnapshot,
@@ -129,6 +119,7 @@ Context::Context(hsa::PacketMonitor::CallbackType PacketCallback,
 
 Context::~Context() {
   delete CG;
+  delete IPR;
   delete CL;
   delete TEL;
   delete CodeObjectCache;

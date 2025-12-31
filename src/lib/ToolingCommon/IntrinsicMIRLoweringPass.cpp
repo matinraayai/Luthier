@@ -18,6 +18,7 @@
 /// This file implements the Intrinsic MIR Lowering Pass.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/IntrinsicMIRLoweringPass.h"
+#include "luthier/Tooling/IntrinsicProcessorsAnalysis.h"
 #include "luthier/Tooling/MIRConvenience.h"
 #include "luthier/Tooling/PhysicalRegAccessVirtualizationPass.h"
 #include "luthier/Tooling/StateValueArraySpecs.h"
@@ -48,8 +49,7 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
           ->getLoweringInfo();
 
   const auto &IntrinsicsProcessors =
-      IMAM.getCachedResult<IntrinsicsProcessorsAnalysis>(IModule)
-          ->getProcessors();
+      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
 
   auto &TargetMAMAndModule =
       IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
@@ -192,13 +192,14 @@ bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
         auto &IRLoweringInfo = ToBeLoweredIntrinsics[*IntrinsicIdx];
 
-        auto IRProcessor =
-            IntrinsicsProcessors.find(IRLoweringInfo.getIntrinsicName());
-        if (IRProcessor == IntrinsicsProcessors.end())
+        std::optional<IntrinsicProcessor> Processor =
+            IntrinsicsProcessors.getProcessorIfRegistered(
+                IRLoweringInfo.getIntrinsicName());
+        if (!Processor.has_value())
           MF.getFunction().getContext().emitError(
               "Intrinsic processor was not found in the intrinsic processor "
               "map.");
-        if (auto Err = IRProcessor->second.MIRProcessor(
+        if (auto Err = Processor->MIRProcessor(
                 IRLoweringInfo, ArgVec, MIBuilder, VirtRegBuilder,
                 SVAAccessorBuilder, MF, PhysRegAccessor, ToBeOverwrittenRegs)) {
           MF.getFunction().getContext().emitError(
