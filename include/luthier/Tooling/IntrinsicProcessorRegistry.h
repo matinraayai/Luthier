@@ -15,8 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Describes Luthier's Intrinsic Processor registry singleton and its
-/// associated analysis pass.
+/// Describes Luthier's Intrinsic Processor registry singleton.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_INTRINSIC_PROCESSOR_REGISTRY_H
 #define LUTHIER_TOOLING_INTRINSIC_PROCESSOR_REGISTRY_H
@@ -29,6 +28,7 @@ namespace luthier {
 class IntrinsicProcessorRegistry final
     : public Singleton<IntrinsicProcessorRegistry> {
 private:
+  /// TODO: Make this thread-safe
   llvm::StringMap<IntrinsicProcessor> Processors;
 
 public:

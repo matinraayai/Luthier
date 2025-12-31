@@ -42,6 +42,7 @@ add_library(LuthierToolingCommon OBJECT
         Context.cpp
         luthier.cpp
         IntrinsicProcessorRegistry.cpp
+        IntrinsicProcessorsAnalysis.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
