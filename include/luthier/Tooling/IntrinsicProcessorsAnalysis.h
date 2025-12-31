@@ -41,9 +41,15 @@ public:
     Result() = default;
 
   public:
-    [[nodiscard]] IntrinsicProcessor getProcessor(llvm::StringRef Name) const;
+    [[nodiscard]] std::optional<IntrinsicProcessor>
+    getProcessorIfRegistered(llvm::StringRef Name) const;
 
     [[nodiscard]] bool isProcessorRegistered(llvm::StringRef Name) const;
+
+    void registerIntrinsicProcessor(llvm::StringRef Name,
+                                    IntrinsicProcessor Processor);
+
+    void unregisterIntrinsicProcessor(llvm::StringRef Name);
 
     /// Prevents invalidation of the analysis result
     __attribute__((used)) bool
