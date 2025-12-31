@@ -21,14 +21,18 @@
 #define LUTHIER_TOOLING_INTRINSIC_PROCESSOR_REGISTRY_H
 #include "luthier/Common/Singleton.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+
 #include <llvm/ADT/StringMap.h>
+#include <mutex>
+#include <shared_mutex>
 
 namespace luthier {
 
 class IntrinsicProcessorRegistry final
     : public Singleton<IntrinsicProcessorRegistry> {
 private:
-  /// TODO: Make this thread-safe
+  mutable std::shared_mutex Mutex;
+
   llvm::StringMap<IntrinsicProcessor> Processors;
 
 public:
@@ -36,21 +40,28 @@ public:
 
   [[nodiscard]] bool
   isIntrinsicProcessorRegistered(llvm::StringRef Name) const {
+    std::shared_lock Lock(Mutex);
     return Processors.contains(Name);
   }
 
   void registerIntrinsicProcessor(llvm::StringRef Name,
                                   IntrinsicProcessor Processor) {
-    Processors.insert({Name, std::move(Processor)});
+    std::unique_lock Lock(Mutex);
+    (void)Processors.insert({Name, std::move(Processor)});
   }
 
   void unregisterIntrinsicProcessor(llvm::StringRef Name) {
-    Processors.erase(Name);
+    std::unique_lock Lock(Mutex);
+    (void)Processors.erase(Name);
   }
 
-  [[nodiscard]] IntrinsicProcessor
-  getIntrinsicProcessor(llvm::StringRef Name) const {
-    return Processors.at(Name);
+  [[nodiscard]] std::optional<IntrinsicProcessor>
+  getIntrinsicProcessorIfRegistered(llvm::StringRef Name) const {
+    std::shared_lock Lock(Mutex);
+    if (const auto It = Processors.find(Name); It != Processors.end()) {
+      return It->second;
+    }
+    return std::nullopt;
   }
 };
 
