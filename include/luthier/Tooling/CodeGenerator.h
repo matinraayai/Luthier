@@ -63,8 +63,6 @@ class ISA;
 /// are lowered.
 class CodeGenerator : public Singleton<CodeGenerator> {
 private:
-  /// Holds information regarding how to lower Luthier intrinsics
-  llvm::StringMap<IntrinsicProcessor> IntrinsicsProcessors;
 
   /// HSA Core API table snapshot
   const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
@@ -79,17 +77,6 @@ public:
           &LoaderApiSnapshot)
       : CoreApiSnapshot(CoreApiSnapshot),
         LoaderApiSnapshot(LoaderApiSnapshot) {};
-
-  /// Register a Luthier intrinsic with the <tt>CodeGenerator</tt> and provide a
-  /// way to lower it to Machine IR
-  /// \param Name the demangled function name of the intrinsic, without the
-  /// template arguments but with the namespace(s) its binding is defined
-  /// (e.g. <tt>"luthier::readReg"</tt>)
-  /// \param Processor the \c IntrinsicProcessor describing how to lower the
-  /// Luthier intrinsic
-  void registerIntrinsic(llvm::StringRef Name, IntrinsicProcessor Processor) {
-    IntrinsicsProcessors.insert({Name, std::move(Processor)});
-  }
 
   /// Instruments the passed \p LR by first cloning it and then
   /// applying the \p Mutator onto its contents
