@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
+#include "luthier/Tooling/IntrinsicProcessorsAnalysis.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 #include "luthier/consts.h"
 #include <llvm/Support/FormatVariadic.h>
@@ -35,7 +36,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
           .getLoweringInfo();
 
   const auto &IntrinsicsProcessors =
-      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule).getProcessors();
+      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
 
   // Iterate over all functions and find the ones marked as a Luthier
   // intrinsic
@@ -47,8 +48,9 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
       auto IntrinsicName =
           F.getFnAttribute(IntrinsicAttribute).getValueAsString();
       // Ensure the processor is indeed registered with the Code Generator
-      auto It = IntrinsicsProcessors.find(IntrinsicName);
-      if (It == IntrinsicsProcessors.end()) {
+      std::optional<IntrinsicProcessor> Processor =
+          IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
+      if (!Processor.has_value()) {
         IModule.getContext().emitError(
             "Intrinsic " + llvm::Twine(IntrinsicName) +
             " is not registered with the code generator.");
@@ -88,7 +90,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
           return llvm::PreservedAnalyses::all();
         }
         // Call the IR processor of the intrinsic on the user
-        auto IRLoweringInfo = It->second.IRProcessor(F, *CallInst, TM);
+        auto IRLoweringInfo = Processor->IRProcessor(F, *CallInst, TM);
         if (auto Err = IRLoweringInfo.takeError()) {
           IModule.getContext().emitError(toString(std::move(Err)));
         }

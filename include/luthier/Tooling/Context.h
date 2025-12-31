@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_CONTEXT_H
 #define LUTHIER_TOOLING_CONTEXT_H
+#include "IntrinsicProcessorRegistry.h"
 #include "luthier/Common/Singleton.h"
 #include "luthier/HSA/Metadata.h"
 #include "luthier/HSA/PacketMointor.h"
@@ -44,6 +45,8 @@ class LoadedCodeObjectCache;
 /// as well as registration of Luthier with rocprofiler-sdk
 class Context : public Singleton<Context> {
 private:
+  IntrinsicProcessorRegistry *IPR{nullptr};
+
   /// \c CodeGenerator \c Singleton instance
   CodeGenerator *CG{nullptr};
 

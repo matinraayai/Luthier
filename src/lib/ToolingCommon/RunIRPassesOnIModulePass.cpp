@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/RunIRPassesOnIModulePass.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
+#include "luthier/Tooling/IntrinsicProcessorsAnalysis.h"
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 #include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
@@ -64,8 +65,7 @@ RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
     // Add the Intrinsic Lowering Info analysis pass
     IMAM.registerPass([&]() { return IntrinsicIRLoweringInfoMapAnalysis(); });
     // Add the Intrinsic processors Map analysis pass
-    IMAM.registerPass(
-        [&]() { return IntrinsicsProcessorsAnalysis(IntrinsicProcessors); });
+    IMAM.registerPass([&]() { return IntrinsicsProcessorsAnalysis(); });
     // Add the analysis that accumulates the physical registers accessed that
     // are not in live-ins sets
     IMAM.registerPass([&]() { return PhysRegsNotInLiveInsAnalysis(); });
