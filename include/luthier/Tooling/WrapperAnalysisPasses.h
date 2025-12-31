@@ -28,46 +28,6 @@
 
 namespace luthier {
 
-/// \brief Produces the map which holds the processors for all intrinsics
-class IntrinsicsProcessorsAnalysis
-    : public llvm::AnalysisInfoMixin<IntrinsicsProcessorsAnalysis> {
-private:
-  friend llvm::AnalysisInfoMixin<IntrinsicsProcessorsAnalysis>;
-
-  static llvm::AnalysisKey Key;
-
-  const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessorMap;
-
-public:
-  class Result {
-    friend class IntrinsicsProcessorsAnalysis;
-
-    const llvm::StringMap<IntrinsicProcessor> &Map;
-
-    explicit Result(const llvm::StringMap<IntrinsicProcessor> &Map)
-        : Map(Map) {}
-
-  public:
-    const llvm::StringMap<IntrinsicProcessor> &getProcessors() { return Map; }
-
-    /// Prevents invalidation of the analysis result
-    __attribute__((used)) bool
-    invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-               llvm::ModuleAnalysisManager::Invalidator &) {
-      return false;
-    }
-  };
-
-  /// constructor
-  explicit IntrinsicsProcessorsAnalysis(
-      const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessorMap)
-      : IntrinsicProcessorMap(IntrinsicProcessorMap) {};
-
-  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
-    return Result{IntrinsicProcessorMap};
-  }
-};
-
 /// \brief holds the mapping between the intrinsic inline assembly place holder
 /// indices and their \c IntrinsicIRLoweringInfo
 class IntrinsicIRLoweringInfoMapAnalysis

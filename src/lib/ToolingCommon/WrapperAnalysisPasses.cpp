@@ -22,8 +22,6 @@
 
 namespace luthier {
 
-llvm::AnalysisKey IntrinsicsProcessorsAnalysis::Key;
-
 llvm::AnalysisKey IntrinsicIRLoweringInfoMapAnalysis::Key;
 
 llvm::AnalysisKey TargetAppModuleAndMAMAnalysis::Key;

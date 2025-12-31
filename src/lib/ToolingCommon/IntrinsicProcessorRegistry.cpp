@@ -15,8 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implements Luthier's Intrinsic Processor registry singleton and its
-/// associated analysis pass.
+/// Implements Luthier's Intrinsic Processor registry singleton.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/IntrinsicProcessorRegistry.h"
 #include "luthier/Intrinsic/ImplicitArgPtr.h"
@@ -38,6 +37,5 @@ IntrinsicProcessorRegistry::IntrinsicProcessorRegistry()
   Processor.insert({Name, {IR_PROCESSOR, MIR_PROCESSOR}});
 #include "luthier/Intrinsic/IntrinsicRegistry.def"
 }
-
 
 } // namespace luthier
