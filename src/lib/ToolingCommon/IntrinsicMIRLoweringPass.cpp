@@ -32,9 +32,10 @@ namespace luthier {
 
 char IntrinsicMIRLoweringPass::ID = 0;
 
-static llvm::RegisterPass<IntrinsicMIRLoweringPass>
-    X("mir-lowering", "Intrinsic MIR lowering pass",
-      true /* Only looks at CFG */, false /* Analysis Pass */);
+LUTHIER_INITIALIZE_LEGACY_PASS_BODY(IntrinsicMIRLoweringPass, "mir-lowering",
+                                    "Intrinsic MIR lowering pass",
+                                    true /* Only looks at CFG */,
+                                    false /* Analysis Pass */)
 
 bool IntrinsicMIRLoweringPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   bool Changed{false};
