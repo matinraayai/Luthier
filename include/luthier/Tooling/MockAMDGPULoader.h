@@ -21,6 +21,7 @@
 
 #include "luthier/Object/AMDGCNObjectFile.h"
 #include <llvm/ADT/StringMap.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Support/Error.h>
 #include <string>
 
@@ -244,6 +245,42 @@ public:
 
   [[nodiscard]] unsigned loaded_code_objects_size() const {
     return LoadedCodeObjects.size();
+  }
+};
+
+class MockAMDGPULoaderAnalysis
+    : public llvm::AnalysisInfoMixin<MockAMDGPULoaderAnalysis> {
+  friend llvm::AnalysisInfoMixin<MockAMDGPULoaderAnalysis>;
+
+  MockAMDGPULoader &Loader;
+
+public:
+  static llvm::AnalysisKey Key;
+
+  class Result {
+    friend class MockAMDGPULoaderAnalysis;
+
+    MockAMDGPULoader &Loader;
+
+    explicit Result(MockAMDGPULoader &Loader) : Loader(Loader) {}
+
+  public:
+    /// Never invalidate the loader
+    bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
+                    llvm::ModuleAnalysisManager::Invalidator &) {
+      return false;
+    }
+
+    const MockAMDGPULoader &getLoader() const { return Loader; }
+
+    MockAMDGPULoader &getLoader() { return Loader; }
+  };
+
+  explicit MockAMDGPULoaderAnalysis(MockAMDGPULoader &Loader)
+      : Loader(Loader) {}
+
+  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
+    return Result(Loader);
   }
 };
 
