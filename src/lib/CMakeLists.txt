@@ -1,4 +1,4 @@
-add_subdirectory(CompilerPlugins)
+add_subdirectory(Plugins)
 add_subdirectory(AMDGPU)
 add_subdirectory(LLVM)
 add_subdirectory(Comgr)
