@@ -39,22 +39,9 @@ namespace luthier {
 
 char InjectedPayloadPEIPass::ID = 0;
 
-void initializeInjectedPayloadPEIPass(llvm::PassRegistry &Registry) {
-  static llvm::once_flag InitializeDominatorTreeWrapperPassPassFlag;
-  auto initializeDominatorTreeWrapperPassPassOnce = [](llvm::PassRegistry &R) {
-    auto *PI =
-        new llvm::PassInfo("Injected Payload PEI Pass", "injected-payload-pei",
-                           &InjectedPayloadPEIPass::ID,
-                           static_cast<llvm::PassInfo::NormalCtor_t>(
-                               llvm::callDefaultCtor<InjectedPayloadPEIPass>),
-                           true, false);
-    R.registerPass(*PI, true);
-  };
-
-  llvm::call_once(InitializeDominatorTreeWrapperPassPassFlag,
-                  initializeDominatorTreeWrapperPassPassOnce,
-                  std::ref(Registry));
-}
+LUTHIER_INITIALIZE_LEGACY_PASS_BODY(InjectedPayloadPEIPass,
+                                    "injected-payload-pei",
+                                    "Injected Payload PEI Pass", true, false);
 
 bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
