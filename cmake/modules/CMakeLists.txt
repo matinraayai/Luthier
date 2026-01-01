@@ -32,7 +32,7 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/include
         DESTINATION ${CMAKE_INSTALL_PREFIX})
 
 # Install & Export Targets
-install(TARGETS LuthierAMDGPU LuthierTooling LuthierIModuleEmbedPlugin
+install(TARGETS LuthierAMDGPU LuthierTooling LuthierIModuleEmbedPlugin LuthierLegacyPlugin
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         EXPORT luthierTargets)
 
