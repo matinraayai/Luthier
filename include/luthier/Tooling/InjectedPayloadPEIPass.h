@@ -35,6 +35,8 @@ namespace luthier {
 
 class PhysicalRegAccessVirtualizationPass;
 
+void initializeInjectedPayloadPEIPass(llvm::PassRegistry &Registry);
+
 class InjectedPayloadPEIPass : public llvm::MachineFunctionPass {
 private:
   PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass;
