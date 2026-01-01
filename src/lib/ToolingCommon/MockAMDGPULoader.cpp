@@ -366,4 +366,6 @@ llvm::Error MockAMDGPULoader::finalize() {
   return llvm::Error::success();
 }
 
+llvm::AnalysisKey MockAMDGPULoaderAnalysis::Key;
+
 } // namespace luthier
