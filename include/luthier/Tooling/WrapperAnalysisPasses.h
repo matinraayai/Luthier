@@ -21,6 +21,7 @@
 #ifndef LUTHIER_TOOLING_WRAPPER_ANALYSIS_PASSES_H
 #define LUTHIER_TOOLING_WRAPPER_ANALYSIS_PASSES_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/Tooling/LegacyPassSupport.h"
 #include "luthier/Tooling/LiftedRepresentation.h"
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
@@ -245,6 +246,10 @@ public:
     return {IModule, IPM, IMAM, ILAM, IFAM, ICGAM};
   }
 };
+
+class IModuleMAMWrapperPass;
+
+LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IModuleMAMWrapperPass);
 
 /// \brief a legacy immutable pass that provides the instrumentation module's
 /// \c llvm::ModueAnalysisManager to the legacy code gen passes

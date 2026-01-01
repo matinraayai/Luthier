@@ -31,9 +31,9 @@ class PhysRegsNotInLiveInsAnalysis
 private:
   friend llvm::AnalysisInfoMixin<PhysRegsNotInLiveInsAnalysis>;
 
+public:
   static llvm::AnalysisKey Key;
 
-public:
   class Result {
     std::unique_ptr<llvm::LivePhysRegs> Regs;
 
