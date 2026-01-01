@@ -41,9 +41,10 @@ namespace luthier {
 
 char PhysicalRegAccessVirtualizationPass::ID = 0;
 
-static llvm::RegisterPass<PhysicalRegAccessVirtualizationPass>
-    X("phys-virtualization", "Physical Register Access Virtualization Pass",
-      true /* Only looks at CFG */, false /* Analysis Pass */);
+LUTHIER_INITIALIZE_LEGACY_PASS_BODY(
+    PhysicalRegAccessVirtualizationPass, "phys-virtualization",
+    "Physical Register Access Virtualization Pass",
+    true /* Only looks at CFG */, true /* Analysis Pass */)
 
 static void
 get32BitSubRegsOfPhysReg(llvm::MCRegister Register,
