@@ -47,7 +47,7 @@ class MockLoadedCodeObject {
                     4>
       PTLoadSegments{};
 
-  MockLoadedCodeObject(MockAMDGPULoader &Owner, llvm::ArrayRef<std::byte> Elf,
+  MockLoadedCodeObject(MockAMDGPULoader &Owner, const llvm::MemoryBuffer &Elf,
                        llvm::Error &Err);
 
 public:
@@ -149,7 +149,7 @@ public:
   /// \return the loaded code object handle on success; \c llvm::Error if an
   /// issue was encountered in the process
   llvm::Expected<const MockLoadedCodeObject &>
-  loadCodeObject(llvm::ArrayRef<std::byte> CodeObject);
+  loadCodeObject(const llvm::MemoryBuffer &CodeObject);
 
   /// Finalizes the loading of all the code objects loaded by this loader
   /// instance by resolving the dynamic relocations of all loaded code objects
