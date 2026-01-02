@@ -1,5 +1,5 @@
 //===-- MockAMDGPULoader.cpp ------------------------------------*- C++ -*-===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+// Copyright 2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file Implements the \c MockAMDGPULoader and \c MockLoadedCodeObject
+/// \file
+/// Implements the \c MockAMDGPULoader and \c MockLoadedCodeObject
 /// classes.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/MockAMDGPULoader.h"
@@ -24,16 +25,14 @@
 namespace luthier {
 
 MockLoadedCodeObject::MockLoadedCodeObject(MockAMDGPULoader &Owner,
-                                           llvm::ArrayRef<std::byte> Elf,
+                                           const llvm::MemoryBuffer &Elf,
                                            llvm::Error &Err)
     : Parent(Owner) {
   llvm::ErrorAsOutParameter EAO(Err);
 
   /// Parse the code object
-  Err = object::AMDGCNObjectFile::createAMDGCNObjectFile(
-            llvm::StringRef(reinterpret_cast<const char *>(Elf.data()),
-                            Elf.size()))
-            .moveInto(this->Elf);
+  Err =
+      object::AMDGCNObjectFile::createAMDGCNObjectFile(Elf).moveInto(this->Elf);
   if (Err)
     return;
 
@@ -338,7 +337,7 @@ llvm::Error MockAMDGPULoader::defineExternalSymbol(llvm::StringRef Name,
 }
 
 llvm::Expected<const MockLoadedCodeObject &>
-MockAMDGPULoader::loadCodeObject(llvm::ArrayRef<std::byte> CodeObject) {
+MockAMDGPULoader::loadCodeObject(const llvm::MemoryBuffer &CodeObject) {
 
   if (isFinalized())
     return LUTHIER_MAKE_GENERIC_ERROR("The loader is already finalized");
