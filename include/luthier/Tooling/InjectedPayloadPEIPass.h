@@ -41,16 +41,10 @@ class InjectedPayloadPEIPass;
 LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(InjectedPayloadPEIPass);
 
 class InjectedPayloadPEIPass : public llvm::MachineFunctionPass {
-private:
-  PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass;
-
 public:
   static char ID;
 
-  explicit InjectedPayloadPEIPass(
-      PhysicalRegAccessVirtualizationPass &PhysRegVirtAccessPass)
-      : llvm::MachineFunctionPass(ID),
-        PhysRegVirtAccessPass(PhysRegVirtAccessPass) {};
+  InjectedPayloadPEIPass() : llvm::MachineFunctionPass(ID) {};
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Injected Payload Prologue Epilogue Insertion Pass";

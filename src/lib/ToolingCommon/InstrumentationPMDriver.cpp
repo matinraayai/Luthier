@@ -224,7 +224,7 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   LegacyIPM->add(new PhysicalRegAccessVirtualizationPass());
   LegacyIPM->add(new IntrinsicMIRLoweringPass());
   TPC->insertPass(&llvm::PrologEpilogCodeInserterID,
-                  new InjectedPayloadPEIPass(*PhysRegPass));
+                  new InjectedPayloadPEIPass());
   TPC->addMachinePasses();
 
   // Add the kernel pre-amble emission pass
