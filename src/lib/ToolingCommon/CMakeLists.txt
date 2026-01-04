@@ -52,6 +52,9 @@ add_library(LuthierToolingCommon OBJECT
         luthier.cpp
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
+        InstrumentationPMDriver.cpp
+        MockLoadAMDGPUCodeObjects.cpp
+        CodeObjectManagerAnalysis.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)

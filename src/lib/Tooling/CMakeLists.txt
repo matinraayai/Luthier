@@ -8,6 +8,7 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierIntrinsic>
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierToolingCommon>
+        $<TARGET_OBJECTS:LuthierPassPlugin>
 )
 
 target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
