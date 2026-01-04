@@ -70,22 +70,23 @@ struct PassPluginLibraryInfo {
   /// Extra arguments passed to all callbacks set by the plugin
   void *ExtraArgs{nullptr};
   /// The callback used to create the instrumentation module; If there are
-  /// multiple plugins their created modules will be linked together
+  /// multiple plugins their created modules should be linked together
   std::unique_ptr<llvm::Module> (*IModuleCreationCallback)(llvm::LLVMContext &,
                                                            const llvm::Triple &,
                                                            llvm::StringRef,
                                                            llvm::StringRef &,
                                                            void *){nullptr};
-
+  /// Use this to register the "primary" instrumentation logic creation passes
+  void (*RegisterPreIROptimizationPasses)(llvm::ModulePassManager &,
+                                          void *){nullptr};
   /// The callback for augmenting the instrumentation pass builder
   /// This can be used to add any additional analysis required by the plugin,
   /// and to also modify the "default" part of the IR optimization pipeline as
   /// documented by the LLVM pass plugin and the \c llvm::PassBuilder
   void (*RegisterInstrumentationPassBuilderCallback)(llvm::PassBuilder &,
                                                      void *){nullptr};
-  /// The callback for adding passes to the instrumentation pass manager before
-  /// the Luthier IR lowering pass
-  /// Use this to register the "primary" instrumentation logic creation passes
+  /// The callback for adding passes to the instrumentation pass manager
+  /// before the Luthier IR lowering pass
   void (*PreLuthierIRIntrinsicLoweringPassesCallback)(llvm::ModulePassManager &,
                                                       void *){nullptr};
 
@@ -153,6 +154,14 @@ public:
   std::unique_ptr<llvm::Module> instrumentationModuleCreationCallback(
       llvm::LLVMContext &Context, const llvm::Triple &TT,
       llvm::StringRef CPUName, llvm::StringRef FS) const;
+
+  /// Register passes to be run before the instrumentation IR optimization
+  /// passes
+  void registerPreIROptimizationPasses(llvm::ModulePassManager &MPM) const {
+    if (Info.RegisterPreIROptimizationPasses) {
+      Info.RegisterPreIROptimizationPasses(MPM, Info.ExtraArgs);
+    }
+  }
 
   /// Invoke the pass builder callback
   void registerInstrumentationPassBuilderCallback(llvm::PassBuilder &PB) const {
