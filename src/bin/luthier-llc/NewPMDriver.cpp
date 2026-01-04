@@ -131,7 +131,7 @@ int llvm::compileModuleWithNewPM(
   PassBuilder PB(Target.get(), PipelineTuningOptions(), std::nullopt, &PIC);
 
   /// Register plugin callbacks with the pass builder
-  for (const auto & Plugin : PassPlugins) {
+  for (const auto &Plugin : PassPlugins) {
     Plugin.registerPassBuilderCallbacks(PB);
   }
 
