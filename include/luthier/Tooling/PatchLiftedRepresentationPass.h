@@ -21,15 +21,21 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_PATCH_LIFTED_REPRESENTATION_H
 #define LUTHIER_TOOLING_PATCH_LIFTED_REPRESENTATION_H
+#include "luthier/Tooling/LegacyPassSupport.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
-class PatchLiftedRepresentationPass
-    : public llvm::PassInfoMixin<PatchLiftedRepresentationPass> {
+class PatchLiftedRepresentationPass;
+
+LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(PatchLiftedRepresentationPass);
+
+class PatchLiftedRepresentationPass : public llvm::ModulePass {
 public:
+  static char ID;
+
   enum PatchType {
     INLINE = 0,  ///< Patch the injected payload directly into the target app
     OUTLINE = 1, ///< Append the injected payload to the end/beginning
@@ -38,10 +44,6 @@ public:
   };
 
 private:
-  /// The instrumentation module
-  llvm::Module &IModule;
-  /// The instrumentation machine module info
-  llvm::MachineModuleInfo &IMMI;
   /// Keeps track of the estimated size of each MF in bytes inside the
   /// instrumentation module
   llvm::SmallDenseMap<const llvm::MachineFunction *, uint64_t, 8>
@@ -50,12 +52,13 @@ private:
   llvm::DenseMap<const llvm::MachineFunction *,
                  PatchLiftedRepresentationPass::PatchType>
   decidePatchingMethod(llvm::Module &TargetAppM,
-                       llvm::ModuleAnalysisManager &TargetMAM);
+                       llvm::ModuleAnalysisManager &TargetMAM,
+                       llvm::Module &IModule, llvm::MachineModuleInfo &IMMI);
 
 public:
-  PatchLiftedRepresentationPass(llvm::Module &IModule,
-                                llvm::MachineModuleInfo &IMMI)
-      : IModule(IModule), IMMI(IMMI) {};
+  PatchLiftedRepresentationPass() : llvm::ModulePass(ID) {};
+
+  bool runOnModule(llvm::Module &IModule) override;
 
   llvm::PreservedAnalyses run(llvm::Module &TargetAppM,
                               llvm::ModuleAnalysisManager &);

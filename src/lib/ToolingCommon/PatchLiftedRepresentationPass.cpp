@@ -116,7 +116,8 @@ static void patchFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
 llvm::DenseMap<const llvm::MachineFunction *,
                PatchLiftedRepresentationPass::PatchType>
 PatchLiftedRepresentationPass::decidePatchingMethod(
-    llvm::Module &TargetAppM, llvm::ModuleAnalysisManager &TargetMAM) {
+    llvm::Module &TargetAppM, llvm::ModuleAnalysisManager &TargetMAM,
+    llvm::Module &IModule, llvm::MachineModuleInfo &IMMI) {
   // Analysis result output
   llvm::DenseMap<const llvm::MachineFunction *, PatchType> Out;
   // Things we need for this analysis
@@ -564,17 +565,25 @@ void outlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
   }
 }
 
-llvm::PreservedAnalyses
-PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
-                                   llvm::ModuleAnalysisManager &TargetMAM) {
-  auto PatchMethods = decidePatchingMethod(TargetAppM, TargetMAM);
+LUTHIER_INITIALIZE_LEGACY_PASS_BODY(PatchLiftedRepresentationPass,
+                                    "luthier-patch-lifted-representation",
+                                    "Luthier Patch Lifted Representation", true,
+                                    false)
+
+char PatchLiftedRepresentationPass::ID;
+
+bool PatchLiftedRepresentationPass::runOnModule(llvm::Module &IModule) {
+  auto &IMAM = getAnalysis<IModuleMAMWrapperPass>().getMAM();
+  auto &TargetAppMAndMAM =
+      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
+
+  llvm::Module &TargetAppM = TargetAppMAndMAM.getTargetAppModule();
+  llvm::ModuleAnalysisManager &TargetMAM = TargetAppMAndMAM.getTargetAppMAM();
+  auto &IMMI = getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
+
+  auto PatchMethods =
+      decidePatchingMethod(TargetAppM, TargetMAM, IModule, IMMI);
   llvm::TimeTraceScope Scope("Lifted Representation Patching");
-
-  auto &IModuleAnalysis =
-      *TargetMAM.getCachedResult<IModulePMAnalysis>(TargetAppM);
-
-  auto &IModule = IModuleAnalysis.getModule();
-  auto &IMAM = IModuleAnalysis.getMAM();
 
   const auto &IPIP =
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
@@ -639,7 +648,7 @@ PatchLiftedRepresentationPass::run(llvm::Module &TargetAppM,
                              VMap);
     }
   }
-  return llvm::PreservedAnalyses::all();
+  return true;
 }
 
 } // namespace luthier
