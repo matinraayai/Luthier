@@ -111,13 +111,14 @@ public:
              llvm::ModuleAnalysisManager &TargetMAM);
 };
 
-class PrePostAmbleEmitter : public llvm::PassInfoMixin<PrePostAmbleEmitter> {
+class PrePostAmbleEmitter : public llvm::ModulePass {
 
 public:
-  explicit PrePostAmbleEmitter() = default;
+  static char ID;
 
-  llvm::PreservedAnalyses run(llvm::Module &TargetModule,
-                              llvm::ModuleAnalysisManager &TargetMAM);
+  explicit PrePostAmbleEmitter() : llvm::ModulePass(ID) {};
+
+  bool runOnModule(llvm::Module &IModule) override;
 };
 
 } // namespace luthier

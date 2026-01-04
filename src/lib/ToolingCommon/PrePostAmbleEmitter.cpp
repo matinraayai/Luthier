@@ -465,9 +465,16 @@ FunctionPreambleDescriptorAnalysis::run(
           TargetModule};
 }
 
-llvm::PreservedAnalyses
-PrePostAmbleEmitter::run(llvm::Module &TargetModule,
-                         llvm::ModuleAnalysisManager &TargetMAM) {
+char PrePostAmbleEmitter::ID = 0;
+
+bool PrePostAmbleEmitter::runOnModule(llvm::Module &IModule) {
+  auto &IMAM = getAnalysis<IModuleMAMWrapperPass>().getMAM();
+  auto &TargetAppMAndMAM =
+      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
+
+  llvm::Module &TargetModule = TargetAppMAndMAM.getTargetAppModule();
+  llvm::ModuleAnalysisManager &TargetMAM = TargetAppMAndMAM.getTargetAppMAM();
+
   const auto &PKInfo =
       *TargetMAM.getCachedResult<FunctionPreambleDescriptorAnalysis>(
           TargetModule);
@@ -560,7 +567,7 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
       if (auto Err = emitCodeToSetupScratch(
               *EntryInstr, SVSStorageReg, LR.getKernel().getKernelMetadata())) {
         TargetModule.getContext().emitError(toString(std::move(Err)));
-        return llvm::PreservedAnalyses::all();
+        return false;
       }
     }
     // Emit code to store the rest of the requested SGPR kernel arguments
@@ -576,20 +583,20 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
                 KernArg);
         if (auto Err = StoreSlotBegin.takeError()) {
           TargetModule.getContext().emitError(toString(std::move(Err)));
-          return llvm::PreservedAnalyses::all();
+          return false;
         }
         auto StoreSlotSize =
             stateValueArray::getKernelArgumentStoreSlotSizeForWave64(KernArg);
         if (auto Err = StoreSlotSize.takeError()) {
           TargetModule.getContext().emitError(toString(std::move(Err)));
-          return llvm::PreservedAnalyses::all();
+          return false;
         }
         if (auto Err = emitCodeToStoreSGPRKernelArg(
                 *EntryInstr, getArgReg(*MF, PreloadValue), SVSStorageReg,
                 *StoreSlotBegin, *StoreSlotSize,
                 OriginalSGPRArgLocs.contains(PreloadValue))) {
           TargetModule.getContext().emitError(toString(std::move(Err)));
-          return llvm::PreservedAnalyses::all();
+          return false;
         }
       }
     }
@@ -633,7 +640,7 @@ PrePostAmbleEmitter::run(llvm::Module &TargetModule,
       emitCodeToMoveSVA(TargetMAM, TargetModule, MF, SVLocations);
     }
   }
-  return llvm::PreservedAnalyses::all();
+  return true;
 }
 
 FunctionPreambleDescriptor::FunctionPreambleDescriptor(
