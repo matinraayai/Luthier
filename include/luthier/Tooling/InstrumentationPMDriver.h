@@ -1,4 +1,4 @@
-//===-- ApplyInstrumentationPass.h ------------------------------*- C++ -*-===//
+//===-- InstrumentationPMDriver.h -------------------------------*- C++ -*-===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
-/// Describes the \c ApplyInstrumentationPass which is a target module pass in
-/// charge of the high-level instrumentation process in Luthier.
+/// \file InstrumentationPMDriver.h
+/// Describes the \c InstrumentationPMDriver which is a target module pass
+/// in charge of the high-level instrumentation process in Luthier.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_APPLY_INSTRUMENTATION_PASS_H
 #define LUTHIER_TOOLING_APPLY_INSTRUMENTATION_PASS_H
