@@ -20,10 +20,11 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_PLUGINS_PASS_PLUGIN_H
 #define LUTHIER_PLUGINS_PASS_PLUGIN_H
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/DynamicLibrary.h"
-#include "llvm/Support/Error.h"
+#include <llvm/ADT/StringRef.h>
+#include <llvm/IR/PassManager.h>
+#include <llvm/Support/Compiler.h>
+#include <llvm/Support/DynamicLibrary.h>
+#include <llvm/Support/Error.h>
 #include <string>
 #include <utility>
 
@@ -43,8 +44,6 @@ class LLVMContext;
 class Triple;
 
 class SubtargetFeatures;
-
-class ModulePassManager;
 } // namespace llvm
 
 namespace luthier {

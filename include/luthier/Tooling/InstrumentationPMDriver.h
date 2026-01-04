@@ -22,11 +22,14 @@
 #define LUTHIER_TOOLING_APPLY_INSTRUMENTATION_PASS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/Plugins/LuthierPassPlugin.h"
-#include <hsa/hsa.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Target/TargetMachine.h>
-
 #include <utility>
+
+namespace llvm {
+
+class PassRegistry;
+}
 
 namespace luthier {
 
@@ -73,6 +76,11 @@ class InstrumentationPMDriver
   std::function<void(llvm::ModulePassManager &)>
       PostIRIntrinsicLoweringCallback{};
 
+  /// Callback to augment the instrumentation code generation legacy pipeline
+  std::function<void(llvm::PassRegistry &, llvm::TargetPassConfig &,
+                     llvm::TargetMachine &)>
+      AugmentTargetPassConfigCallback;
+
 public:
   explicit InstrumentationPMDriver(
       const InstrumentationPMDriverOptions &Options,
@@ -87,14 +95,12 @@ public:
       std::function<void(llvm::ModulePassManager &)>
           PreIRIntrinsicLoweringCallback = [](llvm::ModulePassManager &) {},
       std::function<void(llvm::ModulePassManager &)>
-          PostIRIntrinsicLoweringCallback = [](llvm::ModulePassManager &) {})
-      : Options(Options), PassPlugins(PassPlugins),
-        IModuleCreatorFn(std::move(ModuleCreatorFn)),
-        PreIROptimizationCallback(std::move(PreIROptimizationCallback)),
-        PreIRIntrinsicLoweringCallback(
-            std::move(PreIRIntrinsicLoweringCallback)),
-        PostIRIntrinsicLoweringCallback(
-            std::move(PostIRIntrinsicLoweringCallback)) {};
+          PostIRIntrinsicLoweringCallback = [](llvm::ModulePassManager &) {},
+      std::function<void(llvm::PassRegistry &, llvm::TargetPassConfig &,
+                         llvm::TargetMachine &)>
+          AugmentTargetPassConfigCallback = [](llvm::PassRegistry &,
+                                               llvm::TargetPassConfig &,
+                                               llvm::TargetMachine &) {});
 
   llvm::PreservedAnalyses run(llvm::Module &TargetAppM,
                               llvm::ModuleAnalysisManager &TargetMAM);

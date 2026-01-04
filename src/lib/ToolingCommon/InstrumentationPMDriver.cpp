@@ -14,6 +14,7 @@
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/Analysis/RuntimeLibcallInfo.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Linker/Linker.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -24,6 +25,36 @@
 #define DEBUG_TYPE "luthier-apply-instrumentation"
 
 namespace luthier {
+
+InstrumentationPMDriver::InstrumentationPMDriver(
+    const InstrumentationPMDriverOptions &Options,
+    llvm::ArrayRef<PassPlugin> PassPlugins,
+    IModuleCreationFnType ModuleCreatorFn,
+    std::function<void(llvm::ModulePassManager &)> PreIROptimizationCallback,
+    std::function<void(llvm::ModulePassManager &)>
+        PreIRIntrinsicLoweringCallback,
+    std::function<void(llvm::ModulePassManager &)>
+        PostIRIntrinsicLoweringCallback,
+    std::function<void(llvm::PassRegistry &, llvm::TargetPassConfig &,
+                       llvm::TargetMachine &)>
+        AugmentTargetPassConfigCallback)
+    : Options(Options), PassPlugins(PassPlugins),
+      IModuleCreatorFn(std::move(ModuleCreatorFn)),
+      PreIROptimizationCallback(std::move(PreIROptimizationCallback)),
+      PreIRIntrinsicLoweringCallback(std::move(PreIRIntrinsicLoweringCallback)),
+      PostIRIntrinsicLoweringCallback(
+          std::move(PostIRIntrinsicLoweringCallback)),
+      AugmentTargetPassConfigCallback(
+          std::move(AugmentTargetPassConfigCallback)) {
+  llvm::PassRegistry *Registry = llvm::PassRegistry::getPassRegistry();
+  initializeIModuleMAMWrapperPass(*Registry);
+  initializePhysicalRegAccessVirtualizationPass(*Registry);
+  initializeInjectedPayloadPEIPass(*Registry);
+  initializeIntrinsicMIRLoweringPass(*Registry);
+  for (const auto &Plugin : PassPlugins) {
+    Plugin.registerLegacyCodegenPassesCallback(*Registry);
+  }
+};
 
 llvm::PreservedAnalyses
 InstrumentationPMDriver::run(llvm::Module &TargetAppM,
@@ -200,6 +231,15 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   TargetMPM.addPass(PrePostAmbleEmitter());
   // Add the lifted representation patching pass
   TargetMPM.addPass(PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI()));
+
+  llvm::PassRegistry *Registry = llvm::PassRegistry::getPassRegistry();
+
+  /// Invoke the codegen pipeline augmentation callback
+  AugmentTargetPassConfigCallback(*Registry, *TPC, *ITM);
+
+  for (const auto &Plugin : PassPlugins) {
+    Plugin.invokeAugmentTargetPassConfigCallback(*Registry, *TPC, *ITM);
+  }
 
   TPC->setInitialized();
 
