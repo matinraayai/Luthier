@@ -40,7 +40,7 @@
 #include "llvm/MC/MCTargetOptionsCommandFlags.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Pass.h"
-#include "llvm/Passes/PassPlugin.h"
+#include "llvm/Plugins/PassPlugin.h"
 #include "llvm/Remarks/HotnessThresholdParser.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -311,7 +311,7 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &,
   llvm_unreachable("reportError() should not return");
 }
 
-static std::unique_ptr<ToolOutputFile> getOutputStream() {
+static std::unique_ptr<ToolOutputFile> GetOutputStream(Triple::OSType OS) {
   // If we don't yet have an output filename, make one.
   if (OutputFilename.empty()) {
     if (InputFilename == "-")
@@ -331,7 +331,10 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
         OutputFilename += ".s";
         break;
       case CodeGenFileType::ObjectFile:
-        OutputFilename += ".o";
+        if (OS == Triple::Win32)
+          OutputFilename += ".obj";
+        else
+          OutputFilename += ".o";
         break;
       case CodeGenFileType::Null:
         OutputFilename = "-";
@@ -405,6 +408,8 @@ int main(int argc, char **argv) {
     PluginList.emplace_back(Plugin.get());
   });
 
+  // Register the Target and CPU printer for --version.
+  cl::AddExtraVersionPrinter(sys::printDefaultTargetAndDetectedCPU);
   // Register the target printer for --version.
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
@@ -569,7 +574,7 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
       Options.MCOptions.OutputAsmVariant = OutputAsmVariant;
     Options.MCOptions.IASSearchPaths = IncludeDirs;
     Options.MCOptions.InstPrinterOptions = InstPrinterOptions;
-    Options.MCOptions.SplitDwarfFile = SplitDwarfFile.getValue();
+    Options.MCOptions.SplitDwarfFile = SplitDwarfFile;
     if (DwarfDirectory.getPosition()) {
       Options.MCOptions.MCUseDwarfDirectory =
           DwarfDirectory ? MCTargetOptions::EnableDwarfDirectory
@@ -675,7 +680,7 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
     Target->Options.FloatABIType = codegen::getFloatABIForCalls();
 
   // Figure out where we are going to send the output.
-  std::unique_ptr<ToolOutputFile> Out = getOutputStream();
+  std::unique_ptr<ToolOutputFile> Out = GetOutputStream(TheTriple.getOS());
   if (!Out)
     return 1;
 
@@ -739,8 +744,8 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
   if (EnableNewPassManager || !PassPipeline.empty()) {
     return compileModuleWithNewPM(argv[0], std::move(M), std::move(MIR),
                                   std::move(Target), std::move(Out),
-                                  std::move(DwoOut), Context, TLII, VK,
-                                  PassPipeline, codegen::getFileType());
+                                  std::move(DwoOut), Context, PluginList, TLII,
+                                  VK, PassPipeline, codegen::getFileType());
   }
 
   // Build up all of the passes that we want to do to the module.

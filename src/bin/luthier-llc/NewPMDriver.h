@@ -20,6 +20,7 @@
 #define LLVM_TOOLS_LLC_NEWPMDRIVER_H
 
 #include "llvm/IR/DiagnosticHandler.h"
+#include "llvm/Plugins/PassPlugin.h"
 #include "llvm/Support/CodeGen.h"
 #include <memory>
 
@@ -43,6 +44,7 @@ int compileModuleWithNewPM(StringRef Arg0, std::unique_ptr<Module> M,
                            std::unique_ptr<ToolOutputFile> Out,
                            std::unique_ptr<ToolOutputFile> DwoOut,
                            LLVMContext &Context,
+                           ArrayRef<PassPlugin> PassPlugins,
                            const TargetLibraryInfoImpl &TLII, VerifierKind VK,
                            StringRef PassPipeline, CodeGenFileType FileType);
 } // namespace llvm

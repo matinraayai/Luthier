@@ -91,8 +91,8 @@ int llvm::compileModuleWithNewPM(
     StringRef Arg0, std::unique_ptr<Module> M, std::unique_ptr<MIRParser> MIR,
     std::unique_ptr<TargetMachine> Target, std::unique_ptr<ToolOutputFile> Out,
     std::unique_ptr<ToolOutputFile> DwoOut, LLVMContext &Context,
-    const TargetLibraryInfoImpl &TLII, VerifierKind VK, StringRef PassPipeline,
-    CodeGenFileType FileType) {
+    ArrayRef<PassPlugin> PassPlugins, const TargetLibraryInfoImpl &TLII,
+    VerifierKind VK, StringRef PassPipeline, CodeGenFileType FileType) {
 
   if (!PassPipeline.empty() && TargetPassConfig::hasLimitedCodeGenPipeline()) {
     WithColor::error(errs(), Arg0)
@@ -129,6 +129,12 @@ int llvm::compileModuleWithNewPM(
   CGSCCAnalysisManager CGAM;
   ModuleAnalysisManager MAM;
   PassBuilder PB(Target.get(), PipelineTuningOptions(), std::nullopt, &PIC);
+
+  /// Register plugin callbacks with the pass builder
+  for (const auto & Plugin : PassPlugins) {
+    Plugin.registerPassBuilderCallbacks(PB);
+  }
+
   PB.registerModuleAnalyses(MAM);
   PB.registerCGSCCAnalyses(CGAM);
   PB.registerFunctionAnalyses(FAM);
@@ -198,7 +204,7 @@ int llvm::compileModuleWithNewPM(
   MPM.run(*M, MAM);
 
   if (Context.getDiagHandlerPtr()->HasErrors)
-    exit(1);
+    return 1;
 
   // Declare success.
   Out->keep();
