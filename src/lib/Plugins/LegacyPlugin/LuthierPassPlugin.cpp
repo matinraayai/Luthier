@@ -1,4 +1,4 @@
-//===-- LegacyPlugin.cpp --------------------------------------------------===//
+//===-- LuthierPassPlugin.cpp ---------------------------------------------===//
 // Copyright 2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,17 +14,17 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
+/// \file LuthierPassPlugin.cpp
 /// Implements Luthier's legacy pass manager plugin for use with Luthier's llc
 /// fork.
 //===----------------------------------------------------------------------===//
-#include "luthier/Plugins/LegacyPlugin.h"
+#include "luthier/Plugins/LuthierPassPlugin.h"
 #include "luthier/Common/GenericLuthierError.h"
+#include <llvm/IR/Module.h>
 
 namespace luthier {
 
-llvm::Expected<LegacyPassPlugin>
-LegacyPassPlugin::Load(const std::string &Filename) {
+llvm::Expected<PassPlugin> PassPlugin::Load(const std::string &Filename) {
   std::string Error;
   auto Library =
       llvm::sys::DynamicLibrary::getPermanentLibrary(Filename.c_str(), &Error);
@@ -33,14 +33,14 @@ LegacyPassPlugin::Load(const std::string &Filename) {
         (llvm::Twine("Could not load library '") + Filename + "': " + Error)
             .str());
 
-  LegacyPassPlugin P{Filename, Library};
+  PassPlugin P{Filename, Library};
 
   // llvmGetPassPluginInfo should be resolved to the definition from the plugin
   // we are currently loading.
-  auto getDetailsFn = reinterpret_cast<intptr_t>(
+  auto GetDetailsFn = reinterpret_cast<intptr_t>(
       Library.getAddressOfSymbol("luthierGetLegacyPassPluginInfo"));
 
-  if (!getDetailsFn)
+  if (!GetDetailsFn)
     // If the symbol isn't found, this is probably a legacy plugin, which is an
     // error
     return LUTHIER_MAKE_GENERIC_ERROR(
@@ -49,16 +49,25 @@ LegacyPassPlugin::Load(const std::string &Filename) {
             .str());
 
   P.Info = reinterpret_cast<decltype(luthierGetLegacyPassPluginInfo) *>(
-      getDetailsFn)();
+      GetDetailsFn)();
 
-  if (P.Info.APIVersion != LUTHIER_LEGACY_PLUGIN_API_VERSION)
+  if (P.Info.APIVersion != LUTHIER_PASS_PLUGIN_API_VERSION)
     return LUTHIER_MAKE_GENERIC_ERROR(
         (llvm::Twine("Wrong API version on plugin '") + Filename +
          "'. Got version " + llvm::Twine(P.Info.APIVersion) +
          ", supported version is " +
-         llvm::Twine(LUTHIER_LEGACY_PLUGIN_API_VERSION) + ".")
+         llvm::Twine(LUTHIER_PASS_PLUGIN_API_VERSION) + ".")
             .str());
 
   return P;
+}
+
+std::unique_ptr<llvm::Module> PassPlugin::instrumentationModuleCreationCallback(
+    llvm::LLVMContext &Context, const llvm::Triple &TT, llvm::StringRef CPUName,
+    llvm::StringRef FS) const {
+  if (Info.IModuleCreationCallback)
+    return Info.IModuleCreationCallback(Context, TT, CPUName, FS,
+                                        Info.ExtraArgs);
+  return nullptr;
 }
 } // namespace luthier
