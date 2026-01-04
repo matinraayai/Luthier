@@ -228,9 +228,9 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   TPC->addMachinePasses();
 
   // Add the kernel pre-amble emission pass
-  TargetMPM.addPass(PrePostAmbleEmitter());
+  LegacyIPM->add(new PrePostAmbleEmitter());
   // Add the lifted representation patching pass
-  TargetMPM.addPass(PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI()));
+  LegacyIPM->add(new PatchLiftedRepresentationPass());
 
   llvm::PassRegistry *Registry = llvm::PassRegistry::getPassRegistry();
 
@@ -243,10 +243,11 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
 
   TPC->setInitialized();
 
-  LegacyIPM->run(*IModule);
+  bool Modified = LegacyIPM->run(*IModule);
 
   delete LegacyIPM;
 
-  return llvm::PreservedAnalyses::all();
+  return Modified ? llvm::PreservedAnalyses::none()
+                  : llvm::PreservedAnalyses::all();
 }
 } // namespace luthier
