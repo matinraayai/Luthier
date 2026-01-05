@@ -34,7 +34,7 @@ IntrinsicProcessorRegistry::IntrinsicProcessorRegistry()
     : Singleton<luthier::IntrinsicProcessorRegistry>() {
   /// Register built-in Luthier intrinsics
 #define REGISTER_INTRINSIC(NAME, IR_PROCESSOR, MIR_PROCESSOR)                  \
-  Processor.insert({Name, {IR_PROCESSOR, MIR_PROCESSOR}});
+  Processors.insert({NAME, {IR_PROCESSOR, MIR_PROCESSOR}});
 #include "luthier/Intrinsic/IntrinsicRegistry.def"
 }
 

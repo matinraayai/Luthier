@@ -23,9 +23,9 @@
 namespace luthier {
 
 bool MockAMDGPULoaderExternalVarParser::parse(
-    llvm::cl::Option &O, llvm::StringRef ArgName, const std::string &ArgValue,
+    llvm::cl::Option &O, llvm::StringRef ArgName, llvm::StringRef ArgValue,
     std::pair<std::string, uint64_t> &Val) {
-  auto [ExternVarName, Addr] = llvm::StringRef(ArgValue).split(':');
+  auto [ExternVarName, Addr] = ArgValue.split(':');
   Val.first = ExternVarName.str();
   if (Addr.getAsInteger(0, Val.second)) {
     return O.error("Failed to parse the address for variable " + Val.first +
@@ -59,7 +59,7 @@ MockLoadAMDGPUCodeObjects::run(llvm::Module &M,
   }
 
   /// Define the external variables
-  for (auto [SymName, SymAddr] : Options.ExternalVars) {
+  for (auto &[SymName, SymAddr] : Options.ExternalVars) {
     LUTHIER_EMIT_ERROR_IN_CONTEXT(
         Ctx, Loader.defineExternalSymbol(SymName,
                                          reinterpret_cast<void *>(SymAddr)));

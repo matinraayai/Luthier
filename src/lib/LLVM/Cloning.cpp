@@ -33,6 +33,16 @@
 
 namespace luthier {
 
+static llvm::SaveRestorePoints constructSaveRestorePoints(
+    const llvm::SaveRestorePoints &SRPoints,
+    const llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
+        &BBMap) {
+  llvm::SaveRestorePoints Pts{};
+  for (auto &Src : SRPoints)
+    Pts.insert({BBMap.find(Src.first)->second, Src.second});
+  return Pts;
+}
+
 static void cloneFrameInfo(
     llvm::MachineFrameInfo &DstMFI, const llvm::MachineFrameInfo &SrcMFI,
     const llvm::DenseMap<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
@@ -66,10 +76,14 @@ static void cloneFrameInfo(
   DstMFI.setCVBytesOfCalleeSavedRegisters(
       SrcMFI.getCVBytesOfCalleeSavedRegisters());
 
-  if (llvm::MachineBasicBlock *SavePt = SrcMFI.getSavePoint())
-    DstMFI.setSavePoint(Src2DstMBB.find(SavePt)->second);
-  if (llvm::MachineBasicBlock *RestorePt = SrcMFI.getRestorePoint())
-    DstMFI.setRestorePoint(Src2DstMBB.find(RestorePt)->second);
+  DstMFI.setSavePoints(
+      constructSaveRestorePoints(SrcMFI.getSavePoints(), Src2DstMBB));
+
+  assert(SrcMFI.getRestorePoints().size() < 2 &&
+         "Multiple restore points not yet supported!");
+
+  DstMFI.setRestorePoints(
+      constructSaveRestorePoints(SrcMFI.getRestorePoints(), Src2DstMBB));
 
   auto CopyObjectProperties = [](llvm::MachineFrameInfo &DstMFI,
                                  const llvm::MachineFrameInfo &SrcMFI, int FI) {
@@ -240,7 +254,7 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
 
     DstMBB->setIsEHPad(SrcMBB.isEHPad());
     DstMBB->setIsEHScopeEntry(SrcMBB.isEHScopeEntry());
-    DstMBB->setIsEHCatchretTarget(SrcMBB.isEHCatchretTarget());
+    DstMBB->setIsEHContTarget(SrcMBB.isEHContTarget());
     DstMBB->setIsEHFuncletEntry(SrcMBB.isEHFuncletEntry());
 
     DstMBB->setIsCleanupFuncletEntry(SrcMBB.isCleanupFuncletEntry());
@@ -373,14 +387,13 @@ llvm::Expected<std::unique_ptr<llvm::MachineFunction>> cloneMF(
   DstMF->getProperties().reset().set(SrcMF->getProperties());
 
   if (!SrcMF->getFrameInstructions().empty() ||
-      !SrcMF->getLongjmpTargets().empty() ||
-      !SrcMF->getCatchretTargets().empty())
+      !SrcMF->getLongjmpTargets().empty() || !SrcMF->getEHContTargets().empty())
     return llvm::make_error<luthier::LLVMError>(
         "cloning not implemented for machine function property");
 
   DstMF->setCallsEHReturn(SrcMF->callsEHReturn());
   DstMF->setCallsUnwindInit(SrcMF->callsUnwindInit());
-  DstMF->setHasEHCatchret(SrcMF->hasEHCatchret());
+  DstMF->setHasEHContTarget(SrcMF->hasEHContTarget());
   DstMF->setHasEHScopes(SrcMF->hasEHScopes());
   DstMF->setHasEHFunclets(SrcMF->hasEHFunclets());
   DstMF->setIsOutlined(SrcMF->isOutlined());

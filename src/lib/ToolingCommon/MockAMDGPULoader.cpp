@@ -131,7 +131,7 @@ MockLoadedCodeObject::MockLoadedCodeObject(MockAMDGPULoader &Owner,
 
   for (auto PTLoadSegment : PTLoadSegments) {
     std::memcpy(&LoadedRegion[PTLoadSegment.get().p_vaddr],
-                &Elf[PTLoadSegment.get().p_offset],
+                &Elf.getBufferStart()[PTLoadSegment.get().p_offset],
                 PTLoadSegment.get().p_filesz);
   }
 }

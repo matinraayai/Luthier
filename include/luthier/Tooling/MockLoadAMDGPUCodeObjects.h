@@ -36,8 +36,7 @@ struct MockAMDGPULoaderExternalVarParser
 
   // parse - Return true on error.
   bool parse(llvm::cl::Option &O, llvm::StringRef ArgName,
-             const std::string &ArgValue,
-             std::pair<std::string, uint64_t> &Val);
+             llvm::StringRef ArgValue, std::pair<std::string, uint64_t> &Val);
 };
 
 struct MockAMDGPULoaderAnalysisOptions {

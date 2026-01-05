@@ -190,7 +190,8 @@ void atToolInit(void *) {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         llvm::cl::ParseCommandLineOptions(0, &Argv,
                                           "Luthier Lift Lanched Kernel Tool",
-                                          &luthier::errs(), "LUTHIER_ARGS"),
+                                          &luthier::errs(),
+                                          nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());

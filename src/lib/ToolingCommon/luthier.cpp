@@ -60,7 +60,6 @@ llvm::Error
 printLiftedRepresentation(LiftedRepresentation &LR,
                           llvm::SmallVectorImpl<char> &CompiledObjectFile,
                           llvm::CodeGenFileType FileType) {
-  auto Lock = LR.getLock();
   LUTHIER_RETURN_ON_ERROR(CodeGenerator::printAssembly(
       LR.getModule(), LR.getTM(), LR.getMMIWP(), CompiledObjectFile, FileType));
   return llvm::Error::success();
@@ -74,7 +73,6 @@ instrumentAndLoad(const hsa::LoadedCodeObjectKernel &Kernel,
                       Mutator,
                   llvm::StringRef Preset) {
   const auto &LoaderApiTable = Context::instance().getHsaLoaderTable();
-  auto Lock = LR.getLock();
   // Instrument the lifted representation
   auto InstrumentedLR = CodeGenerator::instance().instrument(LR, Mutator);
   LUTHIER_RETURN_ON_ERROR(InstrumentedLR.takeError());

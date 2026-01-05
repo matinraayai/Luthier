@@ -24,6 +24,8 @@
 
 namespace luthier {
 
+llvm::AnalysisKey CodeObjectManagerAnalysis::Key;
+
 llvm::Expected<llvm::MemoryBuffer &>
 CodeObjectManagerAnalysis::Result::readCodeObjectFromFile(
     llvm::StringRef Path) {
@@ -34,7 +36,7 @@ CodeObjectManagerAnalysis::Result::readCodeObjectFromFile(
   const llvm::object::Binary *Bin = BinaryOrErr->getBinary();
 
   if (auto *AMDGCNObj =
-          llvm::dyn_cast_if_present<object::AMDGCNObjectFile>(&Bin)) {
+          llvm::dyn_cast_if_present<const object::AMDGCNObjectFile>(Bin)) {
     if (AMDGCNObj->isRelocatableObject())
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
           "Path {0} is a relocatable object, not a shared object.", Path));
@@ -59,7 +61,6 @@ CodeObjectManagerAnalysis::Result::takeOwnershipOfCodeObject(
     if (AMDGCNObj->isRelocatableObject())
       return LUTHIER_MAKE_GENERIC_ERROR(
           "Code object is a relocatable object, not a shared object.");
-
     const std::unique_ptr<llvm::MemoryBuffer> &BuffInVector =
         CodeObjects.emplace_back(std::move(CodeObject));
     return *BuffInVector;

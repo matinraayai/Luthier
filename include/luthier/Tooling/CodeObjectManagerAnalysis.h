@@ -22,6 +22,7 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <vector>
 
 namespace luthier {
 
@@ -33,6 +34,9 @@ class CodeObjectManagerAnalysis
     : public llvm::AnalysisInfoMixin<CodeObjectManagerAnalysis> {
   friend llvm::AnalysisInfoMixin<CodeObjectManagerAnalysis>;
 
+  /// Memory buffers associated with each code object
+  llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>> CodeObjects{};
+
 public:
   static llvm::AnalysisKey Key;
 
@@ -40,7 +44,7 @@ public:
     friend class CodeObjectManagerAnalysis;
 
     /// Memory buffers associated with each code object
-    llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>> CodeObjects{};
+    llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>> &CodeObjects;
 
     /// Never invalidate the analysis
     bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
@@ -48,7 +52,8 @@ public:
       return false;
     }
 
-    Result() = default;
+    Result(llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>> &CodeObjects)
+        : CodeObjects(CodeObjects) {};
 
   public:
     /// Reads and validates the code object located in \c Path
@@ -65,8 +70,8 @@ public:
     takeOwnershipOfCodeObject(std::unique_ptr<llvm::MemoryBuffer> CodeObject);
   };
 
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-    return Result{};
+  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
+    return Result{CodeObjects};
   }
 };
 

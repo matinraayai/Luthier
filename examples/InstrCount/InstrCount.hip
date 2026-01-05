@@ -435,7 +435,7 @@ static void atToolInit(void *) {
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         llvm::cl::ParseCommandLineOptions(
             0, &Argv, "Luthier ROCm Instruction Counter Tool", &luthier::errs(),
-            "LUTHIER_ARGS"),
+			nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     llvm::sys::PrintStackTraceOnErrorSignal(llvm::StringRef());

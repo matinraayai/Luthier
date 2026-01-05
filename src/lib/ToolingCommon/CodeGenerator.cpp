@@ -101,8 +101,6 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Early exit if no hooks are to be inserted into the LR
   if (Task.getHookInsertionTasks().empty())
     return llvm::Error::success();
-  // Acquire the Lifted Representation's lock
-  auto Lock = LR.getLock();
   // Each LCO will get its own copy of the instrumented module
   hsa_loaded_code_object_t LCO = LR.getLoadedCodeObject();
   auto Agent = hsa::loadedCodeObjectGetAgent(LoaderApiSnapshot.getTable(), LCO);
@@ -162,8 +160,6 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>> CodeGenerator::instrument(
     llvm::function_ref<llvm::Error(InstrumentationTask &,
                                    LiftedRepresentation &)>
         Mutator) {
-  // Acquire the context lock for thread-safety
-  auto Lock = LR.getLock();
   std::unique_ptr<LiftedRepresentation> ClonedLR;
   // Clone the Lifted Representation
   LUTHIER_RETURN_ON_ERROR(

@@ -31,6 +31,7 @@
 #include "luthier/Rocprofiler/RocprofilerError.h"
 #include "luthier/Tooling/CodeGenerator.h"
 #include "luthier/Tooling/CodeLifter.h"
+#include "luthier/Tooling/InstrumentationPMDriver.h"
 #include "luthier/Tooling/TargetManager.h"
 #include "luthier/Tooling/ToolExecutableLoader.h"
 #include "luthier/luthier.h"
@@ -46,6 +47,9 @@
 #define DEBUG_TYPE "luthier-controller"
 
 namespace luthier {
+
+static EagerManagedStatic<InstrumentationPMDriverOptions>
+    InstrumentationPMOptions;
 
 static EagerManagedStatic<llvm::cl::OptionCategory>
     TimeTracingOptionCategory("Luthier Tooling Time Tracing Options");
@@ -104,7 +108,8 @@ Context::Context(hsa::PacketMonitor::CallbackType PacketCallback,
 
   IPR = new IntrinsicProcessorRegistry();
 
-  CG = new CodeGenerator(*HsaCoreApiTableSnapshot, *VenLoaderSnapshot);
+  CG = new CodeGenerator(*HsaCoreApiTableSnapshot, *VenLoaderSnapshot,
+                         *InstrumentationPMOptions);
 
   PacketMonitor = new hsa::PacketMonitor(
       *HsaCoreApiTableSnapshot, *HsaAmdExtTableSnapshot, *VenLoaderSnapshot,

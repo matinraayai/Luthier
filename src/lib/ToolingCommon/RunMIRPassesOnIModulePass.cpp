@@ -57,7 +57,7 @@ RunMIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
   ILegacyPM.add(PhysRegPass);
   ILegacyPM.add(new IntrinsicMIRLoweringPass());
   TPC->insertPass(&llvm::PrologEpilogCodeInserterID,
-                  new InjectedPayloadPEIPass(*PhysRegPass));
+                  new InjectedPayloadPEIPass());
   TPC->addMachinePasses();
 
   TPC->setInitialized();
