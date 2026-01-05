@@ -42,6 +42,9 @@ install(TARGETS LuthierAMDGPU LuthierTooling LuthierIModuleEmbedPlugin
 install(TARGETS luthier-tblgen
         RUNTIME DESTINATION ${CMAKE_INSTALL_BIN_DIR})
 
+install(TARGETS luthier-llc
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BIN_DIR})
+
 install(EXPORT luthierTargets
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier/)
 
