@@ -17,19 +17,19 @@
 /// \file
 /// This file implements Luthier's code generator.
 //===----------------------------------------------------------------------===//
-#include "luthier/Tooling/CodeGenerator.h"
+#include "../../../include/luthier/HSATooling/CodeGenerator.h"
+#include "../../../include/luthier/HSATooling/CodeLifter.h"
+#include "../../../include/luthier/HSATooling/ToolExecutableLoader.h"
 #include "luthier/Comgr/ComgrError.h"
 #include "luthier/Common/LuthierError.h"
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/Tooling/AMDGPURegisterLiveness.h"
-#include "luthier/Tooling/CodeLifter.h"
 #include "luthier/Tooling/InjectedPayloadPEIPass.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/PatchLiftedRepresentationPass.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/RunIRPassesOnIModulePass.h"
 #include "luthier/Tooling/RunMIRPassesOnIModulePass.h"
-#include "luthier/Tooling/ToolExecutableLoader.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 #include <AMDGPUResourceUsageAnalysis.h>
 #include <AMDGPUTargetMachine.h>

@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_TOOL_EXECUTABLE_LOADER_H
 #define LUTHIER_TOOLING_TOOL_EXECUTABLE_LOADER_H
+#include "InstrumentationModule.h"
 #include "luthier/Common/Singleton.h"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/CodeObjectReader.h"
@@ -31,7 +32,6 @@
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
-#include "luthier/Tooling/InstrumentationModule.h"
 #include "luthier/types.h"
 #include <hip/amd_detail/amd_hip_vector_types.h>
 #include <hip/hip_runtime.h>

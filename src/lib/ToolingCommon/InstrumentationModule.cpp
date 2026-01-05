@@ -17,9 +17,9 @@
 /// \file
 /// This file implements Luthier's Instrumentation Module and its variants.
 //===----------------------------------------------------------------------===//
-#include "luthier/Tooling/InstrumentationModule.h"
+#include "../../../include/luthier/HSATooling/InstrumentationModule.h"
+#include "../../../include/luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/HSA/LoadedCodeObject.h"
-#include "luthier/HSA/LoadedCodeObjectCache.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
 #include "luthier/consts.h"
 #include <llvm/Analysis/ValueTracking.h>

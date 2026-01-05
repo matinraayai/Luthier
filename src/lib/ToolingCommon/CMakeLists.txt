@@ -25,7 +25,6 @@ add_library(LuthierToolingCommon OBJECT
         TargetManager.cpp
         ToolExecutableLoader.cpp
         LiftedRepresentation.cpp
-        InstrumentationModule.cpp
         PhysicalRegAccessVirtualizationPass.cpp
         SVStorageAndLoadLocations.cpp
         LRCallGraph.cpp

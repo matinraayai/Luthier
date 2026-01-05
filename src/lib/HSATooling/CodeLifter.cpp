@@ -17,7 +17,8 @@
 /// \file
 /// This file implements Luthier's Code Lifter.
 //===----------------------------------------------------------------------===//
-#include "luthier/Tooling/CodeLifter.h"
+#include "../../../include/luthier/HSATooling/CodeLifter.h"
+#include "../../../include/luthier/HSATooling/TargetManager.h"
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
 #include "luthier/HSA/Agent.h"
@@ -31,7 +32,6 @@
 #include "luthier/HSA/hsa.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/Tooling/LRCallgraph.h"
-#include "luthier/Tooling/TargetManager.h"
 #include "luthier/types.h"
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>

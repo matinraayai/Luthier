@@ -19,12 +19,12 @@
 /// namespace.
 //===----------------------------------------------------------------------===//
 #include "luthier/HSA/LoadedCodeObjectSymbol.h"
+#include "../../../include/luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/Executable.h"
 #include "luthier/HSA/ExecutableSymbol.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/LoadedCodeObject.h"
-#include "luthier/HSA/LoadedCodeObjectCache.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 
 namespace luthier {

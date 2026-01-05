@@ -18,9 +18,13 @@
 /// This file implements the \c Context singleton class logic.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/Context.h"
+#include "../../../include/luthier/HSATooling/CodeGenerator.h"
+#include "../../../include/luthier/HSATooling/CodeLifter.h"
+#include "../../../include/luthier/HSATooling/PacketMointor.h"
+#include "../../../include/luthier/HSATooling/TargetManager.h"
+#include "../../../include/luthier/HSATooling/ToolExecutableLoader.h"
 #include "luthier/HSA/Executable.h"
 #include "luthier/HSA/LoadedCodeObjectCache.h"
-#include "luthier/HSA/PacketMointor.h"
 #include "luthier/Intrinsic/ImplicitArgPtr.h"
 #include "luthier/Intrinsic/ReadReg.h"
 #include "luthier/Intrinsic/SAtomicAdd.h"
@@ -29,11 +33,7 @@
 #include "luthier/LLVM/EagerManagedStatic.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/Rocprofiler/RocprofilerError.h"
-#include "luthier/Tooling/CodeGenerator.h"
-#include "luthier/Tooling/CodeLifter.h"
 #include "luthier/Tooling/InstrumentationPMDriver.h"
-#include "luthier/Tooling/TargetManager.h"
-#include "luthier/Tooling/ToolExecutableLoader.h"
 #include "luthier/luthier.h"
 #include "luthier/types.h"
 #include <llvm/Support/Error.h>

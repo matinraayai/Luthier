@@ -18,13 +18,13 @@
 /// This file implements Luthier's Tool Executable Manager Singleton, and
 /// instrumentation modules which are passed to the \c CodeGenerator.
 //===----------------------------------------------------------------------===//
-#include "luthier/Tooling/ToolExecutableLoader.h"
+#include "../../../include/luthier/HSATooling/ToolExecutableLoader.h"
+#include "../../../include/luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "../../../include/luthier/HSATooling/TargetManager.h"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/LoadedCodeObject.h"
-#include "luthier/HSA/LoadedCodeObjectCache.h"
 #include "luthier/HSA/hsa.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
-#include "luthier/Tooling/TargetManager.h"
 #include "luthier/consts.h"
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Analysis/ValueTracking.h>

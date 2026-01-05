@@ -18,10 +18,10 @@
 /// Implements the \c InstrumentationPMDriver pass.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/InstrumentationPMDriver.h"
-#include "luthier/Tooling/CodeLifter.h"
+#include "../../../include/luthier/HSATooling/CodeLifter.h"
+#include "../../../include/luthier/HSATooling/InstrumentationModule.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
 #include "luthier/Tooling/InjectedPayloadPEIPass.h"
-#include "luthier/Tooling/InstrumentationModule.h"
 #include "luthier/Tooling/IntrinsicMIRLoweringPass.h"
 #include "luthier/Tooling/IntrinsicProcessorsAnalysis.h"
 #include "luthier/Tooling/PatchLiftedRepresentationPass.h"

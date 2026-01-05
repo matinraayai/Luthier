@@ -17,9 +17,9 @@
 /// This file implements the instrumentation task class.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/InstrumentationTask.h"
-#include "luthier/Tooling/CodeGenerator.h"
-#include "luthier/Tooling/CodeLifter.h"
-#include "luthier/Tooling/ToolExecutableLoader.h"
+#include "../../../include/luthier/HSATooling/CodeGenerator.h"
+#include "../../../include/luthier/HSATooling/CodeLifter.h"
+#include "../../../include/luthier/HSATooling/ToolExecutableLoader.h"
 
 namespace luthier {
 

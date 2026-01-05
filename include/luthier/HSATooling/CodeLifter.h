@@ -21,6 +21,7 @@
 #ifndef LUTHIER_TOOLING_CODE_LIFTER_H
 #define LUTHIER_TOOLING_CODE_LIFTER_H
 #include "AMDGPUTargetMachine.h"
+#include "LoadedCodeObjectCache.h"
 #include "luthier/Common/Singleton.h"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/Executable.h"
@@ -28,7 +29,6 @@
 #include "luthier/HSA/ISA.h"
 #include "luthier/HSA/Instr.h"
 #include "luthier/HSA/LoadedCodeObject.h"
-#include "luthier/HSA/LoadedCodeObjectCache.h"
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 #include "luthier/HSA/hsa.h"
