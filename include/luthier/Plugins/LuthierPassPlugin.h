@@ -230,7 +230,7 @@ private:
 /// implemented by the plugin.
 ///
 extern "C" ::luthier::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
-luthierGetLegacyPassPluginInfo();
+luthierGetPassPluginInfo();
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif

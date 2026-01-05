@@ -19,47 +19,58 @@
 /// passes and their names with the new pass manager's pass builder when loaded.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/AMDGPURegisterLiveness.h"
-#include "luthier/Tooling/IModuleIRGeneratorPass.h"
+#include "luthier/Tooling/InstrumentationPMDriver.h"
 #include "luthier/Tooling/IntrinsicMIRLoweringPass.h"
 #include "luthier/Tooling/LRCallgraph.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
-#include "luthier/Tooling/PatchLiftedRepresentationPass.h"
+#include "luthier/Tooling/MockAMDGPULoader.h"
+#include "luthier/Tooling/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
-#include "luthier/Tooling/PhysicalRegAccessVirtualizationPass.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
-#include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/Tooling/RunIRPassesOnIModulePass.h"
-#include "luthier/Tooling/RunMIRPassesOnIModulePass.h"
 #include "luthier/Tooling/SVStorageAndLoadLocations.h"
-#include "luthier/Tooling/WrapperAnalysisPasses.h"
 #include <llvm/Passes/PassBuilder.h>
-#include <llvm/Passes/PassPlugin.h>
+#include <llvm/Plugins/PassPlugin.h>
 
-namespace luthier {} // namespace luthier
+namespace luthier {
+
+static std::unique_ptr<MockAMDGPULoader> Loader{nullptr};
+
+static MockAMDGPULoaderAnalysisOptions MockLoaderOptions;
+
+static InstrumentationPMDriverOptions InstrumentationPMOptions;
+
+} // namespace luthier
 
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
+
   const auto Callback = [](llvm::PassBuilder &PB) {
-  /// Register Luthier module analysis passes
-#define MODULE_ANALYSIS(NAME, CREATE_PASS)                                     \
-  MAM.registerPass([&]() { return CREATE_PASS; })
+    /// Register Luthier module analysis passes
     PB.registerAnalysisRegistrationCallback(
         [](llvm::ModuleAnalysisManager &MAM) {
-
-#include "luthier/Tooling/LuthierPassRegistry.def"
-
+          MAM.registerPass(
+              []() { return luthier::AMDGPURegLivenessAnalysis(); });
+          MAM.registerPass([]() { return luthier::LRCallGraphAnalysis(); });
+          MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
+          MAM.registerPass([]() {
+            return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
+          });
+          MAM.registerPass(
+              []() { return luthier::FunctionPreambleDescriptorAnalysis(); });
+          MAM.registerPass(
+              []() { return luthier::MockAMDGPULoaderAnalysis(); });
         });
-    /// Register Luthier module passes
 
-    PB.registerPipelineParsingCallback([](llvm::StringRef Name, llvm::))
-        PB.registerOptimizerLastEPCallback([](llvm::ModulePassManager &MPM,
-                                              llvm::OptimizationLevel Opt
-#if LLVM_VERSION_MAJOR >= 20
-                                              ,
-                                              llvm::ThinOrFullLTOPhase
-#endif
-                                           ) {
-          MPM.addPass(luthier::EmbedInstrumentationModuleBitcodePass());
+    PB.registerPipelineParsingCallback(
+        [&](llvm::StringRef Name, llvm::ModulePassManager &MPM,
+            llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+          if (Name == "luthier-apply-instrumentation") {
+            MPM.addPass(luthier::InstrumentationPMDriver(
+                luthier::InstrumentationPMOptions));
+            return true;
+          }
+          return false;
         });
   };
 

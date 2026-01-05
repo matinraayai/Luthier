@@ -38,7 +38,7 @@ llvm::Expected<PassPlugin> PassPlugin::Load(const std::string &Filename) {
   // llvmGetPassPluginInfo should be resolved to the definition from the plugin
   // we are currently loading.
   auto GetDetailsFn = reinterpret_cast<intptr_t>(
-      Library.getAddressOfSymbol("luthierGetLegacyPassPluginInfo"));
+      Library.getAddressOfSymbol("luthierGetPassPluginInfo"));
 
   if (!GetDetailsFn)
     // If the symbol isn't found, this is probably a legacy plugin, which is an
@@ -48,8 +48,8 @@ llvm::Expected<PassPlugin> PassPlugin::Load(const std::string &Filename) {
          "'. Is this a legacy plugin?")
             .str());
 
-  P.Info = reinterpret_cast<decltype(luthierGetLegacyPassPluginInfo) *>(
-      GetDetailsFn)();
+  P.Info =
+      reinterpret_cast<decltype(luthierGetPassPluginInfo) *>(GetDetailsFn)();
 
   if (P.Info.APIVersion != LUTHIER_PASS_PLUGIN_API_VERSION)
     return LUTHIER_MAKE_GENERIC_ERROR(
