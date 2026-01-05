@@ -1,16 +1,11 @@
 add_library(LuthierToolingCommon OBJECT
         AnnotatedMachineInstr.cpp
         CodeDiscoveryPass.cpp
-        CodeGenerator.cpp
-        CodeLifter.cpp
         MachineFunctionEntryPoints.cpp
         MachineToTraceInstrAnalysis.cpp
         InstructionTracesAnalysis.cpp
         MemoryAllocationAccessor.cpp
-        InstrumentationTask.cpp
         InstructionModel.cpp
-        TargetManager.cpp
-        ToolExecutableLoader.cpp
         LiftedRepresentation.cpp
         PhysicalRegAccessVirtualizationPass.cpp
         SVStorageAndLoadLocations.cpp
@@ -34,8 +29,6 @@ add_library(LuthierToolingCommon OBJECT
         MockAMDGPULoader.cpp
         MetadataParserAnalysis.cpp
         ImmutableMachineInstr.cpp
-        Context.cpp
-        luthier.cpp
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
         InstrumentationPMDriver.cpp

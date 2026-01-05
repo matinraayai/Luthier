@@ -36,11 +36,12 @@
 namespace luthier {
 
 RunIRPassesOnIModulePass::RunIRPassesOnIModulePass(
-    const InstrumentationTask &Task,
+    // const InstrumentationTask &Task,
     const llvm::StringMap<IntrinsicProcessor> &IntrinsicProcessors,
     llvm::GCNTargetMachine &TM, llvm::Module &IModule)
-    : TM(TM), Task(Task), IModule(IModule),
-      IntrinsicProcessors(IntrinsicProcessors) {}
+    : TM(TM),
+      // Task(Task),
+      IModule(IModule), IntrinsicProcessors(IntrinsicProcessors) {}
 
 llvm::PreservedAnalyses
 RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
@@ -84,7 +85,7 @@ RunIRPassesOnIModulePass::run(llvm::Module &TargetAppM,
     PB.registerLoopAnalyses(LAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, IMAM);
     // Add the pass that generates the IR for the instrumentation module
-    IMPM.addPass(IModuleIRGeneratorPass(Task));
+    IMPM.addPass(IModuleIRGeneratorPass());
     // Add the IR optimization pipeline
     IMPM.addPass(PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3));
     // Add the Intrinsic Processing IR stage pass

@@ -127,11 +127,10 @@ public:
 class IModuleIRGeneratorPass
     : public llvm::PassInfoMixin<IModuleIRGeneratorPass> {
 private:
-  const InstrumentationTask &Task;
+  // const InstrumentationTask &Task;
 
 public:
-  explicit IModuleIRGeneratorPass(const InstrumentationTask &Task)
-      : Task(Task) {};
+  explicit IModuleIRGeneratorPass() : {};
 
   llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &);
 };

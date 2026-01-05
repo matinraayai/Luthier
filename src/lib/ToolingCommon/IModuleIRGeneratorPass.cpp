@@ -22,7 +22,6 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Common/LuthierError.h"
 #include "luthier/Intrinsic/IntrinsicCalls.h"
-#include "luthier/Tooling/InstrumentationTask.h"
 #include "luthier/consts.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
@@ -127,16 +126,18 @@ IModuleIRGeneratorPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
   llvm::TimeTraceScope Scope("Instrumentation Module IR Generation");
   // Generate and populate the injected payload functions in the
   // instrumentation module and keep track of them inside the map
-  for (const auto &[ApplicationMI, HookSpecs] : Task.getHookInsertionTasks()) {
-    // Generate the Hooks for each MI
-    auto HookFunc =
-        generateInjectedPayloadForApplicationMI(M, HookSpecs, *ApplicationMI);
-    if (auto Err = HookFunc.takeError()) {
-      M.getContext().emitError(llvm::toString(std::move(Err)));
-      return llvm::PreservedAnalyses::all();
-    }
-    IPIP.addEntry(*ApplicationMI, *HookFunc);
-  }
+  // for (const auto &[ApplicationMI, HookSpecs] : Task.getHookInsertionTasks())
+  // {
+  //   // Generate the Hooks for each MI
+  //   auto HookFunc =
+  //       generateInjectedPayloadForApplicationMI(M, HookSpecs,
+  //       *ApplicationMI);
+  //   if (auto Err = HookFunc.takeError()) {
+  //     M.getContext().emitError(llvm::toString(std::move(Err)));
+  //     return llvm::PreservedAnalyses::all();
+  //   }
+  //   IPIP.addEntry(*ApplicationMI, *HookFunc);
+  // }
   return llvm::PreservedAnalyses::all();
 }
 } // namespace luthier

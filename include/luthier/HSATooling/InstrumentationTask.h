@@ -19,7 +19,6 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_INSTRUMENTATION_TASK_H
 #define LUTHIER_TOOLING_INSTRUMENTATION_TASK_H
-#include "luthier/types.h"
 #include <functional>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineInstr.h>

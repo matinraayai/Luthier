@@ -110,9 +110,9 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Load the bitcode of the instrumentation module into the
   // Lifted Representation's context
   std::unique_ptr<llvm::Module> IModule;
-  LUTHIER_RETURN_ON_ERROR(Task.getModule()
-                              .readBitcodeIntoContext(LR.getContext(), *Agent)
-                              .moveInto(IModule));
+  // LUTHIER_RETURN_ON_ERROR(Task.getModule()
+  //                             .readBitcodeIntoContext(LR.getContext(), *Agent)
+  //                             .moveInto(IModule));
   llvm::PassInstrumentationCallbacks PIC;
   llvm::StandardInstrumentations SI(LR.getContext(), true);
 
