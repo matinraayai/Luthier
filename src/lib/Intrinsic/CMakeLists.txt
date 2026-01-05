@@ -7,8 +7,6 @@ add_library(LuthierIntrinsic OBJECT
         SAtomicAdd.cpp
 )
 
-add_dependencies(LuthierIntrinsic LuthierAMDGPUTableGen)
-
 target_compile_definitions(LuthierIntrinsic PRIVATE ${LLVM_DEFINITIONS})
 
 target_include_directories(LuthierIntrinsic

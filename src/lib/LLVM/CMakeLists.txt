@@ -5,8 +5,6 @@ add_library(LuthierLLVM OBJECT
         streams.cpp
 )
 
-add_dependencies(LuthierLLVM LuthierAMDGPUTableGen)
-
 target_compile_definitions(LuthierLLVM PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
 target_include_directories(LuthierLLVM
