@@ -17,7 +17,7 @@
 /// \file
 /// This file implements Luthier's Target Manager Singleton.
 //===----------------------------------------------------------------------===//
-#include "../../../include/luthier/HSATooling/TargetManager.h"
+#include "luthier/HSATooling/TargetManager.h"
 #include "luthier/HSA/Agent.h"
 #include <AMDGPUTargetMachine.h>
 #include <llvm/MC/MCAsmBackend.h>

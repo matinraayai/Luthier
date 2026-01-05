@@ -17,14 +17,14 @@
 /// \file
 /// This file implements the \c Context singleton class logic.
 //===----------------------------------------------------------------------===//
-#include "luthier/Tooling/Context.h"
-#include "../../../include/luthier/HSATooling/CodeGenerator.h"
-#include "../../../include/luthier/HSATooling/CodeLifter.h"
-#include "../../../include/luthier/HSATooling/PacketMointor.h"
-#include "../../../include/luthier/HSATooling/TargetManager.h"
-#include "../../../include/luthier/HSATooling/ToolExecutableLoader.h"
+#include "luthier/HSATooling/Context.h"
 #include "luthier/HSA/Executable.h"
-#include "luthier/HSA/LoadedCodeObjectCache.h"
+#include "luthier/HSATooling/CodeGenerator.h"
+#include "luthier/HSATooling/CodeLifter.h"
+#include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/HSATooling/PacketMointor.h"
+#include "luthier/HSATooling/TargetManager.h"
+#include "luthier/HSATooling/ToolExecutableLoader.h"
 #include "luthier/Intrinsic/ImplicitArgPtr.h"
 #include "luthier/Intrinsic/ReadReg.h"
 #include "luthier/Intrinsic/SAtomicAdd.h"

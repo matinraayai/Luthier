@@ -17,8 +17,7 @@
 /// \file
 /// This file implements Luthier's Code Lifter.
 //===----------------------------------------------------------------------===//
-#include "../../../include/luthier/HSATooling/CodeLifter.h"
-#include "../../../include/luthier/HSATooling/TargetManager.h"
+#include "luthier/HSATooling/CodeLifter.h"
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
 #include "luthier/HSA/Agent.h"
@@ -30,6 +29,7 @@
 #include "luthier/HSA/LoadedCodeObjectExternSymbol.h"
 #include "luthier/HSA/LoadedCodeObjectVariable.h"
 #include "luthier/HSA/hsa.h"
+#include "luthier/HSATooling/TargetManager.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/Tooling/LRCallgraph.h"
 #include "luthier/types.h"

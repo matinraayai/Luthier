@@ -17,9 +17,9 @@
 /// \file
 /// Implements the \c PacketMonitor interface.
 //===----------------------------------------------------------------------===//
-#include "../../../include/luthier/HSATooling/PacketMointor.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
+#include "luthier/HSATooling/PacketMointor.h"
 
 namespace luthier {
 

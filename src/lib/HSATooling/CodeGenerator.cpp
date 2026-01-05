@@ -17,12 +17,12 @@
 /// \file
 /// This file implements Luthier's code generator.
 //===----------------------------------------------------------------------===//
-#include "../../../include/luthier/HSATooling/CodeGenerator.h"
-#include "../../../include/luthier/HSATooling/CodeLifter.h"
-#include "../../../include/luthier/HSATooling/ToolExecutableLoader.h"
+#include "luthier/HSATooling/CodeGenerator.h"
 #include "luthier/Comgr/ComgrError.h"
 #include "luthier/Common/LuthierError.h"
 #include "luthier/HSA/LoadedCodeObject.h"
+#include "luthier/HSATooling/CodeLifter.h"
+#include "luthier/HSATooling/ToolExecutableLoader.h"
 #include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/InjectedPayloadPEIPass.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"

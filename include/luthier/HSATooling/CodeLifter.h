@@ -32,12 +32,12 @@
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 #include "luthier/HSA/hsa.h"
+#include "luthier/HSATooling/TargetManager.h"
 #include "luthier/LLVM/Cloning.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
 #include "luthier/Object/ObjectFileUtils.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Tooling/LiftedRepresentation.h"
-#include "luthier/Tooling/TargetManager.h"
 #include "luthier/types.h"
 #include <functional>
 #include <llvm/ADT/DenseMap.h>

@@ -17,7 +17,7 @@
 /// \file
 /// This file implements the \c LoadedCodeObjectCache Singleton.
 //===----------------------------------------------------------------------===//
-#include "../../../include/luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "hsa/hsa.h"
 #include "luthier/HSA/Executable.h"
 #include "luthier/HSA/ExecutableSymbol.h"

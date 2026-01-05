@@ -20,9 +20,9 @@
 /// For the controller logic of Luthier, see <tt>luthier::Controller</tt>.
 //===----------------------------------------------------------------------===//
 #include "luthier/luthier.h"
-#include "../../../include/luthier/HSATooling/CodeGenerator.h"
-#include "../../../include/luthier/HSATooling/CodeLifter.h"
-#include "../../../include/luthier/HSATooling/ToolExecutableLoader.h"
+#include "luthier/HSATooling/CodeGenerator.h"
+#include "luthier/HSATooling/CodeLifter.h"
+#include "luthier/HSATooling/ToolExecutableLoader.h"
 #include "luthier/Comgr/Comgr.h"
 #include "luthier/HSA/Instr.h"
 #include "luthier/Tooling/Context.h"
