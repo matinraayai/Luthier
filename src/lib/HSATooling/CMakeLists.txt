@@ -7,6 +7,9 @@ add_library(LuthierHSATooling OBJECT
 )
 
 
+add_dependencies(LuthierHSATooling LuthierRealToPseudoOpcodeMap)
+add_dependencies(LuthierHSATooling LuthierRealToPseudoRegEnumMap)
+
 target_compile_definitions(LuthierHSATooling PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
 target_include_directories(LuthierHSATooling

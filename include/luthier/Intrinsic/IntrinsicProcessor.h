@@ -73,7 +73,7 @@ namespace luthier {
 /// kernel's original prologue to save these values in an unused register,
 /// or spill them to the top of the instrumentation stack's buffer to be
 /// loaded when necessary
-enum KernelArgumentType {
+enum KernelArgumentType : uint16_t {
   /// Wavefront's private segment buffer
   WAVEFRONT_PRIVATE_SEGMENT_BUFFER = 0,
   /// Enum marking the beginning of kernel arguments always passed on SGPRs
