@@ -1,4 +1,4 @@
-//===- LuthierPassRegistry.def - Registry of passes ------------*- C++ -*-===//
+//===- LuthierNewPMPassRegistry.def - Registry of passes --------*- C++ -*-===//
 //
 // Copyright 2025-2026 @ Northeastern University Computer Architecture Lab
 //
@@ -30,6 +30,7 @@ MODULE_ANALYSIS("luthier-callgraph", LRCallGraphAnalysis())
 MODULE_ANALYSIS("luthier-mmi-slot-indexes", MMISlotIndexesAnalysis())
 MODULE_ANALYSIS("luthier-sv-storage-and-load-locs", LRStateValueStorageAndLoadLocationsAnalysis())
 MODULE_ANALYSIS("luthier-function-preamble-descriptor", FunctionPreambleDescriptorAnalysis())
+MODULE_ANALYSIS("luthier-mock-amdgpu-loader",
 /// MODULE_ANALYSIS("luthier-lifted-representation-analysis", LiftedRepresentationAnalysis(LR))
 /// MODULE_ANALYSIS("luthier-lco-analysis", LoadedCodeObjectAnalysis(LCO))
 /// MODULE_ANALYSIS("luthier-imodule-pm-analysis", IModulePMAnalysis(IModule, IPM, IMAM, ILAM, IFAM, ICGAM))

@@ -40,6 +40,7 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <luthier/Tooling/InstrumentationPMDriver.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-generator"
@@ -81,7 +82,7 @@ llvm::Error CodeGenerator::printAssembly(
   PM.add(MMIWP.release());
   // Add the resource usage analysis, which is in charge of calculating the
   // kernel descriptor and the metadata fields
-  PM.add(new llvm::AMDGPUResourceUsageAnalysis());
+  PM.add(new llvm::AMDGPUResourceUsageAnalysisWrapperPass());
 
   // Finally, add the Assembly printer pass
   llvm::raw_svector_ostream ObjectFileOS(CompiledObjectFile);
@@ -114,32 +115,12 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   LUTHIER_RETURN_ON_ERROR(Task.getModule()
                               .readBitcodeIntoContext(LR.getContext(), *Agent)
                               .moveInto(IModule));
-  // Instantiate the Module PM and analysis in charge of running the
-  // IR pipeline for the instrumentation module
-  // We keep them here because we will need the analysis done at the IR
-  // stage at the code generation stage, which for now we have to use
-  // the legacy pass manager for
-  llvm::LoopAnalysisManager ILAM;
-  llvm::FunctionAnalysisManager IFAM;
-  llvm::CGSCCAnalysisManager ICGAM;
-  llvm::ModuleAnalysisManager IMAM;
-  llvm::ModulePassManager IPM;
   llvm::PassInstrumentationCallbacks PIC;
   llvm::StandardInstrumentations SI(LR.getContext(), true);
 
   // Create a PM Builder for the IR pipeline
   llvm::PassBuilder PB(&TM);
   llvm::TimeTraceScope Scope("Instrumentation Module IR Optimization");
-
-  // Instantiate the Legacy PM for running the modified codegen pipeline
-  // on the instrumentation module and MMI
-  // We allocate this on the heap to have the most control over its lifetime,
-  // as if it goes out of scope it will also delete the instrumentation
-  // MMI
-  auto LegacyIPM = new llvm::legacy::PassManager();
-  // Instrumentation module MMI wrapper pass, which will house the final
-  // generate instrumented code
-  auto *IMMIWP = new llvm::MachineModuleInfoWrapperPass(&TM);
 
   // Create a module analysis manager for the target code
   llvm::ModuleAnalysisManager TargetMAM;
@@ -153,10 +134,6 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Add the MMI Analysis pass, pointing to the target app's lifted MMI
   TargetMAM.registerPass(
       [&]() { return llvm::MachineModuleAnalysis(LR.getMMI()); });
-  // Add the instrumentation PM analysis
-  TargetMAM.registerPass([&]() {
-    return IModulePMAnalysis(*IModule, IPM, IMAM, ILAM, IFAM, ICGAM);
-  });
   // Add the LR Analysis pass
   TargetMAM.registerPass([&]() { return LiftedRepresentationAnalysis(LR); });
   // Add the LCO Analysis pass
@@ -173,20 +150,10 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Add the Function Preamble Descriptor Analysis pass
   TargetMAM.registerPass(
       [&]() { return FunctionPreambleDescriptorAnalysis(); });
-  // Add the IR pipeline for the instrumentation module
-  TargetMPM.addPass(
-      RunIRPassesOnIModulePass(Task, IntrinsicsProcessors, TM, *IModule));
-  // Add the MIR pipeline for the instrumentation module
-  TargetMPM.addPass(
-      RunMIRPassesOnIModulePass(TM, *IModule, *IMMIWP, *LegacyIPM));
-  // Add the kernel pre-amble emission pass
-  TargetMPM.addPass(PrePostAmbleEmitter());
-  // Add the lifted representation patching pass
-  TargetMPM.addPass(PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI()));
+  // Add the instrumentation pass manager driver
+  TargetMPM.addPass(InstrumentationPMDriver(InstrumentationPMOptions));
 
   TargetMPM.run(LR.getModule(), TargetMAM);
-  // TODO: remove this once the new MMI makes it to LLVM master
-  delete LegacyIPM;
   return llvm::Error::success();
 }
 

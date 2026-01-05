@@ -37,6 +37,8 @@ class InstrumentationTask;
 
 class LiftedRepresentation;
 
+struct InstrumentationPMDriverOptions;
+
 namespace hsa {
 
 class ISA;
@@ -63,27 +65,30 @@ class ISA;
 /// are lowered.
 class CodeGenerator : public Singleton<CodeGenerator> {
 private:
-
   /// HSA Core API table snapshot
   const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
 
   const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &LoaderApiSnapshot;
 
+  const InstrumentationPMDriverOptions &InstrumentationPMOptions;
+
 public:
   explicit CodeGenerator(
       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-          &LoaderApiSnapshot)
-      : CoreApiSnapshot(CoreApiSnapshot),
-        LoaderApiSnapshot(LoaderApiSnapshot) {};
+          &LoaderApiSnapshot,
+      const InstrumentationPMDriverOptions &InstrumentationPMOptions)
+      : CoreApiSnapshot(CoreApiSnapshot), LoaderApiSnapshot(LoaderApiSnapshot),
+        InstrumentationPMOptions(InstrumentationPMOptions) {};
 
   /// Instruments the passed \p LR by first cloning it and then
   /// applying the \p Mutator onto its contents
   /// \param LR the \c LiftedRepresentation about to be instrumented
   /// \param Mutator a function that can modify the lifted representation
-  /// \return a new \c LiftedRepresentation containing the instrumented code,
-  /// or an \c llvm::Error in case an issue was encountered during the process
+  /// \return a new \c LiftedRepresentation containing the instrumented
+  /// code, or an \c llvm::Error in case an issue was encountered during the
+  /// process
   llvm::Expected<std::unique_ptr<LiftedRepresentation>>
   instrument(const LiftedRepresentation &LR,
              llvm::function_ref<llvm::Error(InstrumentationTask &,
@@ -91,14 +96,17 @@ public:
                  Mutator);
 
   /// Runs the \c llvm::AsmPrinter pass on the \p Module and the
-  /// \c llvm::MachineModuleInfo of the \p MMIWP to generate a relocatable file
-  /// \note This function does not access the Module's \c llvm::LLVMContext in a
-  /// thread-safe manner
-  /// \note After printing, \p MMIWP will be deleted by the legacy pass manager
-  /// used to print the assembly file
+  /// \c llvm::MachineModuleInfo of the \p MMIWP to generate a relocatable
+  /// file
+  /// \note This function does not access the Module's \c llvm::LLVMContext
+  /// in a thread-safe manner
+  /// \note After printing, \p MMIWP will be deleted by the legacy pass
+  /// manager used to print the assembly file
   /// \param [in] Module the \c llvm::Module to be printed
-  /// \param [in] TM the \c llvm::GCNTargetMachine the \p MMIWP was created with
-  /// \param [in] MMIWP the \c llvm::MachineModuleInfoWrapperPass to be printed;
+  /// \param [in] TM the \c llvm::GCNTargetMachine the \p MMIWP was created
+  /// with
+  /// \param [in] MMIWP the \c llvm::MachineModuleInfoWrapperPass to be
+  /// printed;
   /// \param [out] CompiledObjectFile the compiled relocatable file
   /// \param FileType type of the <tt>CompiledObjectFile</tt>;
   /// Either \c llvm::CodeGenFileType::AssemblyFile or
