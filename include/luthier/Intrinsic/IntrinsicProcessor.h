@@ -256,7 +256,7 @@ public:
   /// intrinsic
 
   using const_accessed_phys_regs_iterator =
-      decltype(AccessedPhysicalRegisters)::ConstIterator;
+      decltype(AccessedPhysicalRegisters)::const_iterator;
 
   [[nodiscard]] llvm::iterator_range<const_accessed_phys_regs_iterator>
   accessed_phys_regs() const {
@@ -292,7 +292,7 @@ public:
   /// intrinsic
 
   using const_accessed_kernargs_iterator =
-      decltype(AccessedKernelArguments)::ConstIterator;
+      decltype(AccessedKernelArguments)::const_iterator;
 
   [[nodiscard]] const_accessed_kernargs_iterator
   accessed_kernargs_begin() const {
