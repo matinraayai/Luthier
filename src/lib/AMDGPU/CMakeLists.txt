@@ -26,14 +26,11 @@ add_library(LuthierAMDGPU INTERFACE)
 
 target_sources(LuthierAMDGPU
         INTERFACE
-        FILE_SET HEADERS
+        FILE_SET amdgpu_tablegen_incs
+        TYPE HEADERS
         BASE_DIRS ${CMAKE_CURRENT_BINARY_DIR}
         FILES ${TABLEGEN_OUTPUT}
 )
-
-message(WARNING ${TABLEGEN_OUTPUT})
-
-#add_dependencies(LuthierAMDGPU LuthierAMDGPUTableGen)
 
 target_include_directories(LuthierAMDGPU INTERFACE
         "$<BUILD_INTERFACE:${AMDGPU_INCLUDE_DIR}>"
