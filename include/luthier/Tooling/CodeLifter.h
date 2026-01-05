@@ -232,8 +232,7 @@ public:
           LLVM_DEBUG(
 
               llvm::dbgs() << "Instruction ";
-              Inst.dump_pretty(llvm::dbgs(), TargetInfo->getMCInstPrinter(),
-                               " ", TargetInfo->getMCRegisterInfo());
+              Inst.dump_pretty(llvm::dbgs(), TargetInfo->getMCInstPrinter(), " ");
               llvm::dbgs() << llvm::formatv(
                   " at idx {0}, address {1:x}, size {2} is a branch; "
                   "Evaluating its target.\n",
