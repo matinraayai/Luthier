@@ -28,7 +28,7 @@
 #include <luthier/HSA/HsaError.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/luthier.h>
-#include <luthier/Tooling/Context.h>
+#include <luthier/HSATooling/Context.h>
 #include <mutex>
 #include <thread>
 
