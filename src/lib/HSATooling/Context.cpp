@@ -35,7 +35,6 @@
 #include "luthier/Rocprofiler/RocprofilerError.h"
 #include "luthier/Tooling/InstrumentationPMDriver.h"
 #include "luthier/luthier.h"
-#include "luthier/types.h"
 #include <llvm/Support/Error.h>
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>

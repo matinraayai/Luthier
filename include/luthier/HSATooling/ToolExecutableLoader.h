@@ -32,7 +32,6 @@
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
-#include "luthier/types.h"
 #include <hip/amd_detail/amd_hip_vector_types.h>
 #include <hip/hip_runtime.h>
 #include <llvm/ADT/DenseSet.h>

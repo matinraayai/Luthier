@@ -30,7 +30,6 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/Hashing.h>
 #include <llvm/Object/ELFObjectFile.h>
-#include <luthier/types.h>
 #include <optional>
 #include <string>
 

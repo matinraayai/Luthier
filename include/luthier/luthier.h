@@ -34,7 +34,6 @@
 #include "luthier/HSA/LoadedCodeObjectSymbol.h"
 #include "luthier/Intrinsic/Intrinsics.h"
 #include "luthier/Tooling/LiftedRepresentation.h"
-#include "luthier/types.h"
 
 namespace luthier {
 

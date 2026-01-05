@@ -21,7 +21,6 @@
 #ifndef LUTHIER_INTRINSIC_INTRINSIC_PROCESSOR_H
 #define LUTHIER_INTRINSIC_INTRINSIC_PROCESSOR_H
 
-#include "luthier/types.h"
 #include <functional>
 #include <llvm/ADT/Any.h>
 #include <llvm/ADT/ArrayRef.h>

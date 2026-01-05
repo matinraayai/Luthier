@@ -25,7 +25,6 @@
 #define LUTHIER_HSA_INSTR_H
 #include <llvm/MC/MCInst.h>
 #include <llvm/Support/Error.h>
-#include <luthier/types.h>
 
 namespace luthier::hsa {
 
