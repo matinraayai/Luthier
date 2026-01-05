@@ -19,17 +19,16 @@
 /// used by Luthier tools to preprocess instrumentation modules and embedd
 /// them inside device code objects.
 //===----------------------------------------------------------------------===//
-
 #include "EmbedInstrumentationModuleBitcodePass.hpp"
 #include "luthier/Intrinsic/IntrinsicCalls.h"
 #include "luthier/consts.h"
-#include "llvm/Passes/PassPlugin.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeWriterPass.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Plugins/PassPlugin.h>
 #include <llvm/Support/AMDGPUAddrSpace.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Utils/Cloning.h>
