@@ -219,7 +219,7 @@ EmbedInstrumentationModuleBitcodePass::run(llvm::Module &M,
 
   auto *Int32Type = llvm::Type::getInt32Ty(LLVMCtx);
   auto *Int32Ptr =
-      llvm::PointerType::get(Int32Type, llvm::AMDGPUAS::CONSTANT_ADDRESS);
+      llvm::PointerType::get(LLVMCtx, llvm::AMDGPUAS::CONSTANT_ADDRESS);
   // Replace llvm.amdgcn.workgroup.id intrinsics with the luthier-equivalent
   // Remove all kernels that are meant to serve as a host handle
   for (auto &F : llvm::make_early_inc_range(ClonedModule->functions())) {

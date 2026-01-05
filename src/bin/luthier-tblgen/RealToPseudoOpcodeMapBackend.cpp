@@ -31,7 +31,7 @@ namespace luthier {
 
 unsigned RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
   llvm::ArrayRef<const llvm::CodeGenInstruction *> NumberedInstructions =
-      Target.getInstructionsByEnumValue();
+      Target.getInstructions();
 
   llvm::StringRef Namespace = Target.getInstNamespace();
   OS << "static constexpr uint16_t RealToPseudoOpcodeMapTable[] {\n";
