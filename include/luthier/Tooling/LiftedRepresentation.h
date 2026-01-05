@@ -23,12 +23,12 @@
 #ifndef LUTHIER_TOOLING_LIFTED_REPRESENTATION_H
 #define LUTHIER_TOOLING_LIFTED_REPRESENTATION_H
 #include "AMDGPUTargetMachine.h"
-#include <llvm/ADT/DenseMap.h>
-#include <llvm/CodeGen/MachineModuleInfo.h>
-#include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include "luthier/HSA/Instr.h"
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 
 namespace luthier {
 
@@ -135,18 +135,18 @@ public:
   [[nodiscard]] llvm::GCNTargetMachine &getTM() { return *TM; }
 
   /// \return a reference to the \c LLVMContext of this Lifted Representation
-  llvm::LLVMContext &getContext() { return *Context.getContext(); }
+  llvm::LLVMContext &getContext() {
+    return Context.withContextDo(
+        [](llvm::LLVMContext *Ctx) -> llvm::LLVMContext & { return *Ctx; });
+  }
 
   /// \return a const reference to the \c LLVMContext of this
   /// Lifted Representation
   [[nodiscard]] const llvm::LLVMContext &getContext() const {
-    return *Context.getContext();
-  }
-
-  /// \return a scoped lock protecting the Context and the TargetMachine of this
-  /// \c LiftedRepresentation
-  llvm::orc::ThreadSafeContext::Lock getLock() const {
-    return Context.getLock();
+    return Context.withContextDo(
+        [](const llvm::LLVMContext *Ctx) -> const llvm::LLVMContext & {
+          return *Ctx;
+        });
   }
 
   /// \return the loaded code object of the lifted kernel

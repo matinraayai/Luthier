@@ -1128,7 +1128,6 @@ llvm::Expected<std::unique_ptr<LiftedRepresentation>>
 CodeLifter::cloneRepresentation(const LiftedRepresentation &SrcLR) {
   llvm::TimeTraceScope ProfilerScope("Lifted Representation Cloning");
   // Since we're going to use the SrcLR's context, acquire its lock
-  auto Lock = SrcLR.getLock();
   // Construct the output
   std::unique_ptr<LiftedRepresentation> DestLR(new LiftedRepresentation());
   // The cloned LiftedRepresentation will share the context and the
