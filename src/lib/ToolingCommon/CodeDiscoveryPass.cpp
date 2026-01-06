@@ -1023,7 +1023,7 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
     /// Add the newly created MF's entry point
     MFEntryPoints.insert(MF, CurrentEntryPoint);
     /// Ask for the trace of the instructions for this machine function
-    auto TraceResults = MFAM.getResult<InstructionTracesAnalysis>(MF);
+    auto &TraceResults = MFAM.getResult<InstructionTracesAnalysis>(MF);
 
     /// Populate the machine function
     LUTHIER_CTX_EMIT_ON_ERROR(Ctx, populateMF(TraceResults, MF));
