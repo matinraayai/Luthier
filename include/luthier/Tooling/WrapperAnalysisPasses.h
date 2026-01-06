@@ -116,38 +116,6 @@ public:
   }
 };
 
-/// \brief
-class LiftedRepresentationAnalysis
-    : public llvm::AnalysisInfoMixin<LiftedRepresentationAnalysis> {
-private:
-  friend llvm::AnalysisInfoMixin<LiftedRepresentationAnalysis>;
-
-  static llvm::AnalysisKey Key;
-  /// The \c LiftedRepresentation being worked on
-  LiftedRepresentation &LR;
-
-public:
-  class Result {
-    LiftedRepresentation &LR;
-    explicit Result(LiftedRepresentation &LR) : LR(LR) {}
-    friend class LiftedRepresentationAnalysis;
-
-  public:
-    LiftedRepresentation &getLR() { return LR; }
-
-    bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-                    llvm::ModuleAnalysisManager::Invalidator &) {
-      return false;
-    }
-  };
-
-  explicit LiftedRepresentationAnalysis(LiftedRepresentation &LR) : LR(LR) {}
-
-  Result run(llvm::Module &, llvm::ModuleAnalysisManager &) {
-    return Result{LR};
-  }
-};
-
 /// \brief An analysis which provides all the pass manager constructs
 /// used for running IR passes and analysis on the instrumentation module
 class IModulePMAnalysis : public llvm::AnalysisInfoMixin<IModulePMAnalysis> {

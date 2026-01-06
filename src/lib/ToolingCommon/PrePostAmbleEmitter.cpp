@@ -479,9 +479,6 @@ bool PrePostAmbleEmitter::runOnModule(llvm::Module &IModule) {
       *TargetMAM.getCachedResult<FunctionPreambleDescriptorAnalysis>(
           TargetModule);
 
-  auto &LR =
-      TargetMAM.getResult<LiftedRepresentationAnalysis>(TargetModule).getLR();
-
   auto &SVLocations =
       *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
           TargetModule);
@@ -489,155 +486,157 @@ bool PrePostAmbleEmitter::runOnModule(llvm::Module &IModule) {
   // First we need to figure out if we need to set up the state value array
   // at all
 
-  bool MustSetupSVA = doesLRRequireSVA(LR, PKInfo);
-
-  if (MustSetupSVA) {
-    LLVM_DEBUG(llvm::dbgs() << "Have to setup the SVA.\n");
-    auto *MF = &LR.getKernelMF();
-    auto &SVAInfo = PKInfo.Kernels.at(MF);
-    auto EntryInstr = MF->begin()->begin();
-    auto &EntryInstrSVS = SVLocations.getStorageIntervals(MF->front())[0];
-    auto &MFI = *MF->getInfo<llvm::SIMachineFunctionInfo>();
-    auto &TRI = *MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
-    auto *TII = MF->getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
-
-    // Get the original position of all the reg arguments before they
-    // are changed
-    auto OriginalSGPRArgLocs = getSGPRArgumentPositions(*MF);
-
-    LLVM_DEBUG(llvm::dbgs() << "Original Positions of the kernel args:\n";
-               llvm::dbgs() << "[ "; llvm::interleave(
-                   OriginalSGPRArgLocs.begin(), OriginalSGPRArgLocs.end(),
-                   [&](std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue,
-                                 llvm::MCRegister>
-                           Args) {
-                     llvm::dbgs() << Args.first << ": "
-                                  << llvm::printReg(Args.second, &TRI);
-                   },
-                   [&]() { llvm::dbgs() << ", "; });
-               llvm::dbgs() << "]\n";
-
-    );
-
-    // Check if the SVA requires access to scratch or stack
-    bool RequiresAccessToScratch =
-        SVAInfo.RequiresScratchAndStackSetup ||
-        SVAInfo.RequestedKernelArguments.contains(
-            WAVEFRONT_PRIVATE_SEGMENT_BUFFER) ||
-        SVAInfo.RequestedKernelArguments.contains(FLAT_SCRATCH);
-    // If SVA requires access to scratch, then we have to enable it
-    if (RequiresAccessToScratch) {
-      // Enable the PSB if not already enabled
-      enablePrivateSegmentBuffer(MFI, TRI);
-      // Enable Flat scratch init if not already enabled
-      enableFlatScratchInit(MFI, TRI);
-      // Check if Private buffer wave segment offset was enabled; if not,
-      // enable it
-      enablePrivateSegmentWaveOffset(MFI);
-    }
-
-    // If access to kernarg buffer was requested, enable it
-    if (SVAInfo.RequestedKernelArguments.contains(KERNARG_SEGMENT_PTR)) {
-      enableKernArg(MFI, TRI);
-    }
-
-    // If access to dispatch id was requested, enable it
-    if (SVAInfo.RequestedKernelArguments.contains(DISPATCH_ID)) {
-      enableDispatchID(MFI, TRI);
-    }
-
-    // If access to dispatch ptr was requested, enable it
-    if (SVAInfo.RequestedKernelArguments.contains(DISPATCH_PTR)) {
-      enableDispatchPtr(MFI, TRI);
-    }
-    // If access to queue ptr was requested, enable it
-    if (SVAInfo.RequestedKernelArguments.contains(QUEUE_PTR)) {
-      enableQueuePtr(MFI, TRI);
-    }
-
-    // Emit the kernel preamble: ===========================================
-    llvm::MCRegister SVSStorageReg =
-        EntryInstrSVS.getSVS().getStateValueStorageReg();
-
-    // If stack access was requested, then emit code to save it into
-    // the SVS storage V/AGPR
-    if (RequiresAccessToScratch) {
-      if (auto Err = emitCodeToSetupScratch(
-              *EntryInstr, SVSStorageReg, LR.getKernel().getKernelMetadata())) {
-        TargetModule.getContext().emitError(toString(std::move(Err)));
-        return false;
-      }
-    }
-    // Emit code to store the rest of the requested SGPR kernel arguments
-    for (const auto &[KernArg, PreloadValue] :
-         {std::pair{KERNARG_SEGMENT_PTR,
-                    llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR},
-          {DISPATCH_ID, llvm::AMDGPUFunctionArgInfo::DISPATCH_ID},
-          {DISPATCH_PTR, llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR},
-          {QUEUE_PTR, llvm::AMDGPUFunctionArgInfo::QUEUE_PTR}}) {
-      if (SVAInfo.RequestedKernelArguments.contains(KernArg)) {
-        auto StoreSlotBegin =
-            stateValueArray::getKernelArgumentLaneIdStoreSlotBeginForWave64(
-                KernArg);
-        if (auto Err = StoreSlotBegin.takeError()) {
-          TargetModule.getContext().emitError(toString(std::move(Err)));
-          return false;
-        }
-        auto StoreSlotSize =
-            stateValueArray::getKernelArgumentStoreSlotSizeForWave64(KernArg);
-        if (auto Err = StoreSlotSize.takeError()) {
-          TargetModule.getContext().emitError(toString(std::move(Err)));
-          return false;
-        }
-        if (auto Err = emitCodeToStoreSGPRKernelArg(
-                *EntryInstr, getArgReg(*MF, PreloadValue), SVSStorageReg,
-                *StoreSlotBegin, *StoreSlotSize,
-                OriginalSGPRArgLocs.contains(PreloadValue))) {
-          TargetModule.getContext().emitError(toString(std::move(Err)));
-          return false;
-        }
-      }
-    }
-    // Add code
-    if (SVAInfo.RequestedKernelArguments.contains(HIDDEN_KERNARG_OFFSET)) {
-      luthier::outs() << "emitting code to store the hidden arg offset.\n";
-      auto &KernArgs = LR.getKernel().getKernelMetadata().Args;
-
-      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-          KernArgs.has_value(), "Attempted to access the hidden arguments "
-                                "of a kernel without any arguments."));
-      uint32_t HiddenOffset = [&]() {
-        for (const auto &Arg : *KernArgs) {
-          if (Arg.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
-              Arg.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
-            return Arg.Offset;
-          }
-        }
-        return uint32_t{0};
-      }();
-      auto StoreLane =
-          stateValueArray::getKernelArgumentLaneIdStoreSlotBeginForWave64(
-              HIDDEN_KERNARG_OFFSET);
-      LUTHIER_REPORT_FATAL_ON_ERROR(StoreLane.takeError());
-
-      llvm::BuildMI(*EntryInstr->getParent(), EntryInstr, llvm::DebugLoc(),
-                    TII->get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageReg)
-          .addImm(HiddenOffset)
-          .addImm(*StoreLane)
-          .addReg(SVSStorageReg);
-
-      EntryInstr->getMF()->print(luthier::outs());
-    }
-
-    // Put every SGPR argument back in its place
-    emitCodeToReturnSGPRArgsToOriginalPlace(OriginalSGPRArgLocs, *EntryInstr);
-
-    emitCodeToMoveSVA(TargetMAM, TargetModule, MF, SVLocations);
-
-    for (auto &[FuncSymbol, MF] : LR.functions()) {
-      emitCodeToMoveSVA(TargetMAM, TargetModule, MF, SVLocations);
-    }
-  }
+  // bool MustSetupSVA = doesLRRequireSVA(LR, PKInfo);
+  //
+  // if (MustSetupSVA) {
+  //   LLVM_DEBUG(llvm::dbgs() << "Have to setup the SVA.\n");
+  //   auto *MF = &LR.getKernelMF();
+  //   auto &SVAInfo = PKInfo.Kernels.at(MF);
+  //   auto EntryInstr = MF->begin()->begin();
+  //   auto &EntryInstrSVS = SVLocations.getStorageIntervals(MF->front())[0];
+  //   auto &MFI = *MF->getInfo<llvm::SIMachineFunctionInfo>();
+  //   auto &TRI = *MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
+  //   auto *TII = MF->getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
+  //
+  //   // Get the original position of all the reg arguments before they
+  //   // are changed
+  //   auto OriginalSGPRArgLocs = getSGPRArgumentPositions(*MF);
+  //
+  //   LLVM_DEBUG(llvm::dbgs() << "Original Positions of the kernel args:\n";
+  //              llvm::dbgs() << "[ "; llvm::interleave(
+  //                  OriginalSGPRArgLocs.begin(), OriginalSGPRArgLocs.end(),
+  //                  [&](std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue,
+  //                                llvm::MCRegister>
+  //                          Args) {
+  //                    llvm::dbgs() << Args.first << ": "
+  //                                 << llvm::printReg(Args.second, &TRI);
+  //                  },
+  //                  [&]() { llvm::dbgs() << ", "; });
+  //              llvm::dbgs() << "]\n";
+  //
+  //   );
+  //
+  //   // Check if the SVA requires access to scratch or stack
+  //   bool RequiresAccessToScratch =
+  //       SVAInfo.RequiresScratchAndStackSetup ||
+  //       SVAInfo.RequestedKernelArguments.contains(
+  //           WAVEFRONT_PRIVATE_SEGMENT_BUFFER) ||
+  //       SVAInfo.RequestedKernelArguments.contains(FLAT_SCRATCH);
+  //   // If SVA requires access to scratch, then we have to enable it
+  //   if (RequiresAccessToScratch) {
+  //     // Enable the PSB if not already enabled
+  //     enablePrivateSegmentBuffer(MFI, TRI);
+  //     // Enable Flat scratch init if not already enabled
+  //     enableFlatScratchInit(MFI, TRI);
+  //     // Check if Private buffer wave segment offset was enabled; if not,
+  //     // enable it
+  //     enablePrivateSegmentWaveOffset(MFI);
+  //   }
+  //
+  //   // If access to kernarg buffer was requested, enable it
+  //   if (SVAInfo.RequestedKernelArguments.contains(KERNARG_SEGMENT_PTR)) {
+  //     enableKernArg(MFI, TRI);
+  //   }
+  //
+  //   // If access to dispatch id was requested, enable it
+  //   if (SVAInfo.RequestedKernelArguments.contains(DISPATCH_ID)) {
+  //     enableDispatchID(MFI, TRI);
+  //   }
+  //
+  //   // If access to dispatch ptr was requested, enable it
+  //   if (SVAInfo.RequestedKernelArguments.contains(DISPATCH_PTR)) {
+  //     enableDispatchPtr(MFI, TRI);
+  //   }
+  //   // If access to queue ptr was requested, enable it
+  //   if (SVAInfo.RequestedKernelArguments.contains(QUEUE_PTR)) {
+  //     enableQueuePtr(MFI, TRI);
+  //   }
+  //
+  //   // Emit the kernel preamble: ===========================================
+  //   llvm::MCRegister SVSStorageReg =
+  //       EntryInstrSVS.getSVS().getStateValueStorageReg();
+  //
+  //   // If stack access was requested, then emit code to save it into
+  //   // the SVS storage V/AGPR
+  //   if (RequiresAccessToScratch) {
+  //     if (auto Err = emitCodeToSetupScratch(
+  //             *EntryInstr, SVSStorageReg,
+  //             LR.getKernel().getKernelMetadata())) {
+  //       TargetModule.getContext().emitError(toString(std::move(Err)));
+  //       return false;
+  //     }
+  //   }
+  //   // Emit code to store the rest of the requested SGPR kernel arguments
+  //   for (const auto &[KernArg, PreloadValue] :
+  //        {std::pair{KERNARG_SEGMENT_PTR,
+  //                   llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR},
+  //         {DISPATCH_ID, llvm::AMDGPUFunctionArgInfo::DISPATCH_ID},
+  //         {DISPATCH_PTR, llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR},
+  //         {QUEUE_PTR, llvm::AMDGPUFunctionArgInfo::QUEUE_PTR}}) {
+  //     if (SVAInfo.RequestedKernelArguments.contains(KernArg)) {
+  //       auto StoreSlotBegin =
+  //           stateValueArray::getKernelArgumentLaneIdStoreSlotBeginForWave64(
+  //               KernArg);
+  //       if (auto Err = StoreSlotBegin.takeError()) {
+  //         TargetModule.getContext().emitError(toString(std::move(Err)));
+  //         return false;
+  //       }
+  //       auto StoreSlotSize =
+  //           stateValueArray::getKernelArgumentStoreSlotSizeForWave64(KernArg);
+  //       if (auto Err = StoreSlotSize.takeError()) {
+  //         TargetModule.getContext().emitError(toString(std::move(Err)));
+  //         return false;
+  //       }
+  //       if (auto Err = emitCodeToStoreSGPRKernelArg(
+  //               *EntryInstr, getArgReg(*MF, PreloadValue), SVSStorageReg,
+  //               *StoreSlotBegin, *StoreSlotSize,
+  //               OriginalSGPRArgLocs.contains(PreloadValue))) {
+  //         TargetModule.getContext().emitError(toString(std::move(Err)));
+  //         return false;
+  //       }
+  //     }
+  //   }
+  //   // Add code
+  //   if (SVAInfo.RequestedKernelArguments.contains(HIDDEN_KERNARG_OFFSET)) {
+  //     luthier::outs() << "emitting code to store the hidden arg offset.\n";
+  //     auto &KernArgs = LR.getKernel().getKernelMetadata().Args;
+  //
+  //     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+  //         KernArgs.has_value(), "Attempted to access the hidden arguments "
+  //                               "of a kernel without any arguments."));
+  //     uint32_t HiddenOffset = [&]() {
+  //       for (const auto &Arg : *KernArgs) {
+  //         if (Arg.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
+  //             Arg.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
+  //           return Arg.Offset;
+  //         }
+  //       }
+  //       return uint32_t{0};
+  //     }();
+  //     auto StoreLane =
+  //         stateValueArray::getKernelArgumentLaneIdStoreSlotBeginForWave64(
+  //             HIDDEN_KERNARG_OFFSET);
+  //     LUTHIER_REPORT_FATAL_ON_ERROR(StoreLane.takeError());
+  //
+  //     llvm::BuildMI(*EntryInstr->getParent(), EntryInstr, llvm::DebugLoc(),
+  //                   TII->get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageReg)
+  //         .addImm(HiddenOffset)
+  //         .addImm(*StoreLane)
+  //         .addReg(SVSStorageReg);
+  //
+  //     EntryInstr->getMF()->print(luthier::outs());
+  //   }
+  //
+  //   // Put every SGPR argument back in its place
+  //   emitCodeToReturnSGPRArgsToOriginalPlace(OriginalSGPRArgLocs,
+  //   *EntryInstr);
+  //
+  //   emitCodeToMoveSVA(TargetMAM, TargetModule, MF, SVLocations);
+  //
+  //   for (auto &[FuncSymbol, MF] : LR.functions()) {
+  //     emitCodeToMoveSVA(TargetMAM, TargetModule, MF, SVLocations);
+  //   }
+  // }
   return true;
 }
 void PrePostAmbleEmitter::getAnalysisUsage(llvm::AnalysisUsage &AU) const {

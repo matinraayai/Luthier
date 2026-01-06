@@ -26,10 +26,6 @@ llvm::AnalysisKey IntrinsicIRLoweringInfoMapAnalysis::Key;
 
 llvm::AnalysisKey TargetAppModuleAndMAMAnalysis::Key;
 
-llvm::AnalysisKey LiftedRepresentationAnalysis::Key;
-
-llvm::AnalysisKey LoadedCodeObjectAnalysis::Key;
-
 llvm::AnalysisKey IModulePMAnalysis::Key;
 
 LUTHIER_INITIALIZE_LEGACY_PASS_BODY(IModuleMAMWrapperPass,
