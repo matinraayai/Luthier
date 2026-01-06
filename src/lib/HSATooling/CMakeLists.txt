@@ -15,6 +15,7 @@ add_library(LuthierHSATooling OBJECT
         CodeGenerator.cpp
         CodeLifter.cpp
         Context.cpp
+        HsaMemoryAllocationAccessor.cpp
         InstrumentationModule.cpp
         InstrumentationTask.cpp
         TargetManager.cpp
