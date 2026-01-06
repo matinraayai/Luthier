@@ -48,6 +48,7 @@ add_library(LuthierToolingCommon OBJECT
         MockLoadAMDGPUCodeObjects.cpp
         CodeObjectManagerAnalysis.cpp
         InitialEntryPointAnalysis.cpp
+        PseudoOpcodeAndRegMapper.cpp
 )
 
 add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)

@@ -1,8 +1,6 @@
 
 #include "luthier/Tooling/CodeDiscoveryPass.h"
 #include "AMDGPUTargetMachine.h"
-#include "LuthierRealToPseudoOpcodeMap.hpp"
-#include "LuthierRealToPseudoRegEnumMap.hpp"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Tooling/AnnotatedMachineInstr.h"
 #include "luthier/Tooling/EntryPoint.h"
@@ -11,6 +9,7 @@
 #include "luthier/Tooling/MachineFunctionEntryPoints.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
+#include "luthier/Tooling/PseudoOpcodeAnRegMapper.h"
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>

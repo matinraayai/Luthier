@@ -110,16 +110,11 @@ void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
 void emitRealToPseudoOpcodeTable(const llvm::RecordKeeper &Records,
                                  llvm::raw_ostream &OS) {
   llvm::CodeGenTarget Target(Records);
-  OS << "#ifndef GET_REAL_TO_PSEUDO_OPCODE_MAP\n";
-  OS << "#define GET_REAL_TO_PSEUDO_OPCODE_MAP\n";
-  OS << "namespace luthier {\n\n";
 
   RealToPseudoOpcodeMapEmitter IMap(Target, Records);
 
   // Emit map tables and the functions to query them.
   IMap.emitTablesWithFunc(OS);
-  OS << "} // end namespace luthier\n";
-  OS << "#endif // GET_REAL_TO_PSEUDO_OPCODE_MAP\n\n";
 }
 
 } // namespace luthier

@@ -80,16 +80,11 @@ void RealToPseudoRegisterMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
 void emitRealToPseudoRegisterTable(const llvm::RecordKeeper &Records,
                                    llvm::raw_ostream &OS) {
   llvm::CodeGenTarget Target(Records);
-  OS << "#ifndef GET_REAL_TO_PSEUDO_REG_NUM_MAP\n";
-  OS << "#define GET_REAL_TO_PSEUDO_REG_NUM_MAP\n";
-  OS << "namespace luthier {\n\n";
 
   RealToPseudoRegisterMapEmitter IMap(Target);
 
   // Emit map tables and the functions to query them.
   IMap.emitTablesWithFunc(OS);
-  OS << "} // end namespace luthier\n";
-  OS << "#endif // GET_REAL_TO_PSEUDO_REG_NUM_MAP\n\n";
 }
 
 } // namespace luthier

@@ -18,10 +18,9 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
 #include "AMDGPUTargetMachine.h"
-#include "LuthierRealToPseudoOpcodeMap.hpp"
-#include "LuthierRealToPseudoRegEnumMap.hpp"
 #include "luthier/Tooling/MachineFunctionEntryPoints.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
+#include "luthier/Tooling/PseudoOpcodeAnRegMapper.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/MC/MCAsmInfo.h>
