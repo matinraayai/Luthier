@@ -219,8 +219,8 @@ public:
 
     [[nodiscard]] EntryPoint getInitialEntryPoint() const { return EP; }
 
-    bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-                    llvm::ModuleAnalysisManager::Invalidator &) {
+    bool invalidate(llvm::MachineFunction &, const llvm::PreservedAnalyses &,
+                    llvm::MachineFunctionAnalysisManager::Invalidator &) {
       return false;
     }
   };
