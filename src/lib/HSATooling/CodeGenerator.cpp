@@ -135,8 +135,6 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
       [&]() { return llvm::MachineModuleAnalysis(LR.getMMI()); });
   // Add the LR Analysis pass
   TargetMAM.registerPass([&]() { return LiftedRepresentationAnalysis(LR); });
-  // Add the LCO Analysis pass
-  TargetMAM.registerPass([&]() { return LoadedCodeObjectAnalysis(LCO); });
   // Add the LR Register Liveness pass
   TargetMAM.registerPass([&]() { return AMDGPURegLivenessAnalysis(); });
   // Add the LR Callgraph analysis pass

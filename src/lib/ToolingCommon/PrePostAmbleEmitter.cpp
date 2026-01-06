@@ -482,8 +482,6 @@ bool PrePostAmbleEmitter::runOnModule(llvm::Module &IModule) {
   auto &LR =
       TargetMAM.getResult<LiftedRepresentationAnalysis>(TargetModule).getLR();
 
-  auto LCO = TargetMAM.getResult<LoadedCodeObjectAnalysis>(TargetModule);
-
   auto &SVLocations =
       *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
           TargetModule);

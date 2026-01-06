@@ -148,34 +148,6 @@ public:
   }
 };
 
-/// \brief An analysis pass which returns the \c hsa::LoadedCodeObject being
-/// worked on during instrumentation
-class LoadedCodeObjectAnalysis
-    : public llvm::AnalysisInfoMixin<LoadedCodeObjectAnalysis> {
-private:
-  friend llvm::AnalysisInfoMixin<LoadedCodeObjectAnalysis>;
-
-  static llvm::AnalysisKey Key;
-
-  /// The \c hsa::LoadedCodeObject inside the lifted representation being worked
-  /// on
-  const hsa_loaded_code_object_t LCO;
-
-public:
-  using Result = const hsa_loaded_code_object_t;
-
-  explicit LoadedCodeObjectAnalysis(hsa_loaded_code_object_t LCO) : LCO(LCO) {}
-
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &) { return LCO; }
-
-  /// Never invalidate the results
-  __attribute__((used)) bool
-  invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-             llvm::ModuleAnalysisManager::Invalidator &) {
-    return false;
-  }
-};
-
 /// \brief An analysis which provides all the pass manager constructs
 /// used for running IR passes and analysis on the instrumentation module
 class IModulePMAnalysis : public llvm::AnalysisInfoMixin<IModulePMAnalysis> {
