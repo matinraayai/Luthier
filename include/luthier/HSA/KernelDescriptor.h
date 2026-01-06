@@ -129,7 +129,7 @@ struct KernelDescriptor {
 
   /// \return the entrypoint of the kernel machine code i.e. the address of the
   /// first instruction of the kernel
-  [[nodiscard]] luthier::address_t getEntryPoint() const;
+  [[nodiscard]] uint64_t getEntryPoint() const;
 
   /// Returns a pointer to the kernel descriptor, given the kernel object
   /// field of the kernel dispatch packet

@@ -21,6 +21,7 @@ tablegen(LuthierAMDGPUTableGen AMDGPUGenSearchableTables.inc -gen-searchable-tab
 tablegen(LuthierAMDGPUTableGen AMDGPUGenSubtargetInfo.inc -gen-subtarget EXTRA_INCLUDES
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 
+add_public_tablegen_target(LuthierAMDGPUTableGen)
 # Create a target for all the internal amdgpu headers
 add_library(LuthierAMDGPU INTERFACE)
 
@@ -31,6 +32,8 @@ target_sources(LuthierAMDGPU
         BASE_DIRS ${CMAKE_CURRENT_BINARY_DIR}
         FILES ${TABLEGEN_OUTPUT}
 )
+
+add_dependencies(LuthierAMDGPU LuthierAMDGPUTableGen)
 
 target_include_directories(LuthierAMDGPU INTERFACE
         "$<BUILD_INTERFACE:${AMDGPU_INCLUDE_DIR}>"

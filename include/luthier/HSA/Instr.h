@@ -47,7 +47,7 @@ private:
   /// The MC representation of the instruction
   const llvm::MCInst Inst;
   /// The address on the GPU Agent this instruction is loaded at
-  const address_t LoadedDeviceAddress;
+  const uint64_t LoadedDeviceAddress;
   /// The symbol this instruction belongs to
   const LoadedCodeObjectSymbol &Symbol;
   /// Size of the instruction
@@ -65,7 +65,7 @@ public:
   /// \param Address the device address this instruction is loaded on
   /// \param Size size of the instruction in bytes
   Instr(llvm::MCInst Inst, const LoadedCodeObjectKernel &Kernel,
-        address_t Address, size_t Size);
+        uint64_t Address, size_t Size);
 
   /// Constructor
   /// \param Inst \c MCInst of the instruction
@@ -73,7 +73,7 @@ public:
   /// \param Address the device address this instruction is loaded on
   /// \param Size size of the instruction in bytes
   Instr(llvm::MCInst Inst, const LoadedCodeObjectDeviceFunction &DeviceFunction,
-        address_t Address, size_t Size);
+        uint64_t Address, size_t Size);
 
   /// \return the device function/kernel that this instruction belongs to
   [[nodiscard]] const LoadedCodeObjectSymbol &getLoadedCodeObjectSymbol() const;
@@ -84,7 +84,7 @@ public:
   /// \return the loaded address of this instruction on the device
   /// \note the \c hsa_agent_t of the instruction can be queried from the
   /// this instruction's backing symbol
-  [[nodiscard]] address_t getLoadedDeviceAddress() const;
+  [[nodiscard]] uint64_t getLoadedDeviceAddress() const;
 
   /// \return the size of the instruction in bytes
   [[nodiscard]] size_t getSize() const;

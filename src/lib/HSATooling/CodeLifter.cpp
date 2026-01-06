@@ -143,7 +143,7 @@ luthier::CodeLifter::getDisassemblyInfo(hsa_isa_t ISA) {
 }
 
 bool CodeLifter::isAddressDirectBranchTarget(hsa_loaded_code_object_t LCO,
-                                             address_t Address) {
+                                             uint64_t Address) {
   if (!DirectBranchTargetLocations.contains(LCO)) {
     return false;
   }
@@ -152,16 +152,14 @@ bool CodeLifter::isAddressDirectBranchTarget(hsa_loaded_code_object_t LCO,
 }
 
 void luthier::CodeLifter::addDirectBranchTargetAddress(
-    hsa_loaded_code_object_t LCO, address_t Address) {
+    hsa_loaded_code_object_t LCO, uint64_t Address) {
   if (!DirectBranchTargetLocations.contains(LCO)) {
-    DirectBranchTargetLocations.insert(
-        {LCO, llvm::DenseSet<luthier::address_t>{}});
+    DirectBranchTargetLocations.insert({LCO, llvm::DenseSet<uint64_t>{}});
   }
   DirectBranchTargetLocations[LCO].insert(Address);
 }
 
-llvm::Expected<
-    std::pair<std::vector<llvm::MCInst>, std::vector<luthier::address_t>>>
+llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<uint64_t>>>
 CodeLifter::disassemble(hsa_isa_t ISA, llvm::ArrayRef<uint8_t> Code) {
   auto DisassemblyInfo = getDisassemblyInfo(ISA);
   LUTHIER_RETURN_ON_ERROR(DisassemblyInfo.takeError());
@@ -172,9 +170,9 @@ CodeLifter::disassemble(hsa_isa_t ISA, llvm::ArrayRef<uint8_t> Code) {
 
   size_t MaxReadSize = TargetInfo->getMCAsmInfo()->getMaxInstLength();
   size_t Idx = 0;
-  luthier::address_t CurrentAddress = 0;
+  uint64_t CurrentAddress = 0;
   std::vector<llvm::MCInst> Instructions;
-  std::vector<luthier::address_t> Addresses;
+  std::vector<uint64_t> Addresses;
 
   while (Idx < Code.size()) {
     size_t ReadSize =
@@ -199,15 +197,14 @@ CodeLifter::disassemble(hsa_isa_t ISA, llvm::ArrayRef<uint8_t> Code) {
 }
 
 llvm::Expected<const CodeLifter::LCORelocationInfo *>
-CodeLifter::resolveRelocation(hsa_loaded_code_object_t LCO,
-                              luthier::address_t Address) {
+CodeLifter::resolveRelocation(hsa_loaded_code_object_t LCO, uint64_t Address) {
   if (!Relocations.contains(LCO)) {
     // If the LCO doesn't have its relocation info cached, calculate it
     auto LoadedMemory =
         hsa::loadedCodeObjectGetLoadedMemory(LoaderApiSnapshot.getTable(), LCO);
     LUTHIER_RETURN_ON_ERROR(LoadedMemory.takeError());
 
-    auto LoadedMemoryBase = reinterpret_cast<address_t>(LoadedMemory->data());
+    auto LoadedMemoryBase = reinterpret_cast<uint64_t>(LoadedMemory->data());
 
     llvm::Expected<object::AMDGCNObjectFile &> StorageELFOrErr =
         hsa::LoadedCodeObjectCache::instance().getAssociatedObjectFile(LCO);
@@ -215,8 +212,7 @@ CodeLifter::resolveRelocation(hsa_loaded_code_object_t LCO,
 
     // Create an entry for the LCO in the relocations map
     auto &LCORelocationsMap =
-        Relocations
-            .insert({LCO, llvm::DenseMap<address_t, LCORelocationInfo>{}})
+        Relocations.insert({LCO, llvm::DenseMap<uint64_t, LCORelocationInfo>{}})
             .first->getSecond();
 
     for (const auto &Section : StorageELFOrErr->sections()) {
@@ -239,8 +235,7 @@ CodeLifter::resolveRelocation(hsa_loaded_code_object_t LCO,
                             "address {0:x}.",
                             LoadedMemoryBase + *RelocSymbolLoadedAddress)));
           // The target address will be the base of the loaded
-          luthier::address_t TargetAddress =
-              LoadedMemoryBase + Reloc.getOffset();
+          uint64_t TargetAddress = LoadedMemoryBase + Reloc.getOffset();
           LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                          "Relocation found for symbol {0} at address {1:x} for "
                          "LCO {2:x}.\n",
@@ -696,13 +691,13 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
 
   auto MCInstInfo = TargetInfo->getMCInstrInfo();
 
-  llvm::DenseMap<luthier::address_t,
+  llvm::DenseMap<uint64_t,
                  llvm::SmallVector<llvm::MachineInstr *>>
       UnresolvedBranchMIs; // < Set of branch instructions located at a
-                           // luthier_address_t waiting for their
+                           // luthier_uint64_t waiting for their
                            // target to be resolved after MBBs and MIs
                            // are created
-  llvm::DenseMap<luthier::address_t, llvm::MachineBasicBlock *>
+  llvm::DenseMap<uint64_t, llvm::MachineBasicBlock *>
       BranchTargetMBBs; // < Set of MBBs that will be the target of the
                         // UnresolvedBranchMIs
   auto MIA = TargetInfo->getMCInstrAnalysis();
@@ -798,12 +793,12 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
         // TODO: Resolve immediate load/store operands if they don't have
         // relocations associated with them (e.g. when they happen in the
         // text section)
-        luthier::address_t InstAddr = Inst.getLoadedDeviceAddress();
+        uint64_t InstAddr = Inst.getLoadedDeviceAddress();
         size_t InstSize = Inst.getSize();
         // Check if at any point in the instruction we need to apply
         // relocations
         bool RelocationApplied{false};
-        for (luthier::address_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
+        for (uint64_t I = InstAddr; I <= InstAddr + InstSize; ++I) {
           auto RelocationInfo = resolveRelocation(LCO, I);
           LUTHIER_RETURN_ON_ERROR(RelocationInfo.takeError());
           if (*RelocationInfo) {
@@ -827,12 +822,11 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
 
                   llvm::StringRef TargetSymbolName; LUTHIER_RETURN_ON_ERROR(
                       TargetSymbol.getName().moveInto(TargetSymbolName));
-                  llvm::dbgs()
-                  << llvm::formatv("Relocation is being resolved to the global "
-                                   "variables {0} at address {1:x}.\n",
-                                   TargetSymbolName,
-                                   reinterpret_cast<luthier::address_t>(
-                                       *TargetSymbolAddress)));
+                  llvm::dbgs() << llvm::formatv(
+                      "Relocation is being resolved to the global "
+                      "variables {0} at address {1:x}.\n",
+                      TargetSymbolName,
+                      reinterpret_cast<uint64_t>(*TargetSymbolAddress)));
               llvm::GlobalVariable *GV;
               auto GVIter = LR.Variables.find(TargetSymbol);
 
@@ -961,7 +955,7 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                  << "Instruction is a terminator; Finishing basic block.\n");
       if (IsDirectBranch) {
         LLVM_DEBUG(llvm::dbgs() << "The terminator is a direct branch.\n");
-        luthier::address_t BranchTarget;
+        uint64_t BranchTarget;
         if (evaluateBranch(MCInst, Inst.getLoadedDeviceAddress(),
                            Inst.getSize(), BranchTarget)) {
           LLVM_DEBUG(llvm::dbgs() << llvm::formatv(

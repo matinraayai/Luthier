@@ -121,7 +121,7 @@ public:
   static llvm::Expected<std::unique_ptr<hsa::LoadedCodeObjectSymbol>>
   fromLoadedAddress(const ApiTableContainer<::CoreApiTable> &CoreApi,
                     const hsa_ven_amd_loader_1_03_pfn_t &LoaderApi,
-                    luthier::address_t LoadedAddress);
+                    uint64_t LoadedAddress);
 
   /// \return the \c SymbolKind of this symbol
   [[nodiscard]] SymbolKind getType() const { return Kind; }
@@ -161,7 +161,7 @@ public:
   [[nodiscard]] llvm::Expected<llvm::ArrayRef<uint8_t>> getLoadedSymbolContents(
       const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const;
 
-  [[nodiscard]] llvm::Expected<luthier::address_t> getLoadedSymbolAddress(
+  [[nodiscard]] llvm::Expected<uint64_t> getLoadedSymbolAddress(
       const hsa_ven_amd_loader_1_03_pfn_t &VenLoaderTable) const;
 
   /// \return the \c hsa_executable_symbol_t associated with

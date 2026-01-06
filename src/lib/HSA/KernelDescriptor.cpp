@@ -211,8 +211,8 @@ KernelDescriptor::getKernelCodeProperties() const {
   return Out;
 }
 
-address_t KernelDescriptor::getEntryPoint() const {
-  return reinterpret_cast<address_t>(this) + this->KernelCodeEntryByteOffset;
+uint64_t KernelDescriptor::getEntryPoint() const {
+  return reinterpret_cast<uint64_t>(this) + this->KernelCodeEntryByteOffset;
 }
 const KernelDescriptor *
 KernelDescriptor::fromKernelObject(uint64_t KernelObject) {
@@ -225,13 +225,13 @@ KernelDescriptor::getLoadedCodeObjectKernelSymbol(
     const hsa::ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER>::TableType
         &LoaderApi) const {
   auto Symbol = LoadedCodeObjectSymbol::fromLoadedAddress(
-      CoreApi, LoaderApi, reinterpret_cast<luthier::address_t>(this));
+      CoreApi, LoaderApi, reinterpret_cast<uint64_t>(this));
   LUTHIER_RETURN_ON_ERROR(Symbol.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       *Symbol != nullptr,
       llvm::formatv(
           "Failed to locate the symbol associated with loaded address {0:x}.",
-          reinterpret_cast<luthier::address_t>(this))));
+          reinterpret_cast<uint64_t>(this))));
 
   std::unique_ptr<LoadedCodeObjectKernel> KernelSymbol =
       llvm::unique_dyn_cast<LoadedCodeObjectKernel>(*Symbol);
@@ -240,7 +240,7 @@ KernelDescriptor::getLoadedCodeObjectKernelSymbol(
     LUTHIER_RETURN_ON_ERROR(SymbolName.takeError());
     return llvm::make_error<hsa::HsaError>(llvm::formatv(
         "Found symbol {0} at address {1:x} but it is not a kernel.",
-        *SymbolName, reinterpret_cast<luthier::address_t>(this)));
+        *SymbolName, reinterpret_cast<uint64_t>(this)));
   }
   return KernelSymbol;
 }

@@ -269,7 +269,7 @@ StaticInstrumentationModule::isStaticInstrumentationModuleExecutable(
   return false;
 }
 
-llvm::Expected<std::optional<luthier::address_t>>
+llvm::Expected<std::optional<uint64_t>>
 StaticInstrumentationModule::getGlobalVariablesLoadedOnAgent(
     llvm::StringRef GVName, hsa_agent_t Agent) const {
   std::shared_lock Lock(Mutex);

@@ -219,9 +219,9 @@ public:
       auto MII = TargetInfo->getMCInstrInfo();
 
       auto BaseLoadedAddress =
-          reinterpret_cast<luthier::address_t>(MachineCodeOnDevice->data());
+          reinterpret_cast<uint64_t>(MachineCodeOnDevice->data());
 
-      luthier::address_t PrevInstAddress = BaseLoadedAddress;
+      uint64_t PrevInstAddress = BaseLoadedAddress;
 
       for (unsigned int I = 0; I < Instructions.size(); ++I) {
         auto &Inst = Instructions[I];
@@ -238,7 +238,7 @@ public:
                   I, Address, Size);
 
           );
-          luthier::address_t Target;
+          uint64_t Target;
           if (evaluateBranch(Inst, Address, Size, Target)) {
             LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                            "Evaluated address {0:x} as the branch target.\n",
@@ -262,7 +262,7 @@ public:
   ///  machine code
   /// \return on success, returns a \p std::vector of \p llvm::MCInst and
   /// a \p std::vector containing the start address of each instruction
-  llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<address_t>>>
+  llvm::Expected<std::pair<std::vector<llvm::MCInst>, std::vector<uint64_t>>>
   disassemble(hsa_isa_t ISA, llvm::ArrayRef<uint8_t> Code);
 
   //===--------------------------------------------------------------------===//
@@ -280,7 +280,7 @@ private:
   /// \details This map is used during lifting of MC instructions to MIR to
   /// indicate start/end of each \p llvm::MachineBasicBlock. It gets populated
   /// by during MC disassembly of functions
-  llvm::DenseMap<hsa_loaded_code_object_t, llvm::DenseSet<address_t>>
+  llvm::DenseMap<hsa_loaded_code_object_t, llvm::DenseSet<uint64_t>>
       DirectBranchTargetLocations{};
 
   /// Checks whether the given \p Address is the start of a target of a
@@ -291,7 +291,7 @@ private:
   /// \return true if the Address is the start of the target of another branch
   /// instruction; \c false otherwise
   bool isAddressDirectBranchTarget(hsa_loaded_code_object_t LCO,
-                                   address_t Address);
+                                   uint64_t Address);
 
   /// Used by the MC disassembler functionality to notify
   /// \c BranchLocations about the loaded address of an instruction
@@ -300,7 +300,7 @@ private:
   /// in its loaded region
   /// \param Address a device address in the \p hsa::LoadedCodeObject
   void addDirectBranchTargetAddress(hsa_loaded_code_object_t LCO,
-                                    address_t Address);
+                                    uint64_t Address);
 
   //===--------------------------------------------------------------------===//
   // Relocation resolving
@@ -320,7 +320,7 @@ private:
   /// lifted \c hsa::LoadedCodeObject\n
   /// Combines relocation information from all sections into this map
   llvm::DenseMap<hsa_loaded_code_object_t,
-                 llvm::DenseMap<address_t, LCORelocationInfo>>
+                 llvm::DenseMap<uint64_t, LCORelocationInfo>>
       Relocations{};
 
   /// Returns an \c std::nullopt if the \p address doesn't have any relocation
@@ -334,7 +334,7 @@ private:
   /// an \c std::nullopt otherwise; an \c llvm::Error on failure describing the
   /// issue encountered
   llvm::Expected<const CodeLifter::LCORelocationInfo *>
-  resolveRelocation(hsa_loaded_code_object_t LCO, address_t Address);
+  resolveRelocation(hsa_loaded_code_object_t LCO, uint64_t Address);
 
   //===--------------------------------------------------------------------===//
   // Function-related code-lifting functionality

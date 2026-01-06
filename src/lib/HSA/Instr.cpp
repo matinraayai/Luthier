@@ -24,13 +24,13 @@
 namespace luthier::hsa {
 
 Instr::Instr(llvm::MCInst Inst, const LoadedCodeObjectKernel &Kernel,
-             address_t Address, size_t Size)
+             uint64_t Address, size_t Size)
     : Inst(std::move(Inst)), Symbol(Kernel), LoadedDeviceAddress(Address),
       Size(Size) {}
 
 Instr::Instr(llvm::MCInst Inst,
              const LoadedCodeObjectDeviceFunction &DeviceFunction,
-             address_t Address, size_t Size)
+             uint64_t Address, size_t Size)
     : Inst(std::move(Inst)), Symbol(DeviceFunction),
       LoadedDeviceAddress(Address), Size(Size) {}
 
@@ -40,7 +40,7 @@ const LoadedCodeObjectSymbol &Instr::getLoadedCodeObjectSymbol() const {
 
 llvm::MCInst Instr::getMCInst() const { return Inst; }
 
-luthier::address_t Instr::getLoadedDeviceAddress() const {
+uint64_t Instr::getLoadedDeviceAddress() const {
   return LoadedDeviceAddress;
 }
 

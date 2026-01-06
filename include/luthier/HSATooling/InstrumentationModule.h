@@ -108,11 +108,11 @@ public:
   /// \param GVName the name of the global variable queried
   /// \param Agent The \c hsa::GpuAgent to look for the global variable variable
   /// on
-  /// \return A \c luthier::address_t if the variable was located on the \p
+  /// \return A \c uint64_t if the variable was located on the \p
   /// Agent, an \c std::nullopt if not loaded, or an \c llvm::Error if an issue
   /// was encountered
   /// \sa luthier::hsa::Executable::defineExternalAgentGlobalVariable
-  [[nodiscard]] virtual llvm::Expected<std::optional<luthier::address_t>>
+  [[nodiscard]] virtual llvm::Expected<std::optional<uint64_t>>
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
                                   hsa_agent_t Agent) const = 0;
 };
@@ -232,7 +232,7 @@ private:
                                     hsa_agent_t Agent) const;
 
 public:
-  [[nodiscard]] llvm::Expected<std::optional<luthier::address_t>>
+  [[nodiscard]] llvm::Expected<std::optional<uint64_t>>
   getGlobalVariablesLoadedOnAgent(llvm::StringRef GVName,
                                   hsa_agent_t Agent) const override;
 
