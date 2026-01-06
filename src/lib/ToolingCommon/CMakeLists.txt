@@ -34,6 +34,7 @@ add_library(LuthierToolingCommon OBJECT
         InstrumentationPMDriver.cpp
         MockLoadAMDGPUCodeObjects.cpp
         CodeObjectManagerAnalysis.cpp
+        InitialEntryPointAnalysis.cpp
 )
 
 target_compile_definitions(LuthierToolingCommon PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
