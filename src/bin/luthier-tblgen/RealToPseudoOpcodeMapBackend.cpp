@@ -98,7 +98,7 @@ RealToPseudoOpcodeMapEmitter::RealToPseudoOpcodeMapEmitter(
 
 void RealToPseudoOpcodeMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   OS << "LLVM_READONLY\n";
-  OS << "uint16_t getPseudoOpcodeFromReal(uint16_t Opcode) {\n";
+  OS << "unsigned short getPseudoOpcodeFromReal(unsigned short Opcode) {\n";
 
   // Emit map table.
   unsigned TableSize = emitTable(OS);

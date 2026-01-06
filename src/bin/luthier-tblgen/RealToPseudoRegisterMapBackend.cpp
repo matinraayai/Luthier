@@ -68,7 +68,8 @@ void RealToPseudoRegisterMapEmitter::emitMapFuncBody(llvm::raw_ostream &OS,
 
 void RealToPseudoRegisterMapEmitter::emitTablesWithFunc(llvm::raw_ostream &OS) {
   OS << "LLVM_READONLY\n";
-  OS << "uint16_t RealToPseudoRegisterMapTable(uint16_t RegNum) {\n";
+  OS << "unsigned short RealToPseudoRegisterMapTable(unsigned short RegNum) "
+        "{\n";
 
   // Emit map table.
   unsigned TableSize = emitTable(OS);
