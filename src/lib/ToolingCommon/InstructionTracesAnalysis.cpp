@@ -182,13 +182,13 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
         llvm::Expected<uint64_t> TargetOrErr =
             evaluateBranchOrCallIfDirect(MCInst, InstAddr);
         LUTHIER_CTX_EMIT_ON_ERROR(Ctx, TargetOrErr.takeError());
-        Out.DirectBranchTargets.insert(*TargetOrErr);
+        Out.DirectBranchTargets->insert(*TargetOrErr);
         /// Find if we have already have the target of this branch in the
         /// current trace; If not, look into the previously discoverd traces; If
         /// it's also not there, add the address to the unvisited list
         if (!InstTrace->contains(*TargetOrErr)) {
           bool HaveVisitedDirectBranchTarget{false};
-          for (const auto &[TraceInterval, Trace] : Out.Traces) {
+          for (const auto &[TraceInterval, Trace] : *Out.Traces) {
             if (TraceInterval.first <= *TargetOrErr &&
                 TraceInterval.second <= *TargetOrErr &&
                 Trace->contains(*TargetOrErr)) {
@@ -202,20 +202,20 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
       }
 
       if (IsIndirectBranch) {
-        Out.IndirectBranchAddresses.insert(InstAddr);
+        Out.IndirectBranchAddresses->insert(InstAddr);
       }
       if (IsIndirectCall) {
-        Out.IndirectCallInstAddresses.insert(InstAddr);
+        Out.IndirectCallInstAddresses->insert(InstAddr);
       }
     };
 
     /// Put the discovered trace in the map
-    Out.Traces.insert({std::make_pair(CurrentDeviceAddr, TraceDeviceEndAddr),
-                       std::move(InstTrace)});
+    Out.Traces->insert({std::make_pair(CurrentDeviceAddr, TraceDeviceEndAddr),
+                        std::move(InstTrace)});
 
     /// Remove the current entry point from the unvisited set
     UnvisitedTraceAddresses.erase(CurrentDeviceAddr);
   }
-  return Out;
+  return std::move(Out);
 }
 } // namespace luthier

@@ -99,17 +99,20 @@ public:
     friend InstructionTracesAnalysis;
 
     /// Group of traces discovered from the entry point of the machine function
-    TraceGroup Traces;
+    std::unique_ptr<TraceGroup> Traces = std::make_unique<TraceGroup>();
 
     /// The address of all indirect call instructions discovered in the traces
-    InstructionAddrSet IndirectCallInstAddresses;
+    std::unique_ptr<InstructionAddrSet> IndirectCallInstAddresses =
+        std::make_unique<InstructionAddrSet>();
 
     /// The address of all indirect branch instructions discovered in the trace
-    InstructionAddrSet IndirectBranchAddresses;
+    std::unique_ptr<InstructionAddrSet> IndirectBranchAddresses =
+        std::make_unique<InstructionAddrSet>();
 
     /// The address of all direct branch target instructions discovered in the
     /// trace
-    InstructionAddrSet DirectBranchTargets;
+    std::unique_ptr<InstructionAddrSet> DirectBranchTargets =
+        std::make_unique<InstructionAddrSet>();
 
     /// The initial entry point of the trace
     EntryPoint EP;
@@ -121,22 +124,22 @@ public:
     using trace_group_reverse_iterator = TraceGroup::const_reverse_iterator;
 
     [[nodiscard]] trace_group_iterator traces_begin() const {
-      return Traces.begin();
+      return Traces->begin();
     }
 
     [[nodiscard]] trace_group_iterator traces_end() const {
-      return Traces.end();
+      return Traces->end();
     }
 
     [[nodiscard]] trace_group_reverse_iterator traces_rbegin() const {
-      return Traces.rbegin();
+      return Traces->rbegin();
     }
 
     [[nodiscard]] trace_group_reverse_iterator traces_rend() const {
-      return Traces.rend();
+      return Traces->rend();
     }
 
-    [[nodiscard]] size_t traces_size() const { return Traces.size(); }
+    [[nodiscard]] size_t traces_size() const { return Traces->size(); }
 
     [[nodiscard]] llvm::iterator_range<trace_group_iterator> traces() const {
       return llvm::make_range(traces_begin(), traces_end());
@@ -149,17 +152,17 @@ public:
 
     [[nodiscard]] trace_group_iterator findTrace(uint64_t StartAddress,
                                                  uint64_t EndAddress) const {
-      return Traces.find(std::make_pair(StartAddress, EndAddress));
+      return Traces->find(std::make_pair(StartAddress, EndAddress));
     }
 
     using indirect_call_addr_iterator = InstructionAddrSet::const_iterator;
 
     [[nodiscard]] indirect_call_addr_iterator indirect_call_addr_begin() const {
-      return IndirectCallInstAddresses.begin();
+      return IndirectCallInstAddresses->begin();
     }
 
     [[nodiscard]] indirect_call_addr_iterator indirect_call_addr_end() const {
-      return IndirectCallInstAddresses.end();
+      return IndirectCallInstAddresses->end();
     }
 
     [[nodiscard]] llvm::iterator_range<indirect_call_addr_iterator>
@@ -169,19 +172,19 @@ public:
     }
 
     [[nodiscard]] bool isAddressIndirectCall(uint64_t DevAddr) const {
-      return IndirectCallInstAddresses.contains(DevAddr);
+      return IndirectCallInstAddresses->contains(DevAddr);
     }
 
     using indirect_branch_addr_iterator = InstructionAddrSet::const_iterator;
 
     [[nodiscard]] indirect_branch_addr_iterator
     indirect_branch_addr_begin() const {
-      return IndirectBranchAddresses.begin();
+      return IndirectBranchAddresses->begin();
     }
 
     [[nodiscard]] indirect_branch_addr_iterator
     indirect_branch_addr_end() const {
-      return IndirectBranchAddresses.end();
+      return IndirectBranchAddresses->end();
     }
 
     [[nodiscard]] llvm::iterator_range<indirect_branch_addr_iterator>
@@ -191,7 +194,7 @@ public:
     }
 
     [[nodiscard]] bool isAddressIndirectBranch(uint64_t DevAddr) const {
-      return IndirectBranchAddresses.contains(DevAddr);
+      return IndirectBranchAddresses->contains(DevAddr);
     }
 
     using direct_branch_target_addr_iterator =
@@ -199,12 +202,12 @@ public:
 
     [[nodiscard]] direct_branch_target_addr_iterator
     direct_branch_target_addr_begin() const {
-      return DirectBranchTargets.begin();
+      return DirectBranchTargets->begin();
     }
 
     [[nodiscard]] direct_branch_target_addr_iterator
     direct_branch_target_addr_end() const {
-      return DirectBranchTargets.end();
+      return DirectBranchTargets->end();
     }
 
     [[nodiscard]] llvm::iterator_range<direct_branch_target_addr_iterator>
@@ -214,7 +217,7 @@ public:
     }
 
     [[nodiscard]] bool isAddressDirectBranchTarget(uint64_t DevAddr) const {
-      return DirectBranchTargets.contains(DevAddr);
+      return DirectBranchTargets->contains(DevAddr);
     }
 
     [[nodiscard]] EntryPoint getInitialEntryPoint() const { return EP; }
