@@ -133,8 +133,6 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Add the MMI Analysis pass, pointing to the target app's lifted MMI
   TargetMAM.registerPass(
       [&]() { return llvm::MachineModuleAnalysis(LR.getMMI()); });
-  // Add the LR Analysis pass
-  TargetMAM.registerPass([&]() { return LiftedRepresentationAnalysis(LR); });
   // Add the LR Register Liveness pass
   TargetMAM.registerPass([&]() { return AMDGPURegLivenessAnalysis(); });
   // Add the LR Callgraph analysis pass
