@@ -1,5 +1,6 @@
 
 #include "luthier/Tooling/CodeDiscoveryPass.h"
+#include "AMDGPUTargetMachine.h"
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
 #include "luthier/Common/ErrorCheck.h"
