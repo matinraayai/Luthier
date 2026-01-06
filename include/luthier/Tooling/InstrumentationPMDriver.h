@@ -91,7 +91,7 @@ public:
                                                   Ctx);
           },
       std::function<void(llvm::PassBuilder &)> PassBuilderAugmentationCallback =
-          [](llvm::PassBuilder &PB) {},
+          [](llvm::PassBuilder &) {},
       std::function<void(llvm::ModulePassManager &)> PreIROptimizationCallback =
           [](llvm::ModulePassManager &) {},
       std::function<void(llvm::ModulePassManager &)>
