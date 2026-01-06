@@ -130,7 +130,7 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
     if (PluginIModule != nullptr) {
       /// TODO: Add CL parameter to control the linking flag here
       if (llvm::Linker::linkModules(*IModule, std::move(PluginIModule))) {
-        LUTHIER_EMIT_ERROR_IN_CONTEXT(
+        LUTHIER_CTX_EMIT_ON_ERROR(
             Context,
             LUTHIER_MAKE_GENERIC_ERROR("Failed to link modules together"));
       }

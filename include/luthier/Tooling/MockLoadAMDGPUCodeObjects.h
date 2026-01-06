@@ -55,7 +55,7 @@ struct MockAMDGPULoaderAnalysisOptions {
           "extern-var-defs",
           llvm::cl::desc(
               "A set of external variables to be defined by the loader. Must "
-              "be formated as <var1:addr1> <var2:addr2> etc."),
+              "be formated as <var1>:<addr1> <var2>:<addr2> etc."),
           llvm::cl::NotHidden, llvm::cl::cat(MockLoaderOptions)};
 };
 

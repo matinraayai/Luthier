@@ -52,20 +52,20 @@ MockLoadAMDGPUCodeObjects::run(llvm::Module &M,
   for (llvm::StringRef Path : Options.CodeObjectPathList) {
     llvm::Expected<llvm::MemoryBuffer &> CodeObjectBufferOrErr =
         CodeObjectManager.readCodeObjectFromFile(Path);
-    LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, CodeObjectBufferOrErr.takeError());
+    LUTHIER_CTX_EMIT_ON_ERROR(Ctx, CodeObjectBufferOrErr.takeError());
 
     auto LoadedCodeObjectOrErr = Loader.loadCodeObject(*CodeObjectBufferOrErr);
-    LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, LoadedCodeObjectOrErr.takeError());
+    LUTHIER_CTX_EMIT_ON_ERROR(Ctx, LoadedCodeObjectOrErr.takeError());
   }
 
   /// Define the external variables
   for (auto &[SymName, SymAddr] : Options.ExternalVars) {
-    LUTHIER_EMIT_ERROR_IN_CONTEXT(
+    LUTHIER_CTX_EMIT_ON_ERROR(
         Ctx, Loader.defineExternalSymbol(SymName,
                                          reinterpret_cast<void *>(SymAddr)));
   }
   /// Finalize the loader
-  LUTHIER_EMIT_ERROR_IN_CONTEXT(Ctx, Loader.finalize());
+  LUTHIER_CTX_EMIT_ON_ERROR(Ctx, Loader.finalize());
 
   return llvm::PreservedAnalyses::all();
 };

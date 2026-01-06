@@ -46,16 +46,15 @@ public:
     /// Memory buffers associated with each code object
     llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>> &CodeObjects;
 
+    Result(llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>> &CodeObjects)
+        : CodeObjects(CodeObjects) {};
+
+  public:
     /// Never invalidate the analysis
     bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
                     llvm::ModuleAnalysisManager::Invalidator &) {
       return false;
     }
-
-    Result(llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>> &CodeObjects)
-        : CodeObjects(CodeObjects) {};
-
-  public:
     /// Reads and validates the code object located in \c Path
     /// \returns a reference to the code object's buffer owned by the analysis
     /// result

@@ -1,5 +1,5 @@
 
-#include "luthier/tooling/MetadataParserAnalysis.h"
+#include "luthier/Tooling/MetadataParserAnalysis.h"
 
 namespace luthier {
 
