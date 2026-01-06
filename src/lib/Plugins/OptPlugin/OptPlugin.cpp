@@ -191,9 +191,11 @@ llvmGetPassPluginInfo() {
           if (Name == "luthier-mock-load-amdgpu-code-objects") {
             MPM.addPass(
                 luthier::MockLoadAMDGPUCodeObjects(luthier::MockLoaderOptions));
+            return true;
           };
           if (Name == "luthier-code-discovery") {
             MPM.addPass(luthier::CodeDiscoveryPass());
+            return true;
           }
           if (Name == "luthier-apply-instrumentation") {
             MPM.addPass(luthier::InstrumentationPMDriver(
