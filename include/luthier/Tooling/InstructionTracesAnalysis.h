@@ -119,6 +119,7 @@ public:
 
     explicit Result(EntryPoint EP) : EP(EP) {};
 
+  public:
     Result(Result &&other) noexcept
         : Traces(std::move(other.Traces)),
           IndirectCallInstAddresses(std::move(other.IndirectCallInstAddresses)),
@@ -126,7 +127,6 @@ public:
           DirectBranchTargets(std::move(other.DirectBranchTargets)),
           EP(std::move(other.EP)) {}
 
-  public:
     Result(const Result &other) = delete;
 
     Result &operator=(const Result &other) = delete;
