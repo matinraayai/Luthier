@@ -58,6 +58,7 @@ target_compile_definitions(LuthierToolingCommon PRIVATE AMD_INTERNAL_BUILD ${LLV
 target_include_directories(LuthierToolingCommon
         PRIVATE
         ${LLVM_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_BINARY_DIR}
         ${hsa-runtime64_INCLUDE_DIRS}
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"

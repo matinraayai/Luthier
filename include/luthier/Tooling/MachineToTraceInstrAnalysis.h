@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_MACHINE_TO_TRACE_INSTR_ANALYSIS_H
 #define LUTHIER_TOOLING_MACHINE_TO_TRACE_INSTR_ANALYSIS_H
-#include "luthier/tooling/InstructionTracesAnalysis.h"
+#include "luthier/Tooling/InstructionTracesAnalysis.h"
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/IR/PassManager.h>
 
