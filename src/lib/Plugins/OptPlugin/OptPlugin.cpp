@@ -95,10 +95,10 @@ llvmGetPassPluginInfo() {
       MAM.registerPass([&]() {
         return luthier::InitialEntryPointAnalysis(
             [&](llvm::Module &M,
-                llvm::ModuleAnalysisManager &MAM) -> luthier::EntryPoint {
+                llvm::ModuleAnalysisManager &AM) -> luthier::EntryPoint {
               llvm::LLVMContext &Ctx = M.getContext();
               const auto &MockLoader =
-                  MAM.getResult<luthier::MockAMDGPULoaderAnalysis>(M)
+                  AM.getResult<luthier::MockAMDGPULoaderAnalysis>(M)
                       .getLoader();
               uint64_t CodeObjectIdx = 0;
               /// Find the

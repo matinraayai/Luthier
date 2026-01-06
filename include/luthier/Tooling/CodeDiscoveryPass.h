@@ -38,11 +38,8 @@ struct CodeDiscoveryPassOptions {
 /// point
 class CodeDiscoveryPass : public llvm::PassInfoMixin<CodeDiscoveryPass> {
 
-  EntryPoint InitialEntryPoint;
-
 public:
-  explicit CodeDiscoveryPass(EntryPoint InitialEntryPoint)
-      : InitialEntryPoint(InitialEntryPoint) {};
+  CodeDiscoveryPass() = default;
 
   llvm::PreservedAnalyses run(llvm::Module &TargetModule,
                               llvm::ModuleAnalysisManager &TargetMAM);

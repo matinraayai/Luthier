@@ -3,9 +3,11 @@
 #include "LuthierRealToPseudoOpcodeMap.hpp"
 #include "LuthierRealToPseudoRegEnumMap.hpp"
 #include "luthier/Common/ErrorCheck.h"
+#include "luthier/Tooling/AnnotatedMachineInstr.h"
+#include "luthier/Tooling/EntryPoint.h"
+#include "luthier/Tooling/InitialEntryPointAnalysis.h"
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
 #include "luthier/Tooling/MachineFunctionEntryPoints.h"
-#include "luthier/Tooling/MachineToTraceInstrAnalysis.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
 #include <SIMachineFunctionInfo.h>
@@ -18,7 +20,6 @@
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/TargetRegistry.h>
-#include <luthier/Tooling/AnnotatedMachineInstr.h>
 #include <unordered_set>
 
 #undef DEBUG_TYPE
@@ -984,6 +985,10 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
                    .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
                        TargetModule)
                    .getManager();
+
+  EntryPoint InitialEntryPoint =
+      TargetMAM.getResult<InitialEntryPointAnalysis>(TargetModule)
+          .getInitialEntryPoint();
 
   llvm::SmallDenseSet<EntryPoint> UnvisitedPointsOfEntry{InitialEntryPoint};
 
