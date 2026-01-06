@@ -6,8 +6,8 @@ file(COPY ${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/ DESTINATION ${AMDGPU_I
 
 # Find the llvm-tblgen tool executable
 find_program(LLVM_TABLEGEN_EXE "llvm-tblgen" ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
-# Re-generates the required AMDGPU tablegen files and puts them under ${AMDGPU_INCLUDE_DIR}, which
-# is also accessible publicly to tool writers
+# Re-generates the required AMDGPU tablegen files in the current binary directory and make them accessible publicly to
+# tool writers
 set(LuthierAMDGPUTableGen_TABLEGEN_EXE ${LLVM_TABLEGEN_EXE})
 set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td")
 tablegen(LuthierAMDGPUTableGen AMDGPUGenInstrInfo.inc -gen-instr-info EXTRA_INCLUDES
@@ -20,8 +20,9 @@ tablegen(LuthierAMDGPUTableGen AMDGPUGenSearchableTables.inc -gen-searchable-tab
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 tablegen(LuthierAMDGPUTableGen AMDGPUGenSubtargetInfo.inc -gen-subtarget EXTRA_INCLUDES
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
-
+# Export a target for all the tablegen-ed files
 add_public_tablegen_target(LuthierAMDGPUTableGen)
+
 # Create a target for all the internal amdgpu headers
 add_library(LuthierAMDGPU INTERFACE)
 
@@ -33,6 +34,8 @@ target_sources(LuthierAMDGPU
         FILES ${TABLEGEN_OUTPUT}
 )
 
+# Make sure the LuthierAMDGPU target is built after LuthierAMDGPUTableGen so that the tablegen header files we added
+# to LuthierAMDGPU is available by the time other cmake targets want to use them
 add_dependencies(LuthierAMDGPU LuthierAMDGPUTableGen)
 
 target_include_directories(LuthierAMDGPU INTERFACE
