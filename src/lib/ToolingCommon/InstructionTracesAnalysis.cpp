@@ -140,9 +140,7 @@ InstructionTracesAnalysis::Result InstructionTracesAnalysis::run(
 
   uint64_t InitialEntryPointAddr = EP.getEntryPointAddress();
 
-  Result Out;
-
-  Out.EntryAddress = InitialEntryPointAddr;
+  Result Out{EntryPoint{InitialEntryPointAddr}};
 
   InstructionAddrSet UnvisitedTraceAddresses{InitialEntryPointAddr};
 
