@@ -1,4 +1,4 @@
-#include "luthier/tooling/MachineToTraceInstrAnalysis.h"
+#include "luthier/Tooling/MachineToTraceInstrAnalysis.h"
 
 namespace luthier {
 

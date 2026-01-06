@@ -16,10 +16,10 @@
 /// \file
 /// Implements the \c ImmutableMachineInstr class.
 //===----------------------------------------------------------------------===//
-#include "luthier/tooling/ImmutableMachineInstr.h"
+#include "luthier/Tooling/ImmutableMachineInstr.h"
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/IR/Function.h>
-#include <luthier/common/GenericLuthierError.h>
+#include <luthier/Common/GenericLuthierError.h>
 
 namespace luthier {
 
