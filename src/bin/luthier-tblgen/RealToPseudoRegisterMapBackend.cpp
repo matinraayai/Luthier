@@ -29,7 +29,7 @@ namespace luthier {
 unsigned RealToPseudoRegisterMapEmitter::emitTable(llvm::raw_ostream &OS) {
   auto &NumberedRegisters = Target.getRegBank().getRegisters();
   llvm::StringRef Namespace = Target.getRegNamespace();
-  OS << "static constexpr uint16_t RealToPseudoRegisterMapTable[] {\n0,\n";
+  OS << "static constexpr unsigned short RealToPseudoRegisterMapTable[] {\n0,\n";
   for (const auto &NumberedReg : NumberedRegisters) {
     const llvm::Record *SIReg = NumberedReg.TheDef;
     llvm::StringRef RegName = SIReg->getName();

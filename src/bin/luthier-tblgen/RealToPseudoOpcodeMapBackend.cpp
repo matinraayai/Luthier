@@ -34,7 +34,7 @@ unsigned RealToPseudoOpcodeMapEmitter::emitTable(llvm::raw_ostream &OS) {
       Target.getInstructions();
 
   llvm::StringRef Namespace = Target.getInstNamespace();
-  OS << "static constexpr uint16_t RealToPseudoOpcodeMapTable[] {\n";
+  OS << "static constexpr unsigned short RealToPseudoOpcodeMapTable[] {\n";
   for (const auto &NumberedInst : NumberedInstructions) {
     const llvm::Record *SIInst = NumberedInst->TheDef;
     llvm::StringRef PseudoInstName;
