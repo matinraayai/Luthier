@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_MACHINE_FUNCTION_ENTRY_POINTS_H
 #define LUTHIER_TOOLING_MACHINE_FUNCTION_ENTRY_POINTS_H
+#include "luthier/Tooling/EntryPoint.h"
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
