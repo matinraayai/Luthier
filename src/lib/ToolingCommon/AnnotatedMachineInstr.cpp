@@ -123,7 +123,6 @@ llvm::Error assignInstrID(llvm::MachineInstr &MI) {
     }
   }();
   LUTHIER_RETURN_ON_ERROR(NextInstrIDAsConstantValOrErr.takeError());
-  NextInstrIDAsConstantValOrErr
       /// Get the instruction ID of MI, and increment the next ID in the parent
       /// module
 
@@ -133,14 +132,12 @@ llvm::Error assignInstrID(llvm::MachineInstr &MI) {
 
   /// If we don't have a PCSection MD already, create one from scratch
 
-  if (!PCSections) {
-
-    MI.setPCSections(MDB.createPCSections({{LuthierInstrID, {}}}));
-    return llvm::Error::success();
-  }
-  return std::nullopt;
+      // if (!PCSections) {
+      //
+      //   MI.setPCSections(MDB.createPCSections({{LuthierInstrID, {}}}));
+      //   return llvm::Error::success();
+      // }
+      return llvm::Error::success();
 }
-
-void AnnotatedMachineInstr::setInstrID(uint64_t ID) {}
 
 } // namespace luthier
