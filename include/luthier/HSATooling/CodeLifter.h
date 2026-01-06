@@ -393,8 +393,11 @@ private:
   // Cached Lifted Representations
   //===--------------------------------------------------------------------===//
 
-  llvm::DenseMap<const llvm::amdhsa::kernel_descriptor_t *,
-                 std::unique_ptr<LiftedRepresentation>>
+  std::unordered_map<
+      std::unique_ptr<hsa::LoadedCodeObjectKernel>,
+      std::unique_ptr<LiftedRepresentation>,
+      hsa::LoadedCodeObjectSymbolHash<hsa::LoadedCodeObjectKernel>,
+      hsa::LoadedCodeObjectSymbolEqualTo<hsa::LoadedCodeObjectKernel>>
       LiftedKernelSymbols{};
 
   //===--------------------------------------------------------------------===//
@@ -427,10 +430,7 @@ public:
   /// process
   /// \sa LiftedRepresentation
   llvm::Expected<const LiftedRepresentation &>
-  lift(const llvm::amdhsa::kernel_descriptor_t &KernelDescriptor);
-
-  llvm::Expected<const LiftedRepresentation &>
-  lift(const uint64_t DeviceAddress);
+  lift(const hsa::LoadedCodeObjectKernel &KernelSymbol);
 
   llvm::Expected<std::unique_ptr<LiftedRepresentation>>
   cloneRepresentation(const LiftedRepresentation &SrcLR);

@@ -1,3 +1,16 @@
+# Add target to generate real to pseudo opcode and register map and functions to query them
+set(LuthierToolingCommon_TABLEGEN_EXE luthier-tblgen)
+set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td")
+tablegen(LuthierToolingCommon LuthierRealToPseudoOpcodeMap.hpp -gen-si-real-to-pseudo-opcode-map EXTRA_INCLUDES
+        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
+add_public_tablegen_target(LuthierRealToPseudoOpcodeMap)
+
+set(LuthierToolingCommon_TABLEGEN_EXE luthier-tblgen)
+set(LLVM_TARGET_DEFINITIONS "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/AMDGPU.td")
+tablegen(LuthierToolingCommon LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-pseudo-reg-map EXTRA_INCLUDES
+        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
+add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
+
 add_library(LuthierToolingCommon OBJECT
         AnnotatedMachineInstr.cpp
         CodeDiscoveryPass.cpp
@@ -36,6 +49,9 @@ add_library(LuthierToolingCommon OBJECT
         CodeObjectManagerAnalysis.cpp
         InitialEntryPointAnalysis.cpp
 )
+
+add_dependencies(LuthierToolingCommon LuthierRealToPseudoOpcodeMap)
+add_dependencies(LuthierToolingCommon LuthierRealToPseudoRegEnumMap)
 
 target_compile_definitions(LuthierToolingCommon PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 

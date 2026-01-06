@@ -18,8 +18,8 @@
 /// This file implements Luthier's Code Lifter.
 //===----------------------------------------------------------------------===//
 #include "luthier/HSATooling/CodeLifter.h"
-#include "LuthierRealToPseudoOpcodeMap.hpp"
-#include "LuthierRealToPseudoRegEnumMap.hpp"
+// #include "LuthierRealToPseudoOpcodeMap.hpp"
+// #include "LuthierRealToPseudoRegEnumMap.hpp"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/Executable.h"
 #include "luthier/HSA/ISA.h"
@@ -722,7 +722,7 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
                                "+++++++++++++++++++++++++\n";);
     const auto &Inst = TargetFunction[InstIdx];
     auto MCInst = Inst.getMCInst();
-    const unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
+    const unsigned Opcode = MCInst.getOpcode();
     const llvm::MCInstrDesc &MCID = MCInstInfo->get(Opcode);
     bool IsDirectBranch = MCID.isBranch() && !MCID.isIndirectBranch();
     bool IsDirectBranchTarget =
@@ -775,7 +775,7 @@ llvm::Error CodeLifter::liftFunction(const hsa::LoadedCodeObjectSymbol &Symbol,
       const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
       if (Op.isReg()) {
         LLVM_DEBUG(llvm::dbgs() << "Resolving reg operand.\n");
-        unsigned RegNum = RealToPseudoRegisterMapTable(Op.getReg());
+        unsigned RegNum = Op.getReg();
         const bool IsDef = OpIndex < MCID.getNumDefs();
         unsigned Flags = 0;
         const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
