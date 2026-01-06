@@ -130,7 +130,7 @@ private:
   // const InstrumentationTask &Task;
 
 public:
-  explicit IModuleIRGeneratorPass() : {};
+  IModuleIRGeneratorPass() = default;
 
   llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &);
 };

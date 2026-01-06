@@ -22,9 +22,11 @@
 #include "luthier/Common/LuthierError.h"
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSATooling/CodeLifter.h"
+#include "luthier/HSATooling/InstrumentationTask.h"
 #include "luthier/HSATooling/ToolExecutableLoader.h"
 #include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/InjectedPayloadPEIPass.h"
+#include "luthier/Tooling/InstrumentationPMDriver.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/PatchLiftedRepresentationPass.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
@@ -40,7 +42,6 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Support/TimeProfiler.h>
-#include <luthier/Tooling/InstrumentationPMDriver.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-code-generator"
@@ -111,8 +112,8 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // Lifted Representation's context
   std::unique_ptr<llvm::Module> IModule;
   // LUTHIER_RETURN_ON_ERROR(Task.getModule()
-  //                             .readBitcodeIntoContext(LR.getContext(), *Agent)
-  //                             .moveInto(IModule));
+  //                             .readBitcodeIntoContext(LR.getContext(),
+  //                             *Agent) .moveInto(IModule));
   llvm::PassInstrumentationCallbacks PIC;
   llvm::StandardInstrumentations SI(LR.getContext(), true);
 
