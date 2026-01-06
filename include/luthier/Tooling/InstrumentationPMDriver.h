@@ -90,6 +90,8 @@ public:
             return std::make_unique<llvm::Module>("Instrumentation Module",
                                                   Ctx);
           },
+      std::function<void(llvm::PassBuilder &)> PassBuilderAugmentationCallback =
+          [](llvm::PassBuilder &PB) {},
       std::function<void(llvm::ModulePassManager &)> PreIROptimizationCallback =
           [](llvm::ModulePassManager &) {},
       std::function<void(llvm::ModulePassManager &)>

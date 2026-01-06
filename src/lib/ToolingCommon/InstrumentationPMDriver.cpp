@@ -46,6 +46,7 @@ InstrumentationPMDriver::InstrumentationPMDriver(
     const InstrumentationPMDriverOptions &Options,
     llvm::ArrayRef<PassPlugin> PassPlugins,
     IModuleCreationFnType ModuleCreatorFn,
+    std::function<void(llvm::PassBuilder &)> PassBuilderAugmentationCallback,
     std::function<void(llvm::ModulePassManager &)> PreIROptimizationCallback,
     std::function<void(llvm::ModulePassManager &)>
         PreIRIntrinsicLoweringCallback,
@@ -56,6 +57,8 @@ InstrumentationPMDriver::InstrumentationPMDriver(
         AugmentTargetPassConfigCallback)
     : Options(Options), PassPlugins(PassPlugins),
       IModuleCreatorFn(std::move(ModuleCreatorFn)),
+      PassBuilderAugmentationCallback(
+          std::move(PassBuilderAugmentationCallback)),
       PreIROptimizationCallback(std::move(PreIROptimizationCallback)),
       PreIRIntrinsicLoweringCallback(std::move(PreIRIntrinsicLoweringCallback)),
       PostIRIntrinsicLoweringCallback(
