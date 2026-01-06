@@ -228,6 +228,8 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   // generate instrumented code
   auto *IMMIWP = new llvm::MachineModuleInfoWrapperPass(&TargetAppTM);
 
+  LegacyIPM->add(new IModuleMAMWrapperPass(&IMAM));
+
   LegacyIPM->add(new llvm::TargetLibraryInfoWrapperPass(TLII));
 
   auto *TPC = ITM->createPassConfig(*LegacyIPM);

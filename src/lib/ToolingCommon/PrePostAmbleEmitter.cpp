@@ -642,6 +642,10 @@ bool PrePostAmbleEmitter::runOnModule(llvm::Module &IModule) {
   }
   return true;
 }
+void PrePostAmbleEmitter::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
+  AU.addRequired<IModuleMAMWrapperPass>();
+  ModulePass::getAnalysisUsage(AU);
+}
 
 FunctionPreambleDescriptor::FunctionPreambleDescriptor(
     const llvm::MachineModuleInfo &TargetMMI,

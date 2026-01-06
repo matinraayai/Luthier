@@ -119,6 +119,8 @@ public:
   explicit PrePostAmbleEmitter() : llvm::ModulePass(ID) {};
 
   bool runOnModule(llvm::Module &IModule) override;
+
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 };
 
 } // namespace luthier
