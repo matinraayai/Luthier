@@ -621,7 +621,7 @@ static bool shouldReadExec(const llvm::MachineInstr &MI) {
   return true;
 }
 
-llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
+static llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
   auto &MI = *Builder.getInstr();
   if (shouldReadExec(MI) &&
       !MI.hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
