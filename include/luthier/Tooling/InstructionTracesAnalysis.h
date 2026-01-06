@@ -119,7 +119,20 @@ public:
 
     explicit Result(EntryPoint EP) : EP(EP) {};
 
+    Result(Result &&other) noexcept
+    : Traces(std::move(other.Traces)),
+      IndirectCallInstAddresses(std::move(other.IndirectCallInstAddresses)),
+      IndirectBranchAddresses(std::move(other.IndirectBranchAddresses)),
+      DirectBranchTargets(std::move(other.DirectBranchTargets)),
+      EP(std::move(other.EP)) {}
+
   public:
+    Result(const Result &other) = delete;
+
+    Result &operator=(const Result &other) = delete;
+
+    Result &operator=(Result &&other) = delete;
+
     using trace_group_iterator = TraceGroup::const_iterator;
     using trace_group_reverse_iterator = TraceGroup::const_reverse_iterator;
 
