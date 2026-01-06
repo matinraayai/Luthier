@@ -27,6 +27,8 @@ public:
 
   explicit EntryPoint(uint64_t DeviceAddress) : EP(DeviceAddress) {};
 
+  EntryPoint() : EP(0U) {}
+
   /// \returns \c true if the entry point is a kernel, \c false otherwise
   [[nodiscard]] bool isKernel() const {
     return std::holds_alternative<
