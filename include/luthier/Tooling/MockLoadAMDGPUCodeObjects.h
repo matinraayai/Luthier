@@ -13,10 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file
-/// Defines the \c MockLoadAMDGPUCodeObjects which reads code objects from
-/// specified files on the CLI and loads them into an instance of \c
-/// MockAMDGPULoader class.
+/// \file MockLoadAMDGPUCodeObjects.h
+/// Defines the \c MockLoadAMDGPUCodeObjects pass which reads code objects from
+/// specified files on the CLI and loads them into the instance of \c
+/// MockAMDGPULoader defined by the \c MockAMDGPULoaderAnalysis pass.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_MOCK_AMDGPU_LOADER_ANALYSIS_H
 #define LUTHIER_TOOLING_MOCK_AMDGPU_LOADER_ANALYSIS_H
@@ -41,13 +41,15 @@ struct MockAMDGPULoaderExternalVarParser
 
 struct MockAMDGPULoaderAnalysisOptions {
   llvm::cl::OptionCategory MockLoaderOptions{
-      "AMDGPU Mock Loader Options", "Options regarding how the AMDGPU mock "
-                                    "loader loads the given device code"};
+      "AMDGPU Mock Loader Options",
+      "Options regarding how the AMDGPU mock "
+      "loader loads the given device code objects"};
 
   llvm::cl::list<std::string> CodeObjectPathList{
       "code-object-paths",
       llvm::cl::desc("Path to the code objects to be loaded by the mock "
-                     "loader; Must have have an extension of ./s/.so/.hsaco")};
+                     "loader; Must have have an extension of ./s/.so/.hsaco"),
+      llvm::cl::cat(MockLoaderOptions)};
 
   llvm::cl::list<std::pair<std::string, uint64_t>, bool,
                  MockAMDGPULoaderExternalVarParser>

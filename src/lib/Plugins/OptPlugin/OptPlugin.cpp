@@ -38,6 +38,8 @@
 
 namespace luthier {
 
+static llvm::cl::OptionCategory OptPluginOptions{"Luthier Opt Plugin Options"};
+
 static std::unique_ptr<MockAMDGPULoader> Loader{nullptr};
 
 static InstrumentationPMDriverOptions InstrumentationPMOptions;
@@ -77,12 +79,13 @@ llvm::cl::opt<std::pair<uint64_t, std::variant<uint64_t, std::string>>, false,
               MockAMDGPULoaderInitialEntryPointParser>
     InitialEntryPoint{
         "initial-entrypoint",
-        llvm::cl::desc("The initial entry point of the lifting process. "
-                       "Formatted as <code-object-index>:<symbol-name> or "
-                       "<code-object-index>:<load-offset>. Code objects are "
-                       "zero indexed w.r.t the order they are specified to be "
-                       "loaded into the mock loader"),
-        llvm::cl::NotHidden};
+        llvm::cl::desc(
+            "The initial entry point of the lifting process. "
+            "Formatted as <code-object-index>:<mangled-symbol-name> or "
+            "<code-object-index>:<load-offset>. \n"
+            "Code objects are zero indexed w.r.t the order they are "
+            "specified to be loaded into the mock loader."),
+        llvm::cl::NotHidden, llvm::cl::cat(OptPluginOptions)};
 }; // namespace luthier
 
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
