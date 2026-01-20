@@ -33,11 +33,13 @@
 #include "luthier/Tooling/RunIRPassesOnIModulePass.h"
 #include "luthier/Tooling/RunMIRPassesOnIModulePass.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
+#include "luthier/Tooling/BranchRelaxationPass.h"
 #include <AMDGPUResourceUsageAnalysis.h>
 #include <AMDGPUTargetMachine.h>
 #include <amd_comgr/amd_comgr.h>
 #include <llvm/Analysis/CallGraphSCCPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Passes/StandardInstrumentations.h>
@@ -147,7 +149,9 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
       [&]() { return FunctionPreambleDescriptorAnalysis(); });
   // Add the instrumentation pass manager driver
   TargetMPM.addPass(InstrumentationPMDriver(InstrumentationPMOptions));
-
+	// Add the Branch relaxation pass, we use adaptors to make it a machine function pass
+	TargetMPM.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::createFunctionToMachineFunctionPassAdaptor(BranchRelaxationPass())));
+	
   TargetMPM.run(LR.getModule(), TargetMAM);
   return llvm::Error::success();
 }

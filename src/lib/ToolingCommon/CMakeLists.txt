@@ -42,6 +42,7 @@ add_library(LuthierToolingCommon OBJECT
         MockAMDGPULoader.cpp
         MetadataParserAnalysis.cpp
         #        ImmutableMachineInstr.cpp
+        BranchRelaxationPass.cpp
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
         InstrumentationPMDriver.cpp

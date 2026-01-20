@@ -51,7 +51,7 @@ MODULE_PASS("luthier-
   // Add the kernel pre-amble emission pass
   TargetMPM.addPass(PrePostAmbleEmitter());
   // Add the lifted representation patching pass
-  TargetMPM.addPass(PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI()));
+  TargetMPM.addPass(PatchLiftedRepresentationPass(*IModule, IMMIWP->getMMI())));
 MODULE_PASS("global-merge", GlobalMergePass(TM, GlobalMergeOptions()))
 MODULE_PASS("jmc-instrumenter", JMCInstrumenterPass())
 MODULE_PASS("lower-emutls", LowerEmuTLSPass())
