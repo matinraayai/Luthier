@@ -1,4 +1,3 @@
-
 #ifndef LUTHIER_TOOLING_BRANCH_RELAXATION_PASS_H
 #define LUTHIER_TOOLING_BRANCH_RELAXATION_PASS_H
 
@@ -12,7 +11,7 @@
 
 namespace luthier {
 
-class BranchRelaxationPass : public PassInfoMixin<BranchRelaxationPass> {
+class BranchRelaxationPass : public llvm::PassInfoMixin<BranchRelaxationPass> {
   /// BasicBlockInfo - Information about the offset and size of a single
   /// basic block.
   struct BasicBlockInfo {
@@ -33,7 +32,7 @@ class BranchRelaxationPass : public PassInfoMixin<BranchRelaxationPass> {
 
     /// Compute the offset immediately following this block. \p MBB is the next
     /// block.
-    unsigned postOffset(const MachineBasicBlock &MBB) const {
+    unsigned postOffset(const llvm::MachineBasicBlock &MBB) const {
       const unsigned PO = Offset + Size;
       const Align Alignment = MBB.getAlignment();
       const Align ParentAlign = MBB.getParent()->getAlignment();
@@ -46,22 +45,34 @@ class BranchRelaxationPass : public PassInfoMixin<BranchRelaxationPass> {
     }
   };
 
-  SmallVector<BasicBlockInfo, 16> BlockInfo;
+  llvm::SmallVector<BasicBlockInfo, 16> BlockInfo;
   // The basic block after which trampolines are inserted. This is the last
   // basic block that isn't in the cold section.
   llvm::MachineBasicBlock *TrampolineInsertionPoint = nullptr;
   llvm::SmallDenseSet<std::pair<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>> RelaxedUnconditionals;
-  std::unique_ptr<llvm::RegScavenger> RS(new llvm::RegScavenger());
+  std::unique_ptr<llvm::RegScavenger> RS;
   llvm::LivePhysRegs LiveRegs;
   llvm::MachineFunction *MF = nullptr;
   const llvm::TargetRegisterInfo *TRI = nullptr;
   const llvm::TargetInstrInfo *TII = nullptr;
   const llvm::TargetMachine *TM = nullptr;
   
-  bool BranchRelaxationPass::relaxBranchInstructions();
-  void scanFunction();
+  MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB);
+  MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB,
+                                         const llvm::BasicBlock *BB);
+
+  MachineBasicBlock *splitBlockBeforeInstr(llvm::MachineInstr &MI,
+                                           llvm::MachineBasicBlock *DestBB);
+  void adjustBlockOffsets(llvm::MachineBasicBlock &Start);
+  void adjustBlockOffsets(llvm::MachineBasicBlock &Start,
+                          llvm::MachineFunction::iterator End);
+  bool isBlockInRange(const llvm::MachineInstr &MI,
+                      const llvm::MachineBasicBlock &BB) const;
+
+  bool fixupConditionalBranch(llvm::MachineInstr &MI);
+  bool fixupUnconditionalBranch(llvm::MachineInstr &MI);
   uint64_t computeBlockSize(const llvm::MachineBasicBlock &MBB) const;
-  
+  unsigned getInstrOffset(const llvm::MachineInstr &MI) const;
 
 public:
   
