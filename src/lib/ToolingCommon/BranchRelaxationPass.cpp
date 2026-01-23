@@ -30,6 +30,9 @@
 #include <llvm/Target/TargetMachine.h>
 #include <luthier/Tooling/BranchRelaxationPass.h>
 #include <luthier/Tooling/ImmutableMachineInstr.h>
+#include <luthier/Tooling/WrapperAnalysisPasses.h>
+#include "luthier/Tooling/SVStorageAndLoadLocations.h"
+#include "luthier/Tooling/StateValueArraySpecs.h"
 #include <cassert>
 #include <cstdint>
 #include <iterator>
@@ -39,6 +42,12 @@
 #define DEBUG_TYPE "luthier-branch-relaxation"
 
 namespace luthier {
+
+char BranchRelaxationPass::ID = 0;
+
+LUTHIER_INITIALIZE_LEGACY_PASS_BODY(BranchRelaxationPass,
+                                    "branch-relaxation",
+                                    "Branch Relaxation Pass", true, false); // Is it CFG only?
 
 void BranchRelaxationPass::scanFunction() {
   BlockInfo.clear();
@@ -298,8 +307,8 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
       NewBB->addSuccessor(TBB);
 
       // Replace branch in the current (MBB) block.
-      llvm::removeBranch(MBB);
-      llvm::insertBranch(MBB, NewBB, FBB, Cond);
+      removeBranch(MBB);
+      insertBranch(MBB, NewBB, FBB, Cond);
 
       TrampolineInsertionPoint = NewBB;
       llvm::updateOffsetAndLiveness(NewBB);
@@ -617,16 +626,49 @@ bool BranchRelaxationPass::relaxBranchInstructions() {
   return Changed;
 }
 
-llvm::PreservedAnalyses
-BranchRelaxationPass::run(llvm::MachineFunction &TargetMF,
-                          llvm::MachineFunctionAnalysisManager &TargetMFAM) {
-  MF = &TargetMF;
-  auto *MDT = MFAM.getCachedResult<MachineDominatorTreeAnalysis>(MF);
-  auto *MPDT = MFAM.getCachedResult<MachinePostDominatorTreeAnalysis>(MF);
 
-  bool MadeChanges = false;
+
+bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
+  // auto *MDT = TargetMFAM.getCachedResult<llvm::MachineDominatorTreeAnalysis>(MF);
+  // auto *MPDT = TargetMFAM.getCachedResult<llvm::MachinePostDominatorTreeAnalysis>(MF);
+
+  bool MadeChanges{false};
   LLVM_DEBUG(llvm::dbgs() << "***** BranchRelaxation *****\n");
 
+  auto &IModule = const_cast<llvm::Module &>(
+      *getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI().getModule());
+
+  auto &IMAM = getAnalysis<IModuleMAMWrapperPass>().getMAM();
+
+  const auto &IPIP =
+      *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+
+  auto &TargetModule =
+      IMAM.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule)
+          ->getTargetAppModule();
+
+  auto &TargetMAM = IMAM.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule)
+                        ->getTargetAppMAM();
+
+  MF = &(IPIP.at(IMF.getFunction())->getMF());        
+  const auto &StateValueLocations =
+      *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
+          TargetModule);
+          
+  auto *SVALoadPlan =
+      StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
+          *IPIP.at(MF.getFunction()));
+  if (!SVALoadPlan) {
+    MF.getContext().reportError(
+        {},
+        llvm::formatv(
+            "Could not find the state value load plan for Machine Instr {0}.",
+            *IPIP.at(MF.getFunction())));
+    return false;
+  }
+
+  SVA = StateValueLoadPlan->StateValueArrayLoadVGPR;
+          
   const llvm::TargetSubtargetInfo &ST = TargetMF.getSubtarget();
   TII = ST.getInstrInfo();
 
@@ -643,13 +685,18 @@ BranchRelaxationPass::run(llvm::MachineFunction &TargetMF,
   RelaxedUnconditionals.clear();
 
   if (MadeChanges)
-    return llvm::getMachineFunctionPassPreservedAnalyses();
+    return true;
 
-  if (MDT)
-    MDT->updateBlockNumbers();
-  if (MPDT)
-    MPDT->updateBlockNumbers();
-  return llvm::PreservedAnalyses::all();
+  // if (MDT)
+  //   MDT->updateBlockNumbers();
+  // if (MPDT)
+  //   MPDT->updateBlockNumbers();
+  return false;
+}
+
+void BranchRelaxationPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const{
+  AU.addRequired<IModuleMAMWrapperPass>();
+  MachineFunctionPass::getAnalysisUsage(AU);
 }
 
 } // namespace luthier

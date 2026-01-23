@@ -1,17 +1,22 @@
 #ifndef LUTHIER_TOOLING_BRANCH_RELAXATION_PASS_H
 #define LUTHIER_TOOLING_BRANCH_RELAXATION_PASS_H
 
+#include "luthier/Tooling/LegacyPassSupport.h"
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/RegisterScavenging.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
-#include <llvm/IR/PassManager.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/ADT/DenseSet.h>
 
 namespace luthier {
+class BranchRelaxationPass;
 
-class BranchRelaxationPass : public llvm::PassInfoMixin<BranchRelaxationPass> {
+LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(BranchRelaxationPass);
+
+class BranchRelaxationPass : public llvm::MachineFunctionPass {
   /// BasicBlockInfo - Information about the offset and size of a single
   /// basic block.
   struct BasicBlockInfo {
@@ -53,6 +58,7 @@ class BranchRelaxationPass : public llvm::PassInfoMixin<BranchRelaxationPass> {
   std::unique_ptr<llvm::RegScavenger> RS;
   llvm::LivePhysRegs LiveRegs;
   llvm::MachineFunction *MF = nullptr;
+  llvm::MCRegister SVA{};
   const llvm::TargetRegisterInfo *TRI = nullptr;
   const llvm::TargetInstrInfo *TII = nullptr;
   const llvm::TargetMachine *TM = nullptr;
@@ -75,9 +81,10 @@ class BranchRelaxationPass : public llvm::PassInfoMixin<BranchRelaxationPass> {
   unsigned getInstrOffset(const llvm::MachineInstr &MI) const;
 
 public:
-  
-  llvm::PreservedAnalyses run(llvm::MachineFunction &TargetMF,
-                              llvm::MachineFunctionAnalysisManager &TargetMFAM);
+  static char ID;
+  BranchRelaxationPass : llvm::MachineFunctionPass(ID) {}
+  bool runOnMachineFunction(llvm::MachineFunction &TargetMF) override;
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 };
 } // namespace luthier
 

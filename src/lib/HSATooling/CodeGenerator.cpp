@@ -149,9 +149,7 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
       [&]() { return FunctionPreambleDescriptorAnalysis(); });
   // Add the instrumentation pass manager driver
   TargetMPM.addPass(InstrumentationPMDriver(InstrumentationPMOptions));
-	// Add the Branch relaxation pass, we use adaptors to make it a machine function pass
-	TargetMPM.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::createFunctionToMachineFunctionPassAdaptor(BranchRelaxationPass())));
-	
+
   TargetMPM.run(LR.getModule(), TargetMAM);
   return llvm::Error::success();
 }
