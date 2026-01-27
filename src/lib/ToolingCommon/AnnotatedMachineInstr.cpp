@@ -128,7 +128,7 @@ llvm::Error assignInstrID(llvm::MachineInstr &MI) {
 
       /// Now that we have the ID of the instruction
 
-      const llvm::MDNode *createPCSections = MI.getPCSections();
+      const llvm::MDNode *PCSections = MI.getPCSections();
 
   /// If we don't have a PCSection MD already, create one from scratch
 

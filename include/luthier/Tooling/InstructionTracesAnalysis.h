@@ -13,11 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file
-/// Describes the \c InstructionTracesAnalysis class which provides access to
-/// the list of trace instructions discovered for an entry point (i.e, a
-/// machine function in the target module), as well as the address for
-/// direct/indirect branches, call instructions, and the direct branch targets.
+/// \file InstructionTracesAnalysis.h
+/// Describes the \c InstructionTracesAnalysis class, a machine function
+/// analysis pass on target modules that provides the list of instructions
+/// traces discovered for a lifted machine function's entry point, as well as
+/// the address for direct/indirect branches, call instructions, and the direct
+/// branch targets.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_INSTRUCTION_TRACES_ANALYSIS_H
 #define LUTHIER_TOOLING_INSTRUCTION_TRACES_ANALYSIS_H
@@ -28,20 +29,24 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCInst.h>
-#include <llvm/Support/AMDHSAKernelDescriptor.h>
-#include <llvm/Target/TargetMachine.h>
-#include <luthier/Common/GenericLuthierError.h>
 #include <map>
+
+namespace llvm {
+
+class MCDisassembler;
+
+}
 
 namespace luthier {
 
-/// \brief A class containing information regarding instructions in a trace
-/// obtained during the lifting process
+class MemoryAllocationAccessor;
+
+/// \brief Contains information regarding disassembled instructions in a trace
 class TraceInstr {
 private:
   /// The MC representation of the instruction
   const llvm::MCInst Inst;
-  /// The address on the GPU Agent this instruction is loaded at
+  /// The address on the device this instruction is loaded at
   const uint64_t LoadedDeviceAddress;
   /// Size of the instruction
   const size_t Size;
@@ -66,21 +71,15 @@ public:
   [[nodiscard]] size_t getSize() const { return Size; }
 };
 
-/// \brief A \c llvm::MachineFunction analysis that provides the
-/// instruction traces discovered from the entry point corresponding to a lifted
-/// machine function in the target module
-class InstructionTracesAnalysis
-    : public llvm::AnalysisInfoMixin<InstructionTracesAnalysis> {
-  friend AnalysisInfoMixin;
-
-  static llvm::AnalysisKey Key;
-
+/// \brief The group of traces discovered after inspecting and discovering
+/// instructions starting from an \c EntryPoint
+class InstructionTraces {
 public:
   /// Represents a contiguous list of disassembled trace instructions
   /// We use a small map vector to make sure:
   /// - We map each trace instruction to its device address
   /// - Instructions are inserted in the same order they are disassembled in
-  /// the underlying map to provide fast iteration
+  /// the underlying map to provide fast iteration and lookup
   using Trace = llvm::SmallMapVector<uint64_t, TraceInstr, 64>;
 
   /// Holds on to a group of traces discovered for the entry point of the
@@ -94,150 +93,163 @@ public:
   /// Holds a set of addresses
   using InstructionAddrSet = llvm::SmallDenseSet<uint64_t, 16>;
 
+private:
+  /// Group of traces discovered from the entry point of the machine function
+  TraceGroup Traces{};
+
+  /// The address of all indirect call instructions discovered in the traces
+  InstructionAddrSet IndirectCallInstAddresses{};
+
+  /// The address of all indirect branch instructions discovered in the trace
+  InstructionAddrSet IndirectBranchAddresses{};
+
+  /// The address of all direct branch target instructions discovered in the
+  /// trace
+  InstructionAddrSet DirectBranchTargets{};
+
+  /// The initial entry point of the trace
+  EntryPoint EP;
+
+  explicit InstructionTraces(EntryPoint EP) : EP(EP) {};
+
+public:
+  static llvm::Expected<std::unique_ptr<InstructionTraces>>
+  discoverTraces(EntryPoint EP, const MemoryAllocationAccessor &MemAccessor,
+                 const llvm::TargetMachine &TM, llvm::MCContext &MCCtx);
+
+  InstructionTraces(const InstructionTraces &Other) = delete;
+
+  InstructionTraces &operator=(const InstructionTraces &Other) = delete;
+
+  InstructionTraces &operator=(InstructionTraces &&Other) = delete;
+
+  using trace_group_iterator = TraceGroup::const_iterator;
+  using trace_group_reverse_iterator = TraceGroup::const_reverse_iterator;
+
+  [[nodiscard]] trace_group_iterator traces_begin() const {
+    return Traces.begin();
+  }
+
+  [[nodiscard]] trace_group_iterator traces_end() const { return Traces.end(); }
+
+  [[nodiscard]] trace_group_reverse_iterator traces_rbegin() const {
+    return Traces.rbegin();
+  }
+
+  [[nodiscard]] trace_group_reverse_iterator traces_rend() const {
+    return Traces.rend();
+  }
+
+  [[nodiscard]] size_t traces_size() const { return Traces.size(); }
+
+  [[nodiscard]] llvm::iterator_range<trace_group_iterator> traces() const {
+    return llvm::make_range(traces_begin(), traces_end());
+  }
+
+  [[nodiscard]] llvm::iterator_range<trace_group_reverse_iterator>
+  traces_reversed() const {
+    return llvm::make_range(traces_rbegin(), traces_rend());
+  }
+
+  [[nodiscard]] trace_group_iterator findTrace(uint64_t StartAddress,
+                                               uint64_t EndAddress) const {
+    return Traces.find(std::make_pair(StartAddress, EndAddress));
+  }
+
+  using indirect_call_addr_iterator = InstructionAddrSet::const_iterator;
+
+  [[nodiscard]] indirect_call_addr_iterator indirect_call_addr_begin() const {
+    return IndirectCallInstAddresses.begin();
+  }
+
+  [[nodiscard]] indirect_call_addr_iterator indirect_call_addr_end() const {
+    return IndirectCallInstAddresses.end();
+  }
+
+  [[nodiscard]] llvm::iterator_range<indirect_call_addr_iterator>
+  indirect_call_addrs() const {
+    return llvm::make_range(indirect_call_addr_begin(),
+                            indirect_call_addr_end());
+  }
+
+  [[nodiscard]] bool isAddressIndirectCall(uint64_t DevAddr) const {
+    return IndirectCallInstAddresses.contains(DevAddr);
+  }
+
+  using indirect_branch_addr_iterator = InstructionAddrSet::const_iterator;
+
+  [[nodiscard]] indirect_branch_addr_iterator
+  indirect_branch_addr_begin() const {
+    return IndirectBranchAddresses.begin();
+  }
+
+  [[nodiscard]] indirect_branch_addr_iterator indirect_branch_addr_end() const {
+    return IndirectBranchAddresses.end();
+  }
+
+  [[nodiscard]] llvm::iterator_range<indirect_branch_addr_iterator>
+  indirect_branch_addrs() const {
+    return llvm::make_range(indirect_branch_addr_begin(),
+                            indirect_branch_addr_end());
+  }
+
+  [[nodiscard]] bool isAddressIndirectBranch(uint64_t DevAddr) const {
+    return IndirectBranchAddresses.contains(DevAddr);
+  }
+
+  using direct_branch_target_addr_iterator = InstructionAddrSet::const_iterator;
+
+  [[nodiscard]] direct_branch_target_addr_iterator
+  direct_branch_target_addr_begin() const {
+    return DirectBranchTargets.begin();
+  }
+
+  [[nodiscard]] direct_branch_target_addr_iterator
+  direct_branch_target_addr_end() const {
+    return DirectBranchTargets.end();
+  }
+
+  [[nodiscard]] llvm::iterator_range<direct_branch_target_addr_iterator>
+  direct_branch_target_addrs() const {
+    return llvm::make_range(direct_branch_target_addr_begin(),
+                            direct_branch_target_addr_end());
+  }
+
+  [[nodiscard]] bool isAddressDirectBranchTarget(uint64_t DevAddr) const {
+    return DirectBranchTargets.contains(DevAddr);
+  }
+
+  [[nodiscard]] EntryPoint getInitialEntryPoint() const { return EP; }
+};
+
+/// \brief A \c llvm::MachineFunction analysis that provides the
+/// instruction traces discovered from the entry point corresponding to a lifted
+/// machine function in the target module
+class InstructionTracesAnalysis
+    : public llvm::AnalysisInfoMixin<InstructionTracesAnalysis> {
+  friend AnalysisInfoMixin;
+
+  static llvm::AnalysisKey Key;
+
+public:
   class Result {
     friend InstructionTracesAnalysis;
 
-    /// Group of traces discovered from the entry point of the machine function
-    std::unique_ptr<TraceGroup> Traces = std::make_unique<TraceGroup>();
+    std::unique_ptr<InstructionTraces> Traces;
 
-    /// The address of all indirect call instructions discovered in the traces
-    std::unique_ptr<InstructionAddrSet> IndirectCallInstAddresses =
-        std::make_unique<InstructionAddrSet>();
-
-    /// The address of all indirect branch instructions discovered in the trace
-    std::unique_ptr<InstructionAddrSet> IndirectBranchAddresses =
-        std::make_unique<InstructionAddrSet>();
-
-    /// The address of all direct branch target instructions discovered in the
-    /// trace
-    std::unique_ptr<InstructionAddrSet> DirectBranchTargets =
-        std::make_unique<InstructionAddrSet>();
-
-    /// The initial entry point of the trace
-    EntryPoint EP;
-
-    explicit Result(EntryPoint EP) : EP(EP) {};
+    explicit Result(std::unique_ptr<InstructionTraces> Traces)
+        : Traces{std::move(Traces)} {}
 
   public:
-    Result(Result &&Other) noexcept
-        : Traces(std::move(Other.Traces)),
-          IndirectCallInstAddresses(std::move(Other.IndirectCallInstAddresses)),
-          IndirectBranchAddresses(std::move(Other.IndirectBranchAddresses)),
-          DirectBranchTargets(std::move(Other.DirectBranchTargets)),
-          EP(Other.EP) {}
-
-    Result(const Result &Other) = delete;
-
-    Result &operator=(const Result &Other) = delete;
-
-    Result &operator=(Result &&Other) = delete;
-
-    using trace_group_iterator = TraceGroup::const_iterator;
-    using trace_group_reverse_iterator = TraceGroup::const_reverse_iterator;
-
-    [[nodiscard]] trace_group_iterator traces_begin() const {
-      return Traces->begin();
-    }
-
-    [[nodiscard]] trace_group_iterator traces_end() const {
-      return Traces->end();
-    }
-
-    [[nodiscard]] trace_group_reverse_iterator traces_rbegin() const {
-      return Traces->rbegin();
-    }
-
-    [[nodiscard]] trace_group_reverse_iterator traces_rend() const {
-      return Traces->rend();
-    }
-
-    [[nodiscard]] size_t traces_size() const { return Traces->size(); }
-
-    [[nodiscard]] llvm::iterator_range<trace_group_iterator> traces() const {
-      return llvm::make_range(traces_begin(), traces_end());
-    }
-
-    [[nodiscard]] llvm::iterator_range<trace_group_reverse_iterator>
-    traces_reversed() const {
-      return llvm::make_range(traces_rbegin(), traces_rend());
-    }
-
-    [[nodiscard]] trace_group_iterator findTrace(uint64_t StartAddress,
-                                                 uint64_t EndAddress) const {
-      return Traces->find(std::make_pair(StartAddress, EndAddress));
-    }
-
-    using indirect_call_addr_iterator = InstructionAddrSet::const_iterator;
-
-    [[nodiscard]] indirect_call_addr_iterator indirect_call_addr_begin() const {
-      return IndirectCallInstAddresses->begin();
-    }
-
-    [[nodiscard]] indirect_call_addr_iterator indirect_call_addr_end() const {
-      return IndirectCallInstAddresses->end();
-    }
-
-    [[nodiscard]] llvm::iterator_range<indirect_call_addr_iterator>
-    indirect_call_addrs() const {
-      return llvm::make_range(indirect_call_addr_begin(),
-                              indirect_call_addr_end());
-    }
-
-    [[nodiscard]] bool isAddressIndirectCall(uint64_t DevAddr) const {
-      return IndirectCallInstAddresses->contains(DevAddr);
-    }
-
-    using indirect_branch_addr_iterator = InstructionAddrSet::const_iterator;
-
-    [[nodiscard]] indirect_branch_addr_iterator
-    indirect_branch_addr_begin() const {
-      return IndirectBranchAddresses->begin();
-    }
-
-    [[nodiscard]] indirect_branch_addr_iterator
-    indirect_branch_addr_end() const {
-      return IndirectBranchAddresses->end();
-    }
-
-    [[nodiscard]] llvm::iterator_range<indirect_branch_addr_iterator>
-    indirect_branch_addrs() const {
-      return llvm::make_range(indirect_branch_addr_begin(),
-                              indirect_branch_addr_end());
-    }
-
-    [[nodiscard]] bool isAddressIndirectBranch(uint64_t DevAddr) const {
-      return IndirectBranchAddresses->contains(DevAddr);
-    }
-
-    using direct_branch_target_addr_iterator =
-        InstructionAddrSet::const_iterator;
-
-    [[nodiscard]] direct_branch_target_addr_iterator
-    direct_branch_target_addr_begin() const {
-      return DirectBranchTargets->begin();
-    }
-
-    [[nodiscard]] direct_branch_target_addr_iterator
-    direct_branch_target_addr_end() const {
-      return DirectBranchTargets->end();
-    }
-
-    [[nodiscard]] llvm::iterator_range<direct_branch_target_addr_iterator>
-    direct_branch_target_addrs() const {
-      return llvm::make_range(direct_branch_target_addr_begin(),
-                              direct_branch_target_addr_end());
-    }
-
-    [[nodiscard]] bool isAddressDirectBranchTarget(uint64_t DevAddr) const {
-      return DirectBranchTargets->contains(DevAddr);
-    }
-
-    [[nodiscard]] EntryPoint getInitialEntryPoint() const { return EP; }
-
+    /// \c InstructionTracesAnalysis::Result never gets invalidated as the
+    /// inspected memory contents for the traces does not change during
+    /// the code generation process
     bool invalidate(llvm::MachineFunction &, const llvm::PreservedAnalyses &,
                     llvm::MachineFunctionAnalysisManager::Invalidator &) {
       return false;
     }
+
+    [[nodiscard]] const InstructionTraces &getTraces() const { return *Traces; }
   };
 
   InstructionTracesAnalysis() = default;

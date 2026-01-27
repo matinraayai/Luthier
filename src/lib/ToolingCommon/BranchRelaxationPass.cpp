@@ -5,6 +5,11 @@
 /// instrumenting
 //===----------------------------------------------------------------------===//
 
+#include "luthier/Tooling/SVStorageAndLoadLocations.h"
+#include "luthier/Tooling/StateValueArraySpecs.h"
+#include <cassert>
+#include <cstdint>
+#include <iterator>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/Statistic.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -31,11 +36,6 @@
 #include <luthier/Tooling/BranchRelaxationPass.h>
 #include <luthier/Tooling/ImmutableMachineInstr.h>
 #include <luthier/Tooling/WrapperAnalysisPasses.h>
-#include "luthier/Tooling/SVStorageAndLoadLocations.h"
-#include "luthier/Tooling/StateValueArraySpecs.h"
-#include <cassert>
-#include <cstdint>
-#include <iterator>
 #include <memory>
 #undef DEBUG_TYPE
 
@@ -45,9 +45,152 @@ namespace luthier {
 
 char BranchRelaxationPass::ID = 0;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(BranchRelaxationPass,
-                                    "branch-relaxation",
-                                    "Branch Relaxation Pass", true, false); // Is it CFG only?
+LUTHIER_INITIALIZE_LEGACY_PASS_BODY(BranchRelaxationPass, "branch-relaxation",
+                                    "Branch Relaxation Pass", true,
+                                    false); // Is it CFG only?
+
+void BranchRelaxationPass::insertIndirectBranch(llvm::MachineBasicBlock &MBB,
+                                       llvm::MachineBasicBlock &DestBB,
+                                       llvm::MachineBasicBlock &RestoreBB,
+                                       const llvm::DebugLoc &DL, int64_t BrOffset
+                                       /*RegScavenger *RS*/) const { // Change to custom Register Scavenger
+  assert(MBB.empty() &&
+         "new block should be inserted for expanding unconditional branch");
+  assert(MBB.pred_size() == 1);
+  assert(RestoreBB.empty() &&
+         "restore block should be inserted for restoring clobbered registers");
+
+  llvm::MachineFunction *MF = MBB.getParent();
+  llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
+  const llvm::SIMachineFunctionInfo *MFI = MF->getInfo<llvm::SIMachineFunctionInfo>();
+  auto I = MBB.end();
+  auto &MCCtx = MF->getContext();
+
+  if (ST.hasAddPC64Inst()) {
+    llvm::MCSymbol *Offset =
+        MCCtx.createTempSymbol("offset", /*AlwaysAddSuffix=*/true);
+    auto AddPC = llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADD_PC_I64))
+                     .addSym(Offset, llvm::MO_FAR_BRANCH_OFFSET);
+    llvm::MCSymbol *PostAddPCLabel =
+        MCCtx.createTempSymbol("post_addpc", /*AlwaysAddSuffix=*/true);
+    AddPC->setPostInstrSymbol(*MF, PostAddPCLabel);
+    auto *OffsetExpr = llvm::MCBinaryExpr::createSub(
+        LLVM::MCSymbolRefExpr::create(DestBB.getSymbol(), MCCtx),
+        LLVM::MCSymbolRefExpr::create(PostAddPCLabel, MCCtx), MCCtx);
+    Offset->setVariableValue(OffsetExpr);
+    return;
+  }
+
+  assert(RS && "RegScavenger required for long branching");
+
+  // FIXME: Virtual register workaround for RegScavenger not working with empty
+  // blocks.
+  llvm::Register PCReg = MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
+
+  // Note: as this is used after hazard recognizer we need to apply some hazard
+  // workarounds directly.
+  const bool FlushSGPRWrites = (ST.isWave64() && ST.hasVALUMaskWriteHazard()) ||
+                               ST.hasVALUReadSGPRHazard();
+  auto ApplyHazardWorkarounds = [this, &MBB, &I, &DL, FlushSGPRWrites]() {
+    if (FlushSGPRWrites)
+      BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_WAITCNT_DEPCTR))
+          .addImm(llvm::AMDGPU::DepCtr::encodeFieldSaSdst(0, ST));
+  };
+
+  // We need to compute the offset relative to the instruction immediately after
+  // s_getpc_b64. Insert pc arithmetic code before last terminator.
+  llvm::MachineInstr *GetPC = BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_GETPC_B64), PCReg);
+  ApplyHazardWorkarounds();
+
+  llvm::MCSymbol *PostGetPCLabel =
+      MCCtx.createTempSymbol("post_getpc", /*AlwaysAddSuffix=*/true);
+  GetPC->setPostInstrSymbol(*MF, PostGetPCLabel);
+
+  llvm::MCSymbol *OffsetLo =
+      MCCtx.createTempSymbol("offset_lo", /*AlwaysAddSuffix=*/true);
+  llvm::MCSymbol *OffsetHi =
+      MCCtx.createTempSymbol("offset_hi", /*AlwaysAddSuffix=*/true);
+  llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADD_U32))
+      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub0)
+      .addReg(PCReg, 0, llvm::AMDGPU::sub0)
+      .addSym(OffsetLo, llvm::MO_FAR_BRANCH_OFFSET);
+  llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADDC_U32))
+      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub1)
+      .addReg(PCReg, 0, llvm::AMDGPU::sub1)
+      .addSym(OffsetHi, llvm::MO_FAR_BRANCH_OFFSET);
+  ApplyHazardWorkarounds();
+
+  // Insert the indirect branch after the other terminator.
+  llvm::BuildMI(&MBB, DL, get(llvm::AMDGPU::S_SETPC_B64)).addReg(PCReg);
+
+  // If a spill is needed for the pc register pair, we need to insert a spill
+  // restore block right before the destination block, and insert a short branch
+  // into the old destination block's fallthrough predecessor.
+  // e.g.:
+  //
+  // s_cbranch_scc0 skip_long_branch:
+  //
+  // long_branch_bb:
+  //   spill s[8:9]
+  //   s_getpc_b64 s[8:9]
+  //   s_add_u32 s8, s8, restore_bb
+  //   s_addc_u32 s9, s9, 0
+  //   s_setpc_b64 s[8:9]
+  //
+  // skip_long_branch:
+  //   foo;
+  //
+  // .....
+  //
+  // dest_bb_fallthrough_predecessor:
+  // bar;
+  // s_branch dest_bb
+  //
+  // restore_bb:
+  //  restore s[8:9]
+  //  fallthrough dest_bb
+  ///
+  // dest_bb:
+  //   buzz;
+
+  llvm::Register LongBranchReservedReg = MFI->getLongBranchReservedReg();
+  llvm::Register Scav;
+
+  // If we've previously reserved a register for long branches
+  // avoid running the scavenger and just use those registers
+  if (LongBranchReservedReg) {
+    RS->enterBasicBlock(MBB);
+    Scav = LongBranchReservedReg;
+  } else {
+    RS->enterBasicBlockEnd(MBB);
+    Scav = RS->scavengeRegisterBackwards(
+        llvm::AMDGPU::SReg_64RegClass, llvm::MachineBasicBlock::iterator(GetPC),
+        /* RestoreAfter */ false, 0, /* AllowSpill */ false);
+  }
+  if (Scav) {
+    RS->setRegUsed(Scav);
+    MRI.replaceRegWith(PCReg, Scav);
+    MRI.clearVirtRegs();
+  } else {
+    // As SGPR needs VGPR to be spilled, we reuse the slot of temporary VGPR for
+    // SGPR spill.
+    const llvm::GCNSubtarget &ST = MF->getSubtarget<llvm::GCNSubtarget>();
+    TRI->spillEmergencySGPR(GetPC, RestoreBB, llvm::AMDGPU::SGPR0_SGPR1, RS);
+    MRI.replaceRegWith(PCReg, llvm::AMDGPU::SGPR0_SGPR1);
+    MRI.clearVirtRegs();
+  }
+
+  llvm::MCSymbol *DestLabel = Scav ? DestBB.getSymbol() : RestoreBB.getSymbol();
+  // Now, the distance could be defined.
+  auto *Offset = llvm::MCBinaryExpr::createSub(
+      llvm::MCSymbolRefExpr::create(DestLabel, MCCtx),
+      llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
+  // Add offset assignments.
+  auto *Mask = llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
+  OffsetLo->setVariableValue(llvm::MCBinaryExpr::createAnd(Offset, Mask, MCCtx));
+  auto *ShAmt = llvm::MCConstantExpr::create(32, MCCtx);
+  OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(Offset, ShAmt, MCCtx));
+}
 
 void BranchRelaxationPass::scanFunction() {
   BlockInfo.clear();
@@ -69,8 +212,9 @@ void BranchRelaxationPass::scanFunction() {
   adjustBlockOffsets(*MF->begin());
 
   if (TrampolineInsertionPoint == nullptr) {
-    LLVM_DEBUG(llvm::dbgs() << "  No suitable trampoline insertion point found in "
-                      << MF->getName() << ".\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "  No suitable trampoline insertion point found in "
+               << MF->getName() << ".\n");
   }
 }
 /// Compute the size of the basic block in bytes
@@ -85,7 +229,8 @@ uint64_t BranchRelaxationPass::computeBlockSize(
 /// getInstrOffset - Return the current offset of the specified machine
 /// instruction from the start of the function.  This offset changes as stuff is
 /// moved around inside the function.
-unsigned BranchRelaxationPass::getInstrOffset(const llvm::MachineInstr &MI) const {
+unsigned
+BranchRelaxationPass::getInstrOffset(const llvm::MachineInstr &MI) const {
   const llvm::MachineBasicBlock *MBB = MI.getParent();
 
   // The offset is composed of two things: the sum of the sizes of all MBB's
@@ -94,7 +239,8 @@ unsigned BranchRelaxationPass::getInstrOffset(const llvm::MachineInstr &MI) cons
   unsigned Offset = BlockInfo[MBB->getNumber()].Offset;
 
   // Sum instructions before MI in MBB.
-  for (llvm::MachineBasicBlock::const_iterator I = MBB->begin(); &*I != &MI; ++I) {
+  for (llvm::MachineBasicBlock::const_iterator I = MBB->begin(); &*I != &MI;
+       ++I) {
     assert(I != MBB->end() && "Didn't find MI in its own basic block?");
     Offset += TII->getInstSizeInBytes(*I);
   }
@@ -105,11 +251,11 @@ void BranchRelaxationPass::adjustBlockOffsets(llvm::MachineBasicBlock &Start) {
   adjustBlockOffsets(Start, MF->end());
 }
 
-void BranchRelaxationPass::adjustBlockOffsets(llvm::MachineBasicBlock &Start,
-                                              llvm::MachineFunction::iterator End) {
+void BranchRelaxationPass::adjustBlockOffsets(
+    llvm::MachineBasicBlock &Start, llvm::MachineFunction::iterator End) {
   unsigned PrevNum = Start.getNumber();
-  for (auto &MBB :
-       llvm::make_range(std::next(llvm::MachineFunction::iterator(Start)), End)) {
+  for (auto &MBB : llvm::make_range(
+           std::next(llvm::MachineFunction::iterator(Start)), End)) {
     unsigned Num = MBB.getNumber();
     // Get the offset and known bits at the end of the layout predecessor.
     // Include the alignment of the current block.
@@ -128,7 +274,7 @@ BranchRelaxationPass::createNewBlockAfter(llvm::MachineBasicBlock &OrigBB) {
 /// and insert it after \p OrigMBB
 MachineBasicBlock *
 BranchRelaxationPass::createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB,
-                                      const llvm::BasicBlock *BB) {
+                                          const llvm::BasicBlock *BB) {
   // Create a new MBB for the code after the OrigBB.
   llvm::MachineBasicBlock *NewBB = MF->CreateMachineBasicBlock(BB);
   MF->insert(++OrigMBB.getIterator(), NewBB);
@@ -206,8 +352,8 @@ BranchRelaxationPass::splitBlockBeforeInstr(llvm::MachineInstr &MI,
 
 /// isBlockInRange - Returns true if the distance between specific MI and
 /// specific BB can fit in MI's displacement field.
-bool BranchRelaxationPass::isBlockInRange(const llvm::MachineInstr &MI,
-                                          const llvm::MachineBasicBlock &DestBB) const {
+bool BranchRelaxationPass::isBlockInRange(
+    const llvm::MachineInstr &MI, const llvm::MachineBasicBlock &DestBB) const {
   int64_t BrOffset = getInstrOffset(MI);
   int64_t DestOffset = BlockInfo[DestBB.getNumber()].Offset;
 
@@ -220,10 +366,10 @@ bool BranchRelaxationPass::isBlockInRange(const llvm::MachineInstr &MI,
     return true;
 
   LLVM_DEBUG(llvm::dbgs() << "Out of range branch to destination "
-                    << llvm::printMBBReference(DestBB) << " from "
-                    << llvm::printMBBReference(*MI.getParent()) << " to "
-                    << DestOffset << " offset " << DestOffset - BrOffset << '\t'
-                    << MI);
+                          << llvm::printMBBReference(DestBB) << " from "
+                          << llvm::printMBBReference(*MI.getParent()) << " to "
+                          << DestOffset << " offset " << DestOffset - BrOffset
+                          << '\t' << MI);
 
   return false;
 }
@@ -245,7 +391,8 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
     TII->insertUnconditionalBranch(*MBB, DestBB, DL, &NewBrSize);
     BBSize += NewBrSize;
   };
-  auto insertBranch = [&](llvm::MachineBasicBlock *MBB, llvm::MachineBasicBlock *TBB,
+  auto insertBranch = [&](llvm::MachineBasicBlock *MBB,
+                          llvm::MachineBasicBlock *TBB,
                           llvm::MachineBasicBlock *FBB,
                           llvm::SmallVectorImpl<MachineOperand> &Cond) {
     unsigned &BBSize = BlockInfo[MBB->getNumber()].Size;
@@ -298,7 +445,7 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
 
     if (isBlockInRange(MI, *NewBB)) {
       LLVM_DEBUG(llvm::dbgs() << "  Retarget destination to trampoline at "
-                        << NewBB->back());
+                              << NewBB->back());
 
       insertUncondBranch(NewBB, TBB);
 
@@ -315,10 +462,10 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
       return true;
     }
 
-    LLVM_DEBUG(
-        llvm::dbgs() << "  Trampoline insertion point out of range for Bcc from "
-               << llvm::printMBBReference(*MBB) << " to " << llvm::printMBBReference(*TBB)
-               << ".\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "  Trampoline insertion point out of range for Bcc from "
+               << llvm::printMBBReference(*MBB) << " to "
+               << llvm::printMBBReference(*TBB) << ".\n");
     TrampolineInsertionPoint->setIsEndSection(NewBB->isEndSection());
     MF->erase(NewBB);
     NewBB = nullptr;
@@ -343,8 +490,8 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
       // bne L2
       // b   L1
       LLVM_DEBUG(llvm::dbgs() << "  Invert condition and swap "
-                           "its destination with "
-                        << MBB->back());
+                                 "its destination with "
+                              << MBB->back());
 
       removeBranch(MBB);
       insertBranch(MBB, FBB, TBB, Cond);
@@ -379,11 +526,12 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
 
     // We now have an appropriate fall-through block in place (either naturally
     // or just created), so we can use the inverted the condition.
-    llvm::MachineBasicBlock &NextBB = *std::next(llvm::MachineFunction::iterator(MBB));
+    llvm::MachineBasicBlock &NextBB =
+        *std::next(llvm::MachineFunction::iterator(MBB));
 
     LLVM_DEBUG(llvm::dbgs() << "  Insert B to " << llvm::printMBBReference(*TBB)
-                      << ", invert condition and change dest. to "
-                      << llvm::printMBBReference(NextBB) << '\n');
+                            << ", invert condition and change dest. to "
+                            << llvm::printMBBReference(NextBB) << '\n');
 
     removeBranch(MBB);
     // Insert a new conditional branch and a new unconditional branch.
@@ -393,7 +541,7 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
   // Branch cond can't be inverted.
   // In this case we always add a block after the MBB.
   LLVM_DEBUG(llvm::dbgs() << "  The branch condition can't be inverted. "
-                    << "  Insert a new BB after " << MBB->back());
+                          << "  Insert a new BB after " << MBB->back());
 
   if (!FBB)
     FBB = &(*std::next(llvm::MachineFunction::iterator(MBB)));
@@ -413,11 +561,12 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
   insertUncondBranch(NewBB, TBB);
 
   LLVM_DEBUG(llvm::dbgs() << "  Insert cond B to the new BB "
-                    << llvm::printMBBReference(*NewBB)
-                    << "  Keep the exiting condition.\n"
-                    << "  Insert B to " << llvm::printMBBReference(*FBB) << ".\n"
-                    << "  In the new BB: Insert B to "
-                    << llvm::printMBBReference(*TBB) << ".\n");
+                          << llvm::printMBBReference(*NewBB)
+                          << "  Keep the exiting condition.\n"
+                          << "  Insert B to " << llvm::printMBBReference(*FBB)
+                          << ".\n"
+                          << "  In the new BB: Insert B to "
+                          << llvm::printMBBReference(*TBB) << ".\n");
 
   // Update the successor lists according to the transformation to follow.
   MBB->replaceSuccessor(TBB, NewBB);
@@ -455,7 +604,8 @@ bool BranchRelaxationPass::fixupUnconditionalBranch(llvm::MachineInstr &MI) {
 
     // Add live outs.
     for (const llvm::MachineBasicBlock *Succ : MBB->successors()) {
-      for (const llvm::MachineBasicBlock::RegisterMaskPair &LiveIn : Succ->liveins())
+      for (const llvm::MachineBasicBlock::RegisterMaskPair &LiveIn :
+           Succ->liveins())
         BranchBB->addLiveIn(LiveIn);
     }
 
@@ -495,7 +645,8 @@ bool BranchRelaxationPass::fixupUnconditionalBranch(llvm::MachineInstr &MI) {
     // cold) in the middle of the function. Place it at the end.
     if (MBB->getSectionID() == llvm::MBBSectionID::ColdSectionID &&
         DestBB->getSectionID() != llvm::MBBSectionID::ColdSectionID) {
-      llvm::MachineBasicBlock *NewBB = createNewBlockAfter(*TrampolineInsertionPoint);
+      llvm::MachineBasicBlock *NewBB =
+          createNewBlockAfter(*TrampolineInsertionPoint);
       TII->insertUnconditionalBranch(*NewBB, DestBB, DebugLoc());
       BlockInfo[NewBB->getNumber()].Size = computeBlockSize(*NewBB);
       adjustBlockOffsets(*TrampolineInsertionPoint,
@@ -532,7 +683,8 @@ bool BranchRelaxationPass::fixupUnconditionalBranch(llvm::MachineInstr &MI) {
     RestoreBB->addSuccessor(DestBB);
     BranchBB->replaceSuccessor(DestBB, RestoreBB);
     if (TRI->trackLivenessAfterRegAlloc(*MF))
-      llvm::computeAndAddLiveIns(LiveRegs, *RestoreBB); // Should we use luthier one here????
+      llvm::computeAndAddLiveIns(
+          LiveRegs, *RestoreBB); // Should we use luthier one here????
     // Compute the restore block size.
     BlockInfo[RestoreBB->getNumber()].Size = computeBlockSize(*RestoreBB);
     // Update the estimated offset for the restore block.
@@ -626,11 +778,11 @@ bool BranchRelaxationPass::relaxBranchInstructions() {
   return Changed;
 }
 
-
-
 bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
-  // auto *MDT = TargetMFAM.getCachedResult<llvm::MachineDominatorTreeAnalysis>(MF);
-  // auto *MPDT = TargetMFAM.getCachedResult<llvm::MachinePostDominatorTreeAnalysis>(MF);
+  // auto *MDT =
+  // TargetMFAM.getCachedResult<llvm::MachineDominatorTreeAnalysis>(MF); auto
+  // *MPDT =
+  // TargetMFAM.getCachedResult<llvm::MachinePostDominatorTreeAnalysis>(MF);
 
   bool MadeChanges{false};
   LLVM_DEBUG(llvm::dbgs() << "***** BranchRelaxation *****\n");
@@ -650,11 +802,11 @@ bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
   auto &TargetMAM = IMAM.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule)
                         ->getTargetAppMAM();
 
-  MF = &(IPIP.at(IMF.getFunction())->getMF());        
+  MF = &(IPIP.at(IMF.getFunction())->getMF());
   const auto &StateValueLocations =
       *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
           TargetModule);
-          
+
   auto *SVALoadPlan =
       StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
           *IPIP.at(MF.getFunction()));
@@ -668,7 +820,7 @@ bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
   }
 
   SVA = StateValueLoadPlan->StateValueArrayLoadVGPR;
-          
+
   const llvm::TargetSubtargetInfo &ST = TargetMF.getSubtarget();
   TII = ST.getInstrInfo();
 
@@ -676,10 +828,9 @@ bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
 
   // We scan the machine function to compute information about the basic blocks
   scanFunction();
-    
-  while(relaxBranchInstructions())
-    MadeChanges = true;
 
+  while (relaxBranchInstructions())
+    MadeChanges = true;
 
   BlockInfo.clear();
   RelaxedUnconditionals.clear();
@@ -694,7 +845,7 @@ bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
   return false;
 }
 
-void BranchRelaxationPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const{
+void BranchRelaxationPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
   AU.addRequired<IModuleMAMWrapperPass>();
   MachineFunctionPass::getAnalysisUsage(AU);
 }
