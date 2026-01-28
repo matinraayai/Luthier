@@ -18,6 +18,7 @@
 /// This file implements the <tt>MMISlotIndexesAnalysis</tt> pass.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
+#include "luthier/Tooling/IPVectorCFG.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Module.h>
 
@@ -29,12 +30,14 @@ MMISlotIndexesAnalysis::Result
 MMISlotIndexesAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
   MMISlotIndexesAnalysis::Result Out;
   auto &MMI = MAM.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI();
+  auto &IPVecCFG = MAM.getResult<IPVectorCFGAnalysis>(M).getVecCFG();
 
   for (const auto &F : M) {
     auto *MF = MMI.getMachineFunction(F);
+    auto& VecCFG = IPVecCFG.at(*MF);
     if (!MF)
       continue;
-    Out.Res.insert({MF, llvm::SlotIndexes(*MF)});
+    Out.Res.insert({MF, llvm::SlotIndexes(*MF, VecCFG)});
   }
   return Out;
 }
