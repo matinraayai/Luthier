@@ -499,16 +499,16 @@ namespace luthier {
     }
 
     /// Returns the basic block which the given index falls in.
-    VectorMBB* getMBBFromIndex(SlotIndex index) const {
-      if (llvm::MachineInstr *MI = getInstructionFromIndex(index))
-        return MI->getParent();
+    // VectorMBB* getMBBFromIndex(SlotIndex index) const {
+    //   if (llvm::MachineInstr *MI = getInstructionFromIndex(index))
+    //     return MI->getParent();
 
-      MBBIndexIterator I = std::prev(getMBBUpperBound(index));
-      assert(I != MBBIndexEnd() && I->first <= index &&
-             index < getMBBEndIdx(I->second) &&
-             "index does not correspond to an MBB");
-      return I->second;
-    }
+    //   MBBIndexIterator I = std::prev(getMBBUpperBound(index));
+    //   assert(I != MBBIndexEnd() && I->first <= index &&
+    //          index < getMBBEndIdx(I->second) &&
+    //          "index does not correspond to an MBB");
+    //   return I->second;
+    // }
 
     /// Insert the given machine instruction into the mapping. Returns the
     /// assigned index.

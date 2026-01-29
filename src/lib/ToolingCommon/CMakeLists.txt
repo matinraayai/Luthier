@@ -23,12 +23,11 @@ add_library(LuthierToolingCommon OBJECT
         PhysicalRegAccessVirtualizationPass.cpp
         SVStorageAndLoadLocations.cpp
         LRCallGraph.cpp
-        AMDGPURegisterLiveness.cpp
         IntrinsicMIRLoweringPass.cpp
         InjectedPayloadPEIPass.cpp
         PrePostAmbleEmitter.cpp
         StateValueArraySpecs.cpp
-        VectorCFG.cpp
+        IPVectorCFG.cpp
         StateValueArrayStorage.cpp
         IModuleIRGeneratorPass.cpp
         RunIRPassesOnIModulePass.cpp

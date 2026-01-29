@@ -233,6 +233,10 @@ llvmGetPassPluginInfo() {
                 luthier::InstrumentationPMOptions));
             return true;
           }
+          if(Name == "luthier-slot-indexes-printer") {
+            MPM.addPass(luthier::MMISlotIndexesPrinterPass(llvm::outs()));
+            return true;
+          }
           return false;
         });
   };

@@ -41,4 +41,19 @@ MMISlotIndexesAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
   }
   return Out;
 }
+
+llvm::PreservedAnalyses
+MMISlotIndexesPrinterPass::run(llvm::Module &M,
+                            llvm::ModuleAnalysisManager &MAM) {
+  auto &SIA = MAM.getResult<MMISlotIndexesAnalysis>(M);
+  for(auto &Entry : SIA){
+    auto* MF = Entry.getFirst();
+    auto& SI = Entry.getSecond();
+    OS << "Slot indexes in machine function: " << MF->getName() << '\n';
+    SI.print(OS);
+  }
+  
+  return PreservedAnalyses::all();
+}
+
 } // namespace luthier

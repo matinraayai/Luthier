@@ -48,12 +48,12 @@ char BranchRelaxationPass::ID = 0;
 LUTHIER_INITIALIZE_LEGACY_PASS_BODY(BranchRelaxationPass, "branch-relaxation",
                                     "Branch Relaxation Pass", true,
                                     false); // Is it CFG only?
-
+//FIXME: Change to custom Register Scavenger
 void BranchRelaxationPass::insertIndirectBranch(llvm::MachineBasicBlock &MBB,
                                        llvm::MachineBasicBlock &DestBB,
                                        llvm::MachineBasicBlock &RestoreBB,
-                                       const llvm::DebugLoc &DL, int64_t BrOffset
-                                       /*RegScavenger *RS*/) const { // Change to custom Register Scavenger
+                                       const llvm::DebugLoc &DL, int64_t BrOffset,
+                                       /*RegScavenger *RS*/) const { 
   assert(MBB.empty() &&
          "new block should be inserted for expanding unconditional branch");
   assert(MBB.pred_size() == 1);
@@ -272,7 +272,7 @@ BranchRelaxationPass::createNewBlockAfter(llvm::MachineBasicBlock &OrigBB) {
 
 /// Insert a new empty MachineBasicBlock with \p BB as its BasicBlock
 /// and insert it after \p OrigMBB
-MachineBasicBlock *
+llvm::MachineBasicBlock *
 BranchRelaxationPass::createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB,
                                           const llvm::BasicBlock *BB) {
   // Create a new MBB for the code after the OrigBB.

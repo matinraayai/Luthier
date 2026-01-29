@@ -63,6 +63,17 @@ public:
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 };
 
+class MMISlotIndexesPrinterPass : public llvm::PassInfoMixin<MMISlotIndexesPrinterPass> {
+    llvm::raw_ostream &OS;
+
+  public:
+    explicit SlotIndexesPrinterPass(llvm::raw_ostream &OS) : OS(OS) {}
+    llvm::PreservedAnalyses run(llvm::Module &M,
+                                   llvm::ModuleAnalysisManager &MAM);
+    static bool isRequired() { return true; }
+  };
+
+
 } // namespace luthier
 
 #endif
