@@ -110,7 +110,7 @@ class SVStorageAndLoadLocations {
 private:
   /// Keeps track of how and where the state value array is stored in each
   /// function inside in the \c LR
-  llvm::DenseMap<const llvm::MachineBasicBlock *,
+  llvm::DenseMap<const VectorMBB *,
                  llvm::SmallVector<StateValueStorageSegment>>
       StateValueStorageIntervals{};
 
@@ -131,7 +131,8 @@ public:
       const MMISlotIndexesAnalysis::Result &SlotIndexes,
       const AMDGPURegisterLiveness &RegLiveness,
       const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
-      const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns);
+      const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+      const IPVectorCFG &IPCFG);
 
   /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
   /// analysis, returns the state value array storage of every instruction
@@ -142,7 +143,7 @@ public:
   /// interval inside the \p MBB or an empty \c llvm::ArrayRef if the \p MBB
   /// is not part of the \c LiftedRepresentation being analyzed
   [[nodiscard]] llvm::ArrayRef<StateValueStorageSegment>
-  getStorageIntervals(const llvm::MachineBasicBlock &MBB) const;
+  getStorageIntervals(const VectorMBB &MBB) const;
 
   /// \return state value array load plan associated with instrumentation
   /// point \p MI or \c nullptr if the passed \p MI is not an instrumentation

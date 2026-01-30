@@ -20,9 +20,11 @@
 #include "luthier/Tooling/SVStorageAndLoadLocations.h"
 #include "luthier/Common/LuthierError.h"
 #include "luthier/Tooling/AMDGPURegisterLiveness.h"
+#include "luthier/Tooling/IPVectorCFG.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
 #include "luthier/Tooling/LRCallgraph.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
+#include "luthier/Tooling/SlotIndexes.h"
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 #include "luthier/Tooling/StateValueArrayStorage.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
@@ -386,7 +388,7 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
 
 llvm::ArrayRef<StateValueStorageSegment>
 SVStorageAndLoadLocations::getStorageIntervals(
-    const llvm::MachineBasicBlock &MBB) const {
+    const VectorMBB &MBB) const {
   auto It = StateValueStorageIntervals.find(&MBB);
   if (It == StateValueStorageIntervals.end())
     return {};
@@ -409,7 +411,8 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     const MMISlotIndexesAnalysis::Result &SlotIndexes,
     const AMDGPURegisterLiveness &RegLiveness,
     const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
-    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
+    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+    const IPVectorCFG &IPCFG) {
   llvm::SmallVector<llvm::MachineFunction *, 4> MFs;
   for (const auto &F : TargetM) {
     if (auto *MF = TargetMMI.getMachineFunction(F)) {
@@ -457,14 +460,17 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     // preamble code to any device functions involved inside the lifted
     // representation
     for (const auto &MF : MFs) {
-      for (const auto &MBB : *MF) {
-        auto &Segments =
+      const auto &VecCFG = IPCFG.at(MF);
+      for (const auto &SBB : VecCFG) {
+        for (const auto &VBB : SBB){
+          auto &Segments =
             StateValueStorageIntervals
-                .insert({&MBB, llvm::SmallVector<StateValueStorageSegment>{}})
+                .insert({&VBB, llvm::SmallVector<StateValueStorageSegment>{}})
                 .first->getSecond();
-        Segments.emplace_back(SlotIndexes.at(*MF).getMBBStartIdx(&MBB),
-                              SlotIndexes.at(*MF).getMBBEndIdx(&MBB),
+        Segments.emplace_back(SlotIndexes.at(*MF).getMBBStartIdx(&VBB),
+                              SlotIndexes.at(*MF).getMBBEndIdx(&VBB),
                               StateValueFixedLocation);
+        }
       }
       if (MF->getFunction().getCallingConv() !=
           llvm::CallingConv::AMDGPU_KERNEL) {
@@ -619,7 +625,8 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule),
       TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule),
       IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
-          .getPhysRegsNotInLiveIns());
+          .getPhysRegsNotInLiveIns(),
+      TargetMAM.getResult<IPVectorCFGAnalysis>(TargetModule).getVecCFG())
   if (Err)
     TargetModule.getContext().emitError(toString(std::move(Err)));
 

@@ -21,8 +21,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_MMI_SLOT_INDEXES_ANALYSIS_H
 #define LUTHIER_TOOLING_MMI_SLOT_INDEXES_ANALYSIS_H
+
+#include "luthier/Tooling/SlotIndexes.h"
 #include <llvm/CodeGen/MachineFunction.h>
-#include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
@@ -37,18 +38,18 @@ private:
 public:
   class Result {
     friend MMISlotIndexesAnalysis;
-    llvm::DenseMap<llvm::MachineFunction *, llvm::SlotIndexes> Res;
+    llvm::DenseMap<llvm::MachineFunction *, SlotIndexes> Res;
     Result() = default;
 
   public:
     typedef llvm::DenseMap<llvm::MachineFunction *,
-                           llvm::SlotIndexes>::const_iterator const_iterator;
+                           SlotIndexes>::const_iterator const_iterator;
 
     [[nodiscard]] const_iterator begin() const { return Res.begin(); }
 
     [[nodiscard]] const_iterator end() const { return Res.end(); }
 
-    const llvm::SlotIndexes &at(llvm::MachineFunction &MF) const {
+    const SlotIndexes &at(llvm::MachineFunction &MF) const {
       return Res.at(&MF);
     }
 

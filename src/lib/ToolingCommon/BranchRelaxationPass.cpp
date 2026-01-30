@@ -819,7 +819,7 @@ bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
     return false;
   }
 
-  SVA = StateValueLoadPlan->StateValueArrayLoadVGPR;
+  SVA = SVALoadPlan->StateValueArrayLoadVGPR;
 
   const llvm::TargetSubtargetInfo &ST = TargetMF.getSubtarget();
   TII = ST.getInstrInfo();
